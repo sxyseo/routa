@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   // Handle batch delete action
   if (body.action === "deleteByStatus") {
-    const { status, workspaceId = "default" } = body;
+    const { status, workspaceId = "default", triggerSource } = body;
     if (!status) {
       return NextResponse.json(
         { error: "status is required for deleteByStatus action" },
@@ -44,10 +44,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const tasks = await system.backgroundTaskStore.listByStatus(
+    const allTasks = await system.backgroundTaskStore.listByStatus(
       workspaceId,
       status as never
     );
+
+    // Optional: filter by triggerSource (e.g. delete only "polling" PENDING tasks)
+    const tasks = triggerSource
+      ? allTasks.filter((t) => t.triggerSource === triggerSource)
+      : allTasks;
 
     let deleted = 0;
     for (const task of tasks) {
@@ -58,7 +63,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       deleted,
-      message: `Deleted ${deleted} ${status} tasks`,
+      message: `Deleted ${deleted} ${status}${triggerSource ? ` (${triggerSource})` : ""} tasks`,
     });
   }
 

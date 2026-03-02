@@ -186,33 +186,30 @@ export class GitHubPollingAdapter {
       result.eventsFound = events.length;
 
       const lastEventId = this.config.lastEventIds[repo];
-      let foundLastEvent = !lastEventId; // If no lastEventId, process all
 
+      // GitHub Events API returns events newest-first.
+      // Collect only events that are newer than lastEventId by stopping
+      // as soon as we hit a seen event. If no lastEventId exists, process all.
+      const newEvents: GitHubEvent[] = [];
       for (const event of events) {
-        // Skip already processed events
-        if (event.id === lastEventId) {
-          foundLastEvent = true;
-          continue;
-        }
-        if (!foundLastEvent) continue; // Haven't reached our marker yet
+        if (event.id === lastEventId) break; // everything after this is already processed
+        newEvents.push(event);
+      }
 
-        // Update newest event ID
-        if (!result.newLastEventId) {
-          result.newLastEventId = event.id;
-        }
+      // Update the marker to the newest event seen in this batch
+      if (newEvents.length > 0) {
+        result.newLastEventId = newEvents[0].id;
+        this.config.lastEventIds[repo] = newEvents[0].id;
+      }
 
-        // Process this event
+      // Process new events (in chronological order: oldest first)
+      for (const event of newEvents.reverse()) {
         const processed = await this.processEvent(event, configs);
         if (processed) {
           result.eventsProcessed++;
         } else {
           result.eventsSkipped++;
         }
-      }
-
-      // Update last event ID
-      if (result.newLastEventId) {
-        this.config.lastEventIds[repo] = result.newLastEventId;
       }
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);
