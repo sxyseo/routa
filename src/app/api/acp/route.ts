@@ -224,6 +224,9 @@ export async function POST(request: NextRequest) {
       const apiKey = (p.apiKey as string | undefined);
       const workspaceId = (p.workspaceId as string) || "default";
       const idempotencyKey = p.idempotencyKey as string | undefined;
+      // Inline custom provider config (command + args passed directly from client)
+      const customCommand = (p.customCommand as string | undefined);
+      const customArgs = Array.isArray(p.customArgs) ? (p.customArgs as string[]) : undefined;
 
       // ── Idempotency check ──────────────────────────────────────────────
       // If client provides an idempotencyKey, check if we've already created
@@ -313,6 +316,17 @@ export async function POST(request: NextRequest) {
           mcpConfigs,
           modeId,
           role, // Pass role so ROUTA gets bypassPermissions
+        );
+      } else if (customCommand) {
+        // ── Custom ACP provider (inline command + args from client) ─────
+        console.log(`[ACP Route] Using custom provider: command=${customCommand}, args=${JSON.stringify(customArgs ?? [])}`);
+        acpSessionId = await manager.createSessionFromInline(
+          sessionId,
+          customCommand,
+          customArgs ?? [],
+          cwd,
+          provider, // use provider name as display name
+          forwardSessionUpdate,
         );
       } else {
         // ── Standard ACP agent ───────────────────────────────────────
