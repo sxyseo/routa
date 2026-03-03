@@ -102,3 +102,4 @@ apps/desktop/src-tauri/icons/ios/
 **/chunks/
 **/_next/static/*
 target/
+.playwright-mcp/*
