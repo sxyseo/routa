@@ -40,19 +40,23 @@ export async function GET(
     ? allSessions.find((s) => s.sessionId === current.parentSessionId)
     : undefined;
 
-  // Find child sessions
+  // Find child sessions (exclude empty ones)
   const children = allSessions.filter(
-    (s) => s.parentSessionId === sessionId
+    (s) => s.parentSessionId === sessionId && s.firstPromptSent !== false
   );
 
-  // Find sibling sessions (same parent, excluding current)
+  // Find sibling sessions (same parent, excluding current and empty ones)
   const siblings = current.parentSessionId
     ? allSessions.filter(
         (s) =>
           s.parentSessionId === current.parentSessionId &&
-          s.sessionId !== sessionId
+          s.sessionId !== sessionId &&
+          s.firstPromptSent !== false
       )
     : [];
+
+  // Filter out empty sessions (only have "Connected to ACP session" — never received a real prompt)
+  const isNonEmpty = (s: { firstPromptSent?: boolean }) => s.firstPromptSent !== false;
 
   // Find recent sessions in the same workspace (excluding current, parent, children, siblings)
   const excludeIds = new Set([
@@ -66,7 +70,8 @@ export async function GET(
     .filter(
       (s) =>
         s.workspaceId === current.workspaceId &&
-        !excludeIds.has(s.sessionId)
+        !excludeIds.has(s.sessionId) &&
+        isNonEmpty(s)
     )
     .sort((a, b) => {
       const aTime = new Date(a.createdAt).getTime();

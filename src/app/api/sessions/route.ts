@@ -23,6 +23,9 @@ export async function GET(request: NextRequest) {
     sessions = sessions.filter((s) => s.workspaceId === workspaceId);
   }
 
+  // Filter out empty sessions that never received a real prompt
+  sessions = sessions.filter((s) => s.firstPromptSent !== false);
+
   return NextResponse.json(
     { sessions },
     { headers: { "Cache-Control": "no-store" } }

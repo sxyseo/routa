@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 
 interface SessionInfo {
@@ -38,9 +38,9 @@ export function SessionContextPanel({
 }: SessionContextPanelProps) {
   const [context, setContext] = useState<SessionContext | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expandedSections, setExpandedSections] = useState({
-    hierarchy: true,
-  });
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const fetchContext = useCallback(async () => {
     try {
@@ -49,12 +49,12 @@ export function SessionContextPanel({
         `/api/sessions/${sessionId}/context`,
         { cache: "no-store" }
       );
-      
+
       if (!res.ok) {
         setContext(null);
         return;
       }
-      
+
       const data = await res.json();
       setContext(data);
     } catch (e) {
@@ -67,7 +67,49 @@ export function SessionContextPanel({
 
   useEffect(() => {
     fetchContext();
-  }, [fetchContext, refreshTrigger]); // 添加 refreshTrigger 依赖
+  }, [fetchContext, refreshTrigger]);
+
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingId]);
+
+  const handleRename = async (targetId: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setRenamingId(null);
+      return;
+    }
+    try {
+      const res = await desktopAwareFetch(`/api/sessions/${targetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (res.ok) {
+        await fetchContext();
+      }
+    } catch (e) {
+      console.error("Failed to rename session", e);
+    }
+    setRenamingId(null);
+  };
+
+  const handleDelete = async (targetId: string) => {
+    try {
+      const res = await desktopAwareFetch(`/api/sessions/${targetId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        await fetchContext();
+      }
+    } catch (e) {
+      console.error("Failed to delete session", e);
+    }
+  };
 
   if (loading) {
     return (
@@ -101,12 +143,97 @@ export function SessionContextPanel({
     return s.sessionId.slice(0, 8);
   };
 
-  // Return early if context is not available
   if (!context) {
     return null;
   }
 
   const hasHierarchy = context.parent || context.children.length > 0;
+
+  /** Inline rename/delete actions for a session row */
+  const SessionActions = ({ sid, displayName }: { sid: string; displayName: string }) => (
+    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Rename */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setRenameValue(displayName);
+          setRenamingId(sid);
+        }}
+        className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+        title="Rename"
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      </button>
+      {/* Delete */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleDelete(sid);
+        }}
+        className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500"
+        title="Delete"
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
+    </div>
+  );
+
+  /** Render a session row with name, metadata, and actions */
+  const SessionRow = ({
+    session,
+    label,
+    icon,
+    iconColor = "text-gray-400",
+    indent = false,
+  }: {
+    session: SessionInfo;
+    label?: string;
+    icon: React.ReactNode;
+    iconColor?: string;
+    indent?: boolean;
+  }) => {
+    const displayName = session.name ?? getDefaultName(session);
+    const isRenaming = renamingId === session.sessionId;
+
+    return (
+      <div className={indent ? "ml-5" : ""}>
+        <div
+          onClick={() => !isRenaming && onSelectSession(session.sessionId)}
+          className="group flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+        >
+          <span className={`shrink-0 mt-0.5 ${iconColor}`}>{icon}</span>
+          <div className="min-w-0 flex-1">
+            {isRenaming ? (
+              <input
+                ref={renameInputRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={() => handleRename(session.sessionId)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRename(session.sessionId);
+                  if (e.key === "Escape") setRenamingId(null);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full text-[11px] font-medium bg-white dark:bg-gray-900 border border-blue-400 rounded px-1 py-0.5 outline-none text-gray-700 dark:text-gray-300"
+              />
+            ) : (
+              <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
+                {displayName}
+              </div>
+            )}
+            <div className="text-[10px] text-gray-400 dark:text-gray-500">
+              {label ? `${label} • ` : ""}{session.role}{session.role ? " • " : ""}{formatTimeAgo(session.createdAt)}
+            </div>
+          </div>
+          {!isRenaming && <SessionActions sid={session.sessionId} displayName={displayName} />}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800">
@@ -120,16 +247,42 @@ export function SessionContextPanel({
             stroke="currentColor"
             strokeWidth={2}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M13 10V3L4 14h7v7l9-11h-7z"
-            />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 truncate">
-              {context.current.name ?? getDefaultName(context.current)}
-            </div>
+            {renamingId === context.current.sessionId ? (
+              <input
+                ref={renameInputRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={() => handleRename(context.current.sessionId)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRename(context.current.sessionId);
+                  if (e.key === "Escape") setRenamingId(null);
+                }}
+                className="w-full text-xs font-semibold bg-white dark:bg-gray-900 border border-blue-400 rounded px-1 py-0.5 outline-none text-blue-700 dark:text-blue-300"
+              />
+            ) : (
+              <div className="flex items-center gap-1">
+                <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 truncate flex-1">
+                  {context.current.name ?? getDefaultName(context.current)}
+                </div>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      setRenameValue(context.current.name ?? getDefaultName(context.current));
+                      setRenamingId(context.current.sessionId);
+                    }}
+                    className="p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-400 hover:text-blue-600 dark:hover:text-blue-300"
+                    title="Rename"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400">
               {context.current.role && (
                 <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 rounded">
@@ -150,145 +303,67 @@ export function SessionContextPanel({
         </div>
       </div>
 
-      {/* Session Hierarchy */}
+      {/* Session Hierarchy — always expanded */}
       {hasHierarchy && (
         <div className="border-b border-gray-100 dark:border-gray-800">
-          <button
-            onClick={() =>
-              setExpandedSections((prev) => ({
-                ...prev,
-                hierarchy: !prev.hierarchy,
-              }))
-            }
-            className="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors"
-          >
-            <div className="flex items-center gap-1.5">
-              <svg
-                className="w-3.5 h-3.5 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                />
-              </svg>
-              <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Hierarchy
-              </span>
-            </div>
+          <div className="px-3 py-2 flex items-center gap-1.5">
             <svg
-              className={`w-3 h-3 text-gray-400 transition-transform ${
-                expandedSections.hierarchy ? "rotate-180" : ""
-              }`}
+              className="w-3.5 h-3.5 text-gray-400"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 9l-7 7-7-7"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
-          </button>
+            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Hierarchy
+            </span>
+          </div>
 
-          {expandedSections.hierarchy && (
-            <div className="px-3 pb-2 space-y-1">
-              {/* Parent Session */}
-              {context.parent && (
-                <div
-                  onClick={() => onSelectSession(context.parent!.sessionId)}
-                  className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
-                >
-                  <svg
-                    className="w-3 h-3 text-gray-400 shrink-0 mt-0.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M5 10l7-7m0 0l7 7m-7-7v18"
-                    />
+          <div className="px-3 pb-2 space-y-1">
+            {/* Parent Session */}
+            {context.parent && (
+              <SessionRow
+                session={context.parent}
+                label="Parent"
+                icon={
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
                   </svg>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
-                      {context.parent.name ?? getDefaultName(context.parent)}
-                    </div>
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                      Parent • {context.parent.role}
-                    </div>
-                  </div>
-                </div>
-              )}
+                }
+              />
+            )}
 
-              {/* Child Sessions */}
-              {context.children.length > 0 && (
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5 px-2 py-1">
-                    <svg
-                      className="w-3 h-3 text-gray-400 shrink-0"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M19 14l-7 7m0 0l-7-7m7 7V3"
-                      />
-                    </svg>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                      {context.children.length} Child Session
-                      {context.children.length > 1 ? "s" : ""}
-                    </span>
-                  </div>
-                  {context.children.map((child) => (
-                      <div key={child.sessionId} className="ml-5">
-                        <div
-                          onClick={() => onSelectSession(child.sessionId)}
-                          className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
-                        >
-                          <svg
-                            className="w-3 h-3 text-amber-500 shrink-0 mt-0.5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M13 10V3L4 14h7v7l9-11h-7z"
-                            />
-                          </svg>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
-                              {child.name ?? getDefaultName(child)}
-                            </div>
-                            <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                              {child.role} • {formatTimeAgo(child.createdAt)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                  ))}
+            {/* Child Sessions */}
+            {context.children.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5 px-2 py-1">
+                  <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                  </svg>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                    {context.children.length} Child Session{context.children.length > 1 ? "s" : ""}
+                  </span>
                 </div>
-              )}
-            </div>
-          )}
+                {context.children.map((child) => (
+                  <SessionRow
+                    key={child.sessionId}
+                    session={child}
+                    indent
+                    icon={
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    }
+                    iconColor="text-amber-500"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-
     </div>
   );
 }
