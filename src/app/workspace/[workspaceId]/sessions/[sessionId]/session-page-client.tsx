@@ -294,6 +294,64 @@ export function SessionPageClient() {
       });
   }, [sessionId, acp.connected, acp.setProvider, isResolved]);
 
+  // ── Restore CRAFTER agents from child sessions on page reload ─────────
+  const crafterAgentsRestoredRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isResolved || sessionId === "__placeholder__") return;
+    if (!sessionId || !acp.connected) return;
+    if (crafterAgentsRestoredRef.current.has(sessionId)) return;
+    crafterAgentsRestoredRef.current.add(sessionId);
+
+    fetch(`/api/sessions?parentSessionId=${sessionId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.sessions?.length) return;
+        const childSessions = data.sessions as Array<{
+          sessionId: string;
+          name?: string;
+          routaAgentId?: string;
+          role?: string;
+          provider?: string;
+        }>;
+
+        // Only restore if we don't already have crafterAgents (e.g. from live SSE)
+        setCrafterAgents((prev) => {
+          if (prev.length > 0) return prev;
+
+          const restored: CrafterAgent[] = childSessions
+            .filter((cs) => cs.role === "CRAFTER")
+            .map((cs) => ({
+              id: cs.routaAgentId ?? cs.sessionId,
+              sessionId: cs.sessionId,
+              taskId: "",
+              taskTitle: cs.name ?? "CRAFTER Task",
+              // Child sessions that exist in DB are completed (running ones are tracked in-memory)
+              status: "completed" as const,
+              messages: [],
+            }));
+
+          if (restored.length > 0) {
+            console.log(`[SessionPage] Restored ${restored.length} CRAFTER agent(s) from DB`);
+            setActiveCrafterId(restored[0].id);
+          }
+          return restored;
+        });
+      })
+      .catch((err) => {
+        console.warn("[SessionPage] Failed to restore CRAFTER agents:", err);
+      });
+  }, [sessionId, acp.connected, isResolved]);
+
+  // Handler to update agent messages after lazy-loading from DB
+  const handleUpdateAgentMessages = useCallback(
+    (agentId: string, messages: CrafterMessage[]) => {
+      setCrafterAgents((prev) =>
+        prev.map((a) => (a.id === agentId ? { ...a, messages } : a))
+      );
+    },
+    []
+  );
+
   // Track if we've already sent the pending prompt for this session
   const pendingPromptSentRef = useRef<Set<string>>(new Set());
 
@@ -1722,6 +1780,7 @@ export function SessionPageClient() {
                 onExecuteAll={handleExecuteAllNoteTasks}
                 concurrency={concurrency}
                 onConcurrencyChange={handleConcurrencyChange}
+                onUpdateAgentMessages={handleUpdateAgentMessages}
               />
             ) : (
               <TaskPanel
@@ -1738,6 +1797,7 @@ export function SessionPageClient() {
                 onConcurrencyChange={handleConcurrencyChange}
                 onAbortCrafter={handleAbortCrafter}
                 onMarkDoneCrafter={handleMarkDoneCrafter}
+                onUpdateAgentMessages={handleUpdateAgentMessages}
               />
             )}
           </aside>

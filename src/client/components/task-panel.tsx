@@ -61,6 +61,8 @@ interface TaskPanelProps {
   onAbortCrafter?: (agentId: string, sessionId: string) => Promise<void>;
   /** Manually mark a CRAFTER agent as done */
   onMarkDoneCrafter?: (agentId: string) => void;
+  /** Callback to update agent messages after lazy-loading from DB */
+  onUpdateAgentMessages?: (agentId: string, messages: CrafterMessage[]) => void;
 }
 
 export function TaskPanel({
@@ -77,6 +79,7 @@ export function TaskPanel({
   onConcurrencyChange,
   onAbortCrafter,
   onMarkDoneCrafter,
+  onUpdateAgentMessages,
 }: TaskPanelProps) {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -223,6 +226,7 @@ export function TaskPanel({
           agents={crafterAgents}
           activeCrafterId={activeCrafterId}
           onSelectCrafter={onSelectCrafter}
+          onUpdateAgentMessages={onUpdateAgentMessages}
         />
       )}
     </div>
@@ -235,18 +239,106 @@ export function CraftersView({
   agents,
   activeCrafterId,
   onSelectCrafter,
+  onUpdateAgentMessages,
 }: {
   agents: CrafterAgent[];
   activeCrafterId?: string | null;
   onSelectCrafter?: (id: string) => void;
+  /** Callback to update agent messages after lazy-loading from DB */
+  onUpdateAgentMessages?: (agentId: string, messages: CrafterMessage[]) => void;
 }) {
   const activeAgent = agents.find((a) => a.id === activeCrafterId) ?? agents[0];
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Track which agents we've already fetched history for
+  const fetchedHistoryRef = useRef<Set<string>>(new Set());
 
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeAgent?.messages.length]);
+
+  // Lazy-load child session history for restored CRAFTERs with empty messages
+  useEffect(() => {
+    if (!activeAgent || activeAgent.messages.length > 0 || !activeAgent.sessionId) return;
+    if (activeAgent.status === "running") return; // Don't load history for running agents
+    if (fetchedHistoryRef.current.has(activeAgent.id)) return;
+    fetchedHistoryRef.current.add(activeAgent.id);
+
+    fetch(`/api/sessions/${activeAgent.sessionId}/history?consolidated=true`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.history?.length) return;
+        const history = data.history as Array<{
+          sessionId: string;
+          update?: {
+            sessionUpdate?: string;
+            content?: { type: string; text?: string };
+            title?: string;
+            status?: string;
+          };
+        }>;
+
+        // Convert session history notifications into CrafterMessages
+        const messages: CrafterMessage[] = [];
+        for (const entry of history) {
+          const update = entry.update;
+          if (!update?.sessionUpdate) continue;
+
+          const text = update.content?.text ?? "";
+          switch (update.sessionUpdate) {
+            case "agent_message":
+            case "agent_message_chunk":
+              if (text) {
+                const last = messages[messages.length - 1];
+                if (last && last.role === "assistant" && !last.toolName) {
+                  last.content += text;
+                } else {
+                  messages.push({
+                    id: crypto.randomUUID(),
+                    role: "assistant",
+                    content: text,
+                    timestamp: new Date(),
+                  });
+                }
+              }
+              break;
+            case "agent_thought":
+            case "agent_thought_chunk":
+              if (text) {
+                const last = messages[messages.length - 1];
+                if (last && last.role === "thought") {
+                  last.content += text;
+                } else {
+                  messages.push({
+                    id: crypto.randomUUID(),
+                    role: "thought",
+                    content: text,
+                    timestamp: new Date(),
+                  });
+                }
+              }
+              break;
+            case "tool_call":
+              messages.push({
+                id: crypto.randomUUID(),
+                role: "tool",
+                content: update.title ?? "tool",
+                timestamp: new Date(),
+                toolName: update.title ?? "tool",
+                toolStatus: update.status ?? "completed",
+              });
+              break;
+          }
+        }
+
+        if (messages.length > 0 && onUpdateAgentMessages) {
+          onUpdateAgentMessages(activeAgent.id, messages);
+        }
+      })
+      .catch(() => {
+        // Silently fail — history loading is best-effort
+      });
+  }, [activeAgent, onUpdateAgentMessages]);
 
   if (agents.length === 0) {
     return (

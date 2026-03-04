@@ -47,6 +47,8 @@ interface CollaborativeTaskEditorProps {
   concurrency?: number;
   /** Callback when concurrency changes */
   onConcurrencyChange?: (n: number) => void;
+  /** Callback to update agent messages after lazy-loading from DB */
+  onUpdateAgentMessages?: (agentId: string, messages: import('./task-panel').CrafterMessage[]) => void;
 }
 
 export function CollaborativeTaskEditor({
@@ -62,6 +64,7 @@ export function CollaborativeTaskEditor({
   onExecuteAll,
   concurrency = 1,
   onConcurrencyChange,
+  onUpdateAgentMessages,
 }: CollaborativeTaskEditorProps) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
@@ -427,6 +430,7 @@ export function CollaborativeTaskEditor({
           agents={crafterAgents}
           activeCrafterId={activeCrafterId}
           onSelectCrafter={onSelectCrafter}
+          onUpdateAgentMessages={onUpdateAgentMessages}
         />
       )}
     </div>

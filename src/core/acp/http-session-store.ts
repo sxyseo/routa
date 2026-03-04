@@ -365,11 +365,20 @@ class HttpSessionStore {
   pushNotification(notification: SessionUpdateNotification) {
     const sessionId = notification.sessionId;
 
-    // Always store in history for session switching
-    const history = this.messageHistory.get(sessionId) ?? [];
-    history.push(notification);
-    this.messageHistory.set(sessionId, history);
-    this.limitHistorySize(sessionId); // Apply memory limit
+    // Child agent notifications (with childAgentId) are forwarded to the parent
+    // session's SSE for real-time CRAFTER progress but should NOT be stored in
+    // the parent's messageHistory — they would flood out the ROUTA coordinator's
+    // own messages due to the 500-entry limit.  Child agent messages are already
+    // persisted in their own child session's history.
+    const isChildAgentNotification = !!(notification as Record<string, unknown>).childAgentId;
+
+    if (!isChildAgentNotification) {
+      // Only store non-child-agent notifications in history
+      const history = this.messageHistory.get(sessionId) ?? [];
+      history.push(notification);
+      this.messageHistory.set(sessionId, history);
+      this.limitHistorySize(sessionId); // Apply memory limit
+    }
 
     // ── Notify AG-UI interceptors (protocol bridging) ──
     const interceptors = this.notificationInterceptors.get(sessionId);
