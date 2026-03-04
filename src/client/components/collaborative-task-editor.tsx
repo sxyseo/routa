@@ -108,12 +108,15 @@ export function CollaborativeTaskEditor({
     };
   }, [isVerticalResizing]);
 
-  // Auto-switch to crafters view when agents appear
+  // Auto-switch to crafters view only on the first agent spawn,
+  // then let the user freely toggle between tabs.
+  const hasAutoSwitchedRef = useRef(false);
   useEffect(() => {
-    if (crafterAgents.length > 0 && viewMode === "tasks") {
+    if (crafterAgents.length > 0 && !hasAutoSwitchedRef.current) {
+      hasAutoSwitchedRef.current = true;
       setViewMode("crafters");
     }
-  }, [crafterAgents.length, viewMode]);
+  }, [crafterAgents.length]);
 
   // Filter task notes and spec note
   const taskNotes = useMemo(

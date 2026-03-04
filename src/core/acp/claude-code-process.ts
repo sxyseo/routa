@@ -258,8 +258,10 @@ export class ClaudeCodeProcess {
         });
 
         if (!this.process || !this.process.pid) {
+            const pathHint = process.env.PATH?.split(":").slice(0, 5).join(":") ?? "(empty)";
             throw new Error(
-                `Failed to spawn Claude Code - is "${command}" installed and in PATH?`
+                `Failed to spawn Claude Code - is "${command}" installed and in PATH? ` +
+                `(cwd: ${cwd}, PATH starts with: ${pathHint})`
             );
         }
 

@@ -393,7 +393,7 @@ export function SessionPageClient() {
 
     const handleMouseMove = (e: MouseEvent) => {
       const delta = resizeStartXRef.current - e.clientX;
-      const newWidth = Math.max(280, Math.min(700, resizeStartWidthRef.current + delta));
+      const newWidth = Math.max(280, Math.min(960, resizeStartWidthRef.current + delta));
       setSidebarWidth(newWidth);
     };
 
@@ -561,6 +561,34 @@ export function SessionPageClient() {
           case "completed":
           case "ended": {
             agent.status = "completed";
+            break;
+          }
+
+          case "task_completion": {
+            // Orchestrator sends this when a child agent finishes (success or error)
+            const taskStatus = update.taskStatus as string | undefined;
+            const summary = update.completionSummary as string | undefined;
+            if (taskStatus === "NEEDS_FIX" || taskStatus === "BLOCKED" || taskStatus === "FAILED") {
+              agent.status = "error";
+              if (summary) {
+                messages.push({
+                  id: crypto.randomUUID(),
+                  role: "info",
+                  content: `Error: ${summary}`,
+                  timestamp: new Date(),
+                });
+              }
+            } else {
+              agent.status = "completed";
+              if (summary) {
+                messages.push({
+                  id: crypto.randomUUID(),
+                  role: "info",
+                  content: summary,
+                  timestamp: new Date(),
+                });
+              }
+            }
             break;
           }
 
@@ -1085,6 +1113,7 @@ export function SessionPageClient() {
 
       let agentId: string | undefined;
       let childSessionId: string | undefined;
+      let delegationError: string | undefined;
 
       if (!mcpTaskId) {
         console.warn("[CollabEditor] Could not extract taskId for note:", noteId);
@@ -1104,25 +1133,50 @@ export function SessionPageClient() {
             const parsed = JSON.parse(delegateText);
             agentId = parsed.agentId;
             childSessionId = parsed.sessionId;
+            // Check for error in the MCP tool result
+            if (parsed.error) {
+              delegationError = parsed.error;
+            }
           } catch {
             const agentMatch = delegateText.match(/"agentId"\s*:\s*"([^"]+)"/);
             const sessionMatch = delegateText.match(/"sessionId"\s*:\s*"([^"]+)"/);
+            const errorMatch = delegateText.match(/"error"\s*:\s*"([^"]+)"/);
             agentId = agentMatch?.[1];
             childSessionId = sessionMatch?.[1];
+            if (errorMatch) delegationError = errorMatch[1];
           }
         } catch (delegateErr) {
+          delegationError = delegateErr instanceof Error ? delegateErr.message : String(delegateErr);
           console.warn("[CollabEditor] delegate_task_to_agent failed:", delegateErr);
         }
       }
+
+      // Determine initial status: if delegation returned an error, mark as error
+      const initialStatus = delegationError ? "error" : "running";
+      const initialMessages: CrafterMessage[] = delegationError
+        ? [{
+            id: crypto.randomUUID(),
+            role: "info",
+            content: `Delegation failed: ${delegationError}`,
+            timestamp: new Date(),
+          }]
+        : [];
 
       const crafterAgent: CrafterAgent = {
         id: agentId ?? `crafter-collab-${noteId}`,
         sessionId: childSessionId ?? "",
         taskId: noteId,
         taskTitle: note.title,
-        status: "running",
-        messages: [],
+        status: initialStatus,
+        messages: initialMessages,
       };
+
+      // If delegation failed, also mark the task note as FAILED
+      if (delegationError) {
+        await notesHook.updateNote(noteId, {
+          metadata: { ...note.metadata, taskStatus: "FAILED" },
+        });
+      }
 
       setCrafterAgents((prev) => [...prev, crafterAgent]);
       if (!activeCrafterId) setActiveCrafterId(crafterAgent.id);

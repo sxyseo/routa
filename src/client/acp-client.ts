@@ -432,7 +432,17 @@ export class BrowserAcpClient {
     };
 
     this.eventSource.onerror = () => {
-      // SSE will auto-reconnect
+      // EventSource auto-reconnects on transient errors, but if the
+      // connection is CLOSED (readyState === 2) — e.g. after a server
+      // restart / page refresh — we must reconnect manually.
+      if (this.eventSource?.readyState === EventSource.CLOSED) {
+        console.warn("[AcpClient] SSE connection closed, reconnecting in 2s...");
+        setTimeout(() => {
+          if (this._sessionId) {
+            this.connectSSE(this._sessionId);
+          }
+        }, 2000);
+      }
     };
   }
 

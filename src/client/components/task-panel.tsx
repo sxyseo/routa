@@ -76,12 +76,15 @@ export function TaskPanel({
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<PanelView>("tasks");
 
-  // Auto-switch to crafters view when agents appear
+  // Auto-switch to crafters view only on the first agent spawn,
+  // then let the user freely toggle between tabs.
+  const hasAutoSwitchedRef = useRef(false);
   useEffect(() => {
-    if (crafterAgents.length > 0 && viewMode === "tasks") {
+    if (crafterAgents.length > 0 && !hasAutoSwitchedRef.current) {
+      hasAutoSwitchedRef.current = true;
       setViewMode("crafters");
     }
-  }, [crafterAgents.length, viewMode]);
+  }, [crafterAgents.length]);
 
   if (tasks.length === 0 && crafterAgents.length === 0) return null;
 
@@ -311,6 +314,13 @@ export function CraftersView({
                   <div className="w-5 h-5 mx-auto border-2 border-gray-300 dark:border-gray-600 border-t-indigo-500 rounded-full animate-spin" />
                   <div>Agent is working...</div>
                 </div>
+              ) : activeAgent.status === "error" ? (
+                <div className="space-y-2 text-red-500 dark:text-red-400">
+                  <svg className="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>Agent failed to start</div>
+                </div>
               ) : (
                 "No messages yet."
               )}
@@ -397,6 +407,19 @@ function CrafterMessageBubble({ message }: { message: CrafterMessage }) {
             {message.content}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (message.role === "info") {
+    const isError = message.content.toLowerCase().startsWith("error") || message.content.toLowerCase().includes("failed");
+    return (
+      <div className={`px-2.5 py-2 rounded-md text-[11px] border ${
+        isError
+          ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300"
+          : "bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300"
+      }`}>
+        <MarkdownViewer content={message.content} className="text-[11px]" />
       </div>
     );
   }
