@@ -25,6 +25,8 @@
 export function toFolderSlug(absolutePath: string): string {
   // Strip leading separators
   let cleaned = absolutePath.replace(/^[/\\]+/, "");
+  // Strip trailing separators (avoids trailing hyphen in slug)
+  cleaned = cleaned.replace(/[/\\]+$/, "");
   // Replace all path separators (including consecutive) with a single hyphen
   cleaned = cleaned.replace(/[/\\]+/g, "-");
   return cleaned;

@@ -30,4 +30,12 @@ describe("toFolderSlug", () => {
   it("strips leading separators", () => {
     expect(toFolderSlug("///Users/john")).toBe("Users-john");
   });
+
+  it("strips trailing separators", () => {
+    expect(toFolderSlug("/Users/john/my-project/")).toBe("Users-john-my-project");
+  });
+
+  it("produces same slug with or without trailing slash", () => {
+    expect(toFolderSlug("/Users/john/project/")).toBe(toFolderSlug("/Users/john/project"));
+  });
 });

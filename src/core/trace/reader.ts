@@ -263,7 +263,8 @@ export class TraceReader {
     const dirs: string[] = [];
 
     // 1. New storage path: ~/.routa/projects/{folder-slug}/traces/
-    const workspaceRoot = this.#baseDir.replace(/\.routa\/traces$/, "");
+    // Strip trailing slash to avoid slug mismatch (e.g. "foo-" vs "foo")
+    const workspaceRoot = this.#baseDir.replace(/\.routa\/traces$/, "").replace(/\/+$/, "");
     const newTraceDir = getTracesDir(workspaceRoot);
     try {
       await fs.access(newTraceDir);

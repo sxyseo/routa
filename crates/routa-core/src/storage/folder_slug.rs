@@ -24,10 +24,13 @@ use std::path::PathBuf;
 /// assert_eq!(to_folder_slug("/Users/john/my-project"), "Users-john-my-project");
 /// assert_eq!(to_folder_slug("C:\\Users\\john\\project"), "C:-Users-john-project");
 /// assert_eq!(to_folder_slug("/Users//john///project"), "Users-john-project");
+/// assert_eq!(to_folder_slug("/Users/john/project/"), "Users-john-project");
 /// ```
 pub fn to_folder_slug(absolute_path: &str) -> String {
     // Strip leading separators
     let cleaned = absolute_path.trim_start_matches(|c| c == '/' || c == '\\');
+    // Strip trailing separators (avoids trailing hyphen in slug)
+    let cleaned = cleaned.trim_end_matches(|c: char| c == '/' || c == '\\');
     // Replace consecutive separators with a single hyphen
     let mut result = String::with_capacity(cleaned.len());
     let mut last_was_sep = false;
@@ -106,10 +109,19 @@ mod tests {
 
     #[test]
     fn test_trailing_separator() {
-        // Trailing separator produces trailing hyphen — acceptable
+        // Trailing separator is stripped to avoid slug mismatch
         assert_eq!(
             to_folder_slug("/Users/john/project/"),
-            "Users-john-project-"
+            "Users-john-project"
+        );
+    }
+
+    #[test]
+    fn test_trailing_slash_consistency() {
+        // With or without trailing slash should produce the same slug
+        assert_eq!(
+            to_folder_slug("/Users/john/project/"),
+            to_folder_slug("/Users/john/project")
         );
     }
 
