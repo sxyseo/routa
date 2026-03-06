@@ -28,8 +28,8 @@ import {type NoteData, useNotes} from "@/client/hooks/use-notes";
 import {BrowserAcpClient} from "@/client/acp-client";
 import type {RepoSelection} from "@/client/components/repo-picker";
 import type {ParsedTask} from "@/client/utils/task-block-parser";
-import {consumePendingPrompt} from "@/client/utils/pending-prompt";
-import {SettingsPanel, loadDefaultProviders, loadProviderConnectionConfig, getModelDefinitionByAlias} from "@/client/components/settings-panel";
+import {consumePendingPrompt, storePendingPrompt} from "@/client/utils/pending-prompt";
+import {SettingsPanel, DockerConfigModal, loadDefaultProviders, loadProviderConnectionConfig, getModelDefinitionByAlias} from "@/client/components/settings-panel";
 import {getDesktopApiBaseUrl, shouldSuppressTeardownError} from "@/client/utils/diagnostics";
 
 type AgentRole = "CRAFTER" | "ROUTA" | "GATE" | "DEVELOPER";
@@ -201,6 +201,10 @@ export function SessionPageClient() {
   const [showAgentInstallPopup, setShowAgentInstallPopup] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showSpecialistManager, setShowSpecialistManager] = useState(false);
+  // Docker error popup state
+  const [dockerErrorMessage, setDockerErrorMessage] = useState<string | null>(null);
+  // Input text to restore when a docker session fails before prompt was sent
+  const [dockerRetryText, setDockerRetryText] = useState<string | null>(null);
   const navigationTargetRef = useRef<string | null>(null);
   const providerChildClientsRef = useRef<Map<string, BrowserAcpClient>>(new Map());
 
@@ -472,6 +476,26 @@ export function SessionPageClient() {
 
     return () => clearTimeout(timer);
   }, [sessionId, acp.connected, acp.loading, acp.prompt, acp.updates]);
+
+  // Detect acp_status: error in SSE updates → show docker config popup and restore input
+  useEffect(() => {
+    if (!acp.updates.length) return;
+    const lastUpdate = acp.updates[acp.updates.length - 1];
+    const update = (lastUpdate as Record<string, unknown>).update as Record<string, unknown> | undefined;
+    if (
+      update?.sessionUpdate === "acp_status" &&
+      update?.status === "error" &&
+      acp.selectedProvider === "docker-opencode"
+    ) {
+      const errMsg = (update.error as string | undefined) ?? "Docker session failed to start";
+      setDockerErrorMessage(errMsg);
+      // Restore pending text so user can retry after configuring
+      if (pendingPromptTextRef.current) {
+        setDockerRetryText(pendingPromptTextRef.current);
+        pendingPromptTextRef.current = null;
+      }
+    }
+  }, [acp.updates, acp.selectedProvider]);
 
   // Load global tool mode on mount
   useEffect(() => {
@@ -2147,6 +2171,8 @@ export function SessionPageClient() {
             activeWorkspaceId={workspaceId}
             onWorkspaceChange={handleWorkspaceSelect}
             codebases={codebases}
+            inputPrefill={dockerRetryText}
+            onInputPrefillConsumed={() => setDockerRetryText(null)}
           />
         </main>
 
@@ -2276,6 +2302,24 @@ export function SessionPageClient() {
         open={showSettingsPanel}
         onClose={() => setShowSettingsPanel(false)}
         providers={acp.providers}
+      />
+
+      {/* ─── Docker Config Modal ─────────────────────────────────── */}
+      <DockerConfigModal
+        open={!!dockerErrorMessage}
+        errorMessage={dockerErrorMessage ?? ""}
+        onClose={() => setDockerErrorMessage(null)}
+        onSaved={(apiKey) => {
+          setDockerErrorMessage(null);
+          // Re-store pending text so the pending-prompt effect can re-send after reconnect
+          if (dockerRetryText && sessionId) {
+            storePendingPrompt(sessionId, dockerRetryText);
+            pendingPromptSentRef.current.delete(sessionId);
+            pendingPromptTextRef.current = dockerRetryText;
+          }
+          // The input will be pre-filled in the TiptapInput via dockerRetryText state
+          void apiKey; // used by saveProviderConnections inside DockerConfigModal
+        }}
       />
 
       {/* ─── Specialist Manager ──────────────────────────────────── */}

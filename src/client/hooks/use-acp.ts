@@ -58,6 +58,8 @@ export interface UseAcpState {
   error: string | null;
   /** Authentication error with methods to authenticate */
   authError: AuthErrorInfo | null;
+  /** Docker OpenCode configuration error (shows config popup) */
+  dockerConfigError: string | null;
 }
 
 export interface UseAcpActions {
@@ -89,6 +91,8 @@ export interface UseAcpActions {
   disconnect: () => void;
   /** Clear auth error (e.g., when user dismisses the popup) */
   clearAuthError: () => void;
+  /** Clear docker configuration error (e.g., when user dismisses the popup) */
+  clearDockerConfigError: () => void;
   /** List models available for a provider (e.g. opencode) */
   listProviderModels: (provider: string) => Promise<string[]>;
 }
@@ -107,6 +111,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     loading: false,
     error: null,
     authError: null,
+    dockerConfigError: null,
   });
 
   // Clean up on unmount
@@ -263,6 +268,10 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     setState((s) => ({ ...s, authError: null }));
   }, []);
 
+  const clearDockerConfigError = useCallback(() => {
+    setState((s) => ({ ...s, dockerConfigError: null }));
+  }, []);
+
   const createSession = useCallback(
     async (
       cwd?: string,
@@ -328,11 +337,21 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           return null;
         }
 
-        setState((s) => ({
-          ...s,
-          loading: false,
-          error: toErrorMessage(err) || "Session creation failed",
-        }));
+        const errorMsg = toErrorMessage(err) || "Session creation failed";
+        // Docker session errors show as a config popup (not inline error)
+        if ((provider ?? state.selectedProvider) === "docker-opencode") {
+          setState((s) => ({
+            ...s,
+            loading: false,
+            dockerConfigError: errorMsg,
+          }));
+        } else {
+          setState((s) => ({
+            ...s,
+            loading: false,
+            error: errorMsg,
+          }));
+        }
         return null;
       }
     },
@@ -441,6 +460,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       loading: false,
       error: null,
       authError: null,
+      dockerConfigError: null,
     });
   }, []);
 
@@ -466,6 +486,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     cancel,
     disconnect,
     clearAuthError,
+    clearDockerConfigError,
     listProviderModels,
   };
 }

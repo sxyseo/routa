@@ -100,6 +100,10 @@ interface ChatPanelProps {
   activeWorkspaceId?: string | null;
   onWorkspaceChange?: (id: string) => void;
   codebases?: CodebaseData[];
+  /** When set, pre-fills the chat input (e.g. to restore text after a session error) */
+  inputPrefill?: string | null;
+  /** Called after inputPrefill has been consumed */
+  onInputPrefillConsumed?: () => void;
 }
 
 // ─── Main Component ────────────────────────────────────────────────────
@@ -122,6 +126,8 @@ export function ChatPanel({
   activeWorkspaceId,
   onWorkspaceChange,
   codebases = [],
+  inputPrefill,
+  onInputPrefillConsumed,
 }: ChatPanelProps) {
   const { connected, loading, error, authError, updates, prompt, clearAuthError } = acp;
   const [sessions, setSessions] = useState<Array<{
@@ -380,16 +386,7 @@ export function ChatPanel({
             break;
           }
           case "acp_status": {
-            const acpStatusVal = update.status as string | undefined;
-            const acpError = update.error as string | undefined;
-            if (acpStatusVal === "error" && acpError) {
-              messages.push({
-                id: `acp-status-error-${sessionId}-${Date.now()}`,
-                role: "info",
-                content: `⚠ Session failed to start: ${acpError}`,
-                timestamp: new Date(),
-              });
-            }
+            // Docker/ACP errors are handled as a config popup, not inline messages
             break;
           }
         }
@@ -876,16 +873,7 @@ export function ChatPanel({
             break;
           }
           case "acp_status": {
-            const acpStatusVal = update.status as string | undefined;
-            const acpError = update.error as string | undefined;
-            if (acpStatusVal === "error" && acpError) {
-              arr.push({
-                id: `acp-status-error-${sid}-${Date.now()}`,
-                role: "info",
-                content: `⚠ Session failed to start: ${acpError}`,
-                timestamp: new Date(),
-              });
-            }
+            // Docker/ACP errors are now handled as a popup in the session page
             break;
           }
           case "tool_call_start": {
@@ -1843,6 +1831,8 @@ export function ChatPanel({
                   agentRole={agentRole}
                   usageInfo={usageInfo}
                   onFetchModels={acp.listProviderModels}
+                  prefillText={inputPrefill}
+                  onPrefillConsumed={onInputPrefillConsumed}
                 />
               </div>
             </div>

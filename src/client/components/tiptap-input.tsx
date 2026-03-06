@@ -479,6 +479,10 @@ interface TiptapInputProps {
   pendingSkill?: string | null;
   /** Called after pendingSkill has been inserted so the parent can clear it */
   onSkillInserted?: () => void;
+  /** When set, replaces the editor content with this plain text (e.g. to restore input after error) */
+  prefillText?: string | null;
+  /** Called after prefillText has been consumed so the parent can clear it */
+  onPrefillConsumed?: () => void;
 }
 
 export function TiptapInput({
@@ -501,6 +505,8 @@ export function TiptapInput({
   onFetchModels,
   pendingSkill,
   onSkillInserted,
+  prefillText,
+  onPrefillConsumed,
 }: TiptapInputProps) {
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false);
   const providerDropdownRef = useRef<HTMLDivElement>(null);
@@ -702,6 +708,14 @@ export function TiptapInput({
       .run();
     onSkillInserted?.();
   }, [pendingSkill, editor]);
+
+  // Restore prefill text (e.g. after a session error) into the editor
+  useEffect(() => {
+    if (!prefillText || !editor) return;
+    editor.commands.setContent(prefillText);
+    editor.commands.focus("end");
+    onPrefillConsumed?.();
+  }, [prefillText, editor, onPrefillConsumed]);
   const handleSend = useCallback(() => {
     if (!editor || disabled || loading) return;
 
