@@ -25,13 +25,11 @@ Both backends implement **identical REST APIs** for seamless frontend compatibil
 
 ## Issue Management
 
-Building an agent is complex, and API or web interactions may fail unexpectedly.  
+- Building an agent is complex, and API or web interactions may fail unexpectedly.  
 Log issues in `issues/` as structured Markdown files (with YAML front-matter) to document **WHAT happened** and **WHY it might happen** — not how to fix it.  
 These files serve as context handoff between agents and humans.
-
-Local issues live in `issues/` as Markdown files with YAML front-matter. They serve as
+- Local issues live in `issues/` as Markdown files with YAML front-matter. They serve as
 context handoff between agents (and humans) — focus on **WHAT** and **WHY**, not HOW to resolve.
-
 - File Naming: `issues/YYYY-MM-DD-short-description.md`
 
 ### Format
@@ -54,6 +52,13 @@ Use `issues/_template.md` as the base. Key rules:
 - Observed behavior that deviates from the API contract or expected flow
 - Found a potential bug but it's not blocking your current work
 - Need to hand off an investigation to another agent or human
+
+## Testing 
+
+- 当遇到改动文件多的场景，请使用浏览器（playwright/MCP Tool），从头到尾执行一次看看
+  - 首页选 claude code，输入个需求，会自动跳转到详细页，并触发 ACP 会话，根据你的场景，你可以问这个 AI Chatbot 一些问题
+  - 访问一个 workspace 详情页，点击会话，切换 Trace UI 看是否有历史
+  - 你也可以在浏览器里，打开开发者工具，查看网络请求，看看是否符合预期
 
 ## Commit
 
