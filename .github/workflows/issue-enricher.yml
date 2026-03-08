@@ -16,8 +16,8 @@ on:
         required: false
         default: false
         type: boolean
-      mention_copilot:
-        description: 'Mention @copilot to implement the issue after analysis'
+      assign_copilot:
+        description: 'Assign Copilot to implement the issue after analysis'
         required: false
         default: false
         type: boolean
@@ -63,11 +63,11 @@ jobs:
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "number=${{ github.event.inputs.issue_number }}" >> $GITHUB_OUTPUT
             echo "dry_run=${{ github.event.inputs.dry_run }}" >> $GITHUB_OUTPUT
-            echo "mention_copilot=${{ github.event.inputs.mention_copilot }}" >> $GITHUB_OUTPUT
+            echo "assign_copilot=${{ github.event.inputs.assign_copilot }}" >> $GITHUB_OUTPUT
           else
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
             echo "dry_run=false" >> $GITHUB_OUTPUT
-            echo "mention_copilot=false" >> $GITHUB_OUTPUT
+            echo "assign_copilot=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Analyze Issue
@@ -75,7 +75,7 @@ jobs:
         run: |
           ISSUE_NUMBER="${{ steps.issue.outputs.number }}"
           DRY_RUN="${{ steps.issue.outputs.dry_run }}"
-          MENTION_COPILOT="${{ steps.issue.outputs.mention_copilot }}"
+          ASSIGN_COPILOT="${{ steps.issue.outputs.assign_copilot }}"
 
           echo "## 🤖 Issue Enricher" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -87,8 +87,8 @@ jobs:
           if [ "$DRY_RUN" == "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
-          if [ "$MENTION_COPILOT" == "true" ]; then
-            ARGS="$ARGS --mention-copilot"
+          if [ "$ASSIGN_COPILOT" == "true" ]; then
+            ARGS="$ARGS --assign-copilot"
           fi
 
           # Run the issue enricher script
