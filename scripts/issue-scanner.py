@@ -210,13 +210,91 @@ def print_table(issues, errors, suspects):
     print("\n" + "=" * 100)
 
 
+def update_issue(filepath, field, value):
+    """Update a field in issue front-matter."""
+    content = filepath.read_text(encoding="utf-8")
+    if not content.startswith("---"):
+        print(f"❌ {filepath.name}: No front-matter found")
+        return False
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        print(f"❌ {filepath.name}: Malformed front-matter")
+        return False
+
+    yaml_lines = parts[1].strip().split("\n")
+    updated = False
+    new_lines = []
+
+    for line in yaml_lines:
+        if line.startswith(f"{field}:"):
+            old_value = line.split(":", 1)[1].strip()
+            new_lines.append(f"{field}: {value}")
+            print(f"✅ {filepath.name}: {field}: {old_value} → {value}")
+            updated = True
+        else:
+            new_lines.append(line)
+
+    if not updated:
+        # Field doesn't exist, add it
+        new_lines.append(f"{field}: {value}")
+        print(f"✅ {filepath.name}: +{field}: {value}")
+        updated = True
+
+    new_content = "---\n" + "\n".join(new_lines) + "\n---" + parts[2]
+    filepath.write_text(new_content, encoding="utf-8")
+    return True
+
+
+def batch_update(files, field, value):
+    """Update multiple issues at once."""
+    success = 0
+    for filename in files:
+        filepath = ISSUES_DIR / filename
+        if not filepath.exists():
+            print(f"❌ {filename}: File not found")
+            continue
+        if update_issue(filepath, field, value):
+            success += 1
+    print(f"\n📊 Updated {success}/{len(files)} files")
+    return success
+
+
 def main():
     parser = argparse.ArgumentParser(description="Scan and validate issues in docs/issues/")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--check", action="store_true", help="Validation only, exit 1 if errors")
     parser.add_argument("--suspects-only", action="store_true", help="Only show suspects")
+
+    # Update commands
+    parser.add_argument("--set", nargs=2, metavar=("FIELD", "VALUE"),
+                        help="Set a field value, e.g., --set status resolved")
+    parser.add_argument("--files", nargs="+", metavar="FILE",
+                        help="Files to update (use with --set)")
+    parser.add_argument("--resolve", nargs="+", metavar="FILE",
+                        help="Quick resolve: set status=resolved for files")
+    parser.add_argument("--close", nargs="+", metavar="FILE",
+                        help="Quick close: set status=wontfix for files")
+
     args = parser.parse_args()
 
+    # Handle update commands
+    if args.resolve:
+        batch_update(args.resolve, "status", "resolved")
+        return
+
+    if args.close:
+        batch_update(args.close, "status", "wontfix")
+        return
+
+    if args.set:
+        if not args.files:
+            print("❌ --set requires --files")
+            sys.exit(1)
+        batch_update(args.files, args.set[0], args.set[1])
+        return
+
+    # Scan mode
     issues, errors = scan_issues()
     suspects = find_suspects(issues)
 
