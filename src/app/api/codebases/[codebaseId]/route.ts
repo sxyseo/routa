@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
+import { GitWorktreeService } from "@/core/git/git-worktree-service";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,10 @@ export async function DELETE(
 ) {
   const { codebaseId } = await params;
   const system = getRoutaSystem();
+
+  // Clean up worktrees on disk before deleting the codebase
+  const service = new GitWorktreeService(system.worktreeStore, system.codebaseStore);
+  await service.removeAllForCodebase(codebaseId).catch(() => {});
 
   await system.codebaseStore.remove(codebaseId);
 

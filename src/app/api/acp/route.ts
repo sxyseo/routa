@@ -237,9 +237,10 @@ export async function POST(request: NextRequest) {
     // Supports idempotencyKey to prevent duplicate session creation.
     if (method === "session/new") {
       const p = (params ?? {}) as Record<string, unknown>;
-      const cwd = (p.cwd as string | undefined) ?? process.cwd();
+      let cwd = (p.cwd as string | undefined) ?? process.cwd();
       const branch = (p.branch as string | undefined) || undefined;
       const name = (p.name as string | undefined)?.trim() || undefined;
+      const worktreeId = (p.worktreeId as string | undefined) || undefined;
 
       // Determine default provider based on environment
       const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
@@ -340,6 +341,16 @@ export async function POST(request: NextRequest) {
       }
 
       // ── Register session in memory immediately (UI can navigate now) ──
+      // If worktreeId provided, override cwd with the worktree path
+      if (worktreeId) {
+        const system = getRoutaSystem();
+        const worktree = await system.worktreeStore.get(worktreeId);
+        if (worktree && worktree.status === "active") {
+          cwd = worktree.worktreePath;
+          await system.worktreeStore.assignSession(worktreeId, sessionId);
+        }
+      }
+
       const now = new Date();
       store.upsertSession({
         sessionId,

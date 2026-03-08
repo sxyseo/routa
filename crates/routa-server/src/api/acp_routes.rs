@@ -185,7 +185,7 @@ async fn acp_rpc(
         }
 
         "session/new" => {
-            let cwd = params
+            let mut cwd = params
                 .get("cwd")
                 .and_then(|v| v.as_str())
                 .unwrap_or(".")
@@ -211,8 +211,22 @@ async fn acp_rpc(
                 .get("parentSessionId")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            let worktree_id = params
+                .get("worktreeId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             let session_id = uuid::Uuid::new_v4().to_string();
+
+            // If worktreeId is provided, override cwd with worktree path
+            if let Some(ref wt_id) = worktree_id {
+                if let Ok(Some(wt)) = state.worktree_store.get(wt_id).await {
+                    if wt.status == "active" {
+                        cwd = wt.worktree_path.clone();
+                        let _ = state.worktree_store.assign_session(wt_id, Some(&session_id)).await;
+                    }
+                }
+            }
 
             tracing::info!(
                 "[ACP Route] Creating session: provider={:?}, cwd={}, role={:?}, parent={:?}",

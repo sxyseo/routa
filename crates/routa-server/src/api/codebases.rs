@@ -101,6 +101,17 @@ async fn delete_codebase(
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
+    // Clean up worktrees on disk before deleting the codebase
+    if let Ok(Some(codebase)) = state.codebase_store.get(&id).await {
+        let worktrees = state.worktree_store.list_by_codebase(&id).await.unwrap_or_default();
+        for wt in &worktrees {
+            let _ = crate::git::worktree_remove(&codebase.repo_path, &wt.worktree_path, true);
+        }
+        if !worktrees.is_empty() {
+            let _ = crate::git::worktree_prune(&codebase.repo_path);
+        }
+    }
+
     state.codebase_store.delete(&id).await?;
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
