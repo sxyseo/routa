@@ -1,8 +1,26 @@
 ---
 name: issue-garbage-collector
-description: Two-phase cleanup of duplicate and outdated issue files in docs/issues/. Phase 1 (fast/cheap) uses pattern matching to identify suspects. Phase 2 (deep/expensive) uses claude -p for semantic analysis on suspects only.
+description: Two-phase cleanup of duplicate and outdated issue files in docs/issues/. Phase 1 uses Python script for fast pattern matching. Phase 2 uses claude -p for semantic analysis on suspects only.
 when_to_use: When the issues directory becomes cluttered, after resolving multiple issues, or as periodic maintenance (weekly during active development, monthly otherwise).
-version: 1.1.0
+version: 1.2.0
+---
+
+## Quick Start
+
+```bash
+# Phase 1: Run Python scanner (fast, free)
+python3 scripts/issue-scanner.py
+
+# Phase 1: Get suspects only (for Phase 2 input)
+python3 scripts/issue-scanner.py --suspects-only
+
+# Phase 1: JSON output (for automation)
+python3 scripts/issue-scanner.py --json
+
+# Phase 1: Validation check (CI integration, exit 1 if errors)
+python3 scripts/issue-scanner.py --check
+```
+
 ---
 
 ## Two-Phase Strategy (Cost Optimization)
@@ -10,17 +28,18 @@ version: 1.1.0
 **Problem**: Running deep AI analysis on every issue is expensive.
 
 **Solution**: Two-phase approach:
-1. **Phase 1 (Fast/Cheap)** — Pattern matching to identify "suspects"
+1. **Phase 1 (Fast/Free)** — Python script for pattern matching
 2. **Phase 2 (Deep/Expensive)** — `claude -p` only on suspects
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  All Issues (N files)                                   │
 │  ┌───────────────────────────────────────────────────┐  │
-│  │ Phase 1: Pattern Scan (You, the smart AI)         │  │
-│  │ - Filename similarity                             │  │
-│  │ - Same area tag                                   │  │
-│  │ - Age-based staleness                             │  │
+│  │ Phase 1: Python Scanner (scripts/issue-scanner.py)│  │
+│  │ - Filename keyword extraction                     │  │
+│  │ - YAML front-matter validation                    │  │
+│  │ - Same area + keyword overlap detection           │  │
+│  │ - Age-based staleness check                       │  │
 │  │ → Output: Suspect list (M files, M << N)          │  │
 │  └───────────────────────────────────────────────────┘  │
 │                         ↓                               │
@@ -35,70 +54,90 @@ version: 1.1.0
 
 ---
 
-## Phase 1: Pattern Scan (You Do This)
+## Phase 1: Python Scanner
 
-Scan `docs/issues/` and identify suspects using these rules:
+Run `python3 scripts/issue-scanner.py` to get:
 
-### 1.1 Filename Similarity Detection
-
-Look for issues with similar keywords in filename:
+### 1.1 Formatted Table View
 
 ```
-2026-03-02-drizzle-migrate-neon-connection-failure.md
-2026-03-05-drizzle-neon-connection-timeout.md  ← SUSPECT: same keywords
+====================================================================================================
+📋 ISSUE SCANNER REPORT
+====================================================================================================
+
+📊 ISSUE TABLE:
+----------------------------------------------------------------------------------------------------
+Status       Sev  Date         Area               Title
+----------------------------------------------------------------------------------------------------
+✅ resolv     🟠    2026-03-02   background-worker  HMR 导致 sessionToTask 内存 Map 丢失
+🔴 open       🟡    2026-03-04   ui                 Task Execute button disabled
+...
+----------------------------------------------------------------------------------------------------
+Total: 12 issues
+
+📈 SUMMARY BY STATUS:
+  🔴 open: 5
+  ✅ resolved: 7
 ```
 
-**Matching rules**:
-| Pattern | Example | Verdict |
-|---------|---------|---------|
-| Same keywords, different dates | `drizzle-error` vs `drizzle-error` | 🔴 SUSPECT |
-| Overlapping keywords (>50%) | `api-timeout` vs `api-connection-timeout` | 🟡 SUSPECT |
-| Same area prefix | `db-*` vs `db-*` | 🟡 Check area tag |
-| Typo variants | `playwright` vs `playwrite` | 🔴 SUSPECT |
+### 1.2 Validation Errors
 
-### 1.2 YAML Front-Matter Check
+If any issue has malformed front-matter, the scanner reports:
 
-Parse front-matter and flag:
-
-```yaml
-# If two issues have:
-area: database        # Same area
-tags: [drizzle, neon] # Overlapping tags (>1 common)
-# → Mark as SUSPECT pair
+```
+❌ VALIDATION ERRORS (need AI fix):
+------------------------------------------------------------
+  2026-03-08-broken-issue.md:
+    - Missing required field: area
+    - Invalid status: pending (valid: ['open', 'investigating', 'resolved', 'wontfix', 'duplicate'])
 ```
 
-### 1.3 Age-Based Staleness
+**Action**: Ask AI to fix the file:
+```bash
+claude -p "Fix the front-matter in docs/issues/2026-03-08-broken-issue.md. Add missing 'area' field and change status to a valid value."
+```
 
-Flag based on filename date + status:
+### 1.3 Suspect Detection
 
-| Status | Age Threshold | Action |
-|--------|---------------|--------|
-| `open` | > 30 days | 🟡 STALE |
-| `investigating` | > 14 days | 🟡 CHECK if still active |
-| `resolved` | any | ✅ Keep (knowledge base) |
-| `wontfix` | any | ✅ Keep (context) |
+The scanner automatically detects:
 
-### 1.4 Output: Suspect List
+| Type | Detection Rule | Example |
+|------|----------------|---------|
+| **Duplicate** | Same area + ≥2 common keywords | `hmr-task` vs `task-hmr-recovery` |
+| **Stale** | `open` > 30 days | Issue from 2026-01-15 still open |
+| **Stale** | `investigating` > 14 days | Stuck investigation |
 
-After Phase 1, output a suspect list:
+Output:
+```
+⚠️  SUSPECTS (need Phase 2 deep analysis):
+------------------------------------------------------------
 
-```markdown
-## Phase 1 Scan Results
+  🔗 Potential Duplicates:
+    - 2026-03-02-hmr-resets-session-to-task-map.md
+      ↔ 2026-03-08-background-task-hmr-recovery.md
+      Reason: Same area 'background-worker', keywords: {'task', 'hmr'}
 
-### Duplicate Suspects (need Phase 2)
-| File A | File B | Reason |
-|--------|--------|--------|
-| 2026-03-02-drizzle-migrate.md | 2026-03-05-drizzle-timeout.md | Same keywords: drizzle, connection |
-| 2026-03-01-api-error.md | 2026-03-03-api-timeout.md | Same area: api |
+  ⏰ Stale Issues:
+    - 2026-02-01-old-bug.md: Open for 35 days (>30)
+```
 
-### Stale Issues (need review)
-| File | Status | Age | Reason |
-|------|--------|-----|--------|
-| 2026-02-01-old-bug.md | open | 35 days | Exceeds 30-day threshold |
+### 1.4 JSON Output for Automation
 
-### Clean (no action needed)
-- 15 issues with status: resolved (knowledge base)
-- 3 issues with status: wontfix (context)
+```bash
+# Get suspects as JSON for scripting
+python3 scripts/issue-scanner.py --suspects-only
+```
+
+Output:
+```json
+[
+  {
+    "file_a": "2026-03-02-hmr-resets-session-to-task-map.md",
+    "file_b": "2026-03-08-background-task-hmr-recovery.md",
+    "reason": "Same area 'background-worker', keywords: {'task', 'hmr'}",
+    "type": "duplicate"
+  }
+]
 ```
 
 ---
