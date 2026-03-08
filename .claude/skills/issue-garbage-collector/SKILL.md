@@ -166,7 +166,31 @@ Output:
 "
 ```
 
-### 2.2 Stale Issue Triage
+### 2.2 Open Issue Completion Check
+
+For **all issues with `status: open`**, verify if they have been resolved:
+
+```bash
+claude -p "
+Check if this open issue has been resolved:
+- docs/issues/2026-03-04-task-execute-button-disabled.md
+
+Steps:
+1. Read the issue and understand the problem
+2. Check the 'Relevant Files' listed in the issue
+3. Look for recent commits or changes that might have fixed it
+4. Verify if the described behavior still exists
+
+Output one of:
+- RESOLVED: The issue has been fixed. Update status to 'resolved' and add resolved_by, resolved_at fields.
+- STILL_OPEN: The issue still exists. No action needed.
+- NEEDS_INFO: Cannot determine. List what information is needed.
+"
+```
+
+### 2.3 Stale Issue Triage
+
+For issues that are **open > 30 days** or **investigating > 14 days**:
 
 ```bash
 claude -p "
@@ -179,13 +203,13 @@ Check:
 3. Is it still relevant to current codebase?
 
 Output:
-- CLOSE: Issue resolved, update status
-- ESCALATE: Still relevant, create GitHub issue
-- ARCHIVE: No longer applicable, move to archive
+- CLOSE: Issue resolved, update status to 'resolved'
+- ESCALATE: Still relevant, create GitHub issue for tracking
+- ARCHIVE: No longer applicable (code removed, feature deprecated)
 "
 ```
 
-### 2.3 Interactive Merge
+### 2.4 Interactive Merge
 
 ```bash
 claude -p "

@@ -122,12 +122,21 @@ def find_suspects(issues):
                         "file_a": a["file"], "file_b": b["file"],
                         "reason": f"Same area '{area}', keywords: {overlap}", "type": "duplicate"
                     })
+    # Open issues: need completion check
     for issue in issues:
-        if issue["status"] == "open" and issue["age_days"] > 30:
-            suspects.append({
-                "file_a": issue["file"], "file_b": None,
-                "reason": f"Open for {issue['age_days']} days (>30)", "type": "stale"
-            })
+        if issue["status"] == "open":
+            if issue["age_days"] > 30:
+                suspects.append({
+                    "file_a": issue["file"], "file_b": None,
+                    "reason": f"Open for {issue['age_days']} days (>30), likely stale",
+                    "type": "stale"
+                })
+            else:
+                suspects.append({
+                    "file_a": issue["file"], "file_b": None,
+                    "reason": f"Open for {issue['age_days']} days, verify if resolved",
+                    "type": "open_check"
+                })
         elif issue["status"] == "investigating" and issue["age_days"] > 14:
             suspects.append({
                 "file_a": issue["file"], "file_b": None,
@@ -178,15 +187,23 @@ def print_table(issues, errors, suspects):
         print("\n⚠️  SUSPECTS (need Phase 2 deep analysis):")
         print("-" * 60)
         duplicates = [s for s in suspects if s["type"] == "duplicate"]
+        open_checks = [s for s in suspects if s["type"] == "open_check"]
         stales = [s for s in suspects if s["type"] == "stale"]
+
         if duplicates:
             print("\n  🔗 Potential Duplicates:")
             for s in duplicates:
                 print(f"    - {s['file_a']}")
                 print(f"      ↔ {s['file_b']}")
                 print(f"      Reason: {s['reason']}")
+
+        if open_checks:
+            print("\n  🔴 Open Issues (verify if resolved):")
+            for s in open_checks:
+                print(f"    - {s['file_a']}: {s['reason']}")
+
         if stales:
-            print("\n  ⏰ Stale Issues:")
+            print("\n  ⏰ Stale Issues (needs triage):")
             for s in stales:
                 print(f"    - {s['file_a']}: {s['reason']}")
 
