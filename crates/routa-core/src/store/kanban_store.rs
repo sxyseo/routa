@@ -122,6 +122,26 @@ impl KanbanStore {
             })
             .await
     }
+
+    pub async fn update(&self, board: &KanbanBoard) -> Result<(), ServerError> {
+        let stored = board.clone();
+        self.db
+            .with_conn_async(move |conn| {
+                conn.execute(
+                    "UPDATE kanban_boards SET name = ?1, is_default = ?2, columns = ?3, updated_at = ?4 \
+                     WHERE id = ?5",
+                    rusqlite::params![
+                        stored.name,
+                        stored.is_default as i64,
+                        serde_json::to_string(&stored.columns).unwrap_or_default(),
+                        stored.updated_at.timestamp_millis(),
+                        stored.id,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+    }
 }
 
 fn row_to_board(row: &rusqlite::Row<'_>) -> KanbanBoard {

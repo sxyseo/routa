@@ -2,12 +2,31 @@ import { TaskStatus } from "./task";
 
 export type KanbanColumnStage = "backlog" | "todo" | "dev" | "review" | "blocked" | "done";
 
+/**
+ * Automation configuration for a Kanban column.
+ * When a card is moved to this column, the automation can trigger an agent session.
+ */
+export interface KanbanColumnAutomation {
+  /** Whether automation is enabled for this column */
+  enabled: boolean;
+  /** Provider ID to use for the automation */
+  providerId?: string;
+  /** Role for the agent (CRAFTER, ROUTA, GATE, DEVELOPER) */
+  role?: string;
+  /** Specialist ID to use */
+  specialistId?: string;
+  /** Specialist name (for display) */
+  specialistName?: string;
+}
+
 export interface KanbanColumn {
   id: string;
   name: string;
   color?: string;
   position: number;
   stage: KanbanColumnStage;
+  /** Automation configuration for this column */
+  automation?: KanbanColumnAutomation;
 }
 
 export interface KanbanBoard {

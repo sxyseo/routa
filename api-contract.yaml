@@ -186,6 +186,21 @@ components:
         verificationReport:
           type: string
 
+    KanbanColumnAutomation:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        providerId:
+          type: string
+        role:
+          type: string
+        specialistId:
+          type: string
+        specialistName:
+          type: string
+
     KanbanColumn:
       type: object
       required: [id, name, position, stage]
@@ -200,6 +215,8 @@ components:
           type: integer
         stage:
           type: string
+        automation:
+          $ref: "#/components/schemas/KanbanColumnAutomation"
 
     KanbanBoard:
       type: object
@@ -838,6 +855,65 @@ paths:
                 properties:
                   board:
                     $ref: "#/components/schemas/KanbanBoard"
+
+  /api/kanban/boards/{boardId}:
+    get:
+      operationId: getKanbanBoard
+      summary: Get a Kanban board by ID
+      parameters:
+        - name: boardId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Board details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  board:
+                    $ref: "#/components/schemas/KanbanBoard"
+        "404":
+          description: Board not found
+    patch:
+      operationId: updateKanbanBoard
+      summary: Update a Kanban board
+      parameters:
+        - name: boardId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                columns:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/KanbanColumn"
+                isDefault:
+                  type: boolean
+      responses:
+        "200":
+          description: Board updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  board:
+                    $ref: "#/components/schemas/KanbanBoard"
+        "404":
+          description: Board not found
 
   # ── Notes ──
   /api/notes:

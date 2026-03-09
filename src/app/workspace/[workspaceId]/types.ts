@@ -40,12 +40,21 @@ export interface TaskInfo {
   createdAt: string;
 }
 
+export interface KanbanColumnAutomationInfo {
+  enabled: boolean;
+  providerId?: string;
+  role?: string;
+  specialistId?: string;
+  specialistName?: string;
+}
+
 export interface KanbanColumnInfo {
   id: string;
   name: string;
   color?: string;
   position: number;
   stage: string;
+  automation?: KanbanColumnAutomationInfo;
 }
 
 export interface KanbanBoardInfo {

@@ -76,8 +76,9 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
 
-  // Settings state - column automation rules
-  const [columnAutomation, setColumnAutomation] = useState<Record<string, { enabled: boolean; provider?: string; prompt?: string }>>({});
+  // Settings state - column automation rules (initialized from board columns)
+  const [columnAutomation, setColumnAutomation] = useState<Record<string, { enabled: boolean; providerId?: string; role?: string; specialistId?: string; specialistName?: string }>>({});
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   // Handle agent input submission
   const handleAgentSubmit = useCallback(async () => {
@@ -132,6 +133,19 @@ User request: ${agentInput}`;
     if (board) {
       const allColumnIds = board.columns.map((col) => col.id);
       setVisibleColumns(allColumnIds);
+    }
+  }, [board]);
+
+  // Initialize column automation from board when it changes
+  useEffect(() => {
+    if (board) {
+      const automation: Record<string, { enabled: boolean; providerId?: string; role?: string; specialistId?: string; specialistName?: string }> = {};
+      for (const col of board.columns) {
+        if (col.automation) {
+          automation[col.id] = { ...col.automation };
+        }
+      }
+      setColumnAutomation(automation);
     }
   }, [board]);
 
@@ -308,7 +322,7 @@ User request: ${agentInput}`;
             className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#191c28]"
             title="Board settings"
           >
-            ⚙️ Settings
+            Settings
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -322,9 +336,6 @@ User request: ${agentInput}`;
       {/* Agent Input Box - Compact inline style */}
       {onAgentPrompt && (
         <div className="flex-shrink-0 flex items-center gap-2 max-w-2xl">
-          <div className="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white text-xs">
-            🤖
-          </div>
           <div className="flex-1 min-w-0 relative">
             <input
               type="text"
@@ -828,43 +839,68 @@ User request: ${agentInput}`;
                       </div>
 
                       {automation.enabled && (
-                        <div className="space-y-2 pl-2 border-l-2 border-amber-400">
-                          <div>
-                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                              Provider
-                            </label>
+                        <div className="space-y-2 pl-2 border-l-2 border-amber-400 mt-2">
+                          {/* Provider */}
+                          <div className="flex items-center gap-2">
+                            <span className="w-16 shrink-0 text-xs text-gray-500 dark:text-gray-400">Provider</span>
                             <select
-                              value={automation.provider ?? ""}
+                              value={automation.providerId ?? ""}
                               onChange={(e) => {
                                 setColumnAutomation((prev) => ({
                                   ...prev,
-                                  [column.id]: { ...automation, provider: e.target.value },
+                                  [column.id]: { ...automation, providerId: e.target.value || undefined },
                                 }));
                               }}
-                              className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0d1018] px-2 py-1.5 text-sm"
+                              className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0d1018] px-2 py-1.5 text-sm"
                             >
-                              <option value="">Default provider</option>
+                              <option value="">Default</option>
                               {providers.map((p) => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
                               ))}
                             </select>
                           </div>
-                          <div>
-                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                              Auto-trigger prompt
-                            </label>
-                            <textarea
-                              value={automation.prompt ?? ""}
+                          {/* Role */}
+                          <div className="flex items-center gap-2">
+                            <span className="w-16 shrink-0 text-xs text-gray-500 dark:text-gray-400">Role</span>
+                            <select
+                              value={automation.role ?? "DEVELOPER"}
                               onChange={(e) => {
                                 setColumnAutomation((prev) => ({
                                   ...prev,
-                                  [column.id]: { ...automation, prompt: e.target.value },
+                                  [column.id]: { ...automation, role: e.target.value },
                                 }));
                               }}
-                              placeholder={`e.g., "Start working on this task" or "Review and provide feedback"`}
-                              rows={2}
-                              className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0d1018] px-2 py-1.5 text-sm resize-none"
-                            />
+                              className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0d1018] px-2 py-1.5 text-sm"
+                            >
+                              {ROLE_OPTIONS.map((role) => (
+                                <option key={role} value={role}>{role}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {/* Specialist */}
+                          <div className="flex items-center gap-2">
+                            <span className="w-16 shrink-0 text-xs text-gray-500 dark:text-gray-400">Specialist</span>
+                            <select
+                              value={automation.specialistId ?? ""}
+                              onChange={(e) => {
+                                const specialist = specialists.find((s) => s.id === e.target.value);
+                                setColumnAutomation((prev) => ({
+                                  ...prev,
+                                  [column.id]: {
+                                    ...automation,
+                                    specialistId: e.target.value || undefined,
+                                    specialistName: specialist?.name,
+                                    role: specialist?.role ?? automation.role,
+                                  },
+                                }));
+                              }}
+                              className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0d1018] px-2 py-1.5 text-sm"
+                            >
+                              <option value="">None</option>
+                              {specialists.map((s) => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                       )}
@@ -876,19 +912,48 @@ User request: ${agentInput}`;
             <div className="mt-6 flex justify-end gap-2">
               <button
                 onClick={() => setShowSettings(false)}
-                className="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#191c28]"
+                disabled={settingsSaving}
+                className="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#191c28] disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // TODO: Save settings to backend
-                  console.log("Saving column automation:", columnAutomation);
-                  setShowSettings(false);
+                onClick={async () => {
+                  if (!board) return;
+                  setSettingsSaving(true);
+                  try {
+                    // Merge automation config into columns
+                    const updatedColumns = board.columns.map((col) => ({
+                      ...col,
+                      automation: columnAutomation[col.id]?.enabled
+                        ? columnAutomation[col.id]
+                        : undefined,
+                    }));
+
+                    const response = await fetch(`/api/kanban/boards/${encodeURIComponent(board.id)}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ columns: updatedColumns }),
+                    });
+
+                    if (!response.ok) {
+                      const data = await response.json();
+                      throw new Error(data.error ?? "Failed to save settings");
+                    }
+
+                    setShowSettings(false);
+                    onRefresh();
+                  } catch (error) {
+                    console.error("Failed to save board settings:", error);
+                    alert(error instanceof Error ? error.message : "Failed to save settings");
+                  } finally {
+                    setSettingsSaving(false);
+                  }
                 }}
-                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+                disabled={settingsSaving}
+                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
               >
-                Save Settings
+                {settingsSaving ? "Saving..." : "Save Settings"}
               </button>
             </div>
           </div>

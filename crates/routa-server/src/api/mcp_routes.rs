@@ -1088,6 +1088,7 @@ async fn execute_tool(
                         color: None,
                         position: i as i64,
                         stage: "backlog".to_string(),
+                        automation: None,
                     })
                     .collect();
             }
@@ -1255,6 +1256,7 @@ async fn execute_tool(
                         color: color.map(String::from),
                         position: board.columns.len() as i64,
                         stage: "backlog".to_string(),
+                        automation: None,
                     };
                     board.columns.push(new_column);
                     board.updated_at = chrono::Utc::now();
