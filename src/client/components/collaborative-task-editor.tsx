@@ -21,6 +21,8 @@ import type { NoteData } from "../hooks/use-notes";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
 import { type CrafterAgent, CraftersView } from "./task-panel";
 
+type CollabPanelView = "tasks" | "crafters";
+
 interface CollaborativeTaskEditorProps {
   notes: NoteData[];
   connected: boolean;
@@ -113,35 +115,46 @@ export function CollaborativeTaskEditor({
     await onExecuteSelected(ids, concurrency);
   };
 
-  const pendingNotes = taskNotes.filter(
-    (n) => !n.metadata.taskStatus || n.metadata.taskStatus === "PENDING"
-  );
+  // Find spec note
+  const specNote = useMemo(() => notes.find((n) => n.metadata.type === "spec"), [notes]);
 
-  const toggleNoteSelection = (noteId: string) => {
-    setSelectedNoteIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(noteId)) next.delete(noteId);
-      else next.add(noteId);
-      return next;
-    });
-  };
+  // Vertical resize for spec panel
+  const [specHeight, setSpecHeight] = useState(200);
+  const handleVerticalResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = specHeight;
 
-  const toggleSelectAll = () => {
-    if (selectedNoteIds.size === pendingNotes.length) {
-      setSelectedNoteIds(new Set());
-    } else {
-      setSelectedNoteIds(new Set(pendingNotes.map((n) => n.id)));
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      setSpecHeight(Math.max(100, Math.min(600, startHeight + deltaY)));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, [specHeight]);
+
+  // Active crafter tracking
+  const activeCrafterId = useMemo(() => {
+    if (!onSelectTaskNote) return null;
+    const expandedNote = taskNotes.find((n) => n.id === expandedNoteId);
+    if (!expandedNote) return null;
+    const crafter = crafterAgents.find((a) => a.taskId === expandedNote.id);
+    return crafter?.sessionId ?? null;
+  }, [expandedNoteId, taskNotes, crafterAgents, onSelectTaskNote]);
+
+  const onSelectCrafter = useCallback((sessionId: string) => {
+    const crafter = crafterAgents.find((a) => a.sessionId === sessionId);
+    if (crafter?.taskId) {
+      setExpandedNoteId(crafter.taskId);
+      onSelectTaskNote?.(crafter.taskId);
     }
-  };
-
-  const handleExecuteSelected = async () => {
-    if (!onExecuteTask) return;
-    const ids = Array.from(selectedNoteIds);
-    setSelectedNoteIds(new Set());
-    for (const id of ids) {
-      await onExecuteTask(id);
-    }
-  };
+  }, [crafterAgents, onSelectTaskNote]);
 
   return (
     <div ref={containerRef} className="flex flex-col h-full">
@@ -446,6 +459,7 @@ interface TaskNoteCardProps {
   onDelete?: () => void;
   onStatusChange: (status: string) => Promise<void>;
   onExecute?: () => void;
+  executeDisabled?: boolean;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
