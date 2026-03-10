@@ -59,7 +59,7 @@ export function WorkspacePageClient({
 
   const workspacesHook = useWorkspaces();
   const acp = useAcp();
-  const { codebases } = useCodebases(workspaceId);
+  const { codebases, fetchCodebases } = useCodebases(workspaceId);
   const agentsHook = useAgentsRpc(workspaceId);
   const notesHook = useNotes(workspaceId);
   const skillsHook = useSkills();
@@ -81,6 +81,9 @@ export function WorkspacePageClient({
     message: null,
     error: null,
   });
+  // codebase management
+  const [newCodebasePath, setNewCodebasePath] = useState("");
+  const [codebaseAddState, setCodebaseAddState] = useState<{ saving: boolean; error: string | null }>({ saving: false, error: null });
   // Sessions modal state
   const [showSessionsModal, setShowSessionsModal] = useState(false);
   const [sessionsPage, setSessionsPage] = useState(1);
@@ -361,6 +364,37 @@ export function WorkspacePageClient({
     }
   };
 
+  const handleAddCodebase = async () => {
+    const path = newCodebasePath.trim();
+    if (!path) return;
+    setCodebaseAddState({ saving: true, error: null });
+    try {
+      const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoPath: path }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to add repository");
+      setNewCodebasePath("");
+      await fetchCodebases();
+      setCodebaseAddState({ saving: false, error: null });
+    } catch (error) {
+      setCodebaseAddState({ saving: false, error: error instanceof Error ? error.message : "Failed to add repository" });
+    }
+  };
+
+  const handleRemoveCodebase = async (codebaseId: string) => {
+    try {
+      await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases/${encodeURIComponent(codebaseId)}`, {
+        method: "DELETE",
+      });
+      await fetchCodebases();
+    } catch {
+      // silently ignore
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col bg-[#fafafa] dark:bg-[#0a0c12]">
       {/* ─── Top Bar ───────────────────────────────────────────────── */}
@@ -512,6 +546,53 @@ export function WorkspacePageClient({
                 {worktreeRootState.saving ? "Saving..." : "Save worktree root"}
               </button>
             </div>
+          </div>
+
+          {/* ─── Linked Repositories ─────────────────────────────────── */}
+          <div className="mb-8 rounded-2xl border border-gray-200/70 bg-white p-4 dark:border-[#1c1f2e] dark:bg-[#12141c]" data-testid="workspace-codebases">
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Linked Repositories</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              Repositories linked to this workspace are available for selection in Kanban tasks.
+            </div>
+            {codebases.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {codebases.map((cb) => (
+                  <div key={cb.id} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#0d1018] px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    {cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}
+                    {cb.isDefault && <span className="text-[10px] text-gray-400">(default)</span>}
+                    <button
+                      onClick={() => void handleRemoveCodebase(cb.id)}
+                      className="ml-1 text-gray-400 hover:text-rose-500 transition-colors"
+                      title="Remove repository"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={newCodebasePath}
+                onChange={(e) => setNewCodebasePath(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void handleAddCodebase(); }}
+                placeholder="/absolute/path/to/repository"
+                className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-amber-400 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-200"
+                data-testid="codebase-path-input"
+              />
+              <button
+                onClick={() => void handleAddCodebase()}
+                disabled={!newCodebasePath.trim() || codebaseAddState.saving}
+                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                data-testid="add-codebase-button"
+              >
+                {codebaseAddState.saving ? "Adding..." : "Add"}
+              </button>
+            </div>
+            {codebaseAddState.error && (
+              <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">{codebaseAddState.error}</div>
+            )}
           </div>
 
           {/* ─── Tab Bar ─────────────────────────────────────────────── */}

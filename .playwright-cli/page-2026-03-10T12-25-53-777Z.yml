@@ -1,0 +1,537 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Routa Routa" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img "Routa" [ref=e5]
+        - generic [ref=e6]: Routa
+      - img [ref=e7]
+      - generic [ref=e9]:
+        - generic [ref=e11]: Workspace
+        - button "Switch" [ref=e13]:
+          - img [ref=e14]
+          - text: Switch
+      - generic [ref=e17]:
+        - generic "Checking Docker..." [ref=e18]:
+          - generic [ref=e20]: Checking Docker...
+        - button "..." [disabled] [ref=e21]
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - text: MCP
+          - generic [ref=e25]: /api/mcp
+        - generic [ref=e26]:
+          - text: ACP
+          - generic [ref=e28]: /api/acp
+    - main [ref=e29]:
+      - generic [ref=e30]:
+        - generic [ref=e32]:
+          - generic [ref=e33]: No repositories linked.
+          - link "Add a codebase in Workspace settings →" [ref=e34] [cursor=pointer]:
+            - /url: /workspace/default
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - generic [ref=e37]: Default Workspace Board
+            - link "Dashboard view" [ref=e38] [cursor=pointer]:
+              - /url: /workspace/default
+            - listbox [ref=e40]:
+              - option "Backlog" [selected]
+              - option "Todo" [selected]
+              - option "Dev" [selected]
+              - option "Review" [selected]
+              - option "Blocked" [selected]
+              - option "Done" [selected]
+          - generic [ref=e41]:
+            - button "Settings" [ref=e42]
+            - button "Create issue" [ref=e43]
+        - generic [ref=e45]:
+          - textbox "Connecting..." [disabled] [ref=e46]
+          - button "Send" [disabled] [ref=e47]
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - generic [ref=e52]:
+              - generic [ref=e53]: Backlog
+              - generic [ref=e54]: 21 cards
+            - generic [ref=e55]:
+              - generic [ref=e56]:
+                - generic [ref=e57]:
+                  - generic [ref=e58]:
+                    - generic [ref=e59]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e60]: Local issue
+                  - generic [ref=e61]: medium
+                - paragraph [ref=e62]: "Integrate capability-based provider selection into agent creation flow. **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - Coordinator uses capability matching when creating agents - Selection logged in session metadata **Verification**: Manual test with multiple providers"
+                - generic [ref=e64]:
+                  - generic [ref=e65]: Provider
+                  - combobox [ref=e66]:
+                    - option "Select..." [selected]
+                - generic [ref=e67]:
+                  - generic [ref=e69]: Not synced
+                  - button "View detail" [ref=e71]
+              - generic [ref=e72]:
+                - generic [ref=e73]:
+                  - generic [ref=e74]:
+                    - generic [ref=e75]: Update Task Panel UI with Provider Capabilities
+                    - generic [ref=e76]: Local issue
+                  - generic [ref=e77]: medium
+                - paragraph [ref=e78]: "Enhance Task Panel to show provider capabilities and enable auto-selection. **Scope**: `src/client/components/task-panel.tsx` **Definition of Done**: - Provider list shows capability badges - Auto-select option available **Verification**: UI rendering test"
+                - generic [ref=e80]:
+                  - generic [ref=e81]: Provider
+                  - combobox [ref=e82]:
+                    - option "Select..." [selected]
+                - generic [ref=e83]:
+                  - generic [ref=e85]: Not synced
+                  - button "View detail" [ref=e87]
+              - generic [ref=e88]:
+                - generic [ref=e89]:
+                  - generic [ref=e90]:
+                    - generic [ref=e91]: Add Workspace Agent Capability Awareness
+                    - generic [ref=e92]: Local issue
+                  - generic [ref=e93]: medium
+                - paragraph [ref=e94]: "Extend WorkspaceAgentConfig with requiredCapabilities and implement auto-selection. **Scope**: `src/core/acp/workspace-agent/workspace-agent-config.ts` **Definition of Done**: - Config supports requiredCapabilities - Auto-selection based on capabilities **Verification**: Unit tests"
+                - generic [ref=e96]:
+                  - generic [ref=e97]: Provider
+                  - combobox [ref=e98]:
+                    - option "Select..." [selected]
+                - generic [ref=e99]:
+                  - generic [ref=e101]: Not synced
+                  - button "View detail" [ref=e103]
+              - generic [ref=e104]:
+                - generic [ref=e105]:
+                  - generic [ref=e106]:
+                    - generic [ref=e107]: Add Capability Metadata to AcpAgentPreset
+                    - generic [ref=e108]: Local issue
+                  - generic [ref=e109]: medium
+                - paragraph [ref=e110]: "Extend AcpAgentPreset interface with capabilities, supportedRoles, and preferredTier fields. Update existing static presets with metadata. **Scope**: `src/core/acp/acp-presets.ts` **Definition of Done**: - AcpAgentPreset interface has new fields - All static presets have capability metadata **Verification**: TypeScript compilation"
+                - generic [ref=e112]:
+                  - generic [ref=e113]: Provider
+                  - combobox [ref=e114]:
+                    - option "Select..." [selected]
+                - generic [ref=e115]:
+                  - generic [ref=e117]: Not synced
+                  - button "View detail" [ref=e119]
+              - generic [ref=e120]:
+                - generic [ref=e121]:
+                  - generic [ref=e122]:
+                    - generic [ref=e123]: Add Capability Metadata to AcpAgentPreset
+                    - generic [ref=e124]: Local issue
+                  - generic [ref=e125]: medium
+                - paragraph [ref=e126]: "Extend AcpAgentPreset interface with capabilities, supportedRoles, and preferredTier fields. Update existing static presets with metadata. **Scope**: `src/core/acp/acp-presets.ts` **Definition of Done**: - AcpAgentPreset interface has new fields - All static presets have capability metadata **Verification**: TypeScript compilation"
+                - generic [ref=e128]:
+                  - generic [ref=e129]: Provider
+                  - combobox [ref=e130]:
+                    - option "Select..." [selected]
+                - generic [ref=e131]:
+                  - generic [ref=e133]: Not synced
+                  - button "View detail" [ref=e135]
+              - generic [ref=e136]:
+                - generic [ref=e137]:
+                  - generic [ref=e138]:
+                    - generic [ref=e139]: Add Capability Metadata to AcpAgentPreset
+                    - generic [ref=e140]: Local issue
+                  - generic [ref=e141]: medium
+                - paragraph [ref=e142]: "Extend AcpAgentPreset interface with capabilities, supportedRoles, and preferredTier fields. Update existing static presets with metadata. **Scope**: `src/core/acp/acp-presets.ts` **Definition of Done**: - AcpAgentPreset interface has new fields - All static presets have capability metadata **Verification**: TypeScript compilation"
+                - generic [ref=e144]:
+                  - generic [ref=e145]: Provider
+                  - combobox [ref=e146]:
+                    - option "Select..." [selected]
+                - generic [ref=e147]:
+                  - generic [ref=e149]: Not synced
+                  - button "View detail" [ref=e151]
+              - generic [ref=e152]:
+                - generic [ref=e153]:
+                  - generic [ref=e154]:
+                    - generic [ref=e155]: Playwright Quick Task 1772781167792
+                    - generic [ref=e156]: Local issue
+                  - generic [ref=e157]: medium
+                - paragraph [ref=e158]: Run me from Quick Access to verify the automatic MCP execution path.
+                - generic [ref=e160]:
+                  - generic [ref=e161]: Provider
+                  - combobox [ref=e162]:
+                    - option "Select..." [selected]
+                - generic [ref=e163]:
+                  - generic [ref=e165]: Not synced
+                  - button "View detail" [ref=e167]
+              - generic [ref=e168]:
+                - generic [ref=e169]:
+                  - generic [ref=e170]:
+                    - generic [ref=e171]: Implement Provider Capability Query APIs
+                    - generic [ref=e172]: Local issue
+                  - generic [ref=e173]: medium
+                - paragraph [ref=e174]: "Add getProviderCapabilities, findProvidersByCapability, and findBestProviderForRole functions. **Scope**: `src/core/acp/provider-registry.ts` **Definition of Done**: - Three new functions exported and working - Unit tests for capability matching logic **Verification**: Run existing tests + add unit tests"
+                - generic [ref=e176]:
+                  - generic [ref=e177]: Provider
+                  - combobox [ref=e178]:
+                    - option "Select..." [selected]
+                - generic [ref=e179]:
+                  - generic [ref=e181]: Not synced
+                  - button "View detail" [ref=e183]
+              - generic [ref=e184]:
+                - generic [ref=e185]:
+                  - generic [ref=e186]:
+                    - generic [ref=e187]: Implement Provider Capability Query APIs
+                    - generic [ref=e188]: Local issue
+                  - generic [ref=e189]: medium
+                - paragraph [ref=e190]: "Add getProviderCapabilities, findProvidersByCapability, and findBestProviderForRole functions. **Scope**: `src/core/acp/provider-registry.ts` **Definition of Done**: - Three new functions exported and working - Unit tests for capability matching logic **Verification**: Run existing tests + add unit tests"
+                - generic [ref=e192]:
+                  - generic [ref=e193]: Provider
+                  - combobox [ref=e194]:
+                    - option "Select..." [selected]
+                - generic [ref=e195]:
+                  - generic [ref=e197]: Not synced
+                  - button "View detail" [ref=e199]
+              - generic [ref=e200]:
+                - generic [ref=e201]:
+                  - generic [ref=e202]:
+                    - generic [ref=e203]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e204]: Local issue
+                  - generic [ref=e205]: medium
+                - paragraph [ref=e206]: "Integrate capability-based provider selection into agent creation flow. **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - Coordinator uses capability matching when creating agents - Selection logged in session metadata **Verification**: Manual test with multiple providers"
+                - generic [ref=e208]:
+                  - generic [ref=e209]: Provider
+                  - combobox [ref=e210]:
+                    - option "Select..." [selected]
+                - generic [ref=e211]:
+                  - generic [ref=e213]: Not synced
+                  - button "View detail" [ref=e215]
+              - generic [ref=e216]:
+                - generic [ref=e217]:
+                  - generic [ref=e218]:
+                    - generic [ref=e219]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e220]: Local issue
+                  - generic [ref=e221]: medium
+                - paragraph [ref=e222]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` - Added provider selection logging to console - Extended agent metadata to include provider and providerSelectionMethod - Enhanced TASK_ASSIGNED event with providerSelectionMethod ### Implementation Details: 1. **Capability-based provider selection** (lines 260-293): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 303-312): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\" or \"capability-based\" - Enables tracking of how providers were selected 3. **Event emission** (lines 424-438): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e224]:
+                  - generic [ref=e225]: Provider
+                  - combobox [ref=e226]:
+                    - option "Select..." [selected]
+                - generic [ref=e227]:
+                  - generic [ref=e229]: Not synced
+                  - button "View detail" [ref=e231]
+              - generic [ref=e232]:
+                - generic [ref=e233]:
+                  - generic [ref=e234]:
+                    - generic [ref=e235]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e236]: Local issue
+                  - generic [ref=e237]: medium
+                - paragraph [ref=e238]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` - Added provider selection logging to console - Extended agent metadata to include provider and providerSelectionMethod - Enhanced TASK_ASSIGNED event with providerSelectionMethod ### Implementation Details: 1. **Capability-based provider selection** (lines 260-293): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 303-312): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\" or \"capability-based\" - Enables tracking of how providers were selected 3. **Event emission** (lines 424-438): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e240]:
+                  - generic [ref=e241]: Provider
+                  - combobox [ref=e242]:
+                    - option "Select..." [selected]
+                - generic [ref=e243]:
+                  - generic [ref=e245]: Not synced
+                  - button "View detail" [ref=e247]
+              - generic [ref=e248]:
+                - generic [ref=e249]:
+                  - generic [ref=e250]:
+                    - generic [ref=e251]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e252]: Local issue
+                  - generic [ref=e253]: medium
+                - paragraph [ref=e254]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` - Added provider selection logging to console - Extended agent metadata to include provider and providerSelectionMethod - Enhanced TASK_ASSIGNED event with providerSelectionMethod ### Implementation Details: 1. **Capability-based provider selection** (lines 260-293): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 303-312): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\" or \"capability-based\" - Enables tracking of how providers were selected 3. **Event emission** (lines 424-438): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e256]:
+                  - generic [ref=e257]: Provider
+                  - combobox [ref=e258]:
+                    - option "Select..." [selected]
+                - generic [ref=e259]:
+                  - generic [ref=e261]: Not synced
+                  - button "View detail" [ref=e263]
+              - generic [ref=e264]:
+                - generic [ref=e265]:
+                  - generic [ref=e266]:
+                    - generic [ref=e267]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e268]: Local issue
+                  - generic [ref=e269]: medium
+                - paragraph [ref=e270]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` - Added provider selection logging to console - Extended agent metadata to include provider and providerSelectionMethod - Enhanced TASK_ASSIGNED event with providerSelectionMethod ### Implementation Details: 1. **Capability-based provider selection** (lines 260-293): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 303-312): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\" or \"capability-based\" - Enables tracking of how providers were selected 3. **Event emission** (lines 424-438): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e272]:
+                  - generic [ref=e273]: Provider
+                  - combobox [ref=e274]:
+                    - option "Select..." [selected]
+                - generic [ref=e275]:
+                  - generic [ref=e277]: Not synced
+                  - button "View detail" [ref=e279]
+              - generic [ref=e280]:
+                - generic [ref=e281]:
+                  - generic [ref=e282]:
+                    - generic [ref=e283]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e284]: Local issue
+                  - generic [ref=e285]: medium
+                - paragraph [ref=e286]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` (line 42) - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` (lines 260-295) - Added provider selection logging to console (lines 280-293) - Extended agent metadata to include provider and providerSelectionMethod (lines 305-314) - Enhanced TASK_ASSIGNED event with providerSelectionMethod (lines 426-440) ### Implementation Details: 1. **Capability-based provider selection** (lines 260-295): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 305-314): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\", \"capability-based\", or \"fallback\" - Enables tracking of how providers were selected 3. **Event emission** (lines 426-440): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors in orchestrator.ts - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e288]:
+                  - generic [ref=e289]: Provider
+                  - combobox [ref=e290]:
+                    - option "Select..." [selected]
+                - generic [ref=e291]:
+                  - generic [ref=e293]: Not synced
+                  - button "View detail" [ref=e295]
+              - generic [ref=e296]:
+                - generic [ref=e297]:
+                  - generic [ref=e298]:
+                    - generic [ref=e299]: Create smoke-test task
+                    - generic [ref=e300]: Local issue
+                  - generic [ref=e301]: medium
+                - paragraph [ref=e302]: "Create a new task via the API with title \"Smoke Test - Kanban ACP\" and an objective. ## Scope - API: POST /api/tasks - Task should be created in the default workspace ## Definition of Done - Task created successfully with a valid task ID - Task appears in the Kanban board in the backlog column ## Verification - `curl -X POST http://localhost:3000/api/tasks -H \"Content-Type: application/json\" -d '{\"title\":\"Smoke Test - Kanban ACP\",\"objective\":\"Verify end-to-end ACP workflow\",\"workspaceId\":\"default\"}'` - Task appears in GET /api/tasks?workspaceId=default"
+                - generic [ref=e304]:
+                  - generic [ref=e305]: Provider
+                  - combobox [ref=e306]:
+                    - option "Select..." [selected]
+                - generic [ref=e307]:
+                  - generic [ref=e309]: Not synced
+                  - button "View detail" [ref=e311]
+              - generic [ref=e312]:
+                - generic [ref=e313]:
+                  - generic [ref=e314]:
+                    - generic [ref=e315]: Assign task to ACP provider
+                    - generic [ref=e316]: Local issue
+                  - generic [ref=e317]: medium
+                - paragraph [ref=e318]: "Assign the created task to an available ACP provider with a role (CRAFTER). ## Scope - API: PATCH /api/tasks/[taskId] - Need to find available ACP providers first ## Definition of Done - Task has assignedProvider, assignedRole, and optionally assignedSpecialistId set ## Verification - Check task via GET /api/tasks/[taskId] returns assignedProvider field"
+                - generic [ref=e320]:
+                  - generic [ref=e321]: Provider
+                  - combobox [ref=e322]:
+                    - option "Select..." [selected]
+                - generic [ref=e323]:
+                  - generic [ref=e325]: Not synced
+                  - button "View detail" [ref=e327]
+              - generic [ref=e328]:
+                - generic [ref=e329]:
+                  - generic [ref=e330]:
+                    - generic [ref=e331]: Move task to dev column
+                    - generic [ref=e332]: Local issue
+                  - generic [ref=e333]: medium
+                - paragraph [ref=e334]: "Move the task from backlog to dev column, which should trigger an ACP session. ## Scope - API: PATCH /api/tasks/[taskId] with columnId: \"dev\" - Trigger logic in /api/tasks/[taskId]/route.ts ## Definition of Done - Task moved to dev column - triggerSessionId is set on the task (ACP session created) ## Verification - Check task via GET /api/tasks/[taskId] returns triggerSessionId field"
+                - generic [ref=e336]:
+                  - generic [ref=e337]: Provider
+                  - combobox [ref=e338]:
+                    - option "Select..." [selected]
+                - generic [ref=e339]:
+                  - generic [ref=e341]: Not synced
+                  - button "View detail" [ref=e343]
+              - generic [ref=e344]:
+                - generic [ref=e345]:
+                  - generic [ref=e346]:
+                    - generic [ref=e347]: Verify session popup works
+                    - generic [ref=e348]: Local issue
+                  - generic [ref=e349]: medium
+                - paragraph [ref=e350]: "Confirm the session popup can be opened from the Kanban UI. ## Scope - KanbanTab component renders session popup when activeSessionId is set - URL pattern: /workspace/[workspaceId]/sessions/[sessionId] ## Definition of Done - Task card shows \"View session\" button when triggerSessionId exists - Clicking it opens a modal with iframe to session page ## Verification - Manual verification: Open Kanban board, find the smoke test task, click \"View session\" - Or check that the session page loads without error"
+                - generic [ref=e352]:
+                  - generic [ref=e353]: Provider
+                  - combobox [ref=e354]:
+                    - option "Select..." [selected]
+                - generic [ref=e355]:
+                  - generic [ref=e357]: Not synced
+                  - button "View detail" [ref=e359]
+              - generic [ref=e360]:
+                - generic [ref=e361]:
+                  - generic [ref=e362]:
+                    - generic [ref=e363]: Test GET API Endpoints
+                    - generic [ref=e364]: Local issue
+                  - generic [ref=e365]: medium
+                - paragraph [ref=e366]: Test GET request functionality across the API endpoints
+                - generic [ref=e368]:
+                  - generic [ref=e369]: Provider
+                  - combobox [ref=e370]:
+                    - option "Select..." [selected]
+                - generic [ref=e371]:
+                  - generic [ref=e373]: Not synced
+                  - button "View detail" [ref=e375]
+              - generic [ref=e376]:
+                - generic [ref=e377]:
+                  - generic [ref=e378]:
+                    - generic [ref=e379]: Test task
+                    - generic [ref=e380]: Local issue
+                  - generic [ref=e381]: medium
+                - paragraph
+                - generic [ref=e383]:
+                  - generic [ref=e384]: Provider
+                  - combobox [ref=e385]:
+                    - option "Select..." [selected]
+                - generic [ref=e386]:
+                  - generic [ref=e388]: Not synced
+                  - button "View detail" [ref=e390]
+          - generic [ref=e391]:
+            - generic [ref=e393]:
+              - generic [ref=e394]: Todo
+              - generic [ref=e395]: 1 cards
+            - generic [ref=e397]:
+              - generic [ref=e398]:
+                - generic [ref=e399]:
+                  - generic [ref=e400]: Add login page
+                  - generic [ref=e401]: Local issue
+                - generic [ref=e402]: medium
+              - paragraph [ref=e403]: Create a login page with email/password authentication
+              - generic [ref=e404]:
+                - generic [ref=e405]:
+                  - generic [ref=e406]: Provider
+                  - combobox [ref=e407]:
+                    - option "Select..." [selected]
+                - generic [ref=e408]:
+                  - generic [ref=e409]: Role
+                  - combobox [ref=e410]:
+                    - option "CRAFTER"
+                    - option "ROUTA"
+                    - option "GATE"
+                    - option "DEVELOPER" [selected]
+                - generic [ref=e411]:
+                  - generic [ref=e412]: Specialist
+                  - combobox [ref=e413]:
+                    - option "None" [selected]
+                    - option "Claude Code"
+                    - option "Implementor"
+                    - option "Desk Check Agent"
+                    - option "Developer"
+                    - option "Verifier"
+                    - option "Issue Enricher"
+                    - option "Kanban Agent"
+                    - option "PR Analyzer"
+                    - option "PR Reviewer"
+                    - option "Coordinator"
+              - generic [ref=e414]:
+                - generic [ref=e416]: Not synced
+                - button "View detail" [ref=e418]
+          - generic [ref=e419]:
+            - generic [ref=e421]:
+              - generic [ref=e422]: Dev
+              - generic [ref=e423]: 2 cards
+            - generic [ref=e424]:
+              - generic [ref=e425]:
+                - generic [ref=e426]:
+                  - generic [ref=e427]:
+                    - generic [ref=e428]: Add Capability Metadata to AcpAgentPreset
+                    - generic [ref=e429]: Local issue
+                  - generic [ref=e430]: medium
+                - paragraph [ref=e431]: "Extend AcpAgentPreset interface with capabilities, supportedRoles, and preferredTier fields. Update existing static presets with metadata. **Scope**: `src/core/acp/acp-presets.ts` **Definition of Done**: - AcpAgentPreset interface has new fields - All static presets have capability metadata **Verification**: TypeScript compilation"
+                - generic [ref=e433]:
+                  - generic [ref=e434]: Provider
+                  - combobox [ref=e435]:
+                    - option "Select..." [selected]
+                - generic [ref=e436]:
+                  - generic [ref=e438]: Not synced
+                  - generic [ref=e439]:
+                    - button "View detail" [ref=e440]
+                    - button "View session" [ref=e441]
+              - generic [ref=e442]:
+                - generic [ref=e443]:
+                  - generic [ref=e444]:
+                    - generic [ref=e445]: Implement Provider Capability Query APIs
+                    - generic [ref=e446]: Local issue
+                  - generic [ref=e447]: medium
+                - paragraph [ref=e448]: "Add getProviderCapabilities, findProvidersByCapability, and findBestProviderForRole functions. **Scope**: `src/core/acp/provider-registry.ts` **Definition of Done**: - Three new functions exported and working - Unit tests for capability matching logic **Verification**: Run existing tests + add unit tests"
+                - generic [ref=e449]:
+                  - generic [ref=e450]:
+                    - generic [ref=e451]: Provider
+                    - combobox [ref=e452]:
+                      - option "Select..." [selected]
+                  - generic [ref=e453]:
+                    - generic [ref=e454]: Role
+                    - combobox [ref=e455]:
+                      - option "CRAFTER"
+                      - option "ROUTA"
+                      - option "GATE"
+                      - option "DEVELOPER" [selected]
+                  - generic [ref=e456]:
+                    - generic [ref=e457]: Specialist
+                    - combobox [ref=e458]:
+                      - option "None"
+                      - option "Claude Code"
+                      - option "Implementor"
+                      - option "Desk Check Agent"
+                      - option "Developer"
+                      - option "Verifier"
+                      - option "Issue Enricher" [selected]
+                      - option "Kanban Agent"
+                      - option "PR Analyzer"
+                      - option "PR Reviewer"
+                      - option "Coordinator"
+                - generic [ref=e459]:
+                  - generic [ref=e461]: Not synced
+                  - generic [ref=e462]:
+                    - button "View detail" [ref=e463]
+                    - button "View session" [ref=e464]
+          - generic [ref=e465]:
+            - generic [ref=e467]:
+              - generic [ref=e468]: Review
+              - generic [ref=e469]: 2 cards
+            - generic [ref=e470]:
+              - generic [ref=e471]:
+                - generic [ref=e472]:
+                  - generic [ref=e473]:
+                    - generic [ref=e474]: Kanban ACP smoke test
+                    - generic [ref=e475]: Local issue
+                  - generic [ref=e476]: medium
+                - paragraph [ref=e477]: Create a smoke-test issue, assign it to an ACP provider, move it to dev, and confirm a session can be opened from the Kanban popup.
+                - generic [ref=e478]:
+                  - generic [ref=e479]:
+                    - generic [ref=e480]: Provider
+                    - combobox [ref=e481]:
+                      - option "Select..." [selected]
+                  - generic [ref=e482]:
+                    - generic [ref=e483]: Role
+                    - combobox [ref=e484]:
+                      - option "CRAFTER"
+                      - option "ROUTA"
+                      - option "GATE"
+                      - option "DEVELOPER" [selected]
+                  - generic [ref=e485]:
+                    - generic [ref=e486]: Specialist
+                    - combobox [ref=e487]:
+                      - option "None"
+                      - option "Claude Code"
+                      - option "Implementor"
+                      - option "Desk Check Agent"
+                      - option "Developer" [selected]
+                      - option "Verifier"
+                      - option "Issue Enricher"
+                      - option "Kanban Agent"
+                      - option "PR Analyzer"
+                      - option "PR Reviewer"
+                      - option "Coordinator"
+                - generic [ref=e488]:
+                  - generic [ref=e490]: Not synced
+                  - generic [ref=e491]:
+                    - button "View detail" [ref=e492]
+                    - button "View session" [ref=e493]
+              - generic [ref=e494]:
+                - generic [ref=e495]:
+                  - generic [ref=e496]:
+                    - generic [ref=e497]: Kanban OpenCode smoke test
+                    - generic [ref=e498]: Local issue
+                  - generic [ref=e499]: medium
+                - paragraph [ref=e500]: Create a second smoke-test issue to validate ACP triggering with the OpenCode provider and session popup behavior.
+                - generic [ref=e501]:
+                  - generic [ref=e502]:
+                    - generic [ref=e503]: Provider
+                    - combobox [ref=e504]:
+                      - option "Select..." [selected]
+                  - generic [ref=e505]:
+                    - generic [ref=e506]: Role
+                    - combobox [ref=e507]:
+                      - option "CRAFTER" [selected]
+                      - option "ROUTA"
+                      - option "GATE"
+                      - option "DEVELOPER"
+                  - generic [ref=e508]:
+                    - generic [ref=e509]: Specialist
+                    - combobox [ref=e510]:
+                      - option "None" [selected]
+                      - option "Claude Code"
+                      - option "Implementor"
+                      - option "Desk Check Agent"
+                      - option "Developer"
+                      - option "Verifier"
+                      - option "Issue Enricher"
+                      - option "Kanban Agent"
+                      - option "PR Analyzer"
+                      - option "PR Reviewer"
+                      - option "Coordinator"
+                - generic [ref=e511]:
+                  - generic [ref=e513]: Not synced
+                  - generic [ref=e514]:
+                    - button "View detail" [ref=e515]
+                    - button "View session" [ref=e516]
+          - generic [ref=e519]:
+            - generic [ref=e520]: Blocked
+            - generic [ref=e521]: 0 cards
+          - generic [ref=e524]:
+            - generic [ref=e525]: Done
+            - generic [ref=e526]: 0 cards
+  - button "Open Next.js Dev Tools" [ref=e532] [cursor=pointer]:
+    - img [ref=e533]
+  - alert [ref=e536]
