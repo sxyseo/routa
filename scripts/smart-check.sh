@@ -76,17 +76,6 @@ main() {
     auto_fix=true
   fi
 
-  echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
-  echo -e "${BLUE}  Smart Pre-Push Check${NC}"
-  echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
-
-  if is_ai_agent; then
-    echo -e "${YELLOW}  Mode: AI Agent (will output structured error on failure)${NC}"
-  else
-    echo -e "${GREEN}  Mode: Human (will offer auto-fix on failure)${NC}"
-  fi
-  echo ""
-
   local lint_exit=0 typecheck_exit=0 test_exit=0
 
   # ─── Run Lint (with real-time output) ─────────────────────────────────────
@@ -151,25 +140,6 @@ main() {
   echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
   echo ""
 
-  if is_ai_agent; then
-    # AI Agent Mode: Output structured error message
-    echo -e "${YELLOW}┌─────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│  AI AGENT: You MUST fix these issues before pushing.       │${NC}"
-    echo -e "${YELLOW}│  Do NOT ignore or bypass these checks.                     │${NC}"
-    echo -e "${YELLOW}└─────────────────────────────────────────────────────────────┘${NC}"
-    echo ""
-
-    # Errors already shown in real-time above, just summarize
-    echo -e "${YELLOW}Instructions for AI:${NC}"
-    echo "1. Read the error messages above carefully"
-    echo "2. Fix all lint, type, and test errors"
-    echo "3. Run 'npm run lint' and 'npm run test' to verify"
-    echo "4. Only then attempt to push again"
-    echo ""
-    exit 1
-  fi
-
-  # ─── Human Mode: Offer Auto-Fix ───────────────────────────────────────────
   # Errors already shown in real-time above
 
   # Check if claude CLI is available

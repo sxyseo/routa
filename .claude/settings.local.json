@@ -50,7 +50,14 @@
       "Bash(npm run test:run:*)",
       "Bash(gh repo view:*)",
       "Bash(gh pr view:*)",
-      "Bash(gh issue link:*)"
+      "Bash(gh issue link:*)",
+      "Bash(git show:*)",
+      "Skill(code-review:code-review)",
+      "Bash(git rev-parse:*)",
+      "Bash(grep:*)",
+      "Bash(git checkout:*)",
+      "Bash(git rm /Users/phodal/ai/routa-js/src/client/contexts/auth-context.tsx /Users/phodal/ai/routa-js/src/app/login/page.tsx)",
+      "Bash(gh pr create:*)"
     ]
   }
 }
