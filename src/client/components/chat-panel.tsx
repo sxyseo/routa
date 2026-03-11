@@ -429,7 +429,7 @@ export function ChatPanel({
   // When active session changes, swap visible transcript and load history
   useEffect(() => {
     if (!activeSessionId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setVisibleMessages([]);
       return;
     }
@@ -442,7 +442,7 @@ export function ChatPanel({
   // Update visible messages when messagesBySession changes
   useEffect(() => {
     if (activeSessionId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setVisibleMessages(messagesBySession[activeSessionId] ?? []);
     }
   }, [activeSessionId, messagesBySession]);
@@ -466,7 +466,7 @@ export function ChatPanel({
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     fetchSessions();
   }, [fetchSessions, activeSessionId]);
 
@@ -1232,7 +1232,7 @@ export function ChatPanel({
   useEffect(() => {
     setSetupModel("");
     setSetupModelModels([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [acp.selectedProvider]);
 
   const handleStartSession = useCallback(async () => {

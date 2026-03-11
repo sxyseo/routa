@@ -178,7 +178,7 @@ function ProviderSection({
   onPatchTask,
   onRetryTrigger,
   onRefresh,
-  onProviderChange: _onProviderChange,
+  onProviderChange,
 }: {
   task: TaskInfo;
   availableProviders: AcpProviderInfo[];
