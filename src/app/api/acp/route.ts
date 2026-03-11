@@ -731,8 +731,9 @@ export async function POST(request: NextRequest) {
         console.log(`[ACP Route] Session ${sessionId} not found, auto-creating with default settings...`);
 
         // Use default settings for auto-created session
-        const cwd = (p.cwd as string | undefined) ?? process.cwd();
         const storedSession = store.getSession(sessionId);
+        // Prefer stored cwd (from task trigger), then param, then fallback to process.cwd()
+        const cwd = storedSession?.cwd ?? (p.cwd as string | undefined) ?? process.cwd();
         const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
         // Prefer the provider stored in the session record (handles restarts for claude sessions)
         const provider = (p.provider as string | undefined) ?? storedSession?.provider ?? defaultProvider;
