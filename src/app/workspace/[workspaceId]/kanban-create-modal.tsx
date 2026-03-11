@@ -121,7 +121,7 @@ export function KanbanCreateModal({
   onCreate,
   githubAvailable,
   codebases,
-  allCodebaseIds,
+  allCodebaseIds: _allCodebaseIds,
 }: KanbanCreateModalProps) {
   const canCreate = Boolean(draft.title.trim()) && Boolean(draft.objectiveHtml.replace(/<[^>]*>/g, "").trim());
 

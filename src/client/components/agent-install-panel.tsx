@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Image from "next/image";
 import { isTauriRuntime, desktopAwareFetch } from "@/client/utils/diagnostics";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -409,7 +410,7 @@ function AgentCard({
         {/* Icon */}
         <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
           {agent.icon ? (
-            <img src={agent.icon} alt="" className="w-6 h-6" />
+            <Image src={agent.icon} alt="" className="w-6 h-6" />
           ) : (
             agent.name.charAt(0).toUpperCase()
           )}

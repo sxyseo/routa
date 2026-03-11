@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { v4 as uuidv4 } from "uuid";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -688,11 +689,11 @@ export default function AGUIPage() {
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-white/80 dark:bg-zinc-950/80 border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <a href="/" className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+            <Link href="/" className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                 <path d="M15 18l-6-6 6-6" />
               </svg>
-            </a>
+            </Link>
             <div>
               <h1
                 data-testid="ag-ui-page-title"

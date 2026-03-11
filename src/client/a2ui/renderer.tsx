@@ -11,6 +11,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import type {
   A2UIComponent,
   A2UIMessage,
@@ -24,7 +25,6 @@ import type {
   ButtonVariant,
   JustifyContent,
   AlignItems,
-  A2UIAction,
   DataBinding,
   FunctionCall,
 } from "./types";
@@ -297,7 +297,7 @@ function A2UIComponentRenderer({ componentId, ctx }: { componentId: string; ctx:
         comp.variant === "largeFeature" ? "w-full max-h-48 rounded-lg" :
         comp.variant === "header" ? "w-full max-h-64 rounded-lg" :
         "w-full max-h-48 rounded-lg";
-      return <img key={comp.id} src={url} className={`${variantCls} ${fitCls}`} style={flex} alt="" />;
+      return <Image key={comp.id} src={url} className={`${variantCls} ${fitCls}`} style={flex} alt="" />;
     }
 
     case "Icon": {
@@ -533,7 +533,7 @@ export function A2UISurfaceRenderer({ surface, onAction, className }: A2UISurfac
       {surface.theme?.agentDisplayName && (
         <div className="flex items-center gap-2 mb-3">
           {surface.theme.iconUrl && (
-            <img src={surface.theme.iconUrl} className="w-5 h-5 rounded" alt="" />
+            <Image src={surface.theme.iconUrl} className="w-5 h-5 rounded" alt="" />
           )}
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
             {surface.theme.agentDisplayName}

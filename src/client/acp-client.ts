@@ -316,7 +316,7 @@ export class BrowserAcpClient {
    */
   private async handleStreamingPromptResponse(
     response: Response,
-    sessionId: string
+    _sessionId: string
   ): Promise<AcpPromptResult> {
     const reader = response.body?.getReader();
     if (!reader) {

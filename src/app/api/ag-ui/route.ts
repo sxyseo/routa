@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
       let resolveWait: (() => void) | null = null;
       let isDone = false;
 
-      const originalPush = store.pushNotification.bind(store);
+      const _originalPush = store.pushNotification.bind(store);
 
       // Intercept notifications for this session
       const interceptor = (notification: SessionUpdateNotification) => {

@@ -27,7 +27,7 @@ const LOCAL_SKILLS_DIR = ".agents/skills";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { url, skillsDir = "skills" } = body as {
+    const { url, skillsDir: _skillsDir = "skills" } = body as {
       url?: string;
       skillsDir?: string;
     };

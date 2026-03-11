@@ -8,6 +8,8 @@
  */
 
 import React from "react";
+import Link from "next/link";
+import Image from "next/image";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { ProtocolBadge } from "@/app/protocol-badge";
 import { DockerStatusIndicator } from "@/client/components/docker-status-indicator";
@@ -85,15 +87,15 @@ export function AppHeader({
 
       {/* ── Logo ── */}
       {isDashboard ? (
-        <a href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-          <img src="/logo.svg" alt="Routa" width={24} height={24} className="rounded-md" />
+        <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+          <Image src="/logo.svg" alt="Routa" width={24} height={24} className="rounded-md" />
           <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200 tracking-tight">Routa</span>
-        </a>
+        </Link>
       ) : (
-        <a href={`/workspace/${workspaceId}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <img src="/logo.svg" alt="Routa" width={28} height={28} className="rounded-lg" />
+        <Link href={`/workspace/${workspaceId}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Image src="/logo.svg" alt="Routa" width={28} height={28} className="rounded-lg" />
           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 hidden sm:inline">Routa</span>
-        </a>
+        </Link>
       )}
 
       {/* ── Workspace switcher area ── */}

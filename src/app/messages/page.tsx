@@ -10,6 +10,8 @@
  */
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
 
 interface BackgroundTask {
   id: string;
@@ -82,10 +84,10 @@ export default function MessagesPage() {
     <div className="min-h-screen bg-[#fafafa] dark:bg-[#0a0c12]">
       {/* Header */}
       <header className="h-12 border-b border-gray-100 dark:border-[#151720] flex items-center px-5 sticky top-0 bg-[#fafafa]/90 dark:bg-[#0a0c12]/90 backdrop-blur-sm z-10">
-        <a href="/" className="flex items-center gap-2.5 mr-6">
-          <img src="/logo.svg" alt="Routa" width={22} height={22} className="rounded-md" />
+        <Link href="/" className="flex items-center gap-2.5 mr-6">
+          <Image src="/logo.svg" alt="Routa" width={22} height={22} className="rounded-md" />
           <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200">Messages</span>
-        </a>
+        </Link>
         <div className="flex gap-1">
           <button
             onClick={() => setTab("tasks")}

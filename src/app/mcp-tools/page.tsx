@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 interface McpToolDefinition {
   name: string;
@@ -276,12 +277,12 @@ export default function McpToolsPage() {
               >
                 Run Tool
               </button>
-              <a
+              <Link
                 href="/"
                 className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
               >
                 Back
-              </a>
+              </Link>
             </div>
 
             <div>

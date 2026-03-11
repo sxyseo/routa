@@ -27,15 +27,14 @@ import { ensureMcpForProvider } from "@/core/acp/mcp-setup";
 import { getDefaultRoutaMcpConfig } from "@/core/acp/mcp-config-generator";
 import { v4 as uuidv4 } from "uuid";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
-import { shouldUseOpencodeAdapter, isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
-import type { OpencodeSdkAdapter } from "@/core/acp/opencode-sdk-adapter";
+import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
 import { getDockerDetector, DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker";
 import { isClaudeCodeSdkConfigured } from "@/core/acp/claude-code-sdk-adapter";
 import type { AgentInstanceConfig } from "@/core/acp/agent-instance-factory";
 import { initRoutaOrchestrator, getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
-import { buildCoordinatorPrompt, getSpecialistByRole, loadSpecialistsSync } from "@/core/orchestration/specialist-prompts";
+import { buildCoordinatorPrompt, loadSpecialistsSync } from "@/core/orchestration/specialist-prompts";
 import { getDatabase, isPostgres } from "@/core/db";
 import { PostgresSpecialistStore } from "@/core/store/specialist-store";
 import { AcpError } from "@/core/acp/acp-process";
@@ -161,7 +160,7 @@ export async function GET(request: NextRequest) {
           const encoder = new TextEncoder();
           const heartbeat = ": heartbeat\n\n";
           controller.enqueue(encoder.encode(heartbeat));
-        } catch (err) {
+        } catch {
           // Write failed - connection is dead
           cleanup("heartbeat write failed");
         }

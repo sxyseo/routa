@@ -37,6 +37,8 @@ export function KanbanPageClient() {
     if (!acp.connected && !acp.loading) {
       acp.connect();
     }
+    // We intentionally exclude 'acp' from deps to avoid re-connecting on every acp change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acp.connected, acp.loading]);
 
   // Fetch boards

@@ -23,6 +23,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
   useEffect(() => {
     if (!expanded) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, { cache: "no-store" })
       .then(res => res.json())

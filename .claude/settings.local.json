@@ -57,7 +57,8 @@
       "Bash(grep:*)",
       "Bash(git checkout:*)",
       "Bash(git rm /Users/phodal/ai/routa-js/src/client/contexts/auth-context.tsx /Users/phodal/ai/routa-js/src/app/login/page.tsx)",
-      "Bash(gh pr create:*)"
+      "Bash(gh pr create:*)",
+      "Bash(npm run lint)"
     ]
   }
 }

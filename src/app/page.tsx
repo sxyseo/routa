@@ -13,6 +13,8 @@
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
 import { HomeInput } from "@/client/components/home-input";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { useAcp } from "@/client/hooks/use-acp";
@@ -64,13 +66,16 @@ export default function HomePage() {
     if (!activeWorkspaceId && workspacesHook.workspaces.length > 0) {
       setActiveWorkspaceId(workspacesHook.workspaces[0].id);
     }
-  }, [workspacesHook.workspaces, activeWorkspaceId]);
+  }, [activeWorkspaceId, workspacesHook.workspaces, workspacesHook.workspaces.length]);
 
   // Auto-connect on mount
   useEffect(() => {
     if (!acp.connected && !acp.loading) {
       acp.connect();
     }
+    // We intentionally exclude 'acp' from deps to avoid re-connecting on every acp change
+    // The acp object is stable across renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acp.connected, acp.loading]);
 
   const handleWorkspaceSelect = useCallback((wsId: string) => {
@@ -97,7 +102,7 @@ export default function HomePage() {
       {/* ─── Minimal Header ─────────────────────────────────────────── */}
       <header className="h-11 shrink-0 flex items-center px-5 z-10 border-b border-gray-100 dark:border-[#151720]">
         <div className="flex items-center gap-2.5">
-          <img src="/logo.svg" alt="Routa" width={22} height={22} className="rounded-md" />
+          <Image src="/logo.svg" alt="Routa" width={22} height={22} className="rounded-md" />
           <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200 tracking-tight">
             Routa
           </span>
@@ -108,13 +113,13 @@ export default function HomePage() {
         <nav className="flex items-center gap-0.5">
           {/* Kanban link - quick access to current workspace board */}
           {activeWorkspaceId && (
-            <a
+            <Link
               href={`/workspace/${activeWorkspaceId}/kanban`}
               className="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
               title="Open Kanban Board"
             >
               Kanban
-            </a>
+            </Link>
           )}
 
           {/* Integrations dropdown — merges MCP + A2A */}
@@ -130,38 +135,38 @@ export default function HomePage() {
             </button>
             {showIntegrationsMenu && (
               <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#12141c] border border-gray-100 dark:border-[#1c1f2e] rounded-lg shadow-lg z-50 py-1 overflow-hidden">
-                <a
+                <Link
                   href="/mcp-tools"
                   onClick={() => setShowIntegrationsMenu(false)}
                   className="flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1d2c] transition-colors"
                 >
                   <span className="w-4 h-4 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-[9px] font-bold text-blue-600 dark:text-blue-400">M</span>
                   MCP Tools
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/a2a"
                   onClick={() => setShowIntegrationsMenu(false)}
                   className="flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1d2c] transition-colors"
                 >
                   <span className="w-4 h-4 rounded bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-[9px] font-bold text-emerald-600 dark:text-emerald-400">A</span>
                   A2A Protocol
-                </a>
+                </Link>
               </div>
             )}
           </div>
 
-          <a
+          <Link
             href="/settings/webhooks"
             className="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
           >
             Webhooks
-          </a>
-          <a
+          </Link>
+          <Link
             href="/settings/schedules"
             className="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
           >
             Schedules
-          </a>
+          </Link>
 
           <NotificationBell />
 
@@ -261,6 +266,7 @@ function HomeTodoPreview({
 
   useEffect(() => {
     if (!workspaceId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTasks([]);
       return;
     }
@@ -313,7 +319,7 @@ function HomeTodoPreview({
             A quick slice of the active board.
           </div>
         </div>
-        <a
+        <Link
           href={`/workspace/${workspaceId}/kanban`}
           className="flex items-center gap-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 px-4 py-2 text-xs font-medium text-white transition-colors shadow-sm hover:shadow"
         >
@@ -321,12 +327,12 @@ function HomeTodoPreview({
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
           </svg>
           Open Kanban
-        </a>
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {tasks.map((task) => (
-          <a
+          <Link
             key={task.id}
             href={`/workspace/${workspaceId}/kanban`}
             className="group rounded-xl border border-gray-100 bg-[#fcfcfc] px-3.5 py-3 transition-all hover:border-blue-200 hover:bg-blue-50/60 hover:shadow-sm dark:border-[#1c1f2e] dark:bg-[#0f1118] dark:hover:border-blue-800/40 dark:hover:bg-blue-900/5"
@@ -347,7 +353,7 @@ function HomeTodoPreview({
                 {task.priority ?? "medium"}
               </span>
             </div>
-          </a>
+          </Link>
         ))}
       </div>
     </div>
@@ -439,6 +445,7 @@ function WorkspaceCards({
   const [cardData, setCardData] = useState<WorkspaceCardData[]>([]);
 
   const formatTime = (dateStr: string) => {
+    // eslint-disable-next-line react-hooks/purity
     const diffMs = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diffMs / 60000);
     if (mins < 1) return "now";
@@ -524,7 +531,7 @@ function WorkspaceCards({
           </button>
           {showWorkspacesMenu && (
             <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-[#12141c] border border-gray-100 dark:border-[#1c1f2e] rounded-lg shadow-lg z-50 py-1 overflow-hidden">
-              <a
+              <Link
                 href="/workspaces"
                 onClick={() => setShowWorkspacesMenu(false)}
                 className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1d2c] transition-colors"
@@ -533,8 +540,8 @@ function WorkspaceCards({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
                 </svg>
                 All Workspaces
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/sessions"
                 onClick={() => setShowWorkspacesMenu(false)}
                 className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1d2c] transition-colors"
@@ -543,7 +550,7 @@ function WorkspaceCards({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z" />
                 </svg>
                 All Sessions
-              </a>
+              </Link>
             </div>
           )}
         </div>
@@ -571,7 +578,7 @@ function WorkspaceCards({
                   </span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <a
+                  <Link
                     href={`/workspace/${ws.id}/kanban`}
                     onClick={(e) => e.stopPropagation()}
                     className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-400"
@@ -580,8 +587,8 @@ function WorkspaceCards({
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
                     </svg>
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href={`/workspace/${ws.id}`}
                     onClick={(e) => e.stopPropagation()}
                     className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
@@ -590,14 +597,14 @@ function WorkspaceCards({
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
                     </svg>
-                  </a>
+                  </Link>
                 </div>
               </div>
 
               {/* Recent sessions */}
               {ws.recentSessions.length > 0 ? (
                 <div className="space-y-1">
-                  {ws.recentSessions.map((session, idx) => (
+                  {ws.recentSessions.map((session) => (
                     <div
                       key={session.sessionId}
                       className="flex items-center gap-1.5 cursor-pointer group/session"

@@ -240,6 +240,7 @@ function SessionsSplitPane({
     const stored = window.localStorage.getItem(SESSIONS_QUICK_ACCESS_RATIO_KEY);
     const parsed = stored ? Number.parseFloat(stored) : Number.NaN;
     if (Number.isFinite(parsed)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSplitRatio(Math.max(0.28, Math.min(0.78, parsed)));
     }
   }, []);

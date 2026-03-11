@@ -17,11 +17,10 @@ import {useCallback, useEffect, useRef, useState} from "react";
 import {useRouter, useParams, useSearchParams} from "next/navigation";
 import {ChatPanel} from "@/client/components/chat-panel";
 import {SpecialistManager} from "@/client/components/specialist-manager";
-import {type CrafterAgent, type CrafterMessage, TaskPanel, CraftersView} from "@/client/components/task-panel";
+import {type CrafterAgent, type CrafterMessage, CraftersView} from "@/client/components/task-panel";
 import {AgentInstallPanel} from "@/client/components/agent-install-panel";
 import {LeftSidebar} from "./left-sidebar";
 import {AppHeader} from "@/client/components/app-header";
-import {CodebasePicker} from "@/client/components/codebase-picker";
 import {useWorkspaces, useCodebases} from "@/client/hooks/use-workspaces";
 import {useAcp} from "@/client/hooks/use-acp";
 import {type NoteData, useNotes} from "@/client/hooks/use-notes";
@@ -102,6 +101,7 @@ function useRealParams() {
           newSessionId !== realParams.sessionId ||
           !realParams.isResolved
         ) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setRealParams({
             workspaceId: newWorkspaceId,
             sessionId: newSessionId,
@@ -147,7 +147,7 @@ export function SessionPageClient() {
 
   // ── Workspace state ───────────────────────────────────────────────────
   const workspacesHook = useWorkspaces();
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(workspaceId);
+  const [_activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(workspaceId);
   const { codebases } = useCodebases(workspaceId);
 
   // Auto-select default codebase as repo when workspace changes
@@ -157,7 +157,7 @@ export function SessionPageClient() {
     setRepoSelection({ path: def.repoPath, branch: def.branch ?? "", name: def.label ?? def.repoPath.split("/").pop() ?? "" });
   }, [codebases]);
 
-  const handleCodebaseSelect = useCallback((repoPath: string) => {
+  const _handleCodebaseSelect = useCallback((repoPath: string) => {
     const codebase = codebases.find((c) => c.repoPath === repoPath);
     if (codebase) {
       setRepoSelection({ path: codebase.repoPath, branch: codebase.branch ?? "", name: codebase.label ?? codebase.repoPath.split("/").pop() ?? "" });
@@ -178,7 +178,7 @@ export function SessionPageClient() {
   const notesHook = useNotes(workspaceId, sessionId);
 
   // ── Collaborative editing panel view ──────────────────────────────────
-  const [taskPanelMode, setTaskPanelMode] = useState<"tasks" | "collab">("tasks");
+  const [_taskPanelMode, setTaskPanelMode] = useState<"tasks" | "collab">("tasks");
 
   // ── Resizable right sidebar state ────────────────────────────────────
   const [sidebarWidth, setSidebarWidth] = useState(480);
@@ -287,7 +287,8 @@ export function SessionPageClient() {
     if (sessionId && acp.connected) {
       acp.selectSession(sessionId);
     }
-  }, [sessionId, acp.connected, acp.selectSession, isResolved]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, isResolved]);
 
   // Restore session metadata (role, provider, model) when navigating to an existing session
   const sessionMetadataLoadedRef = useRef<Set<string>>(new Set());
@@ -320,7 +321,7 @@ export function SessionPageClient() {
       .catch((err) => {
         console.warn("[SessionPage] Failed to restore session metadata:", err);
       });
-  }, [sessionId, acp.connected, acp.setProvider, isResolved]);
+  }, [sessionId, isResolved]);
 
   // ── Restore CRAFTER agents from child sessions on page reload ─────────
   const crafterAgentsRestoredRef = useRef<Set<string>>(new Set());
@@ -476,7 +477,7 @@ export function SessionPageClient() {
     }, 8000);
 
     return () => clearTimeout(timer);
-  }, [sessionId, acp.connected, acp.loading, acp.prompt, acp.updates]);
+  }, [sessionId]);
 
   // Detect acp_status: error in SSE updates → show docker config popup and restore input
   useEffect(() => {
@@ -2033,7 +2034,7 @@ export function SessionPageClient() {
   }
 
   // Create a fallback workspace object for "default"
-  const effectiveWorkspace = workspace ?? {
+  const _effectiveWorkspace = workspace ?? {
     id: "default",
     title: "Default Workspace",
     status: "active" as const,

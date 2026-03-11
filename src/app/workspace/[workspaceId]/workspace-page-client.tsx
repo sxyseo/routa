@@ -22,7 +22,7 @@ import { HomeInput } from "@/client/components/home-input";
 import { useWorkspaces, useCodebases } from "@/client/hooks/use-workspaces";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useAgentsRpc } from "@/client/hooks/use-agents-rpc";
-import { useNotes, type NoteData } from "@/client/hooks/use-notes";
+import { useNotes } from "@/client/hooks/use-notes";
 import { useSkills } from "@/client/hooks/use-skills";
 import { AppHeader } from "@/client/components/app-header";
 import { AgentInstallPanel } from "@/client/components/agent-install-panel";
@@ -85,16 +85,17 @@ export function WorkspacePageClient({
 
   // Sessions modal state
   const [showSessionsModal, setShowSessionsModal] = useState(false);
-  const [sessionsPage, setSessionsPage] = useState(1);
-  const [hasMoreSessions, setHasMoreSessions] = useState(false);
-  const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
+  const [_sessionsPage, setSessionsPage] = useState(1);
+  const [_hasMoreSessions, setHasMoreSessions] = useState(false);
+  const [_allSessions, setAllSessions] = useState<SessionInfo[]>([]);
 
   // Auto-connect ACP
   useEffect(() => {
     if (!acp.connected && !acp.loading) {
       acp.connect();
     }
-  }, [acp.connected, acp.loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch sessions
   useEffect(() => {
@@ -272,7 +273,7 @@ export function WorkspacePageClient({
   const defaultWorktreeRootHint = `~/.routa/workspace/${workspaceId}`;
   const displayedWorktreeRoot = worktreeRootDraft || workspace?.metadata?.worktreeRoot || defaultWorktreeRootHint;
 
-  const handleCreateTask = async (title: string, objective: string, sessionId?: string) => {
+  const _handleCreateTask = async (title: string, objective: string, sessionId?: string) => {
     await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -281,12 +282,12 @@ export function WorkspacePageClient({
     setRefreshKey((k) => k + 1);
   };
 
-  const handleDeleteTaskEntry = async (taskId: string) => {
+  const _handleDeleteTaskEntry = async (taskId: string) => {
     await fetch(`/api/tasks?taskId=${encodeURIComponent(taskId)}`, { method: "DELETE" });
     setRefreshKey((k) => k + 1);
   };
 
-  const handleUpdateTaskStatus = async (taskId: string, status: string) => {
+  const _handleUpdateTaskStatus = async (taskId: string, status: string) => {
     await fetch(`/api/tasks/${encodeURIComponent(taskId)}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -330,7 +331,7 @@ export function WorkspacePageClient({
     await notesHook.updateNote(noteId, { metadata });
   };
 
-  const handleDeleteAllTasks = async () => {
+  const _handleDeleteAllTasks = async () => {
     await Promise.all(
       tasks.map((t) =>
         fetch(`/api/tasks?taskId=${encodeURIComponent(t.id)}`, { method: "DELETE" })
