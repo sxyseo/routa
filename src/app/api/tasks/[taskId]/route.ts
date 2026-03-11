@@ -7,6 +7,7 @@ import { getInternalApiOrigin, triggerAssignedTaskAgent } from "@/core/kanban/ag
 import { GitWorktreeService } from "@/core/git/git-worktree-service";
 import { getDefaultWorkspaceWorktreeRoot, getEffectiveWorkspaceMetadata } from "@/core/models/workspace";
 import type { ArtifactType } from "@/core/models/artifact";
+import { emitColumnTransition } from "@/core/kanban/column-transition";
 
 export const dynamic = "force-dynamic";
 
@@ -305,6 +306,27 @@ export async function PATCH(
   }
 
   await system.taskStore.save(nextTask);
+
+  // Emit column transition event if column changed
+  if (body.columnId !== undefined && existing.columnId !== nextTask.columnId) {
+    const board = await system.kanbanBoardStore.get(nextTask.boardId);
+    if (board) {
+      const fromColumn = board.columns.find((c) => c.id === existing.columnId);
+      const toColumn = board.columns.find((c) => c.id === nextTask.columnId);
+
+      emitColumnTransition(system.eventBus, {
+        cardId: nextTask.id,
+        cardTitle: nextTask.title,
+        boardId: nextTask.boardId,
+        workspaceId: nextTask.workspaceId,
+        fromColumnId: existing.columnId,
+        toColumnId: nextTask.columnId,
+        fromColumnName: fromColumn?.name,
+        toColumnName: toColumn?.name,
+      });
+    }
+  }
+
   return NextResponse.json({ task: serializeTask(nextTask) });
 }
 

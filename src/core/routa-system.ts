@@ -326,6 +326,11 @@ export function getRoutaSystem(): RoutaSystem {
         g[GLOBAL_KEY] = createInMemorySystem();
         break;
     }
+
+    // Start the workflow orchestrator to listen for column transitions
+    const system = g[GLOBAL_KEY] as RoutaSystem;
+    const { startWorkflowOrchestrator } = require("./kanban/workflow-orchestrator-singleton") as typeof import("./kanban/workflow-orchestrator-singleton");
+    startWorkflowOrchestrator(system);
   }
   return g[GLOBAL_KEY] as RoutaSystem;
 }
