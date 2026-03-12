@@ -668,6 +668,7 @@ User request: ${agentInput}`;
 
       {(activeSessionId || activeTaskId) && (() => {
         const activeTask = activeTaskId ? localTasks.find((t) => t.id === activeTaskId) : null;
+        const hasSessionPane = Boolean(activeSessionId && acp);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6 animate-in fade-in duration-150">
             <div className="relative h-[88vh] w-full max-w-7xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c] animate-in zoom-in-95 duration-150">
@@ -715,6 +716,7 @@ User request: ${agentInput}`;
                     allCodebaseIds={allCodebaseIds}
                     worktreeCache={worktreeCache}
                     sessionInfo={sessionInfo}
+                    fullWidth={!hasSessionPane}
                     onPatchTask={patchTask}
                     onRetryTrigger={retryTaskTrigger}
                     onDelete={() => confirmDeleteTask(task)}
@@ -733,7 +735,7 @@ User request: ${agentInput}`;
                 );
               })()}
               {/* Right: Session (if activeSessionId exists) */}
-              {activeSessionId && acp ? (() => {
+              {hasSessionPane ? (() => {
                 // Build repoSelection and agentRole from active task
                 const activeTask = activeTaskId ? localTasks.find((t) => t.id === activeTaskId) : null;
                 const taskCodebaseIds = activeTask?.codebaseIds && activeTask.codebaseIds.length > 0
@@ -769,11 +771,7 @@ User request: ${agentInput}`;
                     />
                   </div>
                 );
-              })() : activeTaskId ? (
-                <div className="w-2/3 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-                  No session available for this task
-                </div>
-              ) : null}
+              })() : null}
             </div>
           </div>
         </div>

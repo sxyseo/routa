@@ -19,6 +19,7 @@ export interface KanbanCardDetailProps {
   allCodebaseIds: string[];
   worktreeCache: Record<string, WorktreeInfo>;
   sessionInfo?: SessionInfo | null;
+  fullWidth?: boolean;
   onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   onRetryTrigger: (taskId: string) => Promise<void>;
   onDelete: () => void;
@@ -39,6 +40,7 @@ export function KanbanCardDetail({
   allCodebaseIds,
   worktreeCache,
   sessionInfo,
+  fullWidth,
   onPatchTask,
   onRetryTrigger,
   onDelete,
@@ -67,7 +69,7 @@ export function KanbanCardDetail({
   })() : undefined;
 
   return (
-    <div className="w-1/3 border-r border-gray-200 dark:border-[#191c28] overflow-y-auto p-4">
+    <div className={`${fullWidth ? "w-full" : "w-1/3 border-r border-gray-200 dark:border-[#191c28]"} overflow-y-auto p-4`}>
       <div className="space-y-4">
         {/* Title */}
         <div>

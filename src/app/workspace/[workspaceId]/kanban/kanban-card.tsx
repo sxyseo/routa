@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, type DragEvent } from "react";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { SessionInfo, TaskInfo, WorktreeInfo } from "../types";
@@ -51,15 +52,24 @@ export function KanbanCard({
     sessionStatus === "error" || (!task.triggerSessionId && task.columnId === "dev")
   );
   const canRun = Boolean(task.assignedProvider) && !task.triggerSessionId && task.columnId !== "done";
+  const [showAssignment, setShowAssignment] = useState(false);
+
+  const assignedProvider = availableProviders.find((provider) => provider.id === task.assignedProvider);
+  const assignedRole = task.assignedRole ?? "DEVELOPER";
+  const assignedSpecialist = specialists.find((item) => item.id === task.assignedSpecialistId);
 
   const stopCardInteraction = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
   };
 
+  const handleDragStart = (event: DragEvent<HTMLButtonElement>) => {
+    event.dataTransfer.setData("text/plain", task.id);
+    event.dataTransfer.effectAllowed = "move";
+    onDragStart();
+  };
+
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
       onClick={onOpenDetail}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -70,9 +80,23 @@ export function KanbanCard({
       role="button"
       tabIndex={0}
       aria-label={`Open ${task.title}`}
-      className="group relative cursor-grab rounded-xl border border-gray-200/70 bg-gray-50/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-400/50 active:cursor-grabbing dark:border-[#262938] dark:bg-[#0d1018]"
+      className="group relative cursor-pointer rounded-xl border border-gray-200/70 bg-gray-50/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:border-[#262938] dark:bg-[#0d1018]"
       data-testid="kanban-card"
     >
+      <button
+        type="button"
+        draggable
+        onDragStart={handleDragStart}
+        onClickCapture={stopCardInteraction}
+        className="absolute left-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity rounded-md p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-[#1b1e2b] dark:text-gray-500 dark:hover:text-gray-200 cursor-grab active:cursor-grabbing"
+        title="Drag card"
+        aria-label="Drag card"
+      >
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6h.01M14 6h.01M10 12h.01M14 12h.01M10 18h.01M14 18h.01" />
+        </svg>
+      </button>
+
       {/* Delete button - shown on hover */}
       <button
         onClick={(e) => {
@@ -148,15 +172,51 @@ export function KanbanCard({
       {/* Worktree status badge */}
       <WorktreeBadge task={task} worktreeCache={worktreeCache} onOpenDetail={onOpenDetail} stopCardInteraction={stopCardInteraction} />
 
-      {/* Assignment Section */}
-      <AssignmentSection
-        task={task}
-        availableProviders={availableProviders}
-        specialists={specialists}
-        stopCardInteraction={stopCardInteraction}
-        onPatchTask={onPatchTask}
-        onRefresh={onRefresh}
-      />
+      {/* Assignment Section (collapsed by default for denser list) */}
+      <div className="mt-3 border-t border-gray-200/50 pt-3 dark:border-[#262938]">
+        <div className="flex items-center justify-between gap-2 text-[11px]">
+          <div className="flex min-w-0 items-center gap-2">
+            {assignedProvider ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+                {assignedProvider.name}
+              </span>
+            ) : (
+              <span className="text-gray-400 dark:text-gray-500">Unassigned</span>
+            )}
+            {task.assignedProvider && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-[#1c1f2e] dark:text-gray-300">
+                {assignedRole}
+              </span>
+            )}
+            {assignedSpecialist && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
+                {assignedSpecialist.name}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setShowAssignment((current) => !current);
+            }}
+            className="rounded-md border border-gray-200 px-2 py-0.5 text-[10px] text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#1b1e2b]"
+          >
+            {showAssignment ? "Hide" : "Assign"}
+          </button>
+        </div>
+
+        {showAssignment && (
+          <AssignmentSection
+            task={task}
+            availableProviders={availableProviders}
+            specialists={specialists}
+            stopCardInteraction={stopCardInteraction}
+            onPatchTask={onPatchTask}
+            onRefresh={onRefresh}
+          />
+        )}
+      </div>
 
       {/* Footer with status and actions */}
       <CardFooter
@@ -229,7 +289,7 @@ function AssignmentSection({
   onRefresh,
 }: AssignmentSectionProps) {
   return (
-    <div className="mt-3 space-y-2 border-t border-gray-200/50 pt-3 dark:border-[#262938]">
+    <div className="mt-2 space-y-2">
       {/* Row 1: Provider */}
       <div className="flex items-center gap-2">
         <span className="w-16 shrink-0 text-[10px] font-medium text-gray-500 dark:text-gray-400">Provider</span>
@@ -387,8 +447,11 @@ function CardFooter({
           </button>
         )}
         <button
-          onClick={onOpenDetail}
-          onClickCapture={stopCardInteraction}
+          onMouseDown={stopCardInteraction}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenDetail();
+          }}
           className="rounded-md bg-blue-100 px-2 py-1 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-300"
         >
           View detail
@@ -406,4 +469,3 @@ function CardFooter({
     </div>
   );
 }
-
