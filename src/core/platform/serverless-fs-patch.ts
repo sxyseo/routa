@@ -198,11 +198,10 @@ export function installServerlessFsPatch(): boolean {
   const origAppend = _originalAppendFileSync;
   patchFsMethod(
     "appendFileSync",
-    function patchedAppendFileSync(
-      p: fs.PathOrFileDescriptor,
-      data: string | Uint8Array,
-      options?: fs.WriteFileOptions,
-    ): void {
+    function patchedAppendFileSync(...args: unknown[]): void {
+      const p = args[0] as fs.PathOrFileDescriptor;
+      const data = args[1] as string | Uint8Array;
+      const options = args[2] as fs.WriteFileOptions | undefined;
       if (shouldRedirect(p)) {
         const newPath = rewritePath(p);
         ensureDirectory(path.dirname(newPath));
@@ -222,11 +221,10 @@ export function installServerlessFsPatch(): boolean {
   const origWrite = _originalWriteFileSync;
   patchFsMethod(
     "writeFileSync",
-    function patchedWriteFileSync(
-      p: fs.PathOrFileDescriptor,
-      data: string | NodeJS.ArrayBufferView,
-      options?: fs.WriteFileOptions,
-    ): void {
+    function patchedWriteFileSync(...args: unknown[]): void {
+      const p = args[0] as fs.PathOrFileDescriptor;
+      const data = args[1] as string | NodeJS.ArrayBufferView;
+      const options = args[2] as fs.WriteFileOptions | undefined;
       if (shouldRedirect(p)) {
         const newPath = rewritePath(p);
         ensureDirectory(path.dirname(newPath));
@@ -245,10 +243,9 @@ export function installServerlessFsPatch(): boolean {
   const origMkdir = _originalMkdirSync;
   patchFsMethod(
     "mkdirSync",
-    function patchedMkdirSync(
-      p: fs.PathLike,
-      options?: fs.MakeDirectoryOptions & { recursive?: boolean },
-    ): string | undefined {
+    function patchedMkdirSync(...args: unknown[]): string | undefined {
+      const p = args[0] as fs.PathLike;
+      const options = args[1] as (fs.MakeDirectoryOptions & { recursive?: boolean }) | undefined;
       if (typeof p === "string" && shouldRedirect(p)) {
         const newPath = rewritePath(p);
         try {
@@ -265,7 +262,8 @@ export function installServerlessFsPatch(): boolean {
   const origExists = _originalExistsSync;
   patchFsMethod(
     "existsSync",
-    function patchedExistsSync(p: fs.PathLike): boolean {
+    function patchedExistsSync(...args: unknown[]): boolean {
+      const p = args[0] as fs.PathLike;
       if (typeof p === "string" && shouldRedirect(p)) {
         const newPath = rewritePath(p);
         return origExists.call(fs, newPath) || memoryStore.has(newPath);

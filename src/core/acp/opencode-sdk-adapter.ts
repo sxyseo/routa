@@ -447,6 +447,7 @@ export class OpencodeSdkAdapter {
     let inputTokens = 0;
     let outputTokens = 0;
     let stopReason = "end_turn";
+    let fullContent = "";
 
     try {
       // Use synchronous prompt (blocks until agent finishes)

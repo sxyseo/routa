@@ -11,7 +11,7 @@ export interface CodebaseStore {
   add(codebase: Codebase): Promise<void>;
   get(codebaseId: string): Promise<Codebase | undefined>;
   listByWorkspace(workspaceId: string): Promise<Codebase[]>;
-  update(codebaseId: string, fields: { branch?: string; label?: string }): Promise<void>;
+  update(codebaseId: string, fields: { branch?: string; label?: string; repoPath?: string }): Promise<void>;
   remove(codebaseId: string): Promise<void>;
   getDefault(workspaceId: string): Promise<Codebase | undefined>;
   setDefault(workspaceId: string, codebaseId: string): Promise<void>;

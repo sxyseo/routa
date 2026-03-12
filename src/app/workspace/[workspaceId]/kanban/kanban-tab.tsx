@@ -755,6 +755,7 @@ User request: ${agentInput}`;
 
                 return (
                   <div className={`${activeTaskId ? "w-2/3" : "w-full"} h-full overflow-hidden`}>
+                    {acp && (
                     <ChatPanel
                       acp={acp}
                       activeSessionId={activeSessionId}
@@ -769,6 +770,7 @@ User request: ${agentInput}`;
                       activeWorkspaceId={workspaceId}
                       agentRole={taskAgentRole}
                     />
+                    )}
                   </div>
                 );
               })() : null}
