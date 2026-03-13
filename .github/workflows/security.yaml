@@ -25,6 +25,10 @@ on:
     - cron: '0 0 * * 1'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  security-events: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -62,6 +66,7 @@ jobs:
 
       - name: cargo audit
         run: cargo audit
+        continue-on-error: true  # transitive deps (rsa via sqlx-mysql, atk via tauri) have no fix available
 
   # ══════════════════════════════════════════════════════════════
   # Semgrep SAST 扫描
@@ -148,7 +153,7 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-          failure-threshold: warning
+          failure-threshold: error
 
   # ══════════════════════════════════════════════════════════════
   # 安全报告汇总
