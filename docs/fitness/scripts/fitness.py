@@ -38,8 +38,13 @@ def run_metric(metric: dict, dry_run: bool = False, verbose: bool = False) -> tu
         return name, True, f"[DRY-RUN] Would run: {command}"
 
     try:
+        # Use shell=False with proper argument splitting for security
+        # For simple commands, split on spaces; for complex ones, use shlex
+        import shlex
+        cmd_args = shlex.split(command)
+        
         result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=300
+            cmd_args, capture_output=True, text=True, timeout=300, shell=False
         )
         output = result.stdout + result.stderr
 
