@@ -103,6 +103,8 @@ apps/desktop/src-tauri/icons/ios/
 **/_next/static/*
 target/
 .playwright-mcp/*
+.playwright-cli/*
 *.png
 routa.db-shm
 dogfood-output
+.worktrees

@@ -58,7 +58,13 @@
       "Bash(git checkout:*)",
       "Bash(git rm /Users/phodal/ai/routa-js/src/client/contexts/auth-context.tsx /Users/phodal/ai/routa-js/src/app/login/page.tsx)",
       "Bash(gh pr create:*)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "Bash(git -C /Users/phodal/ai/routa-js status)",
+      "Bash(git -C /Users/phodal/ai/routa-js diff:*)",
+      "Bash(git -C /Users/phodal/ai/routa-js log:*)",
+      "Bash(git -C /Users/phodal/ai/routa-js push origin main)",
+      "Skill(agent-browser)",
+      "Skill(playwright-cli)"
     ]
   }
 }

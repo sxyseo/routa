@@ -4,6 +4,7 @@
   "private": true,
   "description": "Routa.js - Multi-Agent Coordination Platform for AI Development",
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "next dev",
     "build": "next build",
     "build:desktop:server": "ROUTA_DESKTOP_SERVER_BUILD=1 next build",
@@ -151,6 +152,7 @@
     "eslint-config-next": "16.1.6",
     "husky": "^9.1.7",
     "jsdom": "^28.1.0",
+    "patch-package": "^8.0.1",
     "postcss": "^8.4.49",
     "postgres": "^3.4.8",
     "tailwindcss": "^4.2.1",

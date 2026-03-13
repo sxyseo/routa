@@ -3,7 +3,7 @@
 # source-page: src/app/mcp-tools/page.tsx
 # url: http://127.0.0.1:3000/mcp-tools
 # title: Routa - Multi-Agent Coordinator
-# generated-at: 2026-03-11T01:03:33.997Z
+# generated-at: 2026-03-13T08:19:57.504Z
 # generator: playwright
 # playwright-version: 1.58.2
 - complementary:
@@ -13,7 +13,7 @@
   - text: Essential (7)
   - button "Task (1) ▼"
   - button "delegate_task"
-  - button "Agent (8) ▼"
+  - button "Agent (10) ▼"
   - button "fetch_webpage"
   - button "delegate_task_to_agent"
   - button "list_agents"
@@ -22,6 +22,8 @@
   - button "set_agent_name"
   - button "send_message_to_agent"
   - button "report_to_parent"
+  - button "update_card"
+  - button "move_card"
 - main:
   - heading "fetch_webpage" [level=2]
   - paragraph: Fetch the content of a web page or URL and return its text. Strips HTML tags. Use this to read GitHub issues, documentation, or any web resource.

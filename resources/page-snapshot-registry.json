@@ -90,7 +90,7 @@
     "snapshotFile": "src/app/settings/page.snapshot.yaml",
     "waitFor": {
       "strategy": "selector",
-      "value": "main",
+      "value": "h2",
       "timeoutMs": 15000,
       "settleMs": 1000
     }
