@@ -155,6 +155,25 @@ export class RoutaOrchestrator {
         });
       }
     });
+
+    // Listen for automatic lifecycle events emitted by LifecycleNotifier
+    this.system.eventBus.on("orchestrator-lifecycle-handler", (event) => {
+      const record = this.childAgents.get(event.agentId);
+      if (!record) return;
+
+      if (event.type === AgentEventType.AGENT_COMPLETED || event.type === AgentEventType.AGENT_IDLE) {
+        this.autoReportIfNeeded(event.agentId).catch((err) => {
+          console.error("[Orchestrator] Error handling lifecycle completion:", err);
+        });
+      } else if (event.type === AgentEventType.AGENT_FAILED || event.type === AgentEventType.AGENT_TIMEOUT) {
+        const error = new Error(
+          (event.data?.error as string) ?? (event.data?.reason as string) ?? "Agent lifecycle failure"
+        );
+        this.handleChildError(event.agentId, error).catch((err) => {
+          console.error("[Orchestrator] Error handling lifecycle failure:", err);
+        });
+      }
+    });
   }
 
   /**
