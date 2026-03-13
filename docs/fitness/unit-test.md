@@ -24,7 +24,10 @@
   - Skill discovery directory scanning
   - Branch name sanitization
   - Recursive copy skip rules (`.git`, `node_modules`)
-- [ ] Phase 2 started
+- [x] Phase 2 started
+- [x] Added store-layer unit tests for:
+  - `workspace_store.rs` (`save/get/list`, `update_title`, `update_status`, `list_by_status`, `ensure_default`, `delete`)
+  - `codebase_store.rs` (`save/get/find_by_repo_path`, `update`, `set_default`, `list_by_workspace`, `delete`)
 - [ ] Phase 3 started
 - [ ] Phase 4 started
 
@@ -37,3 +40,7 @@
   - Result: passed (7/7).
 - `cargo clippy -p routa-core --offline --all-targets -- -D warnings`:
   - Result: passed.
+- `cargo test -p routa-core --offline workspace_store::tests`:
+  - Result: passed (4/4).
+- `cargo test -p routa-core --offline codebase_store::tests`:
+  - Result: passed (4/4).

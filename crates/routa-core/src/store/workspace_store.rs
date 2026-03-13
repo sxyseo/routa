@@ -161,3 +161,93 @@ fn row_to_workspace(row: &Row<'_>) -> Workspace {
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms).unwrap_or_else(Utc::now),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    async fn setup() -> WorkspaceStore {
+        let db = Database::open_in_memory().expect("in-memory db should open");
+        WorkspaceStore::new(db)
+    }
+
+    #[tokio::test]
+    async fn save_get_and_list_roundtrip() {
+        let store = setup().await;
+        let mut metadata = HashMap::new();
+        metadata.insert("env".to_string(), "dev".to_string());
+        let ws = Workspace::new("ws-1".to_string(), "Workspace 1".to_string(), Some(metadata));
+
+        store.save(&ws).await.expect("save should succeed");
+
+        let loaded = store
+            .get("ws-1")
+            .await
+            .expect("get should succeed")
+            .expect("workspace should exist");
+        assert_eq!(loaded.id, "ws-1");
+        assert_eq!(loaded.title, "Workspace 1");
+        assert_eq!(loaded.status, WorkspaceStatus::Active);
+        assert_eq!(loaded.metadata.get("env").map(String::as_str), Some("dev"));
+
+        let all = store.list().await.expect("list should succeed");
+        assert_eq!(all.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn update_title_and_status_then_filter() {
+        let store = setup().await;
+        let ws = Workspace::new("ws-2".to_string(), "Old".to_string(), None);
+        store.save(&ws).await.expect("save should succeed");
+
+        store
+            .update_title("ws-2", "New Title")
+            .await
+            .expect("update_title should succeed");
+        store
+            .update_status("ws-2", "archived")
+            .await
+            .expect("update_status should succeed");
+
+        let archived = store
+            .list_by_status(WorkspaceStatus::Archived)
+            .await
+            .expect("list_by_status should succeed");
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].id, "ws-2");
+        assert_eq!(archived[0].title, "New Title");
+        assert_eq!(archived[0].status, WorkspaceStatus::Archived);
+    }
+
+    #[tokio::test]
+    async fn ensure_default_is_idempotent() {
+        let store = setup().await;
+
+        let first = store
+            .ensure_default()
+            .await
+            .expect("ensure_default should succeed");
+        let second = store
+            .ensure_default()
+            .await
+            .expect("ensure_default second call should succeed");
+
+        assert_eq!(first.id, "default");
+        assert_eq!(second.id, "default");
+        let all = store.list().await.expect("list should succeed");
+        assert_eq!(all.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn delete_removes_workspace() {
+        let store = setup().await;
+        let ws = Workspace::new("ws-3".to_string(), "To Delete".to_string(), None);
+        store.save(&ws).await.expect("save should succeed");
+
+        store.delete("ws-3").await.expect("delete should succeed");
+
+        let loaded = store.get("ws-3").await.expect("get should succeed");
+        assert!(loaded.is_none());
+    }
+}

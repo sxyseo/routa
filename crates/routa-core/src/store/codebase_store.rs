@@ -209,3 +209,142 @@ fn row_to_codebase(row: &Row<'_>) -> Codebase {
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms).unwrap_or_else(Utc::now),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use crate::models::workspace::Workspace;
+    use crate::store::WorkspaceStore;
+
+    async fn setup() -> CodebaseStore {
+        let db = Database::open_in_memory().expect("in-memory db should open");
+        let workspace_store = WorkspaceStore::new(db.clone());
+        workspace_store
+            .save(&Workspace::new(
+                "ws-codebase".to_string(),
+                "Codebase Workspace".to_string(),
+                None,
+            ))
+            .await
+            .expect("workspace should be created");
+        CodebaseStore::new(db)
+    }
+
+    fn make_codebase(
+        id: &str,
+        repo_path: &str,
+        branch: Option<&str>,
+        label: Option<&str>,
+        is_default: bool,
+    ) -> Codebase {
+        Codebase::new(
+            id.to_string(),
+            "ws-codebase".to_string(),
+            repo_path.to_string(),
+            branch.map(str::to_string),
+            label.map(str::to_string),
+            is_default,
+        )
+    }
+
+    #[tokio::test]
+    async fn save_get_and_find_by_repo_path_roundtrip() {
+        let store = setup().await;
+        let cb = make_codebase(
+            "cb-1",
+            "/tmp/repo-1",
+            Some("main"),
+            Some("Primary"),
+            false,
+        );
+        store.save(&cb).await.expect("save should succeed");
+
+        let loaded = store
+            .get("cb-1")
+            .await
+            .expect("get should succeed")
+            .expect("codebase should exist");
+        assert_eq!(loaded.repo_path, "/tmp/repo-1");
+        assert_eq!(loaded.branch.as_deref(), Some("main"));
+        assert_eq!(loaded.label.as_deref(), Some("Primary"));
+
+        let found = store
+            .find_by_repo_path("ws-codebase", "/tmp/repo-1")
+            .await
+            .expect("find_by_repo_path should succeed")
+            .expect("codebase should be found");
+        assert_eq!(found.id, "cb-1");
+    }
+
+    #[tokio::test]
+    async fn update_changes_selected_fields() {
+        let store = setup().await;
+        let cb = make_codebase("cb-2", "/tmp/repo-2", Some("main"), None, false);
+        store.save(&cb).await.expect("save should succeed");
+
+        store
+            .update(
+                "cb-2",
+                Some("develop"),
+                Some("Renamed"),
+                Some("/tmp/repo-2b"),
+            )
+            .await
+            .expect("update should succeed");
+
+        let loaded = store
+            .get("cb-2")
+            .await
+            .expect("get should succeed")
+            .expect("codebase should exist");
+        assert_eq!(loaded.branch.as_deref(), Some("develop"));
+        assert_eq!(loaded.label.as_deref(), Some("Renamed"));
+        assert_eq!(loaded.repo_path, "/tmp/repo-2b");
+    }
+
+    #[tokio::test]
+    async fn set_default_switches_default_codebase() {
+        let store = setup().await;
+        let first = make_codebase("cb-3", "/tmp/repo-3", None, None, true);
+        let second = make_codebase("cb-4", "/tmp/repo-4", None, None, false);
+        store.save(&first).await.expect("save first should succeed");
+        store.save(&second).await.expect("save second should succeed");
+
+        store
+            .set_default("ws-codebase", "cb-4")
+            .await
+            .expect("set_default should succeed");
+
+        let default = store
+            .get_default("ws-codebase")
+            .await
+            .expect("get_default should succeed")
+            .expect("default should exist");
+        assert_eq!(default.id, "cb-4");
+
+        let first_after = store
+            .get("cb-3")
+            .await
+            .expect("get first should succeed")
+            .expect("first should exist");
+        assert!(!first_after.is_default);
+    }
+
+    #[tokio::test]
+    async fn list_by_workspace_and_delete_work() {
+        let store = setup().await;
+        let cb = make_codebase("cb-5", "/tmp/repo-5", None, None, false);
+        store.save(&cb).await.expect("save should succeed");
+
+        let list = store
+            .list_by_workspace("ws-codebase")
+            .await
+            .expect("list_by_workspace should succeed");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "cb-5");
+
+        store.delete("cb-5").await.expect("delete should succeed");
+        assert!(store.get("cb-5").await.expect("get should succeed").is_none());
+    }
+}
