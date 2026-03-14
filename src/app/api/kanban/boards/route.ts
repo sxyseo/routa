@@ -16,11 +16,11 @@ export async function GET(request: NextRequest) {
   const workspace = await system.workspaceStore.get(workspaceId);
   const queue = getKanbanSessionQueue(system);
   return NextResponse.json({
-    boards: boards.map((board) => ({
+    boards: await Promise.all(boards.map(async (board) => ({
       ...board,
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
-      queue: queue.getBoardSnapshot(board.id),
-    })),
+      queue: await queue.getBoardSnapshot(board.id),
+    }))),
   });
 }
 

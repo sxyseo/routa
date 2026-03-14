@@ -33,6 +33,46 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+@keyframes homeFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -18px, 0) scale(1.04);
+  }
+}
+
+.home-float-slow {
+  animation: homeFloat 18s ease-in-out infinite;
+}
+
+.home-float-delay {
+  animation: homeFloat 24s ease-in-out infinite;
+  animation-delay: -8s;
+}
+
+@keyframes homeScan {
+  0% {
+    transform: translate3d(-120%, 0, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  88% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate3d(220%, 0, 0);
+    opacity: 0;
+  }
+}
+
+.home-scan {
+  animation: homeScan 6.5s linear infinite;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

@@ -860,7 +860,7 @@ export function TiptapInput({
         <EditorContent editor={editor} />
 
         {/* Bottom toolbar */}
-        <div className="flex items-center gap-2 mt-1.5 -mb-0.5">
+        <div className="mt-1.5 -mb-0.5 flex flex-wrap items-center gap-2">
           {/* Repo picker */}
           <RepoPicker
             value={repoSelection}

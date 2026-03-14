@@ -27,6 +27,8 @@ interface SpecialistSummary { id: string; name: string; description?: string; ro
 interface HomeInputProps {
   /** Initial workspace ID (optional) */
   workspaceId?: string;
+  /** Visual style variant */
+  variant?: "default" | "hero";
   /** Called when workspace selection changes */
   onWorkspaceChange?: (workspaceId: string | null) => void;
   onSessionCreated?: (sessionId: string) => void;
@@ -42,6 +44,7 @@ interface HomeInputProps {
 
 export function HomeInput({
   workspaceId: propWorkspaceId,
+  variant = "default",
   onWorkspaceChange,
   onSessionCreated,
   externalPendingSkill,
@@ -212,15 +215,28 @@ export function HomeInput({
   );
 
   const activeWorkspace = workspacesHook.workspaces.find((w) => w.id === selectedWorkspaceId);
+  const isHero = variant === "hero";
+  const shellClass = isHero
+    ? "relative rounded-[28px] border border-[#c7dafb]/80 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(236,244,255,0.98))] shadow-[0_34px_100px_-44px_rgba(37,99,235,0.28)] transition-colors group-focus-within:border-[#38bdf8] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(10,20,36,0.96),rgba(8,16,30,0.98))] dark:group-focus-within:border-[#38bdf8]/70"
+    : "relative rounded-2xl border border-gray-200 bg-white shadow-sm transition-colors group-focus-within:border-amber-400/50 dark:border-[#1c1f2e] dark:bg-[#12141c] dark:shadow-none dark:group-focus-within:border-amber-500/30";
+  const shellGlowClass = isHero
+    ? "absolute -inset-3 rounded-[34px] bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.24),transparent_42%),radial-gradient(circle_at_85%_30%,rgba(37,99,235,0.16),transparent_38%)] opacity-0 blur-2xl transition-opacity duration-500 pointer-events-none group-focus-within:opacity-100"
+    : "absolute -inset-1 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-amber-500/20 opacity-0 blur-xl transition-opacity duration-500 pointer-events-none group-focus-within:opacity-100";
+  const bottomBarClass = isHero
+    ? "flex flex-wrap items-center gap-1.5 overflow-visible border-t border-[#d8e6fb] bg-[#eef6ff]/82 px-3 py-2 backdrop-blur dark:border-white/8 dark:bg-[#0f172a]/88"
+    : "flex flex-wrap items-center gap-1.5 overflow-visible border-t border-gray-100 px-3 py-2 dark:border-[#1c1f2e]";
+  const skillPillClass = isHero
+    ? "group shrink-0 flex w-[160px] flex-col gap-0.5 rounded-xl border border-[#d8e6fb]/95 bg-[#f8fbff]/94 px-3 py-2 text-left transition-all hover:-translate-y-0.5 hover:border-[#38bdf8] hover:bg-white dark:border-white/8 dark:bg-[#0c1728] dark:hover:border-sky-700/40 dark:hover:bg-[#0f1d30]"
+    : "group shrink-0 flex w-[140px] flex-col gap-0.5 rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-2 text-left transition-all hover:border-amber-300/60 hover:bg-white dark:border-[#1c1f2e] dark:bg-[#12141c] dark:hover:border-amber-700/40 dark:hover:bg-[#151720]";
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className={`w-full ${isHero ? "max-w-none" : "mx-auto max-w-2xl"}`}>
       {/* Input container with ambient glow on focus */}
       <div className="group relative" id="home-input-container">
         {/* Glow effect */}
-        <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-amber-500/20 opacity-0 group-focus-within:opacity-100 blur-xl transition-opacity duration-500 pointer-events-none" />
+        <div className={shellGlowClass} />
 
-        <div className="relative bg-white dark:bg-[#12141c] rounded-2xl border border-gray-200 dark:border-[#1c1f2e] shadow-sm dark:shadow-none transition-colors group-focus-within:border-amber-400/50 dark:group-focus-within:border-amber-500/30">
+        <div className={shellClass}>
           {/* TiptapInput */}
           <TiptapInput
             onSend={handleSend}
@@ -241,7 +257,7 @@ export function HomeInput({
           />
 
           {/* ─── Bottom Control Bar ─────────────────────────────────── */}
-          <div className="flex items-center gap-1.5 px-3 py-2 border-t border-gray-100 dark:border-[#1c1f2e] overflow-visible">
+          <div className={bottomBarClass}>
             {selectedSpecialistId ? (
               /* ── Specialist mode: show specialist pill as primary selector ── */
               <div className="flex items-center gap-1.5">
@@ -444,7 +460,7 @@ export function HomeInput({
             )}
 
             {/* Spacer */}
-            <div className="flex-1" />
+            <div className="hidden flex-1 sm:block" />
 
             {/* Keyboard hint */}
             <span className="hidden sm:inline text-[11px] text-gray-400 dark:text-gray-500">
@@ -502,13 +518,19 @@ export function HomeInput({
                 key={skill.name}
                 type="button"
                 onClick={() => setPendingSkill(skill.name)}
-                className="group shrink-0 flex flex-col gap-0.5 px-2.5 py-2 rounded-lg text-left bg-gray-50 dark:bg-[#12141c] border border-gray-100 dark:border-[#1c1f2e] hover:border-amber-300/60 dark:hover:border-amber-700/40 hover:bg-white dark:hover:bg-[#151720] transition-all w-[140px]"
+                className={skillPillClass}
               >
-                <span className="text-[11px] font-mono font-medium text-gray-500 dark:text-gray-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">
+                <span className={`text-[11px] font-mono font-medium transition-colors truncate ${
+                  isHero
+                    ? "text-slate-500 group-hover:text-sky-600 dark:text-slate-400 dark:group-hover:text-sky-300"
+                    : "text-gray-500 group-hover:text-amber-600 dark:text-gray-400 dark:group-hover:text-amber-400"
+                }`}>
                   /{skill.name}
                 </span>
                 {skill.description && (
-                  <span className="text-[10px] text-gray-400 dark:text-gray-600 leading-snug line-clamp-1">
+                  <span className={`text-[10px] leading-snug line-clamp-1 ${
+                    isHero ? "text-slate-400 dark:text-slate-500" : "text-gray-400 dark:text-gray-600"
+                  }`}>
                     {skill.description}
                   </span>
                 )}

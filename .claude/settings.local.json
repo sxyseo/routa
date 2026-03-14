@@ -56,7 +56,7 @@
       "Bash(git rev-parse:*)",
       "Bash(grep:*)",
       "Bash(git checkout:*)",
-      "Bash(git rm /Users/phodal/ai/routa-js/src/client/contexts/auth-context.tsx /Users/phodal/ai/routa-js/src/app/login/page.tsx)",
+      "Bash(git rm *.tsx)",
       "Bash(gh pr create:*)",
       "Bash(npm run lint)",
       "Bash(git -C /Users/phodal/ai/routa-js status)",
@@ -67,7 +67,18 @@
       "Skill(playwright-cli)",
       "Bash(git rebase:*)",
       "Bash(gh run view:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(npm run api:*)",
+      "Skill(ralph-loop:ralph-loop)",
+      "Bash(npm run api:test:nextjs)",
+      "Bash(lsof:*)",
+      "Bash(npm run api:check)",
+      "Bash(npm run api:test:schema)",
+      "Bash(xxd:*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(ps:*)",
+      "Bash(npm run api:test:rust)",
+      "Bash(cat:*)"
     ]
   }
 }

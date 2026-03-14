@@ -59,7 +59,7 @@ describe("KanbanSessionQueue", () => {
     expect(second).toEqual({ queued: true });
     expect(startFirst).toHaveBeenCalledTimes(1);
     expect(startSecond).not.toHaveBeenCalled();
-    expect(queue.getBoardSnapshot("board-1")).toEqual({
+    await expect(queue.getBoardSnapshot("board-1")).resolves.toEqual({
       boardId: "board-1",
       runningCount: 1,
       queuedCount: 1,
@@ -78,7 +78,7 @@ describe("KanbanSessionQueue", () => {
       expect(startSecond).toHaveBeenCalledTimes(1);
     });
 
-    expect(queue.getBoardSnapshot("board-1")).toEqual({
+    await expect(queue.getBoardSnapshot("board-1")).resolves.toEqual({
       boardId: "board-1",
       runningCount: 1,
       queuedCount: 0,
@@ -145,14 +145,75 @@ describe("KanbanSessionQueue", () => {
       data: { sessionId: "session-1", success: true },
       timestamp: new Date(),
     });
-    await vi.waitFor(() => {
-      expect(queue.getBoardSnapshot("board-1").queuedCount).toBe(0);
+    await vi.waitFor(async () => {
+      await expect(queue.getBoardSnapshot("board-1")).resolves.toMatchObject({ queuedCount: 0 });
     });
 
     expect(startSecond).not.toHaveBeenCalled();
-    expect(queue.getBoardSnapshot("board-1")).toEqual({
+    await expect(queue.getBoardSnapshot("board-1")).resolves.toEqual({
       boardId: "board-1",
       runningCount: 0,
+      queuedCount: 0,
+      queuedCardIds: [],
+      queuedPositions: {},
+    });
+
+    queue.stop();
+  });
+
+  it("drops queued cards that already gained a trigger session before snapshotting", async () => {
+    await taskStore.save(createTask({
+      id: "task-1",
+      title: "First task",
+      objective: "First task",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "backlog",
+      status: TaskStatus.PENDING,
+      triggerSessionId: "session-1",
+    }));
+    await taskStore.save(createTask({
+      id: "task-2",
+      title: "Second task",
+      objective: "Second task",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "backlog",
+      status: TaskStatus.PENDING,
+    }));
+
+    const startFirst = vi.fn().mockResolvedValue({ sessionId: "session-existing" });
+    const startSecond = vi.fn().mockResolvedValue({ sessionId: "session-2" });
+    const queue = new KanbanSessionQueue(eventBus, taskStore, async () => 1);
+    queue.start();
+
+    await queue.enqueue({
+      cardId: "task-1",
+      cardTitle: "First task",
+      boardId: "board-1",
+      workspaceId: "default",
+      columnId: "backlog",
+      start: startFirst,
+    });
+    await queue.enqueue({
+      cardId: "task-2",
+      cardTitle: "Second task",
+      boardId: "board-1",
+      workspaceId: "default",
+      columnId: "backlog",
+      start: startSecond,
+    });
+
+    const queuedTask = await taskStore.get("task-2");
+    if (!queuedTask) {
+      throw new Error("Expected task-2");
+    }
+    queuedTask.triggerSessionId = "session-2";
+    await taskStore.save(queuedTask);
+
+    await expect(queue.getBoardSnapshot("board-1")).resolves.toEqual({
+      boardId: "board-1",
+      runningCount: 1,
       queuedCount: 0,
       queuedCardIds: [],
       queuedPositions: {},

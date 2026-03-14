@@ -188,6 +188,12 @@ export function getKanbanSessionQueue(system: RoutaSystem): KanbanSessionQueue {
   const g = globalThis as Record<string, unknown>;
   let queue = g[QUEUE_KEY] as KanbanSessionQueue | undefined;
 
+  if (queue && !queue.isCompatible(system.eventBus, system.taskStore)) {
+    queue.stop();
+    delete g[QUEUE_KEY];
+    queue = undefined;
+  }
+
   if (!queue) {
     queue = new KanbanSessionQueue(
       system.eventBus,

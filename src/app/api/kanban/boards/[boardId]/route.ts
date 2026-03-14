@@ -34,7 +34,7 @@ export async function GET(
     board: {
       ...board,
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
-      queue: queue.getBoardSnapshot(board.id),
+      queue: await queue.getBoardSnapshot(board.id),
     },
   });
 }
@@ -93,7 +93,7 @@ export async function PATCH(
     board: {
       ...updated,
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, boardId),
-      queue: queue.getBoardSnapshot(boardId),
+      queue: await queue.getBoardSnapshot(boardId),
     },
   });
 }

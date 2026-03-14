@@ -36,6 +36,10 @@ export class KanbanSessionQueue {
     private getConcurrencyLimit: (workspaceId: string, boardId: string) => Promise<number>,
   ) {}
 
+  isCompatible(eventBus: EventBus, taskStore: TaskStore): boolean {
+    return this.eventBus === eventBus && this.taskStore === taskStore;
+  }
+
   start(): void {
     if (this.started) {
       return;
@@ -61,6 +65,8 @@ export class KanbanSessionQueue {
   }
 
   async enqueue(job: KanbanSessionQueueJob): Promise<{ sessionId?: string; queued: boolean; error?: string }> {
+    await this.reconcileQueuedEntries(job.boardId);
+
     const existing = this.jobsByCardId.get(job.cardId);
     if (existing?.status === "running") {
       return { sessionId: existing.sessionId, queued: false };
@@ -86,7 +92,9 @@ export class KanbanSessionQueue {
     return this.startEntry(entry);
   }
 
-  getBoardSnapshot(boardId: string): KanbanBoardQueueSnapshot {
+  async getBoardSnapshot(boardId: string): Promise<KanbanBoardQueueSnapshot> {
+    await this.reconcileQueuedEntries(boardId);
+
     const queuedEntries = this.queuedByBoard.get(boardId) ?? [];
     const queuedPositions = Object.fromEntries(
       queuedEntries.map((entry, index) => [entry.cardId, index + 1]),
@@ -99,6 +107,42 @@ export class KanbanSessionQueue {
       queuedCardIds: queuedEntries.map((entry) => entry.cardId),
       queuedPositions,
     };
+  }
+
+  private async reconcileQueuedEntries(boardId: string): Promise<void> {
+    const queuedEntries = this.queuedByBoard.get(boardId);
+    if (!queuedEntries || queuedEntries.length === 0) {
+      return;
+    }
+
+    const nextEntries: QueueEntry[] = [];
+
+    for (const entry of queuedEntries) {
+      const currentEntry = this.jobsByCardId.get(entry.cardId);
+      if (currentEntry !== entry || currentEntry.status !== "queued") {
+        continue;
+      }
+
+      const task = await this.taskStore.get(entry.cardId);
+      const isStale = !task
+        || task.boardId !== boardId
+        || Boolean(task.triggerSessionId)
+        || (entry.columnId !== undefined && task.columnId !== entry.columnId);
+
+      if (isStale) {
+        this.jobsByCardId.delete(entry.cardId);
+        continue;
+      }
+
+      nextEntries.push(entry);
+    }
+
+    if (nextEntries.length === 0) {
+      this.queuedByBoard.delete(boardId);
+      return;
+    }
+
+    this.queuedByBoard.set(boardId, nextEntries);
   }
 
   private countRunning(boardId: string): number {
@@ -169,6 +213,8 @@ export class KanbanSessionQueue {
   }
 
   private async drainQueue(boardId: string, workspaceId: string): Promise<void> {
+    await this.reconcileQueuedEntries(boardId);
+
     const limit = await this.getConcurrencyLimit(workspaceId, boardId);
     let runningCount = this.countRunning(boardId);
     if (runningCount >= limit) return;
