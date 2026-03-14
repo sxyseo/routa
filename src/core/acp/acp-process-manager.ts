@@ -575,7 +575,7 @@ export class AcpProcessManager {
         console.log(`[AcpProcessManager] Recreating Claude Code SDK adapter for session: ${sessionId}`);
 
         const adapter = new ClaudeCodeSdkAdapter(cwd, onNotification, {
-            allowedNativeTools: storedSession?.allowedNativeTools,
+            allowedNativeTools: sessionRecord?.allowedNativeTools,
         });
         await adapter.connect();
         // Use existing session ID instead of creating new one

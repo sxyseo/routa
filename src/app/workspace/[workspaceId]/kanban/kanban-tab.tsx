@@ -9,7 +9,7 @@ import { KanbanCreateModal, EMPTY_DRAFT, type DraftIssue } from "../kanban-creat
 import { KanbanCard } from "./kanban-card";
 import { KanbanSettingsModal, type ColumnAutomationConfig } from "./kanban-settings-modal";
 import { KanbanCardDetail } from "./kanban-card-detail";
-import { buildKanbanAgentPrompt, scheduleKanbanRefreshBurst } from "./kanban-agent-input";
+import { buildKanbanTaskAgentPrompt, scheduleKanbanRefreshBurst } from "./kanban-agent-input";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
 
@@ -117,7 +117,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
 
     setAgentLoading(true);
     try {
-      const systemPrompt = buildKanbanAgentPrompt({
+      const systemPrompt = buildKanbanTaskAgentPrompt({
         workspaceId,
         boardId: selectedBoardId ?? defaultBoardId ?? "default",
         repoPath: defaultCodebase?.repoPath,
@@ -775,7 +775,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                   onChange={(event) => acp?.setProvider(event.target.value)}
                   disabled={!acp?.connected || availableProviders.length === 0}
                   className="w-32 shrink-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-[#12141c] dark:text-gray-200"
-                  aria-label="Kanban agent provider"
+                  aria-label="KanbanTask Agent provider"
                   data-testid="kanban-agent-provider"
                 >
                   {availableProviders.map((provider) => (
@@ -811,7 +811,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                   <button
                     onClick={() => openAgentPanel(agentSessionId)}
                     className="shrink-0 text-xs text-amber-600 hover:underline dark:text-amber-400"
-                    title="Open the Kanban agent panel"
+                    title="Open the KanbanTask Agent panel"
                   >
                     View
                   </button>
@@ -943,7 +943,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
           >
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#191c28]">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Kanban ACP Agent</div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">KanbanTask Agent</div>
                 <div className="truncate text-[11px] text-gray-400 dark:text-gray-500">
                   {agentSession?.provider ?? acp.selectedProvider} · {agentSessionId.slice(0, 12)}...
                 </div>

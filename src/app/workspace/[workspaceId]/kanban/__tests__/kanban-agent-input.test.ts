@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AGENT_REFRESH_BURST_DELAYS_MS,
-  buildKanbanAgentPrompt,
+  buildKanbanTaskAgentPrompt,
   scheduleKanbanRefreshBurst,
 } from "../kanban-agent-input";
 
-describe("buildKanbanAgentPrompt", () => {
+describe("buildKanbanTaskAgentPrompt", () => {
   it("forces the Kanban input flow to stay in backlog planning mode", () => {
-    const prompt = buildKanbanAgentPrompt({
+    const prompt = buildKanbanTaskAgentPrompt({
       workspaceId: "default",
       boardId: "board-1",
       repoPath: "/tmp/repo",

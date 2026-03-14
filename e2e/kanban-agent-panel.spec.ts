@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 const BASE_URL = "http://127.0.0.1:3000";
 const PRIMARY_REPO_PATH = process.env.ROUTA_E2E_REPO_PATH || process.cwd();
 
-test.describe("Kanban ACP agent panel", () => {
+test.describe("KanbanTask Agent panel", () => {
   test.use({ baseURL: BASE_URL });
 
   test("opens the right-side chat panel and creates a full-tool ACP session", async ({
@@ -11,7 +11,7 @@ test.describe("Kanban ACP agent panel", () => {
     request,
   }) => {
     const testId = Date.now().toString();
-    const workspaceTitle = `Kanban Agent Panel ${testId}`;
+    const workspaceTitle = `KanbanTask Agent Panel ${testId}`;
     const stubSessionId = `stub-session-${testId}`;
     const createdSessions: Array<{ provider?: string; toolMode?: string }> = [];
 
@@ -155,12 +155,12 @@ test.describe("Kanban ACP agent panel", () => {
       await providerSelect.selectOption("codex");
 
       const input = page.getByPlaceholder("Describe work to plan in Kanban...");
-      await input.fill("Split the Kanban ACP provider agent work into two backlog cards.");
+      await input.fill("Split the KanbanTask Agent work into two backlog cards.");
       await page.getByRole("button", { name: "Send" }).click();
 
       const panel = page.getByTestId("kanban-agent-panel");
       await expect(panel).toBeVisible({ timeout: 15_000 });
-      await expect(panel).toContainText("Kanban ACP Agent");
+      await expect(panel).toContainText("KanbanTask Agent");
       await expect(panel).toContainText("codex");
       await page.screenshot({
         path: "test-results/kanban-agent-panel.png",

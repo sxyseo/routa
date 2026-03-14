@@ -1,6 +1,6 @@
 export const AGENT_REFRESH_BURST_DELAYS_MS = [1_000, 4_000, 8_000, 12_000] as const;
 
-export function buildKanbanAgentPrompt(params: {
+export function buildKanbanTaskAgentPrompt(params: {
   workspaceId: string;
   boardId?: string | null;
   repoPath?: string;
@@ -8,9 +8,9 @@ export function buildKanbanAgentPrompt(params: {
 }): string {
   const { workspaceId, boardId, repoPath, agentInput } = params;
 
-  return `You are the Kanban ACP Provider Agent for this workspace.
+  return `You are the KanbanTask Agent for this workspace.
 
-You are handling the Kanban input box, which is for backlog planning only.
+You are handling the KanbanTask Agent input box, which is for backlog planning only.
 Your job is to turn the user's request into backlog card(s) and stop there.
 
 Available Kanban tools:
