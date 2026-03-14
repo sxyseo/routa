@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   }
 
   const result = await system.tools.listAgents(workspaceId!);
-  return NextResponse.json(result.data, { headers });
+  return NextResponse.json({ agents: result.data }, { headers });
 }
 
 export async function POST(request: NextRequest) {

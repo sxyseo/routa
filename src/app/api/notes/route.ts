@@ -189,13 +189,16 @@ export async function DELETE(request: NextRequest) {
 }
 
 function serializeNote(note: Note) {
+  const metadata = Object.fromEntries(
+    Object.entries(note.metadata).filter(([, v]) => v != null)
+  );
   return {
     id: note.id,
     title: note.title,
     content: note.content,
     workspaceId: note.workspaceId,
     sessionId: note.sessionId,
-    metadata: note.metadata,
+    metadata,
     createdAt: note.createdAt instanceof Date ? note.createdAt.toISOString() : note.createdAt,
     updatedAt: note.updatedAt instanceof Date ? note.updatedAt.toISOString() : note.updatedAt,
   };

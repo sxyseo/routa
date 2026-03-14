@@ -133,8 +133,13 @@ export class AgentTools {
       id: a.id,
       name: a.name,
       role: a.role,
+      modelTier: a.modelTier,
+      workspaceId: a.workspaceId,
       status: a.status,
       parentId: a.parentId,
+      metadata: a.metadata ?? {},
+      createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
+      updatedAt: a.updatedAt instanceof Date ? a.updatedAt.toISOString() : a.updatedAt,
     }));
     return successResult(summary);
   }
