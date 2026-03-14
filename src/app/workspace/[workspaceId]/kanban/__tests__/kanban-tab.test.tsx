@@ -86,3 +86,43 @@ describe("KanbanTab delete flow", () => {
     expect(secondDeleteButton.textContent).toBe("Delete");
   });
 });
+
+describe("KanbanTab lane automation labels", () => {
+  it("shows provider, role, and specialist on automated lanes", () => {
+    const automatedBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [
+        {
+          id: "backlog",
+          name: "Backlog",
+          position: 0,
+          stage: "backlog",
+          automation: {
+            enabled: true,
+            providerId: "claude",
+            role: "GATE",
+            specialistId: "verify",
+            specialistName: "Verifier",
+            transitionType: "exit",
+          },
+        },
+      ],
+    };
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[automatedBoard]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[{ id: "claude", name: "Claude Code" }]}
+        specialists={[{ id: "verify", name: "Verifier", role: "GATE" }]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const laneAutomation = screen.getByTestId("kanban-column-automation-backlog");
+    expect(laneAutomation.textContent).toBe("Claude Code · GATE · Verifier ->");
+  });
+});

@@ -81,6 +81,36 @@ function QueueStatusBadge({
   );
 }
 
+function resolveAutomationProviderName(
+  automation: ColumnAutomationConfig | undefined,
+  providers: AcpProviderInfo[],
+): string {
+  if (!automation?.providerId) return "Default";
+  return providers.find((provider) => provider.id === automation.providerId)?.name ?? automation.providerId;
+}
+
+function resolveAutomationSpecialistName(
+  automation: ColumnAutomationConfig | undefined,
+  specialists: SpecialistOption[],
+): string | null {
+  if (!automation?.specialistId && !automation?.specialistName) return null;
+  return specialists.find((specialist) => specialist.id === automation.specialistId)?.name ?? automation.specialistName ?? null;
+}
+
+function formatLaneAutomationSummary(
+  automation: ColumnAutomationConfig | undefined,
+  providers: AcpProviderInfo[],
+  specialists: SpecialistOption[],
+): string {
+  const provider = resolveAutomationProviderName(automation, providers);
+  const role = automation?.role ?? "DEVELOPER";
+  const specialist = resolveAutomationSpecialistName(automation, specialists);
+  const core = [provider, role, specialist].filter(Boolean).join(" · ");
+  if (automation?.transitionType === "exit") return `${core} ->`;
+  if (automation?.transitionType === "both") return `-> ${core} ->`;
+  return `-> ${core}`;
+}
+
 export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, specialists, codebases, onRefresh, acp, onAgentPrompt }: KanbanTabProps) {
   const defaultBoardId = useMemo(
     () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
@@ -935,6 +965,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                 .filter((column) => visibleColumns.includes(column.id))
                 .map((column) => {
                   const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
+                  const laneAutomation = columnAutomation[column.id] ?? column.automation;
                   return (
                     <div
                       key={column.id}
@@ -947,11 +978,20 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                       className="flex h-full min-h-26.25 w-[18rem] shrink-0 flex-col rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
                       data-testid="kanban-column"
                     >
-                      <div className="mb-3 flex items-center justify-between">
+                      <div className="mb-3 space-y-2">
                         <div>
                           <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{column.name}</div>
                           <div className="text-[11px] text-gray-400 dark:text-gray-500">{columnTasks.length} cards</div>
                         </div>
+                        {laneAutomation?.enabled && (
+                          <div
+                            className="truncate text-[10px] leading-4 text-gray-500 dark:text-gray-400"
+                            data-testid={`kanban-column-automation-${column.id}`}
+                            title={formatLaneAutomationSummary(laneAutomation, providers, specialists)}
+                          >
+                            {formatLaneAutomationSummary(laneAutomation, providers, specialists)}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
