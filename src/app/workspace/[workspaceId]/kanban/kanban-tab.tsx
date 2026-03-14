@@ -618,6 +618,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   }
 
   function confirmDeleteTask(task: TaskInfo) {
+    setIsDeleting(false);
     setDeleteConfirmTask(task);
   }
 
@@ -639,7 +640,8 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
       onRefresh();
     } catch (error) {
       console.error("Failed to delete task:", error);
-      // Show error in the modal instead of alert
+      // Keep the modal open so the user can retry.
+    } finally {
       setIsDeleting(false);
     }
   }
