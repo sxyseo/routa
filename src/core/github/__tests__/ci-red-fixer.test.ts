@@ -39,19 +39,19 @@ describe("ci-red-fixer helpers", () => {
   it("maps failed Defense jobs to validation commands", () => {
     const failedJobs = pickFailedJobs([
       normalizeJobSummary({ id: 1, name: "Gate: Lint", conclusion: "failure" }),
-      normalizeJobSummary({ id: 2, name: "Gate: TS Tests", conclusion: "failure" }),
+      normalizeJobSummary({ id: 2, name: "Security: Dependency Scan", conclusion: "failure" }),
       normalizeJobSummary({ id: 3, name: "Fitness Report", conclusion: "success" }),
     ]);
 
     expect(failedJobs.map((job) => job.name)).toEqual([
       "Gate: Lint",
-      "Gate: TS Tests",
+      "Security: Dependency Scan",
     ]);
 
     expect(collectValidationCommands(failedJobs.map((job) => job.name))).toEqual([
       "npm run lint",
       "cargo clippy --workspace -- -D warnings",
-      "npm run test:run",
+      "npm audit --audit-level=critical",
     ]);
   });
 

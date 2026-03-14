@@ -59,7 +59,7 @@ metrics:
 
 # Security 证据
 
-> 本文件记录安全扫描的验证状态，作为 security 维度的证据来源。
+> 本文件记录安全扫描的验证状态，作为 Defense 下 security 子维度的证据来源。
 >
 > **防御理念**: 通过多层扫描工具实现深度防御，封锁 AI 的乱写空间。
 
@@ -117,7 +117,7 @@ hadolint Dockerfile
 
 ## CI 集成
 
-安全扫描已集成到 `.github/workflows/security.yaml`。
+安全扫描已集成到 `.github/workflows/defense.yaml`，不再使用独立的 `Security` workflow。
 
 ## AI Agent 特有规则
 
@@ -135,7 +135,6 @@ hadolint Dockerfile
 
 | 文件 | 用途 |
 |------|------|
-| `.github/workflows/security.yaml` | 安全扫描 CI |
+| `.github/workflows/defense.yaml` | Defense CI（含 security 维度） |
 | `.semgrep/` | 自定义 Semgrep 规则（可选） |
 | `docs/fitness/README.md` | Fitness 规则手册 |
-

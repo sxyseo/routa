@@ -44,6 +44,16 @@ const DEFENSE_JOB_COMMANDS: Record<string, string[]> = {
     "npm run api:schema:validate",
     "npm run api:check",
   ],
+  "Security: Dependency Scan": [
+    "npm audit --audit-level=critical",
+  ],
+  "Security: Semgrep SAST": [
+    "semgrep --config=p/security-audit --config=p/owasp-top-ten --severity=ERROR --error .",
+  ],
+  "Security: Trivy Scan": [
+    "trivy fs --severity HIGH,CRITICAL --exit-code 0 .",
+  ],
+  "Security: Hadolint": ["hadolint Dockerfile"],
 };
 
 export function normalizeRunSummary(run: {
