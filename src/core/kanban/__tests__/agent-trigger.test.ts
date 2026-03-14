@@ -17,6 +17,8 @@ describe("buildTaskPrompt", () => {
 
     expect(prompt).toContain("Treat backlog as planning and refinement, not implementation");
     expect(prompt).toContain("Do not move the card out of backlog from this planning step");
+    expect(prompt).toContain("Do NOT create or sync GitHub issues during backlog planning.");
+    expect(prompt).toContain("Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep in backlog planning");
     expect(prompt).toContain("decompose_tasks");
     expect(prompt).not.toContain("Start implementation work immediately");
   });

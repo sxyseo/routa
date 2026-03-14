@@ -18,6 +18,9 @@ describe("buildKanbanAgentPrompt", () => {
     expect(prompt).toContain("This flow is backlog planning, not execution.");
     expect(prompt).toContain("Do not create follow-up agents.");
     expect(prompt).toContain("Do not move cards out of backlog.");
+    expect(prompt).toContain("Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep");
+    expect(prompt).toContain("Do not create or sync GitHub issues in this flow.");
+    expect(prompt).toContain("Do not use GitHub CLI commands such as gh issue create.");
     expect(prompt).toContain("If the request is a single task, create exactly one backlog card and keep the title close to the user's wording.");
     expect(prompt).toContain("Only avoid creating a new card when an exact duplicate already exists");
     expect(prompt).toContain("User request: echo hello world");

@@ -12,6 +12,10 @@ import { createTask, Task, TaskStatus, TaskPriority } from "@/core/models/task";
 import { v4 as uuidv4 } from "uuid";
 import { ensureDefaultBoard } from "@/core/kanban/boards";
 import { createGitHubIssue, parseGitHubRepo } from "@/core/kanban/github-issues";
+import {
+  normalizeTaskCreationSource,
+  shouldCreateGitHubIssueOnTaskCreate,
+} from "@/core/kanban/task-creation-policy";
 import { columnIdToTaskStatus } from "@/core/models/kanban";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
 
@@ -101,6 +105,7 @@ export async function POST(request: NextRequest) {
     assignedSpecialistId,
     assignedSpecialistName,
     createGitHubIssue: shouldCreateGitHubIssue,
+    creationSource,
     repoPath,
     codebaseIds,
   } = body;
@@ -127,7 +132,11 @@ export async function POST(request: NextRequest) {
   const normalizedAssignedRole = typeof assignedRole === "string" ? assignedRole : undefined;
   const normalizedAssignedSpecialistId = typeof assignedSpecialistId === "string" ? assignedSpecialistId : undefined;
   const normalizedAssignedSpecialistName = typeof assignedSpecialistName === "string" ? assignedSpecialistName : undefined;
-  const normalizedCreateGitHubIssue = shouldCreateGitHubIssue === true;
+  const normalizedCreationSource = normalizeTaskCreationSource(creationSource);
+  const normalizedCreateGitHubIssue = shouldCreateGitHubIssueOnTaskCreate({
+    createGitHubIssue: shouldCreateGitHubIssue === true,
+    creationSource: normalizedCreationSource,
+  });
   const normalizedRepoPath = typeof repoPath === "string" ? repoPath : undefined;
   const requestedCodebaseIds = Array.isArray(codebaseIds)
     ? codebaseIds.filter((id): id is string => typeof id === "string")

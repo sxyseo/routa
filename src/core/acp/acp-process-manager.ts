@@ -328,10 +328,16 @@ export class AcpProcessManager {
         modeId?: string,
         role?: string,
         extraEnv?: Record<string, string>,
+        allowedNativeTools?: string[],
     ): Promise<string> {
         // In serverless environments, use Claude Code SDK adapter
         if (shouldUseClaudeCodeSdkAdapter()) {
-            return this.createClaudeCodeSdkSession(sessionId, cwd, onNotification);
+            return this.createClaudeCodeSdkSession(
+                sessionId,
+                cwd,
+                onNotification,
+                { allowedNativeTools },
+            );
         }
 
         // ROUTA agents need bypassPermissions because they use MCP tools
@@ -341,7 +347,7 @@ export class AcpProcessManager {
         const permissionMode = role === "ROUTA"
             ? "bypassPermissions"
             : mapClaudeModeToPermissionMode(modeId);
-        const config = buildClaudeCodeConfig(cwd, mcpConfigs, permissionMode, extraEnv);
+        const config = buildClaudeCodeConfig(cwd, mcpConfigs, permissionMode, extraEnv, allowedNativeTools);
         const proc = new ClaudeCodeProcess(config, onNotification);
 
         await proc.start();
@@ -568,7 +574,9 @@ export class AcpProcessManager {
         // Session exists but adapter not in memory - recreate it
         console.log(`[AcpProcessManager] Recreating Claude Code SDK adapter for session: ${sessionId}`);
 
-        const adapter = new ClaudeCodeSdkAdapter(cwd, onNotification);
+        const adapter = new ClaudeCodeSdkAdapter(cwd, onNotification, {
+            allowedNativeTools: storedSession?.allowedNativeTools,
+        });
         await adapter.connect();
         // Use existing session ID instead of creating new one
         const acpSessionId = await adapter.createSession(`Routa Session ${sessionId}`);

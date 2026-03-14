@@ -134,6 +134,8 @@ export class BrowserAcpClient {
     mcpServers?: Array<{ name: string; url?: string }>;
     workspaceId?: string;
     toolMode?: "essential" | "full";
+    /** Optional allowlist for provider-native tools such as Bash/Read/Edit. */
+    allowedNativeTools?: string[];
     model?: string;
     idempotencyKey?: string;
     specialistId?: string;
@@ -161,6 +163,7 @@ export class BrowserAcpClient {
       mcpServers: params.mcpServers ?? [],
       workspaceId: params.workspaceId,
       toolMode: params.toolMode,
+      allowedNativeTools: params.allowedNativeTools,
       model: params.model,
       idempotencyKey: params.idempotencyKey,
       specialistId: params.specialistId,

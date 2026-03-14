@@ -1016,6 +1016,7 @@ export function buildClaudeCodeConfig(
     mcpConfigs?: string[],
     permissionMode?: string,
     extraEnv?: Record<string, string>,
+    allowedTools?: string[],
 ): ClaudeCodeProcessConfig {
     const preset: AcpAgentPreset = {
         id: "claude",
@@ -1037,7 +1038,7 @@ export function buildClaudeCodeConfig(
         permissionMode: permissionMode ?? "bypassPermissions",
         // Enable Skill tool so Claude Code CLI can discover and use skills
         // from .claude/skills/ and ~/.claude/skills/ directories
-        allowedTools: ["Skill", "Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+        allowedTools: allowedTools ?? ["Skill", "Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         mcpConfigs: mcpConfigs ?? [],
     };
 }

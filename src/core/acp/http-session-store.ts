@@ -34,6 +34,7 @@ export interface RoutaSessionRecord {
   provider?: string;
   role?: string;
   toolMode?: "essential" | "full";
+  allowedNativeTools?: string[];
   modeId?: string;
   /** Model used for this session (e.g. "claude-sonnet-4-20250514") */
   model?: string;

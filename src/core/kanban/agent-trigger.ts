@@ -38,8 +38,10 @@ export function buildTaskPrompt(task: Task): string {
         "2. Clarify or decompose the work into backlog-ready stories when needed",
         "3. Keep the original card in backlog unless the workflow explicitly requires another backlog card",
         "4. Do not move the card out of backlog from this planning step",
-        "5. Do not start implementation work in this column",
-        "6. Report what backlog story or stories were created or refined",
+        "5. Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep in backlog planning",
+        "6. Do not use GitHub CLI commands such as gh issue create",
+        "7. Do not start implementation work in this column",
+        "8. Report what backlog story or stories were created or refined",
       ]
     : [
         "1. Start implementation work immediately",
@@ -55,6 +57,7 @@ export function buildTaskPrompt(task: Task): string {
     "## Context",
     "",
     "**IMPORTANT**: You are working in Kanban context. Use MCP tools (update_card, move_card, etc.) to manage this card.",
+    "Do NOT create or sync GitHub issues during backlog planning.",
     "Do NOT use `gh issue create` or other GitHub CLI commands — those are for GitHub issue context only.",
     "",
     "## Task Details",

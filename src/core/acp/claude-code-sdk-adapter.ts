@@ -124,6 +124,8 @@ export class ClaudeCodeSdkAdapter {
   private _baseUrlOverride: string | undefined;
   /** Per-instance API key override — takes precedence over ANTHROPIC_AUTH_TOKEN. */
   private _apiKeyOverride: string | undefined;
+  /** Optional allowlist for provider-native tools such as Bash/Read/Edit. */
+  private _allowedNativeTools: string[];
   /** Pending AskUserQuestion requests waiting for a UI response. */
   private pendingUserInputRequests = new Map<string, PendingUserInputRequest>();
   /** Completed AskUserQuestion responses keyed by tool call ID. */
@@ -134,7 +136,14 @@ export class ClaudeCodeSdkAdapter {
   constructor(
     cwd: string,
     onNotification: NotificationHandler,
-    options?: { model?: string; maxTurns?: number; baseUrl?: string; apiKey?: string; lifecycleNotifier?: LifecycleNotifier }
+    options?: {
+      model?: string;
+      maxTurns?: number;
+      baseUrl?: string;
+      apiKey?: string;
+      allowedNativeTools?: string[];
+      lifecycleNotifier?: LifecycleNotifier;
+    }
   ) {
     this.cwd = cwd;
     this.onNotification = onNotification;
@@ -142,7 +151,33 @@ export class ClaudeCodeSdkAdapter {
     this._maxTurnsOverride = options?.maxTurns;
     this._baseUrlOverride = options?.baseUrl;
     this._apiKeyOverride = options?.apiKey;
+    this._allowedNativeTools = options?.allowedNativeTools ?? ["Skill", "Read", "Write", "Edit", "Bash", "Glob", "Grep"];
     this.lifecycleNotifier = options?.lifecycleNotifier;
+  }
+
+  private canUseConfiguredTool(
+    sessionId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    toolUseId: string,
+    signal: AbortSignal,
+  ) {
+    if (toolName === "AskUserQuestion") {
+      return this.handleAskUserQuestion(sessionId, input, toolUseId, signal);
+    }
+
+    if (toolName.startsWith("mcp__")) {
+      return Promise.resolve({ behavior: "allow" as const, updatedInput: input });
+    }
+
+    if (this._allowedNativeTools.includes(toolName)) {
+      return Promise.resolve({ behavior: "allow" as const, updatedInput: input });
+    }
+
+    return Promise.resolve({
+      behavior: "deny" as const,
+      message: `Tool ${toolName} is not allowed in this session.`,
+    });
   }
 
   get alive(): boolean {
@@ -236,6 +271,11 @@ export class ClaudeCodeSdkAdapter {
     let stopReason = "end_turn";
     let inputTokens = 0;
     let outputTokens = 0;
+    const builtInTools = [...this._allowedNativeTools, "AskUserQuestion"];
+    const shouldLoadSettings = this._allowedNativeTools.includes("Skill");
+    const disallowedTools = shouldLoadSettings
+      ? undefined
+      : ["Skill", "Read", "Write", "Edit", "Bash", "Glob", "Grep"];
 
     // Helper to format SSE event
     const formatSseEvent = (notification: JsonRpcMessage): string => {
@@ -251,15 +291,15 @@ export class ClaudeCodeSdkAdapter {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         pathToClaudeCodeExecutable: cliPath,
-        // Load Skills from user (~/.claude/skills/) and project (.claude/skills/) dirs
-        settingSources: ["user", "project"],
-        // Enable the Skill tool so Claude can invoke SKILL.md-defined skills
-        allowedTools: ["Skill", "Read", "Write", "Edit", "Bash", "Glob", "Grep", "AskUserQuestion"],
+        // Only load user/project settings when Skill is explicitly enabled.
+        settingSources: shouldLoadSettings ? ["user", "project"] : [],
+        // Restrict built-in/native tools at the SDK level. MCP tools remain available
+        // through the attached MCP servers and are handled separately by canUseTool.
+        tools: builtInTools,
+        allowedTools: builtInTools,
+        ...(disallowedTools ? { disallowedTools } : {}),
         canUseTool: async (toolName, input, options) => {
-          if (toolName === "AskUserQuestion") {
-            return this.handleAskUserQuestion(sessionId, input, options.toolUseID, options.signal);
-          }
-          return { behavior: "allow" as const, updatedInput: input };
+          return this.canUseConfiguredTool(sessionId, toolName, input, options.toolUseID, options.signal);
         },
         // When a skill is explicitly selected via /skill in the UI, inject its
         // content into the system prompt using the preset+append mechanism.
@@ -428,6 +468,11 @@ export class ClaudeCodeSdkAdapter {
     let inputTokens = 0;
     let outputTokens = 0;
     let msgCount = 0;
+    const builtInTools = [...this._allowedNativeTools, "AskUserQuestion"];
+    const shouldLoadSettings = this._allowedNativeTools.includes("Skill");
+    const disallowedTools = shouldLoadSettings
+      ? undefined
+      : ["Skill", "Read", "Write", "Edit", "Bash", "Glob", "Grep"];
 
     try {
       // Build query options with session continuity support
@@ -446,15 +491,15 @@ export class ClaudeCodeSdkAdapter {
         // and gets stripped from the bundle output unless we force-include it
         // via outputFileTracingIncludes in next.config.ts).
         pathToClaudeCodeExecutable: cliPath,
-        // Load Skills from user (~/.claude/skills/) and project (.claude/skills/) dirs
-        settingSources: ["user", "project"],
-        // Enable the Skill tool so Claude can invoke SKILL.md-defined skills
-        allowedTools: ["Skill", "Read", "Write", "Edit", "Bash", "Glob", "Grep", "AskUserQuestion"],
+        // Only load user/project settings when Skill is explicitly enabled.
+        settingSources: shouldLoadSettings ? ["user", "project"] : [],
+        // Restrict built-in/native tools at the SDK level. MCP tools remain available
+        // through the attached MCP servers and are handled separately by canUseTool.
+        tools: builtInTools,
+        allowedTools: builtInTools,
+        ...(disallowedTools ? { disallowedTools } : {}),
         canUseTool: async (toolName, input, options) => {
-          if (toolName === "AskUserQuestion") {
-            return this.handleAskUserQuestion(sessionId, input, options.toolUseID, options.signal);
-          }
-          return { behavior: "allow" as const, updatedInput: input };
+          return this.canUseConfiguredTool(sessionId, toolName, input, options.toolUseID, options.signal);
         },
         // Set CLAUDE_CONFIG_DIR to /tmp so the child process can write its
         // config/cache files in serverless environments (like Vercel Lambda)

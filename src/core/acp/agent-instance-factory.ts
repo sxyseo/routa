@@ -48,6 +48,8 @@ export interface AgentInstanceConfig {
   baseUrl?: string;
   /** API key / auth token override */
   apiKey?: string;
+  /** Optional allowlist for provider-native tools such as Bash/Read/Edit */
+  allowedNativeTools?: string[];
 }
 
 /**
@@ -177,6 +179,7 @@ export class AgentInstanceFactory {
       maxTurns: resolved.maxTurns,
       baseUrl: resolved.baseUrl,
       apiKey: resolved.apiKey,
+      allowedNativeTools: resolved.allowedNativeTools,
       lifecycleNotifier,
     });
 

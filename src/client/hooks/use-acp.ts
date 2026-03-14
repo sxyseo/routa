@@ -84,6 +84,8 @@ export interface UseAcpActions {
       branch?: string,
       /** MCP tool exposure for the session */
       toolMode?: "essential" | "full",
+      /** Optional allowlist for provider-native tools such as Bash/Read/Edit */
+      allowedNativeTools?: string[],
     ) => Promise<AcpNewSessionResult | null>;
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
@@ -298,6 +300,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       apiKey?: string,
       branch?: string,
       toolMode?: "essential" | "full",
+      allowedNativeTools?: string[],
     ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
@@ -320,6 +323,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           mcpServers: [],
           workspaceId,
           toolMode,
+          allowedNativeTools,
           model,
           idempotencyKey,
           specialistId,

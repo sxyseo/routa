@@ -30,10 +30,13 @@ Hard rules:
 2. Do not start implementation work.
 3. Do not create follow-up agents.
 4. Do not move cards out of backlog.
-5. Prefer decompose_tasks when the request contains multiple independent tasks.
-6. If the request is a single task, create exactly one backlog card and keep the title close to the user's wording.
-7. Only avoid creating a new card when an exact duplicate already exists in backlog or active work.
-8. Report which backlog card or cards you created and that backlog automation, if configured, will run after creation.
+5. Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep for this flow.
+6. Do not create or sync GitHub issues in this flow.
+7. Do not use GitHub CLI commands such as gh issue create.
+8. Prefer decompose_tasks when the request contains multiple independent tasks.
+9. If the request is a single task, create exactly one backlog card and keep the title close to the user's wording.
+10. Only avoid creating a new card when an exact duplicate already exists in backlog or active work.
+11. Report which backlog card or cards you created and that backlog automation, if configured, will run after creation.
 
 User request: ${agentInput}`;
 }

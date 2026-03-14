@@ -34,3 +34,23 @@ Feature: Kanban agent input must create cards through an ACP session
     When I use the Kanban agent input instead of the "Manual" dialog
     Then the ACP session should decide whether to create one or more cards
     And the regression should not treat manual card creation as coverage for this flow
+
+  Scenario: Session UI should appear immediately after the Kanban input submits
+    When I enter a unique requirement into the Kanban agent input
+    And I click "Send"
+    Then the Kanban page should show the ACP session panel before the model finishes planning
+    And the session panel should expose the current provider and stop controls immediately
+    But the UI should not wait for the first assistant message before showing the session shell
+
+  Scenario: Kanban input sessions should stay within Kanban and MCP operations
+    Given I submitted a Kanban agent prompt from the input box
+    When the ACP session starts planning backlog work
+    Then the session should use Kanban-relevant MCP operations to inspect or create cards
+    And the session should not invoke native tools such as Skill, Bash, Read, Write, Edit, Glob, or Grep
+    And the regression must fail if the visible session trace shows native tool calls for this flow
+
+  Scenario: AI-created Kanban cards must not auto-create GitHub issues
+    Given I submitted a Kanban agent prompt from the input box
+    When the ACP session creates one or more backlog cards
+    Then those cards must stay local to Routa unless a human explicitly opts into GitHub issue creation
+    And the regression must fail if an AI-created card immediately receives a GitHub issue number or URL

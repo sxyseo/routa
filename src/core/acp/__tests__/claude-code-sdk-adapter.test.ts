@@ -232,6 +232,58 @@ describe("ClaudeCodeSdkAdapter", () => {
       expect(callArgs.options.permissionMode).toBe("bypassPermissions");
       expect(callArgs.options.allowDangerouslySkipPermissions).toBe(true);
       expect(callArgs.options.maxTurns).toBe(30);
+      expect(callArgs.options.settingSources).toEqual(["user", "project"]);
+      expect(callArgs.options.tools).toEqual([
+        "Skill",
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Glob",
+        "Grep",
+        "AskUserQuestion",
+      ]);
+      expect(callArgs.options.allowedTools).toEqual([
+        "Skill",
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Glob",
+        "Grep",
+        "AskUserQuestion",
+      ]);
+    });
+
+    it("uses the provided native tool allowlist", async () => {
+      mockQuery.mockReturnValue(makeStream([]));
+
+      const { handler } = collectNotifications();
+      const adapter = new ClaudeCodeSdkAdapter("/tmp/test-cwd", handler, {
+        allowedNativeTools: [],
+      });
+      await adapter.connect();
+      await adapter.prompt("Kanban only");
+
+      const callArgs = mockQuery.mock.calls[0][0];
+      expect(callArgs.options.settingSources).toEqual([]);
+      expect(callArgs.options.tools).toEqual(["AskUserQuestion"]);
+      expect(callArgs.options.allowedTools).toEqual(["AskUserQuestion"]);
+      expect(callArgs.options.disallowedTools).toEqual([
+        "Skill",
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Glob",
+        "Grep",
+      ]);
+      await expect(
+        callArgs.options.canUseTool("Bash", {}, { toolUseID: "tool-1", signal: new AbortController().signal })
+      ).resolves.toEqual({ behavior: "deny", message: "Tool Bash is not allowed in this session." });
+      await expect(
+        callArgs.options.canUseTool("mcp__routa-coordination__create_card", {}, { toolUseID: "tool-2", signal: new AbortController().signal })
+      ).resolves.toEqual({ behavior: "allow", updatedInput: {} });
     });
 
     it("emits agent_message_chunk notifications from text_delta stream events", async () => {

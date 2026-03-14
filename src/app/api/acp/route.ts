@@ -255,6 +255,9 @@ export async function POST(request: NextRequest) {
         : p.toolMode === "essential"
           ? "essential"
           : undefined;
+      const allowedNativeTools = Array.isArray(p.allowedNativeTools)
+        ? p.allowedNativeTools.filter((tool): tool is string => typeof tool === "string")
+        : undefined;
       const baseUrl = (p.baseUrl as string | undefined);
       const apiKey = (p.apiKey as string | undefined);
       const workspaceId = (p.workspaceId as string) || "default";
@@ -379,6 +382,7 @@ export async function POST(request: NextRequest) {
         provider,
         role: role ?? "CRAFTER",
         toolMode,
+        allowedNativeTools,
         parentSessionId,
         modeId,
         model,
@@ -474,6 +478,7 @@ export async function POST(request: NextRequest) {
               role,
               baseUrl,
               apiKey,
+              allowedNativeTools,
             };
             acpSessionId = await manager.createClaudeCodeSdkSession(
               sessionId,
@@ -490,6 +495,8 @@ export async function POST(request: NextRequest) {
               mcpConfigs,
               modeId,
               role,
+              undefined,
+              allowedNativeTools,
             );
           } else if (customCommand) {
             console.log(`[ACP Route] Using custom provider: ${provider}`);
@@ -748,6 +755,7 @@ export async function POST(request: NextRequest) {
         const workspaceId = (p.workspaceId as string) || storedSession?.workspaceId || "default";
         const role = storedSession?.role ?? "CRAFTER"; // Prefer stored role for restarts
         const toolMode = storedSession?.toolMode;
+        const allowedNativeTools = storedSession?.allowedNativeTools;
 
         try {
           const preset = getPresetById(provider);
@@ -806,7 +814,7 @@ export async function POST(request: NextRequest) {
               cwd,
               forwardSessionUpdate,
               // Auto-created sessions pass role for tier-based model resolution
-              { provider: "claude-code-sdk", role },
+              { provider: "claude-code-sdk", role, allowedNativeTools },
             );
           } else if (isClaudeCode) {
             // Claude Code CLI session
@@ -818,6 +826,8 @@ export async function POST(request: NextRequest) {
               mcpConfigs,
               undefined, // modeId
               role,
+              undefined,
+              allowedNativeTools,
             );
           } else {
             // Standard ACP session
@@ -844,6 +854,7 @@ export async function POST(request: NextRequest) {
             provider,
             role,
             toolMode,
+            allowedNativeTools,
             createdAt: now.toISOString(),
           });
 
@@ -1152,6 +1163,7 @@ export async function POST(request: NextRequest) {
           const restartWorkspaceId = sessionRecord.workspaceId ?? "default";
           const restartRole = sessionRecord.role ?? "CRAFTER";
           const restartToolMode = sessionRecord.toolMode;
+          const restartAllowedNativeTools = sessionRecord.allowedNativeTools;
           try {
             const mcpConfigs = await buildMcpConfigForClaude(restartWorkspaceId, sessionId, restartToolMode);
             await manager.createClaudeSession(
@@ -1161,6 +1173,8 @@ export async function POST(request: NextRequest) {
               mcpConfigs,
               undefined,
               restartRole,
+              undefined,
+              restartAllowedNativeTools,
             );
             console.log(`[ACP Route] Restarted Claude Code process for session ${sessionId}`);
           } catch (restartErr) {

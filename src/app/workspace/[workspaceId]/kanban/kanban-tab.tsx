@@ -33,7 +33,12 @@ interface KanbanTabProps {
   /** Handler for agent prompt - creates session and sends prompt */
   onAgentPrompt?: (
     prompt: string,
-    options?: { provider?: string; role?: string; toolMode?: "essential" | "full" },
+    options?: {
+      provider?: string;
+      role?: string;
+      toolMode?: "essential" | "full";
+      allowedNativeTools?: string[];
+    },
   ) => Promise<string | null>;
 }
 
@@ -59,7 +64,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [draft, setDraft] = useState<DraftIssue>({
     ...EMPTY_DRAFT,
-    createGitHubIssue: githubAvailable,
+    createGitHubIssue: false,
   });
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view;
@@ -123,6 +128,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
         provider: acp?.selectedProvider,
         role: "DEVELOPER",
         toolMode: "full",
+        allowedNativeTools: [],
       });
       if (sessionId) {
         openAgentPanel(sessionId);
@@ -338,6 +344,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
       undefined,
       undefined,
       "full",
+      [],
     );
 
     if (!result?.sessionId) {
@@ -578,6 +585,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
         priority: draft.priority,
         labels: draft.labels.split(",").map((label) => label.trim()).filter(Boolean),
         createGitHubIssue: draft.createGitHubIssue,
+        creationSource: "manual",
         repoPath: effectiveCodebaseIds.length > 0
           ? codebases.find((codebase) => codebase.id === effectiveCodebaseIds[0])?.repoPath
           : defaultCodebase?.repoPath,
@@ -589,7 +597,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
       throw new Error(data.error ?? "Failed to create issue");
     }
     setLocalTasks((current) => [...current, data.task as TaskInfo]);
-    setDraft({ ...EMPTY_DRAFT, objectiveHtml: "", createGitHubIssue: githubAvailable });
+    setDraft({ ...EMPTY_DRAFT, objectiveHtml: "", createGitHubIssue: false });
     setShowCreateModal(false);
     onRefresh();
   }

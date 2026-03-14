@@ -18,6 +18,7 @@ interface KanbanAgentPromptOptions {
   provider?: string;
   role?: string;
   toolMode?: "essential" | "full";
+  allowedNativeTools?: string[];
 }
 
 export function KanbanPageClient() {
@@ -149,14 +150,17 @@ export function KanbanPageClient() {
       undefined,
       undefined,
       options?.toolMode,
+      options?.allowedNativeTools,
     );
 
     if (!result?.sessionId) {
       return null;
     }
 
-    // Send the prompt - acp.prompt uses the current session from createSession
-    await acp.prompt(promptText);
+    // Send the prompt in the background so the UI can open the session panel immediately.
+    void acp.prompt(promptText).catch((error) => {
+      console.error("[kanban] Failed to send Kanban agent prompt:", error);
+    });
 
     return result.sessionId;
   }, [acp, codebases, workspaceId]);
