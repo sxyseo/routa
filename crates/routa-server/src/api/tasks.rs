@@ -299,6 +299,25 @@ async fn update_task(
         } else {
             resolve_codebase(&state, &task.workspace_id, None).await?
         };
+
+        // Auto-create worktree when entering dev column (mirrors Next.js behavior)
+        if plan.entering_dev {
+            if let (Some(ref cb), None) = (&codebase, &task.worktree_id) {
+                match auto_create_worktree(&state, &task, cb).await {
+                    Ok(worktree_id) => {
+                        task.worktree_id = Some(worktree_id);
+                    }
+                    Err(err) => {
+                        task.status = crate::models::task::TaskStatus::Blocked;
+                        task.column_id = Some("blocked".to_string());
+                        task.last_sync_error = Some(format!("Worktree creation failed: {}", err));
+                        state.task_store.save(&task).await?;
+                        return Ok(Json(serde_json::json!({ "task": task })));
+                    }
+                }
+            }
+        }
+
         let trigger_result = trigger_assigned_task_agent(
             &state,
             &task,
@@ -391,6 +410,87 @@ async fn resolve_codebase(
     } else {
         state.codebase_store.get_default(workspace_id).await
     }
+}
+
+async fn auto_create_worktree(
+    state: &AppState,
+    task: &crate::models::task::Task,
+    codebase: &crate::models::codebase::Codebase,
+) -> Result<String, String> {
+    let slugified = task
+        .title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let short_id = &task.id[..task.id.len().min(8)];
+    let slug = format!("{}-{}", short_id, &slugified[..slugified.len().min(40)]);
+    let branch = format!("issue/{}", slug);
+
+    let workspace = state
+        .workspace_store
+        .get(&task.workspace_id)
+        .await
+        .ok()
+        .flatten();
+    let worktree_root = workspace
+        .as_ref()
+        .and_then(|ws| ws.metadata.get("worktreeRoot"))
+        .filter(|s| !s.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| crate::git::get_default_workspace_worktree_root(&task.workspace_id));
+
+    let codebase_label = codebase
+        .label
+        .as_ref()
+        .map(|l| crate::git::branch_to_safe_dir_name(l))
+        .unwrap_or_else(|| crate::git::branch_to_safe_dir_name(&codebase.id));
+
+    let worktree_path = worktree_root
+        .join(&codebase_label)
+        .join(crate::git::branch_to_safe_dir_name(&slug));
+
+    if let Some(parent) = worktree_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create worktree parent dir: {}", e))?;
+    }
+
+    let worktree_path_str = worktree_path.to_string_lossy().to_string();
+    let base_branch = codebase
+        .branch
+        .clone()
+        .unwrap_or_else(|| "main".to_string());
+
+    let worktree = crate::models::worktree::Worktree::new(
+        uuid::Uuid::new_v4().to_string(),
+        codebase.id.clone(),
+        task.workspace_id.clone(),
+        worktree_path_str.clone(),
+        branch.clone(),
+        base_branch.clone(),
+        Some(slug),
+    );
+    state
+        .worktree_store
+        .save(&worktree)
+        .await
+        .map_err(|e| format!("Failed to save worktree: {}", e))?;
+
+    let _ = crate::git::worktree_prune(&codebase.repo_path);
+    crate::git::worktree_add(
+        &codebase.repo_path,
+        &worktree_path_str,
+        &branch,
+        &base_branch,
+        false,
+    )
+    .map_err(|e| format!("git worktree add failed: {}", e))?;
+
+    Ok(worktree.id)
 }
 
 fn resolve_github_repo(repo_path: Option<&str>) -> Option<String> {

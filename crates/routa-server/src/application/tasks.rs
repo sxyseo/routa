@@ -272,6 +272,7 @@ impl TaskApplicationService {
             task,
             should_sync_github,
             should_trigger_agent,
+            entering_dev,
             repo_path,
         })
     }
@@ -351,6 +352,7 @@ pub struct UpdateTaskPlan {
     pub task: Task,
     pub should_sync_github: bool,
     pub should_trigger_agent: bool,
+    pub entering_dev: bool,
     pub repo_path: Option<String>,
 }
 
