@@ -250,6 +250,7 @@ export function HomeInput({
             onProviderChange={acp.setProvider}
             repoSelection={repoSelection}
             onRepoChange={setRepoSelection}
+            repoPathDisplay="hidden"
             agentRole={selectedRole}
             onFetchModels={acp.listProviderModels}
             pendingSkill={pendingSkill}
@@ -475,6 +476,16 @@ export function HomeInput({
 
       {/* ─── Mode Tips ──────────────────────────────────────────────── */}
       <div className="mt-1.5 px-1 min-h-[20px]">
+        {repoSelection?.path && (
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
+            <span className="font-medium text-gray-500 dark:text-gray-400">
+              Repo path
+            </span>
+            <span className="font-mono truncate" title={repoSelection.path}>
+              {repoSelection.path}
+            </span>
+          </div>
+        )}
         {selectedSpecialistId ? (
           (() => {
             const spec = specialists.find((s) => s.id === selectedSpecialistId);

@@ -44,6 +44,8 @@ export interface RepoSelection {
 interface RepoPickerProps {
   value: RepoSelection | null;
   onChange: (selection: RepoSelection | null) => void;
+  /** How to render the selected repo path when a repo is chosen */
+  pathDisplay?: "inline" | "below-muted" | "hidden";
   /** Additional repos to show (e.g., workspace codebases) */
   additionalRepos?: Array<{
     name: string;
@@ -62,7 +64,12 @@ interface CloneProgress {
 
 // ─── Component ──────────────────────────────────────────────────────────
 
-export function RepoPicker({ value, onChange, additionalRepos }: RepoPickerProps) {
+export function RepoPicker({
+  value,
+  onChange,
+  pathDisplay = "inline",
+  additionalRepos,
+}: RepoPickerProps) {
   const [repos, setRepos] = useState<ClonedRepo[]>([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -289,6 +296,7 @@ export function RepoPicker({ value, onChange, additionalRepos }: RepoPickerProps
         <SelectedRepoPill
           value={value}
           repos={repos}
+          pathDisplay={pathDisplay}
           triggerRef={triggerRef}
           onClickName={() => {
             if (showDropdown) {
@@ -524,6 +532,7 @@ export function RepoPicker({ value, onChange, additionalRepos }: RepoPickerProps
 function SelectedRepoPill({
   value,
   repos,
+  pathDisplay,
   triggerRef,
   onClickName,
   onClear,
@@ -531,61 +540,70 @@ function SelectedRepoPill({
 }: {
   value: RepoSelection;
   repos: ClonedRepo[];
+  pathDisplay: "inline" | "below-muted" | "hidden";
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   onClickName: () => void;
   onClear: () => void;
   onBranchChange: (branch: string) => void;
 }) {
   const currentRepo = repos.find((r) => r.path === value.path);
+  const showInlinePath = pathDisplay === "inline";
+  const showMutedPath = pathDisplay === "below-muted";
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <GitRepoIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+    <div className={`min-w-0 ${showMutedPath ? "flex flex-col gap-0.5" : "flex items-center gap-1.5 flex-wrap"}`}>
+      <div className="flex min-w-0 items-center gap-1.5 flex-wrap">
+        <GitRepoIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
 
-      {/* Repo name */}
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={onClickName}
-        className="text-xs font-medium text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate max-w-[200px]"
-        title={value.name}
-      >
-        {value.name}
-      </button>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={onClickName}
+          className="text-xs font-medium text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate max-w-[200px]"
+          title={value.name}
+        >
+          {value.name}
+        </button>
 
-      {/* Branch selector */}
-      <BranchSelector
-        repoPath={value.path}
-        currentBranch={value.branch}
-        onBranchChange={onBranchChange}
-      />
+        <BranchSelector
+          repoPath={value.path}
+          currentBranch={value.branch}
+          onBranchChange={onBranchChange}
+        />
 
-      <span
-        className="max-w-[200px] truncate text-[10px] font-mono text-gray-500 dark:text-gray-400"
-        title={value.path}
-      >
-        {value.path}
-      </span>
+        {showInlinePath && (
+          <span
+            className="max-w-[200px] truncate text-[10px] font-mono text-gray-500 dark:text-gray-400"
+            title={value.path}
+          >
+            {value.path}
+          </span>
+        )}
 
-      {/* Status badges */}
-      {currentRepo && !currentRepo.status.clean && (
-        <span className="text-[9px] px-1 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
-          {currentRepo.status.modified > 0 && `${currentRepo.status.modified}M`}
-          {currentRepo.status.untracked > 0 && ` ${currentRepo.status.untracked}U`}
-        </span>
+        {currentRepo && !currentRepo.status.clean && (
+          <span className="text-[9px] px-1 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
+            {currentRepo.status.modified > 0 && `${currentRepo.status.modified}M`}
+            {currentRepo.status.untracked > 0 && ` ${currentRepo.status.untracked}U`}
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={onClear}
+          className="ml-0.5 p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          title="Clear repo selection"
+        >
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {showMutedPath && (
+        <div className="pl-5 text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate" title={value.path}>
+          {value.path}
+        </div>
       )}
-
-      {/* Clear */}
-      <button
-        type="button"
-        onClick={onClear}
-        className="ml-0.5 p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-        title="Clear repo selection"
-      >
-        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
     </div>
   );
 }

@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
+import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -469,6 +470,7 @@ interface TiptapInputProps {
   activeSessionMode?: string;
   repoSelection: RepoSelection | null;
   onRepoChange: (selection: RepoSelection | null) => void;
+  repoPathDisplay?: "inline" | "below-muted" | "hidden";
   /** Current agent role – ROUTA hides provider mode chips (Brave/Plan) */
   agentRole?: string;
   /** Usage info from last completion to display in the input area */
@@ -501,6 +503,7 @@ export function TiptapInput({
   activeSessionMode,
   repoSelection,
   onRepoChange,
+  repoPathDisplay = "hidden",
   usageInfo,
   onFetchModels,
   pendingSkill,
@@ -510,6 +513,7 @@ export function TiptapInput({
 }: TiptapInputProps) {
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false);
   const providerDropdownRef = useRef<HTMLDivElement>(null);
+  const providerDropdownMenuRef = useRef<HTMLDivElement>(null);
   const providerBtnRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ left: number; bottom?: number; top?: number } | null>(null);
   const [claudeMode, setClaudeMode] = useState<"acceptEdits" | "plan">("acceptEdits");
@@ -810,7 +814,8 @@ export function TiptapInput({
   useEffect(() => {
     if (!providerDropdownOpen) return;
     const handler = (e: MouseEvent) => {
-      if (providerDropdownRef.current && !providerDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (!providerDropdownRef.current?.contains(target) && !providerDropdownMenuRef.current?.contains(target)) {
         setProviderDropdownOpen(false);
       }
     };
@@ -865,6 +870,7 @@ export function TiptapInput({
           <RepoPicker
             value={repoSelection}
             onChange={onRepoChange}
+            pathDisplay={repoPathDisplay}
           />
 
           {/* Provider dropdown */}
@@ -878,12 +884,27 @@ export function TiptapInput({
                   const dropdownHeight = 320; // max-h-80 = 320px
                   const spaceAbove = rect.top;
                   const spaceBelow = window.innerHeight - rect.bottom;
-                  if (spaceAbove >= dropdownHeight || spaceAbove >= spaceBelow) {
+                  if (spaceBelow >= dropdownHeight + 4) {
+                    // 优先向下展开（更符合用户期望）
+                    setDropdownPos({
+                      left: rect.left,
+                      top: rect.bottom + 4,
+                    });
+                  } else if (spaceAbove >= dropdownHeight + 4) {
                     // 向上展开
-                    setDropdownPos({ left: rect.left, bottom: window.innerHeight - rect.top + 4 });
+                    setDropdownPos({
+                      left: rect.left,
+                      bottom: window.innerHeight - rect.top + 4,
+                    });
                   } else {
-                    // 向下展开
-                    setDropdownPos({ left: rect.left, top: rect.bottom + 4 });
+                    // 两侧都不够时，紧贴可见区域
+                    const spaceForDropdown = Math.max(spaceAbove, spaceBelow) - 4;
+                    setDropdownPos({
+                      left: rect.left,
+                      top: spaceBelow >= spaceAbove
+                        ? rect.bottom + 4
+                        : Math.max(4, rect.top - Math.min(spaceForDropdown, dropdownHeight) - 4),
+                    });
                   }
                 }
                 setProviderDropdownOpen((v) => !v);
@@ -900,10 +921,11 @@ export function TiptapInput({
               </svg>
             </button>
 
-            {providerDropdownOpen && dropdownPos && (
+            {providerDropdownOpen && dropdownPos && createPortal(
               <div
+                ref={providerDropdownMenuRef}
                 className="fixed w-72 max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] shadow-xl z-[9999]"
-                style={{ left: dropdownPos.left, bottom: dropdownPos.bottom }}
+                style={{ left: dropdownPos.left, top: dropdownPos.top, bottom: dropdownPos.bottom }}
               >
                 {/* Builtin Available */}
                 {builtinAvailable.length > 0 && (
@@ -1047,7 +1069,8 @@ export function TiptapInput({
                     )}
                   </div>
                 )}
-              </div>
+              </div>,
+              document.body
             )}
           </div>
 

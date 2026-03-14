@@ -564,6 +564,16 @@ export function ChatPanel({
                   onPrefillConsumed={onInputPrefillConsumed}
                 />
               </div>
+              {repoSelection?.path && (
+                <div className="flex items-center gap-1.5 px-1 text-[10px] text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-gray-500 dark:text-gray-400">
+                    Repo path
+                  </span>
+                  <span className="truncate font-mono" title={repoSelection.path}>
+                    {repoSelection.path}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </>
