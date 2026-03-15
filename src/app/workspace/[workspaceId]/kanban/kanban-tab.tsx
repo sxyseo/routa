@@ -42,6 +42,10 @@ interface KanbanTabProps {
   ) => Promise<string | null>;
 }
 
+const KANBAN_DETAIL_SPLIT_RATIO_KEY = "routa:kanban-detail-split-ratio";
+const MIN_DETAIL_SPLIT_RATIO = 0.32;
+const MAX_DETAIL_SPLIT_RATIO = 0.72;
+
 function QueueStatusBadge({
   label,
   count,
@@ -167,6 +171,8 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [detailSplitRatio, setDetailSplitRatio] = useState(0.48);
+  const [isDraggingDetailSplit, setIsDraggingDetailSplit] = useState(false);
 
   // Codebase detail popup state
   const [selectedCodebase, setSelectedCodebase] = useState<CodebaseData | null>(null);
@@ -195,6 +201,50 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   // Delete confirmation modal state
   const [deleteConfirmTask, setDeleteConfirmTask] = useState<TaskInfo | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const detailSplitContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const localStorageApi = window.localStorage;
+    if (!localStorageApi || typeof localStorageApi.getItem !== "function") return;
+    const stored = Number(localStorageApi.getItem(KANBAN_DETAIL_SPLIT_RATIO_KEY));
+    if (!Number.isFinite(stored)) return;
+    setDetailSplitRatio(Math.min(MAX_DETAIL_SPLIT_RATIO, Math.max(MIN_DETAIL_SPLIT_RATIO, stored)));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const localStorageApi = window.localStorage;
+    if (!localStorageApi || typeof localStorageApi.setItem !== "function") return;
+    localStorageApi.setItem(KANBAN_DETAIL_SPLIT_RATIO_KEY, String(detailSplitRatio));
+  }, [detailSplitRatio]);
+
+  useEffect(() => {
+    if (!isDraggingDetailSplit) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const container = detailSplitContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const nextRatio = (event.clientX - rect.left) / rect.width;
+      setDetailSplitRatio(Math.min(MAX_DETAIL_SPLIT_RATIO, Math.max(MIN_DETAIL_SPLIT_RATIO, nextRatio)));
+    };
+
+    const handleMouseUp = () => setIsDraggingDetailSplit(false);
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDraggingDetailSplit]);
 
   const openAgentPanel = useCallback((sessionId: string) => {
     setAgentSessionId(sessionId);
@@ -1144,46 +1194,58 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
               </div>
             </div>
             {activeSessionId && <ReadOnlyTerminalHint workspaceId={workspaceId} sessionId={activeSessionId} />}
-            <div className="flex h-[calc(88vh-48px)]">
+            <div ref={detailSplitContainerRef} className="flex h-[calc(88vh-48px)]">
               {/* Left: Card Detail (if activeTaskId exists) */}
               {activeTaskId && (() => {
                 const task = localTasks.find((t) => t.id === activeTaskId);
                 if (!task) return null;
                 const sessionInfo = task.triggerSessionId ? sessions.find((s) => s.sessionId === task.triggerSessionId) : null;
                 return (
-                  <KanbanCardDetail
-                    key={task.id}
-                    task={task}
-                    boardColumns={board?.columns ?? []}
-                    availableProviders={availableProviders}
-                    specialists={specialists}
-                    codebases={codebases}
-                    allCodebaseIds={allCodebaseIds}
-                    worktreeCache={worktreeCache}
-                    sessionInfo={sessionInfo}
-                    sessions={sessions}
-                    fullWidth={!hasSessionPane}
-                    onPatchTask={patchTask}
-                    onRetryTrigger={retryTaskTrigger}
-                    onDelete={() => confirmDeleteTask(task)}
-                    onRefresh={onRefresh}
-                    onProviderChange={(providerId) => {
-                      // Sync provider change to ACP state
-                      if (acp && providerId) {
-                        acp.setProvider(providerId);
-                      }
-                    }}
-                    onRepositoryChange={(codebaseIds) => {
-                      // Repository changed - user should rerun to apply new working directory
-                      console.log("[KanbanTab] Repository changed for task", task.id, "new codebaseIds:", codebaseIds);
-                    }}
-                    onSelectSession={(sessionId) => {
-                      setActiveSessionId(sessionId);
-                      acp?.selectSession(sessionId);
-                    }}
-                  />
+                  <div
+                    className={`${hasSessionPane ? "shrink-0" : "flex-1"} h-full min-w-0 border-r border-gray-200/80 dark:border-[#202433]`}
+                    style={hasSessionPane ? { width: `${detailSplitRatio * 100}%` } : undefined}
+                  >
+                    <KanbanCardDetail
+                      key={task.id}
+                      task={task}
+                      boardColumns={board?.columns ?? []}
+                      availableProviders={availableProviders}
+                      specialists={specialists}
+                      codebases={codebases}
+                      allCodebaseIds={allCodebaseIds}
+                      worktreeCache={worktreeCache}
+                      sessionInfo={sessionInfo}
+                      sessions={sessions}
+                      fullWidth={!hasSessionPane}
+                      onPatchTask={patchTask}
+                      onRetryTrigger={retryTaskTrigger}
+                      onDelete={() => confirmDeleteTask(task)}
+                      onRefresh={onRefresh}
+                      onProviderChange={(providerId) => {
+                        if (acp && providerId) {
+                          acp.setProvider(providerId);
+                        }
+                      }}
+                      onRepositoryChange={(codebaseIds) => {
+                        void codebaseIds;
+                      }}
+                      onSelectSession={(sessionId) => {
+                        setActiveSessionId(sessionId);
+                        acp?.selectSession(sessionId);
+                      }}
+                    />
+                  </div>
                 );
               })()}
+              {activeTaskId && hasSessionPane && (
+                <div
+                  className="hidden md:flex h-full w-3 shrink-0 cursor-col-resize items-center justify-center bg-transparent hover:bg-amber-50/80 dark:hover:bg-amber-900/10"
+                  onMouseDown={() => setIsDraggingDetailSplit(true)}
+                  data-testid="kanban-detail-split-handle"
+                >
+                  <div className="h-12 w-1 rounded-full bg-gray-300 transition-colors hover:bg-amber-400 dark:bg-gray-700 dark:hover:bg-amber-500" />
+                </div>
+              )}
               {/* Right: Session (if activeSessionId exists) */}
               {hasSessionPane ? (() => {
                 // Build repoSelection and agentRole from active task
@@ -1204,7 +1266,10 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                 const taskAgentRole = activeTask?.assignedRole ?? undefined;
 
                 return (
-                  <div className={`${activeTaskId ? "w-2/3" : "w-full"} h-full overflow-hidden`}>
+                  <div
+                    className="h-full min-w-0 flex-1 overflow-hidden"
+                    style={activeTaskId ? { width: `${(1 - detailSplitRatio) * 100}%` } : undefined}
+                  >
                     {acp && (
                     <ChatPanel
                       acp={acp}
