@@ -879,14 +879,35 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
             <div className="flex min-w-0 items-start gap-2 xl:max-w-xl">
               <span className="pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Repos</span>
               {codebases.length === 0 ? (
-                <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-500">
-                  <span>No repositories linked.</span>
-                  <a
-                    href={`/workspace/${workspaceId}?tab=settings`}
-                    className="text-amber-600 hover:underline dark:text-amber-400"
-                  >
-                    Add one in Settings →
-                  </a>
+                <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-[#0d1018]">
+                  <span className="text-sm text-gray-400 dark:text-gray-500">No repositories linked.</span>
+                  <div className="flex items-center gap-2">
+                    <RepoPicker
+                      value={null}
+                      onChange={async (selection) => {
+                        if (!selection) return;
+                        try {
+                          const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              repoPath: selection.path,
+                              branch: selection.branch,
+                              label: selection.name
+                            }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data.error ?? "Failed to add repository");
+                          // Refresh codebases
+                          onRefresh?.();
+                        } catch (err) {
+                          console.error("Failed to add repository:", err);
+                          alert(err instanceof Error ? err.message : "Failed to add repository");
+                        }
+                      }}
+                      additionalRepos={[]}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
