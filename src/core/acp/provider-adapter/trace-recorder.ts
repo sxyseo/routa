@@ -9,6 +9,7 @@
 import {
   createTraceRecord,
   withConversation,
+  withMetadata,
   withTool,
   withVcs,
   recordTrace,
@@ -217,6 +218,7 @@ export class TraceRecorder {
     toolCall: NormalizedToolCall,
     cwd: string
   ): void {
+    const contextPaths = this.getContextWriter(cwd).getContextPaths(sessionId, toolCall.toolCallId);
     let trace = createTraceRecord(sessionId, "tool_call", { provider });
     trace = withTool(trace, {
       name: toolCall.name,
@@ -236,6 +238,11 @@ export class TraceRecorder {
     if (vcs) {
       trace = withVcs(trace, vcs);
     }
+
+    trace = withMetadata(trace, "toolCallResourceId", contextPaths.resourceId);
+    trace = withMetadata(trace, "toolCallContextDir", contextPaths.contextDir);
+    trace = withMetadata(trace, "toolCallContentPath", contextPaths.contentPath);
+    trace = withMetadata(trace, "toolCallMetadataPath", contextPaths.metadataPath);
 
     recordTrace(cwd, trace);
 
@@ -258,6 +265,7 @@ export class TraceRecorder {
     toolCall: NormalizedToolCall,
     cwd: string
   ): void {
+    const contextPaths = this.getContextWriter(cwd).getContextPaths(sessionId, toolCall.toolCallId);
     let trace = createTraceRecord(sessionId, "tool_result", { provider });
     trace = withTool(trace, {
       name: toolCall.name,
@@ -265,6 +273,10 @@ export class TraceRecorder {
       status: toolCall.status,
       output: toolCall.output as string | undefined,
     });
+    trace = withMetadata(trace, "toolCallResourceId", contextPaths.resourceId);
+    trace = withMetadata(trace, "toolCallContextDir", contextPaths.contextDir);
+    trace = withMetadata(trace, "toolCallContentPath", contextPaths.contentPath);
+    trace = withMetadata(trace, "toolCallMetadataPath", contextPaths.metadataPath);
     recordTrace(cwd, trace);
 
     // Save fine-grained tool call context file with result
@@ -338,4 +350,3 @@ export class TraceRecorder {
     }
   }
 }
-

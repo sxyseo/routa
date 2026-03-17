@@ -42,6 +42,13 @@ export interface ToolCallContextInput {
   startTimestamp?: string;
 }
 
+export interface ToolCallContextPaths {
+  resourceId: string;
+  contextDir: string;
+  contentPath: string;
+  metadataPath: string;
+}
+
 /**
  * Generate a unique resource ID in the format: call_{uniqueId}__routa-{timestamp}
  */
@@ -129,10 +136,28 @@ export class ToolCallContextWriter {
   }
 
   /**
+   * Return the stable paths that will be used for this tool call context.
+   * Traces can reference these paths before the async write finishes.
+   */
+  getContextPaths(sessionId: string, toolCallId: string): ToolCallContextPaths {
+    const resourceId = this.getResourceId(toolCallId);
+    const contextDir = path.join(this.getToolCallsDir(sessionId), toolCallId, resourceId);
+    return {
+      resourceId,
+      contextDir,
+      contentPath: path.join(contextDir, "content.txt"),
+      metadataPath: path.join(contextDir, "metadata.json"),
+    };
+  }
+
+  /**
    * Write tool call context files (content.txt and metadata.json).
    */
   async writeContext(ctx: ToolCallContextInput): Promise<void> {
-    const contextDir = this.getContextDir(ctx.sessionId, ctx.toolCallId);
+    const { contextDir, contentPath, metadataPath } = this.getContextPaths(
+      ctx.sessionId,
+      ctx.toolCallId
+    );
     await fs.mkdir(contextDir, { recursive: true });
 
     // Track start timestamp for duration calculation
@@ -151,7 +176,6 @@ export class ToolCallContextWriter {
     }
 
     // Write content.txt
-    const contentPath = path.join(contextDir, "content.txt");
     await fs.writeFile(contentPath, formatContentTxt(ctx), "utf-8");
 
     // Write metadata.json
@@ -164,8 +188,6 @@ export class ToolCallContextWriter {
       provider: ctx.provider,
       ...(durationMs !== undefined && { durationMs }),
     };
-    const metadataPath = path.join(contextDir, "metadata.json");
     await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf-8");
   }
 }
-

@@ -23,6 +23,11 @@ afterEach(async () => {
 describe("ToolCallContextWriter", () => {
   it("writes content.txt and metadata.json for a tool call", async () => {
     const writer = new ToolCallContextWriter("/test/project");
+    const paths = writer.getContextPaths("sess-1", "call_abc123xyz");
+
+    expect(paths.resourceId).toContain("call_call_abc");
+    expect(paths.contentPath).toContain("/content.txt");
+    expect(paths.metadataPath).toContain("/metadata.json");
 
     await writer.writeContext({
       toolName: "read_file",
@@ -114,6 +119,7 @@ describe("ToolCallContextWriter", () => {
   it("generates consistent resource ID for same tool call", async () => {
     const writer = new ToolCallContextWriter("/test/project");
     const toolCallId = "call_consistent123";
+    const beforeWrite = writer.getContextPaths("sess-3", toolCallId);
 
     await writer.writeContext({
       toolName: "write_file",
@@ -142,6 +148,7 @@ describe("ToolCallContextWriter", () => {
     );
     const entries = await fs.readdir(sessionsDir);
     expect(entries).toHaveLength(1);
+    expect(entries[0]).toBe(beforeWrite.resourceId);
   });
 
   it("truncates very long output", async () => {
@@ -172,4 +179,3 @@ describe("ToolCallContextWriter", () => {
     expect(content.length).toBeLessThan(55000);
   });
 });
-

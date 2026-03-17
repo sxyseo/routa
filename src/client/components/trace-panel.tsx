@@ -267,6 +267,11 @@ function formatHandoffRequestType(value: LaneHandoffInfo["requestType"]): string
   return value.replace(/_/g, " ");
 }
 
+function getTraceMetadataString(trace: TraceRecord, key: string): string | null {
+  const value = trace.metadata?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 /** Inline tool display for conversation flow - compact, non-intrusive */
 function InlineToolView({
   merged,
@@ -280,6 +285,9 @@ function InlineToolView({
   const rawToolName = toolCall.tool?.name ?? "unknown";
   const toolName = inferToolName(rawToolName, toolCall.tool?.input);
   const status = toolResult?.tool?.status ?? toolCall.tool?.status ?? "running";
+  const toolContextPath =
+    getTraceMetadataString(toolCall, "toolCallContentPath") ??
+    getTraceMetadataString(toolCall, "toolCallContextDir");
 
   const rawOutput = toolResult?.tool?.output;
   const outputStr =
@@ -360,6 +368,20 @@ function InlineToolView({
               </div>
               <div className="px-2 py-1.5 bg-white dark:bg-gray-900/40">
                 <ToolInputTable input={toolCall.tool.input} />
+              </div>
+            </div>
+          )}
+          {toolContextPath && (
+            <div className="rounded-md border border-orange-200 dark:border-orange-800/40 overflow-hidden">
+              <div className="px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-200 dark:border-orange-800/40">
+                <span className="text-[9px] font-semibold text-orange-500 dark:text-orange-400 uppercase tracking-wider">
+                  Tool Context
+                </span>
+              </div>
+              <div className="px-2 py-1.5 bg-white dark:bg-gray-900/40">
+                <code className="block text-[11px] text-orange-700 dark:text-orange-300 break-all">
+                  {toolContextPath}
+                </code>
               </div>
             </div>
           )}
