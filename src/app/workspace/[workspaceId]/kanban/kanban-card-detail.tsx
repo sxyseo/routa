@@ -353,13 +353,13 @@ function ExecutionSection({
   return (
     <DetailSection
       title="Execution"
-      description={compact ? undefined : "Lane defaults, the effective run target, and optional per-card overrides."}
+      description={compact ? undefined : "Lane defaults and the effective run target."}
       compact={compact}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{laneName}</div>
-          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
             {lane ? "Inherited from the current lane." : "Lane metadata unavailable, using task-level defaults."}
           </div>
         </div>
@@ -367,7 +367,7 @@ function ExecutionSection({
           {lane?.automation?.enabled ? "Automation on" : "Manual"}
         </span>
       </div>
-      <div className={`grid gap-2 ${compact ? "mt-2 grid-cols-1" : "mt-3 sm:grid-cols-2"}`}>
+      <div className={`grid gap-2 ${compact ? "mt-2 grid-cols-1" : "mt-2.5 sm:grid-cols-2"}`}>
         <CompactInfo
           label="Lane default"
           value={`${laneProvider} · ${lane?.automation?.role ?? "DEVELOPER"} · ${laneSpecialist}`}
@@ -380,7 +380,7 @@ function ExecutionSection({
         />
       </div>
       {(transitionArtifacts.currentRequiredArtifacts.length > 0 || transitionArtifacts.nextRequiredArtifacts.length > 0) && (
-        <div className={`grid gap-2 ${compact ? "mt-2 grid-cols-1" : "mt-3 sm:grid-cols-2"}`}>
+        <div className={`grid gap-2 ${compact ? "mt-2 grid-cols-1" : "mt-2.5 sm:grid-cols-2"}`}>
           <CompactInfo
             label={`Enter ${laneName}`}
             value={formatArtifactSummary(transitionArtifacts.currentRequiredArtifacts)}
@@ -396,15 +396,15 @@ function ExecutionSection({
       <details
         key={overrideKey}
         open={hasCardOverride || undefined}
-        className={`mt-3 rounded-2xl border border-gray-200/80 bg-gray-50/80 dark:border-gray-700 dark:bg-[#0d1018] ${compact ? "px-2.5 py-2.5" : "px-3 py-3"}`}
+        className={`mt-2.5 rounded-2xl border border-gray-200/80 bg-gray-50/80 dark:border-gray-700 dark:bg-[#0d1018] ${compact ? "px-2.5 py-2.5" : "px-3 py-2.5"}`}
       >
         <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
               Card Session Override
             </div>
-            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Keep this collapsed to inherit the lane default provider, role, and specialist.
+            <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Keep collapsed to inherit the lane default.
             </div>
           </div>
           <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-amber-300 hover:text-amber-700 dark:border-gray-700 dark:bg-[#121620] dark:text-gray-300 dark:hover:border-amber-600 dark:hover:text-amber-200">
@@ -475,7 +475,7 @@ function ExecutionSection({
         </div>
       </details>
       {canRunTask && (
-        <div className={`mt-2 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-900/40 dark:bg-sky-900/10 dark:text-sky-200 ${compact ? "leading-[1.125rem]" : "leading-5"}`}>
+        <div className={`mt-2 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-900/40 dark:bg-sky-900/10 dark:text-sky-200 ${compact ? "leading-[1.125rem]" : "leading-[1.2rem]"}`}>
           Manual {task.triggerSessionId ? "reruns" : "runs"} use {effectiveAutomation.source === "card" ? "this card override" : "the current lane default"}:
           {" "}
           {effectiveProvider} · {effectiveAutomation.role ?? "DEVELOPER"} · {effectiveSpecialist}
@@ -555,50 +555,52 @@ function ActivitySection({
       description={compact ? undefined : "Run history, lane handoffs, and issue linkage collected on the right for faster switching."}
       compact={compact}
     >
-      <div className="flex flex-wrap gap-1.5">
-        {tabs.map((tab) => {
-          const active = tab.id === activeTab;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                active
-                  ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200"
-                  : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-400 dark:hover:text-gray-200"
-              }`}
-            >
-              <span>{tab.label}</span>
-              {typeof tab.count === "number" && (
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-amber-200/70 text-amber-900 dark:bg-amber-800/50 dark:text-amber-100" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      <div className={compact ? "mt-3" : "mt-4"}>
-        {visibleTab === "runs" && (
-          <SessionHistoryPanel
-            task={task}
-            specialists={specialists}
-            sessions={sessions}
-            currentSessionId={currentSessionId}
-            onSelectSession={onSelectSession}
-            compact={compact}
-          />
-        )}
-        {visibleTab === "handoffs" && (
-          <HandoffPanel
-            task={task}
-            compact={compact}
-          />
-        )}
-        {visibleTab === "github" && (
-          <GitHubPanel task={task} compact={compact} />
-        )}
+      <div className={compact ? "space-y-3" : "grid gap-3 md:grid-cols-[minmax(0,1fr)_7.5rem]"}>
+        <div className={compact ? "" : "order-1"}>
+          {visibleTab === "runs" && (
+            <SessionHistoryPanel
+              task={task}
+              specialists={specialists}
+              sessions={sessions}
+              currentSessionId={currentSessionId}
+              onSelectSession={onSelectSession}
+              compact={compact}
+            />
+          )}
+          {visibleTab === "handoffs" && (
+            <HandoffPanel
+              task={task}
+              compact={compact}
+            />
+          )}
+          {visibleTab === "github" && (
+            <GitHubPanel task={task} compact={compact} />
+          )}
+        </div>
+        <div className={compact ? "flex flex-wrap gap-1.5" : "order-2 flex flex-col items-stretch gap-2 border-l border-gray-200 pl-3 dark:border-gray-700"}>
+          {tabs.map((tab) => {
+            const active = tab.id === activeTab;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`inline-flex items-center justify-between gap-2 rounded-2xl border px-3 py-2 text-xs font-medium transition-colors ${
+                  active
+                    ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-400 dark:hover:text-gray-200"
+                }`}
+              >
+                <span>{tab.label}</span>
+                {typeof tab.count === "number" && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-amber-200/70 text-amber-900 dark:bg-amber-800/50 dark:text-amber-100" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </DetailSection>
   );
@@ -831,35 +833,33 @@ function RepositoriesWorktreeRow({
   onRepositoryChange?: (codebaseIds: string[]) => void;
   compact?: boolean;
 }) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const currentCodebaseIds = task.codebaseIds && task.codebaseIds.length > 0 ? task.codebaseIds : allCodebaseIds;
   const primaryCodebase = codebases.find((codebase) => codebase.id === currentCodebaseIds[0]);
   const worktree = task.worktreeId ? worktreeCache[task.worktreeId] : null;
+  const repoSummary = primaryCodebase
+    ? `${primaryCodebase.label ?? primaryCodebase.repoPath.split("/").pop()}${currentCodebaseIds.length > 1 ? ` +${currentCodebaseIds.length - 1}` : ""}`
+    : "No repository linked";
 
   return (
     <DetailSection
       title="Repositories"
-      description={compact ? undefined : "Control the repository context and attached worktree for this card."}
+      description={compact ? undefined : "Repository context and attached worktree for this card."}
       compact={compact}
     >
-      <div className={`flex items-center gap-2 ${compact ? "text-[13px]" : "text-sm"}`}>
-        <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Repo</div>
-        {primaryCodebase ? (
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${primaryCodebase.sourceType === "github" ? "bg-violet-500" : "bg-emerald-500"}`} />
-            <span className="truncate text-gray-700 dark:text-gray-300">
-              {primaryCodebase.label ?? primaryCodebase.repoPath.split("/").pop()}
-            </span>
-            {currentCodebaseIds.length > 1 && (
-              <span className="text-xs text-gray-400">+{currentCodebaseIds.length - 1}</span>
-            )}
-          </div>
-        ) : (
-          <span className="text-xs text-gray-400 dark:text-gray-500">None</span>
-        )}
-        {worktree && (
-          <>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
+      <details className="group">
+        <summary className={`flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden ${compact ? "text-[13px]" : "text-sm"}`}>
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Repo</div>
+          {primaryCodebase ? (
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${primaryCodebase.sourceType === "github" ? "bg-violet-500" : "bg-emerald-500"}`} />
+              <span className="truncate text-gray-700 dark:text-gray-300">
+                {repoSummary}
+              </span>
+            </div>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-xs text-gray-400 dark:text-gray-500">{repoSummary}</span>
+          )}
+          {worktree && (
             <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
               worktree.status === "active"
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
@@ -867,18 +867,11 @@ function RepositoriesWorktreeRow({
                   ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
                   : "bg-rose-100 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
             }`}>{worktree.branch}</span>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="ml-auto text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-        >
-          {isExpanded ? "Hide" : "Edit"}
-        </button>
-      </div>
-
-      {isExpanded && (
+          )}
+          <span className="ml-auto text-xs text-gray-400 transition-colors group-hover:text-gray-600 dark:group-hover:text-gray-300">
+            Edit
+          </span>
+        </summary>
         <div className={`space-y-3 border-l-2 border-gray-200 dark:border-gray-700 ${compact ? "mt-2.5 pl-2.5" : "mt-3 pl-3"}`}>
           {codebases.length > 0 && (
             <div>
@@ -930,7 +923,7 @@ function RepositoriesWorktreeRow({
             </div>
           )}
         </div>
-      )}
+      </details>
     </DetailSection>
   );
 }
