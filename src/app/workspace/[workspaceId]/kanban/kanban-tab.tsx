@@ -513,11 +513,11 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
           </button>
           <button
             onClick={onRefresh}
-            className="rounded p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-[#1f232f] dark:hover:text-gray-200"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-[#1f232f] dark:hover:text-gray-200"
             title="Refresh"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001m-11.01 9.296V14.52m0 0H4.995m4.992 0l-3.183 3.182a8.25 8.25 0 10-3.7 3.7M12.065 7.9A8.25 8.25 0 1019.868 11M12 9m0 3h.01" />
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.581m15.356 2A8.001 8.001 0 004.581 9m0 0H9m11 11v-5h-.582m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </button>
         </div>
@@ -1021,10 +1021,10 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
     <div className="flex flex-col h-full space-y-2">
       {kanbanHeader}
       <div className="shrink-0 rounded-2xl border border-gray-200/70 bg-white px-4 py-2 dark:border-[#1c1f2e] dark:bg-[#12141c]">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
-            <div className="flex min-w-0 items-start gap-2 xl:max-w-xl">
-              <span className="pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Repos</span>
+            <div className="flex min-w-0 items-center gap-2 xl:max-w-xl">
+              <span className="inline-flex h-10 items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Repos</span>
               {codebases.length === 0 ? (
                 <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-[#0d1018]">
                   <span className="text-sm text-gray-400 dark:text-gray-500">No repositories linked.</span>
@@ -1065,7 +1065,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                         setSelectedCodebase(defaultCodebase);
                         void fetchCodebaseWorktrees(defaultCodebase);
                       }}
-                      className="inline-flex max-w-[200px] items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700 transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-300 dark:hover:bg-amber-900/10"
+                      className="inline-flex h-10 max-w-[200px] items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 text-xs text-gray-700 transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-300 dark:hover:bg-amber-900/10"
                       data-testid="codebase-badge"
                       title={`${defaultCodebase.label ?? defaultCodebase.repoPath} - ${defaultCodebase.branch ? `@${defaultCodebase.branch}` : ''}`}
                     >
@@ -1085,7 +1085,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                           void fetchCodebaseWorktrees(otherRepo);
                         }
                       }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-400 dark:hover:bg-amber-900/10"
+                      className="inline-flex h-10 items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs text-gray-600 transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-400 dark:hover:bg-amber-900/10"
                       title={`+${codebases.length - 1} more ${codebases.length - 1 === 1 ? 'repository' : 'repositories'} - click to view all`}
                     >
                       <span className="font-medium">+{codebases.length - 1}</span>
@@ -1098,13 +1098,13 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
 
           {onAgentPrompt ? (
             <div className="flex min-w-[20rem] flex-1 items-center gap-2 lg:max-w-none">
-              <div className="group relative flex min-w-0 flex-1 items-center rounded-2xl border border-gray-200 bg-white shadow-sm transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-gray-700 dark:bg-[#12141c]">
-                <div className="relative shrink-0">
-                  <select
-                    value={acp?.selectedProvider ?? ""}
-                    onChange={(event) => acp?.setProvider(event.target.value)}
-                    disabled={!acp?.connected || availableProviders.length === 0}
-                    className="h-10 appearance-none rounded-l-2xl border-r border-gray-200 bg-transparent pl-3 pr-8 text-sm font-medium text-gray-700 outline-none transition-colors disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
+            <div className="group relative flex min-w-0 flex-1 items-center rounded-2xl border border-gray-200 bg-white shadow-sm transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-gray-700 dark:bg-[#12141c]">
+              <div className="relative shrink-0">
+                <select
+                  value={acp?.selectedProvider ?? ""}
+                  onChange={(event) => acp?.setProvider(event.target.value)}
+                  disabled={!acp?.connected || availableProviders.length === 0}
+                  className="h-10 appearance-none rounded-l-2xl border-r border-gray-200 bg-transparent pl-3 pr-8 text-sm font-medium text-gray-700 outline-none transition-colors disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
                     aria-label="KanbanTask Agent provider"
                     data-testid="kanban-agent-provider"
                   >
@@ -1141,7 +1141,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                 <button
                   onClick={() => void handleAgentSubmit()}
                   disabled={!agentInput.trim() || agentLoading || !acp?.connected}
-                  className="mr-1.5 inline-flex h-8 shrink-0 items-center gap-1 rounded-xl bg-gray-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:bg-amber-500 dark:hover:bg-amber-400 dark:disabled:bg-[#1a1d29] dark:disabled:text-gray-500"
+                  className="mr-1.5 inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-gray-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:bg-amber-500 dark:hover:bg-amber-400 dark:disabled:bg-[#1a1d29] dark:disabled:text-gray-500"
                 >
                   {agentLoading ? (
                     "..."
@@ -1156,7 +1156,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                 </button>
                 <button
                   onClick={() => setShowCreateModal(true)}
-                  className="inline-flex h-8 shrink-0 items-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-0 text-xs font-semibold leading-none text-white shadow-sm transition-all hover:from-amber-600 hover:to-orange-500"
+                  className="inline-flex h-10 shrink-0 items-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-0 text-xs font-semibold text-white shadow-sm transition-all hover:from-amber-600 hover:to-orange-500"
                 >
                   Manual
                 </button>
