@@ -24,6 +24,7 @@ vi.mock("@/core/trace", () => ({
   withConversation: vi.fn((trace, conv) => ({ ...trace, conversation: conv })),
   withTool: vi.fn((trace, tool) => ({ ...trace, tool })),
   withVcs: vi.fn((trace, vcs) => ({ ...trace, vcs })),
+  withMetadata: vi.fn((trace, key, value) => ({ ...trace, metadata: { ...trace.metadata, [key]: value } })),
   recordTrace: vi.fn(),
   extractFilesFromToolCall: vi.fn(() => []),
   getVcsContextLight: vi.fn(() => null),
