@@ -12,12 +12,15 @@
  * - Trace(AG-UI) (AG-UI protocol events)
  */
 
-import { useState, useEffect, useCallback, Suspense } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { TracePanel } from "@/client/components/trace-panel";
 import { EventBridgeTracePanel } from "@/client/components/event-bridge-trace-panel";
 import { AGUITracePanel } from "@/client/components/ag-ui-trace-panel";
+import { DesktopAppShell } from "@/client/components/desktop-app-shell";
+import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
+import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import type { TraceRecord } from "@/core/trace";
 
 type ViewTab = "chat" | "event-bridge" | "ag-ui";
@@ -36,6 +39,9 @@ interface Session {
 function TracePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { workspaces, loading: workspacesLoading, createWorkspace } = useWorkspaces();
+
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState("default");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -44,13 +50,37 @@ function TracePageContent() {
   const [sessionTraces, setSessionTraces] = useState<TraceRecord[]>([]);
   const [_tracesLoading, setTracesLoading] = useState(false);
 
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+
+  useEffect(() => {
+    if (workspacesLoading) return;
+    if (workspaces.length === 0) return;
+
+    if (!workspaces.some((workspace) => workspace.id === activeWorkspaceId)) {
+      setActiveWorkspaceId(workspaces[0].id);
+    }
+  }, [activeWorkspaceId, workspaces, workspacesLoading]);
+
+  const handleWorkspaceSelect = useCallback((workspaceId: string) => {
+    setActiveWorkspaceId(workspaceId);
+  }, []);
+
+  const handleWorkspaceCreate = useCallback(async (title: string) => {
+    const workspace = await createWorkspace(title);
+    if (workspace?.id) {
+      setActiveWorkspaceId(workspace.id);
+    }
+  }, [createWorkspace]);
+
+  const workspaceQuery = activeWorkspaceId ? `?workspaceId=${encodeURIComponent(activeWorkspaceId)}` : "";
+
   const fetchSessions = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch traces and session metadata in parallel
       const [tracesRes, sessionsRes] = await Promise.all([
-        fetch("/api/traces", { cache: "no-store" }),
-        fetch("/api/sessions", { cache: "no-store" }),
+        fetch(`/api/traces${workspaceQuery}`, { cache: "no-store" }),
+        fetch(`/api/sessions${workspaceQuery}`, { cache: "no-store" }),
       ]);
 
       const tracesData = tracesRes.ok ? await tracesRes.json() : { traces: [] };
@@ -93,19 +123,23 @@ function TracePageContent() {
 
       setSessions(sessionList);
 
-      // Check URL parameter first, then use first session
+      // Check URL parameter first, then keep current session if possible, finally fallback
       const urlSessionId = searchParams.get("sessionId");
-      if (urlSessionId && sessionList.some(s => s.sessionId === urlSessionId)) {
+      if (urlSessionId && sessionList.some((s) => s.sessionId === urlSessionId)) {
         setSelectedSessionId(urlSessionId);
-      } else if (!selectedSessionId && sessionList.length > 0) {
+      } else if (selectedSessionId && sessionList.some((s) => s.sessionId === selectedSessionId)) {
+        setSelectedSessionId(selectedSessionId);
+      } else if (sessionList.length > 0) {
         setSelectedSessionId(sessionList[0].sessionId);
+      } else {
+        setSelectedSessionId(null);
       }
     } catch (err) {
       console.error("[TracePage] Failed to fetch sessions:", err);
     } finally {
       setLoading(false);
     }
-  }, [selectedSessionId, searchParams]);
+  }, [selectedSessionId, searchParams, workspaceQuery]);
 
   // Fetch traces for the selected session (shared across all view tabs)
   const fetchSessionTraces = useCallback(async () => {
@@ -116,6 +150,9 @@ function TracePageContent() {
     setTracesLoading(true);
     try {
       const params = new URLSearchParams({ sessionId: selectedSessionId });
+      if (activeWorkspaceId) {
+        params.set("workspaceId", activeWorkspaceId);
+      }
       const res = await fetch(`/api/traces?${params}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
@@ -126,7 +163,7 @@ function TracePageContent() {
     } finally {
       setTracesLoading(false);
     }
-  }, [selectedSessionId]);
+  }, [activeWorkspaceId, selectedSessionId]);
 
   useEffect(() => {
     fetchSessions();
@@ -163,105 +200,249 @@ function TracePageContent() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117]">
-      {/* Header */}
-      <header className="shrink-0 px-5 py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-            title="Back to Home"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+    <DesktopAppShell
+      workspaceId={activeWorkspaceId}
+      workspaceTitle={activeWorkspace?.title}
+      workspaceSwitcher={
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId}
+          onSelect={handleWorkspaceSelect}
+          onCreate={handleWorkspaceCreate}
+          loading={workspacesLoading}
+          compact
+          desktop
+        />
+      }
+      sessionCount={sessions.length}
+      taskCount={sessions.length}
+      titleBarRight={(
+        <Link
+          href="/"
+          className="px-2.5 py-1 rounded text-[11px] text-[#858585] hover:text-[#b5b5b5] hover:bg-[#2a2a2a] transition-colors"
+          title="Back to Home"
+        >
+          Home
+        </Link>
+      )}
+    >
+      <div className="h-full flex flex-col bg-[#252526] overflow-hidden">
+        {/* Header */}
+        <div className="shrink-0 px-4 py-3 border-b border-[#3c3c3c] flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <svg className="w-4 h-4 text-[#858585] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
             </svg>
-          </Link>
-          <div>
-            <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              Agent Trace Viewer
-            </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Browse and analyze agent execution traces
-            </p>
+            <div className="min-w-0">
+              <h1 className="text-[13px] font-semibold text-[#cccccc]">
+                Agent Trace Viewer
+              </h1>
+              <p className="text-[11px] text-[#858585]">
+                Browse and analyze agent execution traces
+              </p>
+            </div>
+            {selectedSessionId && (
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] text-[#858585] border border-[#3c3c3c]">
+                <span>Session:</span>
+                <code className="font-mono text-[#b5b5b5]">{selectedSessionId.slice(0, 8)}…</code>
+              </div>
+            )}
           </div>
-          {selectedSessionId && (
-            <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            {selectedSessionId && (
               <button
                 onClick={copyCurrentUrl}
-                className="group flex items-center gap-2 px-2.5 py-1.5 rounded bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] text-[#858585] bg-[#2a2a2a] hover:bg-[#3c3c3c] hover:text-[#b5b5b5] transition-colors"
                 title="Copy shareable URL"
               >
-                <span className="text-xs text-gray-500 dark:text-gray-400">Session:</span>
-                <code className="text-xs font-mono text-gray-700 dark:text-gray-300">
-                  {selectedSessionId.slice(0, 8)}...
-                </code>
-                <svg className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <span>Copy link</span>
+                <svg className="w-3.5 h-3.5 text-[#858585] group-hover:text-[#b5b5b5]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="px-2.5 py-1.5 text-[11px] font-medium rounded-md text-[#858585] bg-[#2a2a2a] hover:bg-[#3c3c3c] hover:text-[#b5b5b5] transition-colors"
+            >
+              {showSidebar ? "Hide Sessions" : "Show Sessions"}
+            </button>
+            <button
+              onClick={fetchSessions}
+              disabled={loading}
+              className="px-2.5 py-1.5 text-[11px] font-medium rounded-md text-[#858585] bg-[#2a2a2a] hover:bg-[#3c3c3c] hover:text-[#b5b5b5] disabled:opacity-50 transition-colors"
+            >
+              {loading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* View tab switcher */}
-          <div className="inline-flex items-center rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-0.5">
+
+        {/* View tab switcher */}
+        <div className="shrink-0 px-4 pt-2">
+          <div className="inline-flex items-center rounded-md border border-[#3c3c3c] bg-[#2a2a2a] p-0.5">
             {([
-              { key: "chat" as ViewTab, label: "Chat", color: "bg-blue-500" },
-              { key: "event-bridge" as ViewTab, label: "Trace", color: "bg-purple-500" },
-              { key: "ag-ui" as ViewTab, label: "Trace(AG-UI)", color: "bg-indigo-500" },
+              { key: "chat" as ViewTab, label: "Chat", color: "bg-[#0e639c]" },
+              { key: "event-bridge" as ViewTab, label: "Trace", color: "bg-[#5a5a5a]" },
+              { key: "ag-ui" as ViewTab, label: "Trace(AG-UI)", color: "bg-[#7a5af8]" },
             ]).map(({ key, label, color }) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${
+                className={`px-3 py-1.5 rounded-sm text-[11px] font-semibold tracking-wide transition-all ${
                   activeTab === key
-                    ? `${color} text-white shadow-sm`
-                    : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                    ? `${color} text-white`
+                    : "text-[#858585] hover:text-[#b5b5b5] hover:bg-[#3c3c3c]"
                 }`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <button
-            onClick={() => setShowSidebar(!showSidebar)}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
-          >
-            {showSidebar ? "Hide Sessions" : "Show Sessions"}
-          </button>
-          <button
-            onClick={fetchSessions}
-            disabled={loading}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md disabled:opacity-50 transition-colors"
-          >
-            {loading ? "Loading..." : "Refresh"}
-          </button>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <div className="flex-1 flex min-h-0">
-        {/* Session Sidebar */}
-        {showSidebar && (
-          <aside className="w-80 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                Sessions
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {sessions.length} session{sessions.length !== 1 ? "s" : ""} found
-              </p>
-            </div>
+        {/* Main Content */}
+        <div className="flex-1 flex min-h-0">
+          {/* Session Sidebar */}
+          {showSidebar && (
+            <aside className="w-80 border-r border-[#3c3c3c] bg-[#1f1f1f] flex flex-col">
+              <div className="px-4 py-3 border-b border-[#3c3c3c]">
+                <h2 className="text-xs font-semibold text-[#cccccc]">
+                  Sessions
+                </h2>
+                <p className="text-[11px] text-[#858585] mt-0.5">
+                  {sessions.length} session{sessions.length !== 1 ? "s" : ""} found
+                </p>
+              </div>
 
-            <div className="flex-1 overflow-y-auto">
-              {loading && sessions.length === 0 ? (
-                <div className="p-4 text-center">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading sessions...</p>
-                </div>
-              ) : sessions.length === 0 ? (
-                <div className="p-4 text-center">
+              <div className="flex-1 overflow-y-auto">
+                {loading && sessions.length === 0 ? (
+                  <div className="p-4 text-center">
+                    <p className="text-xs text-[#858585]">Loading sessions...</p>
+                  </div>
+                ) : sessions.length === 0 ? (
+                  <div className="p-4 text-center">
+                    <svg
+                      className="w-12 h-12 text-[#3c3c3c] mx-auto mb-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    <p className="text-xs text-[#858585]">No sessions found</p>
+                    <p className="text-[10px] text-[#6b6b6b] mt-1">
+                      Start a conversation to create traces
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[#2a2a2a]">
+                    {(() => {
+                      // Separate top-level (parent) sessions from child sessions
+                      const parentSessions = sessions.filter((s) => !s.parentSessionId);
+                      const childSessionMap = new Map<string, Session[]>();
+                      for (const session of sessions) {
+                        if (session.parentSessionId) {
+                          const children = childSessionMap.get(session.parentSessionId) ?? [];
+                          children.push(session);
+                          childSessionMap.set(session.parentSessionId, children);
+                        }
+                      }
+
+                      const renderSession = (session: Session, isChild = false) => {
+                        const roleColor: Record<string, string> = {
+                          ROUTA: "bg-blue-900/30 text-blue-200",
+                          CRAFTER: "bg-amber-900/30 text-amber-200",
+                          GATE: "bg-green-900/30 text-green-200",
+                          DEVELOPER: "bg-purple-900/30 text-purple-200",
+                        };
+                        const roleClass = session.role ? (roleColor[session.role] ?? "bg-gray-800 text-[#a3a3a3]") : "";
+
+                        return (
+                          <div key={session.sessionId}>
+                            <button
+                              onClick={() => handleSessionSelect(session.sessionId)}
+                              className={`w-full px-4 py-3 text-left hover:bg-[#2a2a2a] transition-colors ${
+                                isChild ? "pl-8 py-2" : ""
+                              } ${
+                                selectedSessionId === session.sessionId
+                                  ? "bg-[#0e639c]/20 border-l-2 border-[#0e639c]"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <span className="text-xs font-medium text-[#e5e5e5] truncate">
+                                  {session.name || (
+                                    <code className="font-mono">
+                                      {session.sessionId.slice(0, 8)}…
+                                    </code>
+                                  )}
+                                </span>
+                                <span className="text-[10px] font-medium text-[#858585] shrink-0">
+                                  {session.count}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px] text-[#858585] flex-wrap">
+                                <span>{formatTimestamp(session.lastTimestamp)}</span>
+                                {session.role && (
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${roleClass}`}>
+                                    {session.role}
+                                  </span>
+                                )}
+                                {session.provider && (
+                                  <span className="px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#858585] text-[10px]">
+                                    {session.provider}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                            {/* Child sessions indented under parent */}
+                            {!isChild && childSessionMap.has(session.sessionId) && (
+                              <div className="border-l-2 border-[#3a3a3a] ml-4">
+                                {(childSessionMap.get(session.sessionId) ?? []).map((child) => renderSession(child, true))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      };
+
+                      return [
+                        ...parentSessions.map((session) => renderSession(session, false)),
+                        // Any sessions without a recognized parent (orphans) shown at bottom
+                        ...sessions
+                          .filter((session) => session.parentSessionId && !sessions.some((p) => p.sessionId === session.parentSessionId))
+                          .map((session) => renderSession(session, false)),
+                      ];
+                    })()}
+                  </div>
+                )}
+              </div>
+            </aside>
+          )}
+
+          {/* Trace Panel */}
+          <main className="flex-1 min-w-0 bg-[#252526]">
+            {selectedSessionId ? (
+              <>
+                {activeTab === "chat" && (
+                  <TracePanel sessionId={selectedSessionId} />
+                )}
+                {activeTab === "event-bridge" && (
+                  <EventBridgeTracePanel sessionId={selectedSessionId} traces={sessionTraces} />
+                )}
+                {activeTab === "ag-ui" && (
+                  <AGUITracePanel sessionId={selectedSessionId} traces={sessionTraces} />
+                )}
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center p-8">
+                <div className="text-center">
                   <svg
-                    className="w-12 h-12 text-gray-300 dark:text-gray-700 mx-auto mb-3"
+                    className="w-16 h-16 text-[#3c3c3c] mx-auto mb-4"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -273,136 +454,19 @@ function TracePageContent() {
                       d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                     />
                   </svg>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">No sessions found</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Start a conversation to create traces
+                  <p className="text-[13px] text-[#858585] mb-2">
+                    No session selected
+                  </p>
+                  <p className="text-xs text-[#6b6b6b]">
+                    Select a session from the sidebar to view traces
                   </p>
                 </div>
-              ) : (
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {(() => {
-                    // Separate top-level (parent) sessions from child sessions
-                    const parentSessions = sessions.filter(s => !s.parentSessionId);
-                    const childSessionMap = new Map<string, Session[]>();
-                    for (const s of sessions) {
-                      if (s.parentSessionId) {
-                        const children = childSessionMap.get(s.parentSessionId) ?? [];
-                        children.push(s);
-                        childSessionMap.set(s.parentSessionId, children);
-                      }
-                    }
-
-                    const renderSession = (session: Session, isChild = false) => {
-                      const roleColor: Record<string, string> = {
-                        ROUTA: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300",
-                        CRAFTER: "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300",
-                        GATE: "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300",
-                        DEVELOPER: "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300",
-                      };
-                      const roleClass = session.role ? (roleColor[session.role] ?? "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400") : "";
-
-                      return (
-                        <div key={session.sessionId}>
-                          <button
-                            onClick={() => handleSessionSelect(session.sessionId)}
-                            className={`w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                              isChild ? "pl-8 py-2" : ""
-                            } ${
-                              selectedSessionId === session.sessionId
-                                ? "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500"
-                                : ""
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <span className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                                {session.name || (
-                                  <code className="font-mono">
-                                    {session.sessionId.slice(0, 8)}…
-                                  </code>
-                                )}
-                              </span>
-                              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">
-                                {session.count}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-                              <span>{formatTimestamp(session.lastTimestamp)}</span>
-                              {session.role && (
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${roleClass}`}>
-                                  {session.role}
-                                </span>
-                              )}
-                              {session.provider && (
-                                <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px]">
-                                  {session.provider}
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                          {/* Child sessions indented under parent */}
-                          {!isChild && childSessionMap.has(session.sessionId) && (
-                            <div className="border-l-2 border-gray-200 dark:border-gray-700 ml-4">
-                              {(childSessionMap.get(session.sessionId) ?? []).map(child => renderSession(child, true))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    };
-
-                    return [
-                      ...parentSessions.map(s => renderSession(s, false)),
-                      // Any sessions without a recognized parent (orphans) shown at bottom
-                      ...sessions.filter(s => s.parentSessionId && !sessions.some(p => p.sessionId === s.parentSessionId)).map(s => renderSession(s, false)),
-                    ];
-                  })()}
-                </div>
-              )}
-            </div>
-          </aside>
-        )}
-
-        {/* Trace Panel */}
-        <main className="flex-1 min-w-0">
-          {selectedSessionId ? (
-            <>
-              {activeTab === "chat" && (
-                <TracePanel sessionId={selectedSessionId} />
-              )}
-              {activeTab === "event-bridge" && (
-                <EventBridgeTracePanel sessionId={selectedSessionId} traces={sessionTraces} />
-              )}
-              {activeTab === "ag-ui" && (
-                <AGUITracePanel sessionId={selectedSessionId} traces={sessionTraces} />
-              )}
-            </>
-          ) : (
-            <div className="h-full flex items-center justify-center p-8">
-              <div className="text-center">
-                <svg
-                  className="w-16 h-16 text-gray-300 dark:text-gray-700 mx-auto mb-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                <p className="text-base text-gray-500 dark:text-gray-400 mb-2">
-                  No session selected
-                </p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  Select a session from the sidebar to view traces
-                </p>
               </div>
-            </div>
-          )}
-        </main>
+            )}
+          </main>
+        </div>
       </div>
-    </div>
+    </DesktopAppShell>
   );
 }
 
@@ -410,10 +474,10 @@ function TracePageContent() {
 export default function TracePage() {
   return (
     <Suspense fallback={
-      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-[#0f1117]">
+      <div className="h-screen flex items-center justify-center bg-[#252526]">
         <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+          <div className="animate-spin w-8 h-8 border-2 border-[#0e639c] border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-sm text-[#858585]">Loading...</p>
         </div>
       </div>
     }>
