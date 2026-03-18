@@ -16,54 +16,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import type { TraceRecord } from "@/core/trace";
+import type { LaneHandoffInfo, LaneSessionInfo, SessionKanbanContext } from "@/client/types/kanban-context";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
 import { ToolInputTable, ToolOutputView } from "./tool-call-content";
 
 interface TracePanelProps {
   sessionId: string | null;
-}
-
-interface LaneSessionInfo {
-  sessionId: string;
-  columnId?: string;
-  columnName?: string;
-  stepId?: string;
-  stepIndex?: number;
-  stepName?: string;
-  provider?: string;
-  role?: string;
-  status: "running" | "completed" | "failed" | "timed_out" | "transitioned";
-  startedAt: string;
-  completedAt?: string;
-}
-
-interface LaneHandoffInfo {
-  id: string;
-  direction: "incoming" | "outgoing";
-  fromSessionId: string;
-  toSessionId: string;
-  fromColumnId?: string;
-  fromColumnName?: string;
-  toColumnId?: string;
-  toColumnName?: string;
-  requestType: "environment_preparation" | "runtime_context" | "clarification" | "rerun_command";
-  request: string;
-  status: "requested" | "delivered" | "completed" | "blocked" | "failed";
-  requestedAt: string;
-  respondedAt?: string;
-  responseSummary?: string;
-}
-
-interface SessionKanbanContext {
-  taskId: string;
-  taskTitle: string;
-  boardId?: string;
-  columnId?: string;
-  triggerSessionId?: string;
-  currentLaneSession?: LaneSessionInfo;
-  previousLaneSession?: LaneSessionInfo;
-  previousLaneRun?: LaneSessionInfo;
-  relatedHandoffs: LaneHandoffInfo[];
 }
 
 

@@ -6,6 +6,7 @@ import { isClaudeCodeSdkConfigured } from "../acp/claude-code-sdk-adapter";
 import { formatArtifactSummary, resolveKanbanTransitionArtifacts } from "./transition-artifacts";
 import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
+import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 
 function formatHandoffRequestType(
   value: "environment_preparation" | "runtime_context" | "clarification" | "rerun_command",
@@ -66,7 +67,7 @@ export function buildTaskPrompt(
     ? [...(task.laneSessions ?? [])].reverse().find((entry) => entry.columnId === previousColumn.id)
     : undefined;
   const previousLaneRun = !isBacklogPlanning
-    ? [...(task.laneSessions ?? [])].reverse().find((entry) => entry.columnId === currentColumnId)
+    ? getPreviousLaneRun(task, options?.currentSessionId) ?? getLatestLaneSessionForColumn(task, currentColumnId)
     : undefined;
   const pendingLaneHandoffs = options?.currentSessionId
     ? (task.laneHandoffs ?? []).filter((handoff) => handoff.toSessionId === options.currentSessionId && !handoff.respondedAt)

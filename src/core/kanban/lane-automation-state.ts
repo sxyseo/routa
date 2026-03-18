@@ -114,6 +114,17 @@ export function resolveCurrentLaneAutomationState(
   ) {
     currentStepIndex = 0;
   }
+  if ((typeof currentStepIndex !== "number" || currentStepIndex < 0) && steps.length > 1) {
+    console.warn("[LaneAutomation] Could not resolve active step for multi-step lane", {
+      currentColumnId,
+      currentSessionId: currentSession?.sessionId,
+      steps: steps.map((step) => step.id ?? step.specialistId ?? step.specialistName ?? step.role ?? "unknown"),
+      assignedProvider: task.assignedProvider,
+      assignedRole: task.assignedRole,
+      assignedSpecialistId: task.assignedSpecialistId,
+      assignedSpecialistName: task.assignedSpecialistName,
+    });
+  }
 
   const currentStep = typeof currentStepIndex === "number" ? steps[currentStepIndex] : undefined;
   const nextStep = typeof currentStepIndex === "number" ? steps[currentStepIndex + 1] : undefined;
