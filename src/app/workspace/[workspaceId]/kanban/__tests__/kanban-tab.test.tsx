@@ -307,6 +307,72 @@ describe("KanbanTab card detail manual runs", () => {
     expect(screen.getByText(/This gate is injected into the ACP prompt/i)).toBeTruthy();
   });
 
+  it("shows a visible error when moving to a gated lane without required artifacts", async () => {
+    const gatedBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [
+        {
+          id: "dev",
+          name: "Dev",
+          position: 0,
+          stage: "dev",
+        },
+        {
+          id: "review",
+          name: "Review",
+          position: 1,
+          stage: "review",
+          automation: {
+            enabled: true,
+            requiredArtifacts: ["screenshot"],
+          },
+        },
+      ],
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks/task-1" && init?.method === "PATCH") {
+        return {
+          ok: false,
+          json: async () => ({
+            error: 'Cannot move task to "Review": missing required artifacts: screenshot. Please provide these artifacts before moving the task.',
+            missingArtifacts: ["screenshot"],
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[gatedBoard]}
+        tasks={[{
+          ...createTask("task-1", "Story One"),
+          columnId: "dev",
+          status: "IN_PROGRESS",
+        }]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: "move",
+    };
+
+    fireEvent.dragStart(screen.getByTestId("kanban-card"), { dataTransfer });
+    fireEvent.drop(screen.getAllByTestId("kanban-column")[1]!);
+
+    expect(await screen.findByText(/missing required artifacts: screenshot/i)).toBeTruthy();
+  });
+
   it("switches the right-side run tabs above the session pane", async () => {
     vi.stubGlobal("scrollIntoView", vi.fn());
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -425,7 +491,7 @@ describe("KanbanTab quick ACP assignment", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows a visible ACP selector on each card and patches the task inline", async () => {
+  it("shows the ACP selector only after entering edit mode and patches the task inline", async () => {
     const onRefresh = vi.fn();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -470,7 +536,11 @@ describe("KanbanTab quick ACP assignment", () => {
       />,
     );
 
-    const acpSelect = screen.getByTestId("kanban-card-acp-select");
+    expect(screen.queryByTestId("kanban-card-acp-select")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const acpSelect = await screen.findByTestId("kanban-card-acp-select");
     expect(acpSelect).toBeTruthy();
     expect((acpSelect as HTMLSelectElement).value).toBe("");
 
@@ -487,6 +557,75 @@ describe("KanbanTab quick ACP assignment", () => {
       });
     });
     expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it("shows sync status in the same header row as the card status", () => {
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[{
+          id: "claude",
+          name: "Claude Code",
+          description: "Claude Code provider",
+          command: "claude",
+          status: "available",
+        }]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const syncLabel = screen.getByText("Not synced");
+    const statusLabel = screen.getByText("Idle");
+    expect(syncLabel.parentElement).toBe(statusLabel.parentElement);
+  });
+
+  it("does not repeat lane automation details on cards without overrides", () => {
+    const automatedBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [
+        {
+          id: "backlog",
+          name: "Backlog",
+          position: 0,
+          stage: "backlog",
+          automation: {
+            enabled: true,
+            providerId: "claude",
+            role: "GATE",
+            specialistId: "review-guard",
+            specialistName: "Review Guard",
+            transitionType: "entry",
+          },
+        },
+      ],
+    };
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[automatedBoard]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[{
+          id: "claude",
+          name: "Claude Code",
+          description: "Claude Code provider",
+          command: "claude",
+          status: "available",
+        }]}
+        specialists={[{ id: "review-guard", name: "Review Guard", role: "GATE" }]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("Inherited from lane defaults")).toBeNull();
+    expect(screen.queryByText("Claude Code · GATE · Review Guard")).toBeNull();
   });
 });
 

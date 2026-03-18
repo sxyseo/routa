@@ -69,6 +69,52 @@ function getStatusLabel(sessionStatus?: "connecting" | "ready" | "error", queueP
   return "Idle";
 }
 
+function getSyncTone(
+  sessionStatus: "connecting" | "ready" | "error" | undefined,
+  queuePosition: number | undefined,
+  hasSyncError: boolean,
+  githubSyncedAt?: string,
+) {
+  if (sessionStatus === "connecting" || queuePosition) {
+    return "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-900/40";
+  }
+  if (sessionStatus === "error" || hasSyncError) {
+    return "bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:ring-rose-900/40";
+  }
+  if (githubSyncedAt) {
+    return "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40";
+  }
+  return "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
+}
+
+function getSyncLabel(
+  sessionStatus: "connecting" | "ready" | "error" | undefined,
+  queuePosition: number | undefined,
+  hasSyncError: boolean,
+  githubSyncedAt?: string,
+) {
+  if (sessionStatus === "connecting") return "Starting";
+  if (queuePosition) return `Queued #${queuePosition}`;
+  if (sessionStatus === "error" || hasSyncError) return "Sync issue";
+  if (githubSyncedAt) return "Synced";
+  return "Not synced";
+}
+
+function getSyncDetail(
+  sessionStatus: "connecting" | "ready" | "error" | undefined,
+  queuePosition: number | undefined,
+  sessionError: string | undefined,
+  lastSyncError: string | undefined,
+  githubSyncedAt?: string,
+) {
+  if (sessionStatus === "connecting") return "Session starting...";
+  if (queuePosition) return "Waiting for an available slot.";
+  if (sessionStatus === "error") return sessionError ?? "Session failed";
+  if (lastSyncError) return lastSyncError;
+  if (githubSyncedAt) return new Date(githubSyncedAt).toLocaleString();
+  return null;
+}
+
 export function KanbanCard({
   task,
   linkedSession,
@@ -96,11 +142,12 @@ export function KanbanCard({
   const assignedProvider = availableProviders.find((provider) => provider.id === task.assignedProvider);
   const assignedRole = task.assignedRole ?? "DEVELOPER";
   const assignedSpecialist = specialists.find((item) => item.id === task.assignedSpecialistId);
+  const hasCardOverride = Boolean(task.assignedProvider || task.assignedRole || task.assignedSpecialistId || task.assignedSpecialistName);
   const priorityTone = getPriorityTone(task.priority);
   const sessionTone = getSessionTone(sessionStatus, queuePosition);
   const statusLabel = getStatusLabel(sessionStatus, queuePosition);
-  const automationSourceLabel = assignedProvider ? "Card override" : "Lane default";
-  const automationSourceTone = assignedProvider
+  const automationSourceLabel = hasCardOverride ? "Card override" : "Lane default";
+  const automationSourceTone = hasCardOverride
     ? "bg-violet-100 text-violet-700 ring-1 ring-inset ring-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:ring-violet-900/40"
     : "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
   const executionSummaryParts = assignedProvider
@@ -114,17 +161,9 @@ export function KanbanCard({
     (task.codebaseIds && task.codebaseIds.length > 0 ? task.codebaseIds.length : allCodebaseIds.length) - visibleCodebaseIds.length,
     0,
   );
-  const syncSummary = sessionStatus === "connecting"
-    ? "Session starting..."
-    : queuePosition
-      ? `Queued #${queuePosition}`
-      : sessionStatus === "error"
-        ? (sessionError ?? "Session failed")
-        : task.lastSyncError
-          ? task.lastSyncError
-          : task.githubSyncedAt
-            ? `Synced ${new Date(task.githubSyncedAt).toLocaleString()}`
-            : "Not synced";
+  const syncLabel = getSyncLabel(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
+  const syncTone = getSyncTone(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
+  const syncDetail = getSyncDetail(sessionStatus, queuePosition, sessionError, task.lastSyncError, task.githubSyncedAt);
   const objectiveText = task.objective?.trim() || "No objective captured yet.";
 
   const stopCardInteraction = (event: { stopPropagation: () => void }) => {
@@ -212,6 +251,9 @@ export function KanbanCard({
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${sessionTone}`}>
               {statusLabel}
             </span>
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${syncTone}`}>
+              {syncLabel}
+            </span>
           </div>
           <div className="line-clamp-2 text-[15px] font-semibold leading-5 text-slate-900 dark:text-slate-100">
             {task.title}
@@ -267,72 +309,14 @@ export function KanbanCard({
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-2.5 dark:border-[#262938] dark:bg-[#10131b]">
+      <div className="border-t border-slate-200/80 pt-2.5 dark:border-[#262938]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                Automation
+            {syncDetail && (
+              <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                {syncDetail}
               </div>
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${automationSourceTone}`}>
-                {automationSourceLabel}
-              </span>
-            </div>
-            <div className="mt-1.5 line-clamp-2 text-[12px] font-medium text-slate-700 dark:text-slate-200">
-              {executionSummaryText}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setShowAssignment((current) => !current);
-            }}
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:border-gray-700 dark:bg-[#151826] dark:text-slate-300 dark:hover:bg-[#1b1e2b]"
-          >
-            {showAssignment ? "Done" : "Edit"}
-          </button>
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm dark:border-gray-700 dark:bg-[#12141c]">
-            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-              Provider
-            </span>
-            <select
-              value={task.assignedProvider ?? ""}
-              disabled={availableProviders.length === 0}
-              onMouseDown={stopCardInteraction}
-              onClick={stopCardInteraction}
-              onChange={(event) => {
-                void handleProviderChange(event.target.value);
-              }}
-              className="min-w-0 flex-1 truncate bg-transparent text-[11px] font-medium text-slate-700 outline-none disabled:opacity-50 dark:text-slate-200"
-              aria-label={`ACP provider for ${task.title}`}
-              data-testid="kanban-card-acp-select"
-            >
-              <option value="">Use lane default</option>
-              {availableProviders.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {showAssignment && (
-          <AssignmentSection
-            task={task}
-            specialists={specialists}
-            stopCardInteraction={stopCardInteraction}
-            onPatchTask={onPatchTask}
-            onRefresh={onRefresh}
-          />
-        )}
-
-        <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-200/80 pt-2 dark:border-[#262938]">
-          <div className="min-w-0 truncate text-[10px] text-slate-500 dark:text-slate-400">
-            {syncSummary}
+            )}
           </div>
           {(canRun || canRetry) && (
             <button
@@ -348,6 +332,74 @@ export function KanbanCard({
             </button>
           )}
         </div>
+
+        <div className="mt-2 border-t border-slate-200/80 pt-2 dark:border-[#262938]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                  Automation
+                </div>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${automationSourceTone}`}>
+                  {automationSourceLabel}
+                </span>
+              </div>
+              {hasCardOverride && (
+                <div className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                  {executionSummaryText}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setShowAssignment((current) => !current);
+              }}
+              className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:border-gray-700 dark:bg-[#151826] dark:text-slate-300 dark:hover:bg-[#1b1e2b]"
+            >
+              {showAssignment ? "Done" : "Edit"}
+            </button>
+          </div>
+          {showAssignment && (
+            <div className="mt-1.5 flex items-center gap-2">
+              <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-gray-700 dark:bg-[#12141c]">
+                <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                  Provider
+                </span>
+                <select
+                  value={task.assignedProvider ?? ""}
+                  disabled={availableProviders.length === 0}
+                  onMouseDown={stopCardInteraction}
+                  onClick={stopCardInteraction}
+                  onChange={(event) => {
+                    void handleProviderChange(event.target.value);
+                  }}
+                  className="min-w-0 flex-1 truncate bg-transparent text-[11px] font-medium text-slate-700 outline-none disabled:opacity-50 dark:text-slate-200"
+                  aria-label={`ACP provider for ${task.title}`}
+                  data-testid="kanban-card-acp-select"
+                >
+                  <option value="">Use lane default</option>
+                  {availableProviders.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
+
+        {showAssignment && (
+          <AssignmentSection
+            task={task}
+            specialists={specialists}
+            stopCardInteraction={stopCardInteraction}
+            onPatchTask={onPatchTask}
+            onRefresh={onRefresh}
+          />
+        )}
       </div>
     </div>
   );
