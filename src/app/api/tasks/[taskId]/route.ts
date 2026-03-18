@@ -15,9 +15,24 @@ import { buildRemainingLaneStepsMessage, resolveCurrentLaneAutomationState } fro
 
 export const dynamic = "force-dynamic";
 
-function serializeTask(task: Task) {
+async function buildArtifactSummary(task: Task, system: ReturnType<typeof getRoutaSystem>) {
+  const artifacts = await system.artifactStore.listByTask(task.id);
+  const byType: Partial<Record<ArtifactType, number>> = {};
+
+  for (const artifact of artifacts) {
+    byType[artifact.type] = (byType[artifact.type] ?? 0) + 1;
+  }
+
+  return {
+    total: artifacts.length,
+    byType,
+  };
+}
+
+async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSystem>) {
   return {
     ...task,
+    artifactSummary: await buildArtifactSummary(task, system),
     githubSyncedAt: task.githubSyncedAt?.toISOString(),
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
@@ -66,7 +81,7 @@ export async function GET(
   if (!task) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }
-  return NextResponse.json({ task: serializeTask(task) });
+  return NextResponse.json({ task: await serializeTask(task, system) });
 }
 
 export async function PATCH(
@@ -309,7 +324,7 @@ export async function PATCH(
           resourceId: nextTask.id,
           source: "user",
         });
-        return NextResponse.json({ task: serializeTask(nextTask) });
+        return NextResponse.json({ task: await serializeTask(nextTask, system) });
       }
     }
 
@@ -362,7 +377,7 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json({ task: serializeTask(nextTask) });
+  return NextResponse.json({ task: await serializeTask(nextTask, system) });
 }
 
 export async function DELETE(

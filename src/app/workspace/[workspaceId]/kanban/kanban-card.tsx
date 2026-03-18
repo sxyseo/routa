@@ -3,7 +3,8 @@
 import { useState, type DragEvent } from "react";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
-import type { SessionInfo, TaskInfo, WorktreeInfo } from "../types";
+import { formatArtifactLabel, resolveKanbanTransitionArtifacts } from "@/core/kanban/transition-artifacts";
+import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 
 interface SpecialistOption {
   id: string;
@@ -13,6 +14,7 @@ interface SpecialistOption {
 
 export interface KanbanCardProps {
   task: TaskInfo;
+  boardColumns: KanbanColumnInfo[];
   linkedSession?: SessionInfo;
   availableProviders: AcpProviderInfo[];
   specialists: SpecialistOption[];
@@ -115,8 +117,37 @@ function getSyncDetail(
   return null;
 }
 
+function formatArtifactGateBadgeLabel(
+  nextColumnName: string | undefined,
+  missingArtifacts: string[],
+) {
+  if (missingArtifacts.length === 0) {
+    return `${nextColumnName ?? "Next"} ready`;
+  }
+
+  if (missingArtifacts.length === 1) {
+    return `Needs ${formatArtifactLabel(missingArtifacts[0])}`;
+  }
+
+  return `Needs ${formatArtifactLabel(missingArtifacts[0])} +${missingArtifacts.length - 1}`;
+}
+
+function formatArtifactCountTooltip(task: TaskInfo): string {
+  const summary = task.artifactSummary;
+  if (!summary || summary.total === 0) {
+    return "No artifacts attached";
+  }
+
+  const parts = Object.entries(summary.byType)
+    .filter((entry): entry is [string, number] => typeof entry[1] === "number" && entry[1] > 0)
+    .map(([type, count]) => `${count} ${formatArtifactLabel(type)}${count === 1 ? "" : "s"}`);
+
+  return parts.length > 0 ? parts.join(", ") : `${summary.total} artifacts`;
+}
+
 export function KanbanCard({
   task,
+  boardColumns,
   linkedSession,
   availableProviders,
   specialists,
@@ -165,6 +196,21 @@ export function KanbanCard({
   const syncTone = getSyncTone(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
   const syncDetail = getSyncDetail(sessionStatus, queuePosition, sessionError, task.lastSyncError, task.githubSyncedAt);
   const objectiveText = task.objective?.trim() || "No objective captured yet.";
+  const transitionArtifacts = resolveKanbanTransitionArtifacts(boardColumns, task.columnId);
+  const missingNextArtifacts = transitionArtifacts.nextRequiredArtifacts.filter(
+    (artifactType) => (task.artifactSummary?.byType?.[artifactType] ?? 0) === 0,
+  );
+  const artifactGateTone = missingNextArtifacts.length === 0
+    ? "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40"
+    : "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40";
+  const artifactCount = task.artifactSummary?.total ?? 0;
+  const artifactCountLabel = `${artifactCount} artifact${artifactCount === 1 ? "" : "s"}`;
+  const artifactCountTooltip = formatArtifactCountTooltip(task);
+  const artifactGateTooltip = transitionArtifacts.nextRequiredArtifacts.length > 0
+    ? missingNextArtifacts.length === 0
+      ? `Ready for ${transitionArtifacts.nextColumn?.name ?? "the next lane"}: ${transitionArtifacts.nextRequiredArtifacts.map((artifact) => formatArtifactLabel(artifact)).join(", ")} present.`
+      : `Before ${transitionArtifacts.nextColumn?.name ?? "the next lane"}: missing ${missingNextArtifacts.map((artifact) => formatArtifactLabel(artifact)).join(", ")}.`
+    : undefined;
 
   const stopCardInteraction = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
@@ -263,6 +309,29 @@ export function KanbanCard({
           {task.priority ?? "medium"}
         </span>
       </div>
+
+      {(transitionArtifacts.nextRequiredArtifacts.length > 0 || artifactCount > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {transitionArtifacts.nextRequiredArtifacts.length > 0 && (
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${artifactGateTone}`}
+              title={artifactGateTooltip}
+              data-testid="kanban-card-artifact-gate"
+            >
+              {formatArtifactGateBadgeLabel(transitionArtifacts.nextColumn?.name, missingNextArtifacts)}
+            </span>
+          )}
+          {artifactCount > 0 && (
+            <span
+              className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5"
+              title={artifactCountTooltip}
+              data-testid="kanban-card-artifact-count"
+            >
+              {artifactCountLabel}
+            </span>
+          )}
+        </div>
+      )}
 
       <p className="line-clamp-3 text-[12px] leading-5 text-slate-600 dark:text-slate-400">{objectiveText}</p>
 

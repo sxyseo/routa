@@ -43,6 +43,11 @@ export interface ArtifactInfo {
   metadata?: Record<string, string>;
 }
 
+export interface ArtifactSummaryInfo {
+  total: number;
+  byType: Partial<Record<ArtifactInfo["type"], number>>;
+}
+
 export interface TaskInfo {
   id: string;
   title: string;
@@ -111,6 +116,7 @@ export interface TaskInfo {
   codebaseIds?: string[];
   /** Git worktree ID for this task */
   worktreeId?: string;
+  artifactSummary?: ArtifactSummaryInfo;
   createdAt: string;
 }
 

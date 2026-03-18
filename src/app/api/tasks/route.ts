@@ -19,6 +19,7 @@ import {
 import { columnIdToTaskStatus } from "@/core/models/kanban";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
+import type { ArtifactType } from "@/core/models/artifact";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    tasks: tasks.map(serializeTask),
+    tasks: await Promise.all(tasks.map((task) => serializeTask(task, system))),
   });
 }
 
@@ -264,7 +265,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  return NextResponse.json({ task: serializeTask(task) }, { status: 201 });
+  return NextResponse.json({ task: await serializeTask(task, system) }, { status: 201 });
 }
 
 export async function DELETE(request: NextRequest) {
@@ -291,7 +292,21 @@ export async function DELETE(request: NextRequest) {
   return NextResponse.json({ deleted: true });
 }
 
-function serializeTask(task: Task) {
+async function buildArtifactSummary(task: Task, system: ReturnType<typeof getRoutaSystem>) {
+  const artifacts = await system.artifactStore.listByTask(task.id);
+  const byType: Partial<Record<ArtifactType, number>> = {};
+
+  for (const artifact of artifacts) {
+    byType[artifact.type] = (byType[artifact.type] ?? 0) + 1;
+  }
+
+  return {
+    total: artifacts.length,
+    byType,
+  };
+}
+
+async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSystem>) {
   return {
     id: task.id,
     title: task.title,
@@ -332,6 +347,7 @@ function serializeTask(task: Task) {
     completionSummary: task.completionSummary,
     ...(task.verificationVerdict != null && { verificationVerdict: task.verificationVerdict }),
     ...(task.verificationReport != null && { verificationReport: task.verificationReport }),
+    artifactSummary: await buildArtifactSummary(task, system),
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
   };

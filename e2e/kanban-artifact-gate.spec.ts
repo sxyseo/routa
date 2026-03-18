@@ -80,6 +80,7 @@ test.describe("Kanban artifact gates", () => {
 
       await expect(devCard).toBeVisible({ timeout: 20_000 });
       await expect(reviewCard).toHaveCount(0);
+      await expect(devCard.getByTestId("kanban-card-artifact-gate")).toHaveText("Needs Screenshot");
 
       await devCard.click();
       await expect(page.getByText("Artifacts", { exact: true })).toBeVisible();
@@ -140,6 +141,8 @@ test.describe("Kanban artifact gates", () => {
       await expect(page.getByText("review-proof.png")).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText("by agent-artifact-e2e")).toBeVisible();
       await expect(page.getByText("Next-lane requirements are satisfied: Screenshot.")).toBeVisible();
+      await expect(devCard.getByTestId("kanban-card-artifact-gate")).toHaveText("Review ready");
+      await expect(devCard.getByTestId("kanban-card-artifact-count")).toHaveText("1 artifact");
 
       const moveTaskResponse = await request.patch(`/api/tasks/${taskId}`, {
         data: { columnId: "review", position: 0 },

@@ -1252,6 +1252,7 @@ export function KanbanTab({
                           <KanbanCard
                             key={task.id}
                             task={task}
+                            boardColumns={board.columns}
                             linkedSession={task.triggerSessionId ? sessionMap.get(task.triggerSessionId) : undefined}
                             availableProviders={availableProviders}
                             specialists={specialists}
