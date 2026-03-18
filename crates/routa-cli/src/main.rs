@@ -88,6 +88,12 @@ enum Commands {
         action: SkillAction,
     },
 
+    /// Manage persisted ACP sessions
+    Session {
+        #[command(subcommand)]
+        action: SessionAction,
+    },
+
     /// Send a raw JSON-RPC request
     Rpc {
         /// JSON-RPC method name (e.g. "agents.list")
@@ -349,6 +355,40 @@ enum KanbanAction {
     Column {
         #[command(subcommand)]
         action: KanbanColumnAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SessionAction {
+    /// List persisted ACP sessions
+    List {
+        /// Optional workspace ID filter
+        #[arg(long)]
+        workspace_id: Option<String>,
+        /// Maximum sessions to return
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Show a persisted ACP session
+    Get {
+        /// Session ID
+        #[arg(long)]
+        id: String,
+    },
+    /// Interactively pick a session and open chat
+    Pick {
+        /// Optional workspace ID filter
+        #[arg(long)]
+        workspace_id: Option<String>,
+        /// ACP provider fallback if the session has no provider
+        #[arg(long, default_value = "opencode")]
+        provider: String,
+        /// Agent role fallback if the session has no role
+        #[arg(long, default_value = "DEVELOPER")]
+        role: String,
+        /// Maximum sessions to show
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
     },
 }
 
@@ -768,6 +808,34 @@ async fn main() {
                             &artifact_type,
                             &content,
                             context.as_deref(),
+                        )
+                        .await
+                    }
+                }
+            }
+
+            Commands::Session { action } => {
+                let state = commands::init_state(&cli.db).await;
+                match action {
+                    SessionAction::List {
+                        workspace_id,
+                        limit,
+                    } => {
+                        commands::session::list(&state, workspace_id.as_deref(), limit).await
+                    }
+                    SessionAction::Get { id } => commands::session::get(&state, &id).await,
+                    SessionAction::Pick {
+                        workspace_id,
+                        provider,
+                        role,
+                        limit,
+                    } => {
+                        commands::session::pick(
+                            &state,
+                            workspace_id.as_deref(),
+                            &provider,
+                            &role,
+                            limit,
                         )
                         .await
                     }

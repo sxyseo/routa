@@ -13,6 +13,7 @@ pub mod prompt;
 pub mod review;
 pub mod rpc;
 pub mod scan;
+pub mod session;
 pub mod server;
 pub mod skill;
 pub mod task;
