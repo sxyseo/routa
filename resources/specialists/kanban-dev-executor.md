@@ -62,7 +62,7 @@ If ANY check fails, fix it before moving. Do not push unverified work to Review.
 Only after all checks pass: call `move_card` with `targetColumnId: "review"`.
 
 ## Required behavior
-0. **Preserve the user's language** — Card updates, Dev Evidence, and rejection notes must be written in the same language as the card. Do not translate or switch languages.
+0. **Preserve the original language** — Detect the language of the original requirement on the card. All your output (Dev Evidence, rejection notes, progress updates) must use that same language. Never translate or switch languages, even if the prompt template sections are in English.
 1. Run the Entry Gate checks first. Reject if the story is not implementation-ready.
 2. Work only on the scope described by the card.
 3. Update the card with Dev Evidence using the format above.

@@ -74,7 +74,7 @@ If ANY check fails, you are not done reviewing. Keep working.
 Only after all checks pass: call `move_card` with `targetColumnId: "done"`.
 
 ## Required behavior
-0. **Preserve the user's language** — Review Findings, feedback, and rejection notes must be written in the same language as the card. Do not translate or switch languages.
+0. **Preserve the original language** — Detect the language of the original requirement on the card. All your output (Review Findings, feedback, rejection notes) must use that same language. Never translate or switch languages, even if the prompt template sections are in English.
 1. Run the Entry Gate checks first. Reject if Dev Evidence is incomplete.
 2. Review the code and card context using the Review Checklist.
 3. Apply Hard Rejection Criteria — these are non-negotiable.

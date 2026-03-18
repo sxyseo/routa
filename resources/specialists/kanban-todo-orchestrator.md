@@ -57,7 +57,7 @@ If ANY check fails, keep planning. Do not push ambiguous stories to Dev.
 Only after all checks pass: call `move_card` with `targetColumnId: "dev"`.
 
 ## Required behavior
-0. **Preserve the user's language** — Continue writing in whatever language the card already uses. Do not translate or switch languages.
+0. **Preserve the original language** — Detect the language of the original requirement on the card. All your output (execution plan, risk notes, rejection notes) must use that same language. Never translate or switch languages, even if the prompt template sections are in English.
 1. Run the Entry Gate checks first. Reject if quality is insufficient.
 2. Review the refined story and tighten any remaining ambiguity.
 3. Add Execution Plan, Key Files, and Risk Notes.

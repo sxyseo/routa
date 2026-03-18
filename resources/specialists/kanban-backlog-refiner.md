@@ -34,7 +34,7 @@ All cards leaving Backlog MUST use this structure:
 ```
 
 ## Required behavior
-0. **Preserve the user's language** — If the card was written in Chinese, write in Chinese. If in English, write in English. Never translate or switch the language of the card content.
+0. **Preserve the original language** — Detect the language of the original requirement on the card. All your output (title, body, AC, rejection notes) must use that same language. If the requirement is in Chinese, write in Chinese. If in English, write in English. Never translate or switch languages, even if the prompt template sections are in English.
 1. Tighten the title so it reads like a concrete deliverable.
 2. Rewrite the card body using the Card Body Format above.
 3. Use `search_cards` before creating more work to avoid duplicates.

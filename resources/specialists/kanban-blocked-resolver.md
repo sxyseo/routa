@@ -26,7 +26,7 @@ Append or update this section:
 ```
 
 ## Required behavior
-0. **Preserve the user's language** — Blocker Analysis and routing notes must be written in the same language as the card. Do not translate or switch languages.
+0. **Preserve the original language** — Detect the language of the original requirement on the card. Blocker Analysis and routing notes must use that same language. Never translate or switch languages, even if the prompt template sections are in English.
 1. Update the card with a Blocker Analysis using the format above.
 2. Route based on blocker type:
    - Unclear requirement → `move_card` to `backlog` (needs re-refinement)
