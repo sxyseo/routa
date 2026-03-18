@@ -330,6 +330,7 @@ describe("KanbanWorkflowOrchestrator", () => {
     const eventBus = new EventBus();
     const boardStore = new InMemoryKanbanBoardStore();
     const taskStore = new InMemoryTaskStore();
+    const sendKanbanSessionPrompt = vi.fn().mockResolvedValue(undefined);
     const createSession = vi
       .fn()
       .mockResolvedValueOnce("session-dev-1")
@@ -374,6 +375,7 @@ describe("KanbanWorkflowOrchestrator", () => {
       taskStore,
       createSession,
     );
+    orchestrator.setSendKanbanSessionPrompt((params) => sendKanbanSessionPrompt(params));
     orchestrator.setResolveDevSessionSupervision(async () => ({
       mode: "watchdog_retry",
       inactivityTimeoutMinutes: 1,
@@ -430,6 +432,12 @@ describe("KanbanWorkflowOrchestrator", () => {
       });
       const updatedTask = await taskStore.get(task.id);
       expect(updatedTask?.lastSyncError).toContain("Attempt 2/2");
+      expect(sendKanbanSessionPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "session-dev-1",
+          prompt: expect.stringContaining("acp session id = session-dev-1"),
+        }),
+      );
     });
 
     orchestrator.stop();
@@ -439,6 +447,7 @@ describe("KanbanWorkflowOrchestrator", () => {
     const eventBus = new EventBus();
     const boardStore = new InMemoryKanbanBoardStore();
     const taskStore = new InMemoryTaskStore();
+    const sendKanbanSessionPrompt = vi.fn().mockResolvedValue(undefined);
     const createSession = vi
       .fn()
       .mockResolvedValueOnce("session-loop-1")
@@ -483,6 +492,7 @@ describe("KanbanWorkflowOrchestrator", () => {
       taskStore,
       createSession,
     );
+    orchestrator.setSendKanbanSessionPrompt((params) => sendKanbanSessionPrompt(params));
     orchestrator.setResolveDevSessionSupervision(async () => ({
       mode: "ralph_loop",
       inactivityTimeoutMinutes: 10,
@@ -532,6 +542,12 @@ describe("KanbanWorkflowOrchestrator", () => {
         attempt: 2,
         status: "running",
       });
+      expect(sendKanbanSessionPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "session-loop-1",
+          prompt: expect.stringContaining("acp session id = session-loop-1"),
+        }),
+      );
     });
 
     const updatedTask = await taskStore.get(task.id);

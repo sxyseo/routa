@@ -26,6 +26,23 @@ import { markTaskLaneSessionStatus, upsertTaskLaneSession } from "./task-lane-hi
 const WATCHDOG_SCAN_INTERVAL_MS = 30_000;
 const COMPLETED_AUTOMATION_CLEANUP_DELAY_MS = 30_000;
 
+interface RecoveryNotificationParams {
+  workspaceId: string;
+  sessionId: string;
+  cardId: string;
+  cardTitle: string;
+  boardId: string;
+  columnId: string;
+  reason: string;
+  mode: KanbanDevSessionSupervisionMode;
+}
+
+export type SendKanbanSessionPrompt = (params: {
+  workspaceId: string;
+  sessionId: string;
+  prompt: string;
+}) => Promise<void>;
+
 function getDisabledSupervisionConfig(): KanbanDevSessionSupervision {
   return {
     ...getDefaultKanbanDevSessionSupervision(),
@@ -52,6 +69,19 @@ function getRecoveryReason(event: AgentEvent, completionSatisfied: boolean): Tas
     return completionSatisfied ? "agent_failed" : "completion_criteria_not_met";
   }
   return "agent_failed";
+}
+
+function buildKanbanRecoveryPrompt(params: RecoveryNotificationParams): string {
+  const mode = params.mode === "watchdog_retry" ? "watchdog_retry" : "ralph_loop";
+  return [
+    `hi，这里有一个 Agent（acp session id = ${params.sessionId}）很久没动了，你看看怎么回事，要不要继续？`,
+    `Card: ${params.cardTitle} (${params.cardId})`,
+    `Board: ${params.boardId}`,
+    `Column: ${params.columnId}`,
+    `Mode: ${mode}`,
+    `Reason: ${params.reason}`,
+    "如果 session 还在，请直接处理并继续任务；否则尽快确认下一步重建策略。",
+  ].join("\\n");
 }
 
 /** Context persisted for a session attempt when supervision is enabled. */
@@ -110,6 +140,7 @@ export class KanbanWorkflowOrchestrator {
   private started = false;
   private cleanupCardSession?: CleanupCardSession;
   private resolveDevSessionSupervision?: ResolveDevSessionSupervision;
+  private sendKanbanSessionPrompt?: SendKanbanSessionPrompt;
   private watchdogTimer?: ReturnType<typeof setInterval>;
 
   constructor(
@@ -171,6 +202,11 @@ export class KanbanWorkflowOrchestrator {
   /** Set the resolver for board-level dev session supervision config */
   setResolveDevSessionSupervision(fn: ResolveDevSessionSupervision): void {
     this.resolveDevSessionSupervision = fn;
+  }
+
+  /** Set the callback used to send a prompt message into a live ACP session */
+  setSendKanbanSessionPrompt(fn: SendKanbanSessionPrompt): void {
+    this.sendKanbanSessionPrompt = fn;
   }
 
   /** Get all active automations */
@@ -303,6 +339,16 @@ export class KanbanWorkflowOrchestrator {
 
       if (task && shouldRecover) {
         const recoveryReason = getRecoveryReason(event, completionSatisfied);
+        await this.notifyKanbanAgent({
+          workspaceId: automation.workspaceId,
+          sessionId: eventSessionId,
+          cardId: automation.cardId,
+          cardTitle: automation.cardTitle,
+          boardId: automation.boardId,
+          columnId: automation.columnId,
+          reason: `Recovery reason: ${recoveryReason}.`,
+          mode: automation.supervision.mode,
+        });
         const recovered = await this.recoverAutomation(cardId, automation, task, recoveryReason);
         if (recovered) {
           return;
@@ -350,6 +396,16 @@ export class KanbanWorkflowOrchestrator {
       const sessionRecord = sessionStore.getSession(sessionId);
       if (sessionRecord?.acpStatus === "error") {
         automation.signaledSessionIds.add(sessionId);
+        void this.notifyKanbanAgent({
+          workspaceId: automation.workspaceId,
+          sessionId,
+          cardId: automation.cardId,
+          cardTitle: automation.cardTitle,
+          boardId: automation.boardId,
+          columnId: automation.columnId,
+          reason: sessionRecord.acpError ?? "ACP session entered error state.",
+          mode: automation.supervision.mode,
+        });
         this.eventBus.emit({
           type: AgentEventType.AGENT_FAILED,
           agentId: sessionId,
@@ -382,6 +438,16 @@ export class KanbanWorkflowOrchestrator {
         `No ACP activity for ${automation.supervision.inactivityTimeoutMinutes} minutes.`,
       );
       automation.signaledSessionIds.add(sessionId);
+      void this.notifyKanbanAgent({
+        workspaceId: automation.workspaceId,
+        sessionId,
+        cardId: automation.cardId,
+        cardTitle: automation.cardTitle,
+        boardId: automation.boardId,
+        columnId: automation.columnId,
+        reason: `No ACP activity for ${automation.supervision.inactivityTimeoutMinutes} minutes.`,
+        mode: automation.supervision.mode,
+      });
       this.eventBus.emit({
         type: AgentEventType.AGENT_TIMEOUT,
         agentId: sessionId,
@@ -560,6 +626,30 @@ export class KanbanWorkflowOrchestrator {
       return `Dev automation completed but did not satisfy ${automation.supervision.completionRequirement}.`;
     }
     return "ACP session did not complete successfully.";
+  }
+
+  private async notifyKanbanAgent(params: RecoveryNotificationParams): Promise<void> {
+    if (!this.sendKanbanSessionPrompt) {
+      return;
+    }
+    const sessionStore = getHttpSessionStore();
+    const sessionRecord = sessionStore.getSession(params.sessionId);
+    if (!sessionRecord) {
+      return;
+    }
+
+    try {
+      await this.sendKanbanSessionPrompt({
+        workspaceId: params.workspaceId,
+        sessionId: params.sessionId,
+        prompt: buildKanbanRecoveryPrompt(params),
+      });
+    } catch (error) {
+      console.error(
+        `[WorkflowOrchestrator] Failed to notify agent session ${params.sessionId}:`,
+        error,
+      );
+    }
   }
 
   private async autoAdvanceCard(

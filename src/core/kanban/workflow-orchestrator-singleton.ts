@@ -243,6 +243,46 @@ async function resolveDevSessionSupervision(
   return getKanbanDevSessionSupervision(workspace?.metadata, boardId);
 }
 
+async function sendPromptToKanbanSession(params: {
+  workspaceId: string;
+  sessionId: string;
+  prompt: string;
+}): Promise<void> {
+  const response = await fetch(`${getInternalApiOrigin()}/api/acp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: params.sessionId,
+      method: "session/prompt",
+      params: {
+        sessionId: params.sessionId,
+        workspaceId: params.workspaceId,
+        prompt: [{ type: "text", text: params.prompt }],
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`session/prompt HTTP ${response.status}`);
+  }
+
+  if (response.body) {
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return;
+  }
+
+  await response.arrayBuffer();
+}
+
 export function getKanbanSessionQueue(system: RoutaSystem): KanbanSessionQueue {
   const g = globalThis as Record<string, unknown>;
   let queue = g[QUEUE_KEY] as KanbanSessionQueue | undefined;
@@ -296,6 +336,11 @@ export function startWorkflowOrchestrator(system: RoutaSystem): void {
   orchestrator.setResolveDevSessionSupervision(({ workspaceId, boardId, stage }) =>
     resolveDevSessionSupervision(system, workspaceId, boardId, stage)
   );
+  orchestrator.setSendKanbanSessionPrompt((params) => sendPromptToKanbanSession({
+    workspaceId: params.workspaceId,
+    sessionId: params.sessionId,
+    prompt: params.prompt,
+  }));
   orchestrator.start();
   queue.start();
   g[STARTED_KEY] = true;
