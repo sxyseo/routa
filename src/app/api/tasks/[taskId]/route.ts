@@ -11,6 +11,7 @@ import type { ArtifactType } from "@/core/models/artifact";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
 import { archiveActiveTaskSession, prepareTaskForColumnChange } from "@/core/kanban/task-session-transition";
 import { enqueueKanbanTaskSession, getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
+import { buildRemainingLaneStepsMessage, resolveCurrentLaneAutomationState } from "@/core/kanban/lane-automation-state";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +114,16 @@ export async function PATCH(
     if (boardId) {
       const board = await system.kanbanBoardStore.get(boardId);
       if (board) {
+        if (existing.triggerSessionId) {
+          const laneAutomationState = resolveCurrentLaneAutomationState(existing, board.columns, {
+            currentSessionId: existing.triggerSessionId,
+          });
+          const moveBlockedMessage = buildRemainingLaneStepsMessage(existing.title, laneAutomationState);
+          if (moveBlockedMessage) {
+            return NextResponse.json({ error: moveBlockedMessage }, { status: 400 });
+          }
+        }
+
         const targetColumn = board.columns.find((c) => c.id === body.columnId);
         const requiredArtifacts = targetColumn?.automation?.requiredArtifacts;
         if (requiredArtifacts && requiredArtifacts.length > 0 && system.artifactStore) {

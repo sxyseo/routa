@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import type { LaneHandoffInfo, LaneSessionInfo, SessionKanbanContext } from "@/client/types/kanban-context";
 import { desktopAwareFetch, shouldSuppressTeardownError } from "../utils/diagnostics";
 
 interface SessionInfo {
@@ -22,49 +23,6 @@ interface SessionContext {
   siblings: SessionInfo[];
   recentInWorkspace: SessionInfo[];
   kanbanContext?: SessionKanbanContext | null;
-}
-
-interface LaneSessionInfo {
-  sessionId: string;
-  columnId?: string;
-  columnName?: string;
-  stepId?: string;
-  stepIndex?: number;
-  stepName?: string;
-  provider?: string;
-  role?: string;
-  status: "running" | "completed" | "failed" | "timed_out" | "transitioned";
-  startedAt: string;
-  completedAt?: string;
-}
-
-interface LaneHandoffInfo {
-  id: string;
-  direction: "incoming" | "outgoing";
-  fromSessionId: string;
-  toSessionId: string;
-  fromColumnId?: string;
-  fromColumnName?: string;
-  toColumnId?: string;
-  toColumnName?: string;
-  requestType: "environment_preparation" | "runtime_context" | "clarification" | "rerun_command";
-  request: string;
-  status: "requested" | "delivered" | "completed" | "blocked" | "failed";
-  requestedAt: string;
-  respondedAt?: string;
-  responseSummary?: string;
-}
-
-interface SessionKanbanContext {
-  taskId: string;
-  taskTitle: string;
-  boardId?: string;
-  columnId?: string;
-  triggerSessionId?: string;
-  currentLaneSession?: LaneSessionInfo;
-  previousLaneSession?: LaneSessionInfo;
-  previousLaneRun?: LaneSessionInfo;
-  relatedHandoffs: LaneHandoffInfo[];
 }
 
 interface SessionContextPanelProps {

@@ -72,6 +72,7 @@ describe("/api/tasks/[taskId] PATCH", () => {
     vi.clearAllMocks();
     capturedEnqueueTask = undefined;
     taskStore.save.mockResolvedValue();
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue(null);
     taskStore.get.mockResolvedValue(createTask({
       id: "task-1",
       title: "Retry review",
@@ -123,5 +124,87 @@ describe("/api/tasks/[taskId] PATCH", () => {
       triggerSessionId: "session-new",
     }));
     expect(data.task.triggerSessionId).toBe("session-new");
+  });
+
+  it("rejects moving a card out of a lane while later automation steps are still pending", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Run todo pipeline",
+      objective: "Complete todo before dev",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "todo",
+      status: TaskStatus.PENDING,
+      triggerSessionId: "session-todo-1",
+      assignedProvider: "codex",
+      assignedRole: "CRAFTER",
+      assignedSpecialistId: "kanban-todo-orchestrator",
+      assignedSpecialistName: "Todo Orchestrator",
+    });
+    existingTask.laneSessions = [
+      {
+        sessionId: "session-todo-1",
+        columnId: "todo",
+        columnName: "Todo",
+        stepId: "step-1",
+        stepIndex: 0,
+        stepName: "Todo Orchestrator",
+        provider: "codex",
+        role: "CRAFTER",
+        specialistId: "kanban-todo-orchestrator",
+        specialistName: "Todo Orchestrator",
+        status: "running",
+        startedAt: "2026-03-18T00:00:00.000Z",
+      },
+    ];
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        {
+          id: "todo",
+          name: "Todo",
+          position: 1,
+          stage: "todo",
+          automation: {
+            enabled: true,
+            steps: [
+              {
+                id: "step-1",
+                providerId: "codex",
+                role: "CRAFTER",
+                specialistId: "kanban-todo-orchestrator",
+                specialistName: "Todo Orchestrator",
+              },
+              {
+                id: "step-2",
+                role: "GATE",
+                specialistId: "gate",
+                specialistName: "Verifier",
+              },
+            ],
+          },
+        },
+        { id: "dev", name: "Dev", position: 2, stage: "dev" },
+      ],
+    });
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "dev" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("Todo Orchestrator");
+    expect(data.error).toContain("Verifier");
+    expect(taskStore.save).not.toHaveBeenCalled();
+    expect(enqueueKanbanTaskSession).not.toHaveBeenCalled();
   });
 });

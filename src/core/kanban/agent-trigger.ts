@@ -5,6 +5,8 @@ import { AgentEventType, type EventBus } from "../events/event-bus";
 import { isClaudeCodeSdkConfigured } from "../acp/claude-code-sdk-adapter";
 import { formatArtifactSummary, resolveKanbanTransitionArtifacts } from "./transition-artifacts";
 import type { TaskLaneSession } from "../models/task";
+import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
+import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 
 function formatHandoffRequestType(
   value: "environment_preparation" | "runtime_context" | "clarification" | "rerun_command",
@@ -65,11 +67,13 @@ export function buildTaskPrompt(
     ? [...(task.laneSessions ?? [])].reverse().find((entry) => entry.columnId === previousColumn.id)
     : undefined;
   const previousLaneRun = !isBacklogPlanning
-    ? [...(task.laneSessions ?? [])].reverse().find((entry) => entry.columnId === currentColumnId)
+    ? getPreviousLaneRun(task, options?.currentSessionId) ?? getLatestLaneSessionForColumn(task, currentColumnId)
     : undefined;
   const pendingLaneHandoffs = options?.currentSessionId
     ? (task.laneHandoffs ?? []).filter((handoff) => handoff.toSessionId === options.currentSessionId && !handoff.respondedAt)
     : [];
+  const laneAutomationState = resolveCurrentLaneAutomationState(task, boardColumns, options);
+  const canAdvanceToNextColumn = !isBacklogPlanning && !laneAutomationState.hasRemainingSteps;
 
   // Determine the next column for move_card guidance
   const columnOrder = ["backlog", "todo", "dev", "review", "done"];
@@ -100,9 +104,13 @@ export function buildTaskPrompt(
         "- **capture_screenshot**: Capture and store a screenshot artifact when visual proof is required",
         "- **request_previous_lane_handoff**: Ask the immediately previous lane to prepare environment, rerun a command, or clarify setup for this card",
         "- **submit_lane_handoff**: Finish a lane handoff request after you complete the requested support work",
-        `- **move_card**: Move this card to the next column when your work is complete. Use cardId: "${task.id}", targetColumnId: "${nextColumnId ?? "done"}"`,
+        ...(canAdvanceToNextColumn
+          ? [`- **move_card**: Move this card to the next column when your work is complete. Use cardId: "${task.id}", targetColumnId: "${nextColumnId ?? "done"}"`]
+          : []),
       ];
-  const moveInstruction = nextColumnId
+  const moveInstruction = !canAdvanceToNextColumn
+    ? `Do not call \`move_card\` to leave ${currentColumnId} yet. Finish this step, then end your turn; the workflow will start ${laneAutomationState.nextStep?.specialistName ?? laneAutomationState.nextStep?.specialistId ?? laneAutomationState.nextStep?.role ?? "the next lane step"} automatically in the same column.`
+    : nextColumnId
     ? `When your work for this column is complete, call \`move_card\` with cardId: "${task.id}" and targetColumnId: "${nextColumnId}" to advance the card. The next column's specialist will pick it up automatically.`
     : "This card is in the final column. Update the card with your completion summary.";
 
@@ -119,10 +127,14 @@ export function buildTaskPrompt(
       ]
     : [
         "1. Complete the work assigned to this column stage",
-        "2. Start with direct task-scoped tools such as `list_artifacts`, `update_card`, `create_note`, and `move_card` before reaching for broader board queries.",
+        canAdvanceToNextColumn
+          ? "2. Start with direct task-scoped tools such as `list_artifacts`, `update_card`, `create_note`, and `move_card` before reaching for broader board queries."
+          : "2. Start with direct task-scoped tools such as `list_artifacts`, `update_card`, and `create_note` before reaching for broader board queries.",
         "3. Keep changes focused on this task",
         `4. ${moveInstruction}`,
-        "5. If the next transition requires artifacts, verify them with `list_artifacts` and create missing evidence with `provide_artifact` or `capture_screenshot` before moving the card.",
+        canAdvanceToNextColumn
+          ? "5. If the next transition requires artifacts, verify them with `list_artifacts` and create missing evidence with `provide_artifact` or `capture_screenshot` before moving the card."
+          : "5. If the eventual next transition requires artifacts, collect or reference the needed evidence now, but do not move the card until this lane's remaining steps are finished.",
         currentColumnId === "review"
           ? "6. If verification depends on runtime setup from dev, use `request_previous_lane_handoff` instead of guessing the environment."
           : "6. If another lane requests support from this session, complete the requested runtime help and then call `submit_lane_handoff`.",
@@ -139,7 +151,9 @@ export function buildTaskPrompt(
     transitionArtifacts.nextColumn
       ? `**Next transition gate:** Moving this card to ${transitionArtifacts.nextColumn.name ?? nextColumnId ?? "the next column"} requires ${formatArtifactSummary(transitionArtifacts.nextRequiredArtifacts)}.`
       : "**Next transition gate:** None. This card is already in the terminal stage.",
-    transitionArtifacts.nextRequiredArtifacts.length > 0
+    !canAdvanceToNextColumn
+      ? `This lane still has ${laneAutomationState.nextStep?.specialistName ?? laneAutomationState.nextStep?.specialistId ?? laneAutomationState.nextStep?.role ?? "another automation step"} pending, so do not call \`move_card\` yet.`
+      : transitionArtifacts.nextRequiredArtifacts.length > 0
       ? `Before you call \`move_card\`, make sure ${formatArtifactSummary(transitionArtifacts.nextRequiredArtifacts)} exist as artifacts on task ${task.id}.`
       : "If no artifact gate is listed, you still should leave concise evidence in the card update.",
     "Use `list_artifacts` to confirm what already exists, then use `provide_artifact` or `capture_screenshot` to fill gaps.",

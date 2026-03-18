@@ -179,6 +179,56 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Previous run in this lane");
     expect(prompt).toContain("Todo Triage");
   });
+
+  it("does not instruct an earlier lane step to move the card before later steps run", () => {
+    const task = createTask({
+      id: "task-6",
+      title: "Run todo pipeline",
+      objective: "Complete the first todo step and let the workflow continue in-lane",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "todo",
+      assignedProvider: "codex",
+      assignedRole: "CRAFTER",
+      assignedSpecialistId: "kanban-todo-orchestrator",
+      assignedSpecialistName: "Todo Orchestrator",
+    });
+
+    const prompt = buildTaskPrompt(task, [
+      { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+      {
+        id: "todo",
+        name: "Todo",
+        position: 1,
+        stage: "todo",
+        automation: {
+          enabled: true,
+          steps: [
+            {
+              id: "step-1",
+              providerId: "codex",
+              role: "CRAFTER",
+              specialistId: "kanban-todo-orchestrator",
+              specialistName: "Todo Orchestrator",
+            },
+            {
+              id: "step-2",
+              role: "GATE",
+              specialistId: "gate",
+              specialistName: "Verifier",
+            },
+          ],
+        },
+      },
+      { id: "dev", name: "Dev", position: 2, stage: "dev" },
+    ], {
+      currentSessionId: "session-todo-1",
+    });
+
+    expect(prompt).toContain("Do not call `move_card` to leave todo yet");
+    expect(prompt).toContain("Verifier");
+    expect(prompt).not.toContain('targetColumnId: "dev"');
+  });
 });
 
 describe("resolveKanbanAutomationProvider", () => {

@@ -266,4 +266,92 @@ describe("KanbanTools", () => {
     });
     expect(savedTask?.laneHandoffs[0].responseSummary).toContain("Unable to deliver handoff request");
   });
+
+  it("blocks cross-column moves while the current lane still has a later automation step pending", async () => {
+    const boardStore = new InMemoryKanbanBoardStore();
+    const taskStore = new InMemoryTaskStore();
+    const tools = new KanbanTools(boardStore, taskStore);
+
+    const board = createKanbanBoard({
+      id: "board-multistep-1",
+      workspaceId: "default",
+      name: "Default Board",
+      isDefault: true,
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        {
+          id: "todo",
+          name: "Todo",
+          position: 1,
+          stage: "todo",
+          automation: {
+            enabled: true,
+            steps: [
+              {
+                id: "step-1",
+                providerId: "codex",
+                role: "CRAFTER",
+                specialistId: "kanban-todo-orchestrator",
+                specialistName: "Todo Orchestrator",
+              },
+              {
+                id: "step-2",
+                role: "GATE",
+                specialistId: "gate",
+                specialistName: "Verifier",
+              },
+            ],
+          },
+        },
+        { id: "dev", name: "Dev", position: 2, stage: "dev" },
+      ],
+    });
+    await boardStore.save(board);
+
+    const task = createTask({
+      id: "task-multistep-1",
+      title: "Run todo pipeline",
+      objective: "Complete todo before dev",
+      workspaceId: "default",
+      boardId: board.id,
+      columnId: "todo",
+      triggerSessionId: "session-todo-1",
+      assignedProvider: "codex",
+      assignedRole: "CRAFTER",
+      assignedSpecialistId: "kanban-todo-orchestrator",
+      assignedSpecialistName: "Todo Orchestrator",
+    });
+    task.laneSessions = [
+      {
+        sessionId: "session-todo-1",
+        columnId: "todo",
+        columnName: "Todo",
+        stepId: "step-1",
+        stepIndex: 0,
+        stepName: "Todo Orchestrator",
+        provider: "codex",
+        role: "CRAFTER",
+        specialistId: "kanban-todo-orchestrator",
+        specialistName: "Todo Orchestrator",
+        status: "running",
+        startedAt: "2026-03-18T00:00:00.000Z",
+      },
+    ];
+    await taskStore.save(task);
+
+    const result = await tools.moveCard({
+      cardId: task.id,
+      targetColumnId: "dev",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Todo Orchestrator");
+    expect(result.error).toContain("Verifier");
+
+    const savedTask = await taskStore.get(task.id);
+    expect(savedTask).toMatchObject({
+      columnId: "todo",
+      triggerSessionId: "session-todo-1",
+    });
+  });
 });

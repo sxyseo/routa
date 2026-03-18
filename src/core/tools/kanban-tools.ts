@@ -35,6 +35,7 @@ import {
   getTaskLaneSession,
   upsertTaskLaneHandoff,
 } from "../kanban/task-lane-history";
+import { buildRemainingLaneStepsMessage, resolveCurrentLaneAutomationState } from "../kanban/lane-automation-state";
 import { getInternalApiOrigin } from "../kanban/agent-trigger";
 
 export class KanbanTools {
@@ -204,6 +205,15 @@ export class KanbanTools {
 
     const fromColumnId = task.columnId ?? "backlog";
     const fromColumn = board.columns.find((c) => c.id === fromColumnId);
+    if (fromColumnId !== params.targetColumnId && task.triggerSessionId) {
+      const laneAutomationState = resolveCurrentLaneAutomationState(task, board.columns, {
+        currentSessionId: task.triggerSessionId,
+      });
+      const moveBlockedMessage = buildRemainingLaneStepsMessage(task.title, laneAutomationState);
+      if (moveBlockedMessage) {
+        return errorResult(moveBlockedMessage);
+      }
+    }
 
     // Check required artifacts before allowing transition
     const requiredArtifacts = targetColumn.automation?.requiredArtifacts;
