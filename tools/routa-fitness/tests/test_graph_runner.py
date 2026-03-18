@@ -151,7 +151,7 @@ def test_build_graph_auto_uses_builtin_cache(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(graph_module, "try_create_adapter", lambda _: adapter)
     cache_dir = tmp_path / ".routa-fitness"
     cache_dir.mkdir()
-    (cache_dir / "graph.json").write_text("{}", encoding="utf-8")
+    (cache_dir / "index.json").write_text("{}", encoding="utf-8")
 
     runner = GraphRunner(tmp_path)
     result = runner.build_graph(build_mode="auto")

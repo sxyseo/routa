@@ -72,3 +72,32 @@ def test_builtin_graph_parses_rust_test_attributes(tmp_path: Path):
         "crates/demo/src/lib.rs:compute_works"
     ]
     assert stats["backend"] == "builtin-tree-sitter"
+
+
+def test_builtin_graph_queries_from_persisted_index_without_file_cache(tmp_path: Path):
+    _write(
+        tmp_path / "src" / "service.py",
+        "def run():\n    return helper()\n\n\ndef helper():\n    return 1\n",
+    )
+    _write(
+        tmp_path / "src" / "consumer.py",
+        "from .service import run\n\n\ndef consume():\n    return run()\n",
+    )
+    _write(
+        tmp_path / "src" / "test_service.py",
+        "from .service import run\n\n\ndef test_run():\n    assert run() == 1\n",
+    )
+
+    adapter = BuiltinGraphAdapter(tmp_path)
+    adapter.build_or_update(full=True)
+    adapter.files_cache_path.unlink()
+
+    persisted = BuiltinGraphAdapter(tmp_path)
+    stats = persisted.stats()
+    impact = persisted.impact_radius(["src/service.py"], depth=1)
+    tests = persisted.query("tests_for", "src/service.py:run")
+
+    assert stats["status"] == "ok"
+    assert stats["files"] == 3
+    assert sorted(impact["impacted_files"]) == ["src/consumer.py", "src/test_service.py"]
+    assert [item["qualified_name"] for item in tests["results"]] == ["src/test_service.py:test_run"]

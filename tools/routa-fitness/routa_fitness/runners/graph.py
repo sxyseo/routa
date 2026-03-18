@@ -39,6 +39,7 @@ class GraphRunner:
         return any(
             path.exists()
             for path in (
+                self.project_root / ".routa-fitness" / "index.json",
                 self.project_root / ".routa-fitness" / "graph.json",
                 self.project_root / ".code-review-graph" / "graph.db",
             )
