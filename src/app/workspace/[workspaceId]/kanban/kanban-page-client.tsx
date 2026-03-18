@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useKanbanEvents } from "@/client/hooks/use-kanban-events";
@@ -10,6 +10,11 @@ import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { KanbanTab } from "./kanban-tab";
 import { scheduleKanbanRefreshBurst } from "./kanban-agent-input";
+import {
+  KANBAN_SPECIALIST_LANGUAGE_STORAGE_KEY,
+  localizeSpecialists,
+  type KanbanSpecialistLanguage,
+} from "./kanban-specialist-language";
 import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanBoardInfo, TaskInfo, SessionInfo } from "../types";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
@@ -18,6 +23,7 @@ interface SpecialistOption {
   id: string;
   name: string;
   role: string;
+  displayName?: string;
 }
 
 interface KanbanAgentPromptOptions {
@@ -43,6 +49,7 @@ export function KanbanPageClient() {
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [specialists, setSpecialists] = useState<SpecialistOption[]>([]);
+  const [specialistLanguage, setSpecialistLanguage] = useState<KanbanSpecialistLanguage>("en");
   const [refreshKey, setRefreshKey] = useState(0);
   const [repoSync, setRepoSync] = useState<RepoSyncState>({
     status: "idle",
@@ -117,6 +124,19 @@ export function KanbanPageClient() {
     }
   }, [boards, acp.providers]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(KANBAN_SPECIALIST_LANGUAGE_STORAGE_KEY);
+    if (stored === "en" || stored === "zh-CN") {
+      setSpecialistLanguage(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(KANBAN_SPECIALIST_LANGUAGE_STORAGE_KEY, specialistLanguage);
+  }, [specialistLanguage]);
+
   // Fetch tasks
   useEffect(() => {
     const controller = new AbortController();
@@ -155,6 +175,11 @@ export function KanbanPageClient() {
       } catch { /* ignore */ }
     })();
   }, [workspaceId]);
+
+  const localizedSpecialists = useMemo(
+    () => localizeSpecialists(specialists, specialistLanguage),
+    [specialists, specialistLanguage],
+  );
 
   const handleWorkspaceSelect = (wsId: string) => {
     router.push(`/workspace/${wsId}/kanban`);
@@ -382,7 +407,9 @@ export function KanbanPageClient() {
             tasks={tasks}
             sessions={sessions}
             providers={acp.providers}
-            specialists={specialists}
+            specialists={localizedSpecialists}
+            specialistLanguage={specialistLanguage}
+            onSpecialistLanguageChange={setSpecialistLanguage}
             codebases={codebases}
             onRefresh={handleRefresh}
             acp={acp}

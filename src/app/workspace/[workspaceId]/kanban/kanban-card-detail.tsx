@@ -12,6 +12,13 @@ import { KanbanDescriptionEditor } from "./kanban-description-editor";
 import { getOrderedSessionIds, getSpecialistName, type KanbanSpecialistOption as SpecialistOption } from "./kanban-card-session-utils";
 export { KanbanCardActivityBar } from "./kanban-card-activity";
 import { KanbanCardArtifacts } from "./kanban-card-artifacts";
+import {
+  findSpecialistById,
+  getSpecialistDisplayName,
+  getLanguageSpecificSpecialistId,
+  KANBAN_SPECIALIST_LANGUAGE_LABELS,
+  type KanbanSpecialistLanguage,
+} from "./kanban-specialist-language";
 
 export interface KanbanCardDetailProps {
   task: TaskInfo;
@@ -19,6 +26,7 @@ export interface KanbanCardDetailProps {
   boardColumns?: KanbanColumnInfo[];
   availableProviders: AcpProviderInfo[];
   specialists: SpecialistOption[];
+  specialistLanguage: KanbanSpecialistLanguage;
   codebases: CodebaseData[];
   allCodebaseIds: string[];
   worktreeCache: Record<string, WorktreeInfo>;
@@ -59,6 +67,7 @@ export function KanbanCardDetail({
   boardColumns,
   availableProviders,
   specialists,
+  specialistLanguage,
   codebases,
   allCodebaseIds,
   worktreeCache,
@@ -208,6 +217,7 @@ export function KanbanCardDetail({
             boardColumns={boardColumns ?? []}
             availableProviders={availableProviders}
             specialists={specialists}
+            specialistLanguage={specialistLanguage}
             onPatchTask={onPatchTask}
             onRetryTrigger={onRetryTrigger}
             onProviderChange={onProviderChange}
@@ -345,6 +355,7 @@ function ExecutionSection({
   boardColumns,
   availableProviders,
   specialists,
+  specialistLanguage,
   onPatchTask,
   onRetryTrigger,
   onProviderChange,
@@ -355,6 +366,7 @@ function ExecutionSection({
   boardColumns: KanbanColumnInfo[];
   availableProviders: AcpProviderInfo[];
   specialists: SpecialistOption[];
+  specialistLanguage: KanbanSpecialistLanguage;
   onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   onRetryTrigger: (taskId: string) => Promise<void>;
   onProviderChange?: (providerId: string | null) => void;
@@ -488,9 +500,9 @@ function ExecutionSection({
                 {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role}</option>)}
               </select>
               <select
-                value={task.assignedSpecialistId ?? ""}
+                value={getLanguageSpecificSpecialistId(task.assignedSpecialistId, specialistLanguage) ?? ""}
                 onChange={async (event) => {
-                  const specialist = specialists.find((item) => item.id === event.target.value);
+                  const specialist = findSpecialistById(specialists, event.target.value);
                   await onPatchTask(task.id, {
                     assignedSpecialistId: event.target.value || undefined,
                     assignedSpecialistName: specialist?.name,
@@ -499,8 +511,8 @@ function ExecutionSection({
                 }}
                 className={`rounded-2xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-amber-400 dark:border-gray-700 dark:bg-[#121620] dark:text-gray-300 ${compact ? "px-2.5 py-2" : "px-3 py-2"}`}
               >
-                <option value="">No specialist</option>
-                {specialists.map((specialist) => <option key={specialist.id} value={specialist.id}>{specialist.name}</option>)}
+                <option value="">{KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage].noSpecialist}</option>
+                {specialists.map((specialist) => <option key={specialist.id} value={specialist.id}>{getSpecialistDisplayName(specialist)}</option>)}
               </select>
             </div>
           )}

@@ -5,11 +5,19 @@ import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { formatArtifactLabel, resolveKanbanTransitionArtifacts } from "@/core/kanban/transition-artifacts";
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
+import {
+  findSpecialistById,
+  getSpecialistDisplayName,
+  getLanguageSpecificSpecialistId,
+  KANBAN_SPECIALIST_LANGUAGE_LABELS,
+  type KanbanSpecialistLanguage,
+} from "./kanban-specialist-language";
 
 interface SpecialistOption {
   id: string;
   name: string;
   role: string;
+  displayName?: string;
 }
 
 export interface KanbanCardProps {
@@ -19,6 +27,7 @@ export interface KanbanCardProps {
   liveMessageTail?: string;
   availableProviders: AcpProviderInfo[];
   specialists: SpecialistOption[];
+  specialistLanguage: KanbanSpecialistLanguage;
   codebases: CodebaseData[];
   allCodebaseIds: string[];
   worktreeCache: Record<string, WorktreeInfo>;
@@ -138,6 +147,7 @@ export function KanbanCard({
   liveMessageTail,
   availableProviders,
   specialists,
+  specialistLanguage,
   codebases,
   allCodebaseIds,
   worktreeCache,
@@ -445,6 +455,7 @@ export function KanbanCard({
           <AssignmentSection
             task={task}
             specialists={specialists}
+            specialistLanguage={specialistLanguage}
             stopCardInteraction={stopCardInteraction}
             onPatchTask={onPatchTask}
             onRefresh={onRefresh}
@@ -499,6 +510,7 @@ function WorktreeBadge({ task, worktreeCache, onOpenDetail, stopCardInteraction 
 interface AssignmentSectionProps {
   task: TaskInfo;
   specialists: SpecialistOption[];
+  specialistLanguage: KanbanSpecialistLanguage;
   stopCardInteraction: (event: { stopPropagation: () => void }) => void;
   onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   onRefresh: () => void;
@@ -507,6 +519,7 @@ interface AssignmentSectionProps {
 function AssignmentSection({
   task,
   specialists,
+  specialistLanguage,
   stopCardInteraction,
   onPatchTask,
   onRefresh,
@@ -542,10 +555,10 @@ function AssignmentSection({
         <div className="flex items-center gap-2">
           <span className="w-16 shrink-0 text-[10px] font-medium text-slate-500 dark:text-gray-400">Specialist</span>
           <select
-            value={task.assignedSpecialistId ?? ""}
+            value={getLanguageSpecificSpecialistId(task.assignedSpecialistId, specialistLanguage) ?? ""}
             onClick={stopCardInteraction}
             onChange={async (event) => {
-              const specialist = specialists.find((item) => item.id === event.target.value);
+              const specialist = findSpecialistById(specialists, event.target.value);
               await onPatchTask(task.id, {
                 assignedSpecialistId: event.target.value || undefined,
                 assignedSpecialistName: specialist?.name ?? undefined,
@@ -555,10 +568,10 @@ function AssignmentSection({
             }}
             className="min-w-0 flex-1 truncate rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 dark:border-gray-700 dark:bg-[#12141c] dark:text-slate-200"
           >
-            <option value="">None</option>
+            <option value="">{KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage].none}</option>
             {specialists.map((specialist) => (
               <option key={specialist.id} value={specialist.id}>
-                {specialist.name}
+                {getSpecialistDisplayName(specialist)}
               </option>
             ))}
           </select>

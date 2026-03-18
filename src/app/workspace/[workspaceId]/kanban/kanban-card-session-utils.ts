@@ -1,11 +1,13 @@
 "use client";
 
 import type { SessionInfo, TaskInfo } from "../types";
+import { findSpecialistById, getSpecialistDisplayName } from "./kanban-specialist-language";
 
 export interface KanbanSpecialistOption {
   id: string;
   name: string;
   role: string;
+  displayName?: string;
 }
 
 export function getSpecialistName(
@@ -14,7 +16,7 @@ export function getSpecialistName(
   specialists: KanbanSpecialistOption[],
 ): string {
   if (!specialistId && !specialistName) return "None";
-  return specialists.find((specialist) => specialist.id === specialistId)?.name ?? specialistName ?? specialistId ?? "None";
+  return getSpecialistDisplayName(findSpecialistById(specialists, specialistId)) ?? specialistName ?? specialistId ?? "None";
 }
 
 export function formatSessionTimestamp(value: string | undefined): string {

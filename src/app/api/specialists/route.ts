@@ -29,7 +29,9 @@ export async function GET(request: NextRequest) {
 
     if (!isPostgres()) {
       // SQLite-backed local dev uses the file-based specialist source.
-      const specialists = loadSpecialistsSync();
+      const specialists = process.env.NODE_ENV === "development"
+        ? await reloadSpecialists()
+        : loadSpecialistsSync();
       if (id) {
         const specialist = specialists.find((s) => s.id === id);
         if (!specialist) {

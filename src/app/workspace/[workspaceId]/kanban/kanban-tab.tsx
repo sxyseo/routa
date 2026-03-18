@@ -11,6 +11,12 @@ import { KanbanSettingsModal, type ColumnAutomationConfig } from "./kanban-setti
 import { KanbanCardActivityBar, KanbanCardDetail } from "./kanban-card-detail";
 import { buildKanbanTaskAgentPrompt, scheduleKanbanRefreshBurst } from "./kanban-agent-input";
 import { KanbanBgAgentPanel } from "./kanban-bg-agent-panel";
+import {
+  findSpecialistById,
+  getSpecialistDisplayName,
+  KANBAN_SPECIALIST_LANGUAGE_LABELS,
+  type KanbanSpecialistLanguage,
+} from "./kanban-specialist-language";
 import { getKanbanAutomationSteps, normalizeKanbanAutomation } from "@/core/models/kanban";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
@@ -20,6 +26,7 @@ interface SpecialistOption {
   id: string;
   name: string;
   role: string;
+  displayName?: string;
 }
 
 interface KanbanTabProps {
@@ -30,6 +37,8 @@ interface KanbanTabProps {
   sessions: SessionInfo[];
   providers: AcpProviderInfo[];
   specialists: SpecialistOption[];
+  specialistLanguage: KanbanSpecialistLanguage;
+  onSpecialistLanguageChange: (language: KanbanSpecialistLanguage) => void;
   codebases: CodebaseData[];
   onRefresh: () => void;
   repoSync?: RepoSyncState;
@@ -141,7 +150,7 @@ function formatLaneAutomationSummary(
       ? (providers.find((provider) => provider.id === step.providerId)?.name ?? step.providerId)
       : "Default";
     const specialist = step.specialistId || step.specialistName
-      ? (specialists.find((specialist) => specialist.id === step.specialistId)?.name ?? step.specialistName)
+      ? (getSpecialistDisplayName(findSpecialistById(specialists, step.specialistId)) ?? step.specialistName)
       : null;
     return [provider, step.role ?? "DEVELOPER", specialist].filter(Boolean).join(" · ");
   }).join(" -> ");
@@ -158,12 +167,15 @@ export function KanbanTab({
   sessions,
   providers,
   specialists,
+  specialistLanguage,
+  onSpecialistLanguageChange,
   codebases,
   onRefresh,
   repoSync,
   acp,
   onAgentPrompt,
 }: KanbanTabProps) {
+  const languageLabels = KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage];
   const defaultBoardId = useMemo(
     () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
     [boards],
@@ -219,6 +231,8 @@ export function KanbanTab({
   // Delete codebase state
   const [showDeleteCodebaseConfirm, setShowDeleteCodebaseConfirm] = useState(false);
   const [deletingCodebase, setDeletingCodebase] = useState(false);
+  const [deletingWorktreeId, setDeletingWorktreeId] = useState<string | null>(null);
+  const [worktreeActionError, setWorktreeActionError] = useState<string | null>(null);
   // Live branch info for selected codebase
   const [liveBranchInfo, setLiveBranchInfo] = useState<{ current: string; branches: string[] } | null>(null);
 
@@ -560,6 +574,28 @@ export function KanbanTab({
           >
             Settings
           </button>
+          <div className="inline-flex h-6 items-center rounded-md border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-[#12141c]">
+            <span className="px-1.5 text-[11px] font-medium text-gray-400 dark:text-gray-500">{languageLabels.language}</span>
+            {(["en", "zh-CN"] as const).map((language) => {
+              const active = specialistLanguage === language;
+              return (
+                <button
+                  key={language}
+                  type="button"
+                  onClick={() => onSpecialistLanguageChange(language)}
+                  data-testid={`kanban-specialist-language-${language}`}
+                  aria-pressed={active}
+                  className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                    active
+                      ? "bg-amber-500 text-white"
+                      : "text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-[#191c28] dark:hover:text-gray-200"
+                  }`}
+                >
+                  {language === "en" ? languageLabels.english : languageLabels.chinese}
+                </button>
+              );
+            })}
+          </div>
           <button
             onClick={onRefresh}
             className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-[#1f232f] dark:hover:text-gray-200"
@@ -981,6 +1017,34 @@ export function KanbanTab({
     } catch { /* ignore */ }
   }
 
+  const handleDeleteCodebaseWorktree = useCallback(async (worktree: WorktreeInfo) => {
+    setWorktreeActionError(null);
+    setDeletingWorktreeId(worktree.id);
+    try {
+      const linkedTasks = localTasks.filter((task) => task.worktreeId === worktree.id);
+      await Promise.all(linkedTasks.map((task) => patchTask(task.id, { worktreeId: null })));
+
+      const response = await fetch(`/api/worktrees/${encodeURIComponent(worktree.id)}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((data as { error?: string }).error ?? "Failed to delete worktree");
+      }
+
+      setCodebaseWorktrees((current) => current.filter((item) => item.id !== worktree.id));
+      setWorktreeCache((current) => {
+        const next = { ...current };
+        delete next[worktree.id];
+        return next;
+      });
+    } catch (error) {
+      setWorktreeActionError(error instanceof Error ? error.message : "Failed to delete worktree");
+    } finally {
+      setDeletingWorktreeId(null);
+    }
+  }, [localTasks, patchTask]);
+
   async function createIssue() {
     const effectiveCodebaseIds = draft.codebaseIds.length > 0 ? draft.codebaseIds : allCodebaseIds;
     const response = await fetch("/api/tasks", {
@@ -1369,6 +1433,7 @@ export function KanbanTab({
                             liveMessageTail={task.triggerSessionId ? liveSessionTails[task.triggerSessionId] : undefined}
                             availableProviders={availableProviders}
                             specialists={specialists}
+                            specialistLanguage={specialistLanguage}
                             codebases={codebases}
                             allCodebaseIds={allCodebaseIds}
                             worktreeCache={worktreeCache}
@@ -1472,6 +1537,7 @@ export function KanbanTab({
                       boardColumns={board?.columns ?? []}
                       availableProviders={availableProviders}
                       specialists={specialists}
+                      specialistLanguage={specialistLanguage}
                       codebases={codebases}
                       allCodebaseIds={allCodebaseIds}
                       worktreeCache={worktreeCache}
@@ -1586,6 +1652,7 @@ export function KanbanTab({
           columnAutomation={columnAutomation}
           availableProviders={availableProviders}
           specialists={specialists}
+          specialistLanguage={specialistLanguage}
           onClose={() => setShowSettings(false)}
           onSave={async (newVisibleColumns, newColumnAutomation, sessionConcurrencyLimit, devSessionSupervision) => {
             // Merge automation config and visibility into columns
@@ -1619,7 +1686,7 @@ export function KanbanTab({
       {/* Requirement 1: Codebase detail popup */}
       {selectedCodebase && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]" data-testid="codebase-detail-modal">
+          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]" data-testid="codebase-detail-modal">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {selectedCodebase.label ?? selectedCodebase.repoPath.split("/").pop()}
@@ -1712,8 +1779,8 @@ export function KanbanTab({
               </div>
             ) : (
               /* View mode */
-              <div className="space-y-3 text-sm">
-                <div className="grid grid-cols-2 gap-3">
+              <div className="min-h-0 space-y-4 overflow-y-auto pr-1 text-sm">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div>
                     <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Path</div>
                     <div className="text-gray-700 dark:text-gray-300 font-mono text-xs truncate">{selectedCodebase.repoPath}</div>
@@ -1741,26 +1808,70 @@ export function KanbanTab({
                   )}
                 </div>
                 <div>
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Worktrees ({codebaseWorktrees.length})</div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Worktrees ({codebaseWorktrees.length})</div>
+                    <div className="text-[11px] text-gray-400 dark:text-gray-500">Manage branches and clean stale worktrees here.</div>
+                  </div>
+                  {worktreeActionError && (
+                    <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:border-rose-900/40 dark:bg-rose-900/10 dark:text-rose-300">
+                      {worktreeActionError}
+                    </div>
+                  )}
                   {codebaseWorktrees.length === 0 ? (
                     <div className="text-gray-400 dark:text-gray-500 text-xs">No worktrees created yet</div>
                   ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {codebaseWorktrees.map((wt) => (
-                        <div key={wt.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-2">
-                          <div className="flex items-center gap-2">
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    <div className="space-y-2">
+                      {codebaseWorktrees.map((wt) => {
+                        const linkedTasks = localTasks.filter((task) => task.worktreeId === wt.id);
+                        return (
+                        <div key={wt.id} className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
                               wt.status === "active"
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
                                 : wt.status === "creating"
                                   ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
                                   : "bg-rose-100 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
                             }`}>{wt.status}</span>
-                            <span className="font-mono text-xs text-gray-600 dark:text-gray-400">{wt.branch}</span>
+                                <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{wt.branch}</span>
+                                <span className="text-[11px] text-gray-400 dark:text-gray-500">base {wt.baseBranch}</span>
+                                {linkedTasks.length > 0 && (
+                                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">
+                                    {linkedTasks.length} linked task{linkedTasks.length > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-400 dark:text-gray-500 font-mono break-all">{wt.worktreePath}</div>
+                              {linkedTasks.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {linkedTasks.slice(0, 4).map((task) => (
+                                    <span key={task.id} className="rounded-full border border-gray-200 px-2 py-0.5 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                      {task.title}
+                                    </span>
+                                  ))}
+                                  {linkedTasks.length > 4 && (
+                                    <span className="rounded-full border border-gray-200 px-2 py-0.5 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                      +{linkedTasks.length - 4} more
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2 self-end lg:self-start">
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteCodebaseWorktree(wt)}
+                                disabled={deletingWorktreeId === wt.id}
+                                className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/10"
+                              >
+                                {deletingWorktreeId === wt.id ? "Removing..." : "Remove"}
+                              </button>
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate">{wt.worktreePath}</div>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   )}
                 </div>

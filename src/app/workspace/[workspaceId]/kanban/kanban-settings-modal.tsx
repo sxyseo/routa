@@ -8,12 +8,21 @@ import {
   type KanbanColumnAutomation,
   type KanbanColumnStage,
 } from "@/core/models/kanban";
+import {
+  findSpecialistById,
+  getSpecialistDisplayName,
+  getLanguageSpecificSpecialistId,
+  KANBAN_SPECIALIST_LANGUAGE_LABELS,
+  resolveSpecialistSelection,
+  type KanbanSpecialistLanguage,
+} from "./kanban-specialist-language";
 import type { KanbanBoardInfo, KanbanDevSessionSupervisionInfo } from "../types";
 
 interface SpecialistOption {
   id: string;
   name: string;
   role: string;
+  displayName?: string;
 }
 
 export type ColumnAutomationConfig = KanbanColumnAutomation;
@@ -24,6 +33,7 @@ export interface KanbanSettingsModalProps {
   columnAutomation: Record<string, ColumnAutomationConfig>;
   availableProviders: AcpProviderInfo[];
   specialists: SpecialistOption[];
+  specialistLanguage: KanbanSpecialistLanguage;
   onClose: () => void;
   onSave: (
     visibleColumns: string[],
@@ -155,6 +165,7 @@ export function KanbanSettingsModal({
   columnAutomation: initialColumnAutomation,
   availableProviders,
   specialists,
+  specialistLanguage,
   onClose,
   onSave,
 }: KanbanSettingsModalProps) {
@@ -180,9 +191,57 @@ export function KanbanSettingsModal({
     }
   }, [selectedColumnId, sortedColumns]);
 
+  useEffect(() => {
+    setColumnAutomation((current) => Object.fromEntries(
+      Object.entries(current).map(([columnId, automation]) => [
+        columnId,
+        updateAutomationSteps(automation, (steps) => steps.map((step) => {
+          const resolved = resolveSpecialistSelection(
+            step.specialistId,
+            step.specialistName,
+            specialists,
+            specialistLanguage,
+          );
+
+          return {
+            ...step,
+            specialistId: resolved.specialistId,
+            specialistName: resolved.specialistName,
+          };
+        })),
+      ]),
+    ));
+  }, [specialistLanguage, specialists]);
+
   const selectedColumn = sortedColumns.find((column) => column.id === selectedColumnId) ?? sortedColumns[0] ?? null;
   const automationEnabledCount = sortedColumns.filter((column) => columnAutomation[column.id]?.enabled).length;
   const visibleColumnCount = sortedColumns.filter((column) => visibleColumns.includes(column.id)).length;
+
+  const toggleColumnAutomation = (column: KanbanBoardInfo["columns"][0], enabled: boolean) => {
+    setColumnAutomation((current) => {
+      if (!enabled) {
+        return {
+          ...current,
+          [column.id]: { ...(current[column.id] ?? { enabled: false }), enabled: false },
+        };
+      }
+
+      const defaultAutomation = getDefaultAutomationForStage(column.stage);
+      const existing = current[column.id];
+      return {
+        ...current,
+        [column.id]: syncAutomationPrimaryStep({
+          ...defaultAutomation,
+          ...existing,
+          enabled: true,
+          steps: existing?.steps?.length ? existing.steps : defaultAutomation.steps,
+          requiredArtifacts: existing?.requiredArtifacts ?? defaultAutomation.requiredArtifacts,
+          autoAdvanceOnSuccess: existing?.autoAdvanceOnSuccess ?? defaultAutomation.autoAdvanceOnSuccess,
+          transitionType: existing?.transitionType ?? defaultAutomation.transitionType,
+        }),
+      };
+    });
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -332,7 +391,7 @@ export function KanbanSettingsModal({
             ) : null}
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)]">
+          <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)]">
             <aside className="min-h-0 overflow-y-auto border-b border-slate-200/80 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-[#0a0f16] xl:border-b-0 xl:border-r xl:p-4">
               <div className="space-y-4">
                 <SectionCard
@@ -348,7 +407,7 @@ export function KanbanSettingsModal({
                       return (
                         <div
                           key={column.id}
-                          className={`min-w-[190px] rounded-[16px] border px-2.5 py-2 transition xl:min-w-0 ${
+                          className={`min-w-[210px] rounded-[16px] border px-2.5 py-2 transition xl:min-w-0 ${
                             active
                               ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10 dark:border-amber-400/40 dark:bg-slate-900"
                               : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#111722] dark:hover:border-slate-700"
@@ -369,45 +428,57 @@ export function KanbanSettingsModal({
                                   {automation.enabled ? getAutomationSummary(automation, availableProviders, specialists) : "Manual only"}
                                 </div>
                               </div>
-                              <span
-                                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                                  automation.enabled
-                                    ? active
-                                      ? "bg-white/10 text-amber-200"
-                                      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                                    : active
-                                      ? "bg-white/10 text-slate-300"
-                                      : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                              <div
+                                className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                                  active
+                                    ? "bg-white/10 text-slate-200"
+                                    : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                                 }`}
                               >
-                                {automation.enabled ? "Live" : "Off"}
-                              </span>
+                                Visible
+                              </div>
                             </div>
                           </button>
                           <div
-                            className={`mt-2 flex items-center justify-between rounded-xl border px-2 py-1 ${
+                            className={`mt-1.5 flex items-center justify-between rounded-xl border px-2 py-1 ${
                               active
                                 ? "border-white/15 bg-white/5"
                                 : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-[#0b1119]"
                             }`}
                           >
-                            <div className="space-y-0.5">
-                              <div className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${active ? "text-slate-300" : "text-slate-500 dark:text-slate-400"}`}>Visible</div>
+                            <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${active ? "text-slate-300" : "text-slate-500 dark:text-slate-400"}`}>
+                                  Visible
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Toggle visibility for ${column.name}`}
+                                  checked={visible}
+                                  onChange={(event) => {
+                                    if (event.target.checked) {
+                                      setVisibleColumns((current) => [...current, column.id]);
+                                      return;
+                                    }
+                                    const remaining = visibleColumns.filter((id) => id !== column.id);
+                                    setVisibleColumns(remaining.length > 0 ? remaining : [column.id]);
+                                  }}
+                                  className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                                />
+                              </label>
+                              <label className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${active ? "text-slate-300" : "text-slate-500 dark:text-slate-400"}`}>
+                                  Auto
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Toggle automation for ${column.name}`}
+                                  checked={automation.enabled}
+                                  onChange={(event) => toggleColumnAutomation(column, event.target.checked)}
+                                  className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                                />
+                              </label>
                             </div>
-                            <input
-                              type="checkbox"
-                              aria-label={`Toggle visibility for ${column.name}`}
-                              checked={visible}
-                              onChange={(event) => {
-                                if (event.target.checked) {
-                                  setVisibleColumns((current) => [...current, column.id]);
-                                  return;
-                                }
-                                const remaining = visibleColumns.filter((id) => id !== column.id);
-                                setVisibleColumns(remaining.length > 0 ? remaining : [column.id]);
-                              }}
-                              className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-                            />
                           </div>
                         </div>
                       );
@@ -424,6 +495,7 @@ export function KanbanSettingsModal({
                   automation={columnAutomation[selectedColumn.id] ?? { enabled: false }}
                   availableProviders={availableProviders}
                   specialists={specialists}
+                  specialistLanguage={specialistLanguage}
                   onUpdate={(updated) => {
                     setColumnAutomation((current) => ({
                       ...current,
@@ -471,12 +543,14 @@ function ColumnAutomationWorkspace({
   automation,
   availableProviders,
   specialists,
+  specialistLanguage,
   onUpdate,
 }: {
   column: KanbanBoardInfo["columns"][0];
   automation: ColumnAutomationConfig;
   availableProviders: AcpProviderInfo[];
   specialists: SpecialistOption[];
+  specialistLanguage: KanbanSpecialistLanguage;
   onUpdate: (automation: ColumnAutomationConfig) => void;
 }) {
   const automationSteps = useMemo(
@@ -486,6 +560,11 @@ function ColumnAutomationWorkspace({
   const firstStep = automationSteps[0];
   const showAdvancedByDefault = true;
   const [_showAdvanced, setShowAdvanced] = useState(showAdvancedByDefault);
+  const applyDefaultAutomation = () => {
+    const defaultAutomation = getDefaultAutomationForStage(column.stage);
+    setShowAdvanced(true);
+    onUpdate(defaultAutomation);
+  };
 
   return (
     <div className="space-y-4">
@@ -498,58 +577,20 @@ function ColumnAutomationWorkspace({
                   <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:border-slate-700 dark:bg-[#111722] dark:text-slate-400">
                     {column.id}
                   </span>
-                  <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 dark:border-slate-700 dark:bg-[#0d1118]/90">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Automation</span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={automation.enabled}
-                      onClick={() => {
-                        if (automation.enabled) {
-                          onUpdate({ ...automation, enabled: false });
-                          return;
-                        }
-                        const defaultAutomation = getDefaultAutomationForStage(column.stage);
-                        setShowAdvanced(true);
-                        onUpdate(syncAutomationPrimaryStep({
-                          ...defaultAutomation,
-                          ...automation,
-                          enabled: true,
-                          steps: automation.steps?.length ? automation.steps : defaultAutomation.steps,
-                          requiredArtifacts: automation.requiredArtifacts ?? defaultAutomation.requiredArtifacts,
-                          autoAdvanceOnSuccess: automation.autoAdvanceOnSuccess ?? defaultAutomation.autoAdvanceOnSuccess,
-                          transitionType: automation.transitionType ?? defaultAutomation.transitionType,
-                        }));
-                      }}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
-                        automation.enabled ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-5 w-5 rounded-full bg-white transition ${
-                          automation.enabled ? "translate-x-6" : "translate-x-1"
-                        }`}
-                      />
-                    </button>
-                    <span className={`text-sm font-medium ${automation.enabled ? "text-emerald-600 dark:text-emerald-300" : "text-slate-400 dark:text-slate-500"}`}>
-                      {automation.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                  </label>
+                  <div className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-[#0d1118]/90 dark:text-slate-300">
+                    Configure in stage map
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    const defaultAutomation = getDefaultAutomationForStage(column.stage);
-                    setShowAdvanced(true);
-                    onUpdate(defaultAutomation);
-                  }}
+                  onClick={applyDefaultAutomation}
                   className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
                 >
                   Defaults
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-4">
                 <ConfigField label="Provider">
                   <select
                     aria-label="Provider"
@@ -592,9 +633,9 @@ function ColumnAutomationWorkspace({
                 <ConfigField label="Specialist">
                   <select
                     aria-label="Specialist"
-                    value={firstStep?.specialistId ?? ""}
+                    value={getLanguageSpecificSpecialistId(firstStep?.specialistId, specialistLanguage) ?? ""}
                     onChange={(event) => {
-                      const specialist = specialists.find((item) => item.id === event.target.value);
+                      const specialist = findSpecialistById(specialists, event.target.value);
                       onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
                         stepIndex === 0
                           ? {
@@ -608,10 +649,10 @@ function ColumnAutomationWorkspace({
                     }}
                     className={SELECT_CLASS}
                   >
-                    <option value="">No specialist</option>
+                    <option value="">{KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage].noSpecialist}</option>
                     {specialists.map((specialist) => (
                       <option key={specialist.id} value={specialist.id}>
-                        {specialist.name}
+                        {getSpecialistDisplayName(specialist)}
                       </option>
                     ))}
                   </select>
@@ -639,21 +680,8 @@ function ColumnAutomationWorkspace({
             description=""
           >
             <div className="space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-[#111722]">
-                      <div>
-                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Automation steps</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onUpdate(updateAutomationSteps(automation, (steps) => [...steps, createEmptyAutomationStep(steps.length)]))}
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#0b1119]"
-                      >
-                        Add step
-                      </button>
-                    </div>
-
                     {automationSteps.map((step, index) => {
-                      const stepSpecialist = specialists.find((specialist) => specialist.id === step.specialistId) ?? null;
+                      const stepSpecialist = findSpecialistById(specialists, step.specialistId) ?? null;
                       return (
                         <div key={step.id} className="rounded-[20px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#111722]">
                           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -662,7 +690,7 @@ function ColumnAutomationWorkspace({
                                 Step {index + 1}
                               </div>
                               <div className="mt-1 text-sm font-medium text-slate-900 dark:text-slate-100">
-                                {stepSpecialist?.name ?? step.specialistName ?? step.role ?? "DEVELOPER"}
+                                {getSpecialistDisplayName(stepSpecialist) ?? step.specialistName ?? step.role ?? "DEVELOPER"}
                               </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -750,9 +778,9 @@ function ColumnAutomationWorkspace({
                             <ConfigField label={`Specialist ${index + 1}`}>
                               <select
                                 aria-label={index === 0 ? "Specialist" : `Specialist ${index + 1}`}
-                                value={step.specialistId ?? ""}
+                                value={getLanguageSpecificSpecialistId(step.specialistId, specialistLanguage) ?? ""}
                                 onChange={(event) => {
-                                  const specialist = specialists.find((item) => item.id === event.target.value);
+                                  const specialist = findSpecialistById(specialists, event.target.value);
                                   onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
                                     stepIndex === index
                                       ? {
@@ -766,10 +794,10 @@ function ColumnAutomationWorkspace({
                                 }}
                                 className={SELECT_CLASS}
                               >
-                                <option value="">No specialist</option>
+                                <option value="">{KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage].noSpecialist}</option>
                                 {specialists.map((specialist) => (
                                   <option key={specialist.id} value={specialist.id}>
-                                    {specialist.name}
+                                    {getSpecialistDisplayName(specialist)}
                                   </option>
                                 ))}
                               </select>
@@ -778,6 +806,19 @@ function ColumnAutomationWorkspace({
                         </div>
                       );
                     })}
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                      <div>
+                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Automation steps</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onUpdate(updateAutomationSteps(automation, (steps) => [...steps, createEmptyAutomationStep(steps.length)]))}
+                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#0b1119]"
+                      >
+                        Add step
+                      </button>
+                    </div>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                       {ARTIFACT_OPTIONS.map((artifact) => {
@@ -835,13 +876,29 @@ function ColumnAutomationWorkspace({
           </SectionCard>
         </div>
       ) : (
-        <SectionCard
-          eyebrow="Manual stage"
-          title="Automation is off"
-          description=""
-        >
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-6 text-sm leading-6 text-slate-500 dark:border-slate-700 dark:bg-[#111722] dark:text-slate-400">
-            Enable automation to configure this stage.
+        <SectionCard eyebrow="Stage" title={column.name} description="">
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 rounded-[18px] border border-slate-200 bg-[linear-gradient(135deg,_rgba(251,191,36,0.08),_rgba(255,255,255,0.98)_38%,_rgba(255,255,255,1)_100%)] p-3 dark:border-slate-800 dark:bg-[linear-gradient(135deg,_rgba(245,158,11,0.08),_rgba(15,23,42,0.92)_38%,_rgba(13,17,24,0.98)_100%)] lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:border-slate-700 dark:bg-[#111722] dark:text-slate-400">
+                    {column.id}
+                  </span>
+                  <div className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-[#0d1118]/90 dark:text-slate-300">
+                    Enable in stage map
+                  </div>
+                </div>
+                <button
+                  type="button"
+                onClick={applyDefaultAutomation}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
+              >
+                Defaults
+              </button>
+            </div>
+
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-6 text-sm leading-6 text-slate-500 dark:border-slate-700 dark:bg-[#111722] dark:text-slate-400">
+              Enable automation to configure this stage.
+            </div>
           </div>
         </SectionCard>
       )}
@@ -895,7 +952,7 @@ function ConfigField({
   children: ReactNode;
 }) {
   return (
-    <label className="block space-y-2">
+    <label className="block min-w-0 space-y-2">
       <span className="block text-sm font-medium text-slate-800 dark:text-slate-200">{label}</span>
       {children}
     </label>
@@ -920,7 +977,7 @@ function formatAutomationStepSummary(
   specialists: SpecialistOption[],
 ): string {
   const provider = resolveProviderName(step.providerId, providers) ?? "Default";
-  const specialist = specialists.find((item) => item.id === step.specialistId)?.name ?? step.specialistName;
+  const specialist = getSpecialistDisplayName(findSpecialistById(specialists, step.specialistId)) ?? step.specialistName;
   return [provider, specialist ?? step.role ?? `Step ${index + 1}`].filter(Boolean).join(" • ");
 }
 
@@ -936,4 +993,4 @@ function getAutomationSummary(
   ].join(" • ");
 }
 
-const SELECT_CLASS = "h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100";
+const SELECT_CLASS = "h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100";
