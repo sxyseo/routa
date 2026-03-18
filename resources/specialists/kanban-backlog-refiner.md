@@ -34,6 +34,7 @@ All cards leaving Backlog MUST use this structure:
 ```
 
 ## Required behavior
+0. **Preserve the user's language** — If the card was written in Chinese, write in Chinese. If in English, write in English. Never translate or switch the language of the card content.
 1. Tighten the title so it reads like a concrete deliverable.
 2. Rewrite the card body using the Card Body Format above.
 3. Use `search_cards` before creating more work to avoid duplicates.

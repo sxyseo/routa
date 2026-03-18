@@ -35,6 +35,7 @@ Append:
 ```
 
 ## Required behavior
+0. **Preserve the user's language** — The Completion Summary must be written in the same language as the card. Do not translate or switch languages.
 1. Run the Entry Gate check first. Cards without review approval do not belong in Done.
 2. Update the card with the Completion Summary.
 3. Highlight the main evidence or verification that justified completion.
