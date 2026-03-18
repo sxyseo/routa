@@ -229,3 +229,46 @@ def test_analyze_test_radius_propagates_local_changed_node_coverage(
     assert parent["tests_count"] == 0
     assert parent["inherited_tests_count"] == 1
     assert result["untested_targets"] == []
+
+
+def test_select_query_targets_skips_nested_local_helpers(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(graph_module, "try_create_adapter", lambda _: FakeAdapter())
+    runner = GraphRunner(tmp_path)
+
+    targets = runner._select_query_targets(
+        [
+            {
+                "qualified_name": "src/service.ts:run",
+                "name": "run",
+                "kind": "Function",
+                "file_path": "src/service.ts",
+            },
+            {
+                "qualified_name": "src/service.ts:run.helper",
+                "name": "helper",
+                "kind": "Function",
+                "file_path": "src/service.ts",
+                "parent_name": "run",
+            },
+            {
+                "qualified_name": "src/service.ts:Service",
+                "name": "Service",
+                "kind": "Class",
+                "file_path": "src/service.ts",
+            },
+            {
+                "qualified_name": "src/service.ts:Service.run",
+                "name": "run",
+                "kind": "Function",
+                "file_path": "src/service.ts",
+                "parent_name": "Service",
+            },
+        ],
+        max_targets=10,
+    )
+
+    assert [item["qualified_name"] for item in targets] == [
+        "src/service.ts:run",
+        "src/service.ts:Service",
+        "src/service.ts:Service.run",
+    ]

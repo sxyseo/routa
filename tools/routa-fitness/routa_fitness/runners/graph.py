@@ -463,6 +463,11 @@ class GraphRunner:
     ) -> list[dict[str, Any]]:
         seen = set()
         targets: list[dict[str, Any]] = []
+        nodes_by_qualified_name = {
+            str(node.get("qualified_name")): node
+            for node in changed_nodes
+            if isinstance(node.get("qualified_name"), str) and node.get("qualified_name")
+        }
 
         for node in changed_nodes:
             qualified_name = node.get("qualified_name")
@@ -473,6 +478,8 @@ class GraphRunner:
             if node.get("kind") not in self._QUERYABLE_NODE_KINDS:
                 continue
             if node.get("is_test"):
+                continue
+            if self._is_nested_local_target(node, nodes_by_qualified_name):
                 continue
             seen.add(qualified_name)
             targets.append(
@@ -487,3 +494,21 @@ class GraphRunner:
                 break
 
         return targets
+
+    def _is_nested_local_target(
+        self,
+        node: dict[str, Any],
+        nodes_by_qualified_name: dict[str, dict[str, Any]],
+    ) -> bool:
+        parent_name = node.get("parent_name")
+        file_path = node.get("file_path")
+        if not isinstance(parent_name, str) or not parent_name:
+            return False
+        if not isinstance(file_path, str) or not file_path:
+            return False
+
+        parent_qualified_name = f"{file_path}:{parent_name}"
+        parent = nodes_by_qualified_name.get(parent_qualified_name)
+        if not parent:
+            return False
+        return parent.get("kind") in {"Function", "Method", "Test"}
