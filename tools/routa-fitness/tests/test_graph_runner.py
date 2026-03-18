@@ -158,3 +158,74 @@ def test_build_graph_auto_uses_builtin_cache(monkeypatch, tmp_path: Path):
 
     assert result["status"] == "ok"
     assert adapter.build_calls == [{"full": False, "base": "HEAD"}]
+
+
+def test_analyze_test_radius_propagates_local_changed_node_coverage(
+    monkeypatch,
+    tmp_path: Path,
+):
+    class PropagatingAdapter(FakeAdapter):
+        def impact_radius(self, files: list[str], *, depth: int = 2) -> dict:
+            self.impact_calls.append({"files": files, "depth": depth})
+            return {
+                "status": "ok",
+                "summary": "impact ok",
+                "changed_nodes": [
+                    {
+                        "qualified_name": "src.service.parent",
+                        "name": "parent",
+                        "kind": "Function",
+                        "file_path": "src/service.ts",
+                    },
+                    {
+                        "qualified_name": "src.service.child",
+                        "name": "child",
+                        "kind": "Function",
+                        "file_path": "src/service.ts",
+                    },
+                ],
+                "impacted_nodes": [],
+                "impacted_files": ["src/service.test.ts"],
+                "edges": [
+                    {
+                        "kind": "CALLS",
+                        "source_qualified": "src.service.parent",
+                        "target_qualified": "src.service.child",
+                        "source_file": "src/service.ts",
+                        "target_file": "src/service.ts",
+                    }
+                ],
+            }
+
+        def query(self, query_type: str, target: str) -> dict:
+            self.query_calls.append({"query_type": query_type, "target": target})
+            if target == "src.service.child":
+                return {
+                    "status": "ok",
+                    "results": [
+                        {
+                            "qualified_name": "tests.service.test_child",
+                            "name": "test_child",
+                            "kind": "Function",
+                            "file_path": "src/service.test.ts",
+                            "is_test": True,
+                        }
+                    ],
+                }
+            return {"status": "ok", "results": []}
+
+    adapter = PropagatingAdapter()
+    monkeypatch.setattr(graph_module, "try_create_adapter", lambda _: adapter)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "service.ts").write_text("export function parent() {}\n", encoding="utf-8")
+
+    runner = GraphRunner(tmp_path)
+    result = runner.analyze_test_radius(["src/service.ts"], build_mode="skip")
+
+    parent = next(item for item in result["target_nodes"] if item["qualified_name"] == "src.service.parent")
+    child = next(item for item in result["target_nodes"] if item["qualified_name"] == "src.service.child")
+
+    assert child["tests_count"] == 1
+    assert parent["tests_count"] == 0
+    assert parent["inherited_tests_count"] == 1
+    assert result["untested_targets"] == []

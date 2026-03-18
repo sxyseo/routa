@@ -212,6 +212,26 @@ class GraphRunner:
             if deduped_tests:
                 targets_with_tests += 1
 
+        inherited_targets = self._propagate_local_test_coverage(
+            target_nodes,
+            impact.get("edges", []),
+        )
+        inherited_targets_with_tests = 0
+        for target in target_nodes:
+            inherited = inherited_targets.get(target["qualified_name"], [])
+            target["inherited_tests"] = inherited
+            target["inherited_tests_count"] = len(inherited)
+            if inherited:
+                inherited_targets_with_tests += 1
+                for test in inherited:
+                    key = test.get("qualified_name") or test.get("file_path") or test.get("name")
+                    if not key:
+                        continue
+                    all_tests[key] = test
+                    file_path = test.get("file_path")
+                    if isinstance(file_path, str) and file_path:
+                        all_test_files.add(file_path)
+
         untested_targets = [
             {
                 "qualified_name": target["qualified_name"],
@@ -219,7 +239,7 @@ class GraphRunner:
                 "file_path": target.get("file_path", ""),
             }
             for target in target_nodes
-            if not target.get("tests")
+            if not target.get("tests") and not target.get("inherited_tests")
         ]
 
         summary = (
@@ -228,6 +248,8 @@ class GraphRunner:
             f"{targets_with_tests} with explicit tests, "
             f"{len(all_test_files)} unique test file(s)."
         )
+        if inherited_targets_with_tests:
+            summary = summary[:-1] + f", {inherited_targets_with_tests} with inherited coverage."
         if not target_nodes:
             summary = (
                 f"Estimated test radius for {len(impact['changed_files'])} changed file(s): "
@@ -259,6 +281,52 @@ class GraphRunner:
             "wide_blast_radius": impact["wide_blast_radius"],
             "build": impact["build"],
         }
+
+    def _propagate_local_test_coverage(
+        self,
+        target_nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+    ) -> dict[str, list[dict[str, Any]]]:
+        queryable = {
+            str(target.get("qualified_name")): target
+            for target in target_nodes
+            if target.get("qualified_name")
+        }
+        adjacency: dict[str, set[str]] = {qualified_name: set() for qualified_name in queryable}
+        for edge in edges:
+            if edge.get("kind") != "CALLS":
+                continue
+            source = edge.get("source_qualified")
+            target = edge.get("target_qualified")
+            if not isinstance(source, str) or not isinstance(target, str):
+                continue
+            if source not in queryable or target not in queryable:
+                continue
+            if queryable[source].get("file_path") != queryable[target].get("file_path"):
+                continue
+            adjacency[source].add(target)
+            adjacency[target].add(source)
+
+        propagated: dict[str, list[dict[str, Any]]] = {}
+        for qualified_name, node in queryable.items():
+            if node.get("tests"):
+                continue
+            inherited: dict[str, dict[str, Any]] = {}
+            for neighbor in adjacency.get(qualified_name, set()):
+                for test in queryable[neighbor].get("tests", []):
+                    key = test.get("qualified_name") or test.get("file_path") or test.get("name")
+                    if not key:
+                        continue
+                    inherited[str(key)] = test
+            if inherited:
+                propagated[qualified_name] = sorted(
+                    inherited.values(),
+                    key=lambda item: (
+                        str(item.get("file_path", "")),
+                        str(item.get("qualified_name", item.get("name", ""))),
+                    ),
+                )
+        return propagated
 
     def analyze_history(
         self,

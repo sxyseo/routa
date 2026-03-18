@@ -209,6 +209,33 @@ def test_builtin_graph_limits_tests_to_matching_symbols(tmp_path: Path):
     assert helper_tests["results"] == []
 
 
+def test_builtin_graph_matches_mocked_function_targets_in_tests(tmp_path: Path):
+    _write(
+        tmp_path / "src" / "boards.ts",
+        "export async function ensureDefaultBoard() { return { id: 'board-1' } }\n",
+    )
+    _write(
+        tmp_path / "src" / "task-board-context.test.ts",
+        "import { describe, expect, it, vi } from 'vitest'\n"
+        "import { ensureDefaultBoard } from './boards'\n"
+        "vi.mock('./boards', () => ({ ensureDefaultBoard: vi.fn() }))\n"
+        "describe('ctx', () => {\n"
+        "  it('uses default board', async () => {\n"
+        "    vi.mocked(ensureDefaultBoard).mockResolvedValue({ id: 'board-1' })\n"
+        "    expect(ensureDefaultBoard).toBeDefined()\n"
+        "  })\n"
+        "})\n",
+    )
+
+    adapter = BuiltinGraphAdapter(tmp_path)
+    adapter.build_or_update(full=True)
+    tests = adapter.query("tests_for", "src/boards.ts:ensureDefaultBoard")
+
+    assert [item["qualified_name"] for item in tests["results"]] == [
+        "src/task-board-context.test.ts:test:5"
+    ]
+
+
 def test_builtin_graph_queries_from_persisted_index_without_file_cache(tmp_path: Path):
     _write(
         tmp_path / "src" / "service.py",

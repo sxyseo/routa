@@ -613,6 +613,11 @@ class BuiltinGraphAdapter:
                         rel_path,
                         self._strip_quotes(self._node_text(child, source)),
                     )
+            match = re.search(r"""from\s+['"]([^'"]+)['"]""", text)
+            if not match:
+                match = re.search(r"""import\s+['"]([^'"]+)['"]""", text)
+            if match:
+                return self._resolve_relative_import(rel_path, match.group(1))
             return None
 
         if language == "python" and node.type == "import_from_statement":
@@ -1306,6 +1311,15 @@ class BuiltinGraphAdapter:
                     text = self._call_target_name(language, child, source)
                     if text and text != declared_name and text != "self":
                         refs.add(text)
+                    refs.update(
+                        reference
+                        for reference in self._special_call_argument_references(
+                            language,
+                            child,
+                            source,
+                        )
+                        if reference != declared_name and reference != "self"
+                    )
                 visit(child)
 
         visit(node, is_root=True)
@@ -1338,6 +1352,33 @@ class BuiltinGraphAdapter:
         if not callee:
             return ""
         return callee.split(".", 1)[0].strip()
+
+    def _special_call_argument_references(
+        self,
+        language: str,
+        node,
+        source: bytes,
+    ) -> set[str]:
+        if language not in {"typescript", "tsx", "javascript"}:
+            return set()
+        call_name = self._call_target_name(language, node, source)
+        if call_name not in {"expect", "mocked", "spyOn"}:
+            return set()
+        arguments = self._first_child(node, {"arguments"})
+        if not arguments:
+            return set()
+        refs: set[str] = set()
+        for child in arguments.children:
+            if not child.is_named:
+                continue
+            if child.type in {"identifier", "property_identifier", "type_identifier"}:
+                refs.add(self._node_text(child, source))
+            for identifier in self._descendants(
+                child,
+                {"identifier", "property_identifier", "type_identifier"},
+            ):
+                refs.add(self._node_text(identifier, source))
+        return refs
 
     def _extract_extends(self, language: str, node, source: bytes) -> str:
         if language == "python":
@@ -1396,11 +1437,8 @@ class BuiltinGraphAdapter:
             candidates.extend(candidate / f"index{ext}" for ext in extensions)
 
         for path in candidates:
-            try:
-                relative = path.relative_to(self.repo_root).as_posix()
-            except ValueError:
-                continue
-            if path.exists() and path.is_file():
+            relative = self._repo_relative_path(path)
+            if relative and path.exists() and path.is_file():
                 return relative
         return None
 
@@ -1412,11 +1450,8 @@ class BuiltinGraphAdapter:
             anchor = anchor.parent
         candidate = (anchor / relative_part).resolve() if relative_part else anchor.resolve()
         for path in [candidate.with_suffix(".py"), candidate / "__init__.py"]:
-            try:
-                relative = path.relative_to(self.repo_root).as_posix()
-            except ValueError:
-                continue
-            if path.exists() and path.is_file():
+            relative = self._repo_relative_path(path)
+            if relative and path.exists() and path.is_file():
                 return relative
         return None
 
@@ -1451,12 +1486,18 @@ class BuiltinGraphAdapter:
         for anchor in anchors:
             module_base = anchor.joinpath(*module_parts)
             for path in [module_base.with_suffix(".rs"), module_base / "mod.rs"]:
-                try:
-                    relative = path.relative_to(self.repo_root).as_posix()
-                except ValueError:
-                    continue
-                if path.exists() and path.is_file():
+                relative = self._repo_relative_path(path)
+                if relative and path.exists() and path.is_file():
                     return relative
+        return None
+
+    def _repo_relative_path(self, path: Path) -> str | None:
+        candidates = [self.repo_root, self.repo_root.resolve()]
+        for root in candidates:
+            try:
+                return path.relative_to(root).as_posix()
+            except ValueError:
+                continue
         return None
 
     def _rust_crate_root(self, rel_path: str) -> Path | None:
