@@ -146,6 +146,7 @@ function syncAutomationPrimaryStep(automation: ColumnAutomationConfig): ColumnAu
     role: primaryStep?.role ?? automation.role,
     specialistId: primaryStep?.specialistId ?? automation.specialistId,
     specialistName: primaryStep?.specialistName ?? automation.specialistName,
+    specialistLocale: primaryStep?.specialistLocale ?? automation.specialistLocale,
   };
 }
 
@@ -207,6 +208,7 @@ export function KanbanSettingsModal({
             ...step,
             specialistId: resolved.specialistId,
             specialistName: resolved.specialistName,
+            specialistLocale: resolved.specialistId ? specialistLanguage : undefined,
           };
         })),
       ]),
@@ -642,6 +644,7 @@ function ColumnAutomationWorkspace({
                             ...currentStep,
                             specialistId: event.target.value || undefined,
                             specialistName: specialist?.name,
+                            specialistLocale: event.target.value ? specialistLanguage : undefined,
                             role: specialist?.role ?? currentStep.role,
                           }
                           : currentStep
@@ -787,6 +790,7 @@ function ColumnAutomationWorkspace({
                                         ...currentStep,
                                         specialistId: event.target.value || undefined,
                                         specialistName: specialist?.name,
+                                        specialistLocale: event.target.value ? specialistLanguage : undefined,
                                         role: specialist?.role ?? currentStep.role,
                                       }
                                       : currentStep

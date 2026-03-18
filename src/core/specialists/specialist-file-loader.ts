@@ -42,6 +42,7 @@ export interface ParsedSpecialist {
   behaviorPrompt: string;
   rawContent: string;
   source: "user" | "bundled" | "hardcoded";
+  locale?: string;
 }
 
 const VALID_MODEL_TIERS = ["fast", "balanced", "smart"];
@@ -87,7 +88,8 @@ export function filenameToSpecialistId(filename: string): string {
  */
 export function parseSpecialistFile(
   filePath: string,
-  source: "user" | "bundled"
+  source: "user" | "bundled",
+  locale?: string,
 ): ParsedSpecialist | null {
   try {
     const rawContent = fs.readFileSync(filePath, "utf-8");
@@ -121,6 +123,7 @@ export function parseSpecialistFile(
       behaviorPrompt,
       rawContent,
       source,
+      locale,
     };
   } catch (err) {
     console.error(`[SpecialistLoader] Failed to parse ${filePath}:`, err);
@@ -133,7 +136,8 @@ export function parseSpecialistFile(
  */
 export function loadSpecialistsFromDirectory(
   dirPath: string,
-  source: "user" | "bundled"
+  source: "user" | "bundled",
+  locale?: string,
 ): ParsedSpecialist[] {
   if (!fs.existsSync(dirPath)) {
     return [];
@@ -143,7 +147,7 @@ export function loadSpecialistsFromDirectory(
   const specialists: ParsedSpecialist[] = [];
 
   for (const file of files) {
-    const parsed = parseSpecialistFile(path.join(dirPath, file), source);
+    const parsed = parseSpecialistFile(path.join(dirPath, file), source, locale);
     if (parsed) {
       specialists.push(parsed);
     }
@@ -156,32 +160,36 @@ export function loadSpecialistsFromDirectory(
  * Get the path to bundled specialists directory.
  * Resolves relative to the project root.
  */
-export function getBundledSpecialistsDir(): string {
+export function getBundledSpecialistsDir(locale?: string): string {
   // In Next.js, process.cwd() is the project root
-  return path.join(process.cwd(), "resources", "specialists");
+  return locale
+    ? path.join(process.cwd(), "resources", "specialists", locale)
+    : path.join(process.cwd(), "resources", "specialists");
 }
 
 /**
  * Get the path to user-defined specialists directory.
  */
-export function getUserSpecialistsDir(): string {
+export function getUserSpecialistsDir(locale?: string): string {
   const home =
     process.env.HOME ?? process.env.USERPROFILE ?? "/tmp";
-  return path.join(home, ".routa", "specialists");
+  return locale
+    ? path.join(home, ".routa", "specialists", locale)
+    : path.join(home, ".routa", "specialists");
 }
 
 /**
  * Load bundled specialists from resources/specialists/.
  */
-export function loadBundledSpecialists(): ParsedSpecialist[] {
-  return loadSpecialistsFromDirectory(getBundledSpecialistsDir(), "bundled");
+export function loadBundledSpecialists(locale?: string): ParsedSpecialist[] {
+  return loadSpecialistsFromDirectory(getBundledSpecialistsDir(locale), "bundled", locale);
 }
 
 /**
  * Load user-defined specialists from ~/.routa/specialists/.
  */
-export function loadUserSpecialists(): ParsedSpecialist[] {
-  return loadSpecialistsFromDirectory(getUserSpecialistsDir(), "user");
+export function loadUserSpecialists(locale?: string): ParsedSpecialist[] {
+  return loadSpecialistsFromDirectory(getUserSpecialistsDir(locale), "user", locale);
 }
 
 /**
@@ -214,6 +222,7 @@ export function toSpecialistConfig(parsed: ParsedSpecialist): SpecialistConfig {
     systemPrompt: parsed.behaviorPrompt,
     roleReminder: parsed.frontmatter.roleReminder ?? "",
     source: parsed.source,
+    locale: parsed.locale,
   };
 }
 
@@ -222,9 +231,11 @@ export function toSpecialistConfig(parsed: ParsedSpecialist): SpecialistConfig {
  * User specialists override bundled ones with the same ID.
  * Returns a merged array of SpecialistConfig.
  */
-export function loadAllSpecialists(): SpecialistConfig[] {
+export function loadAllSpecialists(locale?: string): SpecialistConfig[] {
   const bundled = loadBundledSpecialists();
+  const localizedBundled = locale && locale !== "en" ? loadBundledSpecialists(locale) : [];
   const user = loadUserSpecialists();
+  const localizedUser = locale && locale !== "en" ? loadUserSpecialists(locale) : [];
 
   // Start with bundled, then overlay user specialists by ID
   const configMap = new Map<string, SpecialistConfig>();
@@ -234,7 +245,17 @@ export function loadAllSpecialists(): SpecialistConfig[] {
     configMap.set(config.id, config);
   }
 
+  for (const spec of localizedBundled) {
+    const config = toSpecialistConfig(spec);
+    configMap.set(config.id, config);
+  }
+
   for (const spec of user) {
+    const config = toSpecialistConfig(spec);
+    configMap.set(config.id, config);
+  }
+
+  for (const spec of localizedUser) {
     const config = toSpecialistConfig(spec);
     configMap.set(config.id, config);
   }

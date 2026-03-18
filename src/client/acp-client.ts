@@ -144,6 +144,7 @@ export class BrowserAcpClient {
     model?: string;
     idempotencyKey?: string;
     specialistId?: string;
+    specialistLocale?: string;
     /** Custom API base URL (overrides ANTHROPIC_BASE_URL env var) */
     baseUrl?: string;
     /** API key override (overrides ANTHROPIC_AUTH_TOKEN env var) */
@@ -174,6 +175,7 @@ export class BrowserAcpClient {
       model: params.model,
       idempotencyKey: params.idempotencyKey,
       specialistId: params.specialistId,
+      specialistLocale: params.specialistLocale,
       baseUrl: params.baseUrl,
       apiKey: params.apiKey,
       sandboxId: params.sandboxId,

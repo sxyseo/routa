@@ -26,12 +26,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
+    const locale = searchParams.get("locale") ?? request.cookies.get("NEXT_LOCALE")?.value ?? "en";
 
     if (!isPostgres()) {
       // SQLite-backed local dev uses the file-based specialist source.
       const specialists = process.env.NODE_ENV === "development"
-        ? await reloadSpecialists()
-        : loadSpecialistsSync();
+        ? await reloadSpecialists(locale)
+        : loadSpecialistsSync(locale);
       if (id) {
         const specialist = specialists.find((s) => s.id === id);
         if (!specialist) {

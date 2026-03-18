@@ -264,10 +264,11 @@ export async function triggerAssignedTaskAgent(params: {
   cwd: string;
   branch?: string;
   task: Task;
+  specialistLocale?: string;
   boardColumns?: KanbanColumn[];
   eventBus?: EventBus;
 }): Promise<{ sessionId?: string; error?: string }> {
-  const { origin, workspaceId, cwd, branch, task, boardColumns = [], eventBus } = params;
+  const { origin, workspaceId, cwd, branch, task, specialistLocale, boardColumns = [], eventBus } = params;
   const provider = resolveKanbanAutomationProvider(task.assignedProvider);
   const role = task.assignedRole ?? "CRAFTER";
 
@@ -286,6 +287,7 @@ export async function triggerAssignedTaskAgent(params: {
         toolMode: "full",
         workspaceId,
         specialistId: task.assignedSpecialistId,
+        specialistLocale,
         name: `${task.title} · ${provider}`,
       },
     }),

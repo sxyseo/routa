@@ -34,7 +34,7 @@ import type { AgentInstanceConfig } from "@/core/acp/agent-instance-factory";
 import { initRoutaOrchestrator, getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
-import { buildCoordinatorPrompt, loadSpecialistsSync } from "@/core/orchestration/specialist-prompts";
+import { buildCoordinatorPrompt, getSpecialistById } from "@/core/orchestration/specialist-prompts";
 import { getDatabase, isPostgres } from "@/core/db";
 import { PostgresSpecialistStore } from "@/core/store/specialist-store";
 import { AcpError } from "@/core/acp/acp-process";
@@ -257,6 +257,7 @@ export async function POST(request: NextRequest) {
       const parentSessionId = (p.parentSessionId as string | undefined) || undefined;
       const model = (p.model as string | undefined);
       const specialistId = (p.specialistId as string | undefined);
+      const specialistLocale = (p.specialistLocale as string | undefined) ?? "en";
       let sandboxId = (p.sandboxId as string | undefined)?.trim() || undefined;
       const toolMode = p.toolMode === "full"
         ? "full"
@@ -656,10 +657,10 @@ export async function POST(request: NextRequest) {
                 specialist = await specStore.get(specialistId.toLowerCase());
               } catch (err) {
                 console.warn(`[ACP Route] DB specialist lookup failed, trying cache:`, err);
-                specialist = loadSpecialistsSync().find(s => s.id === specialistId.toLowerCase());
+                specialist = getSpecialistById(specialistId.toLowerCase(), specialistLocale);
               }
             } else {
-              specialist = loadSpecialistsSync().find(s => s.id === specialistId.toLowerCase());
+              specialist = getSpecialistById(specialistId.toLowerCase(), specialistLocale);
             }
             if (specialist?.systemPrompt) {
               let prompt = specialist.systemPrompt;

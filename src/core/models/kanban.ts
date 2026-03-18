@@ -13,6 +13,7 @@ export interface KanbanAutomationStep {
   role?: string;
   specialistId?: string;
   specialistName?: string;
+  specialistLocale?: string;
 }
 
 export interface KanbanDevSessionSupervision {
@@ -43,6 +44,8 @@ export interface KanbanColumnAutomation {
   specialistId?: string;
   /** Specialist name (for display) */
   specialistName?: string;
+  /** Specialist locale used to resolve prompt content */
+  specialistLocale?: string;
   /** When to trigger: on entry, exit, or both (default: entry) */
   transitionType?: "entry" | "exit" | "both";
   /** Artifacts required before transition is allowed */
@@ -99,6 +102,7 @@ function createFallbackAutomationStep(automation: KanbanColumnAutomation): Kanba
     role: automation.role,
     specialistId: automation.specialistId,
     specialistName: automation.specialistName,
+    specialistLocale: automation.specialistLocale,
   };
 }
 
@@ -147,6 +151,7 @@ export function normalizeKanbanAutomation(
     role: primaryStep?.role,
     specialistId: primaryStep?.specialistId,
     specialistName: primaryStep?.specialistName,
+    specialistLocale: primaryStep?.specialistLocale,
   };
 }
 

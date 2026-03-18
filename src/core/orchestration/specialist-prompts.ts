@@ -27,6 +27,7 @@ export interface SpecialistConfig {
   systemPrompt: string;
   roleReminder: string;
   source?: "user" | "bundled" | "hardcoded";
+  locale?: string;
   /** Optional model override (e.g. "claude-3-5-haiku-20241022"). Takes precedence over tier-based selection. */
   model?: string;
   enabled?: boolean;
@@ -342,7 +343,8 @@ const HARDCODED_SPECIALISTS: readonly SpecialistConfig[] = [
 
 // ─── Specialist Registry (with file and database loading) ────────────────
 
-let _cachedSpecialists: SpecialistConfig[] | null = null;
+const DEFAULT_SPECIALIST_LOCALE = "en";
+let _cachedSpecialists = new Map<string, SpecialistConfig[]>();
 let _useDatabase = false;
 
 /**
@@ -357,73 +359,79 @@ export function setSpecialistDatabaseEnabled(enabled: boolean): void {
  * Load all specialists from files and optionally database, falling back to hardcoded defaults.
  * Results are cached after first load.
  */
-export async function loadSpecialists(): Promise<SpecialistConfig[]> {
-  if (_cachedSpecialists) return _cachedSpecialists;
+export async function loadSpecialists(locale: string = DEFAULT_SPECIALIST_LOCALE): Promise<SpecialistConfig[]> {
+  const cached = _cachedSpecialists.get(locale);
+  if (cached) return cached;
 
   if (_useDatabase) {
     // Use the new database-aware loader
-    _cachedSpecialists = await loadSpecialistsFromAllSources();
+    const specialists = await loadSpecialistsFromAllSources();
+    _cachedSpecialists.set(locale, specialists);
+    return specialists;
   } else {
     // Use the original file-based loader
     try {
-      const fromFiles = loadAllSpecialists();
+      const fromFiles = loadAllSpecialists(locale);
       if (fromFiles.length > 0) {
         // Merge: file-based specialists + hardcoded ones not overridden
         const fileIds = new Set(fromFiles.map((s) => s.id));
         const hardcodedExtras = HARDCODED_SPECIALISTS.filter(
           (s) => !fileIds.has(s.id)
         );
-        _cachedSpecialists = [...fromFiles, ...hardcodedExtras];
+        const specialists = [...fromFiles, ...hardcodedExtras];
+        _cachedSpecialists.set(locale, specialists);
         console.log(
           `[Specialists] Loaded ${fromFiles.length} from files, ${hardcodedExtras.length} hardcoded fallbacks`
         );
-        return _cachedSpecialists;
+        return specialists;
       }
     } catch (err) {
       console.warn("[Specialists] Failed to load from files, using hardcoded:", err);
     }
 
-    _cachedSpecialists = [...HARDCODED_SPECIALISTS];
+    _cachedSpecialists.set(locale, [...HARDCODED_SPECIALISTS]);
   }
 
-  return _cachedSpecialists;
+  return _cachedSpecialists.get(locale) ?? [...HARDCODED_SPECIALISTS];
 }
 
 /**
  * Synchronous version of loadSpecialists for backward compatibility.
  * Returns cached specialists or loads from files (not database).
  */
-export function loadSpecialistsSync(): SpecialistConfig[] {
-  if (_cachedSpecialists) return _cachedSpecialists;
+export function loadSpecialistsSync(locale: string = DEFAULT_SPECIALIST_LOCALE): SpecialistConfig[] {
+  const cached = _cachedSpecialists.get(locale);
+  if (cached) return cached;
 
   try {
-    const fromFiles = loadAllSpecialists();
+    const fromFiles = loadAllSpecialists(locale);
     if (fromFiles.length > 0) {
       const fileIds = new Set(fromFiles.map((s) => s.id));
       const hardcodedExtras = HARDCODED_SPECIALISTS.filter(
         (s) => !fileIds.has(s.id)
       );
-      _cachedSpecialists = [...fromFiles, ...hardcodedExtras];
+      const specialists = [...fromFiles, ...hardcodedExtras];
+      _cachedSpecialists.set(locale, specialists);
       console.log(
         `[Specialists] Loaded ${fromFiles.length} from files, ${hardcodedExtras.length} hardcoded fallbacks`
       );
-      return _cachedSpecialists;
+      return specialists;
     }
   } catch (err) {
     console.warn("[Specialists] Failed to load from files, using hardcoded:", err);
   }
 
-  _cachedSpecialists = [...HARDCODED_SPECIALISTS];
-  return _cachedSpecialists;
+  _cachedSpecialists.set(locale, [...HARDCODED_SPECIALISTS]);
+  return _cachedSpecialists.get(locale) ?? [...HARDCODED_SPECIALISTS];
 }
 
 /**
  * Force reload specialists from disk/database (clears cache).
  */
-export async function reloadSpecialists(): Promise<SpecialistConfig[]> {
+export async function reloadSpecialists(locale: string = DEFAULT_SPECIALIST_LOCALE): Promise<SpecialistConfig[]> {
   invalidateSpecialistCache();
-  _cachedSpecialists = null;
-  return loadSpecialists();
+  _cachedSpecialists = new Map();
+  return loadSpecialists(locale);
 }
 
 /**
@@ -451,16 +459,16 @@ export const SPECIALISTS: readonly SpecialistConfig[] = HARDCODED_SPECIALISTS;
  * Get specialist config by role.
  * Uses synchronous version for immediate access.
  */
-export function getSpecialistByRole(role: AgentRole): SpecialistConfig | undefined {
-  return loadSpecialistsSync().find((s) => s.role === role);
+export function getSpecialistByRole(role: AgentRole, locale: string = DEFAULT_SPECIALIST_LOCALE): SpecialistConfig | undefined {
+  return loadSpecialistsSync(locale).find((s) => s.role === role);
 }
 
 /**
  * Get specialist config by ID.
  * Uses synchronous version for immediate access.
  */
-export function getSpecialistById(id: string): SpecialistConfig | undefined {
-  return loadSpecialistsSync().find((s) => s.id === id.toLowerCase());
+export function getSpecialistById(id: string, locale: string = DEFAULT_SPECIALIST_LOCALE): SpecialistConfig | undefined {
+  return loadSpecialistsSync(locale).find((s) => s.id === id.toLowerCase());
 }
 
 /**

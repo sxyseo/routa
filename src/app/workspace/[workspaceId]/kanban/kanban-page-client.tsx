@@ -135,6 +135,7 @@ export function KanbanPageClient() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(KANBAN_SPECIALIST_LANGUAGE_STORAGE_KEY, specialistLanguage);
+    document.cookie = `NEXT_LOCALE=${specialistLanguage}; path=/; max-age=31536000; samesite=lax`;
   }, [specialistLanguage]);
 
   // Fetch tasks
@@ -169,16 +170,19 @@ export function KanbanPageClient() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/specialists?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
+        const res = await fetch(
+          `/api/specialists?workspaceId=${encodeURIComponent(workspaceId)}&locale=${encodeURIComponent(specialistLanguage)}`,
+          { cache: "no-store" },
+        );
         const data = await res.json();
         setSpecialists(Array.isArray(data?.specialists) ? data.specialists : []);
       } catch { /* ignore */ }
     })();
-  }, [workspaceId]);
+  }, [workspaceId, specialistLanguage]);
 
   const localizedSpecialists = useMemo(
-    () => localizeSpecialists(specialists, specialistLanguage),
-    [specialists, specialistLanguage],
+    () => localizeSpecialists(specialists),
+    [specialists],
   );
 
   const handleWorkspaceSelect = (wsId: string) => {

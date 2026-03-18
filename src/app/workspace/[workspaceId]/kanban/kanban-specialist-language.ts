@@ -7,7 +7,6 @@ export interface LocalizedSpecialistOption {
   name: string;
   role: string;
   displayName?: string;
-  canonicalId?: string;
 }
 
 export const KANBAN_SPECIALIST_LANGUAGE_STORAGE_KEY = "routa:kanban-specialist-language";
@@ -38,20 +37,11 @@ export const KANBAN_SPECIALIST_LANGUAGE_LABELS: Record<
   },
 };
 
-const ZH_SPECIALIST_SUFFIX = "-zh-cn";
-
-export function getCanonicalSpecialistId(id: string | undefined): string | undefined {
-  if (!id) return undefined;
-  return id.endsWith(ZH_SPECIALIST_SUFFIX) ? id.slice(0, -ZH_SPECIALIST_SUFFIX.length) : id;
-}
-
-export function getLanguageSpecificSpecialistId(
-  id: string | undefined,
-  language: KanbanSpecialistLanguage,
-): string | undefined {
-  const canonicalId = getCanonicalSpecialistId(id);
-  if (!canonicalId) return undefined;
-  return language === "zh-CN" ? `${canonicalId}${ZH_SPECIALIST_SUFFIX}` : canonicalId;
+export function localizeSpecialists<T extends LocalizedSpecialistOption>(specialists: T[]): T[] {
+  return specialists.map((specialist) => ({
+    ...specialist,
+    displayName: specialist.name,
+  }));
 }
 
 export function findSpecialistById<T extends LocalizedSpecialistOption>(
@@ -59,45 +49,26 @@ export function findSpecialistById<T extends LocalizedSpecialistOption>(
   id: string | undefined,
 ): T | undefined {
   if (!id) return undefined;
-  const canonicalId = getCanonicalSpecialistId(id);
-  return specialists.find((specialist) => specialist.id === id || specialist.canonicalId === canonicalId);
+  return specialists.find((specialist) => specialist.id === id);
 }
 
-export function localizeSpecialists<T extends LocalizedSpecialistOption>(
-  specialists: T[],
-  language: KanbanSpecialistLanguage,
-): Array<T & { canonicalId: string; displayName?: string }> {
-  const byId = new Map(specialists.map((specialist) => [specialist.id, specialist]));
-  const canonicalIds = Array.from(new Set(
-    specialists.map((specialist) => getCanonicalSpecialistId(specialist.id)).filter((value): value is string => Boolean(value)),
-  ));
-
-  return canonicalIds.flatMap((canonicalId) => {
-    const preferredId = getLanguageSpecificSpecialistId(canonicalId, language) ?? canonicalId;
-    const preferred = byId.get(preferredId) ?? byId.get(canonicalId);
-    if (!preferred) return [];
-
-    return [{
-      ...preferred,
-      canonicalId,
-      displayName: preferred.name,
-    }];
-  });
+export function getLanguageSpecificSpecialistId(
+  id: string | undefined,
+  _language: KanbanSpecialistLanguage,
+): string | undefined {
+  return id;
 }
 
 export function resolveSpecialistSelection<T extends LocalizedSpecialistOption>(
   specialistId: string | undefined,
   specialistName: string | undefined,
   specialists: T[],
-  language: KanbanSpecialistLanguage,
+  _language: KanbanSpecialistLanguage,
 ): { specialistId?: string; specialistName?: string } {
   if (!specialistId && !specialistName) return {};
-
-  const nextId = getLanguageSpecificSpecialistId(specialistId, language) ?? specialistId;
-  const specialist = findSpecialistById(specialists, nextId);
-
+  const specialist = findSpecialistById(specialists, specialistId);
   return {
-    specialistId: specialist?.id ?? nextId,
+    specialistId: specialist?.id ?? specialistId,
     specialistName: specialist?.name ?? specialistName,
   };
 }

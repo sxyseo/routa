@@ -128,11 +128,13 @@ export interface KanbanColumnAutomationInfo {
     role?: string;
     specialistId?: string;
     specialistName?: string;
+    specialistLocale?: string;
   }>;
   providerId?: string;
   role?: string;
   specialistId?: string;
   specialistName?: string;
+  specialistLocale?: string;
   transitionType?: "entry" | "exit" | "both";
   requiredArtifacts?: ("screenshot" | "test_results" | "code_diff")[];
   autoAdvanceOnSuccess?: boolean;
