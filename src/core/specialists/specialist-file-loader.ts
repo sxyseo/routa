@@ -31,25 +31,33 @@
 import * as fs from "fs";
 import * as path from "path";
 import matter from "gray-matter";
+import * as yaml from "js-yaml";
 import { AgentRole, ModelTier } from "../models/agent";
 import type { SpecialistConfig } from "../orchestration/specialist-prompts";
 
 export interface SpecialistFileMeta {
+  id?: string;
   name: string;
   description: string;
   modelTier?: string;
+  model_tier?: string;
   model?: string;
   role?: string;
   roleReminder?: string;
+  role_reminder?: string;
   defaultProvider?: string;
+  default_provider?: string;
   defaultAdapter?: string;
+  default_adapter?: string;
   execution?: {
     role?: string;
     provider?: string;
     adapter?: string;
     modelTier?: string;
+    model_tier?: string;
     model?: string;
   };
+  system_prompt?: string;
 }
 
 export interface ParsedSpecialist {
@@ -71,7 +79,7 @@ function isLocaleDirectoryName(name: string): boolean {
   return name === SPECIALIST_LOCALES_DIRNAME || /^[a-z]{2}(?:-[A-Z]{2})?$/.test(name);
 }
 
-function collectMarkdownFiles(dirPath: string, includeLocaleDirectories: boolean): string[] {
+function collectSpecialistFiles(dirPath: string, includeLocaleDirectories: boolean): string[] {
   if (!fs.existsSync(dirPath)) {
     return [];
   }
@@ -86,20 +94,57 @@ function collectMarkdownFiles(dirPath: string, includeLocaleDirectories: boolean
       if (!includeLocaleDirectories && isLocaleDirectoryName(entry.name)) {
         continue;
       }
-      files.push(...collectMarkdownFiles(entryPath, includeLocaleDirectories));
+      files.push(...collectSpecialistFiles(entryPath, includeLocaleDirectories));
       continue;
     }
 
-    if (entry.isFile() && entry.name.endsWith(".md")) {
+    if (entry.isFile() && (entry.name.endsWith(".md") || entry.name.endsWith(".yaml") || entry.name.endsWith(".yml"))) {
       files.push(entryPath);
     }
   }
 
-  return files.sort((a, b) => a.localeCompare(b));
+  const extRank = (filePath: string): number => {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+      case ".md":
+        return 0;
+      case ".yaml":
+      case ".yml":
+        return 1;
+      default:
+        return 2;
+    }
+  };
+
+  return files.sort((a, b) => extRank(a) - extRank(b) || a.localeCompare(b));
 }
 
 function uniqueExistingDirs(dirPaths: string[]): string[] {
   return Array.from(new Set(dirPaths)).filter((dirPath) => fs.existsSync(dirPath));
+}
+
+function warnDuplicateSpecialist(prev: ParsedSpecialist, next: ParsedSpecialist, context: string): void {
+  console.warn(
+    `[SpecialistLoader] Duplicate specialist id "${next.id}" in ${context}; ` +
+    `overriding ${prev.filePath} with ${next.filePath}`
+  );
+}
+
+export function mergeSpecialistDefinitions(
+  specialists: ParsedSpecialist[],
+  context: string,
+): ParsedSpecialist[] {
+  const merged = new Map<string, ParsedSpecialist>();
+
+  for (const specialist of specialists) {
+    const previous = merged.get(specialist.id);
+    if (previous) {
+      warnDuplicateSpecialist(previous, specialist, context);
+    }
+    merged.set(specialist.id, specialist);
+  }
+
+  return Array.from(merged.values());
 }
 
 export function getBundledSpecialistsRootDir(): string {
@@ -158,8 +203,130 @@ export function filenameToSpecialistId(filename: string): string {
   return path.basename(filename, path.extname(filename));
 }
 
+function normalizeSpecialistMeta(raw: Record<string, unknown>): SpecialistFileMeta {
+  const execution = typeof raw.execution === "object" && raw.execution !== null
+    ? raw.execution as Record<string, unknown>
+    : undefined;
+
+  return {
+    id: typeof raw.id === "string" ? raw.id : undefined,
+    name: typeof raw.name === "string" ? raw.name : "",
+    description: typeof raw.description === "string" ? raw.description : "",
+    modelTier: typeof raw.modelTier === "string"
+      ? raw.modelTier
+      : typeof raw.model_tier === "string"
+        ? raw.model_tier
+        : undefined,
+    model: typeof raw.model === "string" ? raw.model : undefined,
+    role: typeof raw.role === "string" ? raw.role : undefined,
+    roleReminder: typeof raw.roleReminder === "string"
+      ? raw.roleReminder
+      : typeof raw.role_reminder === "string"
+        ? raw.role_reminder
+        : undefined,
+    defaultProvider: typeof raw.defaultProvider === "string"
+      ? raw.defaultProvider
+      : typeof raw.default_provider === "string"
+        ? raw.default_provider
+        : undefined,
+    defaultAdapter: typeof raw.defaultAdapter === "string"
+      ? raw.defaultAdapter
+      : typeof raw.default_adapter === "string"
+        ? raw.default_adapter
+        : undefined,
+    execution: execution ? {
+      role: typeof execution.role === "string" ? execution.role : undefined,
+      provider: typeof execution.provider === "string" ? execution.provider : undefined,
+      adapter: typeof execution.adapter === "string" ? execution.adapter : undefined,
+      modelTier: typeof execution.modelTier === "string"
+        ? execution.modelTier
+        : typeof execution.model_tier === "string"
+          ? execution.model_tier
+          : undefined,
+      model: typeof execution.model === "string" ? execution.model : undefined,
+    } : undefined,
+    system_prompt: typeof raw.system_prompt === "string" ? raw.system_prompt : undefined,
+  };
+}
+
+function parseMarkdownSpecialistFile(
+  filePath: string,
+  source: "user" | "bundled",
+  locale?: string,
+): ParsedSpecialist | null {
+  const rawContent = fs.readFileSync(filePath, "utf-8");
+  const { data, content } = matter(rawContent);
+  const frontmatter = normalizeSpecialistMeta(data as Record<string, unknown>);
+
+  if (!frontmatter.name) {
+    console.warn(
+      `[SpecialistLoader] Skipping ${filePath}: missing 'name' in frontmatter`
+    );
+    return null;
+  }
+
+  if (
+    frontmatter.modelTier &&
+    !VALID_MODEL_TIERS.includes(frontmatter.modelTier.toLowerCase())
+  ) {
+    console.warn(
+      `[SpecialistLoader] Invalid modelTier "${frontmatter.modelTier}" in ${filePath}, defaulting to "smart"`
+    );
+    frontmatter.modelTier = "smart";
+  }
+
+  return {
+    id: frontmatter.id ?? filenameToSpecialistId(filePath),
+    filePath,
+    frontmatter,
+    behaviorPrompt: content.trim(),
+    rawContent,
+    source,
+    locale,
+  };
+}
+
+function parseYamlSpecialistFile(
+  filePath: string,
+  source: "user" | "bundled",
+  locale?: string,
+): ParsedSpecialist | null {
+  const rawContent = fs.readFileSync(filePath, "utf-8");
+  const parsed = yaml.load(rawContent) as Record<string, unknown> | undefined;
+  if (!parsed || typeof parsed !== "object") {
+    console.warn(`[SpecialistLoader] Skipping ${filePath}: invalid YAML specialist definition`);
+    return null;
+  }
+
+  const frontmatter = normalizeSpecialistMeta(parsed);
+  if (!frontmatter.name) {
+    console.warn(`[SpecialistLoader] Skipping ${filePath}: missing 'name' in YAML`);
+    return null;
+  }
+
+  if (
+    frontmatter.modelTier &&
+    !VALID_MODEL_TIERS.includes(frontmatter.modelTier.toLowerCase())
+  ) {
+    console.warn(
+      `[SpecialistLoader] Invalid modelTier "${frontmatter.modelTier}" in ${filePath}, defaulting to "smart"`
+    );
+    frontmatter.modelTier = "smart";
+  }
+
+  return {
+    id: frontmatter.id ?? filenameToSpecialistId(filePath),
+    filePath,
+    frontmatter,
+    behaviorPrompt: frontmatter.system_prompt?.trim() ?? "",
+    rawContent,
+    source,
+    locale,
+  };
+}
+
 /**
- * Parse a single specialist Markdown file.
+ * Parse a single specialist file.
  */
 export function parseSpecialistFile(
   filePath: string,
@@ -167,39 +334,17 @@ export function parseSpecialistFile(
   locale?: string,
 ): ParsedSpecialist | null {
   try {
-    const rawContent = fs.readFileSync(filePath, "utf-8");
-    const { data, content } = matter(rawContent);
-
-    const frontmatter = data as SpecialistFileMeta;
-    if (!frontmatter.name) {
-      console.warn(
-        `[SpecialistLoader] Skipping ${filePath}: missing 'name' in frontmatter`
-      );
-      return null;
+    const extension = path.extname(filePath).toLowerCase();
+    switch (extension) {
+      case ".md":
+        return parseMarkdownSpecialistFile(filePath, source, locale);
+      case ".yaml":
+      case ".yml":
+        return parseYamlSpecialistFile(filePath, source, locale);
+      default:
+        console.warn(`[SpecialistLoader] Skipping ${filePath}: unsupported specialist file extension`);
+        return null;
     }
-
-    if (
-      frontmatter.modelTier &&
-      !VALID_MODEL_TIERS.includes(frontmatter.modelTier.toLowerCase())
-    ) {
-      console.warn(
-        `[SpecialistLoader] Invalid modelTier "${frontmatter.modelTier}" in ${filePath}, defaulting to "smart"`
-      );
-      frontmatter.modelTier = "smart";
-    }
-
-    const id = filenameToSpecialistId(filePath);
-    const behaviorPrompt = content.trim();
-
-    return {
-      id,
-      filePath,
-      frontmatter,
-      behaviorPrompt,
-      rawContent,
-      source,
-      locale,
-    };
   } catch (err) {
     console.error(`[SpecialistLoader] Failed to parse ${filePath}:`, err);
     return null;
@@ -215,7 +360,7 @@ export function loadSpecialistsFromDirectory(
   locale?: string,
 ): ParsedSpecialist[] {
   const specialists: ParsedSpecialist[] = [];
-  const files = collectMarkdownFiles(dirPath, locale !== undefined);
+  const files = collectSpecialistFiles(dirPath, locale !== undefined);
 
   for (const file of files) {
     const parsed = parseSpecialistFile(file, source, locale);
@@ -224,7 +369,10 @@ export function loadSpecialistsFromDirectory(
     }
   }
 
-  return specialists;
+  return mergeSpecialistDefinitions(
+    specialists,
+    `directory ${dirPath}${locale ? ` (locale ${locale})` : ""}`
+  );
 }
 
 /**
@@ -253,8 +401,11 @@ export function getUserSpecialistsDir(locale?: string): string {
  */
 export function loadBundledSpecialists(locale?: string): ParsedSpecialist[] {
   if (locale && locale !== DEFAULT_LOCALE) {
-    return getLocaleOverlayDirs(getBundledSpecialistsRootDir(), locale).flatMap((dirPath) =>
-      loadSpecialistsFromDirectory(dirPath, "bundled", locale)
+    return mergeSpecialistDefinitions(
+      getLocaleOverlayDirs(getBundledSpecialistsRootDir(), locale).flatMap((dirPath) =>
+        loadSpecialistsFromDirectory(dirPath, "bundled", locale)
+      ),
+      `bundled locale overlays (${locale})`
     );
   }
   return loadSpecialistsFromDirectory(getBundledSpecialistsRootDir(), "bundled");
@@ -265,8 +416,11 @@ export function loadBundledSpecialists(locale?: string): ParsedSpecialist[] {
  */
 export function loadUserSpecialists(locale?: string): ParsedSpecialist[] {
   if (locale && locale !== DEFAULT_LOCALE) {
-    return getLocaleOverlayDirs(getUserSpecialistsRootDir(), locale).flatMap((dirPath) =>
-      loadSpecialistsFromDirectory(dirPath, "user", locale)
+    return mergeSpecialistDefinitions(
+      getLocaleOverlayDirs(getUserSpecialistsRootDir(), locale).flatMap((dirPath) =>
+        loadSpecialistsFromDirectory(dirPath, "user", locale)
+      ),
+      `user locale overlays (${locale})`
     );
   }
   return loadSpecialistsFromDirectory(getUserSpecialistsRootDir(), "user");

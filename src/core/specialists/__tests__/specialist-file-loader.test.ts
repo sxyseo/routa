@@ -1,9 +1,10 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  mergeSpecialistDefinitions,
   getLocaleOverlayDirs,
   loadSpecialistsFromDirectory,
   loadBundledSpecialists,
@@ -28,6 +29,22 @@ role: "DEVELOPER"
 ---
 
 ${name} body
+`,
+    "utf8"
+  );
+}
+
+function writeYamlSpecialist(filePath: string, id: string, name: string, prompt: string): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(
+    filePath,
+    `id: "${id}"
+name: "${name}"
+description: "${name} description"
+role: "DEVELOPER"
+model_tier: "smart"
+system_prompt: |
+  ${prompt}
 `,
     "utf8"
   );
@@ -91,5 +108,58 @@ describe("specialist-file-loader", () => {
     } finally {
       process.chdir(previousCwd);
     }
+  });
+
+  it("prefers yaml runtime definitions over legacy markdown files for the same id", () => {
+    const rootDir = createTempDir();
+    writeSpecialist(path.join(rootDir, "developer.md"), "Developer Markdown");
+    writeYamlSpecialist(path.join(rootDir, "developer.yaml"), "developer", "Developer YAML", "yaml prompt");
+
+    const loaded = loadSpecialistsFromDirectory(rootDir, "bundled");
+
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.frontmatter.name).toBe("Developer YAML");
+    expect(loaded[0]?.behaviorPrompt).toBe("yaml prompt");
+  });
+
+  it("warns and keeps the last specialist when duplicate ids are merged", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rootDir = createTempDir();
+    const first = path.join(rootDir, "legacy", "developer.md");
+    const second = path.join(rootDir, "locales", "zh-CN", "developer.md");
+
+    writeSpecialist(first, "Developer Old");
+    writeSpecialist(second, "Developer New");
+
+    const merged = mergeSpecialistDefinitions(
+      [
+        {
+          id: "developer",
+          filePath: first,
+          frontmatter: { name: "Developer Old", description: "old" },
+          behaviorPrompt: "old",
+          rawContent: "old",
+          source: "bundled",
+          locale: "zh-CN",
+        },
+        {
+          id: "developer",
+          filePath: second,
+          frontmatter: { name: "Developer New", description: "new" },
+          behaviorPrompt: "new",
+          rawContent: "new",
+          source: "bundled",
+          locale: "zh-CN",
+        },
+      ],
+      "test merge"
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.frontmatter.name).toBe("Developer New");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('Duplicate specialist id "developer" in test merge')
+    );
+    warn.mockRestore();
   });
 });

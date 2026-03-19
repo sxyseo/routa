@@ -288,7 +288,8 @@ impl SpecialistLoader {
 
     /// Load all specialists from a directory.
     /// Supports both `.yaml`/`.yml` and `.md` (markdown with frontmatter) files.
-    /// Markdown is loaded after YAML for deterministic compatibility precedence.
+    /// YAML is loaded after Markdown so migrated runtime definitions can
+    /// override legacy Markdown compatibility files deterministically.
     pub fn load_dir(&mut self, dir: &str) -> Result<usize, String> {
         let dir_path = Path::new(dir);
         if !dir_path.is_dir() {
@@ -301,8 +302,8 @@ impl SpecialistLoader {
             let a_ext = a.extension().and_then(|e| e.to_str()).unwrap_or("");
             let b_ext = b.extension().and_then(|e| e.to_str()).unwrap_or("");
             let ext_rank = |ext: &str| match ext {
-                "yaml" | "yml" => 0,
-                "md" => 1,
+                "md" => 0,
+                "yaml" | "yml" => 1,
                 _ => 2,
             };
 
@@ -312,6 +313,7 @@ impl SpecialistLoader {
         });
 
         let mut count = 0;
+        let mut source_paths: HashMap<String, PathBuf> = HashMap::new();
         for path in paths {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
@@ -326,6 +328,16 @@ impl SpecialistLoader {
                 specialist.id,
                 specialist.name
             );
+            if let Some(previous_path) = source_paths.get(&specialist.id) {
+                tracing::warn!(
+                    "[SpecialistLoader] Duplicate specialist id '{}' in '{}'; overriding '{}' with '{}'",
+                    specialist.id,
+                    dir,
+                    previous_path.display(),
+                    path.display()
+                );
+            }
+            source_paths.insert(specialist.id.clone(), path.clone());
             self.specialists.insert(specialist.id.clone(), specialist);
             count += 1;
         }
@@ -616,7 +628,7 @@ name: "验证者"
     }
 
     #[test]
-    fn test_load_dir_prefers_markdown_over_yaml_for_same_id() {
+    fn test_load_dir_prefers_yaml_over_markdown_for_same_id() {
         let temp_dir = tempfile::tempdir().unwrap();
         let root = temp_dir.path();
 
@@ -644,7 +656,7 @@ markdown prompt
         loader.load_dir(root.to_str().unwrap()).unwrap();
 
         let developer = loader.get("developer").unwrap();
-        assert_eq!(developer.name, "Developer Markdown");
-        assert!(developer.system_prompt.contains("markdown prompt"));
+        assert_eq!(developer.name, "Developer YAML");
+        assert!(developer.system_prompt.contains("yaml prompt"));
     }
 }
