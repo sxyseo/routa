@@ -21,6 +21,8 @@ export interface SpecialistCreateInput {
   defaultModelTier: ModelTier;
   systemPrompt: string;
   roleReminder?: string;
+  defaultProvider?: string;
+  defaultAdapter?: string;
   model?: string;
   source?: "user" | "bundled" | "hardcoded";
   createdBy?: string;
@@ -33,6 +35,8 @@ export interface SpecialistUpdateInput {
   defaultModelTier?: ModelTier;
   systemPrompt?: string;
   roleReminder?: string;
+  defaultProvider?: string;
+  defaultAdapter?: string;
   model?: string;
   enabled?: boolean;
 }
@@ -72,6 +76,8 @@ export class PostgresSpecialistStore implements SpecialistStore {
       defaultModelTier: input.defaultModelTier,
       systemPrompt: input.systemPrompt,
       roleReminder: input.roleReminder ?? "",
+      defaultProvider: input.defaultProvider,
+      defaultAdapter: input.defaultAdapter,
       model: input.model,
       enabled: true,
       createdBy: input.createdBy,
@@ -135,6 +141,8 @@ export class PostgresSpecialistStore implements SpecialistStore {
     if (input.defaultModelTier !== undefined) updateData.defaultModelTier = input.defaultModelTier;
     if (input.systemPrompt !== undefined) updateData.systemPrompt = input.systemPrompt;
     if (input.roleReminder !== undefined) updateData.roleReminder = input.roleReminder;
+    if (input.defaultProvider !== undefined) updateData.defaultProvider = input.defaultProvider;
+    if (input.defaultAdapter !== undefined) updateData.defaultAdapter = input.defaultAdapter;
     if (input.model !== undefined) updateData.model = input.model;
     if (input.enabled !== undefined) updateData.enabled = input.enabled;
 
@@ -186,6 +194,8 @@ export class PostgresSpecialistStore implements SpecialistStore {
       systemPrompt: record.systemPrompt as string,
       roleReminder: record.roleReminder as string,
       source: record.source as "user" | "bundled" | "hardcoded",
+      defaultProvider: (record.defaultProvider as string) ?? undefined,
+      defaultAdapter: (record.defaultAdapter as string) ?? undefined,
       model: (record.model as string) ?? undefined,
       enabled: record.enabled as boolean ?? true,
     };

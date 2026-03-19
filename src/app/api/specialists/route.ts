@@ -20,6 +20,40 @@ import { syncBundledSpecialistsToDatabase } from "@/core/specialists/specialist-
 import { setSpecialistDatabaseEnabled, reloadSpecialists, loadSpecialistsSync } from "@/core/orchestration/specialist-prompts";
 import { AgentRole, ModelTier } from "@/core/models/agent";
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function isAgentRole(value: string | undefined): value is AgentRole {
+  return value !== undefined && Object.values(AgentRole).includes(value as AgentRole);
+}
+
+function isModelTier(value: string | undefined): value is ModelTier {
+  return value !== undefined && Object.values(ModelTier).includes(value as ModelTier);
+}
+
+function normalizeSpecialistPayload(body: Record<string, unknown>) {
+  const execution = body.execution && typeof body.execution === "object"
+    ? body.execution as Record<string, unknown>
+    : undefined;
+
+  return {
+    id: normalizeOptionalString(body.id),
+    name: normalizeOptionalString(body.name),
+    description: normalizeOptionalString(body.description),
+    role: normalizeOptionalString(execution?.role) ?? normalizeOptionalString(body.role),
+    defaultModelTier: normalizeOptionalString(execution?.modelTier) ?? normalizeOptionalString(body.defaultModelTier),
+    systemPrompt: normalizeOptionalString(body.systemPrompt),
+    roleReminder: normalizeOptionalString(body.roleReminder),
+    defaultProvider: normalizeOptionalString(execution?.provider) ?? normalizeOptionalString(body.defaultProvider),
+    defaultAdapter: normalizeOptionalString(execution?.adapter) ?? normalizeOptionalString(body.defaultAdapter),
+    model: normalizeOptionalString(execution?.model) ?? normalizeOptionalString(body.model),
+    enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+  };
+}
+
 // ─── GET /api/specialists ───────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
@@ -82,8 +116,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const { id, name, description, role, defaultModelTier, systemPrompt, roleReminder, model, action } = body;
+    const body = await request.json() as Record<string, unknown>;
+    const action = normalizeOptionalString(body.action);
+    const {
+      id,
+      name,
+      description,
+      role,
+      defaultModelTier,
+      systemPrompt,
+      roleReminder,
+      defaultProvider,
+      defaultAdapter,
+      model,
+    } = normalizeSpecialistPayload(body);
 
     // Handle sync action
     if (action === "sync") {
@@ -109,7 +155,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate role
-    if (!Object.values(AgentRole).includes(role)) {
+    if (!isAgentRole(role)) {
       return NextResponse.json(
         { error: `Invalid role: ${role}. Must be one of: ${Object.values(AgentRole).join(", ")}` },
         { status: 400 }
@@ -117,12 +163,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate modelTier
-    if (!Object.values(ModelTier).includes(defaultModelTier)) {
+    if (!isModelTier(defaultModelTier)) {
       return NextResponse.json(
         { error: `Invalid defaultModelTier: ${defaultModelTier}. Must be one of: ${Object.values(ModelTier).join(", ")}` },
         { status: 400 }
       );
     }
+
+    const normalizedRole: AgentRole = role;
+    const normalizedDefaultModelTier: ModelTier = defaultModelTier;
 
     const db = getDatabase();
     const store = new PostgresSpecialistStore(db);
@@ -141,10 +190,12 @@ export async function POST(request: NextRequest) {
       id,
       name,
       description,
-      role,
-      defaultModelTier,
+      role: normalizedRole,
+      defaultModelTier: normalizedDefaultModelTier,
       systemPrompt,
       roleReminder,
+      defaultProvider,
+      defaultAdapter,
       model,
       source: "user",
     });
@@ -175,8 +226,20 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const { id, name, description, role, defaultModelTier, systemPrompt, roleReminder, model, enabled } = body;
+    const body = await request.json() as Record<string, unknown>;
+    const {
+      id,
+      name,
+      description,
+      role,
+      defaultModelTier,
+      systemPrompt,
+      roleReminder,
+      defaultProvider,
+      defaultAdapter,
+      model,
+      enabled,
+    } = normalizeSpecialistPayload(body);
 
     if (!id) {
       return NextResponse.json(
@@ -186,7 +249,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Validate role if provided
-    if (role && !Object.values(AgentRole).includes(role)) {
+    if (role && !isAgentRole(role)) {
       return NextResponse.json(
         { error: `Invalid role: ${role}. Must be one of: ${Object.values(AgentRole).join(", ")}` },
         { status: 400 }
@@ -194,12 +257,17 @@ export async function PUT(request: NextRequest) {
     }
 
     // Validate modelTier if provided
-    if (defaultModelTier && !Object.values(ModelTier).includes(defaultModelTier)) {
+    if (defaultModelTier && !isModelTier(defaultModelTier)) {
       return NextResponse.json(
         { error: `Invalid defaultModelTier: ${defaultModelTier}. Must be one of: ${Object.values(ModelTier).join(", ")}` },
         { status: 400 }
       );
     }
+
+    const normalizedRole = role && isAgentRole(role) ? role : undefined;
+    const normalizedDefaultModelTier = defaultModelTier && isModelTier(defaultModelTier)
+      ? defaultModelTier
+      : undefined;
 
     const db = getDatabase();
     const store = new PostgresSpecialistStore(db);
@@ -208,10 +276,12 @@ export async function PUT(request: NextRequest) {
     const specialist = await store.update(id, {
       name,
       description,
-      role,
-      defaultModelTier,
+      role: normalizedRole,
+      defaultModelTier: normalizedDefaultModelTier,
       systemPrompt,
       roleReminder,
+      defaultProvider,
+      defaultAdapter,
       model,
       enabled,
     });

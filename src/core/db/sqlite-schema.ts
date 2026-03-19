@@ -450,6 +450,10 @@ export const specialists = sqliteTable("specialists", {
   systemPrompt: text("system_prompt").notNull(),
   /** Short role reminder */
   roleReminder: text("role_reminder").notNull().default(""),
+  /** Optional default ACP provider override */
+  defaultProvider: text("default_provider"),
+  /** Optional default adapter/runtime hint */
+  defaultAdapter: text("default_adapter"),
   /** Optional specific model override */
   model: text("model"),
   /** Whether this specialist is enabled (stored as 0/1) */

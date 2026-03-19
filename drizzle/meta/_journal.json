@@ -113,6 +113,13 @@
       "when": 1772900000000,
       "tag": "0015_kanban_workspace_repository",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1773900000000,
+      "tag": "0016_specialist_execution_defaults",
+      "breakpoints": true
     }
   ]
 }

@@ -92,6 +92,13 @@
       "when": 1772800000000,
       "tag": "0012_add_session_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1773900000000,
+      "tag": "0013_specialist_execution_defaults",
+      "breakpoints": true
     }
   ]
 }

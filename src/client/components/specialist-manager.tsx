@@ -58,6 +58,8 @@ interface SpecialistForm {
   defaultModelTier: ModelTier;
   systemPrompt: string;
   roleReminder: string;
+  defaultProvider: string;
+  defaultAdapter: string;
   model?: string;
 }
 
@@ -80,6 +82,8 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
     defaultModelTier: "BALANCED",
     systemPrompt: "",
     roleReminder: "",
+    defaultProvider: "",
+    defaultAdapter: "",
     model: "",
   });
 
@@ -181,6 +185,8 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
       defaultModelTier: specialist.defaultModelTier,
       systemPrompt: specialist.systemPrompt,
       roleReminder: specialist.roleReminder,
+      defaultProvider: specialist.defaultProvider || "",
+      defaultAdapter: specialist.defaultAdapter || "",
       model: specialist.model || "",
     });
     setShowCreateForm(true);
@@ -195,6 +201,8 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
       defaultModelTier: "BALANCED",
       systemPrompt: "",
       roleReminder: "",
+      defaultProvider: "",
+      defaultAdapter: "",
       model: "",
     });
   };
@@ -297,6 +305,11 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                           {specialist.defaultProvider ? (
                             <p className="text-xs text-gray-500 dark:text-gray-500">
                               Provider: <span className="font-mono">{specialist.defaultProvider}</span>
+                            </p>
+                          ) : null}
+                          {specialist.defaultAdapter ? (
+                            <p className="text-xs text-gray-500 dark:text-gray-500">
+                              Adapter: <span className="font-mono">{specialist.defaultAdapter}</span>
                             </p>
                           ) : null}
                         </div>
@@ -422,6 +435,42 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                         </option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Default Provider */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Default ACP Provider
+                    </label>
+                    <input
+                      type="text"
+                      value={form.defaultProvider}
+                      onChange={(e) => setForm({ ...form, defaultProvider: e.target.value })}
+                      placeholder="e.g., claude"
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Leave empty to use workspace or caller defaults
+                    </p>
+                  </div>
+
+                  {/* Default Adapter */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Default Adapter
+                    </label>
+                    <input
+                      type="text"
+                      value={form.defaultAdapter}
+                      onChange={(e) => setForm({ ...form, defaultAdapter: e.target.value })}
+                      placeholder="e.g., acp"
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Optional runtime hint used by direct execution flows
+                    </p>
                   </div>
                 </div>
 

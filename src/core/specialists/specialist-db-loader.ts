@@ -276,6 +276,9 @@ export async function syncBundledSpecialistsToDatabase(
       defaultModelTier: config.defaultModelTier,
       systemPrompt: config.systemPrompt,
       roleReminder: config.roleReminder,
+      defaultProvider: config.defaultProvider,
+      defaultAdapter: config.defaultAdapter,
+      model: config.model,
       source: "bundled",
     });
   }
@@ -299,6 +302,8 @@ export async function saveUserSpecialist(
     defaultModelTier: ModelTier;
     systemPrompt: string;
     roleReminder?: string;
+    defaultProvider?: string;
+    defaultAdapter?: string;
     model?: string;
   }
 ): Promise<SpecialistConfig> {
