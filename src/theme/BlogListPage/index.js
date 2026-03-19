@@ -44,7 +44,7 @@ function BlogListPageContent(props) {
 export default function BlogListPage(props) {
   const normalizedProps = {
     ...props,
-    items: normalizeBlogItems(props.items),
+    items: normalizeBlogItems(props.items, props.metadata),
   };
 
   return (

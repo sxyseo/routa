@@ -1,3 +1,7 @@
+---
+slug: /
+---
+
 # Routa Quickstart
 
 ## 1) Install dependencies

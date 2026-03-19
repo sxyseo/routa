@@ -8,7 +8,12 @@ module.exports = {
   projectName: "routa-js",
   trailingSlash: false,
   onBrokenLinks: "warn",
-  onBrokenMarkdownLinks: "warn",
+  markdown: {
+    format: "detect",
+    hooks: {
+      onBrokenMarkdownLinks: "warn",
+    },
+  },
   presets: [
     [
       "@docusaurus/preset-classic",

@@ -4,13 +4,33 @@ const blogMetadataContext = require.context(
   /^\.\/site-docs-blog-.*\.json$/,
 );
 
-const fallbackMetadataByTitle = new Map(
+const blogArchiveContext = require.context(
+  "@generated/docusaurus-plugin-content-blog/default/p",
+  false,
+  /^\.\/routa-js-blog-archive-.*\.json$/,
+);
+
+const fallbackMetadataByPermalink = new Map(
   blogMetadataContext.keys().map((key) => {
     const mod = blogMetadataContext(key);
     const metadata = mod.default ?? mod;
-    return [metadata.title, metadata];
+    return [metadata.permalink, metadata];
   }),
 );
+
+const orderedFallbackMetadata = blogArchiveContext
+  .keys()
+  .flatMap((key) => {
+    const mod = blogArchiveContext(key);
+    const archive = mod.default ?? mod;
+    return archive.archive?.blogPosts ?? [];
+  })
+  .map((post) => post.metadata)
+  .filter(Boolean);
+
+function hasOwnKeys(value) {
+  return Boolean(value) && Object.keys(value).length > 0;
+}
 
 function cloneContentWithFallback(content, metadata) {
   if (!content || !metadata) {
@@ -19,27 +39,51 @@ function cloneContentWithFallback(content, metadata) {
 
   return Object.assign(content, {
     metadata,
-    frontMatter: content.frontMatter ?? metadata.frontMatter ?? {},
+    frontMatter: hasOwnKeys(content.frontMatter)
+      ? content.frontMatter
+      : (metadata.frontMatter ?? {}),
     assets: content.assets ?? {},
   });
 }
 
-export function ensureBlogContentMetadata(content) {
-  if (!content || content.metadata) {
-    return content;
+export function getBlogMetadataByPermalink(permalink) {
+  if (!permalink) {
+    return undefined;
   }
 
-  const title = content.frontMatter?.title ?? content.contentTitle;
-  if (!title) {
-    return content;
-  }
-
-  return cloneContentWithFallback(content, fallbackMetadataByTitle.get(title));
+  return fallbackMetadataByPermalink.get(permalink);
 }
 
-export function normalizeBlogItems(items) {
+export function ensureBlogContentMetadata(content, metadata) {
+  if (!content) {
+    return content;
+  }
+
+  if (content.metadata) {
+    return cloneContentWithFallback(content, metadata ?? content.metadata);
+  }
+
+  if (!metadata) {
+    return content;
+  }
+
+  return cloneContentWithFallback(content, metadata);
+}
+
+export function normalizeBlogItems(items, metadata) {
+  const page = metadata?.page ?? 1;
+  const postsPerPage = metadata?.postsPerPage ?? items.length;
+  const startIndex = Math.max(page - 1, 0) * postsPerPage;
+  const fallbackPageMetadata = orderedFallbackMetadata.slice(
+    startIndex,
+    startIndex + items.length,
+  );
+
   return items.map((item) => ({
     ...item,
-    content: ensureBlogContentMetadata(item.content),
+    content: ensureBlogContentMetadata(
+      item.content,
+      fallbackPageMetadata.shift(),
+    ),
   }));
 }

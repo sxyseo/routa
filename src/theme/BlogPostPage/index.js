@@ -1,5 +1,6 @@
 import React from "react";
 import clsx from "clsx";
+import { useLocation } from "@docusaurus/router";
 import { HtmlClassNameProvider, ThemeClassNames } from "@docusaurus/theme-common";
 import {
   BlogPostProvider,
@@ -12,7 +13,10 @@ import BlogPostPageMetadata from "@theme/BlogPostPage/Metadata";
 import BlogPostPageStructuredData from "@theme/BlogPostPage/StructuredData";
 import TOC from "@theme/TOC";
 import ContentVisibility from "@theme/ContentVisibility";
-import { ensureBlogContentMetadata } from "../blogContentMetadataFallback";
+import {
+  ensureBlogContentMetadata,
+  getBlogMetadataByPermalink,
+} from "../blogContentMetadataFallback";
 
 function BlogPostPageContent({ sidebar, children }) {
   const { metadata, toc } = useBlogPost();
@@ -45,7 +49,11 @@ function BlogPostPageContent({ sidebar, children }) {
 }
 
 export default function BlogPostPage(props) {
-  const blogPostContent = ensureBlogContentMetadata(props.content);
+  const location = useLocation();
+  const blogPostContent = ensureBlogContentMetadata(
+    props.content,
+    getBlogMetadataByPermalink(location.pathname),
+  );
 
   return (
     <BlogPostProvider content={blogPostContent} isBlogPostPage>
