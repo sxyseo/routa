@@ -13,9 +13,13 @@ fn registry_cache_path() -> PathBuf {
 
 async fn load_cached_registry_json() -> Result<serde_json::Value, String> {
     let path = registry_cache_path();
-    let content = tokio::fs::read_to_string(&path)
-        .await
-        .map_err(|e| format!("Failed to read cached ACP registry '{}': {}", path.display(), e))?;
+    let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+        format!(
+            "Failed to read cached ACP registry '{}': {}",
+            path.display(),
+            e
+        )
+    })?;
 
     serde_json::from_str::<serde_json::Value>(&content)
         .map_err(|e| format!("Failed to parse cached ACP registry JSON: {}", e))
@@ -23,7 +27,8 @@ async fn load_cached_registry_json() -> Result<serde_json::Value, String> {
 
 async fn save_cached_registry_json(value: &serde_json::Value) -> Result<(), String> {
     let paths = AcpPaths::new();
-    paths.ensure_directories()
+    paths
+        .ensure_directories()
         .map_err(|e| format!("Failed to create ACP directories: {}", e))?;
 
     let content = serde_json::to_string_pretty(value)
@@ -64,7 +69,10 @@ pub async fn fetch_registry_json() -> Result<serde_json::Value, String> {
     match fetch_live_registry_json().await {
         Ok(json) => Ok(json),
         Err(fetch_error) => load_cached_registry_json().await.map_err(|cache_error| {
-            format!("{}; fallback cache unavailable: {}", fetch_error, cache_error)
+            format!(
+                "{}; fallback cache unavailable: {}",
+                fetch_error, cache_error
+            )
         }),
     }
 }

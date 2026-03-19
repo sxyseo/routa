@@ -428,20 +428,16 @@ mod tests {
     #[tokio::test]
     async fn test_get_nonexistent_returns_none() {
         let tmp = TempDir::new().unwrap();
-        let provider = LocalSessionProvider::new_with_storage_root(
-            tmp.path().to_str().unwrap(),
-            tmp.path(),
-        );
+        let provider =
+            LocalSessionProvider::new_with_storage_root(tmp.path().to_str().unwrap(), tmp.path());
         assert!(provider.get("nonexistent").await.is_none());
     }
 
     #[tokio::test]
     async fn test_delete_nonexistent_is_ok() {
         let tmp = TempDir::new().unwrap();
-        let provider = LocalSessionProvider::new_with_storage_root(
-            tmp.path().to_str().unwrap(),
-            tmp.path(),
-        );
+        let provider =
+            LocalSessionProvider::new_with_storage_root(tmp.path().to_str().unwrap(), tmp.path());
         assert!(provider.delete("nonexistent").await.is_ok());
     }
 }

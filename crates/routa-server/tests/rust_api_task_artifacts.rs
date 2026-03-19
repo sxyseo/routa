@@ -146,7 +146,10 @@ async fn api_task_artifact_flow_and_gate() {
         .expect("move blocked");
     assert_eq!(blocked_move.status(), StatusCode::BAD_REQUEST);
     let blocked_json: Value = blocked_move.json().await.expect("decode blocked move");
-    assert!(json_has_error(&blocked_json, "missing required artifacts: screenshot"));
+    assert!(json_has_error(
+        &blocked_json,
+        "missing required artifacts: screenshot"
+    ));
 
     let create_artifact = fixture
         .client

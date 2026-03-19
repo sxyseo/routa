@@ -57,16 +57,14 @@ impl KanbanColumnAutomation {
             return None;
         }
 
-        if let Some(step) = self
-            .steps
-            .as_ref()
-            .and_then(|steps| steps.iter().find(|step| {
+        if let Some(step) = self.steps.as_ref().and_then(|steps| {
+            steps.iter().find(|step| {
                 step.provider_id.is_some()
                     || step.role.is_some()
                     || step.specialist_id.is_some()
                     || step.specialist_name.is_some()
-            }))
-        {
+            })
+        }) {
             return Some(step.clone());
         }
 

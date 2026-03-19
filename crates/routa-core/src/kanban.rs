@@ -29,7 +29,10 @@ pub async fn ensure_task_board_context(
     task: &mut Task,
 ) -> Result<(), ServerError> {
     if task.board_id.is_none() {
-        let default_board = state.kanban_store.ensure_default_board(&task.workspace_id).await?;
+        let default_board = state
+            .kanban_store
+            .ensure_default_board(&task.workspace_id)
+            .await?;
         task.board_id = Some(default_board.id);
     }
 
@@ -59,9 +62,15 @@ pub fn task_to_card(task: &Task) -> KanbanCard {
         title: task.title.clone(),
         description: task.objective.clone(),
         status: task.status.as_str().to_string(),
-        column_id: task.column_id.clone().unwrap_or_else(|| "backlog".to_string()),
+        column_id: task
+            .column_id
+            .clone()
+            .unwrap_or_else(|| "backlog".to_string()),
         position: task.position,
-        priority: task.priority.as_ref().map(|priority| priority.as_str().to_string()),
+        priority: task
+            .priority
+            .as_ref()
+            .map(|priority| priority.as_str().to_string()),
         labels: task.labels.clone(),
         assignee: task.assignee.clone(),
         created_at: task.created_at,

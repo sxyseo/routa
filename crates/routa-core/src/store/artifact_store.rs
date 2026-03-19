@@ -117,7 +117,9 @@ impl ArtifactStore {
 }
 
 fn row_to_artifact(row: &rusqlite::Row<'_>) -> Artifact {
-    let artifact_type = row.get::<_, String>(1).unwrap_or_else(|_| "logs".to_string());
+    let artifact_type = row
+        .get::<_, String>(1)
+        .unwrap_or_else(|_| "logs".to_string());
     let status = row
         .get::<_, String>(9)
         .unwrap_or_else(|_| "provided".to_string());

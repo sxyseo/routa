@@ -585,7 +585,9 @@ system_prompt: "second prompt"
         let chinese_overlay_root = bundled_root.join("locales").join("zh-CN");
 
         let mut runtime_loader = SpecialistLoader::new();
-        runtime_loader.load_dir(bundled_root.to_str().unwrap()).unwrap();
+        runtime_loader
+            .load_dir(bundled_root.to_str().unwrap())
+            .unwrap();
         let runtime_ids: HashSet<String> = runtime_loader.all().keys().cloned().collect();
 
         let mut english_overlay_loader = SpecialistLoader::new();

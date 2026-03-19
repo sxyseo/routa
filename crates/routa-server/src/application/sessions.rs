@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use std::cmp::Reverse;
+use std::collections::HashSet;
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -86,7 +86,10 @@ impl SessionApplicationService {
         }
     }
 
-    pub async fn get_session_context(&self, session_id: &str) -> Result<SessionContext, ServerError> {
+    pub async fn get_session_context(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionContext, ServerError> {
         let in_memory_sessions = self.state.acp_manager.list_sessions().await;
         let db_sessions = self
             .state
@@ -95,11 +98,14 @@ impl SessionApplicationService {
             .await
             .unwrap_or_default();
 
-        build_session_context(merge_session_entries(
-            in_memory_sessions,
-            db_sessions,
-            &ListSessionsQuery::default(),
-        ), session_id)
+        build_session_context(
+            merge_session_entries(
+                in_memory_sessions,
+                db_sessions,
+                &ListSessionsQuery::default(),
+            ),
+            session_id,
+        )
     }
 }
 
@@ -240,11 +246,13 @@ fn merge_session_entries(
 
     let mut sessions: Vec<SessionEntry> = in_memory_sessions
         .into_iter()
-        .filter(|session| session_matches_query(
-            &session.workspace_id,
-            session.parent_session_id.as_deref(),
-            query,
-        ))
+        .filter(|session| {
+            session_matches_query(
+                &session.workspace_id,
+                session.parent_session_id.as_deref(),
+                query,
+            )
+        })
         .map(SessionEntry::from_in_memory)
         .collect();
 
@@ -511,7 +519,12 @@ mod tests {
         let sessions = merge_session_entries(
             vec![
                 in_memory_session("session-1", "ws-1", "2026-03-19T10:00:00Z", None),
-                in_memory_session("session-2", "ws-1", "2026-03-19T11:00:00Z", Some("parent-1")),
+                in_memory_session(
+                    "session-2",
+                    "ws-1",
+                    "2026-03-19T11:00:00Z",
+                    Some("parent-1"),
+                ),
             ],
             vec![
                 db_session("session-1", "ws-1", 5, None, true),
@@ -558,10 +571,7 @@ mod tests {
         assert_eq!(context.children.len(), 1);
         assert_eq!(context.siblings.len(), 1);
         assert_eq!(context.recent_in_workspace.len(), 5);
-        assert_eq!(
-            context.children[0]["sessionId"].as_str(),
-            Some("child")
-        );
+        assert_eq!(context.children[0]["sessionId"].as_str(), Some("child"));
         assert_eq!(
             context.recent_in_workspace[0]["sessionId"].as_str(),
             Some("recent-1")
@@ -580,7 +590,14 @@ mod tests {
         service
             .state
             .acp_session_store
-            .create(session_id, "/tmp", "default", Some("claude"), Some("CRAFTER"), None)
+            .create(
+                session_id,
+                "/tmp",
+                "default",
+                Some("claude"),
+                Some("CRAFTER"),
+                None,
+            )
             .await
             .expect("create session");
         service
@@ -648,7 +665,12 @@ mod tests {
     #[test]
     fn list_sessions_serializes_expected_shape() {
         let sessions = merge_session_entries(
-            vec![in_memory_session("session-1", "ws-1", "2026-03-19T10:00:00Z", None)],
+            vec![in_memory_session(
+                "session-1",
+                "ws-1",
+                "2026-03-19T10:00:00Z",
+                None,
+            )],
             Vec::new(),
             &ListSessionsQuery::default(),
         );

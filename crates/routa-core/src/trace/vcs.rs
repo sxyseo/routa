@@ -117,7 +117,12 @@ mod tests {
             .current_dir(cwd)
             .status()
             .expect("git command should execute");
-        assert!(status.success(), "git {:?} failed in {}", args, cwd.display());
+        assert!(
+            status.success(),
+            "git {:?} failed in {}",
+            args,
+            cwd.display()
+        );
     }
 
     fn create_test_repo() -> (TempDir, PathBuf) {
@@ -128,11 +133,18 @@ mod tests {
         run_git(&repo_path, &["init", "-b", "main"]);
         run_git(&repo_path, &["config", "user.name", "Routa Test"]);
         run_git(&repo_path, &["config", "user.email", "test@example.com"]);
-        std::fs::write(repo_path.join("README.md"), "test repo\n").expect("fixture file should be written");
+        std::fs::write(repo_path.join("README.md"), "test repo\n")
+            .expect("fixture file should be written");
         run_git(&repo_path, &["add", "README.md"]);
         run_git(
             &repo_path,
-            &["-c", "commit.gpgsign=false", "commit", "-m", "Initial commit"],
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "Initial commit",
+            ],
         );
 
         (temp_dir, repo_path)

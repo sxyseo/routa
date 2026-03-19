@@ -447,7 +447,8 @@ mod tests {
             timestamp: Utc::now(),
         };
 
-        let payload = translate_agent_event_to_kanban_payload(&event).expect("payload should exist");
+        let payload =
+            translate_agent_event_to_kanban_payload(&event).expect("payload should exist");
         assert_eq!(payload["type"].as_str(), Some("kanban:changed"));
         assert_eq!(payload["workspaceId"].as_str(), Some("ws-1"));
         assert_eq!(payload["entity"].as_str(), Some("task"));
@@ -486,7 +487,8 @@ mod tests {
             timestamp: Utc::now(),
         };
 
-        let payload = translate_agent_event_to_kanban_payload(&event).expect("payload should exist");
+        let payload =
+            translate_agent_event_to_kanban_payload(&event).expect("payload should exist");
         assert_eq!(payload["type"].as_str(), Some("kanban:changed"));
         assert_eq!(payload["entity"].as_str(), Some("task"));
         assert_eq!(payload["action"].as_str(), Some("updated"));

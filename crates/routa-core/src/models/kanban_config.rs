@@ -221,7 +221,9 @@ boards:
 "#;
         let config = KanbanConfig::from_yaml(yaml).unwrap();
         let errs = config.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("stage 'invalid_stage' is invalid")));
+        assert!(errs
+            .iter()
+            .any(|e| e.contains("stage 'invalid_stage' is invalid")));
     }
 
     #[test]
@@ -284,7 +286,9 @@ boards:
 "#;
         let config = KanbanConfig::from_yaml(yaml).unwrap();
         let errs = config.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("transitionType 'invalid' is invalid")));
+        assert!(errs
+            .iter()
+            .any(|e| e.contains("transitionType 'invalid' is invalid")));
     }
 
     #[test]

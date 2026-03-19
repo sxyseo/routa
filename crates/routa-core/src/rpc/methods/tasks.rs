@@ -377,6 +377,9 @@ mod tests {
         .expect("artifacts should be listed");
 
         assert_eq!(listed.artifacts.len(), 1);
-        assert_eq!(listed.artifacts[0].context.as_deref(), Some("Verification screenshot"));
+        assert_eq!(
+            listed.artifacts[0].context.as_deref(),
+            Some("Verification screenshot")
+        );
     }
 }
