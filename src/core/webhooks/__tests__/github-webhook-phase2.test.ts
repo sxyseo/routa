@@ -18,6 +18,8 @@ import type { GitHubWebhookConfig } from "../../store/github-webhook-store";
 import { InMemoryGitHubWebhookStore } from "../../store/github-webhook-store";
 import { InMemoryBackgroundTaskStore } from "../../store/background-task-store";
 
+const WORKSPACE_ID = "workspace-1";
+
 describe("GitHub Webhook Handler - Phase 2 Events", () => {
   let webhookStore: InMemoryGitHubWebhookStore;
   let backgroundTaskStore: InMemoryBackgroundTaskStore;
@@ -61,12 +63,13 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
         payload,
         webhookStore,
         backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
       });
 
       expect(result.processed).toBe(1);
       expect(result.skipped).toBe(0);
 
-      const tasks = await backgroundTaskStore.listByWorkspace("default");
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
       expect(tasks).toHaveLength(1);
       expect(tasks[0].prompt).toContain("Check Suite #12345");
       expect(tasks[0].prompt).toContain("Status: completed, Conclusion: failure");
@@ -146,10 +149,11 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
         payload,
         webhookStore,
         backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
       });
 
       expect(result.processed).toBe(1);
-      const tasks = await backgroundTaskStore.listByWorkspace("default");
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
       expect(tasks[0].prompt).toContain("Workflow: CI Pipeline (#42)");
       expect(tasks[0].prompt).toContain("Status: completed, Conclusion: failure");
       expect(tasks[0].prompt).toContain("Triggered by: push");
@@ -196,10 +200,11 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
         payload,
         webhookStore,
         backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
       });
 
       expect(result.processed).toBe(1);
-      const tasks = await backgroundTaskStore.listByWorkspace("default");
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
       expect(tasks[0].prompt).toContain("Job: build (CI Pipeline)");
       expect(tasks[0].prompt).toContain("Status: completed, Conclusion: failure");
       expect(tasks[0].prompt).toContain("Failed steps: Build");
@@ -247,10 +252,11 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
         payload,
         webhookStore,
         backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
       });
 
       expect(result.processed).toBe(1);
-      const tasks = await backgroundTaskStore.listByWorkspace("default");
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
       expect(tasks[0].prompt).toContain("PR #42: Add new feature");
       expect(tasks[0].prompt).toContain("Review by reviewer: changes_requested");
       expect(tasks[0].prompt).toContain("Please fix the tests");
@@ -298,10 +304,11 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
         payload,
         webhookStore,
         backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
       });
 
       expect(result.processed).toBe(1);
-      const tasks = await backgroundTaskStore.listByWorkspace("default");
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
       expect(tasks[0].prompt).toContain("PR #42: Add new feature");
       expect(tasks[0].prompt).toContain("Comment by reviewer");
       expect(tasks[0].prompt).toContain("File: src/app.ts:42");
@@ -338,10 +345,11 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
         payload,
         webhookStore,
         backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
       });
 
       expect(result.processed).toBe(1);
-      const tasks = await backgroundTaskStore.listByWorkspace("default");
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
       expect(tasks[0].prompt).toContain("Created tag: v1.0.0");
       expect(tasks[0].prompt).toContain("Default branch: main");
       expect(tasks[0].prompt).toContain("By: developer");
@@ -373,10 +381,11 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
         payload,
         webhookStore,
         backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
       });
 
       expect(result.processed).toBe(1);
-      const tasks = await backgroundTaskStore.listByWorkspace("default");
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
       expect(tasks[0].prompt).toContain("Created branch: feature-branch");
     });
   });
@@ -408,10 +417,11 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
         payload,
         webhookStore,
         backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
       });
 
       expect(result.processed).toBe(1);
-      const tasks = await backgroundTaskStore.listByWorkspace("default");
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
       expect(tasks[0].prompt).toContain("Deleted tag: v0.9.0");
       expect(tasks[0].prompt).toContain("By: developer");
     });
