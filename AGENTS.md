@@ -3,6 +3,30 @@
 ## Project Overview
 
 - Product feature tree can be found in `docs/product-specs/FEATURE_TREE.md`
+- Repository architecture and system boundaries live in `docs/ARCHITECTURE.md`
+- Design intent, decision records, and migration map from `.kiro/specs/` live in `docs/design-docs/`
+- Execution plans and debt tracking live in `docs/exec-plans/`
+- Repro reports and agent feedback logs live in `docs/issues/`
+- Quality and fitness guidance live in `docs/fitness/`
+
+## Documentation Map
+
+- `docs/product-specs/FEATURE_TREE.md`: Auto-generated product and API surface index. Start here when you need route or endpoint discovery.
+- `docs/ARCHITECTURE.md`: Canonical architecture overview, domain model, protocol stack, and cross-backend invariants.
+- `docs/design-docs/`: Human-reviewed design intent. Use for why a system exists, what constraints it must keep, and which older specs are still authoritative.
+- `docs/exec-plans/active/`: Short-lived implementation plans for work in progress.
+- `docs/exec-plans/completed/`: Archived plans that reflect what was actually shipped.
+- `docs/exec-plans/tech-debt-tracker.md`: Cross-cutting debt ledger for cleanup work that does not fit a single feature plan.
+- `docs/issues/`: Feedback-driven incident and bug records. Capture WHAT happened and WHY it mattered.
+- `docs/fitness/`: Fitness function, code quality, API contract, testing, and verification guidance.
+- `docs/references/`: LLM-friendly reference material and distilled external docs for high-frequency dependencies.
+
+## Documentation Rules
+
+- Treat `AGENTS.md` as a table of contents and operating contract, not a knowledge dump.
+- Prefer adding durable knowledge under `docs/` instead of expanding `AGENTS.md`.
+- When adding a new long-lived document, place it in the most specific `docs/` subdirectory and update this map if the new area becomes a standard entry point.
+- Do not duplicate the same normative guidance across `AGENTS.md`, `.kiro/specs/`, and `docs/`. If content is migrated, leave an index or pointer instead of maintaining parallel copies.
 
 ## Coding Standards
 
