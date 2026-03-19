@@ -1,12 +1,14 @@
 ---
 title: "Rust fitness lacks an application/use-case test layer between store tests and API tests"
 date: "2026-03-13"
-status: open
+status: resolved
 severity: medium
 area: "fitness"
 tags: ["rust", "fitness", "testing", "api-contract", "usecase", "architecture"]
 reported_by: "codex"
 related_issues: []
+resolved_date: "2026-03-19"
+resolved_by: "Codex (GPT-5)"
 ---
 
 # Rust fitness 缺少连接领域规则与 API 契约的应用/用例测试层
@@ -66,6 +68,13 @@ Rust fitness 应该能够分层表达并验证：
 - `docs/fitness/rust-api-test.md` 当前以端点矩阵为核心证据来源，业务跨端点回归项仍未补齐
 - `crates/routa-server/src/api/tasks.rs` 同时承担请求解析、业务规则推导、外部副作用触发与持久化
 - `crates/routa-server/src/api/sessions.rs` 在 handler 内完成 session 数据源合并与排序逻辑，缺少独立业务查询层
+
+## Resolution
+
+- `crates/routa-server/src/application/tasks.rs` 抽出了 task create/update 的应用层编排，并提供独立 Rust 测试。
+- `crates/routa-server/src/application/sessions.rs` 新增 session 应用层，承载 list/history/context 的合并、筛选、排序和 fallback 规则，并提供独立 Rust 测试。
+- `crates/routa-server/src/api/tasks.rs` 与 `crates/routa-server/src/api/sessions.rs` 已改为委托 application service 处理业务编排。
+- `docs/fitness/unit-test.md` 已补充 application/use-case: tasks 和 application/use-case: sessions 的 `VERIFIED` 证据条目。
 
 ## References
 

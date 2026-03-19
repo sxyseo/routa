@@ -65,6 +65,14 @@ metrics:
   - status: `TODO`
   - required: 错误分类与状态码映射一致性
   - evidence:
+- [x] application/use-case: tasks
+  - status: `VERIFIED`
+  - required: task 创建默认值推导、标签清洗、状态/列一致性校验、retry trigger 行为
+  - evidence: `crates/routa-server/src/application/tasks.rs`
+- [x] application/use-case: sessions
+  - status: `VERIFIED`
+  - required: 内存/数据库 session 合并、workspace/parent 过滤、context 构建、history fallback 与缓存
+  - evidence: `crates/routa-server/src/application/sessions.rs`
 - [ ] 参数校验器 / 清洗函数
   - status: `TODO`
   - required: 空值、非法类型、越界输入
