@@ -3,10 +3,32 @@
   "version": "0.2.5",
   "private": true,
   "description": "Routa.js - Multi-Agent Coordination Platform for AI Development",
+  "license": "MIT",
+  "homepage": "https://github.com/phodal/routa#readme",
+  "bugs": {
+    "url": "https://github.com/phodal/routa/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phodal/routa.git"
+  },
+  "author": "Phodal Huang",
+  "keywords": [
+    "agents",
+    "kanban",
+    "multi-agent",
+    "tauri",
+    "nextjs",
+    "rust",
+    "mcp",
+    "acp"
+  ],
   "scripts": {
     "postinstall": "patch-package",
     "dev": "next dev",
     "build": "next build",
+    "tauri:dev": "npm --prefix apps/desktop run dev",
+    "tauri:build": "npm --prefix apps/desktop run build",
     "build:desktop:server": "ROUTA_DESKTOP_SERVER_BUILD=1 next build",
     "build:desktop:bundle": "node scripts/build-desktop-bundle.mjs",
     "build:static": "node scripts/build-static.mjs",

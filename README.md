@@ -7,7 +7,7 @@
 **Your AI Agent Team, Managed by Kanban**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15.1-black.svg)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.1-black.svg)](https://nextjs.org/)
 [![Rust](https://img.shields.io/badge/Rust-Axum-orange.svg)](https://github.com/tokio-rs/axum)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -20,6 +20,13 @@
 > **📦 Distribution Notice**
 > This project primarily provides a **Tauri desktop application** (binary distribution).
 > The web version is available for demo purposes only.
+
+Project links:
+
+- Releases: https://github.com/phodal/routa/releases
+- Docs: https://phodal.github.io/routa/
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security: [SECURITY.md](SECURITY.md)
 
 ## The Idea
 
@@ -117,7 +124,8 @@ Discover and install community-contributed agents from the ACP Registry — supp
 
 ```bash
 npm install --legacy-peer-deps
-npm run tauri dev
+npm --prefix apps/desktop install
+npm run tauri:dev
 ```
 
 ### Web Demo (For Testing Only)
@@ -149,6 +157,12 @@ routa agent list|create|status    # Agent management
 routa task list|create|get        # Task management
 routa chat                        # Interactive chat
 ```
+
+## Community
+
+- Bug reports and feature requests: https://github.com/phodal/routa/issues
+- Security reports: [SECURITY.md](SECURITY.md)
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 🏗 Architecture
 

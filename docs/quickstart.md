@@ -21,7 +21,8 @@ Open [http://localhost:3000](http://localhost:3000).
 ## 3) Start desktop mode (optional)
 
 ```bash
-npm run tauri dev
+npm --prefix apps/desktop install
+npm run tauri:dev
 ```
 
 ## 4) Start the Rust backend API (if needed)
@@ -69,4 +70,5 @@ routa -p "Build user auth system"
 ## 8) FAQ
 
 - If a provider command is missing, install provider CLI first (`opencode`, `claude`, etc.).
+- If Tauri dependencies are missing, install desktop dependencies with `npm --prefix apps/desktop install`.
 - If static build fails, check Node version and run from repo root.
