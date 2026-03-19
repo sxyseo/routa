@@ -28,6 +28,7 @@ import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } f
 import { getKanbanDevSessionSupervision } from "./board-session-supervision";
 import { upsertTaskLaneSession } from "./task-lane-history";
 import { getHttpSessionStore } from "../acp/http-session-store";
+import { consumeAcpPromptResponse } from "../acp/prompt-response";
 
 // Use globalThis to survive HMR in Next.js dev mode
 const GLOBAL_KEY = "__routa_workflow_orchestrator__";
@@ -321,21 +322,7 @@ async function sendPromptToKanbanSession(
   if (!response.ok) {
     throw new Error(`session/prompt HTTP ${response.status}`);
   }
-
-  if (response.body) {
-    const reader = response.body.getReader();
-    try {
-      while (true) {
-        const { done } = await reader.read();
-        if (done) break;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    return;
-  }
-
-  await response.arrayBuffer();
+  await consumeAcpPromptResponse(response);
 }
 
 export function getKanbanSessionQueue(system: RoutaSystem): KanbanSessionQueue {

@@ -319,5 +319,24 @@ describe("StandardAcpAdapter", () => {
     const result = adapter.normalize("test-session", notification);
     expect(result).toBeNull();
   });
-});
 
+  it("normalizes standard ACP error events", () => {
+    const notification = {
+      sessionId: "test-session",
+      type: "error",
+      error: {
+        code: "permissionDenied",
+        message: "HTTP error: 403 Forbidden",
+      },
+    };
+
+    const result = adapter.normalize("test-session", notification) as NormalizedSessionUpdate;
+
+    expect(result).not.toBeNull();
+    expect(result.eventType).toBe("error");
+    expect(result.error).toEqual({
+      code: "permissionDenied",
+      message: "HTTP error: 403 Forbidden",
+    });
+  });
+});

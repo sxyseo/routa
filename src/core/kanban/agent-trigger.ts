@@ -3,6 +3,7 @@ import type { Task } from "../models/task";
 import { getNextHappyPathColumnId, type KanbanColumn } from "../models/kanban";
 import { AgentEventType, type EventBus } from "../events/event-bus";
 import { isClaudeCodeSdkConfigured } from "../acp/claude-code-sdk-adapter";
+import { consumeAcpPromptResponse } from "../acp/prompt-response";
 import { formatArtifactSummary, resolveKanbanTransitionArtifacts } from "./transition-artifacts";
 import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
@@ -313,23 +314,7 @@ export async function triggerAssignedTaskAgent(params: {
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`session/prompt HTTP ${response.status}`);
-    }
-
-    if (response.body) {
-      const reader = response.body.getReader();
-      try {
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } else {
-      await response.arrayBuffer();
-    }
+    await consumeAcpPromptResponse(response);
 
     if (eventBus) {
       eventBus.emit({

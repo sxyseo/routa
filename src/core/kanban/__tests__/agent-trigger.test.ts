@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildTaskPrompt, resolveKanbanAutomationProvider } from "../agent-trigger";
+import { buildTaskPrompt, resolveKanbanAutomationProvider, triggerAssignedTaskAgent } from "../agent-trigger";
 import { createTask } from "../../models/task";
+import { AgentEventType, type EventBus } from "../../events/event-bus";
 
 vi.mock("../../acp/claude-code-sdk-adapter", () => ({
   isClaudeCodeSdkConfigured: vi.fn(),
@@ -255,6 +256,59 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Do not call `move_card` to leave todo yet");
     expect(prompt).toContain("Verifier");
     expect(prompt).not.toContain('targetColumnId: "dev"');
+  });
+});
+
+describe("triggerAssignedTaskAgent", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("emits AGENT_FAILED when session/prompt returns a JSON-RPC error payload", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: "new",
+        result: { sessionId: "sess-1" },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: "prompt",
+        error: { code: -32000, message: "Permission denied: HTTP error: 403 Forbidden" },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const eventBus = { emit: vi.fn() };
+    const task = createTask({
+      id: "task-json-error",
+      title: "Run failing provider",
+      objective: "Trigger a provider failure",
+      workspaceId: "default",
+      columnId: "dev",
+      assignedProvider: "auggie",
+      assignedRole: "DEVELOPER",
+    });
+
+    const result = await triggerAssignedTaskAgent({
+      origin: "http://127.0.0.1:3000",
+      workspaceId: "default",
+      cwd: "/tmp/project",
+      task,
+      eventBus: eventBus as unknown as EventBus,
+    });
+
+    expect(result).toEqual({ sessionId: "sess-1" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(eventBus.emit).toHaveBeenCalledWith(expect.objectContaining({
+      type: AgentEventType.AGENT_FAILED,
+      agentId: "sess-1",
+    }));
   });
 });
 

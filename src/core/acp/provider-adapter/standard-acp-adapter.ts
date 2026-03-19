@@ -156,6 +156,22 @@ export class StandardAcpAdapter extends BaseProviderAdapter {
         return update;
       }
 
+      case "error": {
+        const update = this.createUpdate(sessionId, "error", rawNotification);
+        const errorRecord = payload.error && typeof payload.error === "object"
+          ? payload.error as Record<string, unknown>
+          : undefined;
+        update.error = {
+          code: typeof errorRecord?.code === "string" ? errorRecord.code : "standard_acp_error",
+          message: typeof errorRecord?.message === "string"
+            ? errorRecord.message
+            : typeof payload.message === "string"
+            ? payload.message
+            : "Standard ACP session error",
+        };
+        return update;
+      }
+
       default:
         return null;
     }
@@ -191,4 +207,3 @@ export class StandardAcpAdapter extends BaseProviderAdapter {
     return "pending";
   }
 }
-

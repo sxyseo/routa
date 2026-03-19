@@ -81,6 +81,17 @@ function persistSessionHistorySnapshot(
   return buffer.flush(sessionId);
 }
 
+function markSessionPromptError(
+  store: ReturnType<typeof getHttpSessionStore>,
+  sessionId: string,
+  error: unknown,
+  fallbackMessage: string,
+): string {
+  const message = error instanceof Error ? error.message : fallbackMessage;
+  store.updateSessionAcpStatus(sessionId, "error", message);
+  return message;
+}
+
 // ─── Idempotency cache for session/new requests ─────────────────────────
 // Prevents duplicate session creation when user clicks multiple times
 // before navigation completes. Cache entries expire after 30 seconds.
@@ -1047,6 +1058,7 @@ export async function POST(request: NextRequest) {
               await persistSessionHistorySnapshot(sessionId, store);
               controller.close();
             } catch (err) {
+              const message = markSessionPromptError(store, sessionId, err, "OpenCode SDK prompt failed");
               store.flushAgentBuffer(sessionId);
               store.exitStreamingMode(sessionId);
               await persistSessionHistorySnapshot(sessionId, store);
@@ -1056,7 +1068,7 @@ export async function POST(request: NextRequest) {
                 params: {
                   sessionId,
                   type: "error",
-                  error: { message: err instanceof Error ? err.message : "OpenCode SDK prompt failed" },
+                  error: { message },
                 },
               };
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorNotification)}\n\n`));
@@ -1110,6 +1122,7 @@ export async function POST(request: NextRequest) {
               await persistSessionHistorySnapshot(sessionId, store);
               controller.close();
             } catch (err) {
+              const message = markSessionPromptError(store, sessionId, err, "Docker OpenCode prompt failed");
               store.flushAgentBuffer(sessionId);
               store.exitStreamingMode(sessionId);
               await persistSessionHistorySnapshot(sessionId, store);
@@ -1119,7 +1132,7 @@ export async function POST(request: NextRequest) {
                 params: {
                   sessionId,
                   type: "error",
-                  error: { message: err instanceof Error ? err.message : "Docker OpenCode prompt failed" },
+                  error: { message },
                 },
               };
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorNotification)}\n\n`));
@@ -1180,6 +1193,7 @@ export async function POST(request: NextRequest) {
               await persistSessionHistorySnapshot(sessionId, store);
               controller.close();
             } catch (err) {
+              const message = markSessionPromptError(store, sessionId, err, "Claude Code SDK prompt failed");
               store.flushAgentBuffer(sessionId);
               store.exitStreamingMode(sessionId);
               await persistSessionHistorySnapshot(sessionId, store);
@@ -1190,7 +1204,7 @@ export async function POST(request: NextRequest) {
                 params: {
                   sessionId,
                   type: "error",
-                  error: { message: err instanceof Error ? err.message : "Claude Code SDK prompt failed" },
+                  error: { message },
                 },
               };
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorNotification)}\n\n`));
@@ -1274,11 +1288,12 @@ export async function POST(request: NextRequest) {
             void persistSessionHistorySnapshot(sessionId, store);
             return jsonrpcResponse(id ?? null, result);
           } catch (err) {
+            const message = markSessionPromptError(store, sessionId, err, "Claude Code prompt failed after restart");
             store.flushAgentBuffer(sessionId);
             void persistSessionHistorySnapshot(sessionId, store);
             return jsonrpcResponse(id ?? null, null, {
               code: -32000,
-              message: err instanceof Error ? err.message : "Claude Code prompt failed after restart",
+              message,
             });
           }
         }
@@ -1289,11 +1304,12 @@ export async function POST(request: NextRequest) {
           void persistSessionHistorySnapshot(sessionId, store);
           return jsonrpcResponse(id ?? null, result);
         } catch (err) {
+          const message = markSessionPromptError(store, sessionId, err, "Claude Code prompt failed");
           store.flushAgentBuffer(sessionId);
           void persistSessionHistorySnapshot(sessionId, store);
           return jsonrpcResponse(id ?? null, null, {
             code: -32000,
-            message: err instanceof Error ? err.message : "Claude Code prompt failed",
+            message,
           });
         }
       }
@@ -1323,11 +1339,12 @@ export async function POST(request: NextRequest) {
         void persistSessionHistorySnapshot(sessionId, store);
         return jsonrpcResponse(id ?? null, result);
       } catch (err) {
+        const message = markSessionPromptError(store, sessionId, err, "Prompt failed");
         store.flushAgentBuffer(sessionId);
         void persistSessionHistorySnapshot(sessionId, store);
         return jsonrpcResponse(id ?? null, null, {
           code: -32000,
-          message: err instanceof Error ? err.message : "Prompt failed",
+          message,
         });
       }
     }
