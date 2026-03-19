@@ -9,7 +9,6 @@ import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { KanbanTab } from "./kanban-tab";
-import { scheduleKanbanRefreshBurst } from "./kanban-agent-input";
 import {
   KANBAN_SPECIALIST_LANGUAGE_STORAGE_KEY,
   localizeSpecialists,
@@ -305,7 +304,7 @@ export function KanbanPageClient() {
       });
     }
 
-    handleRefresh();
+    void fetchCodebases();
 
     if (failures.length > 0) {
       setRepoSync({
@@ -327,12 +326,10 @@ export function KanbanPageClient() {
       message: `Repository sync complete. ${nextCodebases.length} repo${nextCodebases.length > 1 ? "s" : ""} updated.`,
       error: null,
     });
-  }, [handleRefresh, syncCodebaseToLatest]);
+  }, [fetchCodebases, syncCodebaseToLatest]);
 
   const handleKanbanInvalidate = useCallback(() => {
     handleRefresh();
-    refreshBurstCleanupRef.current?.();
-    refreshBurstCleanupRef.current = scheduleKanbanRefreshBurst(handleRefresh);
   }, [handleRefresh]);
 
   useKanbanEvents({

@@ -342,7 +342,6 @@ export function KanbanTab({
   const bgAgentPanelRef = useRef<HTMLDivElement | null>(null);
   const sessionBackfillInFlightRef = useRef(new Set<string>());
   const emptySessionRecoveryRef = useRef<string | null>(null);
-  const specialistLanguageHydratedRef = useRef(false);
 
   const sessionMap = useMemo(() => {
     const map = new Map<string, SessionInfo>();
@@ -712,18 +711,13 @@ export function KanbanTab({
     }
   }, [board, onRefresh]);
 
-  useEffect(() => {
-    if (!specialistLanguageHydratedRef.current) {
-      specialistLanguageHydratedRef.current = true;
+  const handleSpecialistLanguageChange = useCallback((language: KanbanSpecialistLanguage) => {
+    if (language === specialistLanguage) {
       return;
     }
-    void persistBoardSpecialistLanguage(specialistLanguage);
-  }, [persistBoardSpecialistLanguage, specialistLanguage]);
-
-  const handleSpecialistLanguageChange = useCallback((language: KanbanSpecialistLanguage) => {
     onSpecialistLanguageChange(language);
     void persistBoardSpecialistLanguage(language);
-  }, [onSpecialistLanguageChange, persistBoardSpecialistLanguage]);
+  }, [onSpecialistLanguageChange, persistBoardSpecialistLanguage, specialistLanguage]);
 
   const kanbanHeader = (
     <div
