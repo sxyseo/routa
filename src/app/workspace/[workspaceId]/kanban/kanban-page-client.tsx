@@ -19,12 +19,15 @@ import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanBoardInfo, TaskInfo, SessionInfo } from "../types";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
+import { resolveKanbanAutomationStep } from "@/core/kanban/effective-task-automation";
+import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
 
 interface SpecialistOption {
   id: string;
   name: string;
   role: string;
   displayName?: string;
+  defaultProvider?: string;
 }
 
 interface KanbanAgentPromptOptions {
@@ -92,13 +95,30 @@ export function KanbanPageClient() {
 
   // Warm up registry providers configured in column automations when the board is opened.
   useEffect(() => {
+    const resolveSpecialist = createKanbanSpecialistResolver(specialists);
     const enabledAutomationProviderIds = new Set<string>();
     for (const board of boards) {
       for (const column of board.columns) {
-        if (!column.automation?.enabled || !column.automation?.providerId) {
+        if (!column.automation?.enabled) {
           continue;
         }
-        enabledAutomationProviderIds.add(column.automation.providerId);
+        for (const step of column.automation.steps ?? []) {
+          const resolvedStep = resolveKanbanAutomationStep(step, resolveSpecialist);
+          if (resolvedStep?.providerId) {
+            enabledAutomationProviderIds.add(resolvedStep.providerId);
+          }
+        }
+        const fallbackStep = resolveKanbanAutomationStep({
+          id: "primary",
+          providerId: column.automation.providerId,
+          role: column.automation.role,
+          specialistId: column.automation.specialistId,
+          specialistName: column.automation.specialistName,
+          specialistLocale: column.automation.specialistLocale,
+        }, resolveSpecialist);
+        if (fallbackStep?.providerId) {
+          enabledAutomationProviderIds.add(fallbackStep.providerId);
+        }
       }
     }
 
@@ -124,7 +144,7 @@ export function KanbanPageClient() {
         warmedupProvidersRef.current.delete(providerId);
       });
     }
-  }, [boards, acp.providers]);
+  }, [boards, specialists, acp.providers]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

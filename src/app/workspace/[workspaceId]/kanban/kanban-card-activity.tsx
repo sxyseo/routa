@@ -7,6 +7,7 @@ import type { KanbanColumnInfo } from "../types";
 import type { SessionInfo, TaskInfo } from "../types";
 import {
   buildSessionDisplayLabel,
+  createKanbanSpecialistResolver,
   formatSessionTimestamp,
   getLaneSessionStepLabel,
   getOrderedSessionIds,
@@ -378,7 +379,8 @@ export function KanbanEmptySessionPane({
   onCloseSession?: () => void;
 }) {
   const copy = getKanbanSessionCopy(specialistLanguage);
-  const effectiveAutomation = resolveEffectiveTaskAutomation(task, boardColumns);
+  const resolveSpecialist = createKanbanSpecialistResolver(specialists);
+  const effectiveAutomation = resolveEffectiveTaskAutomation(task, boardColumns, resolveSpecialist);
   const providerName = effectiveAutomation.providerId
     ? availableProviders.find((provider) => provider.id === effectiveAutomation.providerId)?.name ?? effectiveAutomation.providerId
     : "Workspace default";

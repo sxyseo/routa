@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveEffectiveTaskAutomation } from "../effective-task-automation";
+import { resolveEffectiveTaskAutomation, resolveKanbanAutomationStep } from "../effective-task-automation";
 
 describe("resolveEffectiveTaskAutomation", () => {
   it("falls back to the current lane automation when the card has no override", () => {
@@ -86,5 +86,67 @@ describe("resolveEffectiveTaskAutomation", () => {
     expect(resolved.source).toBe("none");
     expect(resolved.providerId).toBeUndefined();
     expect(resolved.role).toBeUndefined();
+  });
+
+  it("inherits provider and role defaults from the selected specialist", () => {
+    const resolveSpecialist = (id: string) => id === "kanban-dev-executor"
+      ? {
+        name: "Kanban Dev Executor",
+        role: "CRAFTER",
+        defaultProvider: "claude",
+      }
+      : undefined;
+
+    const resolved = resolveEffectiveTaskAutomation(
+      {
+        columnId: "dev",
+      },
+      [
+        {
+          id: "dev",
+          automation: {
+            enabled: true,
+            steps: [{
+              id: "implement",
+              specialistId: "kanban-dev-executor",
+            }],
+          },
+        },
+      ],
+      resolveSpecialist,
+    );
+
+    expect(resolved.providerId).toBe("claude");
+    expect(resolved.role).toBe("CRAFTER");
+    expect(resolved.specialistName).toBe("Kanban Dev Executor");
+    expect(resolved.step).toMatchObject({
+      providerId: "claude",
+      role: "CRAFTER",
+      specialistName: "Kanban Dev Executor",
+    });
+  });
+
+  it("resolves a single step with specialist execution defaults", () => {
+    const resolved = resolveKanbanAutomationStep(
+      {
+        id: "review",
+        specialistId: "review-guard",
+      },
+      (id) => id === "review-guard"
+        ? {
+          name: "Review Guard",
+          role: "GATE",
+          defaultProvider: "codex",
+        }
+        : undefined,
+    );
+
+    expect(resolved).toMatchObject({
+      id: "review",
+      specialistId: "review-guard",
+      specialistName: "Review Guard",
+      role: "GATE",
+      providerId: "codex",
+    });
   });
 });

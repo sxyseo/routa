@@ -1,5 +1,6 @@
 "use client";
 
+import type { AutomationSpecialistResolver } from "@/core/kanban/effective-task-automation";
 import type { SessionInfo, TaskInfo } from "../types";
 import { findSpecialistById, getSpecialistDisplayName } from "./kanban-specialist-language";
 
@@ -8,6 +9,7 @@ export interface KanbanSpecialistOption {
   name: string;
   role: string;
   displayName?: string;
+  defaultProvider?: string;
 }
 
 export function getSpecialistName(
@@ -17,6 +19,20 @@ export function getSpecialistName(
 ): string {
   if (!specialistId && !specialistName) return "None";
   return getSpecialistDisplayName(findSpecialistById(specialists, specialistId)) ?? specialistName ?? specialistId ?? "None";
+}
+
+export function createKanbanSpecialistResolver(
+  specialists: KanbanSpecialistOption[],
+): AutomationSpecialistResolver {
+  return (specialistId) => {
+    const specialist = findSpecialistById(specialists, specialistId);
+    if (!specialist) return undefined;
+    return {
+      name: getSpecialistDisplayName(specialist) ?? specialist.name,
+      role: specialist.role,
+      defaultProvider: specialist.defaultProvider,
+    };
+  };
 }
 
 export function formatSessionTimestamp(value: string | undefined): string {

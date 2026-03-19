@@ -21,7 +21,11 @@ import {
   getDefaultWorkspaceWorktreeRoot,
   getEffectiveWorkspaceMetadata,
 } from "../models/workspace";
-import { resolveEffectiveTaskAutomation } from "./effective-task-automation";
+import {
+  resolveKanbanAutomationStep,
+  resolveEffectiveTaskAutomation,
+  type AutomationSpecialistSummary,
+} from "./effective-task-automation";
 import { getInternalApiOrigin, triggerAssignedTaskAgent } from "./agent-trigger";
 import { KanbanSessionQueue } from "./kanban-session-queue";
 import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } from "./board-session-limits";
@@ -29,11 +33,26 @@ import { getKanbanDevSessionSupervision } from "./board-session-supervision";
 import { upsertTaskLaneSession } from "./task-lane-history";
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { consumeAcpPromptResponse } from "../acp/prompt-response";
+import { getSpecialistById } from "../orchestration/specialist-prompts";
 
 // Use globalThis to survive HMR in Next.js dev mode
 const GLOBAL_KEY = "__routa_workflow_orchestrator__";
 const STARTED_KEY = "__routa_workflow_orchestrator_started__";
 const QUEUE_KEY = "__routa_kanban_session_queue__";
+
+function resolveKanbanSpecialist(
+  specialistId: string,
+  locale?: string,
+): AutomationSpecialistSummary | undefined {
+  const specialist = (locale ? getSpecialistById(specialistId, locale) : undefined)
+    ?? getSpecialistById(specialistId);
+  if (!specialist) return undefined;
+  return {
+    name: specialist.name,
+    role: specialist.role,
+    defaultProvider: specialist.defaultProvider,
+  };
+}
 
 async function createAutomationSession(
   system: RoutaSystem,
@@ -51,18 +70,19 @@ async function createAutomationSession(
 ): Promise<string | null> {
   const task = await system.taskStore.get(params.cardId);
   if (!task?.boardId) return null;
+  const resolvedStep = resolveKanbanAutomationStep(params.step, resolveKanbanSpecialist);
   const result = await enqueueKanbanTaskSession(system, {
     task,
     expectedColumnId: params.columnId,
     mutateTask: (nextTask) => {
       nextTask.assignedProvider =
-        params.step.providerId ?? task.assignedProvider ?? "opencode";
+        resolvedStep?.providerId ?? task.assignedProvider ?? "opencode";
       nextTask.assignedRole =
-        params.step.role ?? task.assignedRole ?? "DEVELOPER";
+        resolvedStep?.role ?? task.assignedRole ?? "DEVELOPER";
       nextTask.assignedSpecialistId =
-        params.step.specialistId ?? task.assignedSpecialistId;
+        resolvedStep?.specialistId ?? task.assignedSpecialistId;
       nextTask.assignedSpecialistName =
-        params.step.specialistName ?? task.assignedSpecialistName;
+        resolvedStep?.specialistName ?? task.assignedSpecialistName;
     },
     step: params.step,
     stepIndex: params.stepIndex,
@@ -181,8 +201,13 @@ async function startKanbanTaskSession(
     }
   }
 
-  const effectiveAutomation = resolveEffectiveTaskAutomation(nextTask, board?.columns ?? []);
-  const sessionStep = params.step ?? effectiveAutomation.step;
+  const effectiveAutomation = resolveEffectiveTaskAutomation(
+    nextTask,
+    board?.columns ?? [],
+    resolveKanbanSpecialist,
+  );
+  const sessionStep = resolveKanbanAutomationStep(params.step, resolveKanbanSpecialist)
+    ?? effectiveAutomation.step;
   const sessionStepIndex = params.stepIndex ?? effectiveAutomation.stepIndex;
   const taskForSession = {
     ...nextTask,

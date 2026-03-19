@@ -3,13 +3,21 @@
 import { useMemo, useState, type ReactNode } from "react";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
-import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
+import {
+  resolveEffectiveTaskAutomation,
+  resolveKanbanAutomationStep,
+} from "@/core/kanban/effective-task-automation";
 import { formatArtifactSummary, resolveKanbanTransitionArtifacts } from "@/core/kanban/transition-artifacts";
 import { getKanbanAutomationSteps, type KanbanAutomationStep } from "@/core/models/kanban";
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import { KanbanCardActivityPanel } from "./kanban-card-activity";
 import { KanbanDescriptionEditor } from "./kanban-description-editor";
-import { getOrderedSessionIds, getSpecialistName, type KanbanSpecialistOption as SpecialistOption } from "./kanban-card-session-utils";
+import {
+  createKanbanSpecialistResolver,
+  getOrderedSessionIds,
+  getSpecialistName,
+  type KanbanSpecialistOption as SpecialistOption,
+} from "./kanban-card-session-utils";
 export { KanbanCardActivityBar } from "./kanban-card-activity";
 import { KanbanCardArtifacts } from "./kanban-card-artifacts";
 import { getKanbanSessionCopy } from "./i18n/kanban-session-copy";
@@ -62,10 +70,11 @@ function formatAutomationStepSummary(
   availableProviders: AcpProviderInfo[],
   specialists: SpecialistOption[],
 ): string {
+  const resolvedStep = resolveKanbanAutomationStep(step, createKanbanSpecialistResolver(specialists)) ?? step;
   return [
-    getProviderName(step.providerId, availableProviders),
-    step.role ?? "DEVELOPER",
-    getSpecialistName(step.specialistId, step.specialistName, specialists),
+    getProviderName(resolvedStep.providerId, availableProviders),
+    resolvedStep.role ?? "DEVELOPER",
+    getSpecialistName(resolvedStep.specialistId, resolvedStep.specialistName, specialists),
   ].join(" · ");
 }
 
@@ -394,7 +403,11 @@ function ExecutionSection({
   compact?: boolean;
 }) {
   const sessionCopy = getKanbanSessionCopy(specialistLanguage);
-  const effectiveAutomation = resolveEffectiveTaskAutomation(task, boardColumns);
+  const resolveSpecialist = useMemo(
+    () => createKanbanSpecialistResolver(specialists),
+    [specialists],
+  );
+  const effectiveAutomation = resolveEffectiveTaskAutomation(task, boardColumns, resolveSpecialist);
   const canRunTask = effectiveAutomation.canRun && task.columnId !== "done";
   const hasCardOverride = Boolean(task.assignedProvider || task.assignedRole || task.assignedSpecialistId || task.assignedSpecialistName);
   const laneName = lane?.name ?? task.columnId ?? "backlog";

@@ -4,6 +4,17 @@ import {
   type KanbanColumnAutomation,
 } from "../models/kanban";
 
+export interface AutomationSpecialistSummary {
+  name?: string;
+  role?: string;
+  defaultProvider?: string;
+}
+
+export type AutomationSpecialistResolver = (
+  specialistId: string,
+  locale?: string,
+) => AutomationSpecialistSummary | undefined;
+
 type TaskAutomationFields = {
   columnId?: string;
   assignedProvider?: string;
@@ -30,9 +41,27 @@ export interface EffectiveTaskAutomation {
   specialistName?: string;
 }
 
+export function resolveKanbanAutomationStep(
+  step: KanbanAutomationStep | undefined,
+  resolveSpecialist?: AutomationSpecialistResolver,
+): KanbanAutomationStep | undefined {
+  if (!step) return undefined;
+  const specialist = step.specialistId
+    ? resolveSpecialist?.(step.specialistId, step.specialistLocale)
+    : undefined;
+
+  return {
+    ...step,
+    providerId: step.providerId ?? specialist?.defaultProvider,
+    role: step.role ?? specialist?.role,
+    specialistName: step.specialistName ?? specialist?.name,
+  };
+}
+
 export function resolveEffectiveTaskAutomation(
   task: TaskAutomationFields,
   boardColumns: ColumnAutomationFields[] = [],
+  resolveSpecialist?: AutomationSpecialistResolver,
 ): EffectiveTaskAutomation {
   const currentColumnId = task.columnId ?? "backlog";
   const laneAutomation = boardColumns.find((column) => column.id === currentColumnId)?.automation;
@@ -44,15 +73,18 @@ export function resolveEffectiveTaskAutomation(
       || task.assignedSpecialistName,
   );
   const canRun = hasCardOverride || Boolean(enabledLaneAutomation);
-  const steps = hasCardOverride
+  const rawSteps = hasCardOverride
     ? [{
       id: "card-override",
       providerId: task.assignedProvider,
-      role: task.assignedRole ?? "DEVELOPER",
+      role: task.assignedRole,
       specialistId: task.assignedSpecialistId,
       specialistName: task.assignedSpecialistName,
     }]
     : getKanbanAutomationSteps(enabledLaneAutomation);
+  const steps = rawSteps
+    .map((step) => resolveKanbanAutomationStep(step, resolveSpecialist))
+    .filter((step): step is KanbanAutomationStep => Boolean(step));
   const step = steps[0];
 
   return {

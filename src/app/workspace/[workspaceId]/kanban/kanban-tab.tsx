@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { UseAcpState, UseAcpActions } from "@/client/hooks/use-acp";
-import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
+import {
+  resolveEffectiveTaskAutomation,
+  resolveKanbanAutomationStep,
+} from "@/core/kanban/effective-task-automation";
 import type { KanbanBoardInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import { KanbanCreateModal, EMPTY_DRAFT, type DraftIssue } from "../kanban-create-modal";
 import { KanbanCard } from "./kanban-card";
@@ -23,6 +26,7 @@ import {
   buildKanbanTaskAgentPrompt,
   getKanbanTaskAgentCopy,
 } from "./i18n/kanban-task-agent";
+import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
 import { getKanbanAutomationSteps, normalizeKanbanAutomation } from "@/core/models/kanban";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
@@ -34,6 +38,7 @@ interface SpecialistOption {
   name: string;
   role: string;
   displayName?: string;
+  defaultProvider?: string;
 }
 
 interface KanbanTabProps {
@@ -165,15 +170,17 @@ function formatLaneAutomationSummary(
   providers: AcpProviderInfo[],
   specialists: SpecialistOption[],
 ): string {
+  const resolveSpecialist = createKanbanSpecialistResolver(specialists);
   const steps = getKanbanAutomationSteps(automation);
   const core = steps.map((step) => {
-    const provider = step.providerId
-      ? (providers.find((provider) => provider.id === step.providerId)?.name ?? step.providerId)
+    const resolvedStep = resolveKanbanAutomationStep(step, resolveSpecialist) ?? step;
+    const provider = resolvedStep.providerId
+      ? (providers.find((provider) => provider.id === resolvedStep.providerId)?.name ?? resolvedStep.providerId)
       : "Default";
-    const specialist = step.specialistId || step.specialistName
-      ? (getSpecialistDisplayName(findSpecialistById(specialists, step.specialistId)) ?? step.specialistName)
+    const specialist = resolvedStep.specialistId || resolvedStep.specialistName
+      ? (getSpecialistDisplayName(findSpecialistById(specialists, resolvedStep.specialistId)) ?? resolvedStep.specialistName)
       : null;
-    return [provider, step.role ?? "DEVELOPER", specialist].filter(Boolean).join(" · ");
+    return [provider, resolvedStep.role ?? "DEVELOPER", specialist].filter(Boolean).join(" · ");
   }).join(" -> ");
   if (automation?.transitionType === "exit") return `${core} ->`;
   if (automation?.transitionType === "both") return `-> ${core} ->`;
@@ -254,6 +261,10 @@ export function KanbanTab({
 }: KanbanTabProps) {
   const languageLabels = KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage];
   const kanbanTaskAgentCopy = getKanbanTaskAgentCopy(specialistLanguage);
+  const resolveSpecialist = useMemo(
+    () => createKanbanSpecialistResolver(specialists),
+    [specialists],
+  );
   const defaultBoardId = useMemo(
     () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
     [boards],
@@ -653,7 +664,7 @@ export function KanbanTab({
       emptySessionRecoveryRef.current = null;
       return;
     }
-    if (!resolveEffectiveTaskAutomation(activeTask, board?.columns ?? []).canRun || activeTask.columnId === "done") {
+    if (!resolveEffectiveTaskAutomation(activeTask, board?.columns ?? [], resolveSpecialist).canRun || activeTask.columnId === "done") {
       emptySessionRecoveryRef.current = null;
       return;
     }
@@ -665,7 +676,7 @@ export function KanbanTab({
 
     emptySessionRecoveryRef.current = recoveryKey;
     return scheduleKanbanRefreshBurst(onRefresh);
-  }, [activeSessionId, activeTask, board?.columns, onRefresh, preferredActiveTaskSessionId]);
+  }, [activeSessionId, activeTask, board?.columns, onRefresh, preferredActiveTaskSessionId, resolveSpecialist]);
 
   const persistBoardSpecialistLanguage = useCallback(async (language: KanbanSpecialistLanguage) => {
     if (!board) return;
@@ -1748,7 +1759,7 @@ export function KanbanTab({
         const showEmptySessionPane = Boolean(
           activeTask &&
           !activeSessionId &&
-          resolveEffectiveTaskAutomation(activeTask, board?.columns ?? []).canRun &&
+          resolveEffectiveTaskAutomation(activeTask, board?.columns ?? [], resolveSpecialist).canRun &&
           activeTask.columnId !== "done",
         );
         const hasSessionPane = Boolean((activeSessionId && acp) || showEmptySessionPane);

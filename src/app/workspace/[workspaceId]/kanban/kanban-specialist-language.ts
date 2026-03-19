@@ -7,6 +7,7 @@ export interface LocalizedSpecialistOption {
   name: string;
   role: string;
   displayName?: string;
+  defaultProvider?: string;
 }
 
 export const KANBAN_SPECIALIST_LANGUAGE_STORAGE_KEY = "routa:kanban-specialist-language";
