@@ -184,6 +184,7 @@ describe("specialist-file-loader", () => {
       .sort();
 
     expect(fs.existsSync(path.join(bundledRoot, "zh-CN"))).toBe(false);
+    expect(runtimeIds).toContain("view-git-change");
     expect(englishOverlayIds).toEqual(runtimeIds);
     expect(chineseOverlayIds.length).toBeGreaterThan(0);
     expect(chineseOverlayIds.every((id) => runtimeIds.includes(id))).toBe(true);
