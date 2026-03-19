@@ -13,6 +13,12 @@ import { v4 as uuidv4 } from "uuid";
 
 export const dynamic = "force-dynamic";
 
+function requireWorkspaceId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const workspaceId = searchParams.get("workspaceId") ?? "default";
@@ -37,16 +43,23 @@ export async function POST(request: NextRequest) {
 
   // Handle batch delete action
   if (body.action === "deleteByStatus") {
-    const { status, workspaceId = "default", triggerSource } = body;
+    const { status, workspaceId, triggerSource } = body;
+    const normalizedWorkspaceId = requireWorkspaceId(workspaceId);
     if (!status) {
       return NextResponse.json(
         { error: "status is required for deleteByStatus action" },
         { status: 400 }
       );
     }
+    if (!normalizedWorkspaceId) {
+      return NextResponse.json(
+        { error: "workspaceId is required for deleteByStatus action" },
+        { status: 400 }
+      );
+    }
 
     const allTasks = await system.backgroundTaskStore.listByStatus(
-      workspaceId,
+      normalizedWorkspaceId,
       status as never
     );
 
@@ -71,13 +84,14 @@ export async function POST(request: NextRequest) {
   const {
     prompt,
     agentId,
-    workspaceId = "default",
+    workspaceId,
     title,
     triggerSource = "manual",
     triggeredBy,
     priority = "NORMAL",
     maxAttempts = 3,
   } = body;
+  const normalizedWorkspaceId = requireWorkspaceId(workspaceId);
 
   if (!prompt) {
     return NextResponse.json({ error: "prompt is required" }, { status: 400 });
@@ -85,12 +99,15 @@ export async function POST(request: NextRequest) {
   if (!agentId) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
+  if (!normalizedWorkspaceId) {
+    return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
+  }
 
   const task = createBackgroundTask({
     id: uuidv4(),
     prompt,
     agentId,
-    workspaceId,
+    workspaceId: normalizedWorkspaceId,
     title: title ?? prompt.slice(0, 80),
     triggerSource,
     triggeredBy,
