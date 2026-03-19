@@ -27,6 +27,7 @@ export class RoutaMcpToolManager {
   private workspaceTools?: WorkspaceTools;
   private kanbanTools?: KanbanTools;
   private toolMode: ToolMode = "essential";
+  private allowedTools?: ReadonlySet<string>;
   private sessionId?: string;
 
   constructor(
@@ -48,6 +49,10 @@ export class RoutaMcpToolManager {
    */
   getToolMode(): ToolMode {
     return this.toolMode;
+  }
+
+  setAllowedTools(allowedTools?: ReadonlySet<string>): void {
+    this.allowedTools = allowedTools;
   }
 
   /**
@@ -91,101 +96,112 @@ export class RoutaMcpToolManager {
    * In "full" mode, all 34 tools are registered.
    */
   registerTools(server: McpServer): void {
+    const register = (toolName: string, callback: () => void) => {
+      if (!this.shouldRegisterTool(toolName)) {
+        return;
+      }
+      callback();
+    };
+
     if (this.toolMode === "essential") {
       // Essential mode: 14 core coordination tools
       // Task tools (1) - needed so delegate_task_to_agent has a taskId to work with
-      this.registerCreateTask(server);
+      register("create_task", () => this.registerCreateTask(server));
       // Agent tools (7)
-      this.registerListAgents(server);
-      this.registerReadAgentConversation(server);
-      this.registerCreateAgent(server);
-      this.registerSetAgentName(server);
-      this.registerDelegateTask(server);
-      this.registerDelegateTaskToNewAgent(server);
-      this.registerSendMessageToAgent(server);
-      this.registerReportToParent(server);
+      register("list_agents", () => this.registerListAgents(server));
+      register("read_agent_conversation", () => this.registerReadAgentConversation(server));
+      register("create_agent", () => this.registerCreateAgent(server));
+      register("set_agent_name", () => this.registerSetAgentName(server));
+      register("delegate_task", () => this.registerDelegateTask(server));
+      register("delegate_task_to_agent", () => this.registerDelegateTaskToNewAgent(server));
+      register("send_message_to_agent", () => this.registerSendMessageToAgent(server));
+      register("report_to_parent", () => this.registerReportToParent(server));
       // Note tools (5) - critical for Spec workflow and @@@task blocks
-      this.registerCreateNote(server);
-      this.registerReadNote(server);
-      this.registerListNotes(server);
-      this.registerSetNoteContent(server);
-      this.registerConvertTaskBlocks(server);
+      register("create_note", () => this.registerCreateNote(server));
+      register("read_note", () => this.registerReadNote(server));
+      register("list_notes", () => this.registerListNotes(server));
+      register("set_note_content", () => this.registerSetNoteContent(server));
+      register("convert_task_blocks", () => this.registerConvertTaskBlocks(server));
       // Kanban tools (2) - needed for card-assigned agents to update their cards
-      this.registerUpdateCard(server);
-      this.registerMoveCard(server);
-      this.registerRequestPreviousLaneHandoff(server);
-      this.registerSubmitLaneHandoff(server);
+      register("update_card", () => this.registerUpdateCard(server));
+      register("move_card", () => this.registerMoveCard(server));
+      register("request_previous_lane_handoff", () => this.registerRequestPreviousLaneHandoff(server));
+      register("submit_lane_handoff", () => this.registerSubmitLaneHandoff(server));
       // Artifact tools (6) - critical for multi-agent coordination and desk check workflow
-      this.registerRequestArtifact(server);
-      this.registerProvideArtifact(server);
-      this.registerListArtifacts(server);
-      this.registerGetArtifact(server);
-      this.registerListPendingArtifactRequests(server);
-      this.registerCaptureScreenshot(server);
+      register("request_artifact", () => this.registerRequestArtifact(server));
+      register("provide_artifact", () => this.registerProvideArtifact(server));
+      register("list_artifacts", () => this.registerListArtifacts(server));
+      register("get_artifact", () => this.registerGetArtifact(server));
+      register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
+      register("capture_screenshot", () => this.registerCaptureScreenshot(server));
       return;
     }
 
     // Full mode: All tools
     // Task tools
-    this.registerCreateTask(server);
-    this.registerListTasks(server);
-    this.registerUpdateTaskStatus(server);
-    this.registerUpdateTask(server);
+    register("create_task", () => this.registerCreateTask(server));
+    register("list_tasks", () => this.registerListTasks(server));
+    register("update_task_status", () => this.registerUpdateTaskStatus(server));
+    register("update_task", () => this.registerUpdateTask(server));
     // Agent tools
-    this.registerListAgents(server);
-    this.registerReadAgentConversation(server);
-    this.registerCreateAgent(server);
-    this.registerSetAgentName(server);
-    this.registerDelegateTask(server);
-    this.registerDelegateTaskToNewAgent(server);
-    this.registerSendMessageToAgent(server);
-    this.registerReportToParent(server);
-    this.registerWakeOrCreateTaskAgent(server);
-    this.registerSendMessageToTaskAgent(server);
-    this.registerGetAgentStatus(server);
-    this.registerGetAgentSummary(server);
-    this.registerSubscribeToEvents(server);
-    this.registerUnsubscribeFromEvents(server);
+    register("list_agents", () => this.registerListAgents(server));
+    register("read_agent_conversation", () => this.registerReadAgentConversation(server));
+    register("create_agent", () => this.registerCreateAgent(server));
+    register("set_agent_name", () => this.registerSetAgentName(server));
+    register("delegate_task", () => this.registerDelegateTask(server));
+    register("delegate_task_to_agent", () => this.registerDelegateTaskToNewAgent(server));
+    register("send_message_to_agent", () => this.registerSendMessageToAgent(server));
+    register("report_to_parent", () => this.registerReportToParent(server));
+    register("wake_or_create_task_agent", () => this.registerWakeOrCreateTaskAgent(server));
+    register("send_message_to_task_agent", () => this.registerSendMessageToTaskAgent(server));
+    register("get_agent_status", () => this.registerGetAgentStatus(server));
+    register("get_agent_summary", () => this.registerGetAgentSummary(server));
+    register("subscribe_to_events", () => this.registerSubscribeToEvents(server));
+    register("unsubscribe_from_events", () => this.registerUnsubscribeFromEvents(server));
     // Note tools
-    this.registerCreateNote(server);
-    this.registerReadNote(server);
-    this.registerListNotes(server);
-    this.registerSetNoteContent(server);
-    this.registerAppendToNote(server);
-    this.registerGetMyTask(server);
-    this.registerConvertTaskBlocks(server);
+    register("create_note", () => this.registerCreateNote(server));
+    register("read_note", () => this.registerReadNote(server));
+    register("list_notes", () => this.registerListNotes(server));
+    register("set_note_content", () => this.registerSetNoteContent(server));
+    register("append_to_note", () => this.registerAppendToNote(server));
+    register("get_my_task", () => this.registerGetMyTask(server));
+    register("convert_task_blocks", () => this.registerConvertTaskBlocks(server));
     // Workspace tools
-    this.registerGitStatus(server);
-    this.registerGitDiff(server);
-    this.registerGitCommit(server);
-    this.registerGetWorkspaceInfo(server);
-    this.registerGetWorkspaceDetails(server);
-    this.registerSetWorkspaceTitle(server);
-    this.registerListWorkspaces(server);
-    this.registerCreateWorkspace(server);
-    this.registerListSpecialists(server);
+    register("git_status", () => this.registerGitStatus(server));
+    register("git_diff", () => this.registerGitDiff(server));
+    register("git_commit", () => this.registerGitCommit(server));
+    register("get_workspace_info", () => this.registerGetWorkspaceInfo(server));
+    register("get_workspace_details", () => this.registerGetWorkspaceDetails(server));
+    register("set_workspace_title", () => this.registerSetWorkspaceTitle(server));
+    register("list_workspaces", () => this.registerListWorkspaces(server));
+    register("create_workspace", () => this.registerCreateWorkspace(server));
+    register("list_specialists", () => this.registerListSpecialists(server));
     // Kanban tools
-    this.registerCreateBoard(server);
-    this.registerListBoards(server);
-    this.registerGetBoard(server);
-    this.registerCreateCard(server);
-    this.registerMoveCard(server);
-    this.registerUpdateCard(server);
-    this.registerDeleteCard(server);
-    this.registerCreateColumn(server);
-    this.registerDeleteColumn(server);
-    this.registerSearchCards(server);
-    this.registerListCardsByColumn(server);
-    this.registerDecomposeTasks(server);
-    this.registerRequestPreviousLaneHandoff(server);
-    this.registerSubmitLaneHandoff(server);
+    register("create_board", () => this.registerCreateBoard(server));
+    register("list_boards", () => this.registerListBoards(server));
+    register("get_board", () => this.registerGetBoard(server));
+    register("create_card", () => this.registerCreateCard(server));
+    register("move_card", () => this.registerMoveCard(server));
+    register("update_card", () => this.registerUpdateCard(server));
+    register("delete_card", () => this.registerDeleteCard(server));
+    register("create_column", () => this.registerCreateColumn(server));
+    register("delete_column", () => this.registerDeleteColumn(server));
+    register("search_cards", () => this.registerSearchCards(server));
+    register("list_cards_by_column", () => this.registerListCardsByColumn(server));
+    register("decompose_tasks", () => this.registerDecomposeTasks(server));
+    register("request_previous_lane_handoff", () => this.registerRequestPreviousLaneHandoff(server));
+    register("submit_lane_handoff", () => this.registerSubmitLaneHandoff(server));
     // Artifact tools
-    this.registerRequestArtifact(server);
-    this.registerProvideArtifact(server);
-    this.registerListArtifacts(server);
-    this.registerGetArtifact(server);
-    this.registerListPendingArtifactRequests(server);
-    this.registerCaptureScreenshot(server);
+    register("request_artifact", () => this.registerRequestArtifact(server));
+    register("provide_artifact", () => this.registerProvideArtifact(server));
+    register("list_artifacts", () => this.registerListArtifacts(server));
+    register("get_artifact", () => this.registerGetArtifact(server));
+    register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
+    register("capture_screenshot", () => this.registerCaptureScreenshot(server));
+  }
+
+  private shouldRegisterTool(toolName: string): boolean {
+    return !this.allowedTools || this.allowedTools.has(toolName);
   }
 
   // ─── Task Tools ────────────────────────────────────────────────────

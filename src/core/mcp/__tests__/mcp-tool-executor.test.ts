@@ -57,4 +57,20 @@ describe("mcp-tool-executor artifact support", () => {
       status: "provided",
     });
   });
+
+  it("filters Kanban planning profile down to Kanban card tools", () => {
+    const toolNames = new Set(
+      getMcpToolDefinitions("full", "kanban-planning").map((tool) => tool.name),
+    );
+
+    expect(toolNames.has("create_card")).toBe(true);
+    expect(toolNames.has("decompose_tasks")).toBe(true);
+    expect(toolNames.has("search_cards")).toBe(true);
+    expect(toolNames.has("list_cards_by_column")).toBe(true);
+    expect(toolNames.has("update_card")).toBe(true);
+    expect(toolNames.has("move_card")).toBe(true);
+    expect(toolNames.has("create_task")).toBe(false);
+    expect(toolNames.has("create_note")).toBe(false);
+    expect(toolNames.has("delegate_task_to_agent")).toBe(false);
+  });
 });

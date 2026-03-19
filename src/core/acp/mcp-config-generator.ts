@@ -10,6 +10,7 @@
  */
 
 import type { ToolMode } from "../mcp/routa-mcp-tool-manager";
+import type { McpServerProfile } from "../mcp/mcp-server-profiles";
 
 export interface RoutaMcpConfig {
   /** Base URL of the routa-js server (e.g., http://localhost:3000) */
@@ -35,6 +36,8 @@ export interface RoutaMcpConfig {
   includeCustomServers?: boolean;
   /** MCP tool exposure for this session. Defaults to the server global mode. */
   toolMode?: ToolMode;
+  /** Specialized MCP profile for tool subsets such as Kanban planning. */
+  mcpProfile?: McpServerProfile;
 }
 
 export interface McpServerConfig {
@@ -125,6 +128,7 @@ export function getDefaultRoutaMcpConfig(
   workspaceId?: string,
   sessionId?: string,
   toolMode?: ToolMode,
+  mcpProfile?: McpServerProfile,
 ): RoutaMcpConfig {
   const effectiveWorkspaceId = workspaceId || process.env.ROUTA_WORKSPACE_ID || "default";
 
@@ -139,6 +143,9 @@ export function getDefaultRoutaMcpConfig(
     }
     if (toolMode) {
       params.push(`toolMode=${encodeURIComponent(toolMode)}`);
+    }
+    if (mcpProfile && mcpProfile !== "coordination") {
+      params.push(`mcpProfile=${encodeURIComponent(mcpProfile)}`);
     }
     return params.length > 0 ? `${url}?${params.join("&")}` : url;
   };
@@ -164,6 +171,7 @@ export function getDefaultRoutaMcpConfig(
           mcpEndpoint: withWsParam(standaloneServer.mcpUrl),
           workspaceId: effectiveWorkspaceId,
           toolMode,
+          mcpProfile,
         };
       }
     } catch {
@@ -182,6 +190,7 @@ export function getDefaultRoutaMcpConfig(
     workspaceId: effectiveWorkspaceId,
     sessionId,
     toolMode,
+    mcpProfile,
   };
 }
 

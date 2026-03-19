@@ -11,6 +11,7 @@ import { RoutaSystem, getRoutaSystem } from "../routa-system";
 import { initRoutaOrchestrator } from "../orchestration/orchestrator-singleton";
 import { KanbanTools } from "../tools/kanban-tools";
 import { startWorkflowOrchestrator as startKanbanWorkflowOrchestrator } from "../kanban/workflow-orchestrator-singleton";
+import { getMcpProfileToolAllowlist, getMcpServerName, type McpServerProfile } from "./mcp-server-profiles";
 
 export interface RoutaMcpServerResult {
   server: McpServer;
@@ -23,6 +24,8 @@ export interface CreateMcpServerOptions {
   workspaceId: string;
   /** Tool mode: "essential" (7 tools) or "full" (all tools). Default: "essential" */
   toolMode?: ToolMode;
+  /** Optional logical MCP server profile for specialized tool subsets. */
+  mcpProfile?: McpServerProfile;
   /** Optional existing RoutaSystem instance */
   system?: RoutaSystem;
   /**
@@ -52,12 +55,13 @@ export function createRoutaMcpServer(
   const toolMode = opts.toolMode ?? "essential";
 
   const server = new McpServer({
-    name: "routa-mcp",
+    name: getMcpServerName(opts.mcpProfile),
     version: "0.1.0",
   });
 
   const toolManager = new RoutaMcpToolManager(routaSystem.tools, opts.workspaceId);
   toolManager.setToolMode(toolMode);
+  toolManager.setAllowedTools(getMcpProfileToolAllowlist(opts.mcpProfile));
 
   // Scope note/task creation to this ACP session when provided
   if (opts.sessionId) {

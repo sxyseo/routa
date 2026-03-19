@@ -20,6 +20,7 @@ import type { WorkspaceAgentEvent } from "./agent-event-bridge";
 import type { NormalizedSessionUpdate } from "./provider-adapter/types";
 import { getRoutaSystem } from "../routa-system";
 import { EventBus, AgentEventType } from "../events/event-bus";
+import type { McpServerProfile } from "../mcp/mcp-server-profiles";
 
 export type AcpSessionStatus = "connecting" | "ready" | "error";
 
@@ -35,6 +36,7 @@ export interface RoutaSessionRecord {
   provider?: string;
   role?: string;
   toolMode?: "essential" | "full";
+  mcpProfile?: McpServerProfile;
   allowedNativeTools?: string[];
   modeId?: string;
   /** Model used for this session (e.g. "claude-sonnet-4-20250514") */

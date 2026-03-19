@@ -3,6 +3,7 @@ import {buildConfigFromPreset, buildConfigFromInline, ManagedProcess, Notificati
 import {ClaudeCodeProcess, buildClaudeCodeConfig, mapClaudeModeToPermissionMode} from "@/core/acp/claude-code-process";
 import {ensureMcpForProvider, parseMcpServersFromConfigs, providerSupportsMcp} from "@/core/acp/mcp-setup";
 import {getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
+import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import {OpencodeSdkAdapter, OpencodeSdkDirectAdapter, shouldUseOpencodeAdapter, getOpencodeServerUrl, isOpencodeServerConfigured, isOpencodeDirectApiConfigured} from "@/core/acp/opencode-sdk-adapter";
 import {ClaudeCodeSdkAdapter, shouldUseClaudeCodeSdkAdapter} from "@/core/acp/claude-code-sdk-adapter";
 import {WorkspaceAgentAdapter, type WorkspaceAgentAdapterOptions} from "@/core/acp/workspace-agent";
@@ -109,6 +110,7 @@ export class AcpProcessManager {
         extraEnv?: Record<string, string>,
         workspaceId?: string,
         toolMode?: "essential" | "full",
+        mcpProfile?: McpServerProfile,
     ): Promise<string> {
         // Check if we should use OpenCode SDK adapter (serverless + configured)
         if (presetId === "opencode" && shouldUseOpencodeAdapter()) {
@@ -122,7 +124,7 @@ export class AcpProcessManager {
         if (providerSupportsMcp(presetId)) {
             const mcpResult = await ensureMcpForProvider(
                 presetId,
-                getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode),
+                getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile),
             );
             mcpConfigs = mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
             logAcpDebug(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
@@ -590,7 +592,12 @@ export class AcpProcessManager {
         try {
             const mcpResult = await ensureMcpForProvider(
                 "claude",
-                getDefaultRoutaMcpConfig(sessionRecord?.workspaceId, sessionId, sessionRecord?.toolMode),
+                getDefaultRoutaMcpConfig(
+                    sessionRecord?.workspaceId,
+                    sessionId,
+                    sessionRecord?.toolMode,
+                    sessionRecord?.mcpProfile,
+                ),
             );
             mcpServers = parseMcpServersFromConfigs(mcpResult.mcpConfigs);
         } catch (err) {

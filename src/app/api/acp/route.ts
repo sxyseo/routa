@@ -25,6 +25,7 @@ import { which } from "@/core/acp/utils";
 import { fetchRegistry, detectPlatformTarget } from "@/core/acp/acp-registry";
 import { ensureMcpForProvider, parseMcpServersFromConfigs } from "@/core/acp/mcp-setup";
 import { getDefaultRoutaMcpConfig } from "@/core/acp/mcp-config-generator";
+import { resolveMcpServerProfile, type McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { v4 as uuidv4 } from "uuid";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
@@ -264,6 +265,9 @@ export async function POST(request: NextRequest) {
         : p.toolMode === "essential"
           ? "essential"
           : undefined;
+      const mcpProfile = resolveMcpServerProfile(
+        typeof p.mcpProfile === "string" ? p.mcpProfile : undefined,
+      );
       const allowedNativeTools = Array.isArray(p.allowedNativeTools)
         ? p.allowedNativeTools.filter((tool): tool is string => typeof tool === "string")
         : undefined;
@@ -401,6 +405,7 @@ export async function POST(request: NextRequest) {
         provider,
         role: role ?? "CRAFTER",
         toolMode,
+        mcpProfile,
         allowedNativeTools,
         parentSessionId,
         modeId,
@@ -520,7 +525,7 @@ export async function POST(request: NextRequest) {
               authJson,
             );
           } else if (isClaudeCodeSdk) {
-            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode);
+            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile);
             const instanceConfig: AgentInstanceConfig = {
               model,
               provider: "claude-code-sdk",
@@ -538,7 +543,7 @@ export async function POST(request: NextRequest) {
               instanceConfig,
             );
           } else if (isClaudeCode) {
-            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode);
+            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile);
             acpSessionId = await manager.createClaudeSession(
               sessionId,
               cwd,
@@ -574,6 +579,7 @@ export async function POST(request: NextRequest) {
               undefined,
               workspaceId,
               toolMode,
+              mcpProfile,
             );
           }
 
@@ -816,6 +822,7 @@ export async function POST(request: NextRequest) {
         const workspaceId = (p.workspaceId as string) || storedSession?.workspaceId || "default";
         const role = storedSession?.role ?? "CRAFTER"; // Prefer stored role for restarts
         const toolMode = storedSession?.toolMode;
+        const mcpProfile = storedSession?.mcpProfile;
         const allowedNativeTools = storedSession?.allowedNativeTools;
 
         try {
@@ -879,7 +886,7 @@ export async function POST(request: NextRequest) {
             );
           } else if (isClaudeCode) {
             // Claude Code CLI session
-            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode);
+            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile);
             acpSessionId = await manager.createClaudeSession(
               sessionId,
               cwd,
@@ -902,6 +909,7 @@ export async function POST(request: NextRequest) {
               undefined, // extraEnv
               workspaceId,
               toolMode,
+              mcpProfile,
             );
           }
 
@@ -915,6 +923,7 @@ export async function POST(request: NextRequest) {
             provider,
             role,
             toolMode,
+            mcpProfile,
             allowedNativeTools,
             createdAt: now.toISOString(),
           });
@@ -1225,9 +1234,15 @@ export async function POST(request: NextRequest) {
           const restartWorkspaceId = sessionRecord.workspaceId ?? "default";
           const restartRole = sessionRecord.role ?? "CRAFTER";
           const restartToolMode = sessionRecord.toolMode;
+          const restartMcpProfile = sessionRecord.mcpProfile;
           const restartAllowedNativeTools = sessionRecord.allowedNativeTools;
           try {
-            const mcpConfigs = await buildMcpConfigForClaude(restartWorkspaceId, sessionId, restartToolMode);
+            const mcpConfigs = await buildMcpConfigForClaude(
+              restartWorkspaceId,
+              sessionId,
+              restartToolMode,
+              restartMcpProfile,
+            );
             await manager.createClaudeSession(
               sessionId,
               restartCwd,
@@ -1817,12 +1832,13 @@ async function buildMcpConfigForClaude(
   workspaceId?: string,
   sessionId?: string,
   toolMode?: "essential" | "full",
+  mcpProfile?: McpServerProfile,
 ): Promise<string[]> {
   // Keep Claude MCP setup consistent with all other providers.
   // Pass workspace ID and session ID so they're embedded in the MCP endpoint URL
   // (?wsId=...&sid=...) allowing the MCP server to scope notes to the correct session.
   const config = workspaceId
-    ? getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode)
+    ? getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile)
     : undefined;
   const result = await ensureMcpForProvider("claude", config);
   console.log(`[ACP Route] MCP config for Claude Code: ${result.summary}`);

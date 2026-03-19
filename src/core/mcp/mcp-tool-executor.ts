@@ -11,6 +11,7 @@ import { WorkspaceTools } from "@/core/tools/workspace-tools";
 import { KanbanTools } from "@/core/tools/kanban-tools";
 import { getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import { ToolMode } from "./routa-mcp-tool-manager";
+import { getMcpProfileToolAllowlist, type McpServerProfile } from "./mcp-server-profiles";
 
 /**
  * Essential tools for weak models - minimum viable coordination.
@@ -560,7 +561,10 @@ function formatResult(result: { success: boolean; data?: unknown; error?: string
  * Get MCP tool definitions, optionally filtered by tool mode.
  * @param toolMode - "essential" for 7 core tools, "full" for all tools (default: "essential")
  */
-export function getMcpToolDefinitions(toolMode: ToolMode = "essential") {
+export function getMcpToolDefinitions(
+  toolMode: ToolMode = "essential",
+  mcpProfile?: McpServerProfile,
+) {
   const allTools = [
     // ── Web fetch tool ───────────────────────────────────────────────
     {
@@ -1104,6 +1108,58 @@ export function getMcpToolDefinitions(toolMode: ToolMode = "essential") {
     },
     // ── Kanban tools ──────────────────────────────────────────────────
     {
+      name: "create_board",
+      description: "Create a new Kanban board.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID" },
+          name: { type: "string", description: "Board name" },
+          columns: { type: "array", items: { type: "string" }, description: "Optional default column names" },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "list_boards",
+      description: "List all Kanban boards in the workspace.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID" },
+        },
+      },
+    },
+    {
+      name: "get_board",
+      description: "Get a Kanban board with its columns and cards.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          boardId: { type: "string", description: "Board ID" },
+        },
+        required: ["boardId"],
+      },
+    },
+    {
+      name: "create_card",
+      description: "Create a new Kanban card in a board column, typically backlog.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID" },
+          boardId: { type: "string", description: "Optional board ID; uses default board if omitted" },
+          title: { type: "string", description: "Card title" },
+          description: { type: "string", description: "Card description" },
+          columnId: { type: "string", description: "Target column ID" },
+          column: { type: "string", description: "Target column alias" },
+          priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Card priority" },
+          labels: { type: "array", items: { type: "string" }, description: "Card labels" },
+        },
+        required: ["title"],
+      },
+    },
+    {
       name: "update_card",
       description: "Update a Kanban card's title, description, priority, or labels. Use this to track progress on your assigned task.",
       inputSchema: {
@@ -1129,6 +1185,71 @@ export function getMcpToolDefinitions(toolMode: ToolMode = "essential") {
           position: { type: "number", description: "Position within the column (optional)" },
         },
         required: ["cardId", "targetColumnId"],
+      },
+    },
+    {
+      name: "delete_card",
+      description: "Delete a Kanban card.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cardId: { type: "string", description: "Card ID (same as task ID)" },
+        },
+        required: ["cardId"],
+      },
+    },
+    {
+      name: "search_cards",
+      description: "Search cards across boards by title, labels, or assignee.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID" },
+          boardId: { type: "string", description: "Optional board ID" },
+          query: { type: "string", description: "Search query" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "list_cards_by_column",
+      description: "List all cards in a specific Kanban column.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          boardId: { type: "string", description: "Optional board ID" },
+          columnId: { type: "string", description: "Column ID" },
+          workspaceId: { type: "string", description: "Workspace ID" },
+        },
+        required: ["columnId"],
+      },
+    },
+    {
+      name: "decompose_tasks",
+      description: "Create multiple Kanban cards from a list of decomposed tasks.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID" },
+          boardId: { type: "string", description: "Optional board ID" },
+          columnId: { type: "string", description: "Target column ID" },
+          column: { type: "string", description: "Target column alias" },
+          tasks: {
+            type: "array",
+            description: "Tasks to create as cards",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Card title" },
+                description: { type: "string", description: "Card description" },
+                priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Card priority" },
+                labels: { type: "array", items: { type: "string" }, description: "Card labels" },
+              },
+              required: ["title"],
+            },
+          },
+        },
+        required: ["tasks"],
       },
     },
     {
@@ -1161,8 +1282,12 @@ export function getMcpToolDefinitions(toolMode: ToolMode = "essential") {
   ];
 
   // Filter tools based on mode
-  if (toolMode === "essential") {
-    return allTools.filter((tool) => ESSENTIAL_TOOL_NAMES.has(tool.name));
+  const modeFiltered = toolMode === "essential"
+    ? allTools.filter((tool) => ESSENTIAL_TOOL_NAMES.has(tool.name))
+    : allTools;
+  const profileAllowlist = getMcpProfileToolAllowlist(mcpProfile);
+  if (!profileAllowlist) {
+    return modeFiltered;
   }
-  return allTools;
+  return modeFiltered.filter((tool) => profileAllowlist.has(tool.name));
 }

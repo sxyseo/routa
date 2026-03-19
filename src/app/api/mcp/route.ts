@@ -24,6 +24,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { createRoutaMcpServer } from "@/core/mcp/routa-mcp-server";
 import { getGlobalToolMode } from "@/core/mcp/tool-mode-config";
 import type { ToolMode } from "@/core/mcp/routa-mcp-tool-manager";
+import { resolveMcpServerProfile } from "@/core/mcp/mcp-server-profiles";
 
 // ─── Session management ────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ async function createSession(
   enableStatelessMode = false,
   acpSessionId?: string,
   toolMode?: ToolMode,
+  mcpProfile?: ReturnType<typeof resolveMcpServerProfile>,
 ): Promise<WebStandardStreamableHTTPServerTransport> {
   const effectiveWorkspaceId = workspaceId || process.env.ROUTA_WORKSPACE_ID || "default";
   const sessionId = enableStatelessMode
@@ -70,6 +72,7 @@ async function createSession(
   const { server } = createRoutaMcpServer({
     workspaceId: effectiveWorkspaceId,
     toolMode: toolMode ?? getGlobalToolMode(),
+    mcpProfile,
     sessionId: acpSessionId,
   });
   await server.connect(transport);
@@ -94,6 +97,10 @@ function resolveToolMode(request: NextRequest): ToolMode | undefined {
     return toolMode;
   }
   return undefined;
+}
+
+function resolveProfile(request: NextRequest) {
+  return resolveMcpServerProfile(new URL(request.url).searchParams.get("mcpProfile") ?? undefined);
 }
 
 /**
@@ -125,9 +132,10 @@ async function getOrCreateSession(
   // ACP session ID embedded in URL by orchestrator (?sid=) so notes are scoped correctly
   const acpSessionId = url.searchParams.get("sid") ?? undefined;
   const toolMode = resolveToolMode(request);
+  const mcpProfile = resolveProfile(request);
 
   // New session needed (initialize request)
-  return createSession(workspaceId, false, acpSessionId, toolMode);
+  return createSession(workspaceId, false, acpSessionId, toolMode, mcpProfile);
 }
 
 /**
@@ -237,9 +245,10 @@ export async function POST(request: NextRequest) {
                 process.env.ROUTA_WORKSPACE_ID ||
                 "default";
               const toolMode = resolveToolMode(request);
+              const mcpProfile = resolveProfile(request);
 
               // Create a fresh session and send an initialize request to it
-              const freshTransport = await createSession(wsId, false, undefined, toolMode);
+              const freshTransport = await createSession(wsId, false, undefined, toolMode, mcpProfile);
               const initBody = JSON.stringify({
                 jsonrpc: "2.0",
                 id: `auto-init-${Date.now()}`,
