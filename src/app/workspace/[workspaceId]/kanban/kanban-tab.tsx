@@ -108,6 +108,19 @@ function extractSessionLiveTail(history: unknown): string | null {
   return null;
 }
 
+function getPreferredTaskSessionId(task: TaskInfo | null | undefined): string | null {
+  if (!task) return null;
+  return task.triggerSessionId
+    ?? (task.sessionIds && task.sessionIds.length > 0 ? task.sessionIds[task.sessionIds.length - 1] : null);
+}
+
+function taskOwnsSession(task: TaskInfo | null | undefined, sessionId: string | null | undefined): boolean {
+  if (!task || !sessionId) return false;
+  if (task.triggerSessionId === sessionId) return true;
+  if (task.sessionIds?.includes(sessionId)) return true;
+  return task.laneSessions?.some((entry) => entry.sessionId === sessionId) ?? false;
+}
+
 function QueueStatusBadge({
   label,
   count,
@@ -305,6 +318,7 @@ export function KanbanTab({
   // Worktree cache: worktreeId -> WorktreeInfo
   const [worktreeCache, setWorktreeCache] = useState<Record<string, WorktreeInfo>>({});
   const [liveSessionTails, setLiveSessionTails] = useState<Record<string, string>>({});
+  const [backfilledSessions, setBackfilledSessions] = useState<Record<string, SessionInfo>>({});
 
   // Settings state - column automation rules (initialized from board columns)
   const [columnAutomation, setColumnAutomation] = useState<Record<string, ColumnAutomationConfig>>({});
@@ -315,6 +329,40 @@ export function KanbanTab({
   const [moveError, setMoveError] = useState<string | null>(null);
   const detailSplitContainerRef = useRef<HTMLDivElement | null>(null);
   const bgAgentPanelRef = useRef<HTMLDivElement | null>(null);
+  const sessionBackfillInFlightRef = useRef(new Set<string>());
+  const emptySessionRecoveryRef = useRef<string | null>(null);
+  const specialistLanguageHydratedRef = useRef(false);
+
+  const sessionMap = useMemo(() => {
+    const map = new Map<string, SessionInfo>();
+    for (const session of sessions) {
+      map.set(session.sessionId, session);
+    }
+    for (const [sessionId, session] of Object.entries(backfilledSessions)) {
+      if (!map.has(sessionId)) {
+        map.set(sessionId, session);
+      }
+    }
+    return map;
+  }, [backfilledSessions, sessions]);
+  const combinedSessions = useMemo(
+    () => Array.from(sessionMap.values()),
+    [sessionMap],
+  );
+  const activeTask = useMemo(
+    () => activeTaskId ? localTasks.find((task) => task.id === activeTaskId) ?? null : null,
+    [activeTaskId, localTasks],
+  );
+  const preferredActiveTaskSessionId = useMemo(
+    () => getPreferredTaskSessionId(activeTask),
+    [activeTask],
+  );
+  const board = useMemo(
+    () => boards.find((item) => item.id === selectedBoardId) ?? null,
+    [boards, selectedBoardId],
+  );
+  const boardQueue = board?.queue;
+  const queuedPositions = boardQueue?.queuedPositions ?? {};
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -456,10 +504,23 @@ export function KanbanTab({
   }, [tasks]);
 
   useEffect(() => {
+    setBackfilledSessions((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const session of sessions) {
+        if (next[session.sessionId]) {
+          delete next[session.sessionId];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [sessions]);
+
+  useEffect(() => {
     if (codebases.length === 0 || localTasks.length === 0) return;
 
     const codebaseById = new Map(codebases.map((codebase) => [codebase.id, codebase]));
-    const sessionById = new Map(sessions.map((session) => [session.sessionId, session]));
 
     const pendingPatches: Array<{ taskId: string; codebaseId: string }> = [];
 
@@ -471,7 +532,7 @@ export function KanbanTab({
       if (hasValidCodebase) continue;
 
       let resolved: CodebaseData | null = null;
-      const session = task.triggerSessionId ? sessionById.get(task.triggerSessionId) : null;
+      const session = task.triggerSessionId ? sessionMap.get(task.triggerSessionId) : null;
       if (session?.cwd) {
         resolved = codebases.find((codebase) => codebase.repoPath === session.cwd) ?? null;
       }
@@ -491,7 +552,7 @@ export function KanbanTab({
       autoPatchedTasksRef.current.add(patch.taskId);
       void patchTask(patch.taskId, { codebaseIds: [patch.codebaseId] });
     }
-  }, [codebases, defaultCodebase, localTasks, patchTask, sessions]);
+  }, [codebases, defaultCodebase, localTasks, patchTask, sessionMap]);
 
   const repoHealth = useMemo(() => {
     if (codebases.length === 0) {
@@ -499,7 +560,6 @@ export function KanbanTab({
     }
 
     const codebaseById = new Map(codebases.map((cb) => [cb.id, cb]));
-    const sessionById = new Map(sessions.map((s) => [s.sessionId, s]));
     let missingRepoTasks = 0;
     let cwdMismatchTasks = 0;
 
@@ -514,7 +574,7 @@ export function KanbanTab({
       }
 
       if (task.triggerSessionId) {
-        const session = sessionById.get(task.triggerSessionId);
+        const session = sessionMap.get(task.triggerSessionId);
         if (session?.cwd) {
           const primaryCodebase = taskCodebaseIds.length > 0
             ? codebaseById.get(taskCodebaseIds[0]) ?? defaultCodebase
@@ -527,7 +587,7 @@ export function KanbanTab({
     }
 
     return { missingRepoTasks, cwdMismatchTasks };
-  }, [codebases, defaultCodebase, localTasks, sessions]);
+  }, [codebases, defaultCodebase, localTasks, sessionMap]);
 
   // Sync task's assignedProvider to ACP state when activeTaskId changes
   useEffect(() => {
@@ -540,12 +600,72 @@ export function KanbanTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTaskId]);
 
-  const board = useMemo(
-    () => boards.find((item) => item.id === selectedBoardId) ?? null,
-    [boards, selectedBoardId],
-  );
-  const boardQueue = board?.queue;
-  const queuedPositions = boardQueue?.queuedPositions ?? {};
+  useEffect(() => {
+    if (!activeTask || !preferredActiveTaskSessionId) return;
+    setActiveSessionId((current) => {
+      if (!current) return preferredActiveTaskSessionId;
+      if (!taskOwnsSession(activeTask, current)) return preferredActiveTaskSessionId;
+      return current;
+    });
+  }, [activeTask, preferredActiveTaskSessionId]);
+
+  useEffect(() => {
+    const targetSessionId = preferredActiveTaskSessionId ?? activeSessionId;
+    const sessionsInFlight = sessionBackfillInFlightRef.current;
+    if (!activeTask || !targetSessionId) return;
+    if (sessionMap.has(targetSessionId)) return;
+    if (sessionsInFlight.has(targetSessionId)) return;
+
+    const controller = new AbortController();
+    sessionsInFlight.add(targetSessionId);
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(targetSessionId)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        const session = data?.session as SessionInfo | undefined;
+        if (!session?.sessionId) return;
+        setBackfilledSessions((current) => ({ ...current, [session.sessionId]: session }));
+      } catch {
+        // Ignore targeted backfill failures; the manual refresh control remains available.
+      } finally {
+        sessionsInFlight.delete(targetSessionId);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+      sessionsInFlight.delete(targetSessionId);
+    };
+  }, [activeSessionId, activeTask, preferredActiveTaskSessionId, sessionMap]);
+
+  useEffect(() => {
+    if (!activeTask) {
+      emptySessionRecoveryRef.current = null;
+      return;
+    }
+    if (activeSessionId || preferredActiveTaskSessionId) {
+      emptySessionRecoveryRef.current = null;
+      return;
+    }
+    if (!resolveEffectiveTaskAutomation(activeTask, board?.columns ?? []).canRun || activeTask.columnId === "done") {
+      emptySessionRecoveryRef.current = null;
+      return;
+    }
+
+    const recoveryKey = `${activeTask.id}:${activeTask.columnId ?? "backlog"}`;
+    if (emptySessionRecoveryRef.current === recoveryKey) {
+      return;
+    }
+
+    emptySessionRecoveryRef.current = recoveryKey;
+    return scheduleKanbanRefreshBurst(onRefresh);
+  }, [activeSessionId, activeTask, board?.columns, onRefresh, preferredActiveTaskSessionId]);
 
   const persistBoardSpecialistLanguage = useCallback(async (language: KanbanSpecialistLanguage) => {
     if (!board) return;
@@ -582,6 +702,10 @@ export function KanbanTab({
   }, [board, onRefresh]);
 
   useEffect(() => {
+    if (!specialistLanguageHydratedRef.current) {
+      specialistLanguageHydratedRef.current = true;
+      return;
+    }
     void persistBoardSpecialistLanguage(specialistLanguage);
   }, [persistBoardSpecialistLanguage, specialistLanguage]);
 
@@ -763,11 +887,6 @@ export function KanbanTab({
     }
     return Array.from(uniqueProviders.values());
   }, [providers]);
-
-  const sessionMap = useMemo(
-    () => new Map(sessions.map((session) => [session.sessionId, session])),
-    [sessions],
-  );
   const activeLiveSessionIds = useMemo(() => {
     const ids = new Set<string>();
     for (const task of boardTasks) {
@@ -827,9 +946,7 @@ export function KanbanTab({
 
   const openTaskDetail = useCallback(async (task: TaskInfo) => {
     setActiveTaskId(task.id);
-    // Use triggerSessionId if available, otherwise show the latest session from history
-    const latestSession = task.triggerSessionId
-      ?? (task.sessionIds && task.sessionIds.length > 0 ? task.sessionIds[task.sessionIds.length - 1] : null);
+    const latestSession = getPreferredTaskSessionId(task);
     setActiveSessionId(latestSession ?? null);
 
     if (task.codebaseIds?.length === 0 && defaultCodebase) {
@@ -1627,7 +1744,6 @@ export function KanbanTab({
       )}
 
       {(activeSessionId || activeTaskId) && (() => {
-        const activeTask = activeTaskId ? localTasks.find((task) => task.id === activeTaskId) ?? null : null;
         const showEmptySessionPane = Boolean(
           activeTask &&
           !activeSessionId &&
@@ -1643,7 +1759,7 @@ export function KanbanTab({
               {activeTaskId && (() => {
                 const task = activeTask;
                 if (!task) return null;
-                const sessionInfo = task.triggerSessionId ? sessions.find((s) => s.sessionId === task.triggerSessionId) : null;
+                const sessionInfo = task.triggerSessionId ? sessionMap.get(task.triggerSessionId) ?? null : null;
                 return (
                   <div
                     className={`${hasSessionPane ? "shrink-0" : "flex-1"} h-full min-w-0 border-r border-gray-200/80 dark:border-[#202433]`}
@@ -1661,7 +1777,7 @@ export function KanbanTab({
                       allCodebaseIds={allCodebaseIds}
                       worktreeCache={worktreeCache}
                       sessionInfo={sessionInfo}
-                      sessions={sessions}
+                      sessions={combinedSessions}
                       fullWidth={!hasSessionPane}
                       onPatchTask={patchTask}
                       onRetryTrigger={retryTaskTrigger}
@@ -1702,7 +1818,7 @@ export function KanbanTab({
                   ? codebases.find((c) => c.id === taskCodebaseIds[0])
                   : null;
                 const activeSessionInfo = activeSessionId
-                  ? sessions.find((session) => session.sessionId === activeSessionId) ?? null
+                  ? sessionMap.get(activeSessionId) ?? null
                   : null;
                 const activeWorktree = activeTask?.worktreeId
                   ? worktreeCache[activeTask.worktreeId] ?? null
@@ -1743,7 +1859,7 @@ export function KanbanTab({
                       <div className="shrink-0 border-b border-gray-200/80 bg-gray-50/80 p-2 dark:border-[#202433] dark:bg-[#10131a]">
                         <KanbanCardActivityBar
                           task={activeTask}
-                          sessions={sessions}
+                          sessions={combinedSessions}
                           specialistLanguage={specialistLanguage}
                           currentSessionId={activeSessionId ?? undefined}
                           onSelectSession={(sessionId) => {

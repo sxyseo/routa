@@ -120,8 +120,17 @@ export function KanbanCardDetail({
     <div className="h-full w-full overflow-y-auto bg-gray-50/80 dark:bg-[#10131a]">
       <div className={`mx-auto flex min-h-full max-w-6xl flex-col ${compactMode ? "gap-3 p-3" : "gap-4 p-5"}`}>
         <section className={`border border-gray-200/80 bg-white shadow-sm dark:border-[#232736] dark:bg-[#121620] ${compactMode ? "rounded-2xl p-3" : "rounded-3xl p-4"}`}>
-          <div className={`${compactMode ? "mb-1.5" : "mb-2"} text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500`}>
-            Card Detail
+          <div className={`flex items-center justify-between gap-3 ${compactMode ? "mb-1.5" : "mb-2"}`}>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              Card Detail
+            </div>
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-600 transition-colors hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-300 dark:hover:border-amber-700 dark:hover:bg-amber-900/20 dark:hover:text-amber-200"
+            >
+              Refresh
+            </button>
           </div>
           <textarea
             value={editTitle}

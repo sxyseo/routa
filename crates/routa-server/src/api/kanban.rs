@@ -4,10 +4,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use routa_core::events::{AgentEvent, AgentEventType, EventBus};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
-use tokio_stream::StreamExt;
+use tokio::sync::mpsc;
 
 use crate::error::ServerError;
 use crate::rpc::RpcRouter;
@@ -25,6 +26,63 @@ pub fn router() -> Router<AppState> {
 #[serde(rename_all = "camelCase")]
 struct BoardsQuery {
     workspace_id: Option<String>,
+}
+
+struct EventBusSubscriptionGuard {
+    event_bus: EventBus,
+    handler_key: String,
+}
+
+impl EventBusSubscriptionGuard {
+    fn new(event_bus: EventBus, handler_key: String) -> Self {
+        Self {
+            event_bus,
+            handler_key,
+        }
+    }
+}
+
+impl Drop for EventBusSubscriptionGuard {
+    fn drop(&mut self) {
+        let event_bus = self.event_bus.clone();
+        let handler_key = self.handler_key.clone();
+        tokio::spawn(async move {
+            event_bus.off(&handler_key).await;
+        });
+    }
+}
+
+fn translate_agent_event_to_kanban_payload(event: &AgentEvent) -> Option<serde_json::Value> {
+    match event.event_type {
+        AgentEventType::WorkspaceUpdated => {
+            if event.data.get("scope").and_then(|value| value.as_str()) != Some("kanban") {
+                return None;
+            }
+
+            Some(serde_json::json!({
+                "type": "kanban:changed",
+                "workspaceId": event.workspace_id,
+                "entity": event.data.get("entity").and_then(|value| value.as_str()).unwrap_or("task"),
+                "action": event.data.get("action").and_then(|value| value.as_str()).unwrap_or("updated"),
+                "resourceId": event.data.get("resourceId").and_then(|value| value.as_str()),
+                "source": event.data.get("source").and_then(|value| value.as_str()).unwrap_or("system"),
+                "timestamp": event.timestamp.to_rfc3339(),
+            }))
+        }
+        AgentEventType::TaskStatusChanged
+        | AgentEventType::TaskCompleted
+        | AgentEventType::TaskFailed
+        | AgentEventType::ReportSubmitted => Some(serde_json::json!({
+            "type": "kanban:changed",
+            "workspaceId": event.workspace_id,
+            "entity": "task",
+            "action": "updated",
+            "resourceId": event.data.get("taskId").and_then(|value| value.as_str()),
+            "source": if event.agent_id.is_empty() { "system" } else { "agent" },
+            "timestamp": event.timestamp.to_rfc3339(),
+        })),
+        _ => None,
+    }
 }
 
 fn get_session_concurrency_limit(metadata: &HashMap<String, String>, board_id: &str) -> u32 {
@@ -73,6 +131,7 @@ async fn list_boards(
 }
 
 async fn kanban_events(
+    State(state): State<AppState>,
     Query(query): Query<BoardsQuery>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let workspace_id = query.workspace_id.unwrap_or_else(|| "*".to_string());
@@ -80,14 +139,41 @@ async fn kanban_events(
         "type": "connected",
         "workspaceId": workspace_id,
     });
+    let (tx, mut rx) = mpsc::unbounded_channel::<serde_json::Value>();
+    let workspace_filter = workspace_id.clone();
+    let handler_key = format!("kanban-events-{}", uuid::Uuid::new_v4());
 
-    let initial = tokio_stream::once(Ok(Event::default().data(connected.to_string())));
-    let heartbeat = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
-        std::time::Duration::from_secs(15),
-    ))
-    .map(|_| Ok(Event::default().comment("heartbeat")));
+    state
+        .event_bus
+        .on(&handler_key, move |event| {
+            if workspace_filter != "*" && event.workspace_id != workspace_filter {
+                return;
+            }
+            if let Some(payload) = translate_agent_event_to_kanban_payload(&event) {
+                let _ = tx.send(payload);
+            }
+        })
+        .await;
 
-    Sse::new(initial.merge(heartbeat)).keep_alive(KeepAlive::default())
+    let event_bus = state.event_bus.clone();
+    let stream = async_stream::stream! {
+        let _guard = EventBusSubscriptionGuard::new(event_bus, handler_key);
+        yield Ok(Event::default().data(connected.to_string()));
+        let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(15));
+        loop {
+            tokio::select! {
+                message = rx.recv() => {
+                    match message {
+                        Some(payload) => yield Ok(Event::default().data(payload.to_string())),
+                        None => break,
+                    }
+                }
+                _ = heartbeat.tick() => yield Ok(Event::default().comment("heartbeat")),
+            }
+        }
+    };
+
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 #[derive(Debug, Deserialize)]
@@ -321,4 +407,75 @@ fn add_board_runtime_meta(board: &mut serde_json::Value, metadata: &HashMap<Stri
         "queue".to_string(),
         serde_json::json!({ "runningCount": 0, "queuedCount": 0 }),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::translate_agent_event_to_kanban_payload;
+    use chrono::Utc;
+    use routa_core::events::{AgentEvent, AgentEventType};
+    use serde_json::json;
+
+    #[test]
+    fn translates_workspace_updated_kanban_event() {
+        let event = AgentEvent {
+            event_type: AgentEventType::WorkspaceUpdated,
+            agent_id: "user-1".to_string(),
+            workspace_id: "ws-1".to_string(),
+            data: json!({
+                "scope": "kanban",
+                "entity": "task",
+                "action": "moved",
+                "resourceId": "task-1",
+                "source": "user",
+            }),
+            timestamp: Utc::now(),
+        };
+
+        let payload = translate_agent_event_to_kanban_payload(&event).expect("payload should exist");
+        assert_eq!(payload["type"].as_str(), Some("kanban:changed"));
+        assert_eq!(payload["workspaceId"].as_str(), Some("ws-1"));
+        assert_eq!(payload["entity"].as_str(), Some("task"));
+        assert_eq!(payload["action"].as_str(), Some("moved"));
+        assert_eq!(payload["resourceId"].as_str(), Some("task-1"));
+        assert_eq!(payload["source"].as_str(), Some("user"));
+    }
+
+    #[test]
+    fn ignores_non_kanban_workspace_updates() {
+        let event = AgentEvent {
+            event_type: AgentEventType::WorkspaceUpdated,
+            agent_id: "user-1".to_string(),
+            workspace_id: "ws-1".to_string(),
+            data: json!({
+                "scope": "notes",
+                "entity": "note",
+                "action": "updated",
+            }),
+            timestamp: Utc::now(),
+        };
+
+        assert!(translate_agent_event_to_kanban_payload(&event).is_none());
+    }
+
+    #[test]
+    fn translates_task_status_change_to_kanban_update() {
+        let event = AgentEvent {
+            event_type: AgentEventType::TaskStatusChanged,
+            agent_id: "agent-1".to_string(),
+            workspace_id: "ws-1".to_string(),
+            data: json!({
+                "taskId": "task-42",
+                "status": "COMPLETED",
+            }),
+            timestamp: Utc::now(),
+        };
+
+        let payload = translate_agent_event_to_kanban_payload(&event).expect("payload should exist");
+        assert_eq!(payload["type"].as_str(), Some("kanban:changed"));
+        assert_eq!(payload["entity"].as_str(), Some("task"));
+        assert_eq!(payload["action"].as_str(), Some("updated"));
+        assert_eq!(payload["resourceId"].as_str(), Some("task-42"));
+        assert_eq!(payload["source"].as_str(), Some("agent"));
+    }
 }

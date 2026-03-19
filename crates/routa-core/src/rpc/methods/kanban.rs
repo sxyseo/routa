@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use crate::error::ServerError;
+use crate::events::{AgentEvent, AgentEventType};
 use crate::kanban::{set_task_column, sync_task_status_from_column, task_to_card, KanbanCard};
 use crate::models::kanban::{default_kanban_board, KanbanBoard, KanbanColumn};
 use crate::models::task::{Task, TaskPriority};
@@ -28,6 +29,32 @@ use crate::state::AppState;
 
 fn default_workspace_id() -> String {
     "default".into()
+}
+
+async fn emit_kanban_workspace_event(
+    state: &AppState,
+    workspace_id: &str,
+    entity: &str,
+    action: &str,
+    resource_id: Option<&str>,
+    source: &str,
+) {
+    state
+        .event_bus
+        .emit(AgentEvent {
+            event_type: AgentEventType::WorkspaceUpdated,
+            agent_id: format!("kanban-{}", source),
+            workspace_id: workspace_id.to_string(),
+            data: serde_json::json!({
+                "scope": "kanban",
+                "entity": entity,
+                "action": action,
+                "resourceId": resource_id,
+                "source": source,
+            }),
+            timestamp: Utc::now(),
+        })
+        .await;
 }
 
 #[derive(Debug, Serialize)]
@@ -136,6 +163,15 @@ pub async fn create_board(
             .await?;
         board.is_default = true;
     }
+    emit_kanban_workspace_event(
+        state,
+        &board.workspace_id,
+        "board",
+        "created",
+        Some(&board.id),
+        "system",
+    )
+    .await;
 
     Ok(CreateBoardResult { board })
 }
@@ -220,6 +256,15 @@ pub async fn update_board(
             .await?
             .ok_or_else(|| RpcError::NotFound(format!("Board {} not found", params.board_id)))?;
     }
+    emit_kanban_workspace_event(
+        state,
+        &board.workspace_id,
+        "board",
+        "updated",
+        Some(&board.id),
+        "system",
+    )
+    .await;
 
     Ok(UpdateBoardResult { board })
 }
@@ -287,6 +332,15 @@ pub async fn create_card(
     state.task_store.save(&task).await?;
     maybe_trigger_lane_automation(state, &mut task, target_column.as_ref()).await;
     state.task_store.save(&task).await?;
+    emit_kanban_workspace_event(
+        state,
+        &board.workspace_id,
+        "task",
+        "created",
+        Some(&task.id),
+        "system",
+    )
+    .await;
     Ok(CreateCardResult {
         card: task_to_card(&task),
     })
@@ -372,6 +426,15 @@ pub async fn move_card(state: &AppState, params: MoveCardParams) -> Result<MoveC
         maybe_trigger_lane_automation(state, &mut task, transition_column).await;
         state.task_store.save(&task).await?;
     }
+    emit_kanban_workspace_event(
+        state,
+        &board.workspace_id,
+        "task",
+        "moved",
+        Some(&task.id),
+        "system",
+    )
+    .await;
     Ok(MoveCardResult {
         card: task_to_card(&task),
     })
@@ -689,6 +752,15 @@ pub async fn update_card(
     task.updated_at = Utc::now();
 
     state.task_store.save(&task).await?;
+    emit_kanban_workspace_event(
+        state,
+        &task.workspace_id,
+        "task",
+        "updated",
+        Some(&task.id),
+        "system",
+    )
+    .await;
     Ok(UpdateCardResult {
         card: task_to_card(&task),
     })
@@ -710,7 +782,21 @@ pub async fn delete_card(
     state: &AppState,
     params: DeleteCardParams,
 ) -> Result<DeleteCardResult, RpcError> {
+    let task = state
+        .task_store
+        .get(&params.card_id)
+        .await?
+        .ok_or_else(|| RpcError::NotFound(format!("Card {} not found", params.card_id)))?;
     state.task_store.delete(&params.card_id).await?;
+    emit_kanban_workspace_event(
+        state,
+        &task.workspace_id,
+        "task",
+        "deleted",
+        Some(&params.card_id),
+        "system",
+    )
+    .await;
     Ok(DeleteCardResult {
         deleted: true,
         card_id: params.card_id,
@@ -753,7 +839,7 @@ pub async fn create_column(
     }
 
     board.columns.push(KanbanColumn {
-        id: column_id,
+        id: column_id.clone(),
         name: name.to_string(),
         color: params.color,
         position: board.columns.len() as i64,
@@ -762,6 +848,15 @@ pub async fn create_column(
     });
     board.updated_at = Utc::now();
     state.kanban_store.update(&board).await?;
+    emit_kanban_workspace_event(
+        state,
+        &board.workspace_id,
+        "column",
+        "created",
+        Some(&column_id),
+        "system",
+    )
+    .await;
 
     Ok(CreateColumnResult { board })
 }
@@ -838,6 +933,15 @@ pub async fn delete_column(
     }
     board.updated_at = Utc::now();
     state.kanban_store.update(&board).await?;
+    emit_kanban_workspace_event(
+        state,
+        &board.workspace_id,
+        "column",
+        "deleted",
+        Some(&params.column_id),
+        "system",
+    )
+    .await;
 
     Ok(DeleteColumnResult {
         deleted: true,
@@ -1008,6 +1112,8 @@ pub async fn decompose_tasks(
         created_cards.push(task_to_card(&task));
         position += 1;
     }
+    emit_kanban_workspace_event(state, &board.workspace_id, "task", "created", None, "system")
+        .await;
 
     Ok(DecomposeTasksResult {
         count: created_cards.len(),

@@ -5,6 +5,7 @@ use axum::{
 };
 use chrono::Utc;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
+use routa_core::events::{AgentEvent, AgentEventType};
 use routa_core::kanban::set_task_column;
 use routa_core::models::artifact::{Artifact, ArtifactType};
 use serde::Deserialize;
@@ -32,6 +33,32 @@ pub fn router() -> Router<AppState> {
         )
         .route("/{id}/status", axum::routing::post(update_task_status))
         .route("/ready", get(find_ready_tasks))
+}
+
+async fn emit_kanban_workspace_event(
+    state: &AppState,
+    workspace_id: &str,
+    entity: &str,
+    action: &str,
+    resource_id: Option<&str>,
+    source: &str,
+) {
+    state
+        .event_bus
+        .emit(AgentEvent {
+            event_type: AgentEventType::WorkspaceUpdated,
+            agent_id: format!("kanban-{}", source),
+            workspace_id: workspace_id.to_string(),
+            data: serde_json::json!({
+                "scope": "kanban",
+                "entity": entity,
+                "action": action,
+                "resourceId": resource_id,
+                "source": source,
+            }),
+            timestamp: Utc::now(),
+        })
+        .await;
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,6 +154,15 @@ async fn create_task_artifact(
         updated_at: now,
     };
     state.artifact_store.save(&artifact).await?;
+    emit_kanban_workspace_event(
+        &state,
+        &task.workspace_id,
+        "task",
+        "updated",
+        Some(&task.id),
+        "agent",
+    )
+    .await;
 
     Ok((
         axum::http::StatusCode::CREATED,
@@ -252,6 +288,15 @@ async fn create_task(
     }
 
     state.task_store.save(&task).await?;
+    emit_kanban_workspace_event(
+        &state,
+        &task.workspace_id,
+        "task",
+        "created",
+        Some(&task.id),
+        "user",
+    )
+    .await;
     Ok((
         axum::http::StatusCode::CREATED,
         Json(serde_json::json!({ "task": task })),
@@ -429,6 +474,15 @@ async fn update_task(
                         set_task_column(&mut task, "blocked");
                         task.last_sync_error = Some(format!("Worktree creation failed: {}", err));
                         state.task_store.save(&task).await?;
+                        emit_kanban_workspace_event(
+                            &state,
+                            &task.workspace_id,
+                            "task",
+                            "updated",
+                            Some(&task.id),
+                            "system",
+                        )
+                        .await;
                         return Ok(Json(serde_json::json!({ "task": task })));
                     }
                 }
@@ -455,6 +509,15 @@ async fn update_task(
     }
 
     state.task_store.save(&task).await?;
+    emit_kanban_workspace_event(
+        &state,
+        &task.workspace_id,
+        "task",
+        "updated",
+        Some(&task.id),
+        "user",
+    )
+    .await;
     Ok(Json(serde_json::json!({ "task": task })))
 }
 
@@ -524,7 +587,21 @@ async fn delete_task(
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
+    let task = state
+        .task_store
+        .get(&id)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
     state.task_store.delete(&id).await?;
+    emit_kanban_workspace_event(
+        &state,
+        &task.workspace_id,
+        "task",
+        "deleted",
+        Some(&id),
+        "user",
+    )
+    .await;
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
 
@@ -540,7 +617,21 @@ async fn update_task_status(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let status = TaskStatus::from_str(&body.status)
         .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {}", body.status)))?;
+    let task = state
+        .task_store
+        .get(&id)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
     state.task_store.update_status(&id, &status).await?;
+    emit_kanban_workspace_event(
+        &state,
+        &task.workspace_id,
+        "task",
+        "updated",
+        Some(&id),
+        "user",
+    )
+    .await;
     Ok(Json(serde_json::json!({ "updated": true })))
 }
 
@@ -563,6 +654,9 @@ async fn delete_all_tasks(
     let count = tasks.len();
     for task in &tasks {
         state.task_store.delete(&task.id).await?;
+    }
+    if count > 0 {
+        emit_kanban_workspace_event(&state, workspace_id, "task", "deleted", None, "user").await;
     }
     Ok(Json(serde_json::json!({ "deleted": count })))
 }
