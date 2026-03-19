@@ -40,26 +40,17 @@ async fn execute_tool(
         .ok_or_else(|| ServerError::BadRequest("Tool name is required".into()))?;
 
     let args = body.args.unwrap_or(serde_json::json!({}));
+    let normalized_name = super::mcp_routes::normalize_tool_name_public(name);
+    let known_tool = super::mcp_routes::build_tool_list_public()
+        .iter()
+        .filter_map(|tool| tool.get("name").and_then(|value| value.as_str()))
+        .any(|tool_name| tool_name == normalized_name);
 
-    let tool_names: Vec<&str> = vec![
-        "list_agents",
-        "create_agent",
-        "delegate_task_to_agent",
-        "list_tasks",
-        "create_task",
-        "update_task_status",
-        "list_notes",
-        "create_note",
-        "read_note",
-        "list_workspaces",
-        "list_skills",
-    ];
-
-    if !tool_names.contains(&name) {
+    if !known_tool {
         return Err(ServerError::BadRequest(format!("Unknown tool: {}", name)));
     }
 
-    let result = super::mcp_routes::execute_tool_public(&state, name, &args).await;
+    let result = super::mcp_routes::execute_tool_public(&state, normalized_name, &args).await;
     Ok(Json(result))
 }
 

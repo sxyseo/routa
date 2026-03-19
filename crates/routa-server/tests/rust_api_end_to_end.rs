@@ -895,10 +895,7 @@ async fn api_mcp_tools_include_delegate_task_tool() {
         .expect("list mcp tools");
     assert_eq!(list_tools.status(), StatusCode::OK);
 
-    let tool_payload: Value = list_tools
-        .json()
-        .await
-        .expect("decode mcp tools response");
+    let tool_payload: Value = list_tools.json().await.expect("decode mcp tools response");
     let tools = tool_payload
         .get("tools")
         .and_then(Value::as_array)
@@ -907,7 +904,10 @@ async fn api_mcp_tools_include_delegate_task_tool() {
         .iter()
         .filter_map(|tool| tool.get("name").and_then(Value::as_str))
         .any(|name| name == "delegate_task_to_agent");
-    assert!(has_delegate, "delegate_task_to_agent should be discoverable");
+    assert!(
+        has_delegate,
+        "delegate_task_to_agent should be discoverable"
+    );
 }
 
 #[tokio::test]
@@ -926,10 +926,7 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
         .await
         .expect("create task");
     assert_eq!(create_task.status(), StatusCode::CREATED);
-    let created_task: Value = create_task
-        .json()
-        .await
-        .expect("decode create task");
+    let created_task: Value = create_task.json().await.expect("decode create task");
     let task_id = created_task["task"]["id"]
         .as_str()
         .expect("task id should exist");
@@ -995,10 +992,7 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
         assert_eq!(data["taskId"].as_str().expect("taskId"), task_id);
         assert!(data.get("agentId").and_then(Value::as_str).is_some());
         assert!(data.get("sessionId").and_then(Value::as_str).is_some());
-        assert_eq!(
-            data["waitMode"].as_str().expect("waitMode"),
-            "immediate"
-        );
+        assert_eq!(data["waitMode"].as_str().expect("waitMode"), "immediate");
         let specialist = data["specialist"].as_str().expect("specialist");
         assert!(specialist == "crafter" || specialist == "CRAFTER");
     } else {
@@ -1014,4 +1008,35 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
             error
         );
     }
+}
+
+#[tokio::test]
+async fn api_mcp_tools_accept_prefixed_tool_name() {
+    let fixture = ApiFixture::new().await;
+
+    let response = fixture
+        .client
+        .post(fixture.endpoint("/api/mcp/tools"))
+        .json(&json!({
+            "name": "routa-coordination_list_agents",
+            "args": {
+                "workspaceId": "default"
+            }
+        }))
+        .send()
+        .await
+        .expect("call prefixed tool");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = response.json().await.expect("decode prefixed tool response");
+    let content = body
+        .get("content")
+        .and_then(Value::as_array)
+        .and_then(|arr| arr.first())
+        .and_then(|item| item.get("text"))
+        .and_then(Value::as_str)
+        .expect("tool response should include text content");
+
+    let agents = serde_json::from_str::<Value>(content).expect("decode agents list");
+    assert!(agents.as_array().is_some(), "expected agents array, got {agents}");
 }

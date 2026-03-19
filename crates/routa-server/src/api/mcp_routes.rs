@@ -21,10 +21,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_stream::StreamExt as _;
 
-use routa_core::orchestration::{DelegateWithSpawnParams, OrchestratorConfig, RoutaOrchestrator};
 use crate::error::ServerError;
 use crate::rpc::RpcRouter;
 use crate::state::AppState;
+use routa_core::orchestration::{DelegateWithSpawnParams, OrchestratorConfig, RoutaOrchestrator};
 
 /// In-memory session store for MCP sessions.
 type McpSessions = Arc<RwLock<HashMap<String, McpSessionData>>>;
@@ -146,7 +146,7 @@ async fn mcp_post(
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
 
-            let result = execute_tool(&state, tool_name, &arguments).await;
+            let result = execute_tool_public(&state, tool_name, &arguments).await;
 
             Ok((
                 response_headers,
@@ -268,7 +268,13 @@ pub async fn execute_tool_public(
     name: &str,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    execute_tool(state, name, args).await
+    execute_tool(state, normalize_tool_name(name), args).await
+}
+
+/// Public accessor for tool name normalization so all MCP entry points
+/// accept the same compatibility aliases.
+pub fn normalize_tool_name_public(name: &str) -> &str {
+    normalize_tool_name(name)
 }
 
 fn build_tool_list(_state: &AppState) -> Vec<serde_json::Value> {
@@ -881,10 +887,9 @@ async fn execute_tool(state: &AppState, name: &str, args: &serde_json::Value) ->
                                 && !session.id.is_empty()
                         }) {
                             resolved_caller_session_id = session.id.clone();
-                        } else if let Some(session) = sessions
-                            .iter()
-                            .find(|session| session.role.as_deref() == Some("ROUTA") && !session.id.is_empty())
-                        {
+                        } else if let Some(session) = sessions.iter().find(|session| {
+                            session.role.as_deref() == Some("ROUTA") && !session.id.is_empty()
+                        }) {
                             resolved_caller_session_id = session.id.clone();
                         }
                     }
@@ -1492,6 +1497,12 @@ async fn execute_tool(state: &AppState, name: &str, args: &serde_json::Value) ->
         },
         _ => tool_result_error(&format!("Unknown tool: {}", name)),
     }
+}
+
+fn normalize_tool_name(name: &str) -> &str {
+    name.strip_prefix("routa-coordination_")
+        .or_else(|| name.strip_prefix("kanban-planning-mcp_"))
+        .unwrap_or(name)
 }
 
 fn tool_result_text(text: &str) -> serde_json::Value {
