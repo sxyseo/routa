@@ -12,18 +12,18 @@ metrics:
   # ══════════════════════════════════════════════════════════════
   
   - name: legacy_hotspot_budget_guard
-    command: python3 -m routa_fitness.file_budgets --config tools/routa-fitness/file_budgets.json --changed-only --overrides-only
+    command: PYTHONPATH=tools/routa-fitness python3 -m routa_fitness.file_budgets --config tools/routa-fitness/file_budgets.json --changed-only --overrides-only
     pattern: "file_budget_violations: 0"
     hard_gate: true
     tier: fast
     description: "已登记的历史热点文件必须满足冻结预算，只允许缩小不允许继续膨胀"
 
   - name: file_line_limit
-    command: python3 -m routa_fitness.file_budgets --config tools/routa-fitness/file_budgets.json --changed-only
+    command: PYTHONPATH=tools/routa-fitness python3 -m routa_fitness.file_budgets --config tools/routa-fitness/file_budgets.json --changed-only
     pattern: "file_budget_violations: 0"
     hard_gate: false
     tier: fast
-    description: "本次变更的代码文件必须满足行数预算；新文件 ≤1000 行，历史超标文件按 HEAD 基线冻结"
+    description: "本次变更的代码文件必须满足行数预算；默认 ≤1000 行，Rust(.rs) ≤800 行，历史超标文件按 HEAD 基线冻结"
 
   - name: function_line_limit
     command: |

@@ -27,6 +27,7 @@ class FileBudgetConfig:
     default_max_lines: int
     include_roots: tuple[str, ...]
     extensions: tuple[str, ...]
+    extension_max_lines: dict[str, int]
     excluded_parts: tuple[str, ...]
     overrides: tuple[BudgetOverride, ...]
 
@@ -56,6 +57,10 @@ def load_config(config_path: Path) -> FileBudgetConfig:
         default_max_lines=int(raw["default_max_lines"]),
         include_roots=tuple(raw.get("include_roots", [])),
         extensions=tuple(raw.get("extensions", [])),
+        extension_max_lines={
+            str(ext): int(limit)
+            for ext, limit in raw.get("extension_max_lines", {}).items()
+        },
         excluded_parts=tuple(raw.get("excluded_parts", [])),
         overrides=overrides,
     )
@@ -83,6 +88,9 @@ def resolve_budget(relative_path: str, config: FileBudgetConfig) -> tuple[int, s
     for override in config.overrides:
         if relative_path == override.path:
             return override.max_lines, override.reason
+    extension = Path(relative_path).suffix
+    if extension in config.extension_max_lines:
+        return config.extension_max_lines[extension], ""
     return config.default_max_lines, ""
 
 

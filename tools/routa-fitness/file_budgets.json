@@ -2,12 +2,11 @@
   "default_max_lines": 1000,
   "include_roots": ["src", "apps", "crates"],
   "extensions": [".ts", ".tsx", ".rs"],
+  "extension_max_lines": {
+    ".rs": 800,
+    ".ts": 1000,
+    ".tsx": 1000
+  },
   "excluded_parts": ["/node_modules/", "/target/", "/.next/", "/_next/", "/bundled/"],
-  "overrides": [
-    {
-      "path": "crates/routa-cli/src/commands/review.rs",
-      "max_lines": 3010,
-      "reason": "Legacy hotspot is frozen until the review command is split into submodules"
-    }
-  ]
+  "overrides": []
 }
