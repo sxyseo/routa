@@ -107,7 +107,7 @@ jobs:
             echo "| Fitness CI | ${{ steps.fitness.outcome == 'success' && '✅' || '❌' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -f .artifacts/fitness-report.json ]; then
-            python3 -c 'import json; from pathlib import Path; payload=json.loads(Path(".artifacts/fitness-report.json").read_text(encoding="utf-8")); print(""); print(f"- Final score: {payload.get(\"final_score\", 0):.1f}"); print(f"- Hard gate blocked: {payload.get(\"hard_gate_blocked\", False)}"); print(f"- Score blocked: {payload.get(\"score_blocked\", False)}"); [print(f"- {dimension[\"name\"]}: score={dimension[\"score\"]:.1f} passed={dimension[\"passed\"]}/{dimension[\"total\"]}") for dimension in payload.get("dimensions", [])]' >> "$GITHUB_STEP_SUMMARY"
+            python3 -c 'import json; from pathlib import Path; payload=json.loads(Path(".artifacts/fitness-report.json").read_text(encoding="utf-8")); print(""); print("- Final score: {:.1f}".format(payload.get("final_score", 0))); print("- Hard gate blocked: {}".format(payload.get("hard_gate_blocked", False))); print("- Score blocked: {}".format(payload.get("score_blocked", False))); [print("- {}: score={:.1f} passed={}/{}".format(dimension["name"], dimension["score"], dimension["passed"], dimension["total"])) for dimension in payload.get("dimensions", [])]' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload fitness artifact
