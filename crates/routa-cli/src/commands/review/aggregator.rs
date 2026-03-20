@@ -2,7 +2,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::shared::{SecurityRootFinding, SecuritySpecialistOutput, SecuritySpecialistReport};
+use super::shared::{
+    SecurityCandidate, SecurityCandidateBucket, SecurityEvidencePack, SecurityRootFinding,
+    SecuritySpecialistOutput, SecuritySpecialistReport,
+};
 
 pub(crate) fn parse_specialist_output(raw_output: &str) -> Option<SecuritySpecialistOutput> {
     let trimmed = raw_output.trim();
@@ -130,4 +133,106 @@ fn max_severity(current: &str, candidate: &str) -> String {
     } else {
         current.to_string()
     }
+}
+
+pub(crate) fn group_candidates_by_category(
+    candidates: Vec<SecurityCandidate>,
+) -> Vec<SecurityCandidateBucket> {
+    let mut buckets: HashMap<String, Vec<SecurityCandidate>> = HashMap::new();
+    for candidate in candidates {
+        let key = candidate.category.trim().to_lowercase();
+        if key.is_empty() {
+            continue;
+        }
+        buckets.entry(key).or_default().push(candidate);
+    }
+
+    let mut grouped = buckets
+        .into_iter()
+        .map(|(category, mut candidates)| {
+            candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.severity.clone()));
+            SecurityCandidateBucket {
+                category,
+                candidate_count: candidates.len(),
+                candidates,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    grouped.sort_by_key(|bucket| std::cmp::Reverse(bucket.candidate_count));
+    grouped
+}
+
+pub(crate) fn build_security_evidence_pack(
+    heuristic_candidates: &[SecurityCandidate],
+    semgrep_candidates: &[SecurityCandidate],
+) -> SecurityEvidencePack {
+    let mut merged = Vec::new();
+    let mut seen = HashSet::new();
+
+    for candidate in heuristic_candidates.iter().chain(semgrep_candidates.iter()) {
+        if candidate.category.trim().is_empty() {
+            continue;
+        }
+        let fingerprint = format!(
+            "{}|{}|{}",
+            candidate.category,
+            candidate.rule_id,
+            candidate.locations.first().cloned().unwrap_or_default()
+        );
+        if seen.insert(fingerprint) {
+            merged.push(candidate.clone());
+        }
+    }
+
+    SecurityEvidencePack {
+        total_candidates: merged.len(),
+        buckets: group_candidates_by_category(merged),
+    }
+}
+
+pub(crate) fn build_pre_merged_findings_from_evidence(
+    security_guidance: &Option<String>,
+    evidence_pack: &SecurityEvidencePack,
+) -> Vec<SecurityRootFinding> {
+    let mut findings = Vec::new();
+
+    for bucket in &evidence_pack.buckets {
+        for candidate in &bucket.candidates {
+            findings.push(SecurityRootFinding {
+                title: format!("{}: {}", bucket.category, candidate.rule_id),
+                severity: candidate.severity.clone(),
+                root_cause: if bucket.category.is_empty() {
+                    candidate.summary.clone()
+                } else {
+                    format!("{} in changed code path", bucket.category)
+                },
+                affected_locations: candidate.locations.clone(),
+                attack_path: candidate.summary.clone(),
+                why_it_matters: candidate.summary.clone(),
+                guardrails_present: Vec::new(),
+                recommended_fix: "Validate with a scoped specialist before finalizing".to_string(),
+                related_variants: Vec::new(),
+                confidence: Some("LOW".to_string()),
+            });
+        }
+    }
+
+    if security_guidance.is_some() {
+        findings.push(SecurityRootFinding {
+            title: "Security guidance loaded".to_string(),
+            severity: "LOW".to_string(),
+            root_cause: "Security guidance was loaded and treated as a workflow hint".to_string(),
+            affected_locations: Vec::new(),
+            attack_path: "Security policy and guidance were included in payload".to_string(),
+            why_it_matters: "Policy references can change review confidence and required depth"
+                .to_string(),
+            guardrails_present: Vec::new(),
+            recommended_fix: "Keep guidance aligned with current security policy".to_string(),
+            related_variants: Vec::new(),
+            confidence: Some("LOW".to_string()),
+        });
+    }
+
+    findings
 }

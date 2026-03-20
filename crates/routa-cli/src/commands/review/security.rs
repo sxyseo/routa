@@ -1,6 +1,6 @@
 //! `routa review` — read-only Specialist-backed code review analysis.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,15 +10,17 @@ use routa_core::state::AppState;
 use routa_core::workflow::specialist::{SpecialistDef, SpecialistLoader};
 use serde_json::Value;
 
-use super::aggregator::{merge_specialist_findings, parse_specialist_output};
+use super::aggregator::{
+    build_pre_merged_findings_from_evidence, build_security_evidence_pack, group_candidates_by_category,
+    merge_specialist_findings, parse_specialist_output,
+};
 use super::acp_runner::{call_security_specialist_via_acp, resolve_security_provider};
 use super::output::{print_pretty_json, print_review_result, truncate};
 use super::shared::{
     build_review_input_payload, find_command_in_path, load_dotenv, load_specialist_by_id,
     resolve_repo_root, ReviewAnalyzeOptions, SecurityCandidate,
-    SecurityCandidateBucket, SecurityCandidateWorkload, SecurityDispatchInput, SecurityEvidencePack,
-    SecurityReviewPayload, SecurityRootFinding, SecuritySpecialistDispatch,
-    SecuritySpecialistReport, ToolTrace,
+    SecurityCandidateWorkload, SecurityDispatchInput, SecurityReviewPayload,
+    SecuritySpecialistDispatch, SecuritySpecialistReport, ToolTrace,
     SECURITY_DISPATCH_MAX_SPECIALISTS, SECURITY_DISPATCH_OUTPUT_PREVIEW_CHARS,
     SECURITY_REVIEW_HOME_DIR, SECURITY_REVIEW_VENV_DIR, SECURITY_SEMGREP_RULES_PATH,
 };
@@ -575,29 +577,6 @@ fn load_security_candidates_for_dispatch(
     Ok(specialists)
 }
 
-fn group_candidates_by_category(
-    candidates: Vec<SecurityCandidate>,
-) -> Vec<SecurityCandidateBucket> {
-    let mut buckets: HashMap<String, Vec<SecurityCandidate>> = HashMap::new();
-
-    for candidate in candidates {
-        let category = candidate.category.to_lowercase();
-        buckets.entry(category).or_default().push(candidate);
-    }
-
-    let mut grouped: Vec<SecurityCandidateBucket> = buckets
-        .into_iter()
-        .map(|(category, candidates)| SecurityCandidateBucket {
-            category,
-            candidate_count: candidates.len(),
-            candidates,
-        })
-        .collect();
-
-    grouped.sort_by_key(|bucket| std::cmp::Reverse(bucket.candidate_count));
-    grouped
-}
-
 fn build_security_review_payload(
     repo_root: &Path,
     base: &str,
@@ -643,80 +622,6 @@ fn build_security_review_payload(
         semgrep_candidates,
         fitness_review_context,
     })
-}
-
-fn build_security_evidence_pack(
-    heuristic_candidates: &[SecurityCandidate],
-    semgrep_candidates: &[SecurityCandidate],
-) -> SecurityEvidencePack {
-    let mut merged = Vec::new();
-    let mut seen = HashSet::new();
-
-    for candidate in heuristic_candidates.iter().chain(semgrep_candidates.iter()) {
-        if candidate.category.trim().is_empty() {
-            continue;
-        }
-        let fingerprint = format!(
-            "{}|{}|{}",
-            candidate.category,
-            candidate.rule_id,
-            candidate.locations.first().cloned().unwrap_or_default()
-        );
-        if seen.insert(fingerprint) {
-            merged.push(candidate.clone());
-        }
-    }
-
-    SecurityEvidencePack {
-        total_candidates: merged.len(),
-        buckets: group_candidates_by_category(merged),
-    }
-}
-
-fn build_pre_merged_findings_from_evidence(
-    security_guidance: &Option<String>,
-    evidence_pack: &SecurityEvidencePack,
-) -> Vec<SecurityRootFinding> {
-    let mut findings = Vec::new();
-
-    for bucket in &evidence_pack.buckets {
-        for candidate in &bucket.candidates {
-            findings.push(SecurityRootFinding {
-                title: format!("{}: {}", bucket.category, candidate.rule_id),
-                severity: candidate.severity.clone(),
-                root_cause: if bucket.category.is_empty() {
-                    candidate.summary.clone()
-                } else {
-                    format!("{} in changed code path", bucket.category)
-                },
-                affected_locations: candidate.locations.clone(),
-                attack_path: candidate.summary.clone(),
-                why_it_matters: candidate.summary.clone(),
-                guardrails_present: Vec::new(),
-                recommended_fix: "Validate with a scoped specialist before finalizing".to_string(),
-                related_variants: Vec::new(),
-                confidence: Some("LOW".to_string()),
-            });
-        }
-    }
-
-    if security_guidance.is_some() {
-        findings.push(SecurityRootFinding {
-            title: "Security guidance loaded".to_string(),
-            severity: "LOW".to_string(),
-            root_cause: "Security guidance was loaded and treated as a workflow hint".to_string(),
-            affected_locations: Vec::new(),
-            attack_path: "Security policy and guidance were included in payload".to_string(),
-            why_it_matters: "Policy references can change review confidence and required depth"
-                .to_string(),
-            guardrails_present: Vec::new(),
-            recommended_fix: "Keep guidance aligned with current security policy".to_string(),
-            related_variants: Vec::new(),
-            confidence: Some("LOW".to_string()),
-        });
-    }
-
-    findings
 }
 
 fn note_ast_grep_availability(tool_trace: &mut Vec<ToolTrace>) {
