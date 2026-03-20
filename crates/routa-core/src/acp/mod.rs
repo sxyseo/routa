@@ -172,6 +172,15 @@ impl AcpManager {
         Some(())
     }
 
+    /// Attach a ROUTA agent ID to an existing session record.
+    /// Returns `Some(())` if the session was found, `None` if not found.
+    pub async fn set_routa_agent_id(&self, session_id: &str, routa_agent_id: &str) -> Option<()> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions.get_mut(session_id)?;
+        session.routa_agent_id = Some(routa_agent_id.to_string());
+        Some(())
+    }
+
     /// Delete a session.
     /// Returns `Some(())` if the session was found and deleted, `None` if not found.
     pub async fn delete_session(&self, session_id: &str) -> Option<()> {

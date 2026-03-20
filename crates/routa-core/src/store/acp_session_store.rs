@@ -266,6 +266,26 @@ impl AcpSessionStore {
             .await
     }
 
+    /// Persist or update the ROUTA agent mapping for a session.
+    pub async fn set_routa_agent_id(
+        &self,
+        session_id: &str,
+        routa_agent_id: Option<&str>,
+    ) -> Result<(), ServerError> {
+        let id = session_id.to_string();
+        let routa_agent_id = routa_agent_id.map(|value| value.to_string());
+        self.db
+            .with_conn_async(move |conn| {
+                let now = chrono::Utc::now().timestamp_millis();
+                conn.execute(
+                    "UPDATE acp_sessions SET routa_agent_id = ?1, updated_at = ?2 WHERE id = ?3",
+                    rusqlite::params![routa_agent_id, now, id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
     /// Delete a session (and its history) from the database.
     pub async fn delete(&self, session_id: &str) -> Result<(), ServerError> {
         let id = session_id.to_string();
@@ -515,5 +535,34 @@ mod tests {
             .expect("get failed")
             .expect("exists");
         assert_eq!(s.parent_session_id.as_deref(), Some(parent_id));
+    }
+
+    #[tokio::test]
+    async fn test_set_routa_agent_id() {
+        let (store, session_id) = setup().await;
+
+        store
+            .create(
+                &session_id,
+                "/tmp",
+                "default",
+                Some("claude"),
+                Some("ROUTA"),
+                None,
+            )
+            .await
+            .expect("create failed");
+
+        store
+            .set_routa_agent_id(&session_id, Some("agent-routa-1"))
+            .await
+            .expect("set_routa_agent_id failed");
+
+        let session = store
+            .get(&session_id)
+            .await
+            .expect("get failed")
+            .expect("exists");
+        assert_eq!(session.routa_agent_id.as_deref(), Some("agent-routa-1"));
     }
 }

@@ -9,13 +9,15 @@ use axum::{
 };
 use serde::Deserialize;
 use std::convert::Infallible;
+use std::sync::Arc;
 use tokio_stream::StreamExt as _;
 
 use crate::acp;
 use crate::error::ServerError;
 use crate::state::AppState;
 use routa_core::acp::SessionLaunchOptions;
-use routa_core::orchestration::SpecialistConfig;
+use routa_core::models::agent::{Agent, AgentRole};
+use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator, SpecialistConfig};
 use routa_core::storage::{LocalSessionProvider, SessionRecord};
 
 pub fn router() -> Router<AppState> {
@@ -30,6 +32,94 @@ type AcpSseStream =
 enum AcpResponse {
     Json(Json<serde_json::Value>),
     Sse(Sse<AcpSseStream>),
+}
+
+fn build_coordinator_context_prompt(agent_id: &str, workspace_id: &str, user_request: &str) -> String {
+    format!(
+        "**Your Agent ID:** {}\n**Workspace ID:** {}\n\n## User Request\n\n{}\n",
+        agent_id, workspace_id, user_request
+    )
+}
+
+async fn ensure_routa_agent_registration(
+    state: &AppState,
+    session_id: &str,
+    workspace_id: &str,
+    role: Option<&str>,
+    specialist_id: Option<&str>,
+    existing_routa_agent_id: Option<&str>,
+) -> Result<Option<String>, String> {
+    if role != Some("ROUTA") {
+        return Ok(existing_routa_agent_id.map(|value| value.to_string()));
+    }
+
+    if workspace_id == "default" {
+        state
+            .workspace_store
+            .ensure_default()
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+
+    let mut routa_agent_id = existing_routa_agent_id.map(|value| value.to_string());
+
+    if let Some(existing_id) = routa_agent_id.as_deref() {
+        let existing_agent = state
+            .agent_store
+            .get(existing_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        if existing_agent.is_none() {
+            routa_agent_id = None;
+        }
+    }
+
+    if routa_agent_id.is_none() {
+        let name_prefix = if specialist_id == Some("team-agent-lead") {
+            "team-lead"
+        } else {
+            "routa-coordinator"
+        };
+        let agent = Agent::new(
+            uuid::Uuid::new_v4().to_string(),
+            format!("{}-{}", name_prefix, &session_id[..session_id.len().min(8)]),
+            AgentRole::Routa,
+            workspace_id.to_string(),
+            None,
+            None,
+            None,
+        );
+        state
+            .agent_store
+            .save(&agent)
+            .await
+            .map_err(|error| error.to_string())?;
+        routa_agent_id = Some(agent.id);
+    }
+
+    let acp = Arc::new(state.acp_manager.clone());
+    let orchestrator = RoutaOrchestrator::new(
+        OrchestratorConfig::default(),
+        acp,
+        state.agent_store.clone(),
+        state.task_store.clone(),
+        state.event_bus.clone(),
+    );
+    let routa_agent_id = routa_agent_id.expect("routa agent id must exist for ROUTA session");
+    orchestrator
+        .register_agent_session(&routa_agent_id, session_id)
+        .await;
+    let _ = state
+        .acp_manager
+        .set_routa_agent_id(session_id, &routa_agent_id)
+        .await;
+    state
+        .acp_session_store
+        .set_routa_agent_id(session_id, Some(&routa_agent_id))
+        .await
+        .map_err(|error| error.to_string())?;
+
+    Ok(Some(routa_agent_id))
 }
 
 impl IntoResponse for AcpResponse {
@@ -355,6 +445,34 @@ async fn acp_rpc(
                         tracing::info!("[ACP Route] Session {} persisted to DB", session_id);
                     }
 
+                    let routa_agent_id = match ensure_routa_agent_registration(
+                        &state,
+                        &session_id,
+                        &workspace_id,
+                        role.as_deref(),
+                        specialist_id.as_deref(),
+                        None,
+                    )
+                    .await
+                    {
+                        Ok(agent_id) => agent_id,
+                        Err(error) => {
+                            tracing::error!(
+                                "[ACP Route] Failed to register ROUTA agent for {}: {}",
+                                session_id,
+                                error
+                            );
+                            return Ok(AcpResponse::Json(Json(serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "error": {
+                                    "code": -32000,
+                                    "message": format!("Failed to register ROUTA coordinator: {}", error)
+                                }
+                            }))));
+                        }
+                    };
+
                     // Also persist to local JSONL file for file-level persistence
                     persist_session_to_jsonl(
                         &session_id,
@@ -373,6 +491,7 @@ async fn acp_rpc(
                             "sessionId": session_id,
                             "provider": provider.as_deref().unwrap_or("opencode"),
                             "role": role.as_deref().unwrap_or("CRAFTER"),
+                            "routaAgentId": routa_agent_id,
                         }
                     }))))
                 }
@@ -423,6 +542,8 @@ async fn acp_rpc(
                 prompt_text.len()
             );
 
+            let mut persisted_session = state.acp_session_store.get(&session_id).await.ok().flatten();
+
             // ── Auto-create session if it doesn't exist ────────────────────────
             // Check if session exists
             let session_exists = state.acp_manager.get_session(&session_id).await.is_some();
@@ -437,12 +558,14 @@ async fn acp_rpc(
                 let cwd = params
                     .get("cwd")
                     .and_then(|v| v.as_str())
-                    .unwrap_or(".")
-                    .to_string();
+                    .map(|value| value.to_string())
+                    .or_else(|| persisted_session.as_ref().map(|session| session.cwd.clone()))
+                    .unwrap_or_else(|| ".".to_string());
                 let provider = params
                     .get("provider")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(|s| s.to_string())
+                    .or_else(|| persisted_session.as_ref().and_then(|session| session.provider.clone()));
                 let specialist_id = params
                     .get("specialistId")
                     .and_then(|v| v.as_str())
@@ -453,8 +576,16 @@ async fn acp_rpc(
                 let workspace_id = params
                     .get("workspaceId")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("default")
-                    .to_string();
+                    .map(|value| value.to_string())
+                    .or_else(|| {
+                        persisted_session
+                            .as_ref()
+                            .map(|session| session.workspace_id.clone())
+                    })
+                    .unwrap_or_else(|| "default".to_string());
+                let parent_session_id = persisted_session
+                    .as_ref()
+                    .and_then(|session| session.parent_session_id.clone());
                 let tool_mode = params
                     .get("toolMode")
                     .and_then(|v| v.as_str())
@@ -467,6 +598,7 @@ async fn acp_rpc(
                     .get("role")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_uppercase())
+                    .or_else(|| persisted_session.as_ref().and_then(|session| session.role.clone()))
                     .or_else(|| specialist.as_ref().map(|s| s.role.as_str().to_string()))
                     .or(Some("CRAFTER".to_string()));
                 let launch_options = SessionLaunchOptions {
@@ -487,7 +619,7 @@ async fn acp_rpc(
                         provider.clone(),
                         role.clone(),
                         None, // model
-                        None, // parent_session_id
+                        parent_session_id.clone(),
                         tool_mode,
                         mcp_profile,
                         launch_options,
@@ -510,7 +642,7 @@ async fn acp_rpc(
                                 &workspace_id,
                                 provider.as_deref(),
                                 role.as_deref(),
-                                None,
+                                parent_session_id.as_deref(),
                             )
                             .await
                         {
@@ -527,9 +659,49 @@ async fn acp_rpc(
                             &workspace_id,
                             provider.as_deref(),
                             role.as_deref(),
-                            None,
+                            parent_session_id.as_deref(),
                         )
                         .await;
+
+                        match ensure_routa_agent_registration(
+                            &state,
+                            &session_id,
+                            &workspace_id,
+                            role.as_deref(),
+                            specialist_id.as_deref(),
+                            persisted_session
+                                .as_ref()
+                                .and_then(|session| session.routa_agent_id.as_deref()),
+                        )
+                        .await
+                        {
+                            Ok(routa_agent_id) => {
+                                if let Some(agent_id) = routa_agent_id {
+                                    tracing::info!(
+                                        "[ACP Route] Registered ROUTA coordinator {} for session {}",
+                                        agent_id,
+                                        session_id
+                                    );
+                                }
+                            }
+                            Err(error) => {
+                                tracing::error!(
+                                    "[ACP Route] Failed to register ROUTA coordinator for {}: {}",
+                                    session_id,
+                                    error
+                                );
+                                return Ok(AcpResponse::Json(Json(serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "error": {
+                                        "code": -32000,
+                                        "message": format!("Failed to register ROUTA coordinator: {}", error)
+                                    }
+                                }))));
+                            }
+                        }
+
+                        persisted_session = state.acp_session_store.get(&session_id).await.ok().flatten();
                     }
                     Err(e) => {
                         tracing::error!("[ACP Route] Failed to auto-create session: {}", e);
@@ -546,14 +718,72 @@ async fn acp_rpc(
             }
 
             let session_record = state.acp_manager.get_session(&session_id).await;
-            let first_prompt_sent = state
-                .acp_session_store
-                .get(&session_id)
-                .await
-                .ok()
-                .flatten()
+            if persisted_session.is_none() {
+                persisted_session = state.acp_session_store.get(&session_id).await.ok().flatten();
+            }
+
+            let session_role = session_record
+                .as_ref()
+                .and_then(|session| session.role.clone())
+                .or_else(|| persisted_session.as_ref().and_then(|session| session.role.clone()));
+            let session_workspace_id = session_record
+                .as_ref()
+                .map(|session| session.workspace_id.clone())
+                .or_else(|| persisted_session.as_ref().map(|session| session.workspace_id.clone()))
+                .unwrap_or_else(|| "default".to_string());
+            let session_specialist_id = session_record
+                .as_ref()
+                .and_then(|session| session.specialist_id.clone());
+
+            let routa_agent_id = match ensure_routa_agent_registration(
+                &state,
+                &session_id,
+                &session_workspace_id,
+                session_role.as_deref(),
+                session_specialist_id.as_deref(),
+                session_record
+                    .as_ref()
+                    .and_then(|session| session.routa_agent_id.as_deref())
+                    .or_else(|| {
+                        persisted_session
+                            .as_ref()
+                            .and_then(|session| session.routa_agent_id.as_deref())
+                    }),
+            )
+            .await
+            {
+                Ok(agent_id) => agent_id,
+                Err(error) => {
+                    tracing::error!(
+                        "[ACP Route] Failed to ensure ROUTA registration for {}: {}",
+                        session_id,
+                        error
+                    );
+                    return Ok(AcpResponse::Json(Json(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32000,
+                            "message": format!("Failed to ensure ROUTA coordinator: {}", error)
+                        }
+                    }))));
+                }
+            };
+
+            let first_prompt_sent = persisted_session
+                .as_ref()
                 .map(|row| row.first_prompt_sent)
                 .unwrap_or(false);
+
+            if !first_prompt_sent && session_role.as_deref() == Some("ROUTA") {
+                if let Some(agent_id) = routa_agent_id.as_deref() {
+                    prompt_text = build_coordinator_context_prompt(
+                        agent_id,
+                        &session_workspace_id,
+                        &prompt_text,
+                    );
+                }
+            }
 
             if let Some(session) = &session_record {
                 if !first_prompt_sent {
