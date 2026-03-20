@@ -185,6 +185,7 @@ def test_resolve_paths_filters_to_overrides_when_requested(tmp_path, monkeypatch
         config="unused",
         repo_root=".",
         changed_only=True,
+        base="HEAD~2",
         overrides_only=True,
         paths=[],
     )
@@ -199,3 +200,27 @@ def test_resolve_paths_filters_to_overrides_when_requested(tmp_path, monkeypatch
     resolved = _resolve_paths(args, repo_root, make_config())
 
     assert resolved == ["crates/routa-server/src/application/tasks.rs"]
+
+
+def test_resolve_paths_passes_base_to_list_changed_files(tmp_path, monkeypatch):
+    repo_root = tmp_path
+    captured = {"base": None}
+    args = argparse.Namespace(
+        config="unused",
+        repo_root=".",
+        changed_only=True,
+        base="HEAD~5",
+        overrides_only=False,
+        paths=[],
+    )
+
+    def _mock_list_changed_files(_repo_root, base):
+        captured["base"] = base
+        return ["src/app.ts"]
+
+    monkeypatch.setattr("routa_fitness.file_budgets.list_changed_files", _mock_list_changed_files)
+
+    resolved = _resolve_paths(args, repo_root, make_config())
+
+    assert resolved == ["src/app.ts"]
+    assert captured["base"] == "HEAD~5"

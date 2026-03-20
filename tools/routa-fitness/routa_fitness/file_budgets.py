@@ -114,7 +114,7 @@ def count_head_lines(repo_root: Path, relative_path: str) -> int | None:
     return len(result.stdout.splitlines())
 
 
-def list_changed_files(repo_root: Path) -> list[str]:
+def list_changed_files(repo_root: Path, base: str = "HEAD") -> list[str]:
     """List changed files from git."""
     result = subprocess.run(
         [
@@ -122,7 +122,7 @@ def list_changed_files(repo_root: Path) -> list[str]:
             "diff",
             "--name-only",
             "--diff-filter=ACMR",
-            "HEAD",
+            base,
             "--",
             "src",
             "apps",
@@ -192,6 +192,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Only evaluate files changed against HEAD.",
     )
     parser.add_argument(
+        "--base",
+        default="HEAD",
+        help="Git base ref used by --changed-only.",
+    )
+    parser.add_argument(
         "--overrides-only",
         action="store_true",
         help="Only evaluate paths declared in config overrides.",
@@ -206,7 +211,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def _resolve_paths(args: argparse.Namespace, repo_root: Path, config: FileBudgetConfig) -> list[str]:
     if args.changed_only:
-        paths = list_changed_files(repo_root)
+        paths = list_changed_files(repo_root, args.base)
         if args.overrides_only:
             override_paths = {override.path for override in config.overrides}
             return [path for path in paths if path in override_paths]

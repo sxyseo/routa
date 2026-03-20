@@ -1086,11 +1086,7 @@ export async function POST(request: NextRequest) {
       {
         const sessionRecord = store.getSession(sessionId);
         if (sessionRecord?.specialistSystemPrompt && !sessionRecord.firstPromptSent) {
-          if (sessionRecord.provider === "claude-code-sdk") {
-            console.log(
-              `[ACP Route] Using SDK systemPrompt for specialist ${sessionRecord.specialistId} in session ${sessionId}`
-            );
-          } else {
+          if (sessionRecord.provider !== "claude-code-sdk") {
             promptText = `${sessionRecord.specialistSystemPrompt}\n\n---\n\n${promptText}`;
           }
           store.markFirstPromptSent(sessionId);

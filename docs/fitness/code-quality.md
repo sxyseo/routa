@@ -12,14 +12,14 @@ metrics:
   # ══════════════════════════════════════════════════════════════
   
   - name: legacy_hotspot_budget_guard
-    command: PYTHONPATH=tools/routa-fitness python3 -m routa_fitness.file_budgets --config tools/routa-fitness/file_budgets.json --changed-only --overrides-only
+    command: PYTHONPATH=tools/routa-fitness python3 -m routa_fitness.file_budgets --config tools/routa-fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
     pattern: "file_budget_violations: 0"
     hard_gate: true
     tier: fast
     description: "已登记的历史热点文件必须满足冻结预算，只允许缩小不允许继续膨胀"
 
   - name: file_line_limit
-    command: PYTHONPATH=tools/routa-fitness python3 -m routa_fitness.file_budgets --config tools/routa-fitness/file_budgets.json --changed-only
+    command: PYTHONPATH=tools/routa-fitness python3 -m routa_fitness.file_budgets --config tools/routa-fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
     pattern: "file_budget_violations: 0"
     hard_gate: false
     tier: fast
@@ -194,7 +194,8 @@ metrics:
 
   - name: console_log_check
     command: |
-      git diff --unified=0 HEAD -- src apps 2>/dev/null | \
+      base_ref="${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
+      git diff --unified=0 "$base_ref" -- src apps 2>/dev/null | \
         grep -E '^\+[^+].*console\.(log|debug)' | \
         grep -vE 'test|spec|\.test\.' | wc -l | \
       awk '{print "new_console_log_count:", $1}'
