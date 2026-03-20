@@ -39,6 +39,7 @@ target/
 .DS_Store
 *.pem
 scripts/__pycache__/
+tmp/
 
 # Debug
 npm-debug.log*
