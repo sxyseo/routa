@@ -25,6 +25,7 @@ def create_server(project_root: Path | None = None):
     @mcp.tool()
     def run_fitness(
         tier: str | None = None,
+        scope: str | None = None,
         parallel: bool = False,
         dry_run: bool = False,
     ) -> dict:
@@ -32,44 +33,27 @@ def create_server(project_root: Path | None = None):
 
         Args:
             tier: Filter by tier (fast, normal, deep). None runs all.
+            scope: Filter by execution scope (local, ci, staging, prod_observation).
             parallel: Run metrics in parallel.
             dry_run: Show what would run without executing.
         """
-        from routa_fitness.evidence import load_dimensions
-        from routa_fitness.governance import GovernancePolicy, filter_dimensions
-        from routa_fitness.model import Tier
-        from routa_fitness.runners.shell import ShellRunner
-        from routa_fitness.scoring import score_dimension, score_report
+        from routa_fitness.engine import run_fitness_report
+        from routa_fitness.governance import GovernancePolicy
+        from routa_fitness.model import ExecutionScope, Tier
+        from routa_fitness.presets import get_project_preset
+        from routa_fitness.reporting import report_to_dict
 
-        fitness_dir = project_root / "docs" / "fitness"
         tier_filter = Tier(tier) if tier else None
-        policy = GovernancePolicy(tier_filter=tier_filter, parallel=parallel, dry_run=dry_run)
+        execution_scope = ExecutionScope(scope) if scope else None
+        policy = GovernancePolicy(
+            tier_filter=tier_filter,
+            parallel=parallel,
+            dry_run=dry_run,
+            execution_scope=execution_scope,
+        )
 
-        dimensions = filter_dimensions(load_dimensions(fitness_dir), policy)
-        runner = ShellRunner(project_root)
-
-        dim_scores = []
-        for dim in dimensions:
-            results = runner.run_batch(dim.metrics, parallel=parallel, dry_run=dry_run)
-            dim_scores.append(score_dimension(results, dim.name, dim.weight))
-
-        report = score_report(dim_scores)
-        return {
-            "final_score": report.final_score,
-            "hard_gate_blocked": report.hard_gate_blocked,
-            "score_blocked": report.score_blocked,
-            "dimensions": [
-                {
-                    "name": ds.dimension,
-                    "weight": ds.weight,
-                    "score": ds.score,
-                    "passed": ds.passed,
-                    "total": ds.total,
-                    "hard_gate_failures": ds.hard_gate_failures,
-                }
-                for ds in report.dimensions
-            ],
-        }
+        report, _ = run_fitness_report(project_root, policy, get_project_preset())
+        return report_to_dict(report)
 
     @mcp.tool()
     def get_dimension_status(dimension: str) -> dict:
@@ -78,19 +62,20 @@ def create_server(project_root: Path | None = None):
         Args:
             dimension: Dimension name (e.g. 'code_quality', 'security').
         """
-        from routa_fitness.evidence import load_dimensions
-        from routa_fitness.runners.shell import ShellRunner
-        from routa_fitness.scoring import score_dimension
+        from routa_fitness.engine import run_fitness_report
+        from routa_fitness.governance import GovernancePolicy
+        from routa_fitness.presets import get_project_preset
 
-        fitness_dir = project_root / "docs" / "fitness"
-        dimensions = load_dimensions(fitness_dir)
-        runner = ShellRunner(project_root)
+        report, _ = run_fitness_report(
+            project_root,
+            GovernancePolicy(),
+            get_project_preset(),
+        )
 
-        for dim in dimensions:
-            if dim.name == dimension:
-                results = runner.run_batch(dim.metrics)
-                ds = score_dimension(results, dim.name, dim.weight)
+        for ds in report.dimensions:
+            if ds.dimension == dimension:
                 return {
+                    "final_score": report.final_score,
                     "name": ds.dimension,
                     "weight": ds.weight,
                     "score": ds.score,
@@ -98,7 +83,13 @@ def create_server(project_root: Path | None = None):
                     "total": ds.total,
                     "hard_gate_failures": ds.hard_gate_failures,
                     "results": [
-                        {"name": r.metric_name, "passed": r.passed, "tier": r.tier.value}
+                        {
+                            "name": r.metric_name,
+                            "passed": r.passed,
+                            "state": r.state.value if r.state else None,
+                            "tier": r.tier.value,
+                            "hard_gate": r.hard_gate,
+                        }
                         for r in ds.results
                     ],
                 }

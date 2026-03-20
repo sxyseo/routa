@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import fnmatch
-import subprocess
 import sys
 from pathlib import Path
 
 from routa_fitness.evidence import load_dimensions, validate_weights
-from routa_fitness.governance import GovernancePolicy, enforce, filter_dimensions
-from routa_fitness.model import Dimension, ExecutionScope, FitnessReport, Metric, ResultState, Tier
+from routa_fitness.engine import collect_changed_files, matches_changed_files, run_fitness_report
+from routa_fitness.governance import GovernancePolicy, enforce
+from routa_fitness.model import ExecutionScope, Metric, ResultState, Tier
+from routa_fitness.presets import get_project_preset
+from routa_fitness.reporting import report_to_dict, write_report_output
 from routa_fitness.review_trigger import (
     collect_changed_files as collect_review_changed_files,
     collect_diff_stats,
@@ -20,8 +21,6 @@ from routa_fitness.review_trigger import (
 )
 from routa_fitness.reporters.terminal import TerminalReporter
 from routa_fitness.runners.graph import GraphRunner
-from routa_fitness.runners.shell import ShellRunner
-from routa_fitness.scoring import score_dimension, score_report
 
 
 def _find_project_root() -> Path:
@@ -35,7 +34,7 @@ def _find_project_root() -> Path:
 
 def _find_fitness_dir(project_root: Path) -> Path:
     """Locate the docs/fitness/ directory relative to project root."""
-    fitness_dir = project_root / "docs" / "fitness"
+    fitness_dir = get_project_preset().fitness_dir(project_root)
     if not fitness_dir.is_dir():
         print(f"Error: fitness directory not found at {fitness_dir}")
         sys.exit(1)
@@ -44,7 +43,7 @@ def _find_fitness_dir(project_root: Path) -> Path:
 
 def _find_review_trigger_config(project_root: Path) -> Path:
     """Locate the default review-trigger config."""
-    config_path = project_root / "docs" / "fitness" / "review-triggers.yaml"
+    config_path = get_project_preset().fitness_dir(project_root) / "review-triggers.yaml"
     if not config_path.is_file():
         print(f"Error: review-trigger config not found at {config_path}")
         sys.exit(1)
@@ -53,49 +52,6 @@ def _find_review_trigger_config(project_root: Path) -> Path:
 
 def _print_json(data: dict) -> None:
     print(json.dumps(data, indent=2, ensure_ascii=False))
-
-
-def _report_to_dict(report: FitnessReport) -> dict:
-    """Serialize a fitness report into a stable JSON-friendly structure."""
-    return {
-        "final_score": report.final_score,
-        "hard_gate_blocked": report.hard_gate_blocked,
-        "score_blocked": report.score_blocked,
-        "dimensions": [
-            {
-                "name": ds.dimension,
-                "weight": ds.weight,
-                "score": ds.score,
-                "passed": ds.passed,
-                "total": ds.total,
-                "hard_gate_failures": ds.hard_gate_failures,
-                "results": [
-                    {
-                        "name": result.metric_name,
-                        "passed": result.passed,
-                        "state": result.state.value if result.state else None,
-                        "tier": result.tier.value,
-                        "hard_gate": result.hard_gate,
-                        "duration_ms": result.duration_ms,
-                        "output": result.output,
-                    }
-                    for result in ds.results
-                ],
-            }
-            for ds in report.dimensions
-        ],
-    }
-
-
-def _write_output(path: str | None, payload: dict) -> None:
-    """Write JSON payload to a file or stdout when requested."""
-    if not path:
-        return
-    serialized = json.dumps(payload, indent=2, ensure_ascii=False)
-    if path == "-":
-        print(serialized)
-        return
-    Path(path).write_text(serialized + "\n", encoding="utf-8")
 
 
 def _print_graph_impact(result: dict) -> None:
@@ -182,152 +138,12 @@ def _print_review_trigger_report(report: dict) -> None:
         print("Human review required: no")
 
 
-def _collect_changed_files(project_root: Path, base: str) -> list[str]:
-    files: list[str] = []
-
-    commands = [
-        ["git", "diff", "--name-only", "--diff-filter=ACMR", base],
-        ["git", "diff", "--name-only", "--diff-filter=ACMR"],
-        ["git", "ls-files", "--others", "--exclude-standard"],
-    ]
-
-    for command in commands:
-        result = subprocess.run(
-            command,
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        files.extend(line.strip() for line in result.stdout.splitlines() if line.strip())
-
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for file_path in files:
-        if file_path.startswith(
-            (
-                "tmp/",
-                "docs/",
-                ".routa-fitness/",
-                ".code-review-graph/",
-                "node_modules/",
-            )
-        ):
-            continue
-        if file_path not in seen:
-            seen.add(file_path)
-            deduped.append(file_path)
-    return deduped
-
-
 def _domains_from_files(files: list[str]) -> set[str]:
-    domains: set[str] = set()
-    config_files = {
-        "package.json",
-        "package-lock.json",
-        "Cargo.toml",
-        "Cargo.lock",
-        "api-contract.yaml",
-        "eslint.config.mjs",
-        "tsconfig.json",
-        "pyproject.toml",
-        "tools/routa-fitness/file_budgets.json",
-    }
-    for file_path in files:
-        suffix = Path(file_path).suffix.lower()
-        name = Path(file_path).name
-        lowered = file_path.lower()
-        if suffix == ".rs" or lowered.startswith("crates/"):
-            domains.add("rust")
-        if suffix in {".ts", ".tsx", ".js", ".jsx", ".css", ".scss"} or lowered.startswith(
-            ("src/", "apps/")
-        ):
-            domains.add("web")
-        if suffix == ".py" or lowered.startswith("tools/routa-fitness/"):
-            domains.add("python")
-        if file_path in config_files or name in config_files:
-            domains.add("config")
-    return domains
+    return get_project_preset().domains_from_files(files)
 
 
 def _metric_domains(metric: Metric) -> set[str]:
-    if metric.scope:
-        return set(metric.scope)
-
-    command = metric.command.lower()
-    domains: set[str] = set()
-
-    if "cargo " in command or "clippy" in command or "rust" in command:
-        domains.add("rust")
-    if any(
-        token in command
-        for token in (
-            "npm ",
-            "npx ",
-            "eslint",
-            "vitest",
-            "playwright",
-            "jscpd",
-            "dependency-cruiser",
-            "ast-grep",
-            " semgrep",
-            "semgrep ",
-        )
-    ):
-        domains.add("web")
-    if "python" in command or "pytest" in command or "routa_fitness" in command:
-        domains.add("python")
-    if "audit" in command:
-        domains.add("config")
-
-    if not domains:
-        domains.add("global")
-    return domains
-
-
-def _matches_changed_files(metric: Metric, changed_files: list[str], domains: set[str]) -> bool:
-    if metric.run_when_changed:
-        return any(
-            fnmatch.fnmatch(changed_file, pattern)
-            for changed_file in changed_files
-            for pattern in metric.run_when_changed
-        )
-    if not domains:
-        return False
-    if "config" in domains:
-        return True
-    metric_domains = _metric_domains(metric)
-    return "global" in metric_domains or bool(metric_domains.intersection(domains))
-
-
-def _filter_dimensions_for_incremental(
-    dimensions: list[Dimension],
-    changed_files: list[str],
-    domains: set[str],
-) -> list[Dimension]:
-    if not changed_files:
-        return []
-    if "config" in domains:
-        return dimensions
-
-    filtered_dimensions: list[Dimension] = []
-    for dimension in dimensions:
-        filtered_metrics = []
-        for metric in dimension.metrics:
-            if _matches_changed_files(metric, changed_files, domains):
-                filtered_metrics.append(metric)
-        if filtered_metrics:
-            filtered_dimensions.append(
-                Dimension(
-                    name=dimension.name,
-                    weight=dimension.weight,
-                    threshold_pass=dimension.threshold_pass,
-                    threshold_warn=dimension.threshold_warn,
-                    metrics=filtered_metrics,
-                    source_file=dimension.source_file,
-                )
-            )
-    return filtered_dimensions
+    return get_project_preset().metric_domains(metric)
 
 
 def _collect_run_files(args: argparse.Namespace, project_root: Path) -> list[str]:
@@ -335,14 +151,15 @@ def _collect_run_files(args: argparse.Namespace, project_root: Path) -> list[str
     if explicit_files:
         return explicit_files
     if args.changed_only:
-        return _collect_changed_files(project_root, args.base)
+        return collect_changed_files(project_root, args.base)
     return []
 
 
 def cmd_run(args: argparse.Namespace) -> int:
     """Run fitness checks (main command)."""
     project_root = _find_project_root()
-    fitness_dir = _find_fitness_dir(project_root)
+    _find_fitness_dir(project_root)
+    preset = get_project_preset()
 
     tier_filter = Tier(args.tier) if args.tier else None
     execution_scope = ExecutionScope(args.scope) if args.scope else None
@@ -361,15 +178,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         parallel=policy.parallel,
     )
 
-    dimensions = load_dimensions(fitness_dir)
-    dimensions = filter_dimensions(dimensions, policy)
-
     changed_files = _collect_run_files(args, project_root)
-    runner_env: dict[str, str] = {}
     if args.changed_only or changed_files:
         if args.changed_only and not changed_files:
             print("No changed files detected; skipping fitness run.")
-            _write_output(
+            write_report_output(
                 args.output,
                 {
                     "final_score": 0.0,
@@ -380,43 +193,34 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
             return 0
 
-        changed_domains = _domains_from_files(changed_files)
+        changed_domains = preset.domains_from_files(changed_files)
         print(
             f"\nIncremental mode: base={args.base}, changed_files={len(changed_files)}, domains={','.join(sorted(changed_domains)) or 'none'}"
         )
+    report, dimensions = run_fitness_report(
+        project_root,
+        policy,
+        preset,
+        changed_files=changed_files or None,
+        base=args.base,
+    )
 
-        dimensions = _filter_dimensions_for_incremental(dimensions, changed_files, changed_domains)
-        if not dimensions:
-            print("No metrics matched changed domains; skipping fitness run.")
-            _write_output(
-                args.output,
-                {
-                    "final_score": 0.0,
-                    "hard_gate_blocked": False,
-                    "score_blocked": False,
-                    "dimensions": [],
-                },
-            )
-            return 0
+    if not dimensions:
+        print("No metrics matched the current run filters; skipping fitness run.")
+        write_report_output(
+            args.output,
+            {
+                "final_score": 0.0,
+                "hard_gate_blocked": False,
+                "score_blocked": False,
+                "dimensions": [],
+            },
+        )
+        return 0
 
-        runner_env = {
-            "ROUTA_FITNESS_CHANGED_ONLY": "1",
-            "ROUTA_FITNESS_CHANGED_BASE": args.base,
-            "ROUTA_FITNESS_CHANGED_FILES": "\n".join(changed_files),
-        }
-
-    runner = ShellRunner(project_root, env_overrides=runner_env)
-    dimension_scores = []
-
-    for dim in dimensions:
+    for dim, ds in zip(dimensions, report.dimensions):
         print(f"\n## {dim.name.upper()} (weight: {dim.weight}%)")
         print(f"   Source: {dim.source_file}")
-
-        results = runner.run_batch(
-            dim.metrics, parallel=policy.parallel, dry_run=policy.dry_run
-        )
-        ds = score_dimension(results, dim.name, dim.weight)
-        dimension_scores.append(ds)
 
         for result in ds.results:
             state_labels = {
@@ -442,9 +246,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         if ds.total > 0:
             print(f"   Score: {ds.score:.0f}%")
 
-    report = score_report(dimension_scores, min_score=policy.min_score)
     reporter.print_footer(report)
-    _write_output(args.output, _report_to_dict(report))
+    write_report_output(args.output, report_to_dict(report))
 
     return enforce(report, policy)
 

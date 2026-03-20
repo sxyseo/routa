@@ -1,13 +1,10 @@
 """Tests for routa_fitness.cli."""
 
-from routa_fitness.cli import (
-    _domains_from_files,
-    _matches_changed_files,
-    _metric_domains,
-    _report_to_dict,
-    build_parser,
-)
+from routa_fitness.cli import _domains_from_files, _metric_domains, build_parser
+from routa_fitness.engine import matches_changed_files
 from routa_fitness.model import ExecutionScope, FitnessReport, Metric, MetricResult, ResultState, Tier
+from routa_fitness.presets import get_project_preset
+from routa_fitness.reporting import report_to_dict
 
 
 def test_parser_run_defaults():
@@ -225,13 +222,14 @@ def test_matches_changed_files_uses_run_when_changed():
         command="echo ok",
         run_when_changed=["src/instrumentation.ts", "crates/routa-server/src/telemetry/**"],
     )
-    assert _matches_changed_files(metric, ["src/instrumentation.ts"], set()) is True
-    assert _matches_changed_files(metric, ["src/app/page.tsx"], {"web"}) is False
+    preset = get_project_preset()
+    assert matches_changed_files(metric, ["src/instrumentation.ts"], set(), preset) is True
+    assert matches_changed_files(metric, ["src/app/page.tsx"], {"web"}, preset) is False
 
 
 def test_matches_changed_files_falls_back_to_domains():
     metric = Metric(name="lint", command="npm run lint", execution_scope=ExecutionScope.LOCAL)
-    assert _matches_changed_files(metric, ["src/app/page.tsx"], {"web"}) is True
+    assert matches_changed_files(metric, ["src/app/page.tsx"], {"web"}, get_project_preset()) is True
 
 
 def test_report_to_dict_includes_result_state():
@@ -258,5 +256,5 @@ def test_report_to_dict_includes_result_state():
             ],
         })()
     )
-    payload = _report_to_dict(report)
+    payload = report_to_dict(report)
     assert payload["dimensions"][0]["results"][0]["state"] == "waived"

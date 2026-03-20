@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import sys
-from dataclasses import asdict
 
 from routa_fitness.model import FitnessReport
+from routa_fitness.reporting import report_to_dict
 
 
 class JsonReporter:
@@ -20,11 +19,7 @@ class JsonReporter:
             file: File-like object to write to (defaults to stdout).
         """
         out = file or sys.stdout
-        data = asdict(report)
-        # Convert Tier enums to strings
-        for dim in data.get("dimensions", []):
-            for result in dim.get("results", []):
-                if hasattr(result.get("tier"), "value"):
-                    result["tier"] = result["tier"].value
-        json.dump(data, out, indent=2, default=str)
+        import json
+
+        json.dump(report_to_dict(report), out, indent=2, ensure_ascii=False)
         out.write("\n")
