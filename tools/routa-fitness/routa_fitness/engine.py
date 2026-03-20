@@ -6,8 +6,8 @@ import fnmatch
 import subprocess
 from pathlib import Path
 
-from routa_fitness.evidence import load_dimensions
 from routa_fitness.governance import GovernancePolicy, filter_dimensions
+from routa_fitness.loaders import load_dimensions
 from routa_fitness.model import Dimension, FitnessReport, Metric
 from routa_fitness.presets.base import ProjectPreset
 from routa_fitness.runners.shell import ShellRunner

@@ -31,6 +31,17 @@ module.exports = {
         path: "^src/client",
       },
     },
+    {
+      name: "no-api-to-client",
+      comment: "API route handlers must not depend on client presentation modules.",
+      severity: "error",
+      from: {
+        path: "^src/app/api",
+      },
+      to: {
+        path: "^src/client",
+      },
+    },
   ],
   options: {
     tsConfig: {

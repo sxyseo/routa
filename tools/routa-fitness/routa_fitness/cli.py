@@ -7,9 +7,9 @@ import json
 import sys
 from pathlib import Path
 
-from routa_fitness.evidence import load_dimensions, validate_weights
 from routa_fitness.engine import collect_changed_files, matches_changed_files, run_fitness_report
 from routa_fitness.governance import GovernancePolicy, enforce
+from routa_fitness.loaders import load_dimensions, validate_weights
 from routa_fitness.model import ExecutionScope, Metric, ResultState, Tier
 from routa_fitness.presets import get_project_preset
 from routa_fitness.reporting import report_to_dict, write_report_output
