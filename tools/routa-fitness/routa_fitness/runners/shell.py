@@ -6,6 +6,7 @@ import re
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from os import environ
 from pathlib import Path
 
 from routa_fitness.model import Metric, MetricResult
@@ -14,9 +15,15 @@ from routa_fitness.model import Metric, MetricResult
 class ShellRunner:
     """Executes Metric commands as shell subprocesses."""
 
-    def __init__(self, project_root: Path, timeout: int = 300):
+    def __init__(
+        self,
+        project_root: Path,
+        timeout: int = 300,
+        env_overrides: dict[str, str] | None = None,
+    ):
         self.project_root = project_root
         self.timeout = timeout
+        self.env_overrides = env_overrides or {}
 
     def run(self, metric: Metric, *, dry_run: bool = False) -> MetricResult:
         """Execute a single metric's shell command.
@@ -41,6 +48,7 @@ class ShellRunner:
                 text=True,
                 timeout=self.timeout,
                 cwd=self.project_root,
+                env={**environ, **self.env_overrides},
             )
             output = result.stdout + result.stderr
 

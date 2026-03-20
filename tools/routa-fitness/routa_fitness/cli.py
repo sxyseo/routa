@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 from routa_fitness.evidence import load_dimensions, validate_weights
 from routa_fitness.governance import GovernancePolicy, enforce, filter_dimensions
-from routa_fitness.model import Tier
+from routa_fitness.model import Dimension, Metric, Tier
 from routa_fitness.reporters.terminal import TerminalReporter
 from routa_fitness.runners.graph import GraphRunner
 from routa_fitness.runners.shell import ShellRunner
@@ -102,6 +103,111 @@ def _print_graph_review_context(result: dict) -> None:
             print(f"  - {snippet['file_path']}{suffix}")
 
 
+def _collect_changed_files(project_root: Path, base: str) -> list[str]:
+    files: list[str] = []
+
+    commands = [
+        ["git", "diff", "--name-only", "--diff-filter=ACMR", base],
+        ["git", "diff", "--name-only", "--diff-filter=ACMR"],
+        ["git", "ls-files", "--others", "--exclude-standard"],
+    ]
+
+    for command in commands:
+        result = subprocess.run(
+            command,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        files.extend(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for file_path in files:
+        if file_path not in seen:
+            seen.add(file_path)
+            deduped.append(file_path)
+    return deduped
+
+
+def _domains_from_files(files: list[str]) -> set[str]:
+    domains: set[str] = set()
+    for file_path in files:
+        suffix = Path(file_path).suffix.lower()
+        lowered = file_path.lower()
+        if suffix == ".rs" or lowered.startswith("crates/"):
+            domains.add("rust")
+        if suffix in {".ts", ".tsx", ".js", ".jsx", ".css", ".scss"} or lowered.startswith(
+            ("src/", "apps/")
+        ):
+            domains.add("web")
+        if suffix == ".py" or lowered.startswith("tools/routa-fitness/"):
+            domains.add("python")
+        if suffix in {".toml", ".yaml", ".yml", ".json"}:
+            domains.add("config")
+    return domains
+
+
+def _metric_domains(metric: Metric) -> set[str]:
+    command = metric.command.lower()
+    domains: set[str] = set()
+
+    if "cargo " in command or "clippy" in command or "rust" in command:
+        domains.add("rust")
+    if any(
+        token in command
+        for token in (
+            "npm ",
+            "npx ",
+            "eslint",
+            "vitest",
+            "playwright",
+            "jscpd",
+            "dependency-cruiser",
+            "ast-grep",
+            " semgrep",
+            "semgrep ",
+        )
+    ):
+        domains.add("web")
+    if "python" in command or "pytest" in command or "routa_fitness" in command:
+        domains.add("python")
+    if "audit" in command:
+        domains.add("config")
+
+    if not domains:
+        domains.add("global")
+    return domains
+
+
+def _filter_dimensions_for_incremental(dimensions: list[Dimension], domains: set[str]) -> list[Dimension]:
+    if not domains:
+        return []
+    if "config" in domains:
+        return dimensions
+
+    filtered_dimensions: list[Dimension] = []
+    for dimension in dimensions:
+        filtered_metrics = []
+        for metric in dimension.metrics:
+            metric_domains = _metric_domains(metric)
+            if "global" in metric_domains or metric_domains.intersection(domains):
+                filtered_metrics.append(metric)
+        if filtered_metrics:
+            filtered_dimensions.append(
+                Dimension(
+                    name=dimension.name,
+                    weight=dimension.weight,
+                    threshold_pass=dimension.threshold_pass,
+                    threshold_warn=dimension.threshold_warn,
+                    metrics=filtered_metrics,
+                    source_file=dimension.source_file,
+                )
+            )
+    return filtered_dimensions
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """Run fitness checks (main command)."""
     project_root = _find_project_root()
@@ -125,7 +231,30 @@ def cmd_run(args: argparse.Namespace) -> int:
     dimensions = load_dimensions(fitness_dir)
     dimensions = filter_dimensions(dimensions, policy)
 
-    runner = ShellRunner(project_root)
+    runner_env: dict[str, str] = {}
+    if args.changed_only:
+        changed_files = _collect_changed_files(project_root, args.base)
+        changed_domains = _domains_from_files(changed_files)
+        print(
+            f"\nIncremental mode: base={args.base}, changed_files={len(changed_files)}, domains={','.join(sorted(changed_domains)) or 'none'}"
+        )
+
+        if not changed_files:
+            print("No changed files detected; skipping fitness run.")
+            return 0
+
+        dimensions = _filter_dimensions_for_incremental(dimensions, changed_domains)
+        if not dimensions:
+            print("No metrics matched changed domains; skipping fitness run.")
+            return 0
+
+        runner_env = {
+            "ROUTA_FITNESS_CHANGED_ONLY": "1",
+            "ROUTA_FITNESS_CHANGED_BASE": args.base,
+            "ROUTA_FITNESS_CHANGED_FILES": "\n".join(changed_files),
+        }
+
+    runner = ShellRunner(project_root, env_overrides=runner_env)
     dimension_scores = []
 
     for dim in dimensions:
@@ -321,6 +450,16 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--parallel", action="store_true", help="Run metrics in parallel")
     run_parser.add_argument("--dry-run", action="store_true", help="Show what would run")
     run_parser.add_argument("--verbose", action="store_true", help="Show output on failure")
+    run_parser.add_argument(
+        "--changed-only",
+        action="store_true",
+        help="Run only metrics relevant to changed files",
+    )
+    run_parser.add_argument(
+        "--base",
+        default="HEAD",
+        help="Git base reference used by --changed-only",
+    )
     run_parser.set_defaults(func=cmd_run)
 
     validate_parser = subparsers.add_parser("validate", help="Check dimension weights sum to 100%")

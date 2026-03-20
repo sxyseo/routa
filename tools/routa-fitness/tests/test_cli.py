@@ -1,6 +1,7 @@
 """Tests for routa_fitness.cli."""
 
-from routa_fitness.cli import build_parser
+from routa_fitness.cli import _domains_from_files, _metric_domains, build_parser
+from routa_fitness.model import Metric
 
 
 def test_parser_run_defaults():
@@ -11,15 +12,21 @@ def test_parser_run_defaults():
     assert args.parallel is False
     assert args.dry_run is False
     assert args.verbose is False
+    assert args.changed_only is False
+    assert args.base == "HEAD"
 
 
 def test_parser_run_all_flags():
     parser = build_parser()
-    args = parser.parse_args(["run", "--tier", "fast", "--parallel", "--dry-run", "--verbose"])
+    args = parser.parse_args(
+        ["run", "--tier", "fast", "--parallel", "--dry-run", "--verbose", "--changed-only", "--base", "HEAD~2"]
+    )
     assert args.tier == "fast"
     assert args.parallel is True
     assert args.dry_run is True
     assert args.verbose is True
+    assert args.changed_only is True
+    assert args.base == "HEAD~2"
 
 
 def test_parser_validate():
@@ -105,3 +112,25 @@ def test_parser_no_command():
     parser = build_parser()
     args = parser.parse_args([])
     assert args.command is None
+
+
+def test_domains_from_files():
+    domains = _domains_from_files(
+        [
+            "crates/routa-server/src/main.rs",
+            "src/app/page.tsx",
+            "tools/routa-fitness/routa_fitness/cli.py",
+            "api-contract.yaml",
+        ]
+    )
+    assert domains == {"rust", "web", "python", "config"}
+
+
+def test_metric_domains():
+    assert _metric_domains(Metric(name="a", command="cargo clippy --workspace")) == {"rust"}
+    assert _metric_domains(Metric(name="b", command="npm run lint")) == {"web"}
+    assert _metric_domains(Metric(name="c", command="python3 -m pytest")) == {"python"}
+    assert _metric_domains(Metric(name="d", command="npm audit --audit-level=critical")) == {
+        "web",
+        "config",
+    }
