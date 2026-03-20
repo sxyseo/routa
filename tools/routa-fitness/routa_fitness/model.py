@@ -11,6 +11,7 @@ Aligns with concepts from "Building Evolutionary Architectures":
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 
 
@@ -40,6 +41,69 @@ class AnalysisMode(Enum):
     DYNAMIC = "dynamic"
 
 
+class ExecutionScope(Enum):
+    """Execution environment where a metric is authoritative."""
+
+    LOCAL = "local"
+    CI = "ci"
+    STAGING = "staging"
+    PROD_OBSERVATION = "prod_observation"
+
+
+class Gate(Enum):
+    """Governance severity for a metric outcome."""
+
+    HARD = "hard"
+    SOFT = "soft"
+    ADVISORY = "advisory"
+
+
+class Stability(Enum):
+    """Signal stability classification for runtime-aware metrics."""
+
+    DETERMINISTIC = "deterministic"
+    NOISY = "noisy"
+
+
+class EvidenceType(Enum):
+    """How evidence is collected or represented."""
+
+    COMMAND = "command"
+    TEST = "test"
+    PROBE = "probe"
+    SARIF = "sarif"
+    MANUAL_ATTESTATION = "manual_attestation"
+
+
+class Confidence(Enum):
+    """Confidence level for a metric's evidence quality."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    UNKNOWN = "unknown"
+
+
+class ResultState(Enum):
+    """Expanded result states for Fitness V2."""
+
+    PASS = "pass"
+    FAIL = "fail"
+    UNKNOWN = "unknown"
+    SKIPPED = "skipped"
+    WAIVED = "waived"
+
+
+@dataclass
+class Waiver:
+    """Optional waiver metadata for temporarily bypassed metrics."""
+
+    reason: str
+    owner: str = ""
+    tracking_issue: int | None = None
+    expires_at: date | None = None
+
+
 @dataclass
 class Metric:
     """A single executable fitness function."""
@@ -52,6 +116,20 @@ class Metric:
     description: str = ""
     kind: FitnessKind = FitnessKind.ATOMIC
     analysis: AnalysisMode = AnalysisMode.STATIC
+    execution_scope: ExecutionScope = ExecutionScope.LOCAL
+    gate: Gate | None = None
+    stability: Stability = Stability.DETERMINISTIC
+    evidence_type: EvidenceType = EvidenceType.COMMAND
+    scope: list[str] = field(default_factory=list)
+    run_when_changed: list[str] = field(default_factory=list)
+    timeout_seconds: int | None = None
+    owner: str = ""
+    confidence: Confidence = Confidence.UNKNOWN
+    waiver: Waiver | None = None
+
+    def __post_init__(self) -> None:
+        if self.gate is None:
+            self.gate = Gate.HARD if self.hard_gate else Gate.SOFT
 
 
 @dataclass
@@ -76,6 +154,11 @@ class MetricResult:
     tier: Tier
     hard_gate: bool = False
     duration_ms: float = 0.0
+    state: ResultState | None = None
+
+    def __post_init__(self) -> None:
+        if self.state is None:
+            self.state = ResultState.PASS if self.passed else ResultState.FAIL
 
 
 @dataclass

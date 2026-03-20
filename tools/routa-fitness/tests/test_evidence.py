@@ -4,7 +4,16 @@ import textwrap
 from pathlib import Path
 
 from routa_fitness.evidence import load_dimensions, parse_frontmatter, validate_weights
-from routa_fitness.model import Tier
+from routa_fitness.model import (
+    AnalysisMode,
+    Confidence,
+    EvidenceType,
+    ExecutionScope,
+    FitnessKind,
+    Gate,
+    Stability,
+    Tier,
+)
 
 
 def test_parse_frontmatter_valid():
@@ -67,6 +76,114 @@ def test_load_dimensions(tmp_path: Path):
     assert dim.metrics[0].tier == Tier.FAST
     assert dim.metrics[1].tier == Tier.NORMAL
     assert dim.source_file == "security.md"
+
+
+def test_load_dimensions_parses_v2_fields_and_preserves_v1_compat(tmp_path: Path):
+    md = tmp_path / "runtime.md"
+    md.write_text(textwrap.dedent("""\
+        ---
+        dimension: observability
+        weight: 0
+        metrics:
+          - name: tracing_signal_available
+            command: ./scripts/check.sh 2>&1
+            pattern: "signal_ok"
+            hard_gate: false
+            tier: deep
+            description: verify tracing signal
+            execution_scope: staging
+            gate: advisory
+            kind: holistic
+            analysis: dynamic
+            stability: noisy
+            evidence_type: probe
+            scope: [web, rust]
+            run_when_changed:
+              - src/instrumentation.ts
+              - crates/routa-server/src/telemetry/**
+            timeout_seconds: 120
+            owner: platform
+            confidence: high
+            waiver:
+              reason: legacy hotspot pending refactor
+              owner: phodal
+              tracking_issue: 217
+              expires_at: 2026-04-30
+          - name: legacy_metric
+            command: echo legacy
+            hard_gate: true
+        ---
+        # Runtime evidence
+    """))
+
+    dims = load_dimensions(tmp_path)
+    assert len(dims) == 1
+    metrics = dims[0].metrics
+    assert len(metrics) == 2
+
+    runtime_metric = metrics[0]
+    assert runtime_metric.execution_scope == ExecutionScope.STAGING
+    assert runtime_metric.gate == Gate.ADVISORY
+    assert runtime_metric.kind == FitnessKind.HOLISTIC
+    assert runtime_metric.analysis == AnalysisMode.DYNAMIC
+    assert runtime_metric.stability == Stability.NOISY
+    assert runtime_metric.evidence_type == EvidenceType.PROBE
+    assert runtime_metric.scope == ["web", "rust"]
+    assert runtime_metric.run_when_changed == [
+        "src/instrumentation.ts",
+        "crates/routa-server/src/telemetry/**",
+    ]
+    assert runtime_metric.timeout_seconds == 120
+    assert runtime_metric.owner == "platform"
+    assert runtime_metric.confidence == Confidence.HIGH
+    assert runtime_metric.waiver is not None
+    assert runtime_metric.waiver.reason == "legacy hotspot pending refactor"
+    assert runtime_metric.waiver.owner == "phodal"
+    assert runtime_metric.waiver.tracking_issue == 217
+    assert str(runtime_metric.waiver.expires_at) == "2026-04-30"
+
+    legacy_metric = metrics[1]
+    assert legacy_metric.gate == Gate.HARD
+    assert legacy_metric.execution_scope == ExecutionScope.LOCAL
+    assert legacy_metric.kind == FitnessKind.ATOMIC
+    assert legacy_metric.analysis == AnalysisMode.STATIC
+
+
+def test_load_dimensions_invalid_v2_values_fall_back_to_defaults(tmp_path: Path):
+    md = tmp_path / "bad-values.md"
+    md.write_text(textwrap.dedent("""\
+        ---
+        dimension: testability
+        weight: 10
+        metrics:
+          - name: weird_metric
+            command: echo ok
+            tier: ultra
+            execution_scope: moon
+            gate: severe
+            kind: hybrid
+            analysis: magical
+            stability: flaky
+            evidence_type: unsupported
+            confidence: maybe
+            scope: not-a-list
+            run_when_changed: not-a-list
+        ---
+        # Bad values
+    """))
+
+    dims = load_dimensions(tmp_path)
+    metric = dims[0].metrics[0]
+    assert metric.tier == Tier.NORMAL
+    assert metric.execution_scope == ExecutionScope.LOCAL
+    assert metric.gate == Gate.SOFT
+    assert metric.kind == FitnessKind.ATOMIC
+    assert metric.analysis == AnalysisMode.STATIC
+    assert metric.stability == Stability.DETERMINISTIC
+    assert metric.evidence_type == EvidenceType.COMMAND
+    assert metric.confidence == Confidence.UNKNOWN
+    assert metric.scope == []
+    assert metric.run_when_changed == []
 
 
 def test_load_dimensions_skips_readme(tmp_path: Path):

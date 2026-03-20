@@ -3,14 +3,29 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
+from typing import TypeVar
 
 import yaml
 
-from routa_fitness.model import Dimension, Metric, Tier
+from routa_fitness.model import (
+    AnalysisMode,
+    Confidence,
+    Dimension,
+    EvidenceType,
+    ExecutionScope,
+    FitnessKind,
+    Gate,
+    Metric,
+    Stability,
+    Tier,
+    Waiver,
+)
 
 # Files to skip when scanning the fitness directory
 _SKIP_FILES = {"README.md", "REVIEW.md"}
+_EnumT = TypeVar("_EnumT")
 
 
 def parse_frontmatter(content: str) -> dict | None:
@@ -21,21 +36,78 @@ def parse_frontmatter(content: str) -> dict | None:
     return yaml.safe_load(match.group(1))
 
 
+def _parse_enum(raw: dict, key: str, enum_type: type[_EnumT], default: _EnumT) -> _EnumT:
+    """Parse an enum value from frontmatter, falling back safely on invalid values."""
+    value = raw.get(key)
+    if value is None:
+        return default
+    try:
+        return enum_type(value)
+    except ValueError:
+        return default
+
+
+def _parse_waiver(raw: dict) -> Waiver | None:
+    """Parse optional waiver metadata."""
+    waiver = raw.get("waiver")
+    if not isinstance(waiver, dict):
+        return None
+
+    expires_at = waiver.get("expires_at")
+    parsed_expires_at: date | None = None
+    if isinstance(expires_at, date):
+        parsed_expires_at = expires_at
+    elif isinstance(expires_at, str):
+        try:
+            parsed_expires_at = date.fromisoformat(expires_at)
+        except ValueError:
+            parsed_expires_at = None
+
+    return Waiver(
+        reason=str(waiver.get("reason", "")),
+        owner=str(waiver.get("owner", "")),
+        tracking_issue=waiver.get("tracking_issue"),
+        expires_at=parsed_expires_at,
+    )
+
+
+def _parse_string_list(raw: dict, key: str) -> list[str]:
+    """Return a normalized list of strings or an empty list for invalid input."""
+    value = raw.get(key)
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
+
+
 def _build_metric(raw: dict) -> Metric:
     """Convert a raw YAML metric dict into a Metric dataclass."""
-    tier_str = raw.get("tier", "normal")
-    try:
-        tier = Tier(tier_str)
-    except ValueError:
-        tier = Tier.NORMAL
+    tier = _parse_enum(raw, "tier", Tier, Tier.NORMAL)
+    hard_gate = raw.get("hard_gate", False)
 
     return Metric(
         name=raw.get("name", "unknown"),
         command=raw.get("command", ""),
         pattern=raw.get("pattern", ""),
-        hard_gate=raw.get("hard_gate", False),
+        hard_gate=hard_gate,
         tier=tier,
         description=raw.get("description", ""),
+        kind=_parse_enum(raw, "kind", FitnessKind, FitnessKind.ATOMIC),
+        analysis=_parse_enum(raw, "analysis", AnalysisMode, AnalysisMode.STATIC),
+        execution_scope=_parse_enum(raw, "execution_scope", ExecutionScope, ExecutionScope.LOCAL),
+        gate=_parse_enum(
+            raw,
+            "gate",
+            Gate,
+            Gate.HARD if hard_gate else Gate.SOFT,
+        ),
+        stability=_parse_enum(raw, "stability", Stability, Stability.DETERMINISTIC),
+        evidence_type=_parse_enum(raw, "evidence_type", EvidenceType, EvidenceType.COMMAND),
+        scope=_parse_string_list(raw, "scope"),
+        run_when_changed=_parse_string_list(raw, "run_when_changed"),
+        timeout_seconds=raw.get("timeout_seconds"),
+        owner=raw.get("owner", ""),
+        confidence=_parse_enum(raw, "confidence", Confidence, Confidence.UNKNOWN),
+        waiver=_parse_waiver(raw),
     )
 
 
