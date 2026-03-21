@@ -16,6 +16,10 @@ interface AcpProviderDropdownProps {
   onProviderChange: (provider: string) => void;
   disabled?: boolean;
   variant?: "compact" | "hero";
+  ariaLabel?: string;
+  buttonClassName?: string;
+  labelClassName?: string;
+  dataTestId?: string;
 }
 
 type DropdownPosition = { left: number; top?: number; bottom?: number; maxHeight: number };
@@ -44,6 +48,10 @@ export function AcpProviderDropdown({
   onProviderChange,
   disabled = false,
   variant = "compact",
+  ariaLabel = "Select provider",
+  buttonClassName,
+  labelClassName,
+  dataTestId,
 }: AcpProviderDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState<DropdownPosition | null>(null);
@@ -111,10 +119,10 @@ export function AcpProviderDropdown({
       .filter((provider): provider is AcpProviderInfo => Boolean(provider));
   }, [providerMap, providers, visibleProviderIds]);
 
-  const buttonClassName = variant === "hero"
+  const defaultButtonClassName = variant === "hero"
     ? "flex items-center gap-2 rounded-lg border border-[#d6e5fb] px-3 py-1.5 text-sm transition-colors hover:bg-sky-50 dark:border-white/10 dark:hover:bg-white/5"
     : "flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-transparent transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
-  const labelClassName = variant === "hero"
+  const defaultLabelClassName = variant === "hero"
     ? "font-medium truncate max-w-[160px] text-slate-700 dark:text-slate-200"
     : "truncate max-w-30";
   const panelWidthClassName = variant === "hero" ? "w-80" : "w-72";
@@ -193,11 +201,13 @@ export function AcpProviderDropdown({
         type="button"
         onClick={toggleDropdown}
         disabled={disabled || providers.length === 0}
-        className={buttonClassName}
-        title="Select provider"
+        className={buttonClassName ?? defaultButtonClassName}
+        title={ariaLabel}
+        aria-label={ariaLabel}
+        data-testid={dataTestId}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${selectedProviderInfo?.status === "available" ? "bg-green-500" : "bg-gray-400"}`} />
-        <span className={labelClassName}>{selectedProviderInfo?.name ?? "Select provider"}</span>
+        <span className={labelClassName ?? defaultLabelClassName}>{selectedProviderInfo?.name ?? "Select provider"}</span>
         <svg className={`w-3 h-3 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>

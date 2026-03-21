@@ -29,6 +29,7 @@ import {
 import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
 import { getKanbanAutomationSteps, normalizeKanbanAutomation } from "@/core/models/kanban";
 import { ChatPanel } from "@/client/components/chat-panel";
+import { AcpProviderDropdown } from "@/client/components/acp-provider-dropdown";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
 import { KanbanRepoSyncStatus, type RepoSyncState } from "./kanban-repo-sync-status";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
@@ -1537,30 +1538,17 @@ export function KanbanTab({
           {onAgentPrompt ? (
             <div className="flex min-w-0 flex-1 items-center justify-center">
               <div className="group relative flex w-full max-w-3xl items-center rounded-2xl border border-gray-200 bg-white shadow-sm transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-gray-700 dark:bg-[#12141c]">
-                <div className="relative shrink-0">
-                  <select
-                    value={acp?.selectedProvider ?? ""}
-                    onChange={(event) => acp?.setProvider(event.target.value)}
+                <div className="shrink-0 border-r border-gray-200 dark:border-gray-700">
+                  <AcpProviderDropdown
+                    providers={availableProviders}
+                    selectedProvider={acp?.selectedProvider ?? ""}
+                    onProviderChange={(providerId) => acp?.setProvider(providerId)}
                     disabled={!acp?.connected || availableProviders.length === 0}
-                  className="h-8 appearance-none rounded-l-2xl border-r border-gray-200 bg-transparent px-2.5 text-[12px] font-medium text-gray-700 outline-none transition-colors disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
-                    aria-label={kanbanTaskAgentCopy.providerAriaLabel}
-                    data-testid="kanban-agent-provider"
-                  >
-                    {availableProviders.map((provider) => (
-                      <option key={provider.id} value={provider.id}>
-                        {provider.name}
-                      </option>
-                    ))}
-                  </select>
-                  <svg
-                    className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
-                  </svg>
+                    ariaLabel={kanbanTaskAgentCopy.providerAriaLabel}
+                    dataTestId="kanban-agent-provider"
+                    buttonClassName="flex h-8 items-center gap-1.5 rounded-l-2xl rounded-r-none bg-transparent px-2.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800/40"
+                    labelClassName="max-w-[120px] truncate"
+                  />
                 </div>
                 <input
                   type="text"
