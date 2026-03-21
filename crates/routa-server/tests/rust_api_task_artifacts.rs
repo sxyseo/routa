@@ -1,6 +1,8 @@
+use axum::{routing::get, routing::post, Json as AxumJson, Router};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::net::TcpListener;
 
 use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
@@ -74,6 +76,66 @@ fn json_has_error(resp: &Value, expected: &str) -> bool {
     resp.get("error")
         .and_then(Value::as_str)
         .is_some_and(|message| message.contains(expected))
+}
+
+async fn start_mock_a2a_server() -> String {
+    async fn card(axum::extract::State(base_url): axum::extract::State<String>) -> AxumJson<Value> {
+        AxumJson(json!({
+            "name": "Mock A2A Agent",
+            "description": "Test agent",
+            "protocolVersion": "0.3.0",
+            "version": "0.1.0",
+            "url": format!("{}/rpc", base_url),
+        }))
+    }
+
+    async fn rpc(AxumJson(body): AxumJson<Value>) -> AxumJson<Value> {
+        let id = body.get("id").cloned().unwrap_or(json!(null));
+        let method = body.get("method").and_then(Value::as_str).unwrap_or("");
+        let response = match method {
+            "SendMessage" => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "task": {
+                        "id": "remote-task-1",
+                        "contextId": "ctx-1",
+                        "status": {
+                            "state": "submitted",
+                            "timestamp": "2026-03-21T00:00:00Z"
+                        }
+                    }
+                }
+            }),
+            _ => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32601,
+                    "message": format!("Unsupported method: {}", method)
+                }
+            }),
+        };
+        AxumJson(response)
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock a2a server");
+    let addr = listener.local_addr().expect("mock a2a local addr");
+    let base_url = format!("http://{}", addr);
+    let router = Router::new()
+        .route("/card", get(card))
+        .route("/rpc", post(rpc))
+        .with_state(base_url.clone());
+
+    tokio::spawn(async move {
+        axum::serve(listener, router)
+            .await
+            .expect("serve mock a2a server");
+    });
+
+    base_url
 }
 
 #[tokio::test]
@@ -232,20 +294,16 @@ boards:
         .await
         .expect("export kanban yaml");
     assert_eq!(export_response.status(), StatusCode::OK);
-    assert!(
-        export_response
-            .headers()
-            .get("content-type")
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.contains("application/yaml"))
-    );
-    assert!(
-        export_response
-            .headers()
-            .get("content-disposition")
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.contains("kanban-kanban-sync.yaml"))
-    );
+    assert!(export_response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.contains("application/yaml")));
+    assert!(export_response
+        .headers()
+        .get("content-disposition")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.contains("kanban-kanban-sync.yaml")));
 
     let exported_yaml = export_response.text().await.expect("export yaml body");
     assert!(exported_yaml.contains("workspaceId: kanban-sync"));
@@ -264,5 +322,131 @@ boards:
         .json()
         .await
         .expect("decode missing workspace response");
-    assert!(json_has_error(&missing_workspace_json, "workspaceId is required"));
+    assert!(json_has_error(
+        &missing_workspace_json,
+        "workspaceId is required"
+    ));
+}
+
+#[tokio::test]
+async fn api_task_create_triggers_a2a_lane_automation_and_persists_lane_metadata() {
+    let fixture = ApiFixture::new().await;
+    let mock_a2a_base = start_mock_a2a_server().await;
+
+    let boards_response = fixture
+        .client
+        .get(fixture.endpoint("/api/kanban/boards?workspaceId=default"))
+        .send()
+        .await
+        .expect("list boards");
+    assert_eq!(boards_response.status(), StatusCode::OK);
+    let boards_json: Value = boards_response.json().await.expect("decode boards");
+    let board_id = boards_json["boards"][0]["id"].as_str().expect("board id");
+
+    let board_response = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .send()
+        .await
+        .expect("get board");
+    assert_eq!(board_response.status(), StatusCode::OK);
+    let board_json: Value = board_response.json().await.expect("decode board");
+    let mut columns = board_json["board"]["columns"]
+        .as_array()
+        .expect("columns array")
+        .clone();
+    let todo = columns
+        .iter_mut()
+        .find(|column| column["id"].as_str() == Some("todo"))
+        .expect("todo column");
+    todo["automation"] = json!({
+        "enabled": true,
+        "steps": [
+            {
+                "id": "todo-a2a",
+                "transport": "a2a",
+                "role": "CRAFTER",
+                "specialistName": "Todo Remote Worker",
+                "agentCardUrl": format!("{}/card", mock_a2a_base),
+                "skillId": "remote-skill"
+            }
+        ]
+    });
+
+    let update_board = fixture
+        .client
+        .patch(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .json(&json!({ "columns": columns }))
+        .send()
+        .await
+        .expect("update board");
+    assert_eq!(update_board.status(), StatusCode::OK);
+
+    let create_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "A2A lane task",
+            "objective": "Trigger remote A2A automation",
+            "workspaceId": "default",
+            "boardId": board_id,
+            "columnId": "todo"
+        }))
+        .send()
+        .await
+        .expect("create task");
+    assert_eq!(create_task.status(), StatusCode::CREATED);
+    let task_json: Value = create_task.json().await.expect("decode task");
+    let task_id = task_json["task"]["id"].as_str().expect("task id");
+
+    let get_task = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/tasks/{task_id}")))
+        .send()
+        .await
+        .expect("get task");
+    assert_eq!(get_task.status(), StatusCode::OK);
+    let persisted_json: Value = get_task.json().await.expect("decode persisted task");
+
+    let trigger_session_id = persisted_json["task"]["triggerSessionId"]
+        .as_str()
+        .expect("trigger session id");
+    assert!(
+        trigger_session_id.starts_with("a2a-"),
+        "expected synthetic a2a session id, got {trigger_session_id}"
+    );
+    assert_eq!(
+        persisted_json["task"]["sessionIds"]
+            .as_array()
+            .expect("session ids")
+            .len(),
+        1
+    );
+    assert_eq!(
+        persisted_json["task"]["sessionIds"][0].as_str(),
+        Some(trigger_session_id)
+    );
+    assert_eq!(
+        persisted_json["task"]["laneSessions"]
+            .as_array()
+            .expect("lane sessions")
+            .len(),
+        1
+    );
+    assert_eq!(
+        persisted_json["task"]["laneSessions"][0]["transport"].as_str(),
+        Some("a2a")
+    );
+    assert_eq!(
+        persisted_json["task"]["laneSessions"][0]["externalTaskId"].as_str(),
+        Some("remote-task-1")
+    );
+    assert_eq!(
+        persisted_json["task"]["laneSessions"][0]["contextId"].as_str(),
+        Some("ctx-1")
+    );
+    assert_eq!(
+        persisted_json["task"]["laneSessions"][0]["stepId"].as_str(),
+        Some("todo-a2a")
+    );
 }
