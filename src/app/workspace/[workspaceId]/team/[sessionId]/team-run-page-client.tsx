@@ -2203,9 +2203,12 @@ function SessionTimelineCard({
   const metaLabel = item.title === "Lead update" || item.title === "Objective set"
     ? null
     : item.title;
+  const wrapperClass = lane
+    ? "rounded-[12px] border border-desktop-border bg-desktop-bg-secondary"
+    : "px-1 py-1";
 
   return (
-    <div className="rounded-[12px] border border-desktop-border bg-desktop-bg-secondary">
+    <div className={wrapperClass}>
       <div className="flex items-start justify-between gap-2.5 px-3 py-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
