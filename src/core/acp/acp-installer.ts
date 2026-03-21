@@ -48,6 +48,13 @@ export interface InstalledAgent {
 /** Default directory for installed binary agents */
 const DEFAULT_INSTALL_DIR = path.join(os.homedir(), ".routa", "acp-agents");
 
+export interface AgentStatus {
+  available: boolean;
+  installed: boolean;
+  uninstallable: boolean;
+  resolvedDistributionType: DistributionType | null;
+}
+
 // ─── CLI-Based Installation ─────────────────────────────────────────────────
 
 /**
@@ -468,13 +475,81 @@ export async function buildAgentCommand(agentId: string): Promise<{
   return null;
 }
 
+export async function isBinaryAgentInstalled(agentId: string): Promise<boolean> {
+  const agent = await getRegistryAgent(agentId);
+  if (!agent?.distribution.binary) return false;
+
+  const platform = detectPlatformTarget();
+  if (!platform || !agent.distribution.binary[platform]) return false;
+
+  const config = agent.distribution.binary[platform]!;
+  const binaryDir = path.join(DEFAULT_INSTALL_DIR, agentId);
+  const binaryPath = path.join(binaryDir, config.cmd.replace(/^\.\//, ""));
+
+  try {
+    await fs.promises.access(binaryPath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function getAgentStatus(agentId: string): Promise<AgentStatus> {
+  const agent = await getRegistryAgent(agentId);
+  if (!agent) {
+    return {
+      available: false,
+      installed: false,
+      uninstallable: false,
+      resolvedDistributionType: null,
+    };
+  }
+
+  const binaryInstalled = await isBinaryAgentInstalled(agentId);
+  if (binaryInstalled) {
+    return {
+      available: true,
+      installed: true,
+      uninstallable: true,
+      resolvedDistributionType: "binary",
+    };
+  }
+
+  if (agent.distribution.npx && (await isNpxAvailable())) {
+    return {
+      available: true,
+      installed: false,
+      uninstallable: false,
+      resolvedDistributionType: "npx",
+    };
+  }
+
+  if (agent.distribution.uvx && (await isUvxAvailable())) {
+    return {
+      available: true,
+      installed: false,
+      uninstallable: false,
+      resolvedDistributionType: "uvx",
+    };
+  }
+
+  return {
+    available: false,
+    installed: false,
+    uninstallable: false,
+    resolvedDistributionType: null,
+  };
+}
+
 /**
  * List all agents from the registry with their installation status.
  */
 export async function listAgentsWithStatus(): Promise<
   Array<{
     agent: RegistryAgent;
+    available: boolean;
     installed: boolean;
+    uninstallable: boolean;
     distributionTypes: DistributionType[];
   }>
 > {
@@ -482,7 +557,7 @@ export async function listAgentsWithStatus(): Promise<
   const results = [];
 
   for (const agent of registry.agents) {
-    const cmd = await buildAgentCommand(agent.id);
+    const status = await getAgentStatus(agent.id);
     const distTypes: DistributionType[] = [];
 
     if (agent.distribution.npx) distTypes.push("npx");
@@ -491,7 +566,9 @@ export async function listAgentsWithStatus(): Promise<
 
     results.push({
       agent,
-      installed: cmd !== null,
+      available: status.available,
+      installed: status.installed,
+      uninstallable: status.uninstallable,
       distributionTypes: distTypes,
     });
   }

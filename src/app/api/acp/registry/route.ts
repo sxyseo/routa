@@ -20,7 +20,7 @@ import {
   listAgentsWithStatus,
   isNpxAvailable,
   isUvxAvailable,
-  buildAgentCommand,
+  getAgentStatus,
   type DistributionType,
 } from "@/core/acp/acp-installer";
 import { ACP_AGENT_PRESETS, resolveCommand } from "@/core/acp/acp-presets";
@@ -48,14 +48,16 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const cmd = await buildAgentCommand(agentId);
+      const status = await getAgentStatus(agentId);
       const platform = detectPlatformTarget();
 
       return NextResponse.json({
         agent,
-        installed: cmd !== null,
+        available: status.available,
+        installed: status.installed,
+        uninstallable: status.uninstallable,
         platform,
-        command: cmd,
+        distributionType: status.resolvedDistributionType,
       });
     }
 
@@ -96,7 +98,9 @@ export async function GET(request: NextRequest) {
           icon: preset.icon,
           distribution: {},
         },
+        available: resolved !== null,
         installed: resolved !== null,
+        uninstallable: false,
         distributionTypes: [],
         source: "builtin",
       });
@@ -145,4 +149,3 @@ export async function POST(_request: NextRequest) {
     );
   }
 }
-

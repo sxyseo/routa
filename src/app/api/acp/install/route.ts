@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   installFromRegistry,
+  isBinaryAgentInstalled,
   uninstallBinaryAgent,
   type DistributionType,
 } from "@/core/acp/acp-installer";
@@ -95,8 +96,18 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`[ACP Install API] Uninstalling agent: ${agentId}`);
 
-    // Currently only binary agents can be uninstalled
-    // npx/uvx agents run on-demand and don't need uninstallation
+    const binaryInstalled = await isBinaryAgentInstalled(agentId);
+    if (!binaryInstalled) {
+      return NextResponse.json(
+        {
+          success: false,
+          agentId,
+          error: "Only downloaded binary agents can be uninstalled here. npx/uvx agents are runtime-available rather than installed.",
+        },
+        { status: 400 }
+      );
+    }
+
     const success = await uninstallBinaryAgent(agentId);
 
     if (!success) {
@@ -123,4 +134,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-

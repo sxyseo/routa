@@ -32,7 +32,9 @@ interface RegistryAgent {
 
 interface AgentWithStatus {
   agent: RegistryAgent;
+  available: boolean;
   installed: boolean;
+  uninstallable: boolean;
   distributionTypes: ("npx" | "uvx" | "binary")[];
 }
 
@@ -160,7 +162,9 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
             license: agent.license ?? "",
             icon: agent.icon,
           },
+          available: installedMap.has(agent.id),
           installed: installedMap.has(agent.id),
+          uninstallable: installedMap.has(agent.id),
           distributionTypes: distTypes,
         };
       });
@@ -348,11 +352,13 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
           </div>
         ) : (
           <div className="space-y-2">
-            {filteredAgents.map(({ agent, installed, distributionTypes }) => (
+            {filteredAgents.map(({ agent, available, installed, uninstallable, distributionTypes }) => (
               <AgentCard
                 key={agent.id}
                 agent={agent}
+                available={available}
                 installed={installed}
+                uninstallable={uninstallable}
                 distributionTypes={distributionTypes}
                 installing={installingAgents.has(agent.id)}
                 runtimeAvailability={runtimeAvailability}
@@ -378,7 +384,9 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
 
 interface AgentCardProps {
   agent: RegistryAgent;
+  available: boolean;
   installed: boolean;
+  uninstallable: boolean;
   distributionTypes: ("npx" | "uvx" | "binary")[];
   installing: boolean;
   runtimeAvailability: { npx: boolean; uvx: boolean };
@@ -388,7 +396,9 @@ interface AgentCardProps {
 
 function AgentCard({
   agent,
+  available,
   installed,
+  uninstallable,
   distributionTypes,
   installing,
   runtimeAvailability,
@@ -431,6 +441,11 @@ function AgentCard({
                 Installed
               </span>
             )}
+            {!installed && available && (
+              <span className="px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded">
+                Available
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
             {agent.description}
@@ -461,7 +476,7 @@ function AgentCard({
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          {installed ? (
+          {uninstallable ? (
             <button
               onClick={() => onUninstall(agent.id)}
               disabled={installing}

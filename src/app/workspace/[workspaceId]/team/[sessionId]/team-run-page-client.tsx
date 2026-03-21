@@ -1759,7 +1759,7 @@ export function TeamRunPageClient() {
 
         <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
           <section className="min-h-0 overflow-hidden border-r border-desktop-border bg-desktop-bg-secondary">
-            <div className="border-b border-desktop-border px-4 py-3">
+            <div className="border-b border-desktop-border px-4 py-2.5">
               <div className="text-[13px] font-semibold uppercase tracking-[0.2em] text-desktop-text-muted">Objective</div>
               <div className="mt-2 rounded-[18px] border border-desktop-border bg-desktop-bg-primary p-3">
                 <div className="text-sm leading-5 text-desktop-text-primary">{objective}</div>
@@ -1845,11 +1845,11 @@ export function TeamRunPageClient() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
               {sessionTimeline.length === 0 ? (
                   <EmptyPanel message="No lead timeline yet." />
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                   {sessionTimeline.map((item) => (
                     <SessionTimelineCard
                       key={item.id}
@@ -2206,13 +2206,14 @@ function SessionTimelineCard({
     ? null
     : item.title;
   const wrapperClass = lane
-    ? "rounded-[12px] border border-desktop-border bg-desktop-bg-secondary"
-    : "px-1 py-1";
+    ? "rounded-[10px] border border-desktop-border bg-desktop-bg-secondary"
+    : "py-0";
   const showMeta = item.actorRoleId !== TEAM_LEAD_SPECIALIST_ID;
+  const showInlineDelegation = Boolean(lane);
 
   return (
     <div className={wrapperClass}>
-      <div className="flex items-start justify-between gap-2.5 px-3 py-2">
+      <div className={`flex items-start justify-between gap-2 ${lane ? "px-2 py-1" : "px-0.5 py-0"}`}>
         <div className="min-w-0">
           {showMeta ? (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -2223,16 +2224,25 @@ function SessionTimelineCard({
             </div>
           ) : null}
           {item.summary && (
-            <div className={`${showMeta ? "mt-2" : ""} rounded-xl border px-3 py-2 ${bubbleToneClass}`}>
-              {metaLabel && (
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] opacity-70">
-                  {metaLabel}
-                </div>
-              )}
-              <div className={lane ? "line-clamp-1" : ""}>
-                <MarkdownViewer content={item.summary} className="text-sm leading-6" />
+            showInlineDelegation ? (
+              <div className={`${showMeta ? "mt-1" : ""} flex items-center gap-1.5 text-[11px] leading-5 text-desktop-text-secondary`}>
+                {metaLabel ? (
+                  <span className="shrink-0 font-semibold uppercase tracking-[0.12em] text-cyan-700 dark:text-cyan-300">
+                    {metaLabel}
+                  </span>
+                ) : null}
+                <div className="min-w-0 flex-1 truncate">{item.summary}</div>
               </div>
-            </div>
+            ) : (
+              <div className={`${showMeta ? "mt-1" : ""} rounded-xl border ${showMeta ? "px-3 py-2" : "px-2 py-1"} ${bubbleToneClass}`}>
+                {metaLabel && (
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] opacity-70">
+                    {metaLabel}
+                  </div>
+                )}
+                <MarkdownViewer content={item.summary} className={showMeta ? "text-sm leading-6" : "text-[13px] leading-[1.4]"} />
+              </div>
+            )
           )}
         </div>
       </div>
@@ -2240,9 +2250,9 @@ function SessionTimelineCard({
       {lane && (
         <div
           ref={sessionBlockRef}
-          className={`mx-3 mb-3 rounded-[10px] border ${isActive ? "border-cyan-300 bg-cyan-50/50 dark:border-cyan-800 dark:bg-cyan-950/20" : "border-desktop-border bg-desktop-bg-primary"}`}
+          className={`mx-2 mb-2 rounded-[10px] border ${isActive ? "border-cyan-300 bg-cyan-50/50 dark:border-cyan-800 dark:bg-cyan-950/20" : "border-desktop-border bg-desktop-bg-primary"}`}
         >
-          <div className="flex items-start justify-between gap-2.5 px-3 py-2">
+          <div className="flex items-center justify-between gap-2 px-2 py-1">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
@@ -2272,22 +2282,18 @@ function SessionTimelineCard({
             </div>
           </div>
 
-          <div className="border-t border-desktop-border/80 px-3 py-2">
+          <div className="border-t border-desktop-border/80 px-2 py-1">
             {lane.snippets.length === 0 ? (
-              <div className="rounded-[10px] border border-dashed border-desktop-border px-3 py-2 text-[11px] text-desktop-text-secondary">
-                No transcript content yet.
-              </div>
+              <div className="text-[11px] text-desktop-text-secondary">No transcript content yet.</div>
             ) : (
-              <div className="h-[120px] space-y-1.5 overflow-y-auto pr-1">
-                {lane.snippets.map((snippet) => (
-                  <div key={snippet.id} className={snippet.kind === "user" ? "flex justify-end" : ""}>
-                    <div className={`min-w-0 ${snippet.kind === "user" ? "max-w-[85%]" : "w-full"}`}>
-                      <div className={`rounded-[10px] border px-2.5 py-1.5 ${snippetBodyClass(snippet)}`}>
-                        <div className="line-clamp-1 text-[11px] leading-5 text-desktop-text-secondary">{snippet.text}</div>
-                      </div>
+              <div className={`min-w-0 ${lane.snippets.at(-1)?.kind === "user" ? "flex justify-end" : ""}`}>
+                <div className={`min-w-0 ${lane.snippets.at(-1)?.kind === "user" ? "max-w-[85%]" : "w-full"}`}>
+                  <div className={`rounded-[10px] border px-2.5 py-1.5 ${snippetBodyClass(lane.snippets.at(-1)!)} `}>
+                    <div className="line-clamp-1 text-[11px] leading-5 text-desktop-text-secondary">
+                      {lane.snippets.at(-1)!.text}
                     </div>
                   </div>
-                ))}
+                </div>
               </div>
             )}
           </div>
