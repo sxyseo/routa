@@ -420,6 +420,18 @@ function isLowSignalLeadMessage(text?: string): boolean {
   );
 }
 
+function extractLeadHeadingKey(text?: string): string | null {
+  if (!text) return null;
+  const firstLine = text
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) return null;
+  const heading = firstLine.match(/^#+\s+(.*)$/)?.[1] ?? firstLine;
+  const normalized = heading.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalized || null;
+}
+
 function resolveDelegationTarget(update?: SessionHistoryEntry["update"]): string | undefined {
   const rawInput = update?.rawInput;
   if (!rawInput) return undefined;
@@ -1587,6 +1599,9 @@ export function TeamRunPageClient() {
 
       if (updateType === "task_completion") {
         const linkedStream = typeof update.agentId === "string" ? sessionStreamByAgentId.get(update.agentId) : undefined;
+        if (linkedStream) {
+          return [];
+        }
         const actor = linkedStream?.actor ?? "Team member";
         const summary = summarizeText(update.completionSummary ?? extractHistoryText(update), 260);
         if (isLowSignalLeadMessage(summary)) {
@@ -1667,9 +1682,18 @@ export function TeamRunPageClient() {
       return [];
     });
 
-    return items.filter((item, index, all) => {
+    const deduped = items.filter((item, index, all) => {
       const previous = all[index - 1];
       return !previous || previous.title !== item.title || previous.summary !== item.summary;
+    });
+
+    return deduped.filter((item, index, all) => {
+      if (item.actorRoleId !== TEAM_LEAD_SPECIALIST_ID || item.title !== "Lead update") return true;
+      const next = all[index + 1];
+      if (!next || next.actorRoleId !== TEAM_LEAD_SPECIALIST_ID || next.title !== "Lead update") return true;
+      const currentHeading = extractLeadHeadingKey(item.summary);
+      const nextHeading = extractLeadHeadingKey(next.summary);
+      return !currentHeading || !nextHeading || currentHeading !== nextHeading;
     });
   }, [agentsById, latestChildSessionByRosterId, rootHistory, session, sessionId, sessionLanes, sessionStreamByAgentId, specialistsById]);
 
