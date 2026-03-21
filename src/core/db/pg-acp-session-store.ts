@@ -2,7 +2,7 @@
  * PgAcpSessionStore — Postgres-backed ACP session store using Drizzle ORM.
  */
 
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gt } from "drizzle-orm";
 import type { Database } from "./index";
 import { acpSessions, sessionMessages } from "./schema";
 import type { AcpSessionStore, AcpSession, AcpSessionNotification } from "../store/acp-session-store";
@@ -106,7 +106,32 @@ export class PgAcpSessionStore implements AcpSessionStore {
       .where(eq(acpSessions.id, sessionId));
   }
 
-  async getHistory(sessionId: string): Promise<AcpSessionNotification[]> {
+  async getHistory(
+    sessionId: string,
+    options?: { afterEventId?: string },
+  ): Promise<AcpSessionNotification[]> {
+    const anchorEventId = options?.afterEventId;
+    if (anchorEventId) {
+      const anchorRows = await this.db
+        .select({ messageIndex: sessionMessages.messageIndex })
+        .from(sessionMessages)
+        .where(eq(sessionMessages.id, anchorEventId))
+        .limit(1);
+
+      if (anchorRows.length > 0) {
+        const rows = await this.db
+          .select()
+          .from(sessionMessages)
+          .where(and(
+            eq(sessionMessages.sessionId, sessionId),
+            gt(sessionMessages.messageIndex, anchorRows[0].messageIndex),
+          ))
+          .orderBy(asc(sessionMessages.messageIndex));
+
+        return rows.map((row) => row.payload as AcpSessionNotification);
+      }
+    }
+
     const rows = await this.db
       .select()
       .from(sessionMessages)

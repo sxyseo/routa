@@ -374,11 +374,29 @@ export async function loadHistorySinceEventIdFromDb(
   lastEventId: string,
   cwdOverride?: string,
 ): Promise<import("@/core/acp/http-session-store").SessionUpdateNotification[]> {
+  const driver = getDatabaseDriver();
+
+  try {
+    if (driver === "postgres") {
+      const db = getPostgresDatabase();
+      const history = await new PgAcpSessionStore(db).getHistory(sessionId, { afterEventId: lastEventId });
+      if (history.length > 0) return history as import("@/core/acp/http-session-store").SessionUpdateNotification[];
+    } else if (driver === "sqlite") {
+      const { getSqliteDatabase } = await loadSqliteDatabaseModule();
+      const db = getSqliteDatabase();
+      const history = await new SqliteAcpSessionStore(db).getHistory(sessionId, { afterEventId: lastEventId });
+      if (history.length > 0) return history as import("@/core/acp/http-session-store").SessionUpdateNotification[];
+    } else if (driver === "memory") {
+      const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
+      return getHttpSessionStore().getHistorySinceEventId(sessionId, lastEventId);
+    }
+  } catch {
+    // Fall through to mixed-source fallback below.
+  }
+
   const history = await loadHistoryFromDb(sessionId, cwdOverride);
   const index = history.findIndex((entry) => entry.eventId === lastEventId);
-  if (index >= 0) {
-    return history.slice(index + 1);
-  }
+  if (index >= 0) return history.slice(index + 1);
 
   const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
   return getHttpSessionStore().getHistorySinceEventId(sessionId, lastEventId);

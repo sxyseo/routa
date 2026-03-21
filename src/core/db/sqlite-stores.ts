@@ -5,7 +5,7 @@
  * All stores implement the same interfaces as their Pg counterparts.
  */
 
-import { eq, and, gte, lte, desc, asc, sql, isNotNull, isNull, lt } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, sql, isNotNull, isNull, lt, gt } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as sqliteSchema from "./sqlite-schema";
 import type { Workspace, WorkspaceStatus } from "../models/workspace";
@@ -1271,7 +1271,32 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
       .where(eq(sqliteSchema.acpSessions.id, sessionId));
   }
 
-  async getHistory(sessionId: string): Promise<AcpSessionNotification[]> {
+  async getHistory(
+    sessionId: string,
+    options?: { afterEventId?: string },
+  ): Promise<AcpSessionNotification[]> {
+    const anchorEventId = options?.afterEventId;
+    if (anchorEventId) {
+      const anchorRows = await this.db
+        .select({ messageIndex: sqliteSchema.sessionMessages.messageIndex })
+        .from(sqliteSchema.sessionMessages)
+        .where(eq(sqliteSchema.sessionMessages.id, anchorEventId))
+        .limit(1);
+
+      if (anchorRows.length > 0) {
+        const rows = await this.db
+          .select()
+          .from(sqliteSchema.sessionMessages)
+          .where(and(
+            eq(sqliteSchema.sessionMessages.sessionId, sessionId),
+            gt(sqliteSchema.sessionMessages.messageIndex, anchorRows[0].messageIndex),
+          ))
+          .orderBy(asc(sqliteSchema.sessionMessages.messageIndex));
+
+        return rows.map((row) => row.payload as AcpSessionNotification);
+      }
+    }
+
     const rows = await this.db
       .select()
       .from(sqliteSchema.sessionMessages)

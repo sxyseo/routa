@@ -58,7 +58,10 @@ export interface AcpSessionStore {
   appendHistory(sessionId: string, notification: AcpSessionNotification): Promise<void>;
   
   /** Get message history for a session */
-  getHistory(sessionId: string): Promise<AcpSessionNotification[]>;
+  getHistory(
+    sessionId: string,
+    options?: { afterEventId?: string },
+  ): Promise<AcpSessionNotification[]>;
   
   /** Mark first prompt as sent */
   markFirstPromptSent(sessionId: string): Promise<void>;
@@ -106,8 +109,15 @@ export class InMemoryAcpSessionStore implements AcpSessionStore {
     }
   }
 
-  async getHistory(sessionId: string): Promise<AcpSessionNotification[]> {
-    return this.sessions.get(sessionId)?.messageHistory ?? [];
+  async getHistory(
+    sessionId: string,
+    options?: { afterEventId?: string },
+  ): Promise<AcpSessionNotification[]> {
+    const history = this.sessions.get(sessionId)?.messageHistory ?? [];
+    const afterEventId = options?.afterEventId;
+    if (!afterEventId) return history;
+    const index = history.findIndex((entry) => entry.eventId === afterEventId);
+    return index >= 0 ? history.slice(index + 1) : [];
   }
 
   async markFirstPromptSent(sessionId: string): Promise<void> {
