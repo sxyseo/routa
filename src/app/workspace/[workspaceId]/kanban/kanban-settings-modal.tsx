@@ -463,6 +463,13 @@ export function KanbanSettingsModal({
     )));
   };
 
+  const updateColumnAutomation = (columnId: string, automation: ColumnAutomationConfig) => {
+    setColumnAutomation((current) => ({
+      ...current,
+      [columnId]: automation,
+    }));
+  };
+
   const handleDeleteStage = (columnId: string) => {
     setEditableColumns((current) => {
       if (current.length <= 1) return current;
@@ -906,14 +913,22 @@ export function KanbanSettingsModal({
                     </div>
                   </div>
 
-                  <div className="mb-4 flex border-b border-slate-200 dark:border-slate-800">
+                  <div role="tablist" aria-label="Column configuration" className="mb-4 flex border-b border-slate-200 dark:border-slate-800">
                     <button
+                      role="tab"
+                      id="tab-structure"
+                      aria-selected={activeTab === "structure"}
+                      aria-controls="panel-structure"
                       onClick={() => setActiveTab("structure")}
                       className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${activeTab === "structure" ? "border-amber-500 text-amber-600 dark:text-amber-500" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"}`}
                     >
                       Structure
                     </button>
                     <button
+                      role="tab"
+                      id="tab-automation"
+                      aria-selected={activeTab === "automation"}
+                      aria-controls="panel-automation"
                       onClick={() => setActiveTab("automation")}
                       className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${activeTab === "automation" ? "border-amber-500 text-amber-600 dark:text-amber-500" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"}`}
                     >
@@ -921,90 +936,93 @@ export function KanbanSettingsModal({
                     </button>
                   </div>
 
-                  {activeTab === "structure" ? (
-                    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-[#0d1118]/50">
-                      <label className="block space-y-1 text-sm font-medium">
-                        <span className="text-slate-700 dark:text-slate-300">Name</span>
-                        <input
-                          aria-label="Stage name"
-                          type="text"
-                          value={selectedColumn.name}
-                          onChange={(event) => updateColumn(selectedColumn.id, (current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))}
-                          className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
-                        />
-                      </label>
-
-                      <div className="grid gap-4 sm:grid-cols-2">
+                  <div id="panel-structure" role="tabpanel" aria-labelledby="tab-structure" hidden={activeTab !== "structure"}>
+                    {activeTab === "structure" && (
+                      <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-[#0d1118]/50">
                         <label className="block space-y-1 text-sm font-medium">
-                          <span className="text-slate-700 dark:text-slate-300">Stage type</span>
-                          <SelectControl
-                            aria-label="Stage type"
-                            value={selectedColumn.stage}
-                            onChange={(event) => handleStageTypeChange(selectedColumn.id, event.target.value)}
-                            className="h-10"
-                          >
-                            {STAGE_TYPE_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </SelectControl>
-                        </label>
-
-                        <label className="block space-y-1 text-sm font-medium">
-                          <span className="text-slate-700 dark:text-slate-300">Column Width</span>
-                          <SelectControl
-                            aria-label="Column width"
-                            value={selectedColumn.width || "standard"}
+                          <span className="text-slate-700 dark:text-slate-300">Name</span>
+                          <input
+                            aria-label="Stage name"
+                            type="text"
+                            value={selectedColumn.name}
                             onChange={(event) => updateColumn(selectedColumn.id, (current) => ({
                               ...current,
-                              width: event.target.value as "compact" | "standard" | "wide",
+                              name: event.target.value,
                             }))}
-                            className="h-10"
-                          >
-                            <option value="compact">Compact</option>
-                            <option value="standard">Standard</option>
-                            <option value="wide">Wide</option>
-                          </SelectControl>
+                            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          />
                         </label>
-                      </div>
 
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedColumn.visible !== false}
-                          onChange={(event) => updateColumnVisibility(selectedColumn, event.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-                        />
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Column is visible on board</span>
-                      </label>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="block space-y-1 text-sm font-medium">
+                            <span className="text-slate-700 dark:text-slate-300">Stage type</span>
+                            <SelectControl
+                              aria-label="Stage type"
+                              value={selectedColumn.stage}
+                              onChange={(event) => handleStageTypeChange(selectedColumn.id, event.target.value)}
+                              className="h-10"
+                            >
+                              {STAGE_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </SelectControl>
+                          </label>
 
-                      {selectedColumn.stage === "blocked" ? (
-                        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-                          This is a manual-only stage. Automation features are disabled for this column.
+                          <label className="block space-y-1 text-sm font-medium">
+                            <span className="text-slate-700 dark:text-slate-300">Column Width</span>
+                            <SelectControl
+                              aria-label="Column width"
+                              value={selectedColumn.width || "standard"}
+                              onChange={(event) => updateColumn(selectedColumn.id, (current) => ({
+                                ...current,
+                                width: event.target.value as "compact" | "standard" | "wide",
+                              }))}
+                              className="h-10"
+                            >
+                              <option value="compact">Compact</option>
+                              <option value="standard">Standard</option>
+                              <option value="wide">Wide</option>
+                            </SelectControl>
+                          </label>
                         </div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <ColumnAutomationWorkspace
-                      column={selectedColumn}
-                      automation={columnAutomation[selectedColumn.id] ?? { enabled: false }}
-                      availableProviders={availableProviders}
-                      specialists={specialists}
-                      specialistCategory={specialistCategory}
-                      specialistLanguage={specialistLanguage}
-                      onSpecialistCategoryChange={setSpecialistCategory}
-                      onUpdate={(updated) => {
-                        setColumnAutomation((current) => ({
-                          ...current,
-                          [selectedColumn.id]: updated,
-                        }));
-                      }}
-                    />
-                  )}
+
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedColumn.visible !== false}
+                            onChange={(event) => updateColumnVisibility(selectedColumn, event.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                          />
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Column is visible on board</span>
+                        </label>
+
+                        {selectedColumn.stage === "blocked" ? (
+                          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                            This is a manual-only stage. Automation features are disabled for this column.
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+
+                  <div id="panel-automation" role="tabpanel" aria-labelledby="tab-automation" hidden={activeTab !== "automation"}>
+                    {activeTab === "automation" && (
+                      <ColumnAutomationWorkspace
+                        column={selectedColumn}
+                        automation={columnAutomation[selectedColumn.id] ?? { enabled: false }}
+                        availableProviders={availableProviders}
+                        specialists={specialists}
+                        specialistCategory={specialistCategory}
+                        specialistLanguage={specialistLanguage}
+                        onSpecialistCategoryChange={setSpecialistCategory}
+                        onUpdate={(updated) => {
+                          updateColumnAutomation(selectedColumn.id, updated);
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="rounded-3xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">

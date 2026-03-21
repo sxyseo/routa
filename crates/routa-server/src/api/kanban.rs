@@ -555,6 +555,8 @@ async fn import_config(
                     position: idx as i64,
                     stage: col.stage.clone(),
                     automation: col.automation.clone(),
+                    visible: col.visible,
+                    width: col.width.clone(),
                 };
                 normalize_column_automation(&mut column);
                 column
