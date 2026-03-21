@@ -215,6 +215,8 @@ export const acpSessions = pgTable("acp_sessions", {
   messageHistory: jsonb("message_history").$type<AcpSessionNotification[]>().default([]),
   /** Parent session ID for child (CRAFTER/GATE) sessions */
   parentSessionId: text("parent_session_id"),
+  /** Specialist ID used to configure this session, if any. */
+  specialistId: text("specialist_id"),
   executionMode: text("execution_mode"),
   ownerInstanceId: text("owner_instance_id"),
   leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),

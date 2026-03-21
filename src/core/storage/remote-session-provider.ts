@@ -34,6 +34,7 @@ export class RemoteSessionProvider implements SessionStorageProvider {
         firstPromptSent: session.firstPromptSent ?? false,
         messageHistory: [],
         parentSessionId: session.parentSessionId,
+        specialistId: session.specialistId,
         executionMode: session.executionMode,
         ownerInstanceId: session.ownerInstanceId,
         leaseExpiresAt: session.leaseExpiresAt ? new Date(session.leaseExpiresAt) : undefined,
@@ -53,6 +54,7 @@ export class RemoteSessionProvider implements SessionStorageProvider {
           model: session.model,
           firstPromptSent: session.firstPromptSent ?? false,
           parentSessionId: session.parentSessionId,
+          specialistId: session.specialistId,
           executionMode: session.executionMode,
           ownerInstanceId: session.ownerInstanceId,
           leaseExpiresAt: session.leaseExpiresAt ? new Date(session.leaseExpiresAt) : undefined,
@@ -194,7 +196,10 @@ export class RemoteSessionProvider implements SessionStorageProvider {
       model: row.model ?? undefined,
       firstPromptSent: row.firstPromptSent ?? false,
       parentSessionId: row.parentSessionId ?? undefined,
-      executionMode: row.executionMode ?? undefined,
+      specialistId: row.specialistId ?? undefined,
+      executionMode: row.executionMode === "embedded" || row.executionMode === "runner"
+        ? row.executionMode
+        : undefined,
       ownerInstanceId: row.ownerInstanceId ?? undefined,
       leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? undefined,
       createdAt: row.createdAt?.toISOString() ?? new Date().toISOString(),

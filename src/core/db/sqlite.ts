@@ -233,6 +233,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       first_prompt_sent INTEGER DEFAULT 0,
       message_history TEXT DEFAULT '[]',
       parent_session_id TEXT,
+      specialist_id TEXT,
       execution_mode TEXT,
       owner_instance_id TEXT,
       lease_expires_at INTEGER,
@@ -245,6 +246,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN branch TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN model TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT`); } catch { /* column already exists */ }
+  try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN specialist_id TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN execution_mode TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN owner_instance_id TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN lease_expires_at INTEGER`); } catch { /* column already exists */ }

@@ -33,6 +33,8 @@ export interface AcpSession {
   updatedAt: Date;
   /** Parent session ID for child (CRAFTER/GATE) sessions */
   parentSessionId?: string;
+  /** Specialist ID used to configure this session, if any. */
+  specialistId?: string;
   executionMode?: "embedded" | "runner";
   ownerInstanceId?: string;
   leaseExpiresAt?: string;

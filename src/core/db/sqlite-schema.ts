@@ -209,6 +209,8 @@ export const acpSessions = sqliteTable("acp_sessions", {
   messageHistory: text("message_history", { mode: "json" }).$type<AcpSessionNotification[]>().default([]),
   /** Parent session ID for child (CRAFTER/GATE) sessions */
   parentSessionId: text("parent_session_id"),
+  /** Specialist ID used to configure this session, if any. */
+  specialistId: text("specialist_id"),
   executionMode: text("execution_mode"),
   ownerInstanceId: text("owner_instance_id"),
   leaseExpiresAt: integer("lease_expires_at", { mode: "timestamp_ms" }),

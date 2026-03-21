@@ -1008,6 +1008,7 @@ export async function POST(request: NextRequest) {
                   provider: childSession.provider ?? "",
                   role: childSession.role ?? "CRAFTER",
                   parentSessionId: childSession.parentSessionId,
+                  specialistId: childSession.specialistId,
                   ...childExecutionBinding,
                 }).catch((err: unknown) =>
                   console.error(`[ACP Route] Failed to persist child session ${childSession.sessionId}:`, err)
@@ -1064,6 +1065,7 @@ export async function POST(request: NextRequest) {
             parentSessionId,
             modeId,
             model,
+            specialistId: specialistId ?? undefined,
             ...refreshExecutionBinding(executionBinding),
           }).catch((err) =>
             console.error(`[ACP Route] Background DB persist failed for ${sessionId}:`, err)
@@ -1300,6 +1302,7 @@ export async function POST(request: NextRequest) {
             routaAgentId: acpSessionId,
             provider,
             role,
+            specialistId: specialistId ?? undefined,
             ...executionBinding,
           });
 

@@ -1181,6 +1181,7 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
         firstPromptSent: session.firstPromptSent ?? false,
         messageHistory: session.messageHistory,
         parentSessionId: session.parentSessionId,
+        specialistId: session.specialistId,
         executionMode: session.executionMode,
         ownerInstanceId: session.ownerInstanceId,
         leaseExpiresAt: session.leaseExpiresAt ? new Date(session.leaseExpiresAt) : undefined,
@@ -1201,6 +1202,7 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
           firstPromptSent: session.firstPromptSent ?? false,
           messageHistory: session.messageHistory,
           parentSessionId: session.parentSessionId,
+          specialistId: session.specialistId,
           executionMode: session.executionMode,
           ownerInstanceId: session.ownerInstanceId,
           leaseExpiresAt: session.leaseExpiresAt ? new Date(session.leaseExpiresAt) : undefined,
@@ -1254,15 +1256,18 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
     const eventType = String(
       (notification.update as Record<string, unknown> | undefined)?.sessionUpdate ?? "notification",
     );
+    const eventId = typeof notification.eventId === "string"
+      ? notification.eventId
+      : `${sessionId}-${nextIndex}`;
 
     await this.db
       .insert(sqliteSchema.sessionMessages)
       .values({
-        id: notification.eventId ?? `${sessionId}-${nextIndex}`,
+        id: eventId,
         sessionId,
         messageIndex: nextIndex,
         eventType,
-        payload: notification as Record<string, unknown>,
+        payload: notification as typeof sqliteSchema.sessionMessages.$inferInsert.payload,
       });
 
     await this.db
@@ -1340,7 +1345,10 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
       firstPromptSent: row.firstPromptSent ?? false,
       messageHistory: row.messageHistory ?? [],
       parentSessionId: row.parentSessionId ?? undefined,
-      executionMode: row.executionMode ?? undefined,
+      specialistId: row.specialistId ?? undefined,
+      executionMode: row.executionMode === "embedded" || row.executionMode === "runner"
+        ? row.executionMode
+        : undefined,
       ownerInstanceId: row.ownerInstanceId ?? undefined,
       leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? undefined,
       createdAt: row.createdAt,

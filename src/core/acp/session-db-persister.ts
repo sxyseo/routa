@@ -12,6 +12,7 @@ import { getDatabaseDriver, getPostgresDatabase } from "@/core/db/index";
 import { PgAcpSessionStore } from "@/core/db/pg-acp-session-store";
 import { SqliteAcpSessionStore } from "@/core/db/sqlite-stores";
 import { LocalSessionProvider } from "@/core/storage/local-session-provider";
+import type { AcpSession } from "@/core/store/acp-session-store";
 import type { SessionRecord, SessionJsonlEntry } from "@/core/storage/types";
 
 function isServerless(): boolean {
@@ -42,6 +43,7 @@ export interface SessionPersistData {
   model?: string;
   /** Parent session ID for child (CRAFTER/GATE) sessions */
   parentSessionId?: string;
+  specialistId?: string;
   executionMode?: "embedded" | "runner";
   ownerInstanceId?: string;
   leaseExpiresAt?: string;
@@ -51,7 +53,7 @@ export async function persistSessionToDb(data: SessionPersistData): Promise<void
   const driver = getDatabaseDriver();
 
   const now = new Date();
-  const sessionRecord = {
+  const sessionRecord: AcpSession = {
     id: data.id,
     name: data.name,
     cwd: data.cwd,
@@ -65,9 +67,10 @@ export async function persistSessionToDb(data: SessionPersistData): Promise<void
     firstPromptSent: false,
     messageHistory: [] as never[],
     parentSessionId: data.parentSessionId,
+    specialistId: data.specialistId,
     executionMode: data.executionMode,
     ownerInstanceId: data.ownerInstanceId,
-    leaseExpiresAt: data.leaseExpiresAt ? new Date(data.leaseExpiresAt) : undefined,
+    leaseExpiresAt: data.leaseExpiresAt,
     createdAt: now,
     updatedAt: now,
   };
@@ -105,6 +108,7 @@ export async function persistSessionToDb(data: SessionPersistData): Promise<void
         modeId: data.modeId,
         model: data.model,
         parentSessionId: data.parentSessionId,
+        specialistId: data.specialistId,
         executionMode: data.executionMode,
         ownerInstanceId: data.ownerInstanceId,
         leaseExpiresAt: data.leaseExpiresAt,
@@ -176,6 +180,7 @@ export async function hydrateSessionsFromDb(): Promise<Array<{
   modeId?: string;
   model?: string;
   parentSessionId?: string;
+  specialistId?: string;
   executionMode?: "embedded" | "runner";
   ownerInstanceId?: string;
   leaseExpiresAt?: string;
