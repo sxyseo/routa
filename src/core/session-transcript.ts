@@ -190,6 +190,42 @@ export function historyNotificationsToMessages(
     };
 
     switch (kind) {
+      case "user_message": {
+        const content = update.content;
+        const text = Array.isArray(content)
+          ? content.map((item) => item.text ?? "").join(" ").trim()
+          : (content as { text?: string } | undefined)?.text ?? "";
+        if (!text) break;
+        const lastMessage = messages.at(-1);
+        if (lastMessage?.role === "user" && normalizeMessageText(lastMessage.content) === normalizeMessageText(text)) {
+          break;
+        }
+        messages.push({
+          id: `${sessionId}-user-${messages.length}`,
+          role: "user",
+          content: text,
+          timestamp: new Date(),
+        });
+        break;
+      }
+      case "agent_message": {
+        const content = update.content;
+        const text = Array.isArray(content)
+          ? content.map((item) => item.text ?? "").join(" ").trim()
+          : (content as { text?: string } | undefined)?.text ?? "";
+        if (!text) break;
+        const lastMessage = messages.at(-1);
+        if (lastMessage?.role === "assistant" && normalizeMessageText(lastMessage.content) === normalizeMessageText(text)) {
+          break;
+        }
+        messages.push({
+          id: `${sessionId}-assistant-${messages.length}`,
+          role: "assistant",
+          content: text,
+          timestamp: new Date(),
+        });
+        break;
+      }
       case "agent_message_chunk": {
         const text = extractText();
         if (!text) break;

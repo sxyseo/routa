@@ -90,4 +90,31 @@ describe("buildPreferredTranscriptPayload", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]?.toolName).toBe("update_card");
   });
+
+  it("restores consolidated user and agent messages from history", () => {
+    const payload = buildPreferredTranscriptPayload({
+      sessionId: "s1",
+      history: [
+        {
+          sessionId: "s1",
+          update: {
+            sessionUpdate: "user_message",
+            content: { type: "text", text: "hello" },
+          },
+        },
+        {
+          sessionId: "s1",
+          update: {
+            sessionUpdate: "agent_message",
+            content: { type: "text", text: "world" },
+          },
+        },
+      ],
+      traces: [],
+    });
+
+    expect(payload.source).toBe("history");
+    expect(payload.historyMessageCount).toBe(2);
+    expect(payload.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+  });
 });
