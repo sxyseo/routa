@@ -58,6 +58,14 @@ const DEFAULT_DEV_SESSION_SUPERVISION: KanbanDevSessionSupervisionInfo = {
 };
 
 const ROLE_OPTIONS = ["CRAFTER", "ROUTA", "GATE", "DEVELOPER"];
+const STAGE_TYPE_OPTIONS = [
+  { value: "backlog", label: "Backlog" },
+  { value: "todo", label: "Todo" },
+  { value: "dev", label: "Dev" },
+  { value: "review", label: "Review" },
+  { value: "done", label: "Done" },
+  { value: "blocked", label: "Blocked" },
+] as const;
 const KANBAN_EXPORT_WORKSPACE_KEY = "routa.kanbanExportWorkspaceId";
 const MANUAL_ONLY_STAGES = new Set(["blocked"]);
 const ARTIFACT_OPTIONS = [
@@ -445,6 +453,15 @@ export function KanbanSettingsModal({
     });
   };
 
+  const updateColumn = (
+    columnId: string,
+    updater: (column: KanbanBoardInfo["columns"][0]) => KanbanBoardInfo["columns"][0],
+  ) => {
+    setEditableColumns((current) => current.map((column) => (
+      column.id === columnId ? updater(column) : column
+    )));
+  };
+
   const handleDeleteStage = (columnId: string) => {
     setEditableColumns((current) => {
       if (current.length <= 1) return current;
@@ -490,6 +507,16 @@ export function KanbanSettingsModal({
     });
     if (nextId) {
       setSelectedColumnId(nextId);
+    }
+  };
+
+  const handleStageTypeChange = (columnId: string, stage: string) => {
+    updateColumn(columnId, (column) => ({ ...column, stage }));
+    if (stage === "blocked") {
+      setColumnAutomation((current) => ({
+        ...current,
+        [columnId]: { ...(current[columnId] ?? { enabled: false }), enabled: false },
+      }));
     }
   };
 
@@ -836,6 +863,58 @@ export function KanbanSettingsModal({
                               </button>
                             </div>
                           </div>
+
+                          {active ? (
+                            <div className={`mt-2 space-y-2 rounded-md border px-2 py-2 ${
+                              active
+                                ? "border-white/15 bg-white/5"
+                                : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-[#0b1119]"
+                            }`}>
+                              <label className="block space-y-1 text-xs font-medium">
+                                <span className={active ? "text-slate-300" : "text-slate-600 dark:text-slate-300"}>Name</span>
+                                <input
+                                  aria-label="Stage name"
+                                  type="text"
+                                  value={column.name}
+                                  onChange={(event) => updateColumn(column.id, (current) => ({
+                                    ...current,
+                                    name: event.target.value,
+                                  }))}
+                                  className={`h-8 w-full rounded-md border px-2 text-sm outline-none transition ${
+                                    active
+                                      ? "border-white/15 bg-white/10 text-white placeholder:text-slate-400 focus:border-amber-300"
+                                      : "border-slate-200 bg-white text-slate-900 focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                                  }`}
+                                />
+                              </label>
+
+                              <label className="block space-y-1 text-xs font-medium">
+                                <span className={active ? "text-slate-300" : "text-slate-600 dark:text-slate-300"}>Stage type</span>
+                                <SelectControl
+                                  aria-label="Stage type"
+                                  value={column.stage}
+                                  onChange={(event) => handleStageTypeChange(column.id, event.target.value)}
+                                  className={active ? "border-white/15 bg-white/10 text-white dark:border-white/15 dark:bg-white/10 dark:text-white" : ""}
+                                >
+                                  {STAGE_TYPE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </SelectControl>
+                              </label>
+
+                              {column.stage === "blocked" ? (
+                                <div className={`rounded-md border px-2 py-1.5 text-[11px] leading-5 ${
+                                  active
+                                    ? "border-white/15 bg-white/5 text-slate-300"
+                                    : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-400"
+                                }`}>
+                                  Blocked is treated as a manual-only stage and will not run ACP automation.
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}

@@ -223,4 +223,42 @@ describe("KanbanSettingsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /delete stage 3/i }));
     expect(screen.queryByRole("button", { name: /delete stage 3/i })).toBeNull();
   });
+
+  it("edits selected stage structure from the stage map sidebar", async () => {
+    const onSave = vi.fn(async () => {});
+    render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Stage name"), { target: { value: "Queued" } });
+    fireEvent.change(screen.getByLabelText("Stage type"), { target: { value: "blocked" } });
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({ id: "todo", name: "Queued", stage: "blocked" }),
+          expect.objectContaining({ id: "review", name: "Review", stage: "review" }),
+        ],
+        expect.objectContaining({
+          todo: expect.objectContaining({ enabled: false }),
+        }),
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+      );
+    });
+  });
 });
