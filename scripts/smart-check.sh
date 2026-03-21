@@ -3,7 +3,7 @@
 # Smart Pre-Push Check Script
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# Runs lint and tests before push. On failure:
+# Runs entrix-backed pre-push fitness checks before push. On failure:
 #   - In AI agent environment → Output clear error message for AI to fix
 #   - In human environment → Optionally auto-fix with claude -p
 #
@@ -17,13 +17,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -e
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
 
 # ─── AI Agent Detection ─────────────────────────────────────────────────────
 
@@ -59,106 +52,13 @@ is_ai_agent() {
 
 # ─── Temp Files for Output Capture ──────────────────────────────────────────
 
-LINT_LOG=$(mktemp)
-TYPECHECK_LOG=$(mktemp)
-TEST_LOG=$(mktemp)
-MD_LINKS_LOG=$(mktemp)
+FITNESS_LOG=$(mktemp)
+REVIEW_LOG=$(mktemp)
 
 cleanup() {
-  rm -f "$LINT_LOG" "$TYPECHECK_LOG" "$TEST_LOG" "$MD_LINKS_LOG"
+  rm -f "$FITNESS_LOG" "$REVIEW_LOG"
 }
 trap cleanup EXIT
-
-# ─── Markdown Link Checker ──────────────────────────────────────────────────
-
-check_markdown_links() {
-  local failed=0
-  local checked=0
-  local skipped=0
-  
-  echo -e "${BLUE}Checking markdown links...${NC}"
-  
-  local md_files
-  md_files=$(find . -name "*.md" -not -path "./node_modules/*" -not -path "./.next/*" -not -path "./.git/*" -not -path "./out/*" 2>/dev/null | head -100)
-  
-  if [[ -z "$md_files" ]]; then
-    echo -e "${YELLOW}No markdown files found.${NC}"
-    return 0
-  fi
-  
-  local all_links=""
-  while IFS= read -r file; do
-    local links
-    links=$(grep -oE '\[[^]]+\]\([^)]+\)' "$file" 2>/dev/null | sed -E 's/.*\]\(([^)]+)\).*/\1/' | grep -E '^https?://' | grep -vE 'localhost|127\.0\.0\.1' | sort -u)
-    if [[ -n "$links" ]]; then
-      while IFS= read -r link; do
-        all_links+="$file|$link"$'\n'
-      done <<< "$links"
-    fi
-  done <<< "$md_files"
-  
-  all_links=$(echo "$all_links" | sort -u -t'|' -k2,2)
-  
-  if [[ -z "$all_links" ]]; then
-    echo -e "${GREEN}No external links found in markdown files.${NC}"
-    return 0
-  fi
-  
-  local total
-  total=$(echo "$all_links" | wc -l | tr -d ' ')
-  echo -e "${BLUE}Found $total unique external links to check...${NC}"
-  
-  while IFS='|' read -r file link; do
-    [[ -z "$link" ]] && continue
-    
-    ((checked++)) || true
-    
-    printf "  [%3d/%3d] Checking: %s" "$checked" "$total" "$link"
-    
-    local http_code
-    local curl_output
-    
-    curl_output=$(curl -sS -o /dev/null -w "%{http_code}" \
-      --connect-timeout 10 \
-      --max-time 15 \
-      -L \
-      -H "User-Agent: Mozilla/5.0 (compatible; RoutaLinkChecker/1.0)" \
-      "$link" 2>&1)
-    
-    http_code="$curl_output"
-    
-    if [[ "$http_code" =~ ^2[0-9][0-9]$ ]] || [[ "$http_code" =~ ^3[0-9][0-9]$ ]]; then
-      echo -e "\r  ${GREEN}✓${NC} [$checked/$total] $link"
-    elif [[ "$http_code" =~ ^4[0-9][0-9]$ ]] && [[ "$http_code" != "429" ]]; then
-      echo -e "\r  ${YELLOW}⚠${NC} [$checked/$total] $link (HTTP $http_code - may require auth)"
-      ((skipped++)) || true
-    elif [[ "$http_code" == "429" ]]; then
-      echo -e "\r  ${YELLOW}⚠${NC} [$checked/$total] $link (rate limited)"
-      ((skipped++)) || true
-    else
-      echo -e "\r  ${RED}✗${NC} [$checked/$total] $link (HTTP $http_code)"
-      echo "  ${RED}  → Found in: $file${NC}"
-      echo "$file: $link (HTTP $http_code)" >> "$MD_LINKS_LOG"
-      ((failed++)) || true
-    fi
-  done <<< "$all_links"
-  
-  echo ""
-  echo -e "${BLUE}Link check summary:${NC}"
-  echo "  Total checked: $checked"
-  echo "  Passed: $((checked - failed - skipped))"
-  echo "  Warnings: $skipped"
-  echo "  Failed: $failed"
-  
-  if [[ $failed -gt 0 ]]; then
-    echo ""
-    echo -e "${RED}Broken links found:${NC}"
-    cat "$MD_LINKS_LOG"
-    return 1
-  fi
-  
-  return 0
-}
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 
@@ -174,108 +74,35 @@ main() {
     esac
   done
 
-  local lint_exit=0 typecheck_exit=0 test_exit=0 mdlinks_exit=0
+  local fitness_exit=0
 
-  # ─── Run Lint ─────────────────────────────────────────────────────────────
-  echo -e "${BLUE}[1/4] Running lint...${NC}"
+  echo "[fitness] Running pre-push fitness metrics..."
   echo ""
   set +e
-  npm run lint 2>&1 | tee "$LINT_LOG"
-  lint_exit=${PIPESTATUS[0]}
+  PYTHONPATH=tools/entrix python3 -m entrix.cli run \
+    --parallel \
+    --min-score 0 \
+    --metric eslint_pass \
+    --metric ts_typecheck_pass \
+    --metric ts_test_pass \
+    --metric markdown_external_links 2>&1 | tee "$FITNESS_LOG"
+  fitness_exit=${PIPESTATUS[0]}
   set -e
   echo ""
-  if [[ $lint_exit -eq 0 ]]; then
-    echo -e "${GREEN}✓ Lint passed${NC}"
-  else
-    echo -e "${RED}✗ Lint failed (exit code: $lint_exit)${NC}"
+
+  if [[ $fitness_exit -ne 0 ]]; then
     if [[ "$fail_fast" == true ]]; then
-      handle_failure "$auto_fix" "lint" $lint_exit 0 0 0
+      handle_failure "$auto_fix" "fitness"
       exit 1
     fi
-  fi
-  echo ""
-
-  # ─── Run Type Check ───────────────────────────────────────────────────────
-  echo -e "${BLUE}[2/4] Running type check...${NC}"
-  echo ""
-  set +e
-  npx tsc --noEmit 2>&1 | tee "$TYPECHECK_LOG"
-  typecheck_exit=${PIPESTATUS[0]}
-  set -e
-
-  # Check if the error is due to stale .next types
-  if [[ $typecheck_exit -ne 0 ]] && grep -q "\.next/types/.*Cannot find module.*src/app/.*page\.js" "$TYPECHECK_LOG"; then
-    echo -e "${YELLOW}⚠ Detected stale .next types. Cleaning and retrying...${NC}"
-    rm -rf .next
-    echo ""
-    set +e
-    npx tsc --noEmit 2>&1 | tee "$TYPECHECK_LOG"
-    typecheck_exit=${PIPESTATUS[0]}
-    set -e
-  fi
-
-  echo ""
-  if [[ $typecheck_exit -eq 0 ]]; then
-    echo -e "${GREEN}✓ Type check passed${NC}"
   else
-    echo -e "${RED}✗ Type check failed (exit code: $typecheck_exit)${NC}"
-    if [[ "$fail_fast" == true ]]; then
-      handle_failure "$auto_fix" "typecheck" $lint_exit $typecheck_exit 0 0
-      exit 1
-    fi
-  fi
-  echo ""
-
-  # ─── Run Tests ────────────────────────────────────────────────────────────
-  echo -e "${BLUE}[3/4] Running tests...${NC}"
-  echo ""
-  set +e
-  npm run test -- --run 2>&1 | tee "$TEST_LOG"
-  test_exit=${PIPESTATUS[0]}
-  set -e
-  echo ""
-  if [[ $test_exit -eq 0 ]]; then
-    echo -e "${GREEN}✓ Tests passed${NC}"
-  else
-    echo -e "${RED}✗ Tests failed (exit code: $test_exit)${NC}"
-    if [[ "$fail_fast" == true ]]; then
-      handle_failure "$auto_fix" "test" $lint_exit $typecheck_exit $test_exit 0
-      exit 1
-    fi
-  fi
-  echo ""
-
-  # ─── Check Markdown Links ─────────────────────────────────────────────────
-  echo -e "${BLUE}[4/4] Checking markdown links...${NC}"
-  echo ""
-  set +e
-  check_markdown_links
-  mdlinks_exit=$?
-  set -e
-  echo ""
-  if [[ $mdlinks_exit -eq 0 ]]; then
-    echo -e "${GREEN}✓ Markdown links check passed${NC}"
-  else
-    echo -e "${RED}✗ Markdown links check failed (exit code: $mdlinks_exit)${NC}"
-    if [[ "$fail_fast" == true ]]; then
-      handle_failure "$auto_fix" "mdlinks" $lint_exit $typecheck_exit $test_exit $mdlinks_exit
-      exit 1
-    fi
-  fi
-  echo ""
-
-  # All passed?
-  if [[ $lint_exit -eq 0 ]] && [[ $typecheck_exit -eq 0 ]] && [[ $test_exit -eq 0 ]] && [[ $mdlinks_exit -eq 0 ]]; then
     maybe_warn_human_review
     echo ""
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}  All checks passed! Ready to push.${NC}"
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+    echo "All checks passed! Ready to push."
     exit 0
   fi
 
-  # ─── Failure Handling (only reached in --no-fail-fast mode) ───────────────
-  handle_failure "$auto_fix" "all" $lint_exit $typecheck_exit $test_exit $mdlinks_exit
+  handle_failure "$auto_fix" "fitness"
   exit 1
 }
 
@@ -289,22 +116,23 @@ maybe_warn_human_review() {
     review_base='@{upstream}'
   fi
 
-  echo -e "${BLUE}[review] Evaluating human review triggers...${NC}"
+  echo "[review] Evaluating human review triggers..."
   echo ""
 
   set +e
-  review_json=$(PYTHONPATH=tools/entrix python3 -m entrix.cli review-trigger --base "$review_base" --json --fail-on-trigger 2>/dev/null)
+  review_json=$(PYTHONPATH=tools/entrix python3 -m entrix.cli review-trigger --base "$review_base" --json --fail-on-trigger 2>&1)
   review_status=$?
   set -e
+  printf '%s\n' "$review_json" > "$REVIEW_LOG"
 
   if [[ $review_status -ne 0 ]] && [[ $review_status -ne 3 ]]; then
-    echo -e "${YELLOW}⚠ Unable to evaluate review triggers. Continuing without review gate.${NC}"
+    echo "Unable to evaluate review triggers. Continuing without review gate."
     echo ""
     return 0
   fi
 
   if [[ $review_status -eq 0 ]]; then
-    echo -e "${GREEN}✓ No review trigger matched${NC}"
+    echo "No review trigger matched."
     echo ""
     return 0
   fi
@@ -323,31 +151,31 @@ PY
   echo ""
 
   if [[ "$ROUTA_ALLOW_REVIEW_TRIGGER_PUSH" == "1" ]]; then
-    echo -e "${YELLOW}⚠ ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 set, bypassing review gate.${NC}"
+    echo "ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 set, bypassing review gate."
     echo ""
     return 0
   fi
 
   if is_ai_agent; then
-    echo -e "${RED}Review-trigger matched. Human review is required before push.${NC}"
-    echo -e "${YELLOW}After review, rerun push with ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 if you intentionally want to bypass this gate.${NC}"
+    echo "Review-trigger matched. Human review is required before push."
+    echo "After review, rerun push with ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 if you intentionally want to bypass this gate."
     exit 1
   fi
 
   if [[ ! -t 0 ]]; then
-    echo -e "${RED}Review-trigger matched in a non-interactive push.${NC}"
-    echo -e "${YELLOW}Complete human review first, then rerun with ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 to confirm.${NC}"
+    echo "Review-trigger matched in a non-interactive push."
+    echo "Complete human review first, then rerun with ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 to confirm."
     exit 1
   fi
 
-  echo -e "${YELLOW}These changes need human review. Confirm review is complete and continue push? [y/N]${NC}"
+  echo "These changes need human review. Confirm review is complete and continue push? [y/N]"
   read -r -t 30 response || response="n"
   if [[ ! "$response" =~ ^[Yy]$ ]]; then
     echo "Push aborted. Complete review, then push again."
     exit 1
   fi
 
-  echo -e "${GREEN}✓ Human review acknowledged. Continuing push.${NC}"
+  echo "Human review acknowledged. Continuing push."
   echo ""
 }
 
@@ -355,40 +183,33 @@ PY
 handle_failure() {
   local auto_fix="$1"
   local failed_step="$2"
-  local lint_exit="$3"
-  local typecheck_exit="$4"
-  local test_exit="$5"
-  local mdlinks_exit="$6"
 
   echo ""
-  echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
+  echo "==============================================================="
   case "$failed_step" in
-    lint)      echo -e "${RED}  ✗ LINT FAILED${NC}" ;;
-    typecheck) echo -e "${RED}  ✗ TYPE CHECK FAILED${NC}" ;;
-    test)      echo -e "${RED}  ✗ TESTS FAILED${NC}" ;;
-    mdlinks)   echo -e "${RED}  ✗ MARKDOWN LINKS CHECK FAILED${NC}" ;;
-    *)         echo -e "${RED}  Pre-push checks failed!${NC}" ;;
+    fitness) echo "  Pre-push fitness checks failed!" ;;
+    *)       echo "  Pre-push checks failed!" ;;
   esac
-  echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
+  echo "==============================================================="
   echo ""
 
   # Check if we're in an AI agent environment
   if is_ai_agent; then
-    echo -e "${YELLOW}Running in AI agent environment.${NC}"
-    echo -e "${YELLOW}Please fix the errors shown above.${NC}"
+    echo "Running in AI agent environment."
+    echo "Please fix the errors shown above."
     exit 1
   fi
 
   # Check if claude CLI is available
   if ! command -v claude &> /dev/null; then
-    echo -e "${YELLOW}Claude CLI not found. Please fix errors manually.${NC}"
+    echo "Claude CLI not found. Please fix errors manually."
     exit 1
   fi
 
   if [[ "$auto_fix" == true ]]; then
-    echo -e "${BLUE}Auto-fix mode enabled. Starting Claude...${NC}"
+    echo "Auto-fix mode enabled. Starting Claude..."
   else
-    echo -e "${YELLOW}Would you like Claude to fix these issues? [y/N]${NC}"
+    echo "Would you like Claude to fix these issues? [y/N]"
     read -r -t 30 response || response="n"
     if [[ ! "$response" =~ ^[Yy]$ ]]; then
       echo "Aborted. Please fix errors manually."
@@ -396,36 +217,21 @@ handle_failure() {
     fi
   fi
 
-  # Build the fix prompt using captured log files
-  local fix_prompt="Pre-push checks failed. Please fix the following issues:\n\n"
+  local fitness_tail
+  fitness_tail=$(tail -100 "$FITNESS_LOG")
 
-  if [[ $lint_exit -ne 0 ]]; then
-    fix_prompt+="## Lint Errors\n\`\`\`\n$(cat "$LINT_LOG" | tail -100)\n\`\`\`\n\n"
-  fi
+  local fix_prompt="Pre-push fitness checks failed. Please fix the following issues:\n\n"
+  fix_prompt+="## Fitness Output\n\`\`\`\n${fitness_tail}\n\`\`\`\n\n"
+  fix_prompt+="After fixing all issues, rerun the entrix-backed pre-push checks and verify they pass."
 
-  if [[ $typecheck_exit -ne 0 ]]; then
-    fix_prompt+="## Type Check Errors\n\`\`\`\n$(cat "$TYPECHECK_LOG" | tail -100)\n\`\`\`\n\n"
-  fi
-
-  if [[ $test_exit -ne 0 ]]; then
-    fix_prompt+="## Test Failures\n\`\`\`\n$(cat "$TEST_LOG" | tail -100)\n\`\`\`\n\n"
-  fi
-
-  if [[ $mdlinks_exit -ne 0 ]]; then
-    fix_prompt+="## Markdown Link Errors\n\`\`\`\n$(cat "$MD_LINKS_LOG" | tail -50)\n\`\`\`\n\n"
-  fi
-
-  fix_prompt+="After fixing all issues, run the checks again to verify, then push the changes."
-
-  echo -e "${BLUE}Starting Claude to fix issues...${NC}"
+  echo "Starting Claude to fix issues..."
   echo ""
 
-  # Run claude with the fix prompt
   claude -p "$fix_prompt"
 
   echo ""
-  echo -e "${GREEN}Claude has attempted to fix the issues.${NC}"
-  echo -e "${YELLOW}Please review the changes and run 'git push' again.${NC}"
+  echo "Claude has attempted to fix the issues."
+  echo "Please review the changes and run 'git push' again."
   exit 1
 }
 

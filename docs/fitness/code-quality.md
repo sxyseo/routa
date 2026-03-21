@@ -188,6 +188,18 @@ metrics:
     tier: fast
     description: "ESLint 必须通过"
 
+  - name: ts_typecheck_pass
+    command: ./scripts/typecheck-smart.sh 2>&1
+    hard_gate: true
+    tier: fast
+    description: "TypeScript 类型检查必须通过；若检测到 stale .next types，会自动清理后重试一次"
+
+  - name: markdown_external_links
+    command: ./scripts/check-markdown-links.sh 2>&1
+    hard_gate: true
+    tier: normal
+    description: "Markdown 中的外链必须可达；429 与需要鉴权的 4xx 记为告警不阻断"
+
   - name: clippy_pass
     command: cargo clippy --workspace -- -D warnings 2>&1
     hard_gate: true
