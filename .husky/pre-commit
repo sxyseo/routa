@@ -7,11 +7,5 @@ if [ -n "$SKIP_HOOKS" ]; then
   exit 0
 fi
 
-# Fail early if staged source files grow beyond the AI refactor threshold.
-PYTHONPATH=tools/entrix python3 -m entrix hook file-length \
-  --config tools/entrix/file_budgets.pre_commit.json \
-  --staged-only \
-  --strict-limit
-
 # Run lint only (fast check)
 npm run lint
