@@ -23,7 +23,7 @@ import {
   refreshExecutionBinding,
 } from "@/core/acp/execution-backend";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
-import { pendingAcpCreations } from "@/app/api/acp/acp-session-new";
+import { pendingAcpCreations } from "@/app/api/acp/acp-session-create";
 import { persistSessionHistorySnapshot } from "@/app/api/acp/acp-session-history";
 
 type JsonRpcResponseFactory = (

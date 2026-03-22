@@ -47,7 +47,7 @@ import {
   proxyRequestToRunner,
   runnerUnavailableResponse,
 } from "@/core/acp/runner-routing";
-import { handleSessionNew } from "@/app/api/acp/acp-session-new";
+import { handleSessionNew } from "@/app/api/acp/acp-session-create";
 import { getSessionWriteBuffer } from "@/app/api/acp/acp-session-history";
 import { handleSessionPrompt } from "@/app/api/acp/acp-session-prompt";
 
