@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { TracesPageHeader } from "./traces-page-header";
 
 const meta = {
-  title: "Desktop Shell/TracesPageHeader",
+  title: "Traces/Header/TracesPageHeader",
   component: TracesPageHeader,
   tags: ["autodocs"],
   parameters: {

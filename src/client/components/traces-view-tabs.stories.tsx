@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { TracesViewTabs } from "./traces-view-tabs";
 
 const meta = {
-  title: "Desktop Shell/TracesViewTabs",
+  title: "Traces/Navigation/TracesViewTabs",
   component: TracesViewTabs,
   tags: ["autodocs"],
   parameters: {

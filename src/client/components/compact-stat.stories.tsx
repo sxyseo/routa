@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { CompactStat } from "./compact-stat";
 
 const meta = {
-  title: "Desktop Shell/CompactStat",
+  title: "Workspace/Stats/CompactStat",
   component: CompactStat,
   tags: ["autodocs"],
   parameters: {

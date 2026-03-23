@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { OverviewCard } from "./overview-card";
 
 const meta = {
-  title: "Desktop Shell/OverviewCard",
+  title: "Workspace/Cards/OverviewCard",
   component: OverviewCard,
   tags: ["autodocs"],
   parameters: {
