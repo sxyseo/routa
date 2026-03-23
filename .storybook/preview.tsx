@@ -7,9 +7,7 @@ const withThemeMode: Decorator = (Story, context) => {
   const useDesktopTheme = context.parameters.desktopTheme ?? false;
   const surfaceClassName = useDesktopTheme
     ? "desktop-theme bg-desktop-bg-primary text-desktop-text-primary"
-    : colorMode === "dark"
-      ? "bg-[#0a0c12] text-[#ededed]"
-      : "bg-[#fafafa] text-[#171717]";
+    : "bg-[var(--background)] text-[var(--foreground)]";
 
   if (typeof document !== "undefined") {
     document.documentElement.classList.toggle("dark", colorMode === "dark");
@@ -59,7 +57,7 @@ const preview: Preview = {
     },
     options: {
       storySort: {
-        order: ["Desktop Shell", "Shared"],
+        order: ["Foundations", "Core", "Layouts", "Navigation", "Workspace", "Traces"],
       },
     },
     a11y: {

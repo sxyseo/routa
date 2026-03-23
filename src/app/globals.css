@@ -85,8 +85,8 @@
   --brand-route-soft: var(--brand-slate-300);
   --brand-gray: var(--brand-slate-500);
   --brand-gray-soft: var(--brand-slate-300);
-  --accent: #f59e0b;
-  --accent-hover: #d97706;
+  --accent: var(--brand-amber-500);
+  --accent-hover: var(--brand-amber-600);
 }
 
 html.dark {
@@ -96,8 +96,8 @@ html.dark {
   --border: #1c1f2e;
   --brand-route-soft: var(--brand-slate-600);
   --brand-gray-soft: var(--brand-slate-700);
-  --accent: #f59e0b;
-  --accent-hover: #fbbf24;
+  --accent: var(--brand-amber-500);
+  --accent-hover: var(--brand-amber-400);
 }
 
 html,
@@ -295,8 +295,8 @@ html.dark {
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
-  background: color-mix(in srgb, var(--brand-green) 15%, transparent);
-  color: var(--brand-green);
+  background: color-mix(in srgb, var(--brand-emerald-500) 14%, transparent);
+  color: var(--brand-emerald-700);
   white-space: nowrap;
 }
 
@@ -309,8 +309,8 @@ html.dark {
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
-  background: color-mix(in srgb, var(--brand-blue) 15%, transparent);
-  color: var(--brand-blue);
+  background: color-mix(in srgb, var(--brand-blue-500) 14%, transparent);
+  color: var(--brand-blue-700);
   white-space: nowrap;
 }
 
@@ -323,23 +323,23 @@ html.dark {
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
-  background: color-mix(in srgb, var(--brand-orange) 15%, transparent);
-  color: var(--brand-orange);
+  background: color-mix(in srgb, var(--brand-amber-500) 14%, transparent);
+  color: var(--brand-amber-700);
   white-space: nowrap;
 }
 
 html.dark {
   .file-mention {
-    background: color-mix(in srgb, var(--brand-green) 20%, transparent);
-    color: var(--brand-green-soft);
+    background: color-mix(in srgb, var(--brand-emerald-500) 18%, transparent);
+    color: var(--brand-emerald-300);
   }
   .agent-mention {
-    background: color-mix(in srgb, var(--brand-blue) 20%, transparent);
-    color: var(--brand-blue-soft);
+    background: color-mix(in srgb, var(--brand-blue-500) 18%, transparent);
+    color: var(--brand-blue-300);
   }
   .skill-mention {
-    background: color-mix(in srgb, var(--brand-orange) 20%, transparent);
-    color: var(--brand-orange-soft);
+    background: color-mix(in srgb, var(--brand-amber-500) 18%, transparent);
+    color: var(--brand-amber-300);
   }
 }
 

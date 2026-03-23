@@ -18,13 +18,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variantStyles: Record<ButtonVariant, string> = {
       primary:
-        "bg-blue-500 text-white hover:bg-blue-400 focus:ring-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400",
+        "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 dark:bg-blue-500 dark:hover:bg-blue-600",
       secondary:
-        "bg-white dark:bg-[#1a1f2e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:border-blue-200 hover:bg-blue-50 dark:hover:border-blue-800 dark:hover:bg-blue-950/20 focus:ring-blue-500",
+        "bg-white text-slate-700 border border-slate-200 hover:border-blue-200 hover:bg-blue-50 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:border-blue-700 dark:hover:bg-blue-950/20 focus:ring-blue-500",
       ghost:
-        "bg-transparent text-gray-600 dark:text-gray-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/20 dark:hover:text-blue-300 focus:ring-blue-500",
+        "bg-transparent text-slate-600 hover:bg-blue-50 hover:text-blue-700 dark:text-slate-300 dark:hover:bg-blue-950/20 dark:hover:text-blue-300 focus:ring-blue-500",
       danger:
-        "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 dark:bg-red-600 dark:hover:bg-red-700",
+        "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 dark:bg-red-500 dark:hover:bg-red-600",
       "desktop-secondary":
         "border border-transparent bg-desktop-bg-secondary text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary focus:ring-[var(--dt-accent)]",
       "desktop-accent":

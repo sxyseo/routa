@@ -296,16 +296,16 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
   );
 
   return (
-    <div className={`flex h-full flex-col ${embedded ? "" : "bg-white dark:bg-[#0f1117]"}`}>
-      <div className={embedded ? "mb-3 space-y-3" : "border-b border-gray-100 px-5 py-4 dark:border-gray-800"}>
+    <div className={`flex h-full flex-col ${embedded ? "" : "bg-white dark:bg-slate-950"}`}>
+      <div className={embedded ? "mb-3 space-y-3" : "border-b border-slate-100 px-5 py-4 dark:border-slate-800"}>
         <div className={`flex items-center justify-between ${embedded ? "" : "mb-3"}`}>
           <div className="flex items-center gap-2">
-            {!embedded && <AgentIcon className="h-5 w-5 text-blue-500" />}
-            <h2 className={`${embedded ? "text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400" : "text-base font-semibold text-gray-900 dark:text-gray-100"}`}>
+            {!embedded && <AgentIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+            <h2 className={`${embedded ? "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400" : "text-base font-semibold text-slate-900 dark:text-slate-100"}`}>
               ACP Registry
             </h2>
             {agents.length > 0 && (
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800">
                 {agents.length}
               </span>
             )}
@@ -315,7 +315,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
             <button
               onClick={() => fetchAgents(true)}
               disabled={loading}
-              className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-50"
+              className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-50"
             >
               {loading ? "Loading..." : "Refresh"}
             </button>
@@ -323,19 +323,19 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
         </div>
 
         <div className="relative">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search agents..."
-            className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-100"
           />
         </div>
       </div>
 
       {error && (
-        <div className={`${embedded ? "mb-3" : "mx-5 mt-3"} rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-400`}>
+        <div className={`${embedded ? "mb-3" : "mx-5 mt-3"} rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/20 dark:text-red-300`}>
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
         </div>
@@ -371,7 +371,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
       </div>
 
       {!embedded && (
-        <div className="border-t border-gray-100 px-5 py-3 text-xs text-gray-400 dark:border-gray-800">
+        <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 dark:border-slate-800">
           Platform: {platform ?? "unknown"} • Registry: cdn.agentclientprotocol.com
         </div>
       )}
@@ -416,10 +416,10 @@ function AgentCard({
   const canInstall = availableDistType !== null;
 
   return (
-    <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 transition-colors hover:border-blue-200 dark:border-slate-700 dark:bg-slate-800/30 dark:hover:border-blue-700/40">
       <div className="flex items-start gap-3">
         {/* Icon */}
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-amber-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-amber-500 text-sm font-bold text-white">
           {agent.icon ? (
             <Image src={agent.icon} alt="" width={24} height={24} className="w-6 h-6" />
           ) : (
@@ -430,27 +430,27 @@ function AgentCard({
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+            <h3 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
               {agent.name}
             </h3>
-            <span className="px-1.5 py-0.5 text-[10px] font-mono text-gray-500 bg-gray-100 dark:bg-gray-700 rounded">
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-500 dark:bg-slate-700">
               v{agent.version}
             </span>
             {installed && (
-              <span className="px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 rounded">
+              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300">
                 Installed
               </span>
             )}
             {!installed && available && (
-              <span className="px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded">
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/20 dark:text-blue-300">
                 Available
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
+          <p className="mb-2 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">
             {agent.description}
           </p>
-          <div className="flex items-center gap-2 text-[10px] text-gray-400">
+          <div className="flex items-center gap-2 text-[10px] text-slate-400">
             <span>{agent.authors.join(", ")}</span>
             <span>•</span>
             <span>{agent.license}</span>
@@ -463,8 +463,8 @@ function AgentCard({
                     (dt === "npx" && runtimeAvailability.npx) ||
                     (dt === "uvx" && runtimeAvailability.uvx) ||
                     dt === "binary"
-                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                      : "bg-gray-100 dark:bg-gray-700 text-gray-400 line-through"
+                      ? "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-300"
+                      : "bg-slate-100 text-slate-400 line-through dark:bg-slate-700"
                   }`}
                 >
                   {dt}
@@ -480,7 +480,7 @@ function AgentCard({
             <button
               onClick={() => onUninstall(agent.id)}
               disabled={installing}
-              className="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors"
+              className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/20"
             >
               {installing ? "..." : "Uninstall"}
             </button>
@@ -488,7 +488,7 @@ function AgentCard({
             <button
               onClick={() => onInstall(agent.id, availableDistType ?? undefined)}
               disabled={installing || !canInstall}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {installing ? "Installing..." : canInstall ? "Install" : "Unavailable"}
             </button>
@@ -498,7 +498,7 @@ function AgentCard({
               href={agent.repository}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              className="p-1.5 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-300"
               title="View repository"
             >
               <GithubIcon className="w-4 h-4" />
@@ -515,10 +515,10 @@ function AgentCard({
 function RuntimeBadges({ npx, uvx }: { npx: boolean; uvx: boolean }) {
   return (
     <div className="flex items-center gap-1.5 text-[10px]">
-      <span className={`px-1.5 py-0.5 rounded ${npx ? "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400" : "bg-gray-100 dark:bg-gray-700 text-gray-400"}`}>
+      <span className={`rounded px-1.5 py-0.5 ${npx ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300" : "bg-slate-100 text-slate-400 dark:bg-slate-700"}`}>
         npx {npx ? "✓" : "✗"}
       </span>
-      <span className={`px-1.5 py-0.5 rounded ${uvx ? "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400" : "bg-gray-100 dark:bg-gray-700 text-gray-400"}`}>
+      <span className={`rounded px-1.5 py-0.5 ${uvx ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300" : "bg-slate-100 text-slate-400 dark:bg-slate-700"}`}>
         uvx {uvx ? "✓" : "✗"}
       </span>
     </div>

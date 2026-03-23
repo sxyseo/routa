@@ -27,7 +27,7 @@ const EVENT_COLORS: Record<string, { bg: string; text: string; border: string }>
   TOOL_CALL_START:           { bg: "bg-amber-50 dark:bg-amber-950/30",       text: "text-amber-700 dark:text-amber-300",      border: "border-amber-200 dark:border-amber-800" },
   TOOL_CALL_ARGS:            { bg: "bg-amber-50 dark:bg-amber-950/20",       text: "text-amber-600 dark:text-amber-400",      border: "border-amber-100 dark:border-amber-900" },
   TOOL_CALL_END:             { bg: "bg-amber-50 dark:bg-amber-950/30",       text: "text-amber-700 dark:text-amber-300",      border: "border-amber-200 dark:border-amber-800" },
-  TOOL_CALL_RESULT:          { bg: "bg-orange-50 dark:bg-orange-950/30",     text: "text-orange-700 dark:text-orange-300",    border: "border-orange-200 dark:border-orange-800" },
+  TOOL_CALL_RESULT:          { bg: "bg-amber-50 dark:bg-amber-950/30",       text: "text-amber-700 dark:text-amber-300",      border: "border-amber-200 dark:border-amber-800" },
   REASONING_START:           { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
   REASONING_MESSAGE_START:   { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
   REASONING_MESSAGE_CONTENT: { bg: "bg-slate-50 dark:bg-slate-950/20",       text: "text-slate-600 dark:text-slate-400",      border: "border-slate-100 dark:border-slate-900" },
@@ -38,7 +38,7 @@ const EVENT_COLORS: Record<string, { bg: string; text: string; border: string }>
   CUSTOM:                    { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
   RAW:                       { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-600 dark:text-slate-400",      border: "border-slate-200 dark:border-slate-800" },
 };
-const DEFAULT_EVENT_COLOR = { bg: "bg-gray-50 dark:bg-gray-950/30", text: "text-gray-600 dark:text-gray-400", border: "border-gray-200 dark:border-gray-800" };
+const DEFAULT_EVENT_COLOR = { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800" };
 
 // ─── AG-UI Event grouping (assemble messages from chunks) ─────────────────
 

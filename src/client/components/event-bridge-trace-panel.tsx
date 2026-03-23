@@ -24,16 +24,16 @@ const BLOCK_COLORS: Record<string, { bg: string; text: string; border: string; i
   agent_failed:       { bg: "bg-red-50 dark:bg-red-950/30",          text: "text-red-700 dark:text-red-300",         border: "border-red-200 dark:border-red-800",         icon: "✗" },
   message_block:      { bg: "bg-blue-50 dark:bg-blue-950/20",        text: "text-blue-700 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-800",       icon: "💬" },
   thought_block:      { bg: "bg-slate-50 dark:bg-slate-950/20",      text: "text-slate-700 dark:text-slate-300",     border: "border-slate-200 dark:border-slate-800",     icon: "💭" },
-  read_block:         { bg: "bg-cyan-50 dark:bg-cyan-950/20",        text: "text-cyan-700 dark:text-cyan-300",       border: "border-cyan-200 dark:border-cyan-800",       icon: "📖" },
-  file_changes_block: { bg: "bg-orange-50 dark:bg-orange-950/20",    text: "text-orange-700 dark:text-orange-300",   border: "border-orange-200 dark:border-orange-800",   icon: "📝" },
-  terminal_block:     { bg: "bg-gray-50 dark:bg-gray-950/30",        text: "text-gray-700 dark:text-gray-300",       border: "border-gray-200 dark:border-gray-800",       icon: "⌨" },
+  read_block:         { bg: "bg-blue-50 dark:bg-blue-950/20",        text: "text-blue-700 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-800",       icon: "📖" },
+  file_changes_block: { bg: "bg-amber-50 dark:bg-amber-950/20",      text: "text-amber-700 dark:text-amber-300",     border: "border-amber-200 dark:border-amber-800",     icon: "📝" },
+  terminal_block:     { bg: "bg-slate-50 dark:bg-slate-950/30",      text: "text-slate-700 dark:text-slate-300",     border: "border-slate-200 dark:border-slate-800",     icon: "⌨" },
   mcp_block:          { bg: "bg-blue-50 dark:bg-blue-950/20",        text: "text-blue-700 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-800",       icon: "🔌" },
   tool_call_block:    { bg: "bg-amber-50 dark:bg-amber-950/20",      text: "text-amber-700 dark:text-amber-300",     border: "border-amber-200 dark:border-amber-800",     icon: "🔧" },
   plan_updated:       { bg: "bg-slate-50 dark:bg-slate-950/20",      text: "text-slate-700 dark:text-slate-300",     border: "border-slate-200 dark:border-slate-800",     icon: "📋" },
   usage_reported:     { bg: "bg-teal-50 dark:bg-teal-950/20",        text: "text-teal-700 dark:text-teal-300",       border: "border-teal-200 dark:border-teal-800",       icon: "📊" },
 };
 
-const DEFAULT_COLOR = { bg: "bg-gray-50 dark:bg-gray-950/30", text: "text-gray-600 dark:text-gray-400", border: "border-gray-200 dark:border-gray-800", icon: "•" };
+const DEFAULT_COLOR = { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800", icon: "•" };
 
 // ─── Event Group Helpers ──────────────────────────────────────────────────
 
@@ -115,7 +115,7 @@ function LifecycleBar({ event }: { event: WorkspaceAgentEvent }) {
 function UserBubble({ event }: { event: WorkspaceAgentEvent & { type: "message_block" } }) {
   return (
     <div className="flex items-start gap-3 group">
-      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-950/30">
         <span className="text-sm">👤</span>
       </div>
       <div className="flex-1 min-w-0">
@@ -125,7 +125,7 @@ function UserBubble({ event }: { event: WorkspaceAgentEvent & { type: "message_b
             {event.timestamp.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </span>
         </div>
-        <div className="px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800/40 dark:bg-blue-950/20">
           <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words leading-relaxed">
             {event.content || <span className="italic text-gray-400">(empty)</span>}
           </p>
@@ -174,14 +174,14 @@ function ReadBlockCard({ event }: { event: WorkspaceAgentEvent & { type: "read_b
       >
         <span className="text-[10px]">{color.icon}</span>
         <span className={`text-[11px] font-medium ${color.text}`}>{event.toolName}</span>
-        <span className={`text-[10px] ${event.status === "completed" ? "text-green-600" : event.status === "failed" ? "text-red-600" : "text-yellow-600"}`}>{statusIcon}</span>
+        <span className={`text-[10px] ${event.status === "completed" ? "text-emerald-600" : event.status === "failed" ? "text-red-600" : "text-amber-600"}`}>{statusIcon}</span>
         <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto">{event.files.length} file{event.files.length !== 1 ? "s" : ""}</span>
         <svg className={`w-3 h-3 text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
       {expanded && (
-        <div className="mt-1 ml-4 pl-3 border-l-2 border-cyan-200 dark:border-cyan-800/40">
+        <div className="mt-1 ml-4 border-l-2 border-blue-200 pl-3 dark:border-blue-800/40">
           {event.files.map((f, i) => (
             <div key={i} className="text-[11px] font-mono text-gray-600 dark:text-gray-400 py-0.5">{f}</div>
           ))}
@@ -206,17 +206,17 @@ function FileChangesCard({ event }: { event: WorkspaceAgentEvent & { type: "file
       >
         <span className="text-[10px]">{color.icon}</span>
         <span className={`text-[11px] font-medium ${color.text}`}>{event.toolName}</span>
-        <span className={`text-[10px] ${event.status === "completed" ? "text-green-600" : event.status === "failed" ? "text-red-600" : "text-yellow-600"}`}>{statusIcon}</span>
+        <span className={`text-[10px] ${event.status === "completed" ? "text-emerald-600" : event.status === "failed" ? "text-red-600" : "text-amber-600"}`}>{statusIcon}</span>
         <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto">{event.changes.length} change{event.changes.length !== 1 ? "s" : ""}</span>
         <svg className={`w-3 h-3 text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
       {expanded && (
-        <div className="mt-1 ml-4 pl-3 border-l-2 border-orange-200 dark:border-orange-800/40 space-y-1">
+        <div className="mt-1 ml-4 space-y-1 border-l-2 border-amber-200 pl-3 dark:border-amber-800/40">
           {event.changes.map((c, i) => (
             <div key={i} className="flex items-center gap-2 text-[11px] font-mono">
-              <span className={`w-4 text-center font-bold ${c.changeType === "create" ? "text-green-600" : c.changeType === "delete" ? "text-red-600" : "text-yellow-600"}`}>
+              <span className={`w-4 text-center font-bold ${c.changeType === "create" ? "text-emerald-600" : c.changeType === "delete" ? "text-red-600" : "text-amber-600"}`}>
                 {changeIcons[c.changeType] ?? "?"}
               </span>
               <span className="text-gray-600 dark:text-gray-400">{c.path}</span>
@@ -241,7 +241,7 @@ function TerminalCard({ event }: { event: WorkspaceAgentEvent & { type: "termina
       >
         <span className="text-[10px]">{color.icon}</span>
         <span className={`text-[11px] font-medium ${color.text}`}>Terminal</span>
-        <span className={`text-[10px] ${event.status === "completed" ? "text-green-600" : event.status === "failed" ? "text-red-600" : "text-yellow-600"}`}>{statusIcon}</span>
+        <span className={`text-[10px] ${event.status === "completed" ? "text-emerald-600" : event.status === "failed" ? "text-red-600" : "text-amber-600"}`}>{statusIcon}</span>
         {event.command && (
           <code className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate max-w-xs">{event.command}</code>
         )}
@@ -252,7 +252,7 @@ function TerminalCard({ event }: { event: WorkspaceAgentEvent & { type: "termina
       {expanded && (event.command || event.output) && (
         <div className="mt-1 ml-4 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700/60">
           {event.command && (
-            <div className="px-3 py-1.5 bg-gray-900 text-green-400 text-[11px] font-mono">
+            <div className="bg-slate-950 px-3 py-1.5 text-[11px] font-mono text-emerald-400">
               $ {event.command}
             </div>
           )}
@@ -286,7 +286,7 @@ function McpCard({ event }: { event: WorkspaceAgentEvent & { type: "mcp_block" }
       >
         <span className="text-[10px]">{color.icon}</span>
         <span className={`text-[11px] font-medium ${color.text}`}>{event.toolName}</span>
-        <span className={`text-[10px] ${event.status === "completed" ? "text-green-600" : event.status === "failed" ? "text-red-600" : "text-yellow-600"}`}>{statusIcon}</span>
+        <span className={`text-[10px] ${event.status === "completed" ? "text-emerald-600" : event.status === "failed" ? "text-red-600" : "text-amber-600"}`}>{statusIcon}</span>
         <svg className={`w-3 h-3 text-gray-400 ml-auto transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
@@ -329,7 +329,7 @@ function GenericToolCard({ event }: { event: WorkspaceAgentEvent & { type: "tool
         <span className="text-[10px]">{color.icon}</span>
         <span className={`text-[11px] font-medium ${color.text}`}>{event.toolName}</span>
         {event.title && <span className="text-[10px] text-gray-500 dark:text-gray-400">{event.title}</span>}
-        <span className={`text-[10px] ${event.status === "completed" ? "text-green-600" : event.status === "failed" ? "text-red-600" : "text-yellow-600"}`}>{statusIcon}</span>
+        <span className={`text-[10px] ${event.status === "completed" ? "text-emerald-600" : event.status === "failed" ? "text-red-600" : "text-amber-600"}`}>{statusIcon}</span>
         <svg className={`w-3 h-3 text-gray-400 ml-auto transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
@@ -369,7 +369,7 @@ function PlanCard({ event }: { event: WorkspaceAgentEvent & { type: "plan_update
       <div className="space-y-1 ml-4">
         {event.items.map((item, i) => (
           <div key={i} className="flex items-center gap-2 text-[11px]">
-            <span className={`${item.status === "done" ? "text-green-600" : item.status === "failed" ? "text-red-600" : "text-gray-500"}`}>
+            <span className={`${item.status === "done" ? "text-emerald-600" : item.status === "failed" ? "text-red-600" : "text-slate-500"}`}>
               {statusIcons[item.status] ?? "○"}
             </span>
             <span className="text-gray-700 dark:text-gray-300">{item.description}</span>
@@ -456,7 +456,7 @@ function AgentGroup({ events }: { events: WorkspaceAgentEvent[] }) {
 
   return (
     <div className="flex items-start gap-3 group">
-      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-950/30">
         <span className="text-sm">🤖</span>
       </div>
       <div className="flex-1 min-w-0">
@@ -484,7 +484,7 @@ function AgentGroup({ events }: { events: WorkspaceAgentEvent[] }) {
 const BLOCK_FILTERS = [
   { key: "all",    label: "All",     active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
   { key: "message",label: "Messages",active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-  { key: "tool",   label: "Tools",   active: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300" },
+  { key: "tool",   label: "Tools",   active: "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
   { key: "thought",label: "Thoughts",active: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300" },
 ] as const;
 

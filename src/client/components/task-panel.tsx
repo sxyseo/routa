@@ -595,32 +595,32 @@ function TaskCard({
   onExecute,
 }: TaskCardProps) {
   const statusColors = {
-    pending: "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700",
-    confirmed: "bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800",
-    running: "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800",
-    completed: "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800",
+    pending: "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700",
+    confirmed: "bg-blue-50 dark:bg-blue-950/10 border-blue-200 dark:border-blue-800",
+    running: "bg-amber-50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-800",
+    completed: "bg-emerald-50 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800",
   };
 
   const statusIcons = {
     pending: (
-      <div className="w-5 h-5 rounded-md border-2 border-gray-300 dark:border-gray-600 shrink-0" />
+      <div className="h-5 w-5 shrink-0 rounded-md border-2 border-slate-300 dark:border-slate-600" />
     ),
     confirmed: (
-      <div className="w-5 h-5 rounded-md bg-blue-500 flex items-center justify-center shrink-0">
+      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-blue-600">
         <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
     ),
     running: (
-      <div className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center shrink-0 animate-pulse">
+      <div className="flex h-5 w-5 shrink-0 animate-pulse items-center justify-center rounded-md bg-amber-500">
         <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
       </div>
     ),
     completed: (
-      <div className="w-5 h-5 rounded-md bg-green-500 flex items-center justify-center shrink-0">
+      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-emerald-500">
         <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
@@ -638,21 +638,21 @@ function TaskCard({
         {statusIcons[task.status]}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
               #{index + 1}
             </span>
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+            <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
               {task.title}
             </span>
           </div>
           {!expanded && task.objective && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
+            <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
               {task.objective}
             </p>
           )}
         </div>
         <svg
-          className={`w-4 h-4 text-gray-400 transition-transform shrink-0 mt-0.5 ${expanded ? "rotate-180" : ""}`}
+          className={`mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -664,7 +664,7 @@ function TaskCard({
 
       {/* Expanded content */}
       {expanded && (
-        <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-700/50">
+        <div className="border-t border-slate-100 px-3 pb-3 dark:border-slate-700/50">
           {editing ? (
             <TaskEditor
               task={task}
@@ -675,18 +675,18 @@ function TaskCard({
             <>
               <TaskContent task={task} />
               {/* Actions */}
-              <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/50">
+              <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5 dark:border-slate-700/50">
                 {task.status === "pending" && (
                   <>
                     <button
                       onClick={(e) => { e.stopPropagation(); onConfirm(); }}
-                      className="text-xs font-medium px-2.5 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                      className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700"
                     >
                       Confirm
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                      className="text-xs font-medium px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                      className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                     >
                       Edit
                     </button>
@@ -695,18 +695,18 @@ function TaskCard({
                 {task.status === "confirmed" && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onExecute(); }}
-                    className="text-xs font-medium px-2.5 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                    className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700"
                   >
                     Execute
                   </button>
                 )}
                 {task.status === "running" && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
                     Running...
                   </span>
                 )}
                 {task.status === "completed" && (
-                  <span className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                  <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
@@ -729,17 +729,17 @@ function TaskContent({ task }: { task: ParsedTask }) {
     <div className="mt-2.5 space-y-2.5 text-xs">
       {task.objective && (
         <Section title="Objective">
-          <MarkdownViewer content={task.objective} className="text-gray-600 dark:text-gray-300" />
+          <MarkdownViewer content={task.objective} className="text-slate-600 dark:text-slate-300" />
         </Section>
       )}
       {task.scope && (
         <Section title="Scope">
-          <MarkdownViewer content={task.scope} className="text-gray-600 dark:text-gray-300" />
+          <MarkdownViewer content={task.scope} className="text-slate-600 dark:text-slate-300" />
         </Section>
       )}
       {task.definitionOfDone && (
         <Section title="Definition of Done">
-          <MarkdownViewer content={task.definitionOfDone} className="text-gray-600 dark:text-gray-300" />
+          <MarkdownViewer content={task.definitionOfDone} className="text-slate-600 dark:text-slate-300" />
         </Section>
       )}
     </div>
@@ -749,7 +749,7 @@ function TaskContent({ task }: { task: ParsedTask }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h4 className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+      <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
         {title}
       </h4>
       {children}

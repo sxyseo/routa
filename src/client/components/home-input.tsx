@@ -248,17 +248,17 @@ export function HomeInput({
   const specialistLocked = Boolean(lockedSpecialistId);
   const isHero = variant === "hero";
   const shellClass = isHero
-    ? "relative rounded-[28px] border border-[#c7dafb]/80 bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(236,244,255,0.98))] shadow-[0_34px_100px_-44px_rgba(37,99,235,0.28)] transition-colors group-focus-within:border-[#38bdf8] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(10,20,36,0.96),rgba(8,16,30,0.98))] dark:group-focus-within:border-[#38bdf8]/70"
-    : "relative rounded-2xl border border-gray-200 bg-white shadow-sm transition-colors group-focus-within:border-amber-400/50 dark:border-[#1c1f2e] dark:bg-[#12141c] dark:shadow-none dark:group-focus-within:border-amber-500/30";
+    ? "relative rounded-[28px] border border-blue-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.98))] shadow-[0_34px_100px_-44px_rgba(37,99,235,0.28)] transition-colors group-focus-within:border-blue-400 dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] dark:group-focus-within:border-blue-400/70"
+    : "relative rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors group-focus-within:border-amber-400/50 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none dark:group-focus-within:border-amber-500/30";
   const shellGlowClass = isHero
-    ? "absolute -inset-3 rounded-[34px] bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.24),transparent_42%),radial-gradient(circle_at_85%_30%,rgba(37,99,235,0.16),transparent_38%)] opacity-0 blur-2xl transition-opacity duration-500 pointer-events-none group-focus-within:opacity-100"
-    : "absolute -inset-1 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-amber-500/20 opacity-0 blur-xl transition-opacity duration-500 pointer-events-none group-focus-within:opacity-100";
+    ? "absolute -inset-3 rounded-[34px] bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.24),transparent_42%),radial-gradient(circle_at_85%_30%,rgba(96,165,250,0.18),transparent_38%)] opacity-0 blur-2xl transition-opacity duration-500 pointer-events-none group-focus-within:opacity-100"
+    : "absolute -inset-1 rounded-2xl bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-blue-500/20 opacity-0 blur-xl transition-opacity duration-500 pointer-events-none group-focus-within:opacity-100";
   const bottomBarClass = isHero
-    ? "flex flex-wrap items-center gap-1.5 overflow-visible border-t border-[#d8e6fb] bg-[#eef6ff]/82 px-3 py-2 backdrop-blur dark:border-white/8 dark:bg-[#0f172a]/88"
-    : "flex flex-wrap items-center gap-1.5 overflow-visible border-t border-gray-100 px-3 py-2 dark:border-[#1c1f2e]";
+    ? "flex flex-wrap items-center gap-1.5 overflow-visible border-t border-blue-100 bg-blue-50/80 px-3 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/88"
+    : "flex flex-wrap items-center gap-1.5 overflow-visible border-t border-slate-100 px-3 py-2 dark:border-slate-800";
   const skillPillClass = isHero
-    ? "group shrink-0 flex w-[160px] flex-col gap-0.5 rounded-xl border border-[#d8e6fb]/95 bg-[#f8fbff]/94 px-3 py-2 text-left transition-all hover:-translate-y-0.5 hover:border-[#38bdf8] hover:bg-white dark:border-white/8 dark:bg-[#0c1728] dark:hover:border-sky-700/40 dark:hover:bg-[#0f1d30]"
-    : "group shrink-0 flex w-[140px] flex-col gap-0.5 rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-2 text-left transition-all hover:border-amber-300/60 hover:bg-white dark:border-[#1c1f2e] dark:bg-[#12141c] dark:hover:border-amber-700/40 dark:hover:bg-[#151720]";
+    ? "group shrink-0 flex w-[160px] flex-col gap-0.5 rounded-xl border border-blue-100/95 bg-white/94 px-3 py-2 text-left transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50/70 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-blue-700/40 dark:hover:bg-slate-900"
+    : "group shrink-0 flex w-[140px] flex-col gap-0.5 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-left transition-all hover:border-amber-300/60 hover:bg-white dark:border-slate-800 dark:bg-slate-900 dark:hover:border-amber-700/40 dark:hover:bg-slate-950";
 
   return (
     <div className={`w-full ${isHero ? "max-w-none" : "mx-auto max-w-2xl"}`}>
@@ -299,7 +299,7 @@ export function HomeInput({
             {effectiveSelectedSpecialistId ? (
               /* ── Specialist mode: show specialist pill as primary selector ── */
               <div className="flex items-center gap-1.5">
-                <div className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                <div className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
                   <svg className="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                   </svg>
@@ -323,7 +323,7 @@ export function HomeInput({
                     <button
                       type="button"
                       onClick={() => setShowSpecialistDropdown((v) => !v)}
-                      className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1c1f2e] border border-transparent hover:border-gray-200 dark:hover:border-[#2a2d3d] transition-all"
+                      className="flex items-center gap-1 rounded-lg border border-transparent px-1.5 py-1 text-xs text-slate-500 transition-all hover:border-slate-200 hover:bg-slate-100 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-800"
                       title="Switch specialist"
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -331,12 +331,12 @@ export function HomeInput({
                       </svg>
                     </button>
                     {showSpecialistDropdown && (
-                      <div className="absolute bottom-full left-0 mb-1 w-52 rounded-xl border border-gray-200 dark:border-[#1c1f2e] bg-white dark:bg-[#181b26] shadow-xl z-50 overflow-hidden">
+                      <div className="absolute bottom-full left-0 z-50 mb-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
                         <div className="p-1 max-h-48 overflow-y-auto">
                           {specialists.map((s) => (
                             <button key={s.id} onClick={() => { setSelectedSpecialistId(s.id); setShowSpecialistDropdown(false); }}
                               className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
-                                s.id === selectedSpecialistId ? "bg-amber-50 dark:bg-amber-900/15 text-amber-700 dark:text-amber-300" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1f2233]"
+                                s.id === selectedSpecialistId ? "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-300" : "text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
                               }`}>
                               <div className="font-medium truncate">{s.name}</div>
                               {s.description && <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">{s.description}</div>}
@@ -352,13 +352,13 @@ export function HomeInput({
             ) : (
               /* ── Built-in role mode: segmented toggle + optional specialist picker ── */
               <>
-                <div className="flex items-center gap-0.5 rounded-[18px] border border-[#d6e5fb] bg-white/88 p-1 shadow-[0_10px_28px_-22px_rgba(14,116,144,0.5)] dark:border-white/10 dark:bg-[#1a1d2a]" role="group" aria-label="Agent mode">
+                <div className="flex items-center gap-0.5 rounded-[18px] border border-blue-100 bg-white/88 p-1 shadow-[0_10px_28px_-22px_rgba(37,99,235,0.42)] dark:border-slate-800 dark:bg-slate-900" role="group" aria-label="Agent mode">
                   <button type="button" onClick={() => setSelectedRole("ROUTA")}
                     title="Multi-agent orchestration — spawns specialized agents for complex multi-step tasks (Routa)"
                     className={`flex items-center gap-1.5 rounded-[14px] px-3 py-1.5 text-xs font-medium transition-all ${
                       selectedRole === "ROUTA"
-                        ? "bg-blue-500 text-white shadow-[0_14px_26px_-18px_rgba(59,130,246,0.65)] dark:bg-blue-500 dark:text-white"
-                        : "text-gray-500 hover:bg-sky-50/70 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+                        ? "bg-blue-600 text-white shadow-[0_14px_26px_-18px_rgba(37,99,235,0.68)] dark:bg-blue-500 dark:text-white"
+                        : "text-slate-500 hover:bg-blue-50/70 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300"
                     }`}>
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "ROUTA" ? 2.5 : 2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1M4.22 4.22l.707.707m13.857 13.857l.707.707M1 12h1m20 0h1M4.22 19.78l.707-.707m13.857-13.857l.707-.707"/>
@@ -371,7 +371,7 @@ export function HomeInput({
                     className={`flex items-center gap-1.5 rounded-[14px] px-3 py-1.5 text-xs font-medium transition-all ${
                       selectedRole === "DEVELOPER"
                         ? "bg-amber-500 text-white shadow-[0_14px_26px_-18px_rgba(245,158,11,0.65)] dark:bg-amber-500 dark:text-white"
-                        : "text-gray-500 hover:bg-sky-50/70 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+                        : "text-slate-500 hover:bg-amber-50/70 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300"
                     }`}>
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "DEVELOPER" ? 2.5 : 2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
@@ -383,10 +383,10 @@ export function HomeInput({
                 {/* Custom Specialist — shown as an additive option when specialists exist */}
                 {specialists.length > 0 && (
                   <>
-                    <div className="w-px h-4 bg-gray-200 dark:bg-[#1c1f2e]" />
+                    <div className="h-4 w-px bg-slate-200 dark:bg-slate-800" />
                     <div className="relative" ref={specialistDropdownRef}>
                       <button type="button" onClick={() => setShowSpecialistDropdown((v) => !v)}
-                        className="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-500 transition-all hover:border-amber-300 hover:bg-gray-100 hover:text-amber-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-amber-700 dark:hover:bg-[#1c1f2e] dark:hover:text-amber-300"
+                        className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2 py-1 text-xs text-slate-500 transition-all hover:border-amber-300 hover:bg-slate-100 hover:text-amber-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-amber-700 dark:hover:bg-slate-800 dark:hover:text-amber-300"
                         title="Use a custom specialist instead">
                         <svg className="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
@@ -397,14 +397,14 @@ export function HomeInput({
                         </svg>
                       </button>
                       {showSpecialistDropdown && (
-                        <div className="absolute bottom-full left-0 mb-1 w-56 rounded-xl border border-gray-200 dark:border-[#1c1f2e] bg-white dark:bg-[#181b26] shadow-xl z-50 overflow-hidden">
+                        <div className="absolute bottom-full left-0 z-50 mb-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
                           <div className="px-2 pt-2 pb-1">
-                            <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide px-1 mb-1">Custom Specialists</p>
+                            <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Custom Specialists</p>
                           </div>
-                          <div className="border-t border-gray-100 dark:border-[#1c1f2e] p-1 max-h-48 overflow-y-auto">
+                          <div className="max-h-48 overflow-y-auto border-t border-slate-100 p-1 dark:border-slate-800">
                             {specialists.map((s) => (
                               <button key={s.id} onClick={() => { setSelectedSpecialistId(s.id); setShowSpecialistDropdown(false); }}
-                                className="w-full rounded-lg px-3 py-2 text-left text-xs text-gray-700 transition-colors hover:bg-amber-50 hover:text-amber-700 dark:text-gray-300 dark:hover:bg-amber-900/15 dark:hover:text-amber-300">
+                                className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-amber-50 hover:text-amber-700 dark:text-slate-300 dark:hover:bg-amber-950/20 dark:hover:text-amber-300">
                                 <div className="font-medium truncate">{s.name}</div>
                                 {s.description && <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">{s.description}</div>}
                                 {s.role && <div className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5 font-mono">{s.role}</div>}
