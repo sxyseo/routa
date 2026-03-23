@@ -1,8 +1,8 @@
 //! Minimal MCP setup for ACP providers in the Rust desktop backend.
 //!
-//! This currently implements the provider setup required by the KanbanTask
-//! Agent flow for OpenCode. It mirrors the Next.js behavior closely enough to
-//! expose the Routa MCP server with workspace/session/tool profile context.
+//! This mirrors the Next.js behavior closely enough to expose the Routa MCP
+//! server with workspace/session/tool profile context for providers that read
+//! a config file (OpenCode) and providers that accept inline JSON (Claude).
 
 use std::path::Path;
 
@@ -26,11 +26,30 @@ fn build_mcp_endpoint(
         params.push(format!("toolMode={}", mode));
     }
 
-    if let Some(profile) = mcp_profile.filter(|value| *value == "kanban-planning") {
+    if let Some(profile) = mcp_profile.filter(|value| *value == "kanban-planning" || *value == "team-coordination") {
         params.push(format!("mcpProfile={}", profile));
     }
 
     format!("{}/api/mcp?{}", base_url, params.join("&"))
+}
+
+pub fn build_claude_mcp_config(
+    workspace_id: &str,
+    session_id: &str,
+    tool_mode: Option<&str>,
+    mcp_profile: Option<&str>,
+) -> String {
+    serde_json::json!({
+        "mcpServers": {
+            "routa-coordination": {
+                "url": build_mcp_endpoint(workspace_id, session_id, tool_mode, mcp_profile),
+                "type": "http",
+                "env": {
+                    "ROUTA_WORKSPACE_ID": workspace_id,
+                },
+            }
+        }
+    }).to_string()
 }
 
 async fn ensure_mcp_for_opencode(
@@ -101,5 +120,37 @@ pub async fn ensure_mcp_for_provider(
             .await
             .map(Some),
         _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_claude_mcp_config, build_mcp_endpoint};
+
+    #[test]
+    fn team_coordination_profile_is_forwarded_in_mcp_endpoint() {
+        let endpoint = build_mcp_endpoint(
+            "default",
+            "session-123",
+            Some("essential"),
+            Some("team-coordination"),
+        );
+        assert!(endpoint.contains("wsId=default"));
+        assert!(endpoint.contains("sid=session-123"));
+        assert!(endpoint.contains("toolMode=essential"));
+        assert!(endpoint.contains("mcpProfile=team-coordination"));
+    }
+
+    #[test]
+    fn claude_inline_config_uses_routa_coordination_server() {
+        let config = build_claude_mcp_config(
+            "default",
+            "session-123",
+            Some("essential"),
+            Some("team-coordination"),
+        );
+        assert!(config.contains("\"routa-coordination\""));
+        assert!(config.contains("\"type\":\"http\""));
+        assert!(config.contains("mcpProfile=team-coordination"));
     }
 }

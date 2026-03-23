@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { ChatPanel } from "@/client/components/chat-panel";
@@ -62,6 +62,7 @@ import {
   SessionTimelineSection,
   TeamMembersSection,
 } from "./team-run-page-sections";
+import { useRealTeamRunParams } from "./use-real-team-run-params";
 
 function buildFallbackLeadMessages(
   objective: string,
@@ -121,18 +122,8 @@ function buildFallbackLeadMessages(
 }
 
 export function TeamRunPageClient() {
-  const params = useParams();
   const router = useRouter();
-  const rawWorkspaceId = params.workspaceId as string;
-  const rawSessionId = params.sessionId as string;
-  const workspaceId =
-    rawWorkspaceId === "__placeholder__" && typeof window !== "undefined"
-      ? (window.location.pathname.match(/^\/workspace\/([^/]+)/)?.[1] ?? rawWorkspaceId)
-      : rawWorkspaceId;
-  const sessionId =
-    rawSessionId === "__placeholder__" && typeof window !== "undefined"
-      ? (window.location.pathname.match(/^\/workspace\/[^/]+\/team\/([^/]+)/)?.[1] ?? rawSessionId)
-      : rawSessionId;
+  const { workspaceId, sessionId, isResolved } = useRealTeamRunParams();
 
   const acp = useAcp();
   const {
@@ -190,9 +181,9 @@ export function TeamRunPageClient() {
   }, [acpConnected, acpLoading, connectAcp]);
 
   useEffect(() => {
-    if (!acpConnected || sessionId === "__placeholder__") return;
+    if (!isResolved || !acpConnected || sessionId === "__placeholder__") return;
     selectSession(sessionId);
-  }, [acpConnected, selectSession, sessionId]);
+  }, [acpConnected, isResolved, selectSession, sessionId]);
 
   useEffect(() => {
     if (!selectedSessionForModal) return;

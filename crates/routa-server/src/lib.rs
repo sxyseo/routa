@@ -98,6 +98,109 @@ pub async fn create_app_state(db_path: &str) -> Result<state::AppState, String> 
     Ok(state)
 }
 
+fn resolve_static_target(path: &str) -> (String, &'static str) {
+    let is_rsc_request = path.ends_with(".txt");
+
+    if path.starts_with("/workspace/") {
+        let clean_path = path.trim_end_matches(".txt");
+        let segments: Vec<&str> = clean_path
+            .trim_start_matches("/workspace/")
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let ext = if is_rsc_request { "txt" } else { "html" };
+        let content = if is_rsc_request {
+            "text/x-component; charset=utf-8"
+        } else {
+            "text/html; charset=utf-8"
+        };
+        let placeholder_with_suffix = |base: &str, suffix: &[&str]| {
+            if suffix.is_empty() {
+                format!("{}.{}", base, ext)
+            } else {
+                format!("{}/{}.{}", base, suffix.join("/"), ext)
+            }
+        };
+
+        if segments.len() >= 3 && segments[1] == "sessions" {
+            let suffix = if segments.len() > 3 {
+                &segments[3..]
+            } else {
+                &[][..]
+            };
+            (
+                placeholder_with_suffix(
+                    "workspace/__placeholder__/sessions/__placeholder__",
+                    suffix,
+                ),
+                content,
+            )
+        } else if segments.len() >= 3 && segments[1] == "team" {
+            let suffix = if segments.len() > 3 {
+                &segments[3..]
+            } else {
+                &[][..]
+            };
+            (
+                placeholder_with_suffix(
+                    "workspace/__placeholder__/team/__placeholder__",
+                    suffix,
+                ),
+                content,
+            )
+        } else if segments.len() >= 2 && segments[1] == "kanban" {
+            let suffix = if segments.len() > 2 {
+                &segments[2..]
+            } else {
+                &[][..]
+            };
+            (
+                placeholder_with_suffix("workspace/__placeholder__/kanban", suffix),
+                content,
+            )
+        } else if segments.len() >= 2 && segments[1] == "team" {
+            let suffix = if segments.len() > 2 {
+                &segments[2..]
+            } else {
+                &[][..]
+            };
+            (
+                placeholder_with_suffix("workspace/__placeholder__/team", suffix),
+                content,
+            )
+        } else if !segments.is_empty() {
+            let suffix = if segments.len() > 1 {
+                &segments[1..]
+            } else {
+                &[][..]
+            };
+            (
+                placeholder_with_suffix("workspace/__placeholder__", suffix),
+                content,
+            )
+        } else {
+            ("index.html".to_string(), "text/html; charset=utf-8")
+        }
+    } else {
+        let clean_path = path.trim_start_matches('/').trim_end_matches('/');
+        if is_rsc_request {
+            (
+                if clean_path.is_empty() {
+                    "index.txt".to_string()
+                } else {
+                    format!("{}.txt", clean_path)
+                },
+                "text/x-component; charset=utf-8",
+            )
+        } else if clean_path.is_empty() {
+            ("index.html".to_string(), "text/html; charset=utf-8")
+        } else {
+            (format!("{}.html", clean_path), "text/html; charset=utf-8")
+        }
+    }
+}
+
 /// Start the embedded Rust backend server.
 ///
 /// Returns the actual address the server is listening on.
@@ -182,90 +285,8 @@ pub async fn start_server_with_state(
                     let static_dir = static_dir_clone.clone();
                     async move {
                         let path = req.uri().path();
-
-                        // Check if this is a .txt RSC payload request
                         let is_rsc_request = path.ends_with(".txt");
-
-                        // Determine which file to serve based on the route pattern.
-                        let (target_file, content_type) = if path.starts_with("/workspace/") {
-                            // Strip the RSC suffix when matching, then restore it on the placeholder path.
-                            let clean_path = path.trim_end_matches(".txt");
-                            let segments: Vec<&str> = clean_path
-                                .trim_start_matches("/workspace/")
-                                .split('/')
-                                .filter(|s| !s.is_empty())
-                                .collect();
-
-                            let ext = if is_rsc_request { "txt" } else { "html" };
-                            let content = if is_rsc_request {
-                                "text/x-component; charset=utf-8"
-                            } else {
-                                "text/html; charset=utf-8"
-                            };
-                            let placeholder_with_suffix = |base: &str, suffix: &[&str]| {
-                                if suffix.is_empty() {
-                                    format!("{}.{}", base, ext)
-                                } else {
-                                    format!("{}/{}.{}", base, suffix.join("/"), ext)
-                                }
-                            };
-
-                            if segments.len() >= 3 && segments[1] == "sessions" {
-                                let suffix = if segments.len() > 3 {
-                                    &segments[3..]
-                                } else {
-                                    &[][..]
-                                };
-                                (
-                                    placeholder_with_suffix(
-                                        "workspace/__placeholder__/sessions/__placeholder__",
-                                        suffix,
-                                    ),
-                                    content,
-                                )
-                            } else if segments.len() >= 2 && segments[1] == "kanban" {
-                                let suffix = if segments.len() > 2 {
-                                    &segments[2..]
-                                } else {
-                                    &[][..]
-                                };
-                                (
-                                    placeholder_with_suffix(
-                                        "workspace/__placeholder__/kanban",
-                                        suffix,
-                                    ),
-                                    content,
-                                )
-                            } else if !segments.is_empty() {
-                                let suffix = if segments.len() > 1 {
-                                    &segments[1..]
-                                } else {
-                                    &[][..]
-                                };
-                                (
-                                    placeholder_with_suffix("workspace/__placeholder__", suffix),
-                                    content,
-                                )
-                            } else {
-                                ("index.html".to_string(), "text/html; charset=utf-8")
-                            }
-                        } else {
-                            let clean_path = path.trim_start_matches('/').trim_end_matches('/');
-                            if is_rsc_request {
-                                (
-                                    if clean_path.is_empty() {
-                                        "index.txt".to_string()
-                                    } else {
-                                        format!("{}.txt", clean_path)
-                                    },
-                                    "text/x-component; charset=utf-8",
-                                )
-                            } else if clean_path.is_empty() {
-                                ("index.html".to_string(), "text/html; charset=utf-8")
-                            } else {
-                                (format!("{}.html", clean_path), "text/html; charset=utf-8")
-                            }
-                        };
+                        let (target_file, content_type) = resolve_static_target(path);
 
                         let file_path = std::path::Path::new(&static_dir).join(&target_file);
                         tracing::debug!(
@@ -363,6 +384,57 @@ pub async fn start_server_with_state(
     });
 
     Ok(local_addr)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_static_target;
+
+    #[test]
+    fn resolves_workspace_overview_placeholder() {
+        let (target, content_type) = resolve_static_target("/workspace/default");
+        assert_eq!(target, "workspace/__placeholder__.html");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_workspace_kanban_placeholder() {
+        let (target, content_type) = resolve_static_target("/workspace/default/kanban");
+        assert_eq!(target, "workspace/__placeholder__/kanban.html");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_workspace_team_placeholder() {
+        let (target, content_type) = resolve_static_target("/workspace/default/team");
+        assert_eq!(target, "workspace/__placeholder__/team.html");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_workspace_team_run_placeholder() {
+        let (target, content_type) = resolve_static_target("/workspace/default/team/session-123");
+        assert_eq!(target, "workspace/__placeholder__/team/__placeholder__.html");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_workspace_session_placeholder() {
+        let (target, content_type) =
+            resolve_static_target("/workspace/default/sessions/session-123");
+        assert_eq!(
+            target,
+            "workspace/__placeholder__/sessions/__placeholder__.html"
+        );
+        assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_workspace_team_rsc_placeholder() {
+        let (target, content_type) = resolve_static_target("/workspace/default/team/session-123.txt");
+        assert_eq!(target, "workspace/__placeholder__/team/__placeholder__.txt");
+        assert_eq!(content_type, "text/x-component; charset=utf-8");
+    }
 }
 
 async fn health_check() -> axum::Json<serde_json::Value> {

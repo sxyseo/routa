@@ -285,6 +285,16 @@ impl AcpManager {
 
         // Create the notification broadcast channel for this session
         let (ntx, _) = broadcast::channel::<serde_json::Value>(256);
+        let claude_mcp_config = if provider_name == "claude" {
+            Some(mcp_setup::build_claude_mcp_config(
+                &workspace_id,
+                &session_id,
+                tool_mode.as_deref(),
+                mcp_profile.as_deref(),
+            ))
+        } else {
+            None
+        };
 
         // Check if this is Claude (uses stream-json protocol, not ACP)
         let (process_type, acp_session_id) = if provider_name == "claude" {
@@ -294,7 +304,7 @@ impl AcpManager {
                 cwd: cwd.clone(),
                 display_name: format!("Claude-{}", &session_id[..8.min(session_id.len())]),
                 permission_mode: Some("bypassPermissions".to_string()),
-                mcp_configs: Vec::new(),
+                mcp_configs: claude_mcp_config.into_iter().collect(),
                 append_system_prompt: options.specialist_system_prompt.clone(),
                 allowed_tools: options.allowed_native_tools.clone(),
             };
