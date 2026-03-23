@@ -299,7 +299,7 @@ export function HomeInput({
             {effectiveSelectedSpecialistId ? (
               /* ── Specialist mode: show specialist pill as primary selector ── */
               <div className="flex items-center gap-1.5">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 text-violet-700 dark:text-violet-300">
+                <div className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
                   <svg className="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                   </svg>
@@ -310,7 +310,7 @@ export function HomeInput({
                     <button
                       type="button"
                       onClick={() => setSelectedSpecialistId(null)}
-                      className="ml-0.5 text-violet-400 hover:text-violet-700 dark:hover:text-violet-200 transition-colors"
+                      className="ml-0.5 text-amber-400 transition-colors hover:text-amber-700 dark:hover:text-amber-200"
                       title="Switch to built-in role"
                       aria-label="Clear specialist"
                     >
@@ -356,7 +356,9 @@ export function HomeInput({
                   <button type="button" onClick={() => setSelectedRole("ROUTA")}
                     title="Multi-agent orchestration — spawns specialized agents for complex multi-step tasks (Routa)"
                     className={`flex items-center gap-1.5 rounded-[14px] px-3 py-1.5 text-xs font-medium transition-all ${
-                      selectedRole === "ROUTA" ? "bg-white text-gray-900 shadow-[0_10px_20px_-18px_rgba(15,23,42,0.45)] dark:bg-[#1f2233] dark:text-gray-100" : "text-gray-500 hover:bg-sky-50/70 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+                      selectedRole === "ROUTA"
+                        ? "bg-blue-500 text-white shadow-[0_14px_26px_-18px_rgba(59,130,246,0.65)] dark:bg-blue-500 dark:text-white"
+                        : "text-gray-500 hover:bg-sky-50/70 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
                     }`}>
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "ROUTA" ? 2.5 : 2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1M4.22 4.22l.707.707m13.857 13.857l.707.707M1 12h1m20 0h1M4.22 19.78l.707-.707m13.857-13.857l.707-.707"/>
@@ -367,7 +369,9 @@ export function HomeInput({
                   <button type="button" onClick={() => setSelectedRole("DEVELOPER")}
                     title="Single-agent direct coding — best for focused, simple tasks (Developer)"
                     className={`flex items-center gap-1.5 rounded-[14px] px-3 py-1.5 text-xs font-medium transition-all ${
-                      selectedRole === "DEVELOPER" ? "bg-white text-gray-900 shadow-[0_10px_20px_-18px_rgba(15,23,42,0.45)] dark:bg-[#1f2233] dark:text-gray-100" : "text-gray-500 hover:bg-sky-50/70 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+                      selectedRole === "DEVELOPER"
+                        ? "bg-amber-500 text-white shadow-[0_14px_26px_-18px_rgba(245,158,11,0.65)] dark:bg-amber-500 dark:text-white"
+                        : "text-gray-500 hover:bg-sky-50/70 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
                     }`}>
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "DEVELOPER" ? 2.5 : 2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
@@ -382,7 +386,7 @@ export function HomeInput({
                     <div className="w-px h-4 bg-gray-200 dark:bg-[#1c1f2e]" />
                     <div className="relative" ref={specialistDropdownRef}>
                       <button type="button" onClick={() => setShowSpecialistDropdown((v) => !v)}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1c1f2e] border border-dashed border-gray-300 dark:border-gray-600 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-600 dark:hover:text-violet-300 transition-all"
+                        className="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-500 transition-all hover:border-amber-300 hover:bg-gray-100 hover:text-amber-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-amber-700 dark:hover:bg-[#1c1f2e] dark:hover:text-amber-300"
                         title="Use a custom specialist instead">
                         <svg className="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
@@ -400,7 +404,7 @@ export function HomeInput({
                           <div className="border-t border-gray-100 dark:border-[#1c1f2e] p-1 max-h-48 overflow-y-auto">
                             {specialists.map((s) => (
                               <button key={s.id} onClick={() => { setSelectedSpecialistId(s.id); setShowSpecialistDropdown(false); }}
-                                className="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-700 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-violet-900/15 hover:text-violet-700 dark:hover:text-violet-300 transition-colors">
+                                className="w-full rounded-lg px-3 py-2 text-left text-xs text-gray-700 transition-colors hover:bg-amber-50 hover:text-amber-700 dark:text-gray-300 dark:hover:bg-amber-900/15 dark:hover:text-amber-300">
                                 <div className="font-medium truncate">{s.name}</div>
                                 {s.description && <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">{s.description}</div>}
                                 {s.role && <div className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5 font-mono">{s.role}</div>}
@@ -532,10 +536,10 @@ export function HomeInput({
             const spec = selectedSpecialist;
             return (
               <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
-                <span className="w-2 h-2 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-                  <svg className="w-1 h-1 text-violet-500" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg>
+                <span className="flex h-2 w-2 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                  <svg className="w-1 h-1 text-amber-500" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg>
                 </span>
-                <span className="text-violet-600 dark:text-violet-400 font-medium">{spec?.name}</span>
+                <span className="font-medium text-amber-600 dark:text-amber-400">{spec?.name}</span>
                 {spec?.role && <><span className="text-gray-300 dark:text-gray-700">·</span><span className="font-mono text-[9px]">{spec.role}</span></>}
               </div>
             );
@@ -551,8 +555,8 @@ export function HomeInput({
           </div>
         ) : (
           <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
-            <span className="w-2 h-2 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-              <svg className="w-1 h-1 text-violet-500" fill="currentColor" viewBox="0 0 8 8">
+            <span className="flex h-2 w-2 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-800">
+              <svg className="w-1 h-1 text-slate-500" fill="currentColor" viewBox="0 0 8 8">
                 <circle cx="4" cy="4" r="3" />
               </svg>
             </span>

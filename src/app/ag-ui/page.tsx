@@ -61,11 +61,11 @@ const EVENT_COLORS: Record<string, { bg: string; text: string; border: string }>
   TOOL_CALL_ARGS:            { bg: "bg-amber-50 dark:bg-amber-950/20",       text: "text-amber-600 dark:text-amber-400",      border: "border-amber-100 dark:border-amber-900" },
   TOOL_CALL_END:             { bg: "bg-amber-50 dark:bg-amber-950/30",       text: "text-amber-700 dark:text-amber-300",      border: "border-amber-200 dark:border-amber-800" },
   TOOL_CALL_RESULT:          { bg: "bg-orange-50 dark:bg-orange-950/30",     text: "text-orange-700 dark:text-orange-300",    border: "border-orange-200 dark:border-orange-800" },
-  REASONING_START:           { bg: "bg-violet-50 dark:bg-violet-950/30",     text: "text-violet-700 dark:text-violet-300",    border: "border-violet-200 dark:border-violet-800" },
-  REASONING_MESSAGE_START:   { bg: "bg-violet-50 dark:bg-violet-950/30",     text: "text-violet-700 dark:text-violet-300",    border: "border-violet-200 dark:border-violet-800" },
-  REASONING_MESSAGE_CONTENT: { bg: "bg-violet-50 dark:bg-violet-950/20",     text: "text-violet-600 dark:text-violet-400",    border: "border-violet-100 dark:border-violet-900" },
-  REASONING_MESSAGE_END:     { bg: "bg-violet-50 dark:bg-violet-950/30",     text: "text-violet-700 dark:text-violet-300",    border: "border-violet-200 dark:border-violet-800" },
-  REASONING_END:             { bg: "bg-violet-50 dark:bg-violet-950/30",     text: "text-violet-700 dark:text-violet-300",    border: "border-violet-200 dark:border-violet-800" },
+  REASONING_START:           { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
+  REASONING_MESSAGE_START:   { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
+  REASONING_MESSAGE_CONTENT: { bg: "bg-slate-50 dark:bg-slate-950/20",       text: "text-slate-600 dark:text-slate-400",      border: "border-slate-100 dark:border-slate-900" },
+  REASONING_MESSAGE_END:     { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
+  REASONING_END:             { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
   CUSTOM:                    { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
   RAW:                       { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-600 dark:text-slate-400",      border: "border-slate-200 dark:border-slate-800" },
 };
@@ -88,7 +88,7 @@ function ProtocolToggle({
         onClick={() => onChange("ag-ui")}
         className={`px-3 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${
           mode === "ag-ui"
-            ? "bg-indigo-500 text-white shadow-sm"
+            ? "bg-blue-500 text-white shadow-sm"
             : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
         }`}
       >
@@ -171,7 +171,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end mb-3">
-        <div className="max-w-[80%] rounded-2xl rounded-br-md bg-indigo-500 text-white px-4 py-2.5 text-sm leading-relaxed shadow-sm">
+        <div className="max-w-[80%] rounded-2xl rounded-br-md bg-blue-500 px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm">
           {message.content}
         </div>
       </div>
@@ -181,10 +181,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "reasoning") {
     return (
       <div className="flex justify-start mb-3">
-        <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 px-4 py-2.5 text-sm text-violet-700 dark:text-violet-300 leading-relaxed italic">
-          <span className="text-[10px] font-bold tracking-wider text-violet-500 dark:text-violet-400 block mb-1">REASONING</span>
+        <div className="max-w-[80%] rounded-2xl rounded-bl-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm leading-relaxed italic text-slate-700 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-300">
+          <span className="mb-1 block text-[10px] font-bold tracking-wider text-slate-500 dark:text-slate-400">REASONING</span>
           {message.content}
-          {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-violet-400 dark:bg-violet-500 ml-0.5 animate-pulse rounded-sm" />}
+          {message.isStreaming && <span className="ml-0.5 inline-block h-4 w-1.5 rounded-sm bg-slate-400 animate-pulse dark:bg-slate-500" />}
         </div>
       </div>
     );

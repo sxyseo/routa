@@ -28,13 +28,13 @@ const EVENT_COLORS: Record<string, { bg: string; text: string; border: string }>
   TOOL_CALL_ARGS:            { bg: "bg-amber-50 dark:bg-amber-950/20",       text: "text-amber-600 dark:text-amber-400",      border: "border-amber-100 dark:border-amber-900" },
   TOOL_CALL_END:             { bg: "bg-amber-50 dark:bg-amber-950/30",       text: "text-amber-700 dark:text-amber-300",      border: "border-amber-200 dark:border-amber-800" },
   TOOL_CALL_RESULT:          { bg: "bg-orange-50 dark:bg-orange-950/30",     text: "text-orange-700 dark:text-orange-300",    border: "border-orange-200 dark:border-orange-800" },
-  REASONING_START:           { bg: "bg-violet-50 dark:bg-violet-950/30",     text: "text-violet-700 dark:text-violet-300",    border: "border-violet-200 dark:border-violet-800" },
-  REASONING_MESSAGE_START:   { bg: "bg-violet-50 dark:bg-violet-950/30",     text: "text-violet-700 dark:text-violet-300",    border: "border-violet-200 dark:border-violet-800" },
-  REASONING_MESSAGE_CONTENT: { bg: "bg-violet-50 dark:bg-violet-950/20",     text: "text-violet-600 dark:text-violet-400",    border: "border-violet-100 dark:border-violet-900" },
-  REASONING_MESSAGE_END:     { bg: "bg-violet-50 dark:bg-violet-950/30",     text: "text-violet-700 dark:text-violet-300",    border: "border-violet-200 dark:border-violet-800" },
-  REASONING_END:             { bg: "bg-violet-50 dark:bg-violet-950/30",     text: "text-violet-700 dark:text-violet-300",    border: "border-violet-200 dark:border-violet-800" },
-  STEP_STARTED:              { bg: "bg-indigo-50 dark:bg-indigo-950/30",     text: "text-indigo-700 dark:text-indigo-300",    border: "border-indigo-200 dark:border-indigo-800" },
-  STEP_FINISHED:             { bg: "bg-indigo-50 dark:bg-indigo-950/30",     text: "text-indigo-700 dark:text-indigo-300",    border: "border-indigo-200 dark:border-indigo-800" },
+  REASONING_START:           { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
+  REASONING_MESSAGE_START:   { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
+  REASONING_MESSAGE_CONTENT: { bg: "bg-slate-50 dark:bg-slate-950/20",       text: "text-slate-600 dark:text-slate-400",      border: "border-slate-100 dark:border-slate-900" },
+  REASONING_MESSAGE_END:     { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
+  REASONING_END:             { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
+  STEP_STARTED:              { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
+  STEP_FINISHED:             { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
   CUSTOM:                    { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
   RAW:                       { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-600 dark:text-slate-400",      border: "border-slate-200 dark:border-slate-800" },
 };
@@ -325,14 +325,14 @@ function AGUIReasoningBubble({ message }: { message: AssembledMessage }) {
   return (
     <button
       onClick={() => setExpanded(!expanded)}
-      className="group flex items-start gap-2 my-1 px-3 py-1.5 rounded-lg bg-violet-50/40 dark:bg-violet-900/5 border border-violet-100/50 dark:border-violet-800/20 hover:bg-violet-50/70 dark:hover:bg-violet-900/10 transition-colors w-full text-left"
+      className="group my-1 flex w-full items-start gap-2 rounded-lg border border-slate-100/50 bg-slate-50/50 px-3 py-1.5 text-left transition-colors hover:bg-slate-100/70 dark:border-slate-800/20 dark:bg-slate-900/10 dark:hover:bg-slate-900/20"
     >
-      <span className="text-[10px] text-violet-500 shrink-0 pt-0.5">💭</span>
+      <span className="shrink-0 pt-0.5 text-[10px] text-slate-500">💭</span>
       <p className={`text-[11px] text-gray-500 dark:text-gray-400 italic leading-relaxed ${expanded ? "" : "line-clamp-2"}`}>
         {message.content}
       </p>
       {!expanded && message.content.length > 150 && (
-        <span className="text-[9px] text-violet-500 dark:text-violet-400 shrink-0 pt-0.5">...</span>
+        <span className="shrink-0 pt-0.5 text-[9px] text-slate-500 dark:text-slate-400">...</span>
       )}
     </button>
   );
@@ -442,10 +442,10 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">AG-UI</span>
+          <span className="text-sm font-bold text-blue-600 dark:text-blue-400">AG-UI</span>
           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Protocol View</span>
           {agUIEvents.length > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full">
+            <span className="ml-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
               {agUIEvents.length} events
             </span>
           )}
@@ -459,7 +459,7 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
               onClick={() => setViewMode(mode)}
               className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
                 viewMode === mode
-                  ? "bg-indigo-500 text-white shadow-sm"
+                  ? "bg-blue-500 text-white shadow-sm"
                   : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
               }`}
             >
@@ -498,8 +498,8 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
                       }
                       return (
                         <div key={idx} className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0">
-                            <span className="text-[10px] font-bold text-indigo-600">AG</span>
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+                            <span className="text-[10px] font-bold text-blue-600">AG</span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <AGUIAssistantBubble message={item.message} />

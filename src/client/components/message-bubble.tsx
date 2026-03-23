@@ -149,17 +149,17 @@ function ThoughtBubble({content}: { content: string }) {
             <button type="button" onClick={() => setExpanded((e) => !e)} className="w-full text-left group">
                 <div className="flex items-center gap-1.5 mb-0.5">
                     <svg
-                        className={`w-3 h-3 text-purple-400 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+                        className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
                         fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                     >
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
                     </svg>
-                    <span className="text-[11px] font-medium text-purple-500 dark:text-purple-400 uppercase tracking-wide">
+                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                         Thinking
                     </span>
                 </div>
                 <div
-                    className={`px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/50 text-xs text-purple-700 dark:text-purple-300 whitespace-pre-wrap transition-all duration-150 ${
+                    className={`px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 whitespace-pre-wrap transition-all duration-150 dark:border-slate-800/50 dark:bg-slate-900/10 dark:text-slate-300 ${
                         expanded ? "max-h-60 overflow-y-auto" : "max-h-[2.8em] overflow-hidden"
                     }`}
                 >
@@ -311,9 +311,9 @@ function getToolStyling(kind?: string): { bgClass: string; borderClass: string; 
         case "glob":
         case "grep":
             return {
-                bgClass: "bg-violet-50/50 dark:bg-violet-900/10",
-                borderClass: "border-violet-200/50 dark:border-violet-800/30",
-                iconColorClass: "text-violet-600 dark:text-violet-400",
+                bgClass: "bg-slate-50/60 dark:bg-slate-900/20",
+                borderClass: "border-slate-200/60 dark:border-slate-700/40",
+                iconColorClass: "text-slate-600 dark:text-slate-400",
             };
         case "web-fetch":
         case "web-search":

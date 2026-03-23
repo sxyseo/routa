@@ -23,13 +23,13 @@ const BLOCK_COLORS: Record<string, { bg: string; text: string; border: string; i
   agent_completed:    { bg: "bg-emerald-50 dark:bg-emerald-950/30",  text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800", icon: "✓" },
   agent_failed:       { bg: "bg-red-50 dark:bg-red-950/30",          text: "text-red-700 dark:text-red-300",         border: "border-red-200 dark:border-red-800",         icon: "✗" },
   message_block:      { bg: "bg-blue-50 dark:bg-blue-950/20",        text: "text-blue-700 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-800",       icon: "💬" },
-  thought_block:      { bg: "bg-yellow-50 dark:bg-yellow-950/20",    text: "text-yellow-700 dark:text-yellow-300",   border: "border-yellow-200 dark:border-yellow-800",   icon: "💭" },
+  thought_block:      { bg: "bg-slate-50 dark:bg-slate-950/20",      text: "text-slate-700 dark:text-slate-300",     border: "border-slate-200 dark:border-slate-800",     icon: "💭" },
   read_block:         { bg: "bg-cyan-50 dark:bg-cyan-950/20",        text: "text-cyan-700 dark:text-cyan-300",       border: "border-cyan-200 dark:border-cyan-800",       icon: "📖" },
   file_changes_block: { bg: "bg-orange-50 dark:bg-orange-950/20",    text: "text-orange-700 dark:text-orange-300",   border: "border-orange-200 dark:border-orange-800",   icon: "📝" },
   terminal_block:     { bg: "bg-gray-50 dark:bg-gray-950/30",        text: "text-gray-700 dark:text-gray-300",       border: "border-gray-200 dark:border-gray-800",       icon: "⌨" },
-  mcp_block:          { bg: "bg-violet-50 dark:bg-violet-950/20",    text: "text-violet-700 dark:text-violet-300",   border: "border-violet-200 dark:border-violet-800",   icon: "🔌" },
+  mcp_block:          { bg: "bg-blue-50 dark:bg-blue-950/20",        text: "text-blue-700 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-800",       icon: "🔌" },
   tool_call_block:    { bg: "bg-amber-50 dark:bg-amber-950/20",      text: "text-amber-700 dark:text-amber-300",     border: "border-amber-200 dark:border-amber-800",     icon: "🔧" },
-  plan_updated:       { bg: "bg-indigo-50 dark:bg-indigo-950/20",    text: "text-indigo-700 dark:text-indigo-300",   border: "border-indigo-200 dark:border-indigo-800",   icon: "📋" },
+  plan_updated:       { bg: "bg-slate-50 dark:bg-slate-950/20",      text: "text-slate-700 dark:text-slate-300",     border: "border-slate-200 dark:border-slate-800",     icon: "📋" },
   usage_reported:     { bg: "bg-teal-50 dark:bg-teal-950/20",        text: "text-teal-700 dark:text-teal-300",       border: "border-teal-200 dark:border-teal-800",       icon: "📊" },
 };
 
@@ -140,14 +140,14 @@ function ThoughtBubble({ event }: { event: WorkspaceAgentEvent & { type: "though
   return (
     <button
       onClick={() => setExpanded(!expanded)}
-      className="group flex items-start gap-2 my-1 px-3 py-1.5 rounded-lg bg-yellow-50/40 dark:bg-yellow-900/5 border border-yellow-100/50 dark:border-yellow-800/20 hover:bg-yellow-50/70 dark:hover:bg-yellow-900/10 transition-colors w-full text-left"
+      className="group my-1 flex w-full items-start gap-2 rounded-lg border border-slate-100/50 bg-slate-50/50 px-3 py-1.5 text-left transition-colors hover:bg-slate-100/70 dark:border-slate-800/20 dark:bg-slate-900/10 dark:hover:bg-slate-900/20"
     >
-      <span className="text-[10px] text-yellow-500 shrink-0 pt-0.5">💭</span>
+      <span className="shrink-0 pt-0.5 text-[10px] text-slate-500">💭</span>
       <p className={`text-[11px] text-gray-500 dark:text-gray-400 italic leading-relaxed ${expanded ? "" : "line-clamp-2"}`}>
         {event.content}
       </p>
       {!expanded && event.content.length > 150 && (
-        <span className="text-[9px] text-yellow-500 dark:text-yellow-400 shrink-0 pt-0.5">...</span>
+        <span className="shrink-0 pt-0.5 text-[9px] text-slate-500 dark:text-slate-400">...</span>
       )}
     </button>
   );
@@ -292,7 +292,7 @@ function McpCard({ event }: { event: WorkspaceAgentEvent & { type: "mcp_block" }
         </svg>
       </button>
       {expanded && (
-        <div className="mt-1 ml-4 pl-3 border-l-2 border-violet-200 dark:border-violet-800/40 space-y-2">
+        <div className="mt-1 ml-4 space-y-2 border-l-2 border-blue-200 pl-3 dark:border-blue-800/40">
           {event.input && (
             <div>
               <span className="text-[10px] font-semibold text-gray-500 uppercase">Input</span>
@@ -456,12 +456,12 @@ function AgentGroup({ events }: { events: WorkspaceAgentEvent[] }) {
 
   return (
     <div className="flex items-start gap-3 group">
-      <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0 mt-0.5">
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
         <span className="text-sm">🤖</span>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">Agent</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Agent</span>
           <span className="text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
             {firstTimestamp?.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             {!sameSecond && lastTimestamp && ` → ${lastTimestamp.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}

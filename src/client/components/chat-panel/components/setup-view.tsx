@@ -130,8 +130,8 @@ export function SetupView({
 function SetupHeader() {
   return (
     <div className="text-center">
-      <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-linear-to-br from-indigo-500/20 to-blue-500/20 flex items-center justify-center">
-        <svg className="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-blue-500/20 to-blue-400/20">
+        <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
         </svg>
       </div>
@@ -159,19 +159,19 @@ function AgentRoleSelector({ agentRole, onAgentRoleChange }: AgentRoleSelectorPr
           onClick={() => onAgentRoleChange?.("ROUTA")}
           className={`p-3.5 rounded-xl border-2 text-left transition-all duration-150 ${
             agentRole === "ROUTA"
-              ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/25 shadow-sm"
-              : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1f2e] hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm"
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/25 shadow-sm"
+              : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1f2e] hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-sm"
           }`}
         >
           <div className="flex items-center gap-2 mb-1.5">
             <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
-              agentRole === "ROUTA" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+              agentRole === "ROUTA" ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
             }`}>R</div>
-            <span className={`font-semibold text-sm ${agentRole === "ROUTA" ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-200"}`}>
+            <span className={`font-semibold text-sm ${agentRole === "ROUTA" ? "text-blue-700 dark:text-blue-300" : "text-gray-800 dark:text-gray-200"}`}>
               Routa
             </span>
             {agentRole === "ROUTA" && (
-              <span className="ml-auto text-[10px] font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full">推荐</span>
+              <span className="ml-auto rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-900/40 dark:text-blue-400">推荐</span>
             )}
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -185,15 +185,15 @@ function AgentRoleSelector({ agentRole, onAgentRoleChange }: AgentRoleSelectorPr
           onClick={() => onAgentRoleChange?.("CRAFTER")}
           className={`p-3.5 rounded-xl border-2 text-left transition-all duration-150 ${
             agentRole === "CRAFTER"
-              ? "border-violet-500 bg-violet-50 dark:bg-violet-900/25 shadow-sm"
-              : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1f2e] hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-sm"
+              ? "border-amber-500 bg-amber-50 dark:bg-amber-900/25 shadow-sm"
+              : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1f2e] hover:border-amber-300 dark:hover:border-amber-700 hover:shadow-sm"
           }`}
         >
           <div className="flex items-center gap-2 mb-1.5">
             <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
-              agentRole === "CRAFTER" ? "bg-violet-600 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+              agentRole === "CRAFTER" ? "bg-amber-500 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
             }`}>C</div>
-            <span className={`font-semibold text-sm ${agentRole === "CRAFTER" ? "text-violet-700 dark:text-violet-300" : "text-gray-800 dark:text-gray-200"}`}>
+            <span className={`font-semibold text-sm ${agentRole === "CRAFTER" ? "text-amber-700 dark:text-amber-300" : "text-gray-800 dark:text-gray-200"}`}>
               CRATER
             </span>
           </div>
