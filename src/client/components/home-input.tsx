@@ -39,11 +39,17 @@ interface HomeInputProps {
   variant?: "default" | "hero";
   /** Called when workspace selection changes */
   onWorkspaceChange?: (workspaceId: string | null) => void;
-  onSessionCreated?: (sessionId: string, promptText: string) => void;
+  onSessionCreated?: (
+    sessionId: string,
+    promptText: string,
+    sessionContext?: { cwd?: string; branch?: string; repoName?: string },
+  ) => void;
   /** Lock the input to a specific specialist and reuse its config */
   lockedSpecialistId?: string;
   /** Override the destination route after session creation */
   buildSessionUrl?: (workspaceId: string | null, sessionId: string) => string;
+  /** When true, block session creation until a repository is explicitly selected */
+  requireRepoSelection?: boolean;
   /** Externally triggered skill (e.g. from grid card click) */
   externalPendingSkill?: string | null;
   /** Called after the external skill has been consumed */
@@ -61,6 +67,7 @@ export function HomeInput({
   onSessionCreated,
   lockedSpecialistId,
   buildSessionUrl,
+  requireRepoSelection = false,
   externalPendingSkill,
   onExternalSkillConsumed,
   displaySkills,
@@ -78,6 +85,7 @@ export function HomeInput({
   const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
+  const repoSelectionRef = useRef<RepoSelection | null>(null);
   const [pendingSkill, setPendingSkill] = useState<string | null>(null);
 
   // Specialists
@@ -158,16 +166,27 @@ export function HomeInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoSelection?.path]);
 
+  useEffect(() => {
+    repoSelectionRef.current = repoSelection;
+  }, [repoSelection]);
+
   // Auto-select default codebase
   useEffect(() => {
     if (codebases.length === 0) return;
     const def = codebases.find((c) => c.isDefault) ?? codebases[0];
-    setRepoSelection({
+    const nextSelection = {
       path: def.repoPath,
       branch: def.branch ?? "",
       name: def.label ?? def.repoPath.split("/").pop() ?? "",
-    });
+    };
+    repoSelectionRef.current = nextSelection;
+    setRepoSelection(nextSelection);
   }, [codebases]);
+
+  const handleRepoSelectionChange = useCallback((selection: RepoSelection | null) => {
+    repoSelectionRef.current = selection;
+    setRepoSelection(selection);
+  }, []);
 
   // Handle external pending skill from grid
   useEffect(() => {
@@ -198,6 +217,11 @@ export function HomeInput({
       try {
         const idempotencyKey = `home-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const wsId = selectedWorkspaceId ?? undefined;
+        const effectiveRepoSelection = repoSelectionRef.current;
+        const effectiveCwd = context.cwd ?? effectiveRepoSelection?.path;
+        if (requireRepoSelection && !effectiveCwd) {
+          return;
+        }
         const effectiveSpecialistId = lockedSpecialistId ?? selectedSpecialistId;
         const selectedSpec = effectiveSpecialistId ? specialists.find((s) => s.id === effectiveSpecialistId) : undefined;
         const effectiveProvider = context.provider ?? selectedSpec?.defaultProvider ?? acp.selectedProvider;
@@ -207,7 +231,7 @@ export function HomeInput({
         // When a custom specialist is selected, use the specialist's role
         const effectiveRole = (selectedSpec?.role as typeof selectedRole) ?? selectedRole;
         const result = await acp.createSession(
-          context.cwd ?? repoSelection?.path,
+          effectiveCwd,
           effectiveProvider,
           context.mode,
           effectiveRole,
@@ -218,7 +242,7 @@ export function HomeInput({
           undefined,
           def?.baseUrl ?? conn.baseUrl,
           def?.apiKey ?? conn.apiKey,
-          repoSelection?.branch,
+          effectiveRepoSelection?.branch,
         );
 
         if (result?.sessionId) {
@@ -229,7 +253,11 @@ export function HomeInput({
               ? `/workspace/${wsId}/sessions/${result.sessionId}`
               : `/workspace/${result.sessionId}`;
           storePendingPrompt(result.sessionId, promptText);
-          onSessionCreated?.(result.sessionId, promptText);
+          onSessionCreated?.(result.sessionId, promptText, {
+            cwd: effectiveCwd,
+            branch: effectiveRepoSelection?.branch,
+            repoName: effectiveRepoSelection?.name,
+          });
           router.push(url);
         }
       } finally {
@@ -237,7 +265,7 @@ export function HomeInput({
         setIsSubmitting(false);
       }
     },
-    [acp, buildSessionUrl, lockedSpecialistId, repoSelection, selectedRole, selectedWorkspaceId, selectedSpecialistId, router, onSessionCreated, specialists],
+    [acp, buildSessionUrl, lockedSpecialistId, requireRepoSelection, selectedRole, selectedWorkspaceId, selectedSpecialistId, router, onSessionCreated, specialists],
   );
 
   const activeWorkspace = workspacesHook.workspaces.find((w) => w.id === selectedWorkspaceId);
@@ -272,7 +300,7 @@ export function HomeInput({
           <TiptapInput
             onSend={handleSend}
             placeholder="What are you working on? (@ files, / skills)"
-            disabled={!acp.connected || isSubmitting}
+            disabled={!acp.connected || isSubmitting || (requireRepoSelection && !repoSelection?.path)}
             loading={isSubmitting}
             skills={skillsHook.skills}
             repoSkills={skillsHook.repoSkills}
@@ -280,7 +308,7 @@ export function HomeInput({
             selectedProvider={acp.selectedProvider}
             onProviderChange={acp.setProvider}
             repoSelection={repoSelection}
-            onRepoChange={setRepoSelection}
+            onRepoChange={handleRepoSelectionChange}
             additionalRepos={codebases.map((codebase) => ({
               name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
               path: codebase.repoPath,

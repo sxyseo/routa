@@ -183,7 +183,11 @@ export function TeamPageClient() {
     setRefreshKey((current) => current + 1);
   }, []);
 
-  const handleTeamSessionCreated = useCallback((sessionId: string, promptText: string) => {
+  const handleTeamSessionCreated = useCallback((
+    sessionId: string,
+    promptText: string,
+    sessionContext?: { cwd?: string; branch?: string; repoName?: string },
+  ) => {
     const optimisticName = buildTeamRunName(promptText);
     setSessions((current) => {
       if (current.some((session) => session.sessionId === sessionId)) {
@@ -192,6 +196,8 @@ export function TeamPageClient() {
             ? {
               ...session,
               name: optimisticName,
+              cwd: session.cwd || sessionContext?.cwd || "",
+              branch: session.branch ?? sessionContext?.branch,
               role: session.role ?? "ROUTA",
               specialistId: session.specialistId ?? TEAM_LEAD_SPECIALIST_ID,
             }
@@ -202,7 +208,8 @@ export function TeamPageClient() {
       return [{
         sessionId,
         name: optimisticName,
-        cwd: "",
+        cwd: sessionContext?.cwd ?? "",
+        branch: sessionContext?.branch,
         workspaceId,
         role: "ROUTA",
         specialistId: TEAM_LEAD_SPECIALIST_ID,
@@ -290,6 +297,7 @@ export function TeamPageClient() {
                     workspaceId={workspaceId}
                     variant="hero"
                     lockedSpecialistId={TEAM_LEAD_SPECIALIST_ID}
+                    requireRepoSelection
                     buildSessionUrl={(nextWorkspaceId, sessionId) =>
                       `/workspace/${nextWorkspaceId ?? workspaceId}/team/${sessionId}`
                     }
