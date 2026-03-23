@@ -172,7 +172,7 @@ export function KanbanCard({
   const statusLabel = getStatusLabel(sessionStatus, queuePosition);
   const automationSourceLabel = hasCardOverride ? "Card override" : "Lane default";
   const automationSourceTone = hasCardOverride
-    ? "bg-violet-100 text-violet-700 ring-1 ring-inset ring-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:ring-violet-900/40"
+    ? "bg-blue-100 text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:ring-blue-900/40"
     : "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
   const visibleLabels = (task.labels ?? []).slice(0, 2);
   const remainingLabelCount = Math.max((task.labels?.length ?? 0) - visibleLabels.length, 0);
@@ -359,10 +359,10 @@ export function KanbanCard({
             return cb ? (
               <span
                 key={cbId}
-                className="inline-flex items-center gap-1 rounded-full bg-violet-100/90 px-2 py-0.5 text-[10px] font-medium text-violet-700 ring-1 ring-inset ring-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:ring-violet-900/40"
+                className="inline-flex items-center gap-1 rounded-full bg-blue-100/90 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:ring-blue-900/40"
                 data-testid="repo-badge"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
                 {cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}
               </span>
             ) : (

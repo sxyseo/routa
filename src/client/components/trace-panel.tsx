@@ -505,14 +505,14 @@ function AgentResponseBlock({
   return (
     <div className="flex items-start gap-3 group">
       {/* Avatar */}
-      <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0">
+      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
         <span className="text-sm">🤖</span>
       </div>
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Header */}
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">Agent</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Agent</span>
           {model && (
             <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">{model}</span>
           )}
@@ -787,7 +787,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
           [
             { key: "all", label: "All", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
             { key: "user_message", label: "User", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-            { key: "agent_message", label: "Agent", active: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300" },
+            { key: "agent_message", label: "Agent", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
             { key: "tools", label: "Tools", active: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300" },
             { key: "agent_thought", label: "Thoughts", active: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300" },
           ] as const

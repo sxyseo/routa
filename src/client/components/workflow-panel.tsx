@@ -170,7 +170,7 @@ function WorkflowDag({ steps, onStepClick }: WorkflowDagProps) {
       { bg: "#dbeafe", border: "#3b82f6", text: "#1d4ed8" }, // blue
       { bg: "#d1fae5", border: "#10b981", text: "#065f46" }, // green
       { bg: "#fef3c7", border: "#f59e0b", text: "#92400e" }, // amber
-      { bg: "#ede9fe", border: "#8b5cf6", text: "#5b21b6" }, // violet
+      { bg: "#e2e8f0", border: "#64748b", text: "#334155" }, // slate
       { bg: "#fce7f3", border: "#ec4899", text: "#9d174d" }, // pink
     ];
     let hash = 0;
@@ -562,7 +562,7 @@ function WorkflowCard({ workflow, onEdit, onDelete, onRun }: WorkflowCardProps) 
   const triggerColors: Record<string, string> = {
     Manual: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
     Webhook: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-    Schedule: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+    Schedule: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
   };
 
   const handleDelete = async () => {

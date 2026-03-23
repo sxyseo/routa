@@ -164,9 +164,9 @@ export function TaskStatusBadge({ status }: { status: string }) {
 export function AgentRoleIcon({ role }: { role: string }) {
   const r = role.toUpperCase();
   const colorMap: Record<string, string> = {
-    ROUTA: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400",
-    DEVELOPER: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400",
-    CRAFTER: "bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400",
+    ROUTA: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400",
+    DEVELOPER: "bg-slate-100 dark:bg-slate-900/20 text-slate-600 dark:text-slate-300",
+    CRAFTER: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400",
     GATE: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400",
   };
   const cls = colorMap[r] || colorMap.DEVELOPER;

@@ -187,10 +187,10 @@ export const EMPTY_MODEL_FORM: ModelDefinition = { alias: "", modelName: "", bas
 
 export const TIER_LABELS: Record<ModelTier, string> = { FAST: "Fast", BALANCED: "Balanced", SMART: "Smart" };
 export const ROLE_CHIP: Record<AgentRole, string> = {
-  ROUTA: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
-  CRAFTER: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
+  ROUTA: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
+  CRAFTER: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
   GATE: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300",
-  DEVELOPER: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300",
+  DEVELOPER: "bg-slate-100 dark:bg-slate-900/30 text-slate-700 dark:text-slate-300",
 };
 
 export interface SpecialistForm {

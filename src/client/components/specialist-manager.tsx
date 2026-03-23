@@ -284,7 +284,7 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                           <h3 className="font-medium text-gray-900 dark:text-gray-100">{specialist.name}</h3>
                           <span className={`px-2 py-0.5 text-xs rounded-full ${
                             specialist.source === "user"
-                              ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                              ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
                               : specialist.source === "bundled"
                               ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
                               : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"

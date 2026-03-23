@@ -36,9 +36,9 @@ export default function SchedulesSettingsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg">
-            <span className="text-xs text-purple-700 dark:text-purple-400 font-medium">Tick endpoint:</span>
-            <code className="text-xs text-purple-600 dark:text-purple-300 font-mono">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+            <span className="text-xs text-blue-700 dark:text-blue-400 font-medium">Tick endpoint:</span>
+            <code className="text-xs text-blue-600 dark:text-blue-300 font-mono">
               /api/schedules/tick
             </code>
           </div>

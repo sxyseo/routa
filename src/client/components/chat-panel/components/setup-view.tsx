@@ -50,7 +50,7 @@ export function SetupView({
         <SetupHeader />
 
         {/* Input */}
-        <div className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-800/60 bg-white dark:bg-[#1a1f2e] shadow-sm overflow-hidden focus-within:border-indigo-400 dark:focus-within:border-indigo-600 transition-colors">
+        <div className="rounded-2xl border-2 border-blue-200 dark:border-blue-800/60 bg-white dark:bg-[#1a1f2e] shadow-sm overflow-hidden focus-within:border-blue-400 dark:focus-within:border-blue-600 transition-colors">
           <textarea
             value={setupInput}
             onChange={(e) => onSetupInputChange(e.target.value)}
@@ -82,7 +82,7 @@ export function SetupView({
             <button
               onClick={onStartSession}
               disabled={!setupInput.trim() || !connected}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               开始
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -101,7 +101,7 @@ export function SetupView({
             <select
               value={activeWorkspaceId ?? ""}
               onChange={(e) => onWorkspaceChange(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               {workspaces.length > 0 ? (
                 workspaces.map((ws) => (

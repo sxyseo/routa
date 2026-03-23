@@ -68,7 +68,7 @@ function JsonNode({ value, depth = 0 }: { value: unknown; depth?: number }) {
             <div className="pl-3 border-l border-gray-200 dark:border-gray-700 ml-1">
               {entries.map(([key, nestedValue], index) => (
                 <div key={key} className="my-0.5">
-                  <span className="text-purple-700 dark:text-purple-400 font-semibold">&quot;{key}&quot;</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-semibold">&quot;{key}&quot;</span>
                   <span className="text-gray-500">: </span>
                   <JsonNode value={nestedValue} depth={depth + 1} />
                   {index < entries.length - 1 && <span className="text-gray-400">,</span>}

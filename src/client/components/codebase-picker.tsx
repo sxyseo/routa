@@ -34,7 +34,7 @@ export function CodebasePicker({ codebases, selectedRepoPath, onSelect }: Codeba
       <select
         value={effective ?? ""}
         onChange={(e) => onSelect(e.target.value)}
-        className="appearance-none text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 bg-white dark:bg-[#1e2130] text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-indigo-500 max-w-[160px]"
+        className="appearance-none text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 bg-white dark:bg-[#1e2130] text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-blue-500 max-w-[160px]"
       >
         {!effective && <option value="" disabled>Select codebase</option>}
         {codebases.map((cb) => (

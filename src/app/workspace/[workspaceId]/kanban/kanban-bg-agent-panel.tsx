@@ -95,9 +95,9 @@ function statusClass(status: string): string {
 
 function roleClass(role: string): string {
   const map: Record<string, string> = {
-    ROUTA: "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300",
-    DEVELOPER: "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300",
-    CRAFTER: "bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300",
+    ROUTA: "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300",
+    DEVELOPER: "bg-slate-100 text-slate-700 dark:bg-slate-900/20 dark:text-slate-300",
+    CRAFTER: "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300",
     GATE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300",
   };
   return map[role.toUpperCase()] ?? map.DEVELOPER;
@@ -381,7 +381,7 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
           <div data-testid="kanban-bg-agent-content" className="space-y-4">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                { label: "Workspace Agents", value: groupedAgents.length, tone: "text-violet-600 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/20" },
+                { label: "Workspace Agents", value: groupedAgents.length, tone: "text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20" },
                 { label: "Active Agents", value: activeAgents, tone: "text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" },
                 { label: "Queue Routes", value: groupedRoutes.length, tone: "text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20" },
                 { label: "Pending Tasks", value: pendingTasks, tone: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20" },

@@ -92,14 +92,14 @@ function SkillCard({ skill }: { skill: AgentSkill }) {
         <div className="mt-3">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline"
+            className="text-xs text-blue-500 dark:text-blue-400 hover:underline"
           >
             {expanded ? "Hide examples" : `${skill.examples.length} example${skill.examples.length > 1 ? "s" : ""}`}
           </button>
           {expanded && (
             <ul className="mt-2 space-y-1">
               {skill.examples.map((ex, i) => (
-                <li key={i} className="text-xs text-zinc-500 dark:text-zinc-400 pl-3 border-l-2 border-indigo-200 dark:border-indigo-800 italic">
+                <li key={i} className="text-xs text-zinc-500 dark:text-zinc-400 pl-3 border-l-2 border-blue-200 dark:border-blue-800 italic">
                   {ex}
                 </li>
               ))}
@@ -127,7 +127,7 @@ function TaskRow({ task, onSelect }: { task: A2ATask; onSelect: (t: A2ATask) => 
           <StatusBadge state={task.status.state} />
         </div>
       </div>
-      <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
+      <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
         {prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt}
       </p>
     </button>
@@ -274,7 +274,7 @@ export default function A2APage() {
                 placeholder="Workspace ID (optional)"
                 value={workspaceId}
                 onChange={(e) => setWorkspaceId(e.target.value)}
-                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
               />
               <textarea
                 rows={3}
@@ -284,7 +284,7 @@ export default function A2APage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend(e as unknown as React.FormEvent);
                 }}
-                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-none"
+                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none"
               />
               {sendError && (
                 <p className="text-xs text-red-500 dark:text-red-400">{sendError}</p>
@@ -294,7 +294,7 @@ export default function A2APage() {
                 <button
                   type="submit"
                   disabled={sending || !prompt.trim()}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium text-white transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium text-white transition-colors"
                 >
                   {sending ? (
                     <>
@@ -334,7 +334,7 @@ export default function A2APage() {
                 <button
                   onClick={fetchTasks}
                   disabled={loadingTasks}
-                  className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline disabled:opacity-50"
+                  className="text-xs text-blue-500 dark:text-blue-400 hover:underline disabled:opacity-50"
                 >
                   Refresh
                 </button>
@@ -366,7 +366,7 @@ export default function A2APage() {
                   href="/.well-known/agent-card.json"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline"
+                  className="text-xs text-blue-500 dark:text-blue-400 hover:underline"
                 >
                   Open ↗
                 </a>
@@ -491,7 +491,7 @@ export default function A2APage() {
                 )}
                 {/* Raw JSON toggle */}
                 <details className="group">
-                  <summary className="cursor-pointer text-xs text-indigo-500 dark:text-indigo-400 hover:underline list-none">
+                  <summary className="cursor-pointer text-xs text-blue-500 dark:text-blue-400 hover:underline list-none">
                     Raw JSON
                   </summary>
                   <pre className="mt-2 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap break-words">

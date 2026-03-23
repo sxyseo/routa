@@ -227,7 +227,7 @@ export function KanbanCardActivityBar({
             </span>
           )}
           {selectedStepLabel && (
-            <span className="rounded-full bg-indigo-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
               {selectedStepLabel}
             </span>
           )}
@@ -320,7 +320,7 @@ function SessionHistoryPanel({
                   </span>
                 )}
                 {stepLabel && (
-                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                     {stepLabel}
                   </span>
                 )}
@@ -477,7 +477,7 @@ function GitHubPanel({ task, compact = false }: { task: TaskInfo; compact?: bool
     <div className={`rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-[#0d1018] ${compact ? "px-3 py-3" : "px-4 py-4"}`}>
       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">GitHub</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
           {task.githubState ?? "linked"}
         </span>
         {task.githubRepo && (

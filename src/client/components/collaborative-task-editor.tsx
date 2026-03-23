@@ -216,7 +216,7 @@ export function CollaborativeTaskEditor({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300">
+          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-900/30 text-slate-600 dark:text-slate-300">
             CRDT
           </span>
           <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -364,10 +364,10 @@ export function CollaborativeTaskEditor({
           {/* Vertical resize handle - only show when expanded */}
           {specExpanded && (
             <div
-              className="absolute left-0 right-0 bottom-0 h-1 cursor-row-resize z-20 hover:bg-indigo-500/30 active:bg-indigo-500/50 transition-colors group"
+              className="absolute left-0 right-0 bottom-0 h-1 cursor-row-resize z-20 hover:bg-blue-500/30 active:bg-blue-500/50 transition-colors group"
               onMouseDown={handleVerticalResizeStart}
             >
-              <div className="absolute left-1/2 bottom-0 -translate-x-1/2 w-8 h-1 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-indigo-400 group-active:bg-indigo-500 transition-colors" />
+              <div className="absolute left-1/2 bottom-0 -translate-x-1/2 w-8 h-1 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-blue-400 group-active:bg-blue-500 transition-colors" />
             </div>
           )}
         </div>
@@ -734,7 +734,7 @@ function TaskNoteCard({
             </span>
             {note.metadata.assignedAgentIds &&
               note.metadata.assignedAgentIds.length > 0 && (
-                <span className="text-[9px] px-1 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300">
+                <span className="text-[9px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300">
                   Agent: {note.metadata.assignedAgentIds.join(", ")}
                 </span>
               )}

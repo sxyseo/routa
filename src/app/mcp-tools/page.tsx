@@ -34,7 +34,7 @@ interface CategoryConfig {
 
 const CATEGORIES: CategoryConfig[] = [
   { name: "Task", color: "text-blue-600 dark:text-blue-400", bgColor: "bg-blue-50 dark:bg-blue-900/20", borderColor: "border-blue-200 dark:border-blue-800" },
-  { name: "Agent", color: "text-purple-600 dark:text-purple-400", bgColor: "bg-purple-50 dark:bg-purple-900/20", borderColor: "border-purple-200 dark:border-purple-800" },
+  { name: "Agent", color: "text-blue-600 dark:text-blue-400", bgColor: "bg-blue-50 dark:bg-blue-900/20", borderColor: "border-blue-200 dark:border-blue-800" },
   { name: "Note", color: "text-green-600 dark:text-green-400", bgColor: "bg-green-50 dark:bg-green-900/20", borderColor: "border-green-200 dark:border-green-800" },
   { name: "Workspace", color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-50 dark:bg-orange-900/20", borderColor: "border-orange-200 dark:border-orange-800" },
   { name: "Git", color: "text-rose-600 dark:text-rose-400", bgColor: "bg-rose-50 dark:bg-rose-900/20", borderColor: "border-rose-200 dark:border-rose-800" },
@@ -181,7 +181,7 @@ export default function McpToolsPage() {
                 onChange={(e) => handleToggleMode(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-8 h-4 bg-gray-300 dark:bg-gray-600 rounded-full peer peer-checked:bg-purple-500 transition-colors" />
+              <div className="w-8 h-4 bg-gray-300 dark:bg-gray-600 rounded-full peer peer-checked:bg-blue-500 transition-colors" />
               <div className="absolute left-0.5 top-0.5 w-3 h-3 bg-white rounded-full transition-transform peer-checked:translate-x-4" />
             </div>
             <span className="text-[11px] text-gray-600 dark:text-gray-400">

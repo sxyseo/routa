@@ -639,7 +639,7 @@ function PlanBubble({content, entries}: { content: string; entries?: PlanEntry[]
         <div className="w-full">
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#161922] overflow-hidden">
                 <div className="px-3 py-2 flex items-center gap-2 bg-gray-100 dark:bg-[#1a1d2e] border-b border-gray-200 dark:border-gray-700">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                    <span className="w-2 h-2 rounded-full bg-slate-500" />
                     <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Plan</span>
                 </div>
                 <div className="px-3 py-2">

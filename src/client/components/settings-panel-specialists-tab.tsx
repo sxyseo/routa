@@ -266,7 +266,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
                       <div className="flex flex-wrap items-center gap-1.5 mb-1">
                         <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{specialist.name}</span>
                         <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${ROLE_CHIP[specialist.role]}`}>{specialist.role}</span>
-                        <span className={`px-1.5 py-0.5 text-[10px] rounded ${specialist.source === "user" ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"}`}>
+                        <span className={`px-1.5 py-0.5 text-[10px] rounded ${specialist.source === "user" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"}`}>
                           {specialist.source}
                         </span>
                         {specialist.model && <span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 font-mono truncate max-w-[120px]">{specialist.model}</span>}

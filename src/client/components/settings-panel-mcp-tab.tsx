@@ -57,7 +57,7 @@ const TYPE_LABEL: Record<McpServerType, string> = {
 };
 
 const TYPE_CHIP: Record<McpServerType, string> = {
-  stdio: "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300",
+  stdio: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
   http: "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300",
   sse: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300",
 };

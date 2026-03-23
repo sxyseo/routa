@@ -815,7 +815,7 @@ export default function AGUIPage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={`Send via ${protocolMode === "ag-ui" ? "AG-UI" : "ACP"} protocol…`}
-              className="flex-1 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 dark:focus:border-indigo-600 transition-all placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+              className="flex-1 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 dark:focus:border-blue-600 transition-all placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
               disabled={sending}
             />
             {sending ? (
@@ -832,7 +832,7 @@ export default function AGUIPage() {
                 type="submit"
                 data-testid="send-button"
                 disabled={!prompt.trim()}
-                className="rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white px-5 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed"
+                className="rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white px-5 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed"
               >
                 Send
               </button>
@@ -886,7 +886,7 @@ export default function AGUIPage() {
         {!showEvents && (
           <button
             onClick={() => setShowEvents(true)}
-            className="fixed bottom-6 right-6 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white p-3 shadow-lg transition-all hover:scale-105"
+            className="fixed bottom-6 right-6 rounded-full bg-blue-500 hover:bg-blue-600 text-white p-3 shadow-lg transition-all hover:scale-105"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <polyline points="17 1 21 5 17 9" />

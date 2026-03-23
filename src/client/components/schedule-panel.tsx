@@ -647,7 +647,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
                 {description}
               </span>
             )}
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 border border-purple-100 dark:border-purple-800">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 border border-blue-100 dark:border-blue-800">
               🤖 {schedule.agentId}
             </span>
           </div>

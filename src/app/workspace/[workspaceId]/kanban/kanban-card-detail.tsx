@@ -730,7 +730,7 @@ function RepositoriesWorktreeRow({
           <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Repo</div>
           {primaryCodebase ? (
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${primaryCodebase.sourceType === "github" ? "bg-violet-500" : "bg-emerald-500"}`} />
+              <span className={`h-2 w-2 shrink-0 rounded-full ${primaryCodebase.sourceType === "github" ? "bg-blue-500" : "bg-emerald-500"}`} />
               <span className="truncate text-gray-700 dark:text-gray-300">
                 {repoSummary}
               </span>
@@ -857,12 +857,12 @@ function RepositoriesWorktreeRow({
                       }}
                       className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] transition-colors ${
                         selected
-                          ? "border-violet-400 bg-violet-50 text-violet-700 dark:border-violet-600 dark:bg-violet-900/20 dark:text-violet-300"
-                          : "border-gray-200 bg-white text-gray-600 hover:border-violet-300 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-400"
+                          ? "border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-600 dark:bg-blue-900/20 dark:text-blue-300"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-blue-300 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-400"
                       }`}
                       data-testid="detail-repo-toggle"
                     >
-                      <span className={`h-1.5 w-1.5 rounded-full ${codebase.sourceType === "github" ? "bg-violet-500" : "bg-emerald-500"}`} />
+                      <span className={`h-1.5 w-1.5 rounded-full ${codebase.sourceType === "github" ? "bg-blue-500" : "bg-emerald-500"}`} />
                       {codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath}
                     </button>
                   );

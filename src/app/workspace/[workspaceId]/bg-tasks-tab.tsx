@@ -277,11 +277,11 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                   const srcLabel: Record<string, string> = { all: "All", manual: "Manual", schedule: "Scheduled", webhook: "Webhook", polling: "Polling", workflow: "Workflow", fleet: "Fleet" };
                   const srcColor: Record<string, string> = {
                     all: "text-gray-500 dark:text-gray-400",
-                    manual: "text-violet-600 dark:text-violet-400",
+                    manual: "text-slate-600 dark:text-slate-400",
                     schedule: "text-amber-600 dark:text-amber-400",
                     webhook: "text-blue-600 dark:text-blue-400",
                     polling: "text-teal-600 dark:text-teal-400",
-                    workflow: "text-indigo-600 dark:text-indigo-400",
+                    workflow: "text-blue-600 dark:text-blue-400",
                     fleet: "text-pink-600 dark:text-pink-400",
                   };
                   return (
@@ -385,7 +385,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                     {["COMPLETED", "CANCELLED", "FAILED"].includes(task.status) && (
                       <button
                         onClick={() => handleRerunTask(task)}
-                        className="text-[10px] font-medium px-2 py-0.5 rounded bg-violet-500 hover:bg-violet-600 text-white transition-colors"
+                        className="text-[10px] font-medium px-2 py-0.5 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors"
                         title="Re-dispatch this task with the same prompt and agent"
                       >
                         ↺ Rerun

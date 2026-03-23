@@ -99,7 +99,7 @@ export function ModelDropdown({
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter models..."
-                className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-transparent outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 dark:text-gray-200"
+                className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-transparent outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
               />
             </div>
             <div className="overflow-y-auto flex-1">
@@ -108,7 +108,7 @@ export function ModelDropdown({
                 onClick={() => handleSelect("")}
                 className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
                   !selectedModel
-                    ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300"
+                    ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
                     : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-300"
                 }`}
               >
@@ -121,7 +121,7 @@ export function ModelDropdown({
                   onClick={() => handleSelect(m)}
                   className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
                     m === selectedModel
-                      ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300"
+                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
                       : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-300"
                   }`}
                 >
@@ -141,4 +141,3 @@ export function ModelDropdown({
     </div>
   );
 }
-

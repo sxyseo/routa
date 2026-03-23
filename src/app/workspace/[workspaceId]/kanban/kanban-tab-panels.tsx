@@ -184,7 +184,7 @@ export function KanbanBoardSurface({
                       data-testid="codebase-badge"
                       title={`${defaultCodebase.label ?? defaultCodebase.repoPath} - ${defaultCodebase.branch ? `@${defaultCodebase.branch}` : ""}`}
                     >
-                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${defaultCodebase.sourceType === "github" ? "bg-violet-500" : "bg-emerald-500"}`} />
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${defaultCodebase.sourceType === "github" ? "bg-blue-500" : "bg-emerald-500"}`} />
                       <span className="truncate font-medium">{defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? defaultCodebase.repoPath}</span>
                       {defaultCodebase.branch && <span className="shrink-0 text-gray-400 dark:text-gray-500">@{defaultCodebase.branch}</span>}
                     </button>

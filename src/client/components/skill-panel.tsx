@@ -128,7 +128,7 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
                   <svg
                     className={`w-3 h-3 shrink-0 transition-transform duration-150 ${
                       expandedSkill === skill.name
-                        ? "rotate-90 text-indigo-500 dark:text-indigo-400"
+                        ? "rotate-90 text-blue-500 dark:text-blue-400"
                         : "text-gray-400 group-hover:text-gray-500 dark:group-hover:text-gray-300"
                     }`}
                     fill="none"
@@ -142,7 +142,7 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
                     /{skill.name}
                   </span>
                   {skill.source === "repo" && (
-                    <span className="shrink-0 px-1.5 py-0.5 text-[9px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 rounded">
+                    <span className="shrink-0 px-1.5 py-0.5 text-[9px] text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900/20 rounded">
                       repo
                     </span>
                   )}

@@ -791,7 +791,7 @@ function WebhookConfigCard({ config, onEdit, onDelete, onRegister, onToggle, reg
               </span>
             ))}
             {(config.labelFilter ?? []).length > 0 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-100 dark:border-purple-800">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-slate-100 dark:bg-slate-900/30 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800">
                 labels: {config.labelFilter.join(", ")}
               </span>
             )}

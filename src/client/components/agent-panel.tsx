@@ -37,9 +37,9 @@ export function AgentPanel({ refreshKey, workspaceId = "" }: AgentPanelProps) {
 
   const roleColor: Record<string, string> = {
     ROUTA:
-      "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-    CRAFTER:
       "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+    CRAFTER:
+      "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
     GATE: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
   };
 

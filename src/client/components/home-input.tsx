@@ -336,7 +336,7 @@ export function HomeInput({
                           {specialists.map((s) => (
                             <button key={s.id} onClick={() => { setSelectedSpecialistId(s.id); setShowSpecialistDropdown(false); }}
                               className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
-                                s.id === selectedSpecialistId ? "bg-violet-50 dark:bg-violet-900/15 text-violet-700 dark:text-violet-300" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1f2233]"
+                                s.id === selectedSpecialistId ? "bg-amber-50 dark:bg-amber-900/15 text-amber-700 dark:text-amber-300" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1f2233]"
                               }`}>
                               <div className="font-medium truncate">{s.name}</div>
                               {s.description && <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">{s.description}</div>}

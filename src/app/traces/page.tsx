@@ -309,7 +309,7 @@ function TracePageContent() {
                           ROUTA: "bg-blue-900/30 text-blue-200",
                           CRAFTER: "bg-amber-900/30 text-amber-200",
                           GATE: "bg-green-900/30 text-green-200",
-                          DEVELOPER: "bg-purple-900/30 text-purple-200",
+                          DEVELOPER: "bg-slate-800 text-slate-200",
                         };
                         const roleClass = session.role ? (roleColor[session.role] ?? "bg-gray-800 text-desktop-text-muted") : "";
 

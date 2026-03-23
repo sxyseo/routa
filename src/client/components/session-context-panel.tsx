@@ -420,9 +420,9 @@ export function SessionContextPanel({
                 </div>
               )}
               {context.kanbanContext.previousLaneRun && (
-                <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-violet-100 bg-white/90 px-2.5 py-2 dark:border-violet-900/30 dark:bg-[#11161f]">
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white/90 px-2.5 py-2 dark:border-slate-800/40 dark:bg-[#11161f]">
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-500 dark:text-violet-300">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
                       Previous Run In Lane
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-gray-700 dark:text-gray-200">
@@ -431,7 +431,7 @@ export function SessionContextPanel({
                   </div>
                   <button
                     onClick={() => onSelectSession(context.kanbanContext!.previousLaneRun!.sessionId)}
-                    className="shrink-0 rounded-md border border-violet-200 px-2 py-1 text-[10px] font-medium text-violet-600 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-900/20"
+                    className="shrink-0 rounded-md border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900/20"
                   >
                     Open
                   </button>
@@ -548,7 +548,7 @@ export function SessionContextPanel({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     }
-                    iconColor="text-purple-500"
+                    iconColor="text-slate-500"
                   />
                 ))}
               </div>
