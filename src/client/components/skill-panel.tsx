@@ -120,7 +120,7 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
                 title={skill.description}
                 className={`group w-full text-left px-2.5 py-2 mb-0.5 rounded-md transition-all duration-150 ${
                   expandedSkill === skill.name
-                    ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800/50"
+                    ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800/50"
                     : "hover:bg-gray-100/80 dark:hover:bg-gray-800/60 text-gray-700 dark:text-gray-300"
                 }`}
               >

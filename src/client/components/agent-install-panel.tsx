@@ -300,7 +300,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
       <div className={embedded ? "mb-3 space-y-3" : "border-b border-gray-100 px-5 py-4 dark:border-gray-800"}>
         <div className={`flex items-center justify-between ${embedded ? "" : "mb-3"}`}>
           <div className="flex items-center gap-2">
-            {!embedded && <AgentIcon className="h-5 w-5 text-indigo-500" />}
+            {!embedded && <AgentIcon className="h-5 w-5 text-blue-500" />}
             <h2 className={`${embedded ? "text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400" : "text-base font-semibold text-gray-900 dark:text-gray-100"}`}>
               ACP Registry
             </h2>
@@ -419,7 +419,7 @@ function AgentCard({
     <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
       <div className="flex items-start gap-3">
         {/* Icon */}
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-amber-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
           {agent.icon ? (
             <Image src={agent.icon} alt="" width={24} height={24} className="w-6 h-6" />
           ) : (
@@ -488,7 +488,7 @@ function AgentCard({
             <button
               onClick={() => onInstall(agent.id, availableDistType ?? undefined)}
               disabled={installing || !canInstall}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {installing ? "Installing..." : canInstall ? "Install" : "Unavailable"}
             </button>

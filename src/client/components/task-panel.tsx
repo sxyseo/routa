@@ -103,7 +103,7 @@ export function TaskPanel({
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               {crafterAgents.length > 0 ? "ROUTA / CRAFTERs" : "Sub Tasks"}
             </span>
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300">
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300">
               {tasks.length}
             </span>
           </div>
@@ -121,7 +121,7 @@ export function TaskPanel({
             {hasConfirmed && !hasRunning && onExecuteAll && (
               <button
                 onClick={() => onExecuteAll(concurrency)}
-                className="text-xs font-medium px-2.5 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                className="text-xs font-medium px-2.5 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
               >
                 Execute All
               </button>
@@ -148,7 +148,7 @@ export function TaskPanel({
                   onClick={() => onConcurrencyChange?.(n)}
                   className={`px-2 py-0.5 text-[11px] font-medium transition-colors ${
                     concurrency === n
-                      ? "bg-indigo-600 text-white"
+                      ? "bg-blue-600 text-white"
                       : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
                   }`}
                 >
@@ -378,7 +378,7 @@ export function CraftersView({
               onClick={() => onSelectCrafter?.(agent.id)}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
                 isActive
-                  ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
               }`}
               title={agent.taskTitle}
@@ -417,12 +417,12 @@ export function CraftersView({
             <div className="text-center py-8 text-xs text-gray-400 dark:text-gray-500">
               {activeAgent.status === "running" ? (
                 <div className="space-y-2">
-                  <div className="w-5 h-5 mx-auto border-2 border-gray-300 dark:border-gray-600 border-t-indigo-500 rounded-full animate-spin" />
+                  <div className="w-5 h-5 mx-auto border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
                   <div>Agent is working...</div>
                 </div>
               ) : activeAgentHistoryState === "loading" ? (
                 <div className="space-y-2">
-                  <div className="w-5 h-5 mx-auto border-2 border-gray-300 dark:border-gray-600 border-t-indigo-500 rounded-full animate-spin" />
+                  <div className="w-5 h-5 mx-auto border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
                   <div>Loading history...</div>
                 </div>
               ) : activeAgent.status === "error" ? (
@@ -468,17 +468,17 @@ function CrafterMessageBubble({ message }: { message: CrafterMessage }) {
         >
           <div className="flex items-center gap-1.5 mb-0.5">
             <svg
-              className={`w-3 h-3 text-purple-400 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+              className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
-            <span className="text-[10px] font-medium text-purple-500 dark:text-purple-400 uppercase tracking-wide">
+            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Thinking
             </span>
           </div>
           <div
-            className={`px-2 py-1.5 rounded-md bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/50 text-[11px] text-purple-700 dark:text-purple-300 whitespace-pre-wrap transition-all duration-150 ${
+            className={`px-2 py-1.5 rounded-md bg-slate-50 dark:bg-slate-900/20 border border-slate-200 dark:border-slate-700/50 text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-wrap transition-all duration-150 ${
               expanded ? "max-h-40 overflow-y-auto" : "max-h-[2em] overflow-hidden"
             }`}
           >
@@ -695,7 +695,7 @@ function TaskCard({
                 {task.status === "confirmed" && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onExecute(); }}
-                    className="text-xs font-medium px-2.5 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                    className="text-xs font-medium px-2.5 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                   >
                     Execute
                   </button>

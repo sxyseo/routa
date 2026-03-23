@@ -118,7 +118,7 @@ function TaskRow({ task, onSelect }: { task: A2ATask; onSelect: (t: A2ATask) => 
   return (
     <button
       onClick={() => onSelect(task)}
-      className="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-800/50 px-4 py-3 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow transition-all group"
+      className="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-800/50 px-4 py-3 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow transition-all group"
     >
       <div className="flex items-center justify-between gap-2 min-w-0">
         <span className="font-mono text-[11px] text-zinc-400 dark:text-zinc-500 truncate">{task.id.slice(0, 8)}…</span>
@@ -238,7 +238,7 @@ export default function A2APage() {
       <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur sticky top-0 z-10">
         <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm select-none">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-amber-500 flex items-center justify-center text-white font-bold text-sm select-none">
               A2
             </div>
             <div>

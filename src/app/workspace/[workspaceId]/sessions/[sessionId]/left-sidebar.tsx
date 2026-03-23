@@ -298,7 +298,7 @@ function SessionsSplitPane({
       {(hasTasks || hasSpec) && (
         <>
           <div
-            className="hidden md:flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y border-gray-100 bg-gray-50/90 transition-colors hover:bg-indigo-50 dark:border-gray-800 dark:bg-[#13151d] dark:hover:bg-indigo-950/20"
+            className="hidden md:flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y border-gray-100 bg-gray-50/90 transition-colors hover:bg-blue-50 dark:border-gray-800 dark:bg-[#13151d] dark:hover:bg-blue-950/20"
             onMouseDown={() => setIsDraggingSplit(true)}
             data-testid="session-sidebar-split-handle"
           >
@@ -479,7 +479,7 @@ function TabButton({ active, label, badge, badgePulse, icon, onClick }: {
       onClick={onClick}
       className={`flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-t-md border-b-2 transition-colors whitespace-nowrap ${
         active
-          ? "border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/10"
+          ? "border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10"
           : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"
       }`}
     >
@@ -490,7 +490,7 @@ function TabButton({ active, label, badge, badgePulse, icon, onClick }: {
           badgePulse
             ? "bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 animate-pulse"
             : active
-              ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300"
+              ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300"
               : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
         }`}>
           {badge > 99 ? "99+" : badge}
@@ -592,7 +592,7 @@ export function LeftSidebar({
             {/* Sessions */}
             <button
               onClick={() => { onToggleCollapse(); setActiveTab("sessions"); }}
-              className={`p-1.5 rounded-md transition-colors ${activeTab === "sessions" ? "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}
+              className={`p-1.5 rounded-md transition-colors ${activeTab === "sessions" ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}
               title="Sessions"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
