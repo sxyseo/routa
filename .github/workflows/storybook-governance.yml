@@ -24,6 +24,8 @@ jobs:
   storybook-governance:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -44,8 +46,8 @@ jobs:
         run: npm run storybook:build
 
       - name: Publish to Chromatic (optional)
-        if: ${{ secrets.CHROMATIC_PROJECT_TOKEN != '' }}
+        if: ${{ env.CHROMATIC_PROJECT_TOKEN != '' }}
         uses: chromaui/action@latest
         with:
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          projectToken: ${{ env.CHROMATIC_PROJECT_TOKEN }}
           onlyChanged: true
