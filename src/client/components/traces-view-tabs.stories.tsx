@@ -39,13 +39,6 @@ export const TraceActive: Story = {
   },
 };
 
-export const AgUiActive: Story = {
-  args: {
-    ...defaultStoryArgs,
-    activeTab: "ag-ui",
-  },
-};
-
 export const FocusState: Story = {
   args: defaultStoryArgs,
   play: async ({ canvasElement }) => {

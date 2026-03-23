@@ -3,7 +3,7 @@
 import React from "react";
 import { Button } from "./button";
 
-export type TraceViewTab = "chat" | "event-bridge" | "ag-ui";
+export type TraceViewTab = "chat" | "event-bridge";
 
 interface TracesViewTabsProps {
   activeTab: TraceViewTab;
@@ -14,7 +14,6 @@ interface TracesViewTabsProps {
 const TAB_DEFINITIONS: Array<{ key: TraceViewTab; label: string; color: string }> = [
   { key: "chat", label: "Chat", color: "bg-desktop-trace-chat" },
   { key: "event-bridge", label: "Trace", color: "bg-desktop-trace-event-bridge" },
-  { key: "ag-ui", label: "Trace(AG-UI)", color: "bg-desktop-trace-ag-ui" },
 ];
 
 export function TracesViewTabs({ activeTab, onTabChange, className }: TracesViewTabsProps) {

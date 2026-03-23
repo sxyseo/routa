@@ -6,10 +6,9 @@
  * Full-page view for browsing and analyzing Agent Trace records.
  * Sessions are cross-referenced with /api/sessions to show names.
  *
- * Three view modes:
+ * Two view modes:
  * - Chat (original TracePanel)
  * - Trace (EventBridge semantic blocks)
- * - Trace(AG-UI) (AG-UI protocol events)
  */
 
 import { useCallback, useEffect, useRef, useState, Suspense } from "react";
@@ -17,7 +16,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { TracePanel } from "@/client/components/trace-panel";
 import { EventBridgeTracePanel } from "@/client/components/event-bridge-trace-panel";
-import { AGUITracePanel } from "@/client/components/ag-ui-trace-panel";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { TracesPageHeader } from "@/client/components/traces-page-header";
 import { TracesViewTabs, type TraceViewTab } from "@/client/components/traces-view-tabs";
@@ -27,6 +25,7 @@ import type { TraceRecord } from "@/core/trace";
 
 interface Session {
   sessionId: string;
+  workspaceId?: string;
   name?: string;
   provider?: string;
   role?: string;
@@ -52,22 +51,37 @@ function TracePageContent() {
   const [sessionTracesLoaded, setSessionTracesLoaded] = useState(false);
   const selectedSessionIdRef = useRef<string | null>(null);
 
-  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+  const selectedSession = sessions.find((session) => session.sessionId === selectedSessionId) ?? null;
+  const resolvedWorkspaceId = activeWorkspaceId || selectedSession?.workspaceId || null;
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === resolvedWorkspaceId) ?? null;
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
 
+  useEffect(() => {
+    const workspaceIdFromUrl = searchParams.get("workspaceId");
+    if ((workspaceIdFromUrl ?? "") !== activeWorkspaceId) {
+      setActiveWorkspaceId(workspaceIdFromUrl ?? "");
+    }
+  }, [activeWorkspaceId, searchParams]);
+
   const handleWorkspaceSelect = useCallback((workspaceId: string) => {
     setActiveWorkspaceId(workspaceId);
-  }, []);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("workspaceId", workspaceId);
+    router.push(`/traces?${params.toString()}`);
+  }, [router, searchParams]);
 
   const handleWorkspaceCreate = useCallback(async (title: string) => {
     const workspace = await createWorkspace(title);
     if (workspace?.id) {
       setActiveWorkspaceId(workspace.id);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("workspaceId", workspace.id);
+      router.push(`/traces?${params.toString()}`);
     }
-  }, [createWorkspace]);
+  }, [createWorkspace, router, searchParams]);
 
   const workspaceQuery = activeWorkspaceId ? `?workspaceId=${encodeURIComponent(activeWorkspaceId)}` : "";
 
@@ -84,10 +98,10 @@ function TracePageContent() {
       const sessionsData = sessionsRes.ok ? await sessionsRes.json() : { sessions: [] };
 
       const traces = tracesData.traces || [];
-      const sessionMeta = new Map<string, { name?: string; provider?: string; role?: string; parentSessionId?: string }>(
-        (sessionsData.sessions || []).map((s: { sessionId: string; name?: string; provider?: string; role?: string; parentSessionId?: string }) => [
+      const sessionMeta = new Map<string, { workspaceId?: string; name?: string; provider?: string; role?: string; parentSessionId?: string }>(
+        (sessionsData.sessions || []).map((s: { sessionId: string; workspaceId?: string; name?: string; provider?: string; role?: string; parentSessionId?: string }) => [
           s.sessionId,
-          { name: s.name, provider: s.provider, role: s.role, parentSessionId: s.parentSessionId },
+          { workspaceId: s.workspaceId, name: s.name, provider: s.provider, role: s.role, parentSessionId: s.parentSessionId },
         ])
       );
 
@@ -108,6 +122,7 @@ function TracePageContent() {
       const sessionList = Array.from(sessionMap.entries())
         .map(([sessionId, { count, first, last }]) => ({
           sessionId,
+          workspaceId: sessionMeta.get(sessionId)?.workspaceId,
           name: sessionMeta.get(sessionId)?.name,
           provider: sessionMeta.get(sessionId)?.provider,
           role: sessionMeta.get(sessionId)?.role,
@@ -120,9 +135,9 @@ function TracePageContent() {
 
       setSessions(sessionList);
 
-      // Keep "all workspaces" as the default view for traces. Auto-selecting the
-      // first workspace causes a second fetch after mount that can hide
-      // parent/child relationships when the tree spans workspace boundaries.
+      // Keep "all workspaces" as the default trace query. We still resolve the
+      // header/sidebar workspace context from the selected session so navigation
+      // stays aligned with the rest of the app without narrowing the trace query.
       // Check URL parameter first, then keep current session if possible, finally fallback.
       const urlSessionId = searchParams.get("sessionId");
       if (urlSessionId && sessionList.some((s) => s.sessionId === urlSessionId)) {
@@ -190,7 +205,11 @@ function TracePageContent() {
   // Copy current URL to clipboard
   const copyCurrentUrl = () => {
     if (typeof window !== "undefined" && selectedSessionId) {
-      const url = `${window.location.origin}/traces?sessionId=${selectedSessionId}`;
+      const params = new URLSearchParams({ sessionId: selectedSessionId });
+      if (activeWorkspaceId) {
+        params.set("workspaceId", activeWorkspaceId);
+      }
+      const url = `${window.location.origin}/traces?${params.toString()}`;
       navigator.clipboard.writeText(url);
     }
   };
@@ -211,12 +230,13 @@ function TracePageContent() {
 
   return (
     <DesktopAppShell
-      workspaceId={activeWorkspaceId}
+      workspaceId={resolvedWorkspaceId}
       workspaceTitle={activeWorkspace?.title}
       workspaceSwitcher={
         <WorkspaceSwitcher
           workspaces={workspaces}
-          activeWorkspaceId={activeWorkspaceId}
+          activeWorkspaceId={resolvedWorkspaceId}
+          activeWorkspaceTitle={activeWorkspace?.title}
           onSelect={handleWorkspaceSelect}
           onCreate={handleWorkspaceCreate}
           loading={workspacesLoading}
@@ -306,12 +326,12 @@ function TracePageContent() {
 
                       const renderSession = (session: Session, isChild = false) => {
                         const roleColor: Record<string, string> = {
-                          ROUTA: "bg-blue-900/30 text-blue-200",
-                          CRAFTER: "bg-amber-900/30 text-amber-200",
-                          GATE: "bg-green-900/30 text-green-200",
-                          DEVELOPER: "bg-slate-800 text-slate-200",
+                          ROUTA: "role-chip-routa",
+                          CRAFTER: "role-chip-crafter",
+                          GATE: "role-chip-gate",
+                          DEVELOPER: "role-chip-developer",
                         };
-                        const roleClass = session.role ? (roleColor[session.role] ?? "bg-gray-800 text-desktop-text-muted") : "";
+                        const roleClass = session.role ? (roleColor[session.role] ?? "role-chip-developer") : "";
 
                         return (
                           <div key={session.sessionId}>
@@ -384,9 +404,6 @@ function TracePageContent() {
                 )}
                 {activeTab === "event-bridge" && (
                   <EventBridgeTracePanel sessionId={selectedSessionId} traces={sessionTraces} />
-                )}
-                {activeTab === "ag-ui" && (
-                  <AGUITracePanel sessionId={selectedSessionId} traces={sessionTraces} />
                 )}
               </>
             ) : (
