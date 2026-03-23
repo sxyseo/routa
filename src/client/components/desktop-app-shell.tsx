@@ -21,12 +21,12 @@ interface NavItem {
   id: string;
   label: string;
   icon: React.ReactNode;
-  href: string;
+  href?: string;
 }
 
 interface DesktopAppShellProps {
   children: React.ReactNode;
-  workspaceId: string;
+  workspaceId?: string | null;
   /** Current workspace title for display */
   workspaceTitle?: string;
   /** Optional right side content for the title bar */
@@ -43,6 +43,8 @@ export function DesktopAppShell({
   workspaceSwitcher,
 }: DesktopAppShellProps) {
   const pathname = usePathname();
+  const normalizedWorkspaceId = workspaceId?.trim() || null;
+  const workspaceBaseHref = normalizedWorkspaceId ? `/workspace/${normalizedWorkspaceId}` : null;
 
   const navItems: NavItem[] = [
     {
@@ -58,7 +60,7 @@ export function DesktopAppShell({
     {
       id: "overview",
       label: "Overview",
-      href: `/workspace/${workspaceId}`,
+      href: workspaceBaseHref ?? undefined,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
@@ -68,7 +70,7 @@ export function DesktopAppShell({
     {
       id: "kanban",
       label: "Kanban",
-      href: `/workspace/${workspaceId}/kanban`,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/kanban` : undefined,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
@@ -78,7 +80,7 @@ export function DesktopAppShell({
     {
       id: "team",
       label: "Team",
-      href: `/workspace/${workspaceId}/team`,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/team` : undefined,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
           <circle cx="7.5" cy="8" r="2.25" />
@@ -100,9 +102,10 @@ export function DesktopAppShell({
     },
   ];
 
-  const isActive = (href: string) => {
+  const isActive = (href?: string) => {
+    if (!href) return false;
     if (href === "/") return pathname === "/";
-    if (href === `/workspace/${workspaceId}`) return pathname === href;
+    if (href === workspaceBaseHref) return pathname === href;
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
@@ -129,17 +132,21 @@ export function DesktopAppShell({
           <nav className="flex-1 flex flex-col items-center py-2 gap-0.5">
             {navItems.map((item) => {
               const active = isActive(item.href);
-              return (
+              const className = `
+                relative w-10 h-10 flex items-center justify-center rounded-md transition-colors
+                ${item.href
+                  ? active
+                    ? "bg-desktop-bg-active text-desktop-accent"
+                    : "text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
+                  : "cursor-default text-desktop-text-secondary/50"
+                }
+              `;
+
+              return item.href ? (
                 <Link
                   key={item.id}
                   href={item.href}
-                  className={`
-                    relative w-10 h-10 flex items-center justify-center rounded-md transition-colors
-                    ${active
-                      ? "bg-desktop-bg-active text-desktop-accent"
-                      : "text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
-                    }
-                  `}
+                  className={className}
                   title={item.label}
                 >
                   {/* Active indicator */}
@@ -148,6 +155,15 @@ export function DesktopAppShell({
                   )}
                   {item.icon}
                 </Link>
+              ) : (
+                <div
+                  key={item.id}
+                  className={className}
+                  title={`${item.label} unavailable`}
+                  aria-disabled="true"
+                >
+                  {item.icon}
+                </div>
               );
             })}
           </nav>

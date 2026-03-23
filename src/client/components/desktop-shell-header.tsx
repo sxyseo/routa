@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 interface DesktopShellHeaderProps {
-  workspaceId: string;
+  workspaceId?: string | null;
   workspaceTitle?: string;
   titleBarRight?: React.ReactNode;
   workspaceSwitcher?: React.ReactNode;
@@ -17,6 +17,10 @@ export function DesktopShellHeader({
   titleBarRight,
   workspaceSwitcher,
 }: DesktopShellHeaderProps) {
+  const normalizedWorkspaceId = workspaceId?.trim() || null;
+  const workspaceHref = normalizedWorkspaceId ? `/workspace/${normalizedWorkspaceId}` : null;
+  const workspaceLabel = workspaceTitle ?? normalizedWorkspaceId ?? "Workspace";
+
   return (
     <header
       className="h-9 shrink-0 flex items-center border-b border-desktop-border bg-desktop-bg-tertiary select-none"
@@ -31,15 +35,24 @@ export function DesktopShellHeader({
 
       <div className="ml-3">
         {workspaceSwitcher ?? (
+          workspaceHref ? (
           <Link
-            href={`/workspace/${workspaceId}`}
+            href={workspaceHref}
             className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] text-desktop-text-primary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
           >
             <svg className="w-3 h-3 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
             </svg>
-            <span className="max-w-[120px] truncate">{workspaceTitle ?? workspaceId}</span>
+            <span className="max-w-[120px] truncate">{workspaceLabel}</span>
           </Link>
+          ) : (
+            <div className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] text-desktop-text-secondary">
+              <svg className="w-3 h-3 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              </svg>
+              <span className="max-w-[120px] truncate">{workspaceLabel}</span>
+            </div>
+          )
         )}
       </div>
 
