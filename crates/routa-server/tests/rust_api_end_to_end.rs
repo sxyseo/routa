@@ -217,6 +217,50 @@ async fn api_workspace_and_note_flow() {
         "archived"
     );
 
+    let active_only_response = fixture
+        .client
+        .get(fixture.endpoint("/api/workspaces?status=active"))
+        .send()
+        .await
+        .expect("list active workspaces");
+    assert_eq!(active_only_response.status(), StatusCode::OK);
+    let active_only_json: Value = active_only_response
+        .json()
+        .await
+        .expect("decode active workspace list");
+    let active_has_archived_workspace = active_only_json
+        .get("workspaces")
+        .and_then(Value::as_array)
+        .expect("active workspaces array")
+        .iter()
+        .any(|workspace| workspace.get("id").and_then(Value::as_str) == Some(workspace_id));
+    assert!(
+        !active_has_archived_workspace,
+        "archived workspace should not appear in active workspace list"
+    );
+
+    let archived_only_response = fixture
+        .client
+        .get(fixture.endpoint("/api/workspaces?status=archived"))
+        .send()
+        .await
+        .expect("list archived workspaces");
+    assert_eq!(archived_only_response.status(), StatusCode::OK);
+    let archived_only_json: Value = archived_only_response
+        .json()
+        .await
+        .expect("decode archived workspace list");
+    let archived_has_workspace = archived_only_json
+        .get("workspaces")
+        .and_then(Value::as_array)
+        .expect("archived workspaces array")
+        .iter()
+        .any(|workspace| workspace.get("id").and_then(Value::as_str) == Some(workspace_id));
+    assert!(
+        archived_has_workspace,
+        "archived workspace should appear in archived workspace list"
+    );
+
     let delete_note = fixture
         .client
         .delete(fixture.endpoint(&format!(

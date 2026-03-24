@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     routing::{get, post},
     Json, Router,
 };
@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::error::ServerError;
-use crate::models::workspace::Workspace;
+use crate::models::workspace::{Workspace, WorkspaceStatus};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -22,10 +22,20 @@ pub fn router() -> Router<AppState> {
         .route("/{id}/archive", post(archive_workspace))
 }
 
+#[derive(Debug, Deserialize)]
+struct ListWorkspacesQuery {
+    status: Option<WorkspaceStatus>,
+}
+
 async fn list_workspaces(
     State(state): State<AppState>,
+    Query(query): Query<ListWorkspacesQuery>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    let workspaces = state.workspace_store.list().await?;
+    let workspaces = if let Some(status) = query.status {
+        state.workspace_store.list_by_status(status).await?
+    } else {
+        state.workspace_store.list().await?
+    };
     Ok(Json(serde_json::json!({ "workspaces": workspaces })))
 }
 
