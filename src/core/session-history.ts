@@ -22,9 +22,10 @@ export async function loadSessionHistory(
   { consolidated = false }: { consolidated?: boolean } = {},
 ): Promise<AcpSessionNotification[]> {
   const store = getHttpSessionStore();
-  const inMemoryHistory = store.getHistory(sessionId);
+  const initialInMemoryHistory = store.getHistory(sessionId);
   const sessionRecord = store.getSession(sessionId);
   const dbHistory = await loadHistoryFromDb(sessionId, sessionRecord?.cwd);
+  const inMemoryHistory = store.getHistory(sessionId);
 
   let history: AcpSessionNotification[];
 
@@ -35,6 +36,8 @@ export async function loadSessionHistory(
     history = dbHistory;
   } else if (dbHistory.length > inMemoryHistory.length) {
     history = mergeHistorySources(inMemoryHistory, dbHistory);
+  } else if (initialInMemoryHistory.length > 0) {
+    history = initialInMemoryHistory;
   } else {
     history = inMemoryHistory;
   }

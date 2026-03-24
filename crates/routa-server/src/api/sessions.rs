@@ -312,6 +312,9 @@ fn build_transcript_payload(
 
 fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
     let mut messages = Vec::new();
+    let mut last_kind: Option<&str> = None;
+    let mut last_assistant_idx: Option<usize> = None;
+    let mut last_thought_idx: Option<usize> = None;
 
     for (index, notification) in history.iter().enumerate() {
         let Some(update) = notification.get("update").and_then(Value::as_object) else {
@@ -333,6 +336,8 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
 
         match kind {
             "user_message" => {
+                last_assistant_idx = None;
+                last_thought_idx = None;
                 if let Some(text) = update
                     .get("content")
                     .and_then(Value::as_object)
@@ -360,18 +365,42 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                     .and_then(|content| content.get("text"))
                     .and_then(Value::as_str)
                 {
-                    messages.push(TranscriptMessage {
-                        id: fallback_id,
-                        role: "assistant",
-                        content: text.to_string(),
-                        timestamp,
-                        tool_name: None,
-                        tool_status: None,
-                        tool_call_id: None,
-                        tool_raw_input: None,
-                        tool_raw_output: None,
-                        raw_data: None,
-                    });
+                    if kind == "agent_message_chunk" && last_kind == Some("agent_message_chunk") {
+                        if let Some(existing_idx) = last_assistant_idx {
+                            if let Some(existing) = messages.get_mut(existing_idx) {
+                                existing.content.push_str(text);
+                            }
+                        } else {
+                            messages.push(TranscriptMessage {
+                                id: fallback_id,
+                                role: "assistant",
+                                content: text.to_string(),
+                                timestamp,
+                                tool_name: None,
+                                tool_status: None,
+                                tool_call_id: None,
+                                tool_raw_input: None,
+                                tool_raw_output: None,
+                                raw_data: None,
+                            });
+                            last_assistant_idx = Some(messages.len() - 1);
+                        }
+                    } else {
+                        messages.push(TranscriptMessage {
+                            id: fallback_id,
+                            role: "assistant",
+                            content: text.to_string(),
+                            timestamp,
+                            tool_name: None,
+                            tool_status: None,
+                            tool_call_id: None,
+                            tool_raw_input: None,
+                            tool_raw_output: None,
+                            raw_data: None,
+                        });
+                        last_assistant_idx = Some(messages.len() - 1);
+                    }
+                    last_thought_idx = None;
                 }
             }
             "agent_thought" | "agent_thought_chunk" => {
@@ -381,21 +410,47 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                     .and_then(|content| content.get("text"))
                     .and_then(Value::as_str)
                 {
-                    messages.push(TranscriptMessage {
-                        id: fallback_id,
-                        role: "thought",
-                        content: text.to_string(),
-                        timestamp,
-                        tool_name: None,
-                        tool_status: None,
-                        tool_call_id: None,
-                        tool_raw_input: None,
-                        tool_raw_output: None,
-                        raw_data: None,
-                    });
+                    if kind == "agent_thought_chunk" && last_kind == Some("agent_thought_chunk") {
+                        if let Some(existing_idx) = last_thought_idx {
+                            if let Some(existing) = messages.get_mut(existing_idx) {
+                                existing.content.push_str(text);
+                            }
+                        } else {
+                            messages.push(TranscriptMessage {
+                                id: fallback_id,
+                                role: "thought",
+                                content: text.to_string(),
+                                timestamp,
+                                tool_name: None,
+                                tool_status: None,
+                                tool_call_id: None,
+                                tool_raw_input: None,
+                                tool_raw_output: None,
+                                raw_data: None,
+                            });
+                            last_thought_idx = Some(messages.len() - 1);
+                        }
+                    } else {
+                        messages.push(TranscriptMessage {
+                            id: fallback_id,
+                            role: "thought",
+                            content: text.to_string(),
+                            timestamp,
+                            tool_name: None,
+                            tool_status: None,
+                            tool_call_id: None,
+                            tool_raw_input: None,
+                            tool_raw_output: None,
+                            raw_data: None,
+                        });
+                        last_thought_idx = Some(messages.len() - 1);
+                    }
+                    last_assistant_idx = None;
                 }
             }
             "tool_call" | "tool_call_update" => {
+                last_assistant_idx = None;
+                last_thought_idx = None;
                 let tool_name = update
                     .get("title")
                     .and_then(Value::as_str)
@@ -434,6 +489,8 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                 });
             }
             "plan" => {
+                last_assistant_idx = None;
+                last_thought_idx = None;
                 let content = update
                     .get("plan")
                     .and_then(Value::as_str)
@@ -478,8 +535,13 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                     });
                 }
             }
-            _ => {}
+            _ => {
+                last_assistant_idx = None;
+                last_thought_idx = None;
+            }
         }
+
+        last_kind = Some(kind);
     }
 
     messages
@@ -601,7 +663,7 @@ mod tests {
     use routa_core::trace::{Contributor, TraceEventType, TraceRecord};
     use serde_json::json;
 
-    use super::build_transcript_payload;
+    use super::{build_transcript_payload, history_to_transcript_messages};
 
     #[test]
     fn consolidate_message_history_merges_chunks_for_same_session() {
@@ -666,5 +728,43 @@ mod tests {
         assert_eq!(payload.messages[1].role, "assistant");
         assert_eq!(payload.messages[2].role, "tool");
         assert_eq!(payload.latest_event_kind.as_deref(), Some("tool_call_update"));
+    }
+
+    #[test]
+    fn history_transcript_merges_contiguous_thought_chunks() {
+        let messages = history_to_transcript_messages(&[
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"The"}}}),
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":" user"}}}),
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":" said hi"}}}),
+        ]);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "thought");
+        assert_eq!(messages[0].content, "The user said hi");
+    }
+
+    #[test]
+    fn history_transcript_breaks_thought_group_on_non_chunk_update() {
+        let messages = history_to_transcript_messages(&[
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"The"}}}),
+            json!({"sessionId":"s1","update":{"sessionUpdate":"usage_update","used":1,"size":2}}),
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":" user"}}}),
+        ]);
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].content, "The");
+        assert_eq!(messages[1].content, " user");
+    }
+
+    #[test]
+    fn history_transcript_merges_contiguous_agent_message_chunks() {
+        let messages = history_to_transcript_messages(&[
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"text":"hello"}}}),
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"text":" world"}}}),
+        ]);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "assistant");
+        assert_eq!(messages[0].content, "hello world");
     }
 }

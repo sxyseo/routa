@@ -179,6 +179,33 @@ const SNAPSHOT_SESSION_HISTORY = [
   {
     sessionId: SNAPSHOT_SESSION_ID,
     update: {
+      sessionUpdate: "tool_call",
+      toolCallId: "tool-snapshot-1",
+      tool: "codebase-retrieval",
+      kind: "unknown",
+      status: "running",
+      rawInput: {
+        information_request: "Locate the snapshot validation flow.",
+      },
+    },
+  },
+  {
+    sessionId: SNAPSHOT_SESSION_ID,
+    update: {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-snapshot-1",
+      tool: "codebase-retrieval",
+      kind: "unknown",
+      status: "completed",
+      rawInput: {
+        information_request: "Locate the snapshot validation flow.",
+      },
+      rawOutput: "Found page snapshot scripts and registry entries.",
+    },
+  },
+  {
+    sessionId: SNAPSHOT_SESSION_ID,
+    update: {
       sessionUpdate: "agent_message",
       content: {
         type: "text",

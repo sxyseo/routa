@@ -47,10 +47,6 @@ async function main() {
   }
 
   const browser = await createBrowser(options.headed);
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 960 },
-  });
-  const page = await context.newPage();
 
   const report = {
     generatedAt: new Date().toISOString(),
@@ -77,6 +73,10 @@ async function main() {
       }
 
       const tempPath = `${snapshotPath}.tmp`;
+      const context = await browser.newContext({
+        viewport: { width: 1440, height: 960 },
+      });
+      const page = await context.newPage();
 
       try {
         await captureSnapshot({
@@ -119,14 +119,14 @@ async function main() {
           }
         }
       } finally {
+        await page.close();
+        await context.close();
         if (fs.existsSync(tempPath)) {
           fs.rmSync(tempPath, { force: true });
         }
       }
     }
   } finally {
-    await page.close();
-    await context.close();
     await browser.close();
     if (devServer) {
       devServer.child.kill("SIGTERM");

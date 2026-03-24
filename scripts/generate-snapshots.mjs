@@ -42,10 +42,6 @@ async function main() {
   }
 
   const browser = await createBrowser(options.headed);
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 960 },
-  });
-  const page = await context.newPage();
 
   let generated = 0;
   let skipped = 0;
@@ -53,16 +49,20 @@ async function main() {
   try {
     for (const target of registry) {
       const snapshotPath = resolveWorkspacePath(target.snapshotFile);
-
-      if (!options.update && !shouldUpdateTarget(target)) {
-        console.log(`⏭️  ${target.id}: snapshot is up-to-date`);
-        skipped += 1;
-        continue;
-      }
-
-      console.log(`📸 ${target.id}: capturing snapshot...`);
+      const context = await browser.newContext({
+        viewport: { width: 1440, height: 960 },
+      });
+      const page = await context.newPage();
 
       try {
+        if (!options.update && !shouldUpdateTarget(target)) {
+          console.log(`⏭️  ${target.id}: snapshot is up-to-date`);
+          skipped += 1;
+          continue;
+        }
+
+        console.log(`📸 ${target.id}: capturing snapshot...`);
+
         await captureSnapshot({
           page,
           target,
@@ -76,11 +76,12 @@ async function main() {
       } catch (error) {
         console.error(`❌ ${target.id}: failed to capture snapshot`);
         console.error(error instanceof Error ? error.message : error);
+      } finally {
+        await page.close();
+        await context.close();
       }
     }
   } finally {
-    await page.close();
-    await context.close();
     await browser.close();
     if (devServer) {
       devServer.child.kill("SIGTERM");

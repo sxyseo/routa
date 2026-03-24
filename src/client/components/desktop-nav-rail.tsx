@@ -52,6 +52,19 @@ export function DesktopNavRail({
       ),
     },
     {
+      id: "team",
+      label: "Team",
+      href: `/workspace/${workspaceId}/team`,
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+          <circle cx="7.5" cy="8" r="2.25" />
+          <circle cx="16.5" cy="8" r="2.25" />
+          <circle cx="12" cy="16" r="2.25" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 8h5M8.75 9.9l2 3.55m4.5-3.55-2 3.55" />
+        </svg>
+      ),
+    },
+    {
       id: "traces",
       label: "Traces",
       href: "/traces",
