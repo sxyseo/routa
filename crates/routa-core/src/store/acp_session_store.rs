@@ -43,6 +43,16 @@ pub struct AcpSessionStore {
     db: Database,
 }
 
+pub struct CreateAcpSessionParams<'a> {
+    pub id: &'a str,
+    pub cwd: &'a str,
+    pub branch: Option<&'a str>,
+    pub workspace_id: &'a str,
+    pub provider: Option<&'a str>,
+    pub role: Option<&'a str>,
+    pub parent_session_id: Option<&'a str>,
+}
+
 impl AcpSessionStore {
     pub fn new(db: Database) -> Self {
         Self { db }
@@ -214,23 +224,23 @@ impl AcpSessionStore {
     ///
     /// Called immediately after `AcpManager::create_session` so the session
     /// survives server restarts and is visible in the session list.
-    pub async fn create(
-        &self,
-        id: &str,
-        cwd: &str,
-        branch: Option<&str>,
-        workspace_id: &str,
-        provider: Option<&str>,
-        role: Option<&str>,
-        parent_session_id: Option<&str>,
-    ) -> Result<(), ServerError> {
+    pub async fn create(&self, params: CreateAcpSessionParams<'_>) -> Result<(), ServerError> {
+        let CreateAcpSessionParams {
+            id,
+            cwd,
+            branch,
+            workspace_id,
+            provider,
+            role,
+            parent_session_id,
+        } = params;
         let id = id.to_string();
         let cwd = cwd.to_string();
-        let branch = branch.map(|s| s.to_string());
+        let branch = branch.map(str::to_string);
         let workspace_id = workspace_id.to_string();
-        let provider = provider.map(|s| s.to_string());
-        let role = role.map(|s| s.to_string());
-        let parent_session_id = parent_session_id.map(|s| s.to_string());
+        let provider = provider.map(str::to_string);
+        let role = role.map(str::to_string);
+        let parent_session_id = parent_session_id.map(str::to_string);
 
         self.db
             .with_conn_async(move |conn| {
@@ -372,15 +382,15 @@ mod tests {
         let (store, session_id) = setup().await;
 
         store
-            .create(
-                &session_id,
-                "/tmp",
-                Some("main"),
-                "default",
-                Some("claude"),
-                Some("CRAFTER"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: &session_id,
+                cwd: "/tmp",
+                branch: Some("main"),
+                workspace_id: "default",
+                provider: Some("claude"),
+                role: Some("CRAFTER"),
+                parent_session_id: None,
+            })
             .await
             .expect("create failed");
 
@@ -401,15 +411,15 @@ mod tests {
     async fn test_rename_session() {
         let (store, session_id) = setup().await;
         store
-            .create(
-                &session_id,
-                "/tmp",
-                None,
-                "default",
-                Some("opencode"),
-                Some("CRAFTER"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: &session_id,
+                cwd: "/tmp",
+                branch: None,
+                workspace_id: "default",
+                provider: Some("opencode"),
+                role: Some("CRAFTER"),
+                parent_session_id: None,
+            })
             .await
             .expect("create failed");
 
@@ -430,15 +440,15 @@ mod tests {
     async fn test_delete_session() {
         let (store, session_id) = setup().await;
         store
-            .create(
-                &session_id,
-                "/tmp",
-                None,
-                "default",
-                Some("opencode"),
-                Some("CRAFTER"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: &session_id,
+                cwd: "/tmp",
+                branch: None,
+                workspace_id: "default",
+                provider: Some("opencode"),
+                role: Some("CRAFTER"),
+                parent_session_id: None,
+            })
             .await
             .expect("create failed");
 
@@ -455,15 +465,15 @@ mod tests {
     async fn test_set_first_prompt_sent() {
         let (store, session_id) = setup().await;
         store
-            .create(
-                &session_id,
-                "/tmp",
-                None,
-                "default",
-                Some("opencode"),
-                Some("CRAFTER"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: &session_id,
+                cwd: "/tmp",
+                branch: None,
+                workspace_id: "default",
+                provider: Some("opencode"),
+                role: Some("CRAFTER"),
+                parent_session_id: None,
+            })
             .await
             .expect("create failed");
 
@@ -491,15 +501,15 @@ mod tests {
     async fn test_save_history() {
         let (store, session_id) = setup().await;
         store
-            .create(
-                &session_id,
-                "/tmp",
-                None,
-                "default",
-                Some("claude"),
-                Some("CRAFTER"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: &session_id,
+                cwd: "/tmp",
+                branch: None,
+                workspace_id: "default",
+                provider: Some("claude"),
+                role: Some("CRAFTER"),
+                parent_session_id: None,
+            })
             .await
             .expect("create failed");
 
@@ -530,15 +540,15 @@ mod tests {
         let parent_id = "parent-session-99";
 
         store
-            .create(
-                &session_id,
-                "/tmp",
-                None,
-                "default",
-                Some("claude"),
-                Some("CRAFTER"),
-                Some(parent_id),
-            )
+            .create(CreateAcpSessionParams {
+                id: &session_id,
+                cwd: "/tmp",
+                branch: None,
+                workspace_id: "default",
+                provider: Some("claude"),
+                role: Some("CRAFTER"),
+                parent_session_id: Some(parent_id),
+            })
             .await
             .expect("create failed");
 
@@ -555,15 +565,15 @@ mod tests {
         let (store, session_id) = setup().await;
 
         store
-            .create(
-                &session_id,
-                "/tmp",
-                None,
-                "default",
-                Some("claude"),
-                Some("ROUTA"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: &session_id,
+                cwd: "/tmp",
+                branch: None,
+                workspace_id: "default",
+                provider: Some("claude"),
+                role: Some("ROUTA"),
+                parent_session_id: None,
+            })
             .await
             .expect("create failed");
 

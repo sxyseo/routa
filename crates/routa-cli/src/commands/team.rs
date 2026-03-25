@@ -13,6 +13,7 @@ use routa_core::models::agent::AgentRole;
 use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator, SpecialistConfig};
 use routa_core::rpc::RpcRouter;
 use routa_core::state::AppState;
+use routa_core::store::acp_session_store::CreateAcpSessionParams;
 
 use super::prompt::{print_session_summary, truncate_path, update_agent_status};
 use super::tui::TuiRenderer;
@@ -123,15 +124,15 @@ pub async fn run(
             }
             if let Err(e) = state
                 .acp_session_store
-                .create(
-                    &session_id,
-                    &cwd,
-                    None,
-                    &workspace_id,
-                    Some(provider),
-                    Some(specialist.role.as_str()),
-                    None,
-                )
+                .create(CreateAcpSessionParams {
+                    id: &session_id,
+                    cwd: &cwd,
+                    branch: None,
+                    workspace_id: &workspace_id,
+                    provider: Some(provider),
+                    role: Some(specialist.role.as_str()),
+                    parent_session_id: None,
+                })
                 .await
             {
                 eprintln!("Failed to persist team lead session {}: {}", session_id, e);
@@ -333,8 +334,7 @@ async fn run_interactive_repl(
                 break;
             }
             "/status" => {
-                print_session_summary(router, workspace_id, Some(&agent_id), Some(session_id))
-                    .await;
+                print_session_summary(router, workspace_id, Some(agent_id), Some(session_id)).await;
             }
             "/members" => {
                 println!();

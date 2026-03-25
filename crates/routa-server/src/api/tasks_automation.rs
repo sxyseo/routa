@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use crate::error::ServerError;
 use crate::models::task::{Task, TaskLaneSession, TaskLaneSessionStatus};
 use crate::state::AppState;
+use routa_core::store::acp_session_store::CreateAcpSessionParams;
 
 pub async fn resolve_codebase(
     state: &AppState,
@@ -279,15 +280,15 @@ async fn trigger_assigned_task_acp_agent(
 
     state
         .acp_session_store
-        .create(
-            &session_id,
-            &cwd,
-            None,
-            &task.workspace_id,
-            Some(provider.as_str()),
-            Some(role.as_str()),
-            None,
-        )
+        .create(CreateAcpSessionParams {
+            id: &session_id,
+            cwd: &cwd,
+            branch: None,
+            workspace_id: &task.workspace_id,
+            provider: Some(provider.as_str()),
+            role: Some(role.as_str()),
+            parent_session_id: None,
+        })
         .await
         .map_err(|error| format!("Failed to persist ACP session: {}", error))?;
 

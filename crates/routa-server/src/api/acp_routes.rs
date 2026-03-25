@@ -20,6 +20,7 @@ use routa_core::acp::SessionLaunchOptions;
 use routa_core::models::agent::{Agent, AgentRole};
 use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator, SpecialistConfig};
 use routa_core::storage::{LocalSessionProvider, SessionRecord};
+use routa_core::store::acp_session_store::CreateAcpSessionParams;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(acp_sse).post(acp_rpc))
@@ -438,15 +439,15 @@ async fn acp_rpc(
                     // Persist the session to the database immediately so it survives restarts
                     if let Err(e) = state
                         .acp_session_store
-                        .create(
-                            &session_id,
-                            &cwd,
-                            branch.as_deref(),
-                            &workspace_id,
-                            provider.as_deref(),
-                            role.as_deref(),
-                            parent_session_id.as_deref(),
-                        )
+                        .create(CreateAcpSessionParams {
+                            id: &session_id,
+                            cwd: &cwd,
+                            branch: branch.as_deref(),
+                            workspace_id: &workspace_id,
+                            provider: provider.as_deref(),
+                            role: role.as_deref(),
+                            parent_session_id: parent_session_id.as_deref(),
+                        })
                         .await
                     {
                         tracing::warn!("[ACP Route] Failed to persist session to DB: {}", e);
@@ -662,17 +663,17 @@ async fn acp_rpc(
                         // Persist auto-created session to DB
                         if let Err(e) = state
                             .acp_session_store
-                            .create(
-                                &session_id,
-                                &cwd,
-                                persisted_session
+                            .create(CreateAcpSessionParams {
+                                id: &session_id,
+                                cwd: &cwd,
+                                branch: persisted_session
                                     .as_ref()
                                     .and_then(|session| session.branch.as_deref()),
-                                &workspace_id,
-                                provider.as_deref(),
-                                role.as_deref(),
-                                parent_session_id.as_deref(),
-                            )
+                                workspace_id: &workspace_id,
+                                provider: provider.as_deref(),
+                                role: role.as_deref(),
+                                parent_session_id: parent_session_id.as_deref(),
+                            })
                             .await
                         {
                             tracing::warn!(
@@ -1336,6 +1337,7 @@ mod tests {
     use std::sync::Arc;
 
     use axum::{extract::State, Json};
+    use routa_core::store::acp_session_store::CreateAcpSessionParams;
     use routa_core::{db::Database, state::AppStateInner};
     use serde_json::json;
     use tokio::sync::broadcast;
@@ -1361,15 +1363,15 @@ mod tests {
             .expect("default workspace should exist");
         state
             .acp_session_store
-            .create(
-                "session-respond-user-input",
-                "/tmp",
-                Some("main"),
-                "default",
-                Some("opencode"),
-                Some("DEVELOPER"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: "session-respond-user-input",
+                cwd: "/tmp",
+                branch: Some("main"),
+                workspace_id: "default",
+                provider: Some("opencode"),
+                role: Some("DEVELOPER"),
+                parent_session_id: None,
+            })
             .await
             .expect("session should persist");
 
@@ -1408,15 +1410,15 @@ mod tests {
         let session_id = "session-terminal-route";
         state
             .acp_session_store
-            .create(
-                session_id,
-                "/tmp",
-                Some("main"),
-                "default",
-                Some("opencode"),
-                Some("DEVELOPER"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: session_id,
+                cwd: "/tmp",
+                branch: Some("main"),
+                workspace_id: "default",
+                provider: Some("opencode"),
+                role: Some("DEVELOPER"),
+                parent_session_id: None,
+            })
             .await
             .expect("session should persist");
 

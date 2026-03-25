@@ -39,11 +39,12 @@ pub use queries::{
     SearchCardsParams, SearchCardsResult,
 };
 
-use automation::{absolutize_url, apply_trigger_result, build_task_prompt, AgentTriggerResult};
-use boards::build_board_result;
-
 #[cfg(test)]
 mod tests {
+    use super::automation::{
+        absolutize_url, apply_trigger_result, build_task_prompt, AgentTriggerResult,
+    };
+    use super::boards::build_board_result;
     use super::*;
     use chrono::Utc;
 

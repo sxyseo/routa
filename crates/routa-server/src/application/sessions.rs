@@ -518,7 +518,7 @@ mod tests {
     };
     use crate::create_app_state;
     use routa_core::acp::AcpSessionRecord;
-    use routa_core::store::acp_session_store::AcpSessionRow;
+    use routa_core::store::acp_session_store::{AcpSessionRow, CreateAcpSessionParams};
     use serde_json::{json, Value};
 
     fn random_db_path() -> PathBuf {
@@ -693,15 +693,15 @@ mod tests {
         service
             .state
             .acp_session_store
-            .create(
-                session_id,
-                "/tmp",
-                Some("main"),
-                "default",
-                Some("claude"),
-                Some("CRAFTER"),
-                None,
-            )
+            .create(CreateAcpSessionParams {
+                id: session_id,
+                cwd: "/tmp",
+                branch: Some("main"),
+                workspace_id: "default",
+                provider: Some("claude"),
+                role: Some("CRAFTER"),
+                parent_session_id: None,
+            })
             .await
             .expect("create session");
         service

@@ -365,11 +365,10 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                     .and_then(|content| content.get("text"))
                     .and_then(Value::as_str)
                 {
-                    let normalized_text = if kind == "agent_message_chunk"
-                        && last_kind != Some("agent_message_chunk")
+                    let normalized_text = if kind == "agent_message"
+                        || (kind == "agent_message_chunk"
+                            && last_kind != Some("agent_message_chunk"))
                     {
-                        trim_leading_response_breaks(text)
-                    } else if kind == "agent_message" {
                         trim_leading_response_breaks(text)
                     } else {
                         text.to_string()
@@ -419,11 +418,10 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                     .and_then(|content| content.get("text"))
                     .and_then(Value::as_str)
                 {
-                    let normalized_text = if kind == "agent_thought_chunk"
-                        && last_kind != Some("agent_thought_chunk")
+                    let normalized_text = if kind == "agent_thought"
+                        || (kind == "agent_thought_chunk"
+                            && last_kind != Some("agent_thought_chunk"))
                     {
-                        trim_leading_response_breaks(text)
-                    } else if kind == "agent_thought" {
                         trim_leading_response_breaks(text)
                     } else {
                         text.to_string()

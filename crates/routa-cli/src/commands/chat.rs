@@ -16,6 +16,7 @@ use routa_core::models::agent::AgentRole;
 use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator, SpecialistConfig};
 use routa_core::rpc::RpcRouter;
 use routa_core::state::AppState;
+use routa_core::store::acp_session_store::CreateAcpSessionParams;
 use tokio::sync::broadcast;
 
 use super::prompt::update_agent_status;
@@ -137,15 +138,15 @@ pub async fn run(
                 if resumed_session.is_none() {
                     state
                         .acp_session_store
-                        .create(
-                            &session_id,
-                            &cwd,
-                            None,
-                            &effective_workspace_id,
-                            Some(&effective_provider),
-                            Some(&effective_role),
-                            None,
-                        )
+                        .create(CreateAcpSessionParams {
+                            id: &session_id,
+                            cwd: &cwd,
+                            branch: None,
+                            workspace_id: &effective_workspace_id,
+                            provider: Some(&effective_provider),
+                            role: Some(&effective_role),
+                            parent_session_id: None,
+                        })
                         .await
                         .map_err(|e| format!("Failed to persist session {}: {}", session_id, e))?;
                 }
