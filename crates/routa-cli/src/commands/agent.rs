@@ -17,6 +17,7 @@ use super::review::stream_parser::{
     extract_text_from_prompt_result, extract_update_text,
 };
 use super::tui::TuiRenderer;
+use super::{format_rfc3339_timestamp, truncate_text};
 
 mod ui_journey;
 mod ui_journey_provider;
@@ -42,7 +43,7 @@ use ui_journey_provider::{
     normalize_ui_journey_update, verify_provider_readiness,
 };
 
-pub async fn list(state: &AppState, workspace_id: &str) -> Result<(), String> {
+pub async fn list(state: &AppState, workspace_id: &str, limit: usize) -> Result<(), String> {
     let router = RpcRouter::new(state.clone());
     let response = router
         .handle_value(serde_json::json!({
@@ -52,8 +53,55 @@ pub async fn list(state: &AppState, workspace_id: &str) -> Result<(), String> {
             "params": { "workspaceId": workspace_id }
         }))
         .await;
-    print_json(&response);
+
+    if let Some(agents) = response
+        .get("result")
+        .and_then(|result| result.get("agents"))
+        .and_then(|value| value.as_array())
+    {
+        let shown = agents.len().min(limit);
+        let hidden = agents.len().saturating_sub(shown);
+        println!(
+            "Agents ({} shown, {} hidden) in workspace {}:",
+            shown, hidden, workspace_id
+        );
+        for agent in agents.iter().take(limit) {
+            let status = agent
+                .get("status")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown");
+            let role = agent
+                .get("role")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown");
+            let name = agent
+                .get("name")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unnamed");
+            let updated_at =
+                format_rfc3339_timestamp(agent.get("updatedAt").and_then(|value| value.as_str()));
+            let id = agent
+                .get("id")
+                .and_then(|value| value.as_str())
+                .unwrap_or("?");
+            println!(
+                "  {:<10} {:<10} {:<34} {:<16} {}",
+                status,
+                role,
+                truncate_text(name, 34),
+                updated_at,
+                short_id(id)
+            );
+        }
+    } else {
+        print_json(&response);
+    }
+
     Ok(())
+}
+
+fn short_id(value: &str) -> &str {
+    value.get(..8).unwrap_or(value)
 }
 
 pub async fn create(

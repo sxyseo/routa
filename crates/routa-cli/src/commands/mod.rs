@@ -23,6 +23,7 @@ pub mod tui;
 pub mod workflow;
 pub mod workspace;
 
+use chrono::TimeZone;
 use routa_core::state::AppState;
 use std::sync::Arc;
 
@@ -59,4 +60,29 @@ pub fn print_json(value: &serde_json::Value) {
         "{}",
         serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
     );
+}
+
+pub fn truncate_text(value: &str, max_len: usize) -> String {
+    let char_count = value.chars().count();
+    if char_count <= max_len {
+        return value.to_string();
+    }
+
+    let truncated: String = value.chars().take(max_len.saturating_sub(1)).collect();
+    format!("{}…", truncated)
+}
+
+pub fn format_rfc3339_timestamp(value: Option<&str>) -> String {
+    value
+        .and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "unknown time".to_string())
+}
+
+pub fn format_timestamp_millis(value: i64) -> String {
+    chrono::Utc
+        .timestamp_millis_opt(value)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "unknown time".to_string())
 }

@@ -1,11 +1,10 @@
 //! `routa session` — ACP session discovery and resume helpers.
 
-use chrono::{TimeZone, Utc};
 use dialoguer::{theme::ColorfulTheme, Select};
 use routa_core::state::AppState;
 use routa_core::store::acp_session_store::AcpSessionRow;
 
-use super::{chat, print_json};
+use super::{chat, format_timestamp_millis, print_json, truncate_text};
 
 pub async fn list(
     state: &AppState,
@@ -17,8 +16,18 @@ pub async fn list(
         .list(workspace_id, Some(limit))
         .await
         .map_err(|e| format!("Failed to list sessions: {}", e))?;
-    let response = serde_json::json!({ "sessions": sessions });
-    print_json(&response);
+
+    println!(
+        "Sessions ({}){}:",
+        sessions.len(),
+        workspace_id
+            .map(|id| format!(" in workspace {}", id))
+            .unwrap_or_default()
+    );
+    for session in &sessions {
+        println!("  {}", format_session_row(session));
+    }
+
     Ok(())
 }
 
@@ -77,17 +86,27 @@ fn format_session_row(session: &AcpSessionRow) -> String {
     let title = session
         .name
         .clone()
-        .unwrap_or_else(|| format!("session {}", &session.id[..8]));
+        .unwrap_or_else(|| format!("session {}", short_id(&session.id)));
     let provider = session.provider.as_deref().unwrap_or("unknown");
     let role = session.role.as_deref().unwrap_or("unknown");
-    let updated_at = Utc
-        .timestamp_millis_opt(session.updated_at)
-        .single()
-        .map(|value| value.format("%Y-%m-%d %H:%M").to_string())
-        .unwrap_or_else(|| "unknown time".to_string());
+    let updated_at = format_timestamp_millis(session.updated_at);
+    let prompt_status = if session.first_prompt_sent {
+        "sent"
+    } else {
+        "idle"
+    };
 
     format!(
-        "{} [{} / {}] {}  {}",
-        title, provider, role, updated_at, session.id
+        "{} [{} / {}] {}  {}  {}",
+        truncate_text(&title, 36),
+        provider,
+        role,
+        updated_at,
+        prompt_status,
+        short_id(&session.id)
     )
+}
+
+fn short_id(value: &str) -> &str {
+    value.get(..8).unwrap_or(value)
 }

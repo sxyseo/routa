@@ -228,6 +228,9 @@ enum AgentAction {
     List {
         #[arg(long, default_value = "default")]
         workspace_id: String,
+        /// Maximum agents to show
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
     },
     /// Create a new agent
     Create {
@@ -312,6 +315,9 @@ enum TaskAction {
     List {
         #[arg(long, default_value = "default")]
         workspace_id: String,
+        /// Maximum tasks to show
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
     },
     /// Create a new task
     Create {
@@ -602,7 +608,11 @@ enum KanbanColumnAction {
 #[derive(Subcommand)]
 enum WorkspaceAction {
     /// List all workspaces
-    List,
+    List {
+        /// Maximum workspaces to show
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
     /// Create a new workspace
     Create {
         /// Workspace name
@@ -808,9 +818,10 @@ async fn main() {
             Commands::Agent { action } => {
                 let state = commands::init_state(&cli.db).await;
                 match action {
-                    AgentAction::List { workspace_id } => {
-                        commands::agent::list(&state, &workspace_id).await
-                    }
+                    AgentAction::List {
+                        workspace_id,
+                        limit,
+                    } => commands::agent::list(&state, &workspace_id, limit).await,
                     AgentAction::Create {
                         name,
                         role,
@@ -883,9 +894,10 @@ async fn main() {
             Commands::Task { action } => {
                 let state = commands::init_state(&cli.db).await;
                 match action {
-                    TaskAction::List { workspace_id } => {
-                        commands::task::list(&state, &workspace_id).await
-                    }
+                    TaskAction::List {
+                        workspace_id,
+                        limit,
+                    } => commands::task::list(&state, &workspace_id, limit).await,
                     TaskAction::Create {
                         title,
                         objective,
@@ -1175,7 +1187,9 @@ async fn main() {
             Commands::Workspace { action } => {
                 let state = commands::init_state(&cli.db).await;
                 match action {
-                    WorkspaceAction::List => commands::workspace::list(&state).await,
+                    WorkspaceAction::List { limit } => {
+                        commands::workspace::list(&state, limit).await
+                    }
                     WorkspaceAction::Create { name } => {
                         commands::workspace::create(&state, &name).await
                     }
