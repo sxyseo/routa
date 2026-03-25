@@ -70,6 +70,7 @@
     "group": "observability",
     "priority": "P1",
     "ci": true,
+    "similarityThreshold": 0.72,
     "route": "/traces?view=trace",
     "pageFile": "src/app/traces/page.tsx",
     "snapshotFile": "src/app/traces/page.snapshot.yaml",

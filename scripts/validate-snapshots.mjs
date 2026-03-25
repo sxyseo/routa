@@ -91,9 +91,12 @@ async function main() {
         const actual = normalizeComparableSnapshot(fs.readFileSync(tempPath, "utf-8"));
 
         const similarity = calculateSimilarity(expected, actual);
+        const effectiveThreshold = typeof target.similarityThreshold === "number"
+          ? target.similarityThreshold
+          : options.similarityThreshold;
         const similarityPercent = (similarity * 100).toFixed(1);
 
-        if (similarity >= options.similarityThreshold) {
+        if (similarity >= effectiveThreshold) {
           report.matched += 1;
           if (similarity === 1.0) {
             console.log(`✅ ${target.id}: snapshot matches (100%)`);
@@ -107,9 +110,10 @@ async function main() {
             target: target.id, 
             reason: "content mismatch", 
             similarity: similarityPercent,
+            threshold: (effectiveThreshold * 100).toFixed(1),
             diff 
           });
-          console.log(`❌ ${target.id}: snapshot mismatch (${similarityPercent}% similar, threshold: ${(options.similarityThreshold * 100).toFixed(0)}%)`);
+          console.log(`❌ ${target.id}: snapshot mismatch (${similarityPercent}% similar, threshold: ${(effectiveThreshold * 100).toFixed(0)}%)`);
 
           if (options.update) {
             fs.renameSync(tempPath, snapshotPath);
