@@ -335,21 +335,22 @@ fn tool_result_text(inner: &serde_json::Value) -> Option<String> {
         }
     }
 
-    let raw_output = inner.get("rawOutput")?;
-    if let Some(text) = raw_output.as_str() {
-        let trimmed = text.trim();
-        if !trimmed.is_empty() {
+    if let Some(raw_output) = inner.get("rawOutput") {
+        if let Some(text) = raw_output.as_str() {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+
+        let serialized = serde_json::to_string_pretty(raw_output).ok()?;
+        let trimmed = serialized.trim();
+        if !trimmed.is_empty() && trimmed != "null" && trimmed != "\"\"" {
             return Some(trimmed.to_string());
         }
     }
 
-    let serialized = serde_json::to_string_pretty(raw_output).ok()?;
-    let trimmed = serialized.trim();
-    if trimmed.is_empty() || trimmed == "null" || trimmed == "\"\"" {
-        extract_tool_content_text(inner)
-    } else {
-        Some(trimmed.to_string())
-    }
+    extract_tool_content_text(inner)
 }
 
 fn extract_tool_content_text(inner: &serde_json::Value) -> Option<String> {
