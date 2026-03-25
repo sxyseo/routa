@@ -25,8 +25,12 @@ export function formatDuration(durationMs: number): string {
 }
 
 function evaluateMetric(metric: HookMetric, exitCode: number, output: string): boolean {
+  if (exitCode !== 0) {
+    return false;
+  }
+
   if (!metric.pattern) {
-    return exitCode === 0;
+    return true;
   }
 
   const matcher = new RegExp(metric.pattern, "i");
