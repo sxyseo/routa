@@ -11,6 +11,23 @@ type ReviewTrigger = {
 
 type ReviewReport = {
   triggers?: ReviewTrigger[];
+  changed_files?: string[];
+  diff_stats?: {
+    file_count?: number;
+    added_lines?: number;
+    deleted_lines?: number;
+  };
+};
+
+export type ReviewPhaseResult = {
+  base: string;
+  allowed: boolean;
+  bypassed: boolean;
+  status: "passed" | "blocked" | "unavailable" | "error";
+  triggers: ReviewTrigger[];
+  changedFiles?: string[];
+  diffFileCount?: number;
+  message: string;
 };
 
 async function resolveReviewBase(): Promise<string> {
@@ -18,6 +35,18 @@ async function resolveReviewBase(): Promise<string> {
     stream: false,
   });
   return upstream.exitCode === 0 ? upstream.output.trim() : "HEAD~1";
+}
+
+function parseReport(reviewOutput: string): ReviewReport {
+  if (!reviewOutput) {
+    return { triggers: [], changed_files: [], diff_stats: { file_count: 0 } };
+  }
+
+  try {
+    return JSON.parse(reviewOutput) as ReviewReport;
+  } catch {
+    return { triggers: [], changed_files: [], diff_stats: { file_count: 0 } };
+  }
 }
 
 function printReviewReport(report: ReviewReport): void {
@@ -31,58 +60,99 @@ function printReviewReport(report: ReviewReport): void {
   console.log("");
 }
 
-export async function runReviewTriggerPhase(): Promise<void> {
-  const reviewBase = await resolveReviewBase();
+function buildResultBase(
+  base: string,
+  report: ReviewReport,
+  status: ReviewPhaseResult["status"],
+  allowed: boolean,
+  bypassed: boolean,
+  message: string,
+): ReviewPhaseResult {
+  return {
+    allowed,
+    bypassed,
+    base,
+    status,
+    triggers: report.triggers ?? [],
+    changedFiles: report.changed_files,
+    diffFileCount: report.diff_stats?.file_count,
+    message,
+  };
+}
 
-  console.log("[phase 3/3] review trigger");
-  console.log(`[review] Base: ${reviewBase}`);
-  console.log("");
+async function parseDecision(report: ReviewReport, base: string, outputMode: "human" | "jsonl"): Promise<ReviewPhaseResult> {
+  if (isAiAgent()) {
+    const message =
+      "Review-trigger matched. Human review is required before push. Rerun with ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 after review if you intentionally want to bypass this gate.";
+    return buildResultBase(base, report, "blocked", false, false, message);
+  }
+
+  if (process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH === "1") {
+    const message = "ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 set, bypassing review gate.";
+    if (outputMode === "human") {
+      console.log(message);
+      console.log("");
+    }
+    return buildResultBase(base, report, "passed", true, true, message);
+  }
+
+  if (!isInteractive()) {
+    const message =
+      "Review-trigger matched in a non-interactive push. Complete human review first, then rerun with ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 to confirm.";
+    return buildResultBase(base, report, "blocked", false, false, message);
+  }
+
+  const confirmed = await promptYesNo("These changes need human review. Confirm review is complete and continue push? [y/N]");
+  if (!confirmed) {
+    const message = "Push aborted. Complete review, then push again.";
+    return buildResultBase(base, report, "blocked", false, false, message);
+  }
+
+  const message = "Human review acknowledged. Continuing push.";
+  if (outputMode === "human") {
+    console.log(message);
+    console.log("");
+  }
+  return buildResultBase(base, report, "passed", true, false, message);
+}
+
+export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "human"): Promise<ReviewPhaseResult> {
+  const reviewBase = await resolveReviewBase();
+  if (outputMode === "human") {
+    console.log("[phase 3/3] review trigger");
+    console.log(`[review] Base: ${reviewBase}`);
+    console.log("");
+  }
 
   const review = await runCommand(
     `PYTHONPATH=tools/entrix python3 -m entrix.cli review-trigger --base "${reviewBase}" --json --fail-on-trigger`,
     { stream: false },
   );
 
-  if (review.exitCode !== 0 && review.exitCode !== 3) {
-    console.log("Unable to evaluate review triggers. Continuing without review gate.");
-    console.log("");
-    return;
-  }
-
   if (review.exitCode === 0) {
-    console.log("No review trigger matched.");
-    console.log("");
-    return;
-  }
-
-  const report = JSON.parse(review.output) as ReviewReport;
-  printReviewReport(report);
-
-  if (process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH === "1") {
-    console.log("ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 set, bypassing review gate.");
-    console.log("");
-    return;
-  }
-
-  if (isAiAgent()) {
-    throw new Error(
-      "Review-trigger matched. Human review is required before push. Rerun with ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 after review if you intentionally want to bypass this gate.",
+    if (outputMode === "human") {
+      console.log("No review trigger matched.");
+      console.log("");
+    }
+    return buildResultBase(
+      reviewBase,
+      { triggers: [], changed_files: [], diff_stats: { file_count: 0 } },
+      "passed",
+      true,
+      false,
+      "No review trigger matched.",
     );
   }
 
-  if (!isInteractive()) {
-    throw new Error(
-      "Review-trigger matched in a non-interactive push. Complete human review first, then rerun with ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 to confirm.",
-    );
+  const report = parseReport(review.output);
+  if (review.exitCode !== 3) {
+    const message = "Unable to evaluate review triggers. Continuing without review gate.";
+    return buildResultBase(reviewBase, report, "unavailable", true, false, message);
   }
 
-  const confirmed = await promptYesNo(
-    "These changes need human review. Confirm review is complete and continue push? [y/N]",
-  );
-  if (!confirmed) {
-    throw new Error("Push aborted. Complete review, then push again.");
+  if (outputMode === "human") {
+    printReviewReport(report);
   }
 
-  console.log("Human review acknowledged. Continuing push.");
-  console.log("");
+  return parseDecision(report, reviewBase, outputMode);
 }
