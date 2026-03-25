@@ -172,6 +172,18 @@ routa specialist run ui-journey-evaluator \
   - 最终返回：`Error: Failed to create ACP session: Timeout waiting for initialize...`
   - 该路径确认了 `provider_timeout_ms` 和 `provider_retries` 已落到 runtime 分支，并触发了重试提示行为（当前环境仍因 provider 初始化耗时导致失败）。
 
+4) 验证失败落盘：provider 不存在时也产 artifact
+- 命令：`HOME=/tmp/codex-routa-test XDG_CONFIG_HOME=/tmp/codex-routa-test/.config cargo run -p routa-cli -- specialist run resources/specialists/tools/ui-journey-evaluator.yaml --provider nope-provider --provider-timeout-ms 2000 --provider-retries 1 --workspace-id default --prompt 'scenario: core-home-session, artifact_dir: /tmp/routa-ui-journey-test'`
+- 结论：
+  - CLI 返回失败：`Unsupported provider 'nope-provider': Agent 'nope-provider' not found in registry`
+  - 同时确认已生成：
+    - `evaluation.json`（`result: incomplete` + `run_metadata.attempts/failure_stage` + 时间与参数）
+    - `summary.md`（failure 原因 + 关键指标）
+    - `screenshots/` 目录（空目录，供后续兜底产物位置）
+
+  - 示例产物路径：
+    - `/tmp/routa-ui-journey-test/core-home-session/<run-id>/`
+
 结论：本次方案的关键路径（参数解析、provider 预检、超时/重试透传）在 CLI 可运行层面已验证；未关闭的缺口是 provider 可用性与鉴权前提不足，导致仍无法拿到 `evaluation.json/summary.md/screenshots` 闭环产物。
 
 ## 进一步优化方案
@@ -185,14 +197,20 @@ routa specialist run ui-journey-evaluator \
    - 当前实现已支持 1 次重试，重试失败时会输出 attempt 信息。
 
 3. 保障失败路径也落盘（优先级高）
-   - 无论成功/失败，固定产出：
+   - 已完成：provider 预检失败、agent 创建失败、session 创建失败、prompt 发送失败、运行超时/提前退出将落盘：
      - `evaluation.json`（含 `task_fit_score`、`verdict`、`findings`）
      - `summary.md`（写清失败原因与复盘建议）
      - `screenshots/`（若有可用截图则写入）
    - 找不到关键 artifact 的情况下也要给出 `result: incomplete` 并写入原因码。
 
 4. 丰富运行观察指标
-   - 增加运行耗时、重试次数、初始化阶段耗时、失败阶段标签，方便后续回归。
+   - 已完成：在失败/成功落盘时统一写入：
+     - `run_metadata.attempts`
+     - `run_metadata.provider_timeout_ms`
+     - `run_metadata.provider_retries`
+     - `run_metadata.elapsed_ms`
+     - `run_metadata.initialize_elapsed_ms`
+     - `run_metadata.failure_stage`
 
 ## 未来扩展（不在第一版范围）
 

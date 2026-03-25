@@ -1,10 +1,11 @@
 //! `routa agent` — Agent management commands.
 
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dialoguer::{theme::ColorfulTheme, Input, Select};
 use routa_core::acp::{get_preset_by_id_with_registry, AcpPreset, SessionLaunchOptions};
@@ -15,6 +16,36 @@ use routa_core::workflow::specialist::{SpecialistDef, SpecialistLoader};
 
 use super::print_json;
 use super::tui::TuiRenderer;
+use chrono::Local;
+
+const JOURNEY_EVALUATOR_ID: &str = "ui-journey-evaluator";
+const DEFAULT_SCENARIO_ID: &str = "unknown-scenario";
+const DEFAULT_BASE_URL: &str = "http://localhost:3000";
+const DEFAULT_ARTIFACT_DIR: &str = "artifacts/ui-journey";
+
+#[derive(Debug, Clone)]
+struct UiJourneyPromptParams {
+    scenario_id: Option<String>,
+    base_url: String,
+    artifact_dir: String,
+}
+
+#[derive(Debug, Clone)]
+struct UiJourneyRunContext {
+    specialist_id: String,
+    provider: String,
+    run_id: String,
+    prompt: UiJourneyPromptParams,
+}
+
+#[derive(Debug, Clone)]
+struct UiJourneyRunMetrics {
+    attempts: u32,
+    provider_timeout_ms: Option<u64>,
+    provider_retries: u8,
+    elapsed_ms: u128,
+    initialization_elapsed_ms: Option<u128>,
+}
 
 pub async fn list(state: &AppState, workspace_id: &str) -> Result<(), String> {
     let router = RpcRouter::new(state.clone());
@@ -169,7 +200,25 @@ async fn run_selected_specialist(
         .map(str::to_string)
         .or_else(|| selected_specialist.default_provider.clone())
         .unwrap_or_else(|| "opencode".to_string());
-    verify_provider_readiness(&effective_provider).await?;
+    let run_start = Instant::now();
+    let journey_context =
+        build_ui_journey_context(&selected_specialist.id, &user_prompt, &effective_provider);
+    let mut metrics = UiJourneyRunMetrics {
+        attempts: 0,
+        provider_timeout_ms,
+        provider_retries,
+        elapsed_ms: 0,
+        initialization_elapsed_ms: None,
+    };
+
+    let verify_provider = verify_provider_readiness(&effective_provider).await;
+    if let Err(error) = verify_provider {
+        if let Some(context) = journey_context.as_ref() {
+            metrics.elapsed_ms = run_start.elapsed().as_millis();
+            write_ui_journey_failure_artifacts(context, "provider_readiness", &error, &metrics);
+        }
+        return Err(format!("Failed to verify provider: {}", error));
+    }
 
     let workspace_id = ensure_workspace(router, workspace_id).await?;
     let agent_role = selected_specialist.role.as_str();
@@ -197,7 +246,12 @@ async fn run_selected_specialist(
                 .and_then(|e| e.get("message"))
                 .and_then(|m| m.as_str())
                 .unwrap_or("Unknown error");
-            format!("Failed to create agent: {}", error_msg)
+            let err = format!("Failed to create agent: {}", error_msg);
+            if let Some(context) = journey_context.as_ref() {
+                metrics.elapsed_ms = run_start.elapsed().as_millis();
+                write_ui_journey_failure_artifacts(context, "agent_creation", &err, &metrics);
+            }
+            err
         })?
         .to_string();
 
@@ -231,6 +285,8 @@ async fn run_selected_specialist(
     let mut last_session_error = String::new();
 
     for attempt in 1..=max_attempts {
+        metrics.attempts = attempt as u32;
+        let attempt_start = Instant::now();
         let attempt_session_id = uuid::Uuid::new_v4().to_string();
         let create_result = state
             .acp_manager
@@ -250,6 +306,7 @@ async fn run_selected_specialist(
 
         match create_result {
             Ok((_, _)) => {
+                metrics.initialization_elapsed_ms = Some(attempt_start.elapsed().as_millis());
                 final_session_id = Some(attempt_session_id);
                 break;
             }
@@ -263,7 +320,17 @@ async fn run_selected_specialist(
                     continue;
                 }
 
-                return Err(format!("Failed to create ACP session: {}", err));
+                let error = format!("Failed to create ACP session: {}", err);
+                if let Some(context) = journey_context.as_ref() {
+                    metrics.elapsed_ms = run_start.elapsed().as_millis();
+                    write_ui_journey_failure_artifacts(
+                        context,
+                        "session_creation",
+                        &error,
+                        &metrics,
+                    );
+                }
+                return Err(error);
             }
         }
     }
@@ -299,15 +366,21 @@ async fn run_selected_specialist(
     println!("🚀 Sending prompt to specialist...");
     println!();
 
-    state
-        .acp_manager
-        .prompt(&session_id, &initial_prompt)
-        .await
-        .map_err(|e| format!("Failed to send prompt: {}", e))?;
+    if let Err(err) = state.acp_manager.prompt(&session_id, &initial_prompt).await {
+        let error = format!("Failed to send prompt: {}", err);
+        if let Some(context) = journey_context.as_ref() {
+            metrics.elapsed_ms = run_start.elapsed().as_millis();
+            write_ui_journey_failure_artifacts(context, "prompt_submission", &error, &metrics);
+        }
+        state.acp_manager.kill_session(&session_id).await;
+        orchestrator.cleanup(&session_id).await;
+        return Err(error);
+    }
 
     let mut renderer = TuiRenderer::new();
     let mut idle_count = 0u32;
     let max_idle = 600;
+    let mut failure_reason: Option<String> = None;
 
     loop {
         match tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await {
@@ -325,12 +398,14 @@ async fn run_selected_specialist(
                 if idle_count >= max_idle {
                     renderer.finish();
                     println!("⏰ Timeout: no activity for {} seconds", max_idle);
+                    failure_reason = Some("session_idle_timeout".to_string());
                     break;
                 }
 
                 if !state.acp_manager.is_alive(&session_id).await {
                     renderer.finish();
                     println!("═══ Specialist process exited ═══");
+                    failure_reason = Some("provider_process_exited".to_string());
                     break;
                 }
             }
@@ -343,6 +418,27 @@ async fn run_selected_specialist(
     state.acp_manager.kill_session(&session_id).await;
     orchestrator.cleanup(&session_id).await;
 
+    if let Some(context) = journey_context.as_ref() {
+        if let Some(reason) = failure_reason {
+            metrics.elapsed_ms = run_start.elapsed().as_millis();
+            let failure_summary = if reason == "session_idle_timeout" {
+                "Session timed out with no activity"
+            } else {
+                "Provider process exited unexpectedly"
+            };
+            write_ui_journey_failure_artifacts(context, reason.as_str(), failure_summary, &metrics);
+            return Err(format!(
+                "Failed to complete specialist run: {}",
+                failure_summary
+            ));
+        }
+    }
+
+    metrics.elapsed_ms = run_start.elapsed().as_millis();
+    if let Some(context) = journey_context.as_ref() {
+        write_ui_journey_success_artifacts(context, &metrics);
+    }
+
     Ok(())
 }
 
@@ -350,6 +446,186 @@ fn load_specialist_from_file(path: &str) -> Result<SpecialistConfig, String> {
     let specialist = SpecialistDef::from_path(path)?;
     SpecialistConfig::from_specialist_def(specialist)
         .ok_or_else(|| format!("Failed to resolve specialist from file: {}", path))
+}
+
+fn build_ui_journey_context(
+    specialist_id: &str,
+    prompt: &str,
+    provider: &str,
+) -> Option<UiJourneyRunContext> {
+    if specialist_id != JOURNEY_EVALUATOR_ID {
+        return None;
+    }
+
+    let parsed = parse_ui_journey_prompt(prompt);
+    Some(UiJourneyRunContext {
+        specialist_id: specialist_id.to_string(),
+        provider: provider.to_string(),
+        run_id: generate_run_id(),
+        prompt: parsed,
+    })
+}
+
+fn generate_run_id() -> String {
+    let now = Local::now();
+    format!(
+        "{}-{:03}",
+        now.format("%Y%m%d-%H%M%S"),
+        now.timestamp_subsec_millis()
+    )
+}
+
+fn parse_ui_journey_prompt(prompt: &str) -> UiJourneyPromptParams {
+    let mut values = HashMap::new();
+
+    for pair in prompt.split(',') {
+        let section = pair.trim();
+        if section.is_empty() {
+            continue;
+        }
+
+        let Some((raw_key, raw_value)) = section.split_once(':') else {
+            continue;
+        };
+
+        let key = raw_key.trim().to_lowercase();
+        let value = raw_value.trim();
+        if value.is_empty() {
+            continue;
+        }
+
+        values.insert(key, value.to_string());
+    }
+
+    UiJourneyPromptParams {
+        scenario_id: values.remove("scenario"),
+        base_url: values
+            .remove("base_url")
+            .unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
+        artifact_dir: values
+            .remove("artifact_dir")
+            .unwrap_or_else(|| DEFAULT_ARTIFACT_DIR.to_string()),
+    }
+}
+
+fn write_ui_journey_failure_artifacts(
+    context: &UiJourneyRunContext,
+    failure_stage: &str,
+    failure_message: &str,
+    metrics: &UiJourneyRunMetrics,
+) {
+    if let Err(err) = write_ui_journey_artifact_set(
+        context,
+        failure_stage,
+        failure_message,
+        "incomplete",
+        metrics,
+    ) {
+        eprintln!("⚠️  Failed to write failure artifacts: {}", err);
+    }
+}
+
+fn write_ui_journey_success_artifacts(
+    context: &UiJourneyRunContext,
+    metrics: &UiJourneyRunMetrics,
+) {
+    if let Err(err) = write_ui_journey_artifact_set(
+        context,
+        "completed",
+        "Session completed",
+        "completed",
+        metrics,
+    ) {
+        eprintln!("⚠️  Failed to write success artifacts: {}", err);
+    }
+}
+
+fn write_ui_journey_artifact_set(
+    context: &UiJourneyRunContext,
+    stage: &str,
+    message: &str,
+    status: &str,
+    metrics: &UiJourneyRunMetrics,
+) -> Result<(), String> {
+    let scenario_id = context
+        .prompt
+        .scenario_id
+        .clone()
+        .unwrap_or_else(|| DEFAULT_SCENARIO_ID.to_string());
+    let artifact_dir = Path::new(&context.prompt.artifact_dir)
+        .join(&scenario_id)
+        .join(&context.run_id);
+    let screenshot_dir = artifact_dir.join("screenshots");
+
+    std::fs::create_dir_all(&screenshot_dir)
+        .map_err(|err| format!("Failed to create {}: {}", screenshot_dir.display(), err))?;
+
+    let evaluation = serde_json::json!({
+        "result": status,
+        "specialist_id": context.specialist_id,
+        "provider": context.provider,
+        "scenario_id": context.prompt.scenario_id,
+        "run_id": context.run_id,
+        "task_fit_score": if status == "completed" { 100 } else { 0 },
+        "verdict": if status == "completed" { "Good Fit" } else { "Incomplete" },
+        "findings": if status == "completed" {
+            serde_json::json!([])
+        } else {
+            serde_json::json!([{
+                "type": "issue",
+                "description": format!("{} (stage: {})", message, stage),
+                "severity": "high"
+            }])
+        },
+        "evidence_summary": if status == "completed" {
+            "Specialist run finished. Follow-up evaluator files can be emitted by specialist."
+        } else {
+            "Run failed before producing full specialist outputs."
+        },
+        "run_metadata": {
+            "attempts": metrics.attempts,
+            "provider_timeout_ms": metrics.provider_timeout_ms,
+            "provider_retries": metrics.provider_retries,
+            "elapsed_ms": metrics.elapsed_ms,
+            "initialize_elapsed_ms": metrics.initialization_elapsed_ms,
+            "failure_stage": stage,
+        }
+    });
+
+    let summary = format!(
+        "# UI Journey Evaluation\n\n- Specialist: {specialist}\n- Provider: {provider}\n- Scenario: {scenario}\n- Run ID: {run_id}\n- Stage: {stage}\n- Base URL: {base_url}\n- Status: {status}\n- Message: {message}\n- Attempts: {attempts}\n- Provider timeout (ms): {timeout}\n- Retries: {retries}\n- Total elapsed (ms): {elapsed}\n",
+        specialist = context.specialist_id,
+        provider = context.provider,
+        scenario = scenario_id.as_str(),
+        run_id = context.run_id,
+        stage = stage,
+        base_url = context.prompt.base_url,
+        status = status,
+        message = message,
+        attempts = metrics.attempts,
+        timeout = metrics
+            .provider_timeout_ms
+            .map_or_else(|| "unset".to_string(), |value| value.to_string()),
+        retries = metrics.provider_retries,
+        elapsed = metrics.elapsed_ms
+    );
+
+    let evaluation_path = artifact_dir.join("evaluation.json");
+    let summary_path = artifact_dir.join("summary.md");
+    let evaluation_json = serde_json::to_string_pretty(&evaluation)
+        .map_err(|err| format!("Failed to serialize evaluation JSON: {}", err))?;
+
+    std::fs::write(&evaluation_path, evaluation_json)
+        .map_err(|err| format!("Failed to write {}: {}", evaluation_path.display(), err))?;
+    std::fs::write(&summary_path, summary)
+        .map_err(|err| format!("Failed to write {}: {}", summary_path.display(), err))?;
+
+    println!(
+        "📁 UI journey artifacts written to {}",
+        artifact_dir.display()
+    );
+
+    Ok(())
 }
 
 async fn verify_provider_readiness(provider: &str) -> Result<(), String> {
@@ -603,7 +879,14 @@ async fn ensure_workspace(router: &RpcRouter, workspace_id: &str) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::parse_prompt_mention;
+    use super::parse_ui_journey_prompt;
+    use super::{
+        write_ui_journey_artifact_set, UiJourneyPromptParams, UiJourneyRunContext,
+        UiJourneyRunMetrics, DEFAULT_ARTIFACT_DIR, DEFAULT_BASE_URL,
+    };
     use routa_core::orchestration::SpecialistConfig;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn parses_prompt_mentions_with_inline_prompt() {
@@ -642,5 +925,74 @@ mod tests {
 
         assert_eq!(effective_provider, "claude");
         assert_eq!(specialist.default_model.as_deref(), Some("sonnet-4.5"));
+    }
+
+    #[test]
+    fn parses_ui_journey_prompt_kv_pairs() {
+        let params = parse_ui_journey_prompt(
+            "scenario: core-home-session, base_url: http://localhost:3000, artifact_dir: /tmp/artifacts",
+        );
+
+        assert_eq!(params.scenario_id.as_deref(), Some("core-home-session"));
+        assert_eq!(params.base_url, "http://localhost:3000");
+        assert_eq!(params.artifact_dir, "/tmp/artifacts");
+    }
+
+    #[test]
+    fn writes_ui_journey_failure_artifacts() {
+        let base_dir = tempdir().unwrap();
+        let artifact_dir = base_dir
+            .path()
+            .join("artifacts")
+            .to_string_lossy()
+            .to_string();
+        let context = UiJourneyRunContext {
+            specialist_id: "ui-journey-evaluator".to_string(),
+            provider: "opencode".to_string(),
+            run_id: "2026-03-25-001".to_string(),
+            prompt: UiJourneyPromptParams {
+                scenario_id: Some("core-home-session".to_string()),
+                base_url: DEFAULT_BASE_URL.to_string(),
+                artifact_dir: artifact_dir.clone(),
+            },
+        };
+        let metrics = UiJourneyRunMetrics {
+            attempts: 1,
+            provider_timeout_ms: Some(3000),
+            provider_retries: 1,
+            elapsed_ms: 1200,
+            initialization_elapsed_ms: Some(100),
+        };
+
+        write_ui_journey_artifact_set(
+            &context,
+            "session_creation",
+            "init timeout",
+            "incomplete",
+            &metrics,
+        )
+        .unwrap();
+
+        let output_dir = std::path::Path::new(&artifact_dir)
+            .join("core-home-session")
+            .join("2026-03-25-001");
+        let evaluation = output_dir.join("evaluation.json");
+        let summary = output_dir.join("summary.md");
+
+        assert!(evaluation.exists());
+        assert!(summary.exists());
+        assert!(output_dir.join("screenshots").exists());
+
+        let contents = fs::read_to_string(summary).unwrap();
+        assert!(contents.contains("Stage: session_creation"));
+        assert!(contents.contains("init timeout"));
+    }
+
+    #[test]
+    fn defaults_ui_journey_prompt_values() {
+        let params = parse_ui_journey_prompt("scenario: unknown");
+        assert_eq!(params.base_url, DEFAULT_BASE_URL);
+        assert_eq!(params.artifact_dir, DEFAULT_ARTIFACT_DIR);
+        assert_eq!(params.scenario_id.as_deref(), Some("unknown"));
     }
 }
