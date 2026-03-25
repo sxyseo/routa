@@ -1,5 +1,4 @@
-#!/bin/bash
-set -a
-source "$(dirname "$0")/../.env.local"
-set +a
-exec npx tsx "$(dirname "$0")/check-schedules-db.ts"
+#!/usr/bin/env bash
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+exec node --import tsx "$ROOT_DIR/tools/hook-runtime/src/check-schedules-db.ts" "$@"
