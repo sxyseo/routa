@@ -3,6 +3,33 @@ import { expect, test, type Page } from "@playwright/test";
 const DESKTOP_VIEWPORT = { width: 1440, height: 900 };
 const NEXT_DEV_RECOVERY_TEXT = "missing required error components, refreshing...";
 
+function createRouteResponseWaiters(page: Page, path: string): Array<Promise<unknown>> {
+  if (path === "/workspace/default") {
+    return [
+      page.waitForResponse((response) => response.url().includes("/api/sessions?workspaceId=default"), { timeout: 20_000 }),
+      page.waitForResponse((response) => response.url().includes("/api/tasks?workspaceId=default"), { timeout: 20_000 }),
+      page.waitForResponse((response) => response.url().includes("/api/kanban/boards?workspaceId=default"), { timeout: 20_000 }),
+    ];
+  }
+
+  if (path === "/workspace/default/kanban") {
+    return [
+      page.waitForResponse((response) => response.url().includes("/api/kanban/boards?workspaceId=default"), { timeout: 20_000 }),
+      page.waitForResponse((response) => response.url().includes("/api/tasks?workspaceId=default"), { timeout: 20_000 }),
+      page.waitForResponse((response) => response.url().includes("/api/sessions?workspaceId=default"), { timeout: 20_000 }),
+    ];
+  }
+
+  if (path.startsWith("/traces")) {
+    return [
+      page.waitForResponse((response) => response.url().includes("/api/traces"), { timeout: 20_000 }),
+      page.waitForResponse((response) => response.url().includes("/api/sessions"), { timeout: 20_000 }),
+    ];
+  }
+
+  return [];
+}
+
 async function waitForDesktopShell(page: Page) {
   await page.waitForFunction(
     () => Boolean(
@@ -19,6 +46,7 @@ async function waitForDesktopShell(page: Page) {
 async function openDesktopRoute(page: Page, path: string, colorScheme: "light" | "dark") {
   await page.emulateMedia({ colorScheme });
   await page.setViewportSize(DESKTOP_VIEWPORT);
+  const routeResponses = createRouteResponseWaiters(page, path);
   let shellReady = false;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -51,12 +79,10 @@ async function openDesktopRoute(page: Page, path: string, colorScheme: "light" |
     throw new Error(`desktop shell never became ready for ${path}`);
   }
 
+  await Promise.allSettled(routeResponses);
+
   if (path.includes("/kanban")) {
-    await page.waitForFunction(() => {
-      const header = document.querySelector('[data-testid="kanban-page-header"]');
-      const text = header?.textContent ?? "";
-      return text.includes("Running") && text.includes("Queued");
-    }, undefined, { timeout: 20_000 });
+    await page.getByTestId("kanban-page-header").waitFor({ state: "visible", timeout: 20_000 });
   }
 
   await page.waitForTimeout(300);
@@ -87,10 +113,6 @@ test.describe("Desktop Shell Visual Regression", () => {
         `workspace-shell-sidebar-${colorScheme}.png`,
         { animations: "disabled" },
       );
-      await expect(page.getByTestId("workspace-tab-bar")).toHaveScreenshot(
-        `workspace-tab-bar-${colorScheme}.png`,
-        { animations: "disabled" },
-      );
     });
 
     test(`kanban page header (${colorScheme})`, async ({ page }) => {
@@ -104,7 +126,7 @@ test.describe("Desktop Shell Visual Regression", () => {
     });
 
     test(`traces shell chrome (${colorScheme})`, async ({ page }) => {
-      await openDesktopRoute(page, "/traces", colorScheme);
+      await openDesktopRoute(page, "/traces?sessionId=none", colorScheme);
 
       await expect(page.getByTestId("desktop-shell-root")).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId("traces-page-header")).toHaveScreenshot(

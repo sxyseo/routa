@@ -43,6 +43,16 @@ export const KanbanActive: Story = {
   },
 };
 
+export const HoverState: Story = {
+  play: async ({ canvasElement }) => {
+    const settingsLink = canvasElement.querySelector('a[title="Settings"]');
+    if (settingsLink instanceof HTMLElement) {
+      settingsLink.style.backgroundColor = "var(--dt-bg-active)";
+      settingsLink.style.color = "var(--dt-text-primary)";
+    }
+  },
+};
+
 export const FocusState: Story = {
   play: async ({ canvasElement }) => {
     const settingsLink = canvasElement.querySelector('a[title="Settings"]');

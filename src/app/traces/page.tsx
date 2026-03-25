@@ -44,6 +44,10 @@ function resolveTraceViewTab(
   return "chat";
 }
 
+function isTracesSnapshotSelection(value: string | null | undefined): boolean {
+  return value === "none" || value === "__none__";
+}
+
 function TracePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -168,7 +172,9 @@ function TracePageContent() {
       // stays aligned with the rest of the app without narrowing the trace query.
       // Check URL parameter first, then keep current session if possible, finally fallback.
       const urlSessionId = searchParams.get("sessionId");
-      if (urlSessionId && sessionList.some((s) => s.sessionId === urlSessionId)) {
+      if (isTracesSnapshotSelection(urlSessionId)) {
+        setSelectedSessionId(null);
+      } else if (urlSessionId && sessionList.some((s) => s.sessionId === urlSessionId)) {
         setSelectedSessionId(urlSessionId);
       } else if (
         selectedSessionIdRef.current &&

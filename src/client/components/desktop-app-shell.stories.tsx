@@ -60,6 +60,17 @@ export const KanbanActive: Story = {
   },
 };
 
+export const HoverState: Story = {
+  args: defaultStoryArgs,
+  play: async ({ canvasElement }) => {
+    const firstNavLink = canvasElement.querySelector('[data-testid="desktop-shell-sidebar"] a');
+    if (firstNavLink instanceof HTMLElement) {
+      firstNavLink.style.backgroundColor = "var(--dt-bg-active)";
+      firstNavLink.style.color = "var(--dt-text-primary)";
+    }
+  },
+};
+
 export const FocusState: Story = {
   args: defaultStoryArgs,
   play: async ({ canvasElement }) => {

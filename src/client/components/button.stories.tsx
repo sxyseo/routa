@@ -47,6 +47,15 @@ export const Loading: Story = {
   },
 };
 
+export const HoverState: Story = {
+  play: async ({ canvasElement }) => {
+    const button = canvasElement.querySelector("button");
+    if (button instanceof HTMLElement) {
+      button.style.backgroundColor = "rgb(29 78 216)";
+    }
+  },
+};
+
 export const FocusState: Story = {
   play: async ({ canvasElement }) => {
     const button = canvasElement.querySelector("button");

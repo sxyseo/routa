@@ -31,17 +31,17 @@ const requiredManagerSnippets = [
 ];
 
 const requiredStories = {
-  "src/client/components/desktop-app-shell.stories.tsx": ["Default", "KanbanActive", "FocusState", "DarkMode"],
+  "src/client/components/desktop-app-shell.stories.tsx": ["Default", "KanbanActive", "HoverState", "FocusState", "DarkMode"],
   "src/client/components/desktop-layout.stories.tsx": ["Default", "LoadingSwitcher", "DarkMode"],
-  "src/client/components/desktop-sidebar.stories.tsx": ["OverviewActive", "KanbanActive", "FocusState", "DarkMode"],
-  "src/client/components/desktop-nav-rail.stories.tsx": ["OverviewActive", "TracesActive", "FocusState", "DarkMode"],
+  "src/client/components/desktop-sidebar.stories.tsx": ["OverviewActive", "KanbanActive", "HoverState", "FocusState", "DarkMode"],
+  "src/client/components/desktop-nav-rail.stories.tsx": ["OverviewActive", "TracesActive", "HoverState", "FocusState", "DarkMode"],
   "src/client/components/workspace-tab-bar.stories.tsx": ["OverviewActive", "NotesActive", "ActivityActive", "FocusState", "DarkMode"],
   "src/client/components/workspace-page-header.stories.tsx": ["Default", "StandbyState", "FocusState", "DarkMode"],
   "src/client/components/compact-stat.stories.tsx": ["Default", "NoSub", "DarkMode"],
   "src/client/components/overview-card.stories.tsx": ["Default", "LatestRecoveryPoint", "FocusState", "DarkMode"],
   "src/client/components/traces-page-header.stories.tsx": ["Default", "NoSessionSelected", "FocusState", "DarkMode"],
   "src/client/components/traces-view-tabs.stories.tsx": ["ChatActive", "TraceActive", "FocusState", "DarkMode"],
-  "src/client/components/button.stories.tsx": ["Primary", "Secondary", "Danger", "FocusState", "DarkMode"],
+  "src/client/components/button.stories.tsx": ["Primary", "Secondary", "Danger", "HoverState", "FocusState", "DarkMode"],
   "src/client/components/workspace-switcher.stories.tsx": ["Default", "DesktopCompact", "CreatingWorkspace", "DarkMode"],
   "src/client/components/repo-picker.stories.tsx": ["SelectedRepo", "ExistingReposTab", "CloneTab", "CloneInProgress", "DarkMode"],
   "src/client/components/branch-selector.stories.tsx": ["Default", "RemoteBranches", "Disabled", "DarkMode"],
