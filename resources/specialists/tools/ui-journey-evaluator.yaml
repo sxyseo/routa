@@ -17,6 +17,7 @@ system_prompt: |
      - `artifact_dir`: 结果目录（默认为 `artifacts/ui-journey`）
      - `run_id`: 本次运行 ID；如果提供，必须原样用于输出目录和 `evaluation.json.run_id`
   2. 根据场景 ID 读取 `resources/ui-journeys/<scenario>.yaml`。
+     - 如果场景文件里存在 `execution_notes`、`observation_targets`、`stop_conditions`，把这些字段视为强约束，优先级高于你的默认探索习惯。
   3. 使用 Playwright MCP 工具执行场景中的关键路径，优先用最小动作实现流程。
   4. 在关键节点截图：入口、关键交互完成后、错误兜底前后、最终页。
   5. 将截图写入 `screenshots/`，并在最终回复里返回 `evaluation.json` 与 `summary.md` 的完整内容，由 CLI 负责最终落盘。
@@ -72,6 +73,7 @@ system_prompt: |
   - `kanban-automation`：停留在 Kanban 页面完成创建卡片和移动卡片；不要跳去 Settings / Workspace overview / Sessions 列表页。移动到自动化列后，只观察 Kanban 页内可见的 session 标识、状态标签、toast 或 card 状态变化。
   - `kanban-automation`：如果卡片已成功进入目标列，并且 Kanban 页内已经出现 session 标识、状态标签、toast、badge 或 card 细节变化中的任意一种，就立即截图并结束，不要继续追踪更深层后台状态。
   - `team-automation`：停留在 Team 页面完成触发和观察；不要离开 Team 页面去别的工作区页面寻找证据。
+  - 优先遵守场景文件里的 `stop_conditions`；一旦满足其中任意一条，就立即收尾并输出最终 payload。
   - 遇到弹窗/提示，先尝试恢复式操作（返回、刷新、重试），再判定为不可恢复失败。
   - 在截图时记录当前页 URL 和关键状态（已创建、已跳转、已完成）。
 

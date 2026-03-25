@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use chrono::Local;
 use routa_core::acp::{get_preset_by_id_with_registry, AcpPreset};
@@ -11,6 +12,7 @@ pub(crate) const JOURNEY_EVALUATOR_ID: &str = "ui-journey-evaluator";
 pub(crate) const DEFAULT_SCENARIO_ID: &str = "unknown-scenario";
 pub(crate) const DEFAULT_BASE_URL: &str = "http://localhost:3000";
 pub(crate) const DEFAULT_ARTIFACT_DIR: &str = "artifacts/ui-journey";
+const DEFAULT_EXECUTION_BUDGET_MS: u64 = 240_000;
 const RESULT_PAYLOAD_START: &str = "<ui-journey-artifact>";
 const RESULT_PAYLOAD_END: &str = "</ui-journey-artifact>";
 
@@ -136,6 +138,15 @@ pub(crate) fn validate_prompt(prompt: &UiJourneyPromptParams) -> Result<(), Stri
     }
 
     Ok(())
+}
+
+pub(crate) fn execution_budget() -> Duration {
+    std::env::var("ROUTA_UI_JOURNEY_MAX_RUNTIME_MS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .map(Duration::from_millis)
+        .unwrap_or_else(|| Duration::from_millis(DEFAULT_EXECUTION_BUDGET_MS))
 }
 
 pub(crate) fn build_specialist_request(context: &UiJourneyRunContext) -> String {
@@ -845,14 +856,21 @@ fn verify_opencode_config_directory() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        output_contains_artifact_payload, parse_prompt, recover_success_artifacts_from_output,
-        validate_prompt, validate_success_artifacts, write_artifact_set, write_baseline_artifacts,
-        UiJourneyAggregateRun, UiJourneyPromptParams, UiJourneyRunContext, UiJourneyRunMetrics,
-        DEFAULT_ARTIFACT_DIR, DEFAULT_BASE_URL, DEFAULT_SCENARIO_ID,
+        execution_budget, output_contains_artifact_payload, parse_prompt,
+        recover_success_artifacts_from_output, validate_prompt, validate_success_artifacts,
+        write_artifact_set, write_baseline_artifacts, UiJourneyAggregateRun, UiJourneyPromptParams,
+        UiJourneyRunContext, UiJourneyRunMetrics, DEFAULT_ARTIFACT_DIR, DEFAULT_BASE_URL,
+        DEFAULT_SCENARIO_ID,
     };
     use serde_json::Value;
     use std::fs;
+    use std::sync::{Mutex, OnceLock};
     use tempfile::tempdir;
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn parses_ui_journey_prompt_kv_pairs() {
@@ -875,6 +893,21 @@ mod tests {
         assert_eq!(params.base_url, "http://127.0.0.1:3000");
         assert_eq!(params.artifact_dir, DEFAULT_ARTIFACT_DIR);
         assert_eq!(params.run_id.as_deref(), Some("20260325-120000-123"));
+    }
+
+    #[test]
+    fn uses_default_execution_budget() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::remove_var("ROUTA_UI_JOURNEY_MAX_RUNTIME_MS");
+        assert_eq!(execution_budget().as_secs(), 240);
+    }
+
+    #[test]
+    fn accepts_execution_budget_override_from_env() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::set_var("ROUTA_UI_JOURNEY_MAX_RUNTIME_MS", "1500");
+        assert_eq!(execution_budget().as_millis(), 1500);
+        std::env::remove_var("ROUTA_UI_JOURNEY_MAX_RUNTIME_MS");
     }
 
     #[test]

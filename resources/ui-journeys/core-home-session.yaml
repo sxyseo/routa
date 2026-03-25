@@ -5,6 +5,17 @@ entry_url: "http://localhost:3000"
 preconditions:
   - "至少存在一个 workspace"
   - "至少配置了一个 provider"
+execution_notes:
+  - "从首页进入 workspace 后，只完成 1 次 provider 选择和 1 次 prompt 提交，不要在多个 provider 之间来回切换。"
+  - "prompt 使用简短且唯一的文本，便于在 session 页面核对，例如带时间戳的 `ui-journey core-home-session`。"
+  - "成功跳转到 session 页面并看到 prompt 内容或活跃 session 信息后，就可以截图并结束，不要继续做无关探索。"
+observation_targets:
+  - "首页到 workspace 的导航是否清晰"
+  - "provider 选择控件、提交按钮、加载状态和错误提示"
+  - "session 页面中的 prompt 内容、Session 标识、继续交互能力"
+stop_conditions:
+  - "如果已进入 session 页面，并能看到本次提交的 prompt 或明显的 Session 标识，就立即截图并结束。"
+  - "如果提交后仍停留在原页、出现白屏/500，或 10 秒内没有进入 session 详情页，就记录失败并结束。"
 success_signals:
   - "成功跳转到 session 详情页"
   - "session 页面显示用户提交的 prompt 内容"

@@ -21,7 +21,8 @@ mod ui_journey;
 
 use ui_journey::{
     build_context as build_ui_journey_context,
-    build_specialist_request as build_ui_journey_specialist_request, generate_run_id,
+    build_specialist_request as build_ui_journey_specialist_request,
+    execution_budget as ui_journey_execution_budget, generate_run_id,
     load_aggregate_run as load_ui_journey_aggregate_run,
     output_contains_artifact_payload as ui_journey_output_contains_artifact_payload,
     recover_success_artifacts_from_output as recover_ui_journey_success_artifacts_from_output,
@@ -286,6 +287,9 @@ async fn execute_specialist_run(
     let journey_context = journey_context_override.or_else(|| {
         build_ui_journey_context(&selected_specialist.id, &user_prompt, effective_provider)
     });
+    let execution_budget = journey_context
+        .as_ref()
+        .map(|_| ui_journey_execution_budget());
     let mut metrics = UiJourneyRunMetrics {
         attempts: 0,
         provider_timeout_ms,
@@ -470,7 +474,53 @@ async fn execute_specialist_run(
     println!("🚀 Sending prompt to specialist...");
     println!();
 
-    let prompt_response = match state.acp_manager.prompt(&session_id, &initial_prompt).await {
+    let prompt_future = state.acp_manager.prompt(&session_id, &initial_prompt);
+    let prompt_response = match execution_budget {
+        Some(budget) => {
+            let remaining = budget.saturating_sub(run_start.elapsed());
+            if remaining.is_zero() {
+                let error = format!(
+                    "UI journey exceeded max runtime budget of {} seconds before prompt submission",
+                    budget.as_secs()
+                );
+                if let Some(context) = journey_context.as_ref() {
+                    metrics.elapsed_ms = run_start.elapsed().as_millis();
+                    write_ui_journey_failure_artifacts(
+                        context,
+                        "execution_timeout",
+                        &error,
+                        &metrics,
+                    );
+                }
+                state.acp_manager.kill_session(&session_id).await;
+                orchestrator.cleanup(&session_id).await;
+                return Err(error);
+            }
+            match tokio::time::timeout(remaining, prompt_future).await {
+                Ok(result) => result,
+                Err(_) => {
+                    let error = format!(
+                        "UI journey exceeded max runtime budget of {} seconds while waiting for prompt submission",
+                        budget.as_secs()
+                    );
+                    if let Some(context) = journey_context.as_ref() {
+                        metrics.elapsed_ms = run_start.elapsed().as_millis();
+                        write_ui_journey_failure_artifacts(
+                            context,
+                            "execution_timeout",
+                            &error,
+                            &metrics,
+                        );
+                    }
+                    state.acp_manager.kill_session(&session_id).await;
+                    orchestrator.cleanup(&session_id).await;
+                    return Err(error);
+                }
+            }
+        }
+        None => prompt_future.await,
+    };
+    let prompt_response = match prompt_response {
         Ok(response) => response,
         Err(err)
             if journey_context.is_some()
@@ -502,6 +552,18 @@ async fn execute_specialist_run(
     let mut collected_output = String::new();
 
     loop {
+        if let Some(budget) = execution_budget {
+            if run_start.elapsed() >= budget {
+                renderer.finish();
+                println!(
+                    "⏰ UI journey exceeded max runtime budget of {} seconds",
+                    budget.as_secs()
+                );
+                failure_reason = Some("execution_timeout".to_string());
+                break;
+            }
+        }
+
         match tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await {
             Ok(Ok(update)) => {
                 idle_count = 0;
@@ -587,10 +649,10 @@ async fn execute_specialist_run(
     if let Some(context) = journey_context.as_ref() {
         if let Some(reason) = failure_reason {
             metrics.elapsed_ms = run_start.elapsed().as_millis();
-            let failure_summary = if reason == "session_idle_timeout" {
-                "Session timed out with no activity"
-            } else {
-                "Provider process exited unexpectedly"
+            let failure_summary = match reason.as_str() {
+                "session_idle_timeout" => "Session timed out with no activity",
+                "execution_timeout" => "UI journey exceeded the maximum runtime budget",
+                _ => "Provider process exited unexpectedly",
             };
             write_ui_journey_failure_artifacts(context, reason.as_str(), failure_summary, &metrics);
             return Err(format!(
