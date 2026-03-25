@@ -24,6 +24,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | Home | `/` |  |
 | A2A Protocol Test Page | `/a2a` | Interactive testing interface for the Agent-to-Agent (A2A) protocol |
 | AG-UI Protocol Test Page | `/ag-ui` | Standalone page for testing AG-UI protocol integration |
+| Debug / Acp Replay | `/debug/acp-replay` |  |
 | MCP Tools Explorer | `/mcp-tools` | Browse and test Model Context Protocol (MCP) tools |
 | Messages Page - Notification & PR Agent Execution History | `/messages` | Shows: - All notifications with filtering - PR Agent execution history from back |
 | Settings Page | `/settings` | Provides a full-page UI for all Routa settings: - Providers (default agent provi |
