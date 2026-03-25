@@ -119,3 +119,5 @@ routa.db-shm
 dogfood-output
 .worktrees
 docs/issues/*-gh-*.md
+tools/ppt-template/output/
+tools/ppt-template/node_modules/

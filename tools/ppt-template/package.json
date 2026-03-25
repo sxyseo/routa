@@ -1,0 +1,14 @@
+{
+  "name": "@routa/ppt-template",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Generate PowerPoint templates from Routa color tokens",
+  "scripts": {
+    "generate": "node src/generate-template.mjs",
+    "generate:release:v0.2.7": "node src/release-notes-to-ppt.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "^3.12.0"
+  }
+}
