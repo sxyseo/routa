@@ -37,6 +37,8 @@ interface HomeInputProps {
   workspaceId?: string;
   /** Visual style variant */
   variant?: "default" | "hero";
+  /** Footer metadata density below the input */
+  footerMetaMode?: "default" | "repo-only";
   /** Called when workspace selection changes */
   onWorkspaceChange?: (workspaceId: string | null) => void;
   onSessionCreated?: (
@@ -63,6 +65,7 @@ interface HomeInputProps {
 export function HomeInput({
   workspaceId: propWorkspaceId,
   variant = "default",
+  footerMetaMode = "default",
   onWorkspaceChange,
   onSessionCreated,
   lockedSpecialistId,
@@ -559,7 +562,7 @@ export function HomeInput({
             </span>
           </div>
         )}
-        {effectiveSelectedSpecialistId ? (
+        {footerMetaMode === "default" && effectiveSelectedSpecialistId ? (
           (() => {
             const spec = selectedSpecialist;
             return (
@@ -572,7 +575,7 @@ export function HomeInput({
               </div>
             );
           })()
-        ) : selectedRole === "ROUTA" ? (
+        ) : footerMetaMode === "default" && selectedRole === "ROUTA" ? (
           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
             <span className="w-2 h-2 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
               <svg className="w-1 h-1 text-amber-500" fill="currentColor" viewBox="0 0 8 8">
@@ -581,7 +584,7 @@ export function HomeInput({
             </span>
             <span>适合复杂任务 · 自动拆解需求并分配给多个专属 Agent</span>
           </div>
-        ) : (
+        ) : footerMetaMode === "default" ? (
           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
             <span className="flex h-2 w-2 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-800">
               <svg className="w-1 h-1 text-slate-500" fill="currentColor" viewBox="0 0 8 8">
@@ -590,7 +593,7 @@ export function HomeInput({
             </span>
             <span>适合简单快速任务 · 单 Agent 直接执行</span>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ─── Skills — horizontal scroll row ─────────────────────── */}
