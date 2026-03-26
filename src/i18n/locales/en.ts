@@ -155,10 +155,36 @@ const en: TranslationDictionary = {
   },
 
   onboarding: {
+    title: "Set up your first workspace",
     createWorkspace: "Create a workspace",
     description:
       "Organize sessions, boards, and traces under a single workspace. Get started by creating your first one.",
     getStarted: "Get Started",
+    checklistTitle: "Onboarding Checklist",
+    checklistDescription:
+      "Finish the minimum setup for this workspace so providers, repositories, and session modes are ready when you need them.",
+    workspaceNameLabel: "Workspace name",
+    workspaceNamePlaceholder: "Platform rollout",
+    openProviders: "Open provider settings",
+    nextSteps: "Next steps",
+    providerTitle: "Configure a provider",
+    providerDescription: "Open Settings to connect an ACP provider or confirm a local runtime is ready.",
+    providerAction: "Configure providers",
+    providerReady: "Provider ready",
+    codebaseTitle: "Add your first codebase",
+    codebaseDescription: "Pick a local repository or clone one from GitHub so sessions can start with repo context.",
+    codebaseAction: "Save repository",
+    codebaseReady: "A repository is already attached to this workspace.",
+    modeTitle: "Choose your working mode",
+    modeDescription: "Pick the mode you expect to use most often. You can still switch modes when starting a session.",
+    modeReady: "Preferred mode",
+    modeRoutaTitle: "Routa",
+    modeRoutaDescription: "Best for larger tasks that need planning, delegation, and coordination across multiple agents.",
+    modeCrafterTitle: "Crafter",
+    modeCrafterDescription: "Best for focused implementation work when you want a direct coding agent without orchestration overhead.",
+    continueLater: "Continue without checklist",
+    completed: "complete",
+    pending: "pending",
   },
 
   skills: {

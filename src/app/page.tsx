@@ -5,11 +5,20 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { HomeInput } from "@/client/components/home-input";
+import type { RepoSelection } from "@/client/components/repo-picker";
 import { ConnectionDot, OnboardingCard } from "@/client/components/home-page-sections";
 import { useAcp } from "@/client/hooks/use-acp";
-import { useWorkspaces } from "@/client/hooks/use-workspaces";
+import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { NotificationBell, NotificationProvider } from "@/client/components/notification-center";
-import { SettingsPanel } from "@/client/components/settings-panel";
+import { SettingsPanel, loadDefaultProviders, loadProviderConnections } from "@/client/components/settings-panel";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import {
+  ONBOARDING_COMPLETED_KEY,
+  ONBOARDING_MODE_KEY,
+  hasSavedProviderConfiguration,
+  parseOnboardingMode,
+  type OnboardingMode,
+} from "@/client/utils/onboarding";
 import { useTranslation } from "@/i18n";
 
 export default function HomePage() {
@@ -20,9 +29,12 @@ export default function HomePage() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"providers" | "roles" | "specialists" | undefined>(undefined);
+  const [preferredMode, setPreferredMode] = useState<OnboardingMode | null>(null);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
 
   const [showWorkspacesMenu, setShowWorkspacesMenu] = useState(false);
   const workspacesMenuRef = useRef<HTMLDivElement>(null);
+  const { codebases, fetchCodebases } = useCodebases(activeWorkspaceId ?? "");
 
   useEffect(() => {
     if (!activeWorkspaceId && workspacesHook.workspaces.length > 0) {
@@ -48,6 +60,15 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showWorkspacesMenu]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    setOnboardingCompleted(window.localStorage.getItem(ONBOARDING_COMPLETED_KEY) === "true");
+    setPreferredMode(parseOnboardingMode(window.localStorage.getItem(ONBOARDING_MODE_KEY)));
+  }, []);
+
   const handleWorkspaceSelect = useCallback((workspaceId: string) => {
     setActiveWorkspaceId(workspaceId);
     setShowWorkspacesMenu(false);
@@ -58,14 +79,78 @@ export default function HomePage() {
     if (workspace) {
       handleWorkspaceSelect(workspace.id);
       setShowWorkspacesMenu(false);
+      return true;
     }
+    return false;
   }, [handleWorkspaceSelect, workspacesHook]);
+
+  const handleOpenProviders = useCallback(() => {
+    setSettingsInitialTab("providers");
+    setShowSettingsPanel(true);
+  }, []);
+
+  const handleModeSelect = useCallback((mode: OnboardingMode) => {
+    setPreferredMode(mode);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ONBOARDING_MODE_KEY, mode);
+    }
+  }, []);
+
+  const handleDismissOnboarding = useCallback(() => {
+    setOnboardingCompleted(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ONBOARDING_COMPLETED_KEY, "true");
+    }
+  }, []);
+
+  const handleAddCodebase = useCallback(async (selection: RepoSelection) => {
+    if (!activeWorkspaceId) {
+      return false;
+    }
+
+    const res = await desktopAwareFetch(`/api/workspaces/${encodeURIComponent(activeWorkspaceId)}/codebases`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repoPath: selection.path,
+        branch: selection.branch || undefined,
+        label: selection.name || undefined,
+      }),
+    });
+
+    if (!res.ok) {
+      return false;
+    }
+
+    await fetchCodebases();
+    return true;
+  }, [activeWorkspaceId, fetchCodebases]);
 
   const activeWorkspace = workspacesHook.workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
   const workspaceCount = workspacesHook.workspaces.length;
+  const hasWorkspace = workspaceCount > 0;
+  const hasCodebase = codebases.length > 0;
+  const hasProviderConfig =
+    hasSavedProviderConfiguration(loadDefaultProviders(), loadProviderConnections()) ||
+    acp.providers.some((provider) => provider.status === "available");
+  const needsInlineOnboarding =
+    hasWorkspace &&
+    (!hasProviderConfig || !hasCodebase || preferredMode === null) &&
+    !onboardingCompleted;
 
   const activeKanbanHref = activeWorkspaceId ? `/workspace/${activeWorkspaceId}/kanban` : "/";
   const activeWorkspaceHref = activeWorkspaceId ? `/workspace/${activeWorkspaceId}` : "/";
+
+  useEffect(() => {
+    if (!hasWorkspace || !hasProviderConfig || !hasCodebase || preferredMode === null) {
+      return;
+    }
+
+    setOnboardingCompleted(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ONBOARDING_COMPLETED_KEY, "true");
+    }
+  }, [hasWorkspace, hasProviderConfig, hasCodebase, preferredMode]);
 
   return (
     <NotificationProvider>
@@ -133,12 +218,39 @@ export default function HomePage() {
             </div>
           ) : workspacesHook.workspaces.length === 0 ? (
             <div className="flex h-full items-center justify-center">
-              <OnboardingCard onCreateWorkspace={handleWorkspaceCreate} />
+              <OnboardingCard
+                hasWorkspace={false}
+                workspaceTitle={null}
+                hasProviderConfig={hasProviderConfig}
+                hasCodebase={false}
+                preferredMode={preferredMode}
+                onCreateWorkspace={handleWorkspaceCreate}
+                onOpenProviders={handleOpenProviders}
+                onAddCodebase={handleAddCodebase}
+                onSelectMode={handleModeSelect}
+              />
             </div>
           ) : (
             <div className="mx-auto flex w-full max-w-5xl px-3 py-6 sm:px-6 sm:py-10">
               <section className="w-full overflow-hidden rounded-[34px] border border-sky-200/75 bg-[linear-gradient(180deg,rgba(252,254,255,0.98),rgba(237,246,255,0.95))] shadow-[0_60px_170px_-120px_rgba(37,99,235,0.45)] dark:border-[#223049] dark:bg-[linear-gradient(180deg,rgba(7,12,21,0.96),rgba(9,15,26,0.98))]">
                 <div className="p-4 sm:p-6 lg:p-8">
+                  {needsInlineOnboarding && (
+                    <div className="mb-6">
+                      <OnboardingCard
+                        hasWorkspace={true}
+                        workspaceTitle={activeWorkspace?.title ?? null}
+                        hasProviderConfig={hasProviderConfig}
+                        hasCodebase={hasCodebase}
+                        preferredMode={preferredMode}
+                        onCreateWorkspace={handleWorkspaceCreate}
+                        onOpenProviders={handleOpenProviders}
+                        onAddCodebase={handleAddCodebase}
+                        onSelectMode={handleModeSelect}
+                        onDismiss={handleDismissOnboarding}
+                      />
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[#4a74a8] dark:text-slate-400">
                     <span className="rounded-full border border-sky-200/70 bg-white/80 px-3 py-1.5 dark:border-white/10 dark:bg-white/5">
                       {t.home.minimalHome}
@@ -229,7 +341,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => {
-                  handleWorkspaceCreate("New Workspace");
+                  void handleWorkspaceCreate("New Workspace");
                   setShowWorkspacesMenu(false);
                 }}
                 className="mt-1 flex w-full items-center rounded-xl bg-sky-50 px-3 py-2 text-left text-sm text-[#081120] transition-colors hover:bg-sky-100 dark:bg-[#1a1f31] dark:text-slate-200 dark:hover:bg-[#232a3f]"

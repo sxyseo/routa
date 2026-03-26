@@ -153,10 +153,36 @@ const zh: TranslationDictionary = {
   },
 
   onboarding: {
+    title: "设置你的第一个工作区",
     createWorkspace: "创建工作区",
     description:
       "将会话、看板和追踪组织在一个工作区下。从创建你的第一个工作区开始。",
     getStarted: "开始使用",
+    checklistTitle: "新手引导清单",
+    checklistDescription:
+      "完成当前工作区的最小配置，这样 Provider、仓库和会话模式都能在真正开始工作前准备好。",
+    workspaceNameLabel: "工作区名称",
+    workspaceNamePlaceholder: "平台发布计划",
+    openProviders: "打开 Provider 设置",
+    nextSteps: "接下来要做",
+    providerTitle: "配置 Provider",
+    providerDescription: "打开设置，连接一个 ACP Provider，或确认本地运行时已经可用。",
+    providerAction: "配置 Provider",
+    providerReady: "Provider 已就绪",
+    codebaseTitle: "添加第一个代码库",
+    codebaseDescription: "选择本地仓库或从 GitHub 克隆一个仓库，让会话从代码上下文开始。",
+    codebaseAction: "保存仓库",
+    codebaseReady: "当前工作区已经关联了一个仓库。",
+    modeTitle: "选择工作模式",
+    modeDescription: "选择你最常用的模式。开始会话时仍然可以切换。",
+    modeReady: "偏好模式",
+    modeRoutaTitle: "Routa",
+    modeRoutaDescription: "适合需要规划、拆解和多智能体协同的大任务。",
+    modeCrafterTitle: "Crafter",
+    modeCrafterDescription: "适合聚焦实现的直接编码任务，不需要额外编排开销。",
+    continueLater: "先跳过清单",
+    completed: "已完成",
+    pending: "待完成",
   },
 
   skills: {

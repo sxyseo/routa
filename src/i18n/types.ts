@@ -160,9 +160,34 @@ export interface TranslationDictionary {
 
   // Onboarding
   onboarding: {
+    title: string;
     createWorkspace: string;
     description: string;
     getStarted: string;
+    checklistTitle: string;
+    checklistDescription: string;
+    workspaceNameLabel: string;
+    workspaceNamePlaceholder: string;
+    openProviders: string;
+    nextSteps: string;
+    providerTitle: string;
+    providerDescription: string;
+    providerAction: string;
+    providerReady: string;
+    codebaseTitle: string;
+    codebaseDescription: string;
+    codebaseAction: string;
+    codebaseReady: string;
+    modeTitle: string;
+    modeDescription: string;
+    modeReady: string;
+    modeRoutaTitle: string;
+    modeRoutaDescription: string;
+    modeCrafterTitle: string;
+    modeCrafterDescription: string;
+    continueLater: string;
+    completed: string;
+    pending: string;
   };
 
   // Skills
