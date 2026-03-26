@@ -10,6 +10,11 @@ on:
         description: "Semver version to release, ex: 0.2.4 or v0.2.4"
         required: true
         type: string
+      dry_run:
+        description: "Build and package only without publishing release assets"
+        required: false
+        default: false
+        type: boolean
       publish_cli:
         description: "Publish npm CLI packages"
         required: false
@@ -51,9 +56,22 @@ jobs:
     needs: resolve-version
     if: |
       github.event_name == 'push' ||
-      github.event.inputs.publish_desktop == 'true' ||
-      github.event.inputs.publish_desktop == true
+      (
+        (github.event.inputs.dry_run == 'false' || github.event.inputs.dry_run == false) &&
+        (github.event.inputs.publish_desktop == 'true' || github.event.inputs.publish_desktop == true)
+      )
     uses: ./.github/workflows/tauri-release.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.version }}
+    secrets: inherit
+
+  build-desktop:
+    name: Build desktop only
+    needs: resolve-version
+    if: |
+      github.event.inputs.dry_run == 'true' ||
+      github.event.inputs.dry_run == true
+    uses: ./.github/workflows/tauri-build.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
     secrets: inherit
@@ -63,10 +81,12 @@ jobs:
     needs: resolve-version
     if: |
       github.event_name == 'push' ||
+      github.event.inputs.dry_run == 'true' ||
+      github.event.inputs.dry_run == true ||
       github.event.inputs.publish_cli == 'true' ||
       github.event.inputs.publish_cli == true
     uses: ./.github/workflows/cli-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
-      publish: true
+      publish: ${{ github.event_name == 'push' || ((github.event.inputs.dry_run != 'true' && github.event.inputs.dry_run != true) && (github.event.inputs.publish_cli == 'true' || github.event.inputs.publish_cli == true)) }}
     secrets: inherit
