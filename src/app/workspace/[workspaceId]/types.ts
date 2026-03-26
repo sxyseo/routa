@@ -29,6 +29,11 @@ export interface KanbanAgentPromptOptions {
   systemPrompt?: string;
 }
 
+export type KanbanAgentPromptHandler = (
+  prompt: string,
+  options?: KanbanAgentPromptOptions,
+) => Promise<string | null>;
+
 export type KanbanDevSessionSupervisionMode = "disabled" | "watchdog_retry" | "ralph_loop";
 export type KanbanDevSessionCompletionRequirement =
   | "turn_complete"

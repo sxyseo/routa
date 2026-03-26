@@ -16,6 +16,7 @@ import {
 } from "./kanban-specialist-language";
 import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type {
+  KanbanAgentPromptHandler,
   KanbanAgentPromptOptions,
   KanbanBoardInfo,
   TaskInfo,
@@ -362,7 +363,7 @@ export function KanbanPageClient() {
   }, []);
 
   // Handler for agent input - creates session and sends prompt
-  const handleAgentPrompt = useCallback(async (
+  const handleAgentPrompt: KanbanAgentPromptHandler = useCallback(async (
     promptText: string,
     options?: KanbanAgentPromptOptions,
   ): Promise<string | null> => {

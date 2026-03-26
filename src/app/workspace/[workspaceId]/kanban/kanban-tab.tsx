@@ -8,7 +8,7 @@ import {
   resolveEffectiveTaskAutomation,
 } from "@/core/kanban/effective-task-automation";
 import type {
-  KanbanAgentPromptOptions,
+  KanbanAgentPromptHandler,
   KanbanBoardInfo,
   SessionInfo,
   TaskInfo,
@@ -71,10 +71,7 @@ interface KanbanTabProps {
   /** ACP state and actions for agent input and session management */
   acp?: UseAcpState & UseAcpActions;
   /** Handler for agent prompt - creates session and sends prompt */
-  onAgentPrompt?: (
-    prompt: string,
-    options?: KanbanAgentPromptOptions,
-  ) => Promise<string | null>;
+  onAgentPrompt?: KanbanAgentPromptHandler;
 }
 
 const KANBAN_DETAIL_SPLIT_RATIO_KEY = "routa:kanban-detail-split-ratio";
