@@ -43,6 +43,22 @@ type HookPhaseResult = {
   details?: string;
 };
 
+export function formatReviewPhaseLabel(result: ReviewPhaseResult): string {
+  if (result.status === "unavailable") {
+    return result.bypassed ? "unavailable (bypassed)" : "unavailable";
+  }
+
+  if (result.status === "blocked") {
+    return "blocked";
+  }
+
+  if (result.status === "error") {
+    return "error";
+  }
+
+  return "passed";
+}
+
 function parseOutputMode(raw: string | undefined): "human" | "jsonl" {
   if (raw === "jsonl") {
     return "jsonl";
@@ -412,12 +428,13 @@ async function runReviewPhase(dryRun: boolean, outputMode: "human" | "jsonl"): P
   const startedAt = Date.now();
   const result = await runReviewTriggerPhase(outputMode);
   if (outputMode === "human") {
-    console.log(`[phase 3/3] review checks ${result.allowed ? "passed" : "blocked"}`);
+    console.log(`[phase 3/3] review checks ${formatReviewPhaseLabel(result)}`);
   }
   emitEvent(outputMode, {
     event: "phase.complete",
     phase: "review",
     status: result.allowed ? "passed" : "failed",
+    allowed: result.allowed,
     durationMs: Date.now() - startedAt,
     base: result.base,
     bypassed: result.bypassed,
@@ -425,7 +442,7 @@ async function runReviewPhase(dryRun: boolean, outputMode: "human" | "jsonl"): P
     changedFiles: result.changedFiles,
     diffFileCount: result.diffFileCount,
     message: result.message,
-    statusCode: result.status,
+    reviewStatus: result.status,
   });
 
   return result;
