@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
+import { I18nProvider } from "@/i18n";
 
 const THEME_INIT_SCRIPT = `
 (() => {
@@ -38,8 +40,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-        {children}
+        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <I18nProvider>{children}</I18nProvider>
       </body>
     </html>
   );

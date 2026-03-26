@@ -10,10 +10,12 @@ import { useAcp } from "@/client/hooks/use-acp";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { NotificationBell, NotificationProvider } from "@/client/components/notification-center";
 import { SettingsPanel } from "@/client/components/settings-panel";
+import { useTranslation } from "@/i18n";
 
 export default function HomePage() {
   const workspacesHook = useWorkspaces();
   const acp = useAcp();
+  const { t } = useTranslation();
 
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -85,7 +87,7 @@ export default function HomePage() {
                 Routa
               </div>
               <div className="hidden text-[10px] uppercase tracking-[0.28em] text-[#4c7ec3] sm:block dark:text-sky-400/70">
-                Kanban-First Control Surface
+                {t.home.subtitle}
               </div>
             </div>
           </div>
@@ -98,7 +100,7 @@ export default function HomePage() {
                 href={activeKanbanHref}
                 className="rounded-full px-3 py-1.5 text-[11px] font-medium text-[#46638b] transition-colors hover:bg-sky-100/70 hover:text-[#081120] dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-100"
               >
-                Kanban
+                {t.nav.kanban}
               </Link>
             )}
 
@@ -110,7 +112,7 @@ export default function HomePage() {
                 setShowSettingsPanel(true);
               }}
               className="rounded-full p-2 text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-white/5 dark:hover:text-gray-300"
-              title="Settings"
+              title={t.nav.settings}
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
@@ -127,7 +129,7 @@ export default function HomePage() {
         <main className="relative z-10 flex-1 overflow-y-auto">
           {workspacesHook.loading ? (
             <div className="flex h-full items-center justify-center text-sm text-gray-400 dark:text-slate-500">
-              Loading workspaces...
+              {t.home.loadingWorkspaces}
             </div>
           ) : workspacesHook.workspaces.length === 0 ? (
             <div className="flex h-full items-center justify-center">
@@ -139,30 +141,30 @@ export default function HomePage() {
                 <div className="p-4 sm:p-6 lg:p-8">
                   <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[#4a74a8] dark:text-slate-400">
                     <span className="rounded-full border border-sky-200/70 bg-white/80 px-3 py-1.5 dark:border-white/10 dark:bg-white/5">
-                      Minimal Home
+                      {t.home.minimalHome}
                     </span>
                     <span className="rounded-full border border-sky-200/70 bg-white/60 px-3 py-1.5 dark:border-white/10 dark:bg-white/[0.03]">
-                      {String(workspaceCount).padStart(2, "0")} workspaces
+                      {String(workspaceCount).padStart(2, "0")} {t.home.workspaceCount}
                     </span>
                     <span className="rounded-full border border-sky-200/70 bg-white/60 px-3 py-1.5 dark:border-white/10 dark:bg-white/[0.03]">
-                      {acp.connected ? "Runtime ready" : "Runtime offline"}
+                      {acp.connected ? t.home.runtimeReady : t.home.runtimeOffline}
                     </span>
                   </div>
 
                   <h1 className="mt-5 max-w-3xl font-['Avenir_Next_Condensed','Avenir_Next','Segoe_UI','Helvetica_Neue',sans-serif] text-[2.3rem] leading-[0.94] font-semibold tracking-[-0.05em] text-[#081120] dark:text-white sm:text-[3.1rem]">
-                    Start with a requirement.
+                    {t.home.heroTitle}
                   </h1>
                   <p className="mt-4 max-w-2xl text-sm leading-7 text-[#4d6689] dark:text-slate-300">
-                    Pick a workspace, describe the task, and route it. Everything else can happen after you enter the flow.
+                    {t.home.heroDescription}
                   </p>
 
                   <div className="mt-6 rounded-[30px] border border-sky-200/80 bg-white/82 p-4 shadow-[0_30px_100px_-58px_rgba(37,99,235,0.24)] backdrop-blur dark:border-white/10 dark:bg-[#0a1322]/70 sm:p-5">
                     <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#356fb0] dark:text-slate-400">
-                        Composer
+                        {t.home.composer}
                       </div>
                       <div className="text-[10px] uppercase tracking-[0.16em] text-[#6b84aa] dark:text-slate-500">
-                        Current workspace: {activeWorkspace?.title ?? "None"}
+                        {t.home.currentWorkspace}: {activeWorkspace?.title ?? t.common.none}
                       </div>
                     </div>
                     <HomeInput
@@ -180,19 +182,19 @@ export default function HomePage() {
                       onClick={() => setShowWorkspacesMenu((value) => !value)}
                       className="inline-flex items-center justify-center rounded-full border border-sky-200/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#45678f] transition-colors hover:border-sky-300 hover:text-[#081120] dark:border-[#2a3042] dark:text-slate-400 dark:hover:border-[#39415a] dark:hover:text-slate-200"
                     >
-                      {activeWorkspace?.title ?? "Switch workspace"}
+                      {activeWorkspace?.title ?? t.home.switchWorkspace}
                     </button>
                     <Link
                       href={activeWorkspaceHref}
                       className="inline-flex items-center justify-center rounded-full border border-sky-200/70 bg-white/90 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2b6fc8] transition-colors hover:bg-white dark:border-white/10 dark:bg-[#1b2232] dark:text-slate-300 dark:hover:bg-[#101826]"
                     >
-                      Workspace overview
+                      {t.home.workspaceOverview}
                     </Link>
                     <Link
                       href={activeKanbanHref}
                       className="inline-flex items-center justify-center rounded-full bg-[#0f62d6] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#2a77e4] dark:bg-[#5ee5ff] dark:text-[#04111d] dark:hover:bg-[#87edff]"
                     >
-                      Open Kanban
+                      {t.home.openKanban}
                     </Link>
                   </div>
                 </div>
@@ -220,7 +222,7 @@ export default function HomePage() {
                 >
                   <span className="truncate text-[#081120] dark:text-slate-100">{workspace.title}</span>
                   <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-700 dark:bg-sky-900/35 dark:text-sky-200">
-                    {workspace.id === activeWorkspaceId ? "Active" : "Enter"}
+                    {workspace.id === activeWorkspaceId ? t.common.active : t.common.enter}
                   </span>
                 </button>
               ))}
@@ -232,7 +234,7 @@ export default function HomePage() {
                 }}
                 className="mt-1 flex w-full items-center rounded-xl bg-sky-50 px-3 py-2 text-left text-sm text-[#081120] transition-colors hover:bg-sky-100 dark:bg-[#1a1f31] dark:text-slate-200 dark:hover:bg-[#232a3f]"
               >
-                + New workspace
+                {t.home.newWorkspace}
               </button>
             </div>
           </div>

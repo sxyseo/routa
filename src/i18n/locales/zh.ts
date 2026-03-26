@@ -1,0 +1,211 @@
+import type { TranslationDictionary } from "../types";
+
+const zh: TranslationDictionary = {
+  common: {
+    save: "保存",
+    cancel: "取消",
+    close: "关闭",
+    create: "创建",
+    delete: "删除",
+    edit: "编辑",
+    add: "添加",
+    remove: "移除",
+    refresh: "刷新",
+    loading: "加载中…",
+    search: "搜索",
+    confirm: "确认",
+    back: "返回",
+    next: "下一步",
+    submit: "提交",
+    retry: "重试",
+    dismiss: "关闭",
+    upload: "上传",
+    download: "下载",
+    export: "导出",
+    import: "导入",
+    clone: "克隆",
+    send: "发送",
+    auto: "自动",
+    none: "无",
+    active: "活跃",
+    enter: "进入",
+    unavailable: "不可用",
+    viewAll: "查看全部",
+  },
+
+  home: {
+    subtitle: "看板优先控制台",
+    minimalHome: "极简主页",
+    workspaceCount: "个工作区",
+    runtimeReady: "运行时就绪",
+    runtimeOffline: "运行时离线",
+    heroTitle: "从需求开始。",
+    heroDescription:
+      "选择工作区，描述任务，然后路由。其他一切都可以在你进入流程之后发生。",
+    composer: "编排器",
+    currentWorkspace: "当前工作区",
+    switchWorkspace: "切换工作区",
+    workspaceOverview: "工作区概览",
+    openKanban: "打开看板",
+    newWorkspace: "+ 新建工作区",
+    loadingWorkspaces: "正在加载工作区...",
+    inputPlaceholder: "你在做什么？（@ 文件，/ 技能）",
+    sendHint: "⏎ 发送",
+    multiAgent: "多智能体",
+    direct: "直接执行",
+    multiAgentDesc: "适合复杂任务 · 自动拆解需求并分配给多个专属 Agent",
+    directDesc: "适合简单快速任务 · 单 Agent 直接执行",
+    customSpecialist: "自定义专家",
+    specialistMode: "专家模式",
+    repoPath: "仓库路径",
+  },
+
+  nav: {
+    kanban: "看板",
+    settings: "设置",
+    notifications: "通知",
+    connected: "已连接",
+    offline: "离线",
+    openSidebar: "打开侧边栏",
+    closeSidebar: "关闭侧边栏",
+  },
+
+  settings: {
+    title: "设置",
+    theme: "主题",
+    light: "浅色",
+    dark: "深色",
+    system: "跟随系统",
+    providers: "供应商",
+    roles: "角色",
+    specialists: "专家",
+    models: "模型",
+    mcpServers: "MCP 服务器",
+    webhooks: "Webhooks",
+    schedules: "定时任务",
+    workflows: "工作流",
+    roleDefaults: "角色默认值",
+    roleDefaultsDesc:
+      "配置每个 Routa 角色的默认供应商和模型覆盖。ROUTA 专有设置在此处，而非供应商标签页。",
+    provider: "供应商",
+    modelOverride: "模型覆盖",
+    builtIn: "内置",
+    custom: "自定义",
+    registry: "注册中心",
+    systemInfo: "系统信息",
+    memory: "内存",
+    sessions: "会话",
+    refreshSystemInfo: "刷新系统信息",
+    language: "语言",
+  },
+
+  roles: {
+    routa: "协调者 – 规划和委派",
+    crafter: "实现者 – 编写代码",
+    gate: "验证者 – 审查代码",
+    developer: "全栈 – 规划、实现和验证",
+  },
+
+  workspace: {
+    selectWorkspace: "选择工作区",
+    select: "选择",
+    noWorkspacesYet: "暂无工作区",
+    newWorkspace: "新建工作区",
+    workspaceName: "工作区名称...",
+    workspaces: "工作区",
+    currentLabel: "当前",
+    recentActivity: "最近的会话活动",
+    noRecentSessions: "暂无最近会话",
+  },
+
+  notifications: {
+    title: "通知",
+    markAllRead: "全部已读",
+    viewAll: "查看全部 →",
+    empty: "暂无通知",
+  },
+
+  story: {
+    productFlow: "产品流程",
+    scrollSurfaces: "按顺序浏览各个界面。",
+    intentCapture: "意图捕获",
+    intentCaptureTitle: "从需求开始，而不是从仪表板开始。",
+    intentCaptureBody:
+      "编排器始终在最前面。仓库范围、工作区上下文和智能体选择都附加在提示上，让任务从思考发生的地方开始。",
+    parallelRouting: "并行路由",
+    parallelRoutingTitle: "让编排扇出，无需切换界面。",
+    parallelRoutingBody:
+      "Routa 可以启动专业智能体，保持执行图可见，将单一需求转化为协调工作，无需用户进入设置界面。",
+    operationalView: "运营视图",
+    operationalViewTitle: "看板成为实时运营界面，而非首页。",
+    operationalViewBody:
+      "运行开始后，看板和工作区视图充当遥测层。它们在启动后展示压力、归属和吞吐量，而非启动前。",
+    traceReview: "追踪回顾",
+    traceReviewTitle: "以证据结束，而非沉默。",
+    traceReviewBody:
+      "每个会话都会写入可观察的追踪。Token 流、工具调用和成本在任务完成后显示，让用户看到发生了什么并信任结果。",
+    runtimeOnline: "运行时在线",
+    runtimeOffline: "运行时离线",
+    activeModules: "活跃模块",
+    skills: "技能",
+    liveTasks: "实时任务",
+    noActiveTasks: "暂无活跃任务",
+  },
+
+  onboarding: {
+    createWorkspace: "创建工作区",
+    description:
+      "将会话、看板和追踪组织在一个工作区下。从创建你的第一个工作区开始。",
+    getStarted: "开始使用",
+  },
+
+  skills: {
+    searchPlaceholder: "搜索技能…（例如 react、supabase、testing）",
+    catalog: "目录",
+    cloneSkills: "克隆",
+    uploadSkill: "上传",
+    reload: "重新加载",
+    browseCatalog: "浏览技能目录",
+    cloneFromGithub: "从 GitHub 克隆技能",
+    uploadZip: "上传技能 zip 包",
+    cloneFailed: "克隆技能失败",
+    uploadFailed: "上传失败",
+  },
+
+  agents: {
+    loadingFromRegistry: "正在从注册中心加载智能体…",
+    failedToLoad: "加载智能体失败",
+    installFailed: "安装失败",
+    uninstallFailed: "卸载失败",
+    failedToFetchRegistry: "获取注册中心失败",
+  },
+
+  tasks: {
+    objective: "目标",
+    scope: "范围",
+    definitionOfDone: "完成定义",
+    title: "标题",
+  },
+
+  workflows: {
+    newWorkflow: "新建工作流",
+    editLabel: "编辑：",
+    saving: "保存中…",
+    executionFailed: "执行失败",
+    selectWorkspaceFirst: "请先选择一个工作区再运行此工作流",
+  },
+
+  traces: {
+    title: "追踪",
+    chat: "对话",
+    eventBridge: "事件桥接",
+  },
+
+  errors: {
+    generic: "出了点问题",
+    saveFailed: "保存失败",
+    loadFailed: "加载失败",
+  },
+};
+
+export default zh;

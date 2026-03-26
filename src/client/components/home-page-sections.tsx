@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import { useTranslation } from "@/i18n";
 
 interface FeaturedSkill {
   name: string;
@@ -60,11 +61,12 @@ const storySteps = [
 ] as const;
 
 export function ConnectionDot({ connected }: { connected: boolean }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-1.5" title={connected ? "Connected" : "Disconnected"}>
+    <div className="flex items-center gap-1.5" title={connected ? t.nav.connected : t.nav.offline}>
       <span className={`h-1.5 w-1.5 rounded-full ring-4 transition-colors ${connected ? "bg-emerald-500 ring-emerald-500/10" : "bg-amber-400 ring-amber-400/10"}`} />
       <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#577090] dark:text-slate-500">
-        {connected ? "Connected" : "Offline"}
+        {connected ? t.nav.connected : t.nav.offline}
       </span>
     </div>
   );
@@ -630,6 +632,7 @@ export function HomeTodoPreview({
 }
 
 export function OnboardingCard({ onCreateWorkspace }: { onCreateWorkspace: (title: string) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="w-full max-w-md rounded-[32px] border border-sky-200/75 bg-[linear-gradient(180deg,rgba(250,253,255,0.96),rgba(237,244,255,0.92))] px-8 py-10 text-center shadow-[0_36px_100px_-60px_rgba(37,99,235,0.28)] dark:border-[#223049] dark:bg-[linear-gradient(180deg,rgba(10,15,26,0.98),rgba(12,18,30,0.95))]">
       <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-[#0f62d6] to-[#38bdf8] shadow-lg shadow-sky-500/20">
@@ -638,17 +641,17 @@ export function OnboardingCard({ onCreateWorkspace }: { onCreateWorkspace: (titl
         </svg>
       </div>
       <h2 className="mb-1.5 font-['Avenir_Next_Condensed','Avenir_Next','Segoe_UI','Helvetica_Neue',sans-serif] text-[2rem] font-semibold tracking-[-0.05em] text-slate-900 dark:text-white">
-        Create a workspace
+        {t.onboarding.createWorkspace}
       </h2>
       <p className="mb-6 text-sm leading-7 text-[#577090] dark:text-slate-400">
-        Organize sessions, boards, and traces in one operating lane.
+        {t.onboarding.description}
       </p>
       <button
         type="button"
         onClick={() => onCreateWorkspace("My Workspace")}
         className="rounded-full bg-[#0f62d6] px-6 py-2.5 text-sm font-semibold uppercase tracking-[0.14em] text-white transition-all hover:bg-[#2a77e4] dark:bg-[#5ee5ff] dark:text-[#04111d] dark:hover:bg-[#87edff]"
       >
-        Get Started
+        {t.onboarding.getStarted}
       </button>
     </div>
   );

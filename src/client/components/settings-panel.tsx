@@ -24,6 +24,8 @@ import {
 import { ModelsTab } from "./settings-panel-models-tab";
 import { McpServersTab } from "./settings-panel-mcp-tab";
 import { SpecialistsTab } from "./settings-panel-specialists-tab";
+import { LanguageSwitcher } from "./language-switcher";
+import { useTranslation } from "@/i18n";
 import {
   AGENT_ROLES,
   ROLE_DESCRIPTIONS,
@@ -66,6 +68,7 @@ export type {
 
 // ─── System Info Footer ─────────────────────────────────────────────────────
 function SystemInfoFooter() {
+  const { t } = useTranslation();
   const [memoryStats, setMemoryStats] = useState<MemoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -89,14 +92,14 @@ function SystemInfoFooter() {
     <div className="border-t border-slate-200 dark:border-slate-700 shrink-0">
       <div className="flex items-center justify-between gap-3 px-4 py-2 text-[11px] text-slate-500 dark:text-slate-400">
         <div className="flex min-w-0 items-center gap-3 overflow-hidden">
-          <span className="shrink-0 font-medium uppercase tracking-wider">System Info</span>
+          <span className="shrink-0 font-medium uppercase tracking-wider">{t.settings.systemInfo}</span>
           {memoryStats?.current ? (
             <>
               <span className="truncate">
-                Memory {memoryStats.current.heapUsedMB}/{memoryStats.current.heapTotalMB} MB
+                {t.settings.memory} {memoryStats.current.heapUsedMB}/{memoryStats.current.heapTotalMB} MB
               </span>
               <span className="truncate">
-                Sessions {memoryStats.sessionStore.sessionCount}
+                {t.settings.sessions} {memoryStats.sessionStore.sessionCount}
               </span>
               <span className={`shrink-0 ${
                 memoryStats.current.level === "critical"
@@ -109,14 +112,14 @@ function SystemInfoFooter() {
               </span>
             </>
           ) : (
-            <span>{loading ? "Loading…" : "Unavailable"}</span>
+            <span>{loading ? t.common.loading : t.common.unavailable}</span>
           )}
         </div>
         <button
           onClick={fetchData}
           disabled={loading}
           className="shrink-0 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-          title="Refresh system info"
+          title={t.settings.refreshSystemInfo}
           type="button"
         >
           <svg className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -791,6 +794,7 @@ export function SettingsPanel({ open, onClose, providers, initialTab }: Settings
 }
 
 function SettingsPanelContent({ onClose, providers, initialTab }: Omit<SettingsPanelProps, "open">) {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<DefaultProviderSettings>(() => loadDefaultProviders());
   const [modelDefs, setModelDefs] = useState<ModelDefinition[]>(() => loadModelDefinitions());
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => initialTab ?? "providers");
@@ -834,14 +838,14 @@ function SettingsPanelContent({ onClose, providers, initialTab }: Omit<SettingsP
   };
 
   const TAB_DEFS: { key: SettingsTab; label: string }[] = [
-    { key: "providers", label: "Providers" },
-    { key: "roles", label: "Roles" },
-    { key: "specialists", label: "Specialists" },
-    { key: "models", label: "Models" },
-    { key: "mcp", label: "MCP Servers" },
-    { key: "webhooks", label: "Webhooks" },
-    { key: "schedules", label: "Schedules" },
-    { key: "workflows", label: "Workflows" },
+    { key: "providers", label: t.settings.providers },
+    { key: "roles", label: t.settings.roles },
+    { key: "specialists", label: t.settings.specialists },
+    { key: "models", label: t.settings.models },
+    { key: "mcp", label: t.settings.mcpServers },
+    { key: "webhooks", label: t.settings.webhooks },
+    { key: "schedules", label: t.settings.schedules },
+    { key: "workflows", label: t.settings.workflows },
   ];
 
   return (
@@ -858,12 +862,13 @@ function SettingsPanelContent({ onClose, providers, initialTab }: Omit<SettingsP
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Settings</h2>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.settings.title}</h2>
           </div>
           <div className="flex items-center gap-2">
+            <LanguageSwitcher />
             <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-[#111423]">
               <span className="px-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Theme
+                {t.settings.theme}
               </span>
               <button
                 type="button"
