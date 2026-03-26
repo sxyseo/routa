@@ -258,8 +258,8 @@ class PlainHumanMetricReporter implements HumanMetricReporter {
     console.log("");
   }
 
-  onMetricStart(): void {
-    return;
+  onMetricStart(metric: HookMetric, index: number, total: number): void {
+    console.log(`[fitness ${index}/${total}] ${metric.name} RUN`);
   }
 
   onMetricOutput(): void {}
