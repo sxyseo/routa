@@ -4,7 +4,7 @@ import {
   createContext,
   useCallback,
   useEffect,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type { TranslationDictionary, Locale } from "./types";
@@ -17,6 +17,8 @@ import en from "./locales/en";
 import zh from "./locales/zh";
 
 const dictionaries: Record<Locale, TranslationDictionary> = { en, zh };
+const LOCALE_CHANGE_EVENT = "routa:locale-changed";
+let volatileLocaleOverride: Locale | null = null;
 
 function detectBrowserLocale(): Locale {
   if (typeof navigator === "undefined") return DEFAULT_LOCALE;
@@ -38,6 +40,43 @@ function loadStoredLocale(): Locale | null {
   return null;
 }
 
+function getPreferredLocale(): Locale {
+  return volatileLocaleOverride ?? loadStoredLocale() ?? detectBrowserLocale();
+}
+
+function getServerLocaleSnapshot(): Locale {
+  return DEFAULT_LOCALE;
+}
+
+function subscribeToLocaleChange(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleLocaleChange = () => {
+    onStoreChange();
+  };
+
+  window.addEventListener(LOCALE_CHANGE_EVENT, handleLocaleChange as EventListener);
+  window.addEventListener("storage", handleLocaleChange);
+
+  return () => {
+    window.removeEventListener(LOCALE_CHANGE_EVENT, handleLocaleChange as EventListener);
+    window.removeEventListener("storage", handleLocaleChange);
+  };
+}
+
+function persistLocale(locale: Locale): boolean {
+  if (typeof window === "undefined") return false;
+
+  try {
+    localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface I18nContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
@@ -51,17 +90,17 @@ export const I18nContext = createContext<I18nContextValue>({
 });
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => {
-    const stored = loadStoredLocale();
-    return stored ?? detectBrowserLocale();
-  });
+  const locale = useSyncExternalStore(
+    subscribeToLocaleChange,
+    getPreferredLocale,
+    getServerLocaleSnapshot,
+  );
 
   const setLocale = useCallback((newLocale: Locale) => {
-    setLocaleState(newLocale);
-    try {
-      localStorage.setItem(LOCALE_STORAGE_KEY, newLocale);
-    } catch {
-      /* ignore */
+    volatileLocaleOverride = persistLocale(newLocale) ? null : newLocale;
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(LOCALE_CHANGE_EVENT, { detail: { locale: newLocale } }));
     }
   }, []);
 
