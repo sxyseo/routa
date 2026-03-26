@@ -5,6 +5,7 @@ import { type ReviewPhaseResult as ImportedReviewPhaseResult, runReviewTriggerPh
 import { runSubmoduleRefsCheckWithSummary } from "./check-submodule-refs.js";
 import {
   MetricExecution,
+  formatDuration,
   printFailureSummary,
   runMetric,
   summarizeFailures,
@@ -129,6 +130,35 @@ const DEFAULT_RUNTIME_PROFILES = {
     fallbackMetrics: resolveProfileDefaults(HOOK_PROFILE_LOCAL_VALIDATE),
   },
 } satisfies Record<HookProfileName, HookRuntimeProfile>;
+
+const ANSI_RESET = "\u001B[0m";
+const ANSI_GREEN = "\u001B[32m";
+const ANSI_RED = "\u001B[31m";
+const ANSI_YELLOW = "\u001B[33m";
+
+function shouldUseColor(stream?: NodeJS.WriteStream): boolean {
+  if (!stream?.isTTY) {
+    return false;
+  }
+
+  if (process.env.NO_COLOR === "1") {
+    return false;
+  }
+
+  if (process.env.FORCE_COLOR === "0") {
+    return false;
+  }
+
+  return true;
+}
+
+function colorize(stream: NodeJS.WriteStream | undefined, color: string, text: string): string {
+  if (!shouldUseColor(stream)) {
+    return text;
+  }
+
+  return `${color}${text}${ANSI_RESET}`;
+}
 
 export function resolveRuntimeProfile(profileName: HookProfileName): HookRuntimeProfile {
   return DEFAULT_RUNTIME_PROFILES[profileName];
@@ -283,6 +313,13 @@ async function handleFitnessFailure(
   failureRouteResolver: FailureRouteResolver,
 ): Promise<never> {
   if (options.outputMode === "human") {
+    const failures = summarizeFailures(results);
+    if (failures.length > 0) {
+      console.log(
+        colorize(process.stdout, ANSI_RED, `[fitness] FAIL ${failures.length} metric(s): ${failures.map((failure) => failure.name).join(", ")}`),
+      );
+      console.log("");
+    }
     printFailureSummary(results);
   }
 
@@ -475,15 +512,35 @@ async function runFitnessPhase(
       });
       if (options.outputMode === "human") {
         console.log(
-          `[fitness] fail-fast left ${batch.skippedMetrics.length} queued metrics unstarted: ${batch.skippedMetrics
-            .map((metric) => metric.name)
-            .join(", ")}`,
+          colorize(
+            process.stdout,
+            ANSI_YELLOW,
+            `[fitness] SKIP ${batch.skippedMetrics.length} queued metrics unstarted: ${batch.skippedMetrics
+              .map((metric) => metric.name)
+              .join(", ")}`,
+          ),
         );
-        console.log("");
       }
     }
 
     const durationMs = Date.now() - startedAt;
+    const passed = batch.results.filter((result) => result.passed).length;
+    const failed = batch.results.length - passed;
+    const skipped = batch.skippedMetrics.length;
+    if (options.outputMode === "human") {
+      const summary = `[fitness] summary: ${passed} passed, ${failed} failed, ${skipped} skipped | ${formatDuration(
+        durationMs,
+      )}`;
+      console.log(
+        colorize(
+          process.stdout,
+          failed > 0 ? ANSI_RED : ANSI_GREEN,
+          summary,
+        ),
+      );
+      console.log("");
+    }
+
     emitEvent(options.outputMode, {
       event: "phase.complete",
       phase: "fitness",
