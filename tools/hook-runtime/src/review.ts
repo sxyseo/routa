@@ -125,7 +125,6 @@ function shouldBypassUnavailableReviewGate(env: NodeJS.ProcessEnv = process.env)
 export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "human"): Promise<ReviewPhaseResult> {
   const reviewBase = await resolveReviewBase();
   if (outputMode === "human") {
-    console.log("[phase 3/3] review trigger");
     console.log(`[review] Base: ${reviewBase}`);
     console.log("");
   }

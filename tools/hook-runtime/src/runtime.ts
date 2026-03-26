@@ -3,8 +3,13 @@ import { spawn } from "node:child_process";
 import { isAiAgent } from "./ai.js";
 import { type ReviewPhaseResult as ImportedReviewPhaseResult, runReviewTriggerPhase } from "./review.js";
 import { runSubmoduleRefsCheckWithSummary } from "./check-submodule-refs.js";
-import { MetricExecution, printFailureSummary, runMetric, summarizeFailures } from "./fitness.js";
-import { loadHookMetrics } from "./metrics.js";
+import {
+  MetricExecution,
+  printFailureSummary,
+  runMetric,
+  summarizeFailures,
+} from "./fitness.js";
+import { type HookMetric, loadHookMetrics } from "./metrics.js";
 import { runCommand, tailOutput } from "./process.js";
 import { promptYesNo } from "./prompt.js";
 import { createHumanMetricReporter } from "./renderer.js";
@@ -12,7 +17,7 @@ import { runMetrics } from "./scheduler.js";
 import { type HookProfileName } from "./config.js";
 
 export type HookRuntimeOutputMode = "human" | "jsonl";
-export type RuntimePhase = "submodule" | "fitness" | "review";
+export type RuntimePhase = "submodule" | "fitness" | "fitness-fast" | "review";
 
 export type HookRuntimeProfile = {
   name: HookProfileName;
@@ -40,6 +45,41 @@ export type HookPhaseResult = {
   details?: string;
 };
 
+export type HookMetricProvider = {
+  loadMetrics: (metricNames: string[]) => Promise<HookMetric[]>;
+};
+
+export type ReviewProvider = {
+  runReview: (outputMode: HookRuntimeOutputMode) => Promise<ReviewPhaseResult>;
+};
+
+export type FailureRouteContext = {
+  isAiAgent: boolean;
+  hasClaude: boolean;
+};
+
+export type FailureRouteResolverContext = {
+  outputMode: HookRuntimeOutputMode;
+  autoFix: boolean;
+};
+
+export type FailureRoute = {
+  name: "agent" | "missing-claude" | "auto-fix" | "interactive";
+  execute: (results: MetricExecution[], options: HookRuntimeOptions) => Promise<never>;
+};
+
+export type FailureRouteResolver = (
+  _options: HookRuntimeOptions,
+  context: FailureRouteContext,
+  resolverContext: FailureRouteResolverContext,
+) => FailureRoute;
+
+export type RuntimeServices = {
+  metricProvider: HookMetricProvider;
+  reviewProvider: ReviewProvider;
+  failureRouteResolver: FailureRouteResolver;
+};
+
 export type RuntimePhaseAdapters = {
   runSubmodulePhase(
     dryRun: boolean,
@@ -58,6 +98,11 @@ export type RuntimePhaseAdapters = {
     step: number,
     totalSteps: number,
   ): Promise<ReviewPhaseResult | null>;
+};
+
+export type RuntimeExecutionOverrides = {
+  phaseAdapters?: Partial<RuntimePhaseAdapters>;
+  services?: Partial<RuntimeServices>;
 };
 
 export function formatReviewPhaseLabel(result: ReviewPhaseResult): string {
@@ -122,13 +167,88 @@ function runClaudeFix(prompt: string): Promise<number> {
   });
 }
 
+function hasClaudeBinary(): Promise<boolean> {
+  return runCommand("command -v claude", { stream: false }).then((cmd) => cmd.exitCode === 0);
+}
+
+export function resolveFailureRoute(
+  _options: HookRuntimeOptions,
+  routeContext: FailureRouteContext,
+  resolverContext: FailureRouteResolverContext,
+): FailureRoute {
+  if (routeContext.isAiAgent) {
+    return {
+      name: "agent",
+      execute: async () => {
+        throw new Error("Running in AI agent environment. Please fix the errors shown above.");
+      },
+    };
+  }
+
+  if (!routeContext.hasClaude) {
+    return {
+      name: "missing-claude",
+      execute: async () => {
+        throw new Error("Claude CLI not found. Please fix errors manually.");
+      },
+    };
+  }
+
+  if (resolverContext.autoFix) {
+    return {
+      name: "auto-fix",
+      execute: async (results, failureOptions) => {
+        if (failureOptions.outputMode === "human") {
+          console.log("Starting Claude to fix issues...");
+          console.log("");
+        }
+
+        const exitCode = await runClaudeFix(buildFixPrompt(failureOptions.profile, results));
+        if (exitCode !== 0) {
+          throw new Error("Claude fix attempt failed.");
+        }
+
+        throw new Error(
+          `Claude has attempted to fix the issues. Please review the changes and rerun ${failureOptions.profile}.`,
+        );
+      },
+    };
+  }
+
+  return {
+    name: "interactive",
+    execute: async (results, failureOptions) => {
+      const shouldFix = await promptYesNo("Would you like Claude to fix these issues? [y/N]");
+      if (!shouldFix) {
+        throw new Error("Aborted. Please fix errors manually.");
+      }
+
+      if (failureOptions.outputMode === "human") {
+        console.log("Starting Claude to fix issues...");
+        console.log("");
+      }
+
+      const exitCode = await runClaudeFix(buildFixPrompt(failureOptions.profile, results));
+      if (exitCode !== 0) {
+        throw new Error("Claude fix attempt failed.");
+      }
+
+      throw new Error(
+        `Claude has attempted to fix the issues. Please review the changes and rerun ${failureOptions.profile}.`,
+      );
+    },
+  };
+}
+
 async function handleFitnessFailure(
   results: MetricExecution[],
   options: HookRuntimeOptions,
+  failureRouteResolver: FailureRouteResolver,
 ): Promise<never> {
   if (options.outputMode === "human") {
     printFailureSummary(results);
   }
+
   emitEvent(options.outputMode, {
     event: "fitness.failed",
     phase: "fitness",
@@ -136,35 +256,20 @@ async function handleFitnessFailure(
     failures: summarizeFailures(results),
   });
 
-  if (isAiAgent()) {
-    throw new Error("Running in AI agent environment. Please fix the errors shown above.");
-  }
-
-  const claudeCheck = await runCommand("command -v claude", { stream: false });
-  if (claudeCheck.exitCode !== 0) {
-    throw new Error("Claude CLI not found. Please fix errors manually.");
-  }
-
-  let shouldFix = options.autoFix;
-  if (!shouldFix) {
-    shouldFix = await promptYesNo("Would you like Claude to fix these issues? [y/N]");
-  }
-
-  if (!shouldFix) {
-    throw new Error("Aborted. Please fix errors manually.");
-  }
-
-  if (options.outputMode === "human") {
-    console.log("Starting Claude to fix issues...");
-    console.log("");
-  }
-
-  const exitCode = await runClaudeFix(buildFixPrompt(options.profile, results));
-  if (exitCode !== 0) {
-    throw new Error("Claude fix attempt failed.");
-  }
-
-  throw new Error(`Claude has attempted to fix the issues. Please review the changes and rerun ${options.profile}.`);
+  const hasClaude = await hasClaudeBinary();
+  const route = failureRouteResolver(
+    options,
+    {
+      isAiAgent: isAiAgent(),
+      hasClaude,
+    },
+    {
+      outputMode: options.outputMode,
+      autoFix: options.autoFix,
+    },
+  );
+  await route.execute(results, options);
+  throw new Error(`unreachable failure route ${route.name}`);
 }
 
 async function runSubmodulePhase(
@@ -231,6 +336,8 @@ async function runFitnessPhase(
   options: HookRuntimeOptions,
   step: number,
   totalSteps: number,
+  metricProvider: HookMetricProvider,
+  failureRouteResolver: FailureRouteResolver,
 ): Promise<MetricExecution[]> {
   logPhaseHeader("local fitness", step, options.outputMode, totalSteps);
   emitEvent(options.outputMode, {
@@ -242,11 +349,9 @@ async function runFitnessPhase(
   });
 
   if (options.dryRun) {
-    const metrics = await loadHookMetrics(options.metricNames);
+    const metrics = await metricProvider.loadMetrics(options.metricNames);
     if (options.outputMode === "human") {
-      console.log(
-        `[fitness] Metrics (${options.jobs} workers): ${options.metricNames.join(", ")}`,
-      );
+      console.log(`[fitness] Metrics (${options.jobs} workers): ${options.metricNames.join(", ")}`);
       for (const metric of metrics) {
         console.log(`[dry-run] ${metric.name} -> ${metric.command}`);
       }
@@ -267,7 +372,7 @@ async function runFitnessPhase(
     return [];
   }
 
-  const metrics = await loadHookMetrics(options.metricNames);
+  const metrics = await metricProvider.loadMetrics(options.metricNames);
   const reporter =
     options.outputMode === "human"
       ? createHumanMetricReporter(metrics, {
@@ -354,7 +459,7 @@ async function runFitnessPhase(
     });
 
     if (batch.results.some((result) => !result.passed)) {
-      await handleFitnessFailure(batch.results, options);
+      await handleFitnessFailure(batch.results, options, failureRouteResolver);
     }
 
     return batch.results;
@@ -370,6 +475,7 @@ async function runReviewPhase(
   outputMode: HookRuntimeOutputMode,
   step: number,
   totalSteps: number,
+  reviewProvider: ReviewProvider,
 ): Promise<ReviewPhaseResult | null> {
   emitEvent(outputMode, {
     event: "phase.start",
@@ -394,7 +500,7 @@ async function runReviewPhase(
   }
 
   const startedAt = Date.now();
-  const result = await runReviewTriggerPhase(outputMode);
+  const result = await reviewProvider.runReview(outputMode);
   if (outputMode === "human") {
     console.log(`[phase ${step}/${totalSteps}] review checks ${formatReviewPhaseLabel(result)}`);
   }
@@ -416,20 +522,35 @@ async function runReviewPhase(
   return result;
 }
 
-const DEFAULT_RUNTIME_PHASE_ADAPTERS: RuntimePhaseAdapters = {
-  runSubmodulePhase,
-  runFitnessPhase,
-  runReviewPhase,
+const DEFAULT_RUNTIME_SERVICES: RuntimeServices = {
+  metricProvider: { loadMetrics: loadHookMetrics },
+  reviewProvider: { runReview: runReviewTriggerPhase },
+  failureRouteResolver: resolveFailureRoute,
 };
+
+function makeRuntimeAdapters(
+  services: RuntimeServices,
+): RuntimePhaseAdapters {
+  return {
+    runSubmodulePhase,
+    runFitnessPhase: (runtimeOptions, step, totalSteps) =>
+      runFitnessPhase(runtimeOptions, step, totalSteps, services.metricProvider, services.failureRouteResolver),
+    runReviewPhase: (dryRun, outputMode, step, totalSteps) =>
+      runReviewPhase(dryRun, outputMode, step, totalSteps, services.reviewProvider),
+  };
+}
 
 export async function runHookRuntime(
   options: HookRuntimeOptions,
   runtimeProfile: HookRuntimeProfile,
-  phaseAdapters?: Partial<RuntimePhaseAdapters>,
+  overrides: RuntimeExecutionOverrides = {},
 ): Promise<void> {
-  const adapters: RuntimePhaseAdapters = {
-    ...DEFAULT_RUNTIME_PHASE_ADAPTERS,
-    ...phaseAdapters,
+  const phaseAdapters = {
+    ...makeRuntimeAdapters({
+      ...DEFAULT_RUNTIME_SERVICES,
+      ...overrides.services,
+    }),
+    ...overrides.phaseAdapters,
   };
 
   emitEvent(options.outputMode, {
@@ -453,15 +574,16 @@ export async function runHookRuntime(
     const phase = runtimeProfile.phases[index];
 
     if (phase === "submodule") {
-      await adapters.runSubmodulePhase(options.dryRun, options.outputMode, step, totalSteps);
-      continue;
-    }
-    if (phase === "fitness") {
-      await adapters.runFitnessPhase(options, step, totalSteps);
+      await phaseAdapters.runSubmodulePhase(options.dryRun, options.outputMode, step, totalSteps);
       continue;
     }
 
-    reviewResult = await adapters.runReviewPhase(options.dryRun, options.outputMode, step, totalSteps);
+    if (phase === "fitness" || phase === "fitness-fast") {
+      await phaseAdapters.runFitnessPhase(options, step, totalSteps);
+      continue;
+    }
+
+    reviewResult = await phaseAdapters.runReviewPhase(options.dryRun, options.outputMode, step, totalSteps);
   }
 
   if (!options.dryRun && reviewResult && !reviewResult.allowed) {

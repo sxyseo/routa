@@ -64,7 +64,7 @@ describe("parseArgs", () => {
   it("defaults profile and metrics for pre-commit", () => {
     const options = parseArgs(["--profile", "pre-commit"]);
     expect(options.profile).toBe("pre-commit");
-    expect(options.profilePhases).toEqual(["fitness"]);
+    expect(options.profilePhases).toEqual(["fitness-fast"]);
     expect(options.metricNames).toEqual(["eslint_pass"]);
   });
 

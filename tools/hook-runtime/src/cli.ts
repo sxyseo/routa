@@ -35,7 +35,7 @@ const RUNTIME_PROFILES: Record<HookProfileName, HookRuntimeProfile> = {
   },
   [HOOK_PROFILE_PRE_COMMIT]: {
     name: HOOK_PROFILE_PRE_COMMIT,
-    phases: ["fitness"],
+    phases: ["fitness-fast"],
     fallbackMetrics: resolveProfileDefaults(HOOK_PROFILE_PRE_COMMIT),
   },
   [HOOK_PROFILE_LOCAL_VALIDATE]: {
