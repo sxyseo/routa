@@ -36,3 +36,31 @@ captured output plus an interactive fix prompt.
 Pre-push checks should expose active phases and live progress clearly, preserve enough
 failure context to diagnose issues quickly, and move toward a reusable hook runtime that
 can be extended without adding more one-off shell scripts.
+
+## Design direction (proposed)
+
+Hook Runtime should be positioned as a **Local Fitness Gate Runtime**:
+
+- Trigger layer: Husky / Git hooks only trigger execution.
+- Runtime layer: `tools/hook-runtime` manages phase orchestration, metric parallelism,
+  rendering, failure routing, and review handoff.
+- Policy layer: Entrix defines the actual fitness/review rules.
+
+This keeps hook behavior reusable across contexts (pre-push today, pre-commit and other local
+entry points later), and prevents policy logic from being hardcoded in hook scripts.
+
+## Concrete design constraints
+
+- Keep hook scripts thin: only call the runtime command.
+- Runtime should support machine-readable output (`jsonl`) for agent/CI consumers.
+- Runtime should preserve failure context with output tails and summary metadata.
+- Runtime should make phase behavior explicit (`submodule`, `fitness`, `review`) with clear
+  routing semantics.
+- Runtime should be evolvable into a package-style foundation for future non-hook callers
+  (local CLI/task runner / IDE action).
+
+## Alignment with `tools/hook-runtime/README.md`
+
+- `hooks` entrypoint and phase model now documented in a dedicated README.
+- `pre-push` flow defined as the current baseline behavior.
+- Failure routing and review handoff are explicitly documented as runtime responsibilities.
