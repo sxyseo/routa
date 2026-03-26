@@ -28,8 +28,28 @@ type FrontmatterMetric = {
 const FITNESS_DIR = path.join(process.cwd(), "docs", "fitness");
 const MANIFEST_PATH = path.join(FITNESS_DIR, "manifest.yaml");
 
+function isManifestMissingError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+async function loadManifestFile(): Promise<string> {
+  try {
+    return await readFile(MANIFEST_PATH, "utf-8");
+  } catch (error) {
+    if (isManifestMissingError(error)) {
+      throw new Error(
+        'Cannot find fitness manifest at "docs/fitness/manifest.yaml". ' +
+          "Create this file and define evidence_files before running hook-runtime.",
+        { cause: error },
+      );
+    }
+
+    throw error;
+  }
+}
+
 async function loadManifestFiles(): Promise<string[]> {
-  const raw = await readFile(MANIFEST_PATH, "utf-8");
+  const raw = await loadManifestFile();
   const manifest = (yaml.load(raw) ?? {}) as FitnessManifest;
   return manifest.evidence_files ?? [];
 }

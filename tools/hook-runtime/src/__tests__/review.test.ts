@@ -49,6 +49,12 @@ describe("runReviewTriggerPhase", () => {
         output: "origin/main\n",
       })
       .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: `${process.cwd()}\n`,
+      })
+      .mockResolvedValueOnce({
         command: "entrix review-trigger",
         durationMs: 10,
         exitCode: 0,
@@ -70,6 +76,12 @@ describe("runReviewTriggerPhase", () => {
         durationMs: 5,
         exitCode: 0,
         output: "origin/main\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: `${process.cwd()}\n`,
       })
       .mockResolvedValueOnce({
         command: "entrix review-trigger",
@@ -99,6 +111,12 @@ describe("runReviewTriggerPhase", () => {
         output: "origin/main\n",
       })
       .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: `${process.cwd()}\n`,
+      })
+      .mockResolvedValueOnce({
         command: "entrix review-trigger",
         durationMs: 10,
         exitCode: 2,
@@ -124,6 +142,12 @@ describe("runReviewTriggerPhase", () => {
         output: "origin/main\n",
       })
       .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: `${process.cwd()}\n`,
+      })
+      .mockResolvedValueOnce({
         command: "entrix review-trigger",
         durationMs: 10,
         exitCode: 2,
@@ -136,5 +160,75 @@ describe("runReviewTriggerPhase", () => {
     expect(result.bypassed).toBe(true);
     expect(result.status).toBe("unavailable");
     expect(result.message).toContain("ROUTA_ALLOW_REVIEW_UNAVAILABLE=1");
+  });
+
+  it("marks review unavailable when executed from a non-repository root", async () => {
+    runCommandMock
+      .mockResolvedValueOnce({
+        command: "git rev-parse",
+        durationMs: 5,
+        exitCode: 0,
+        output: "origin/main\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: "/tmp/other-repo\n",
+      });
+
+    const result = await runReviewTriggerPhase("jsonl");
+
+    expect(result.allowed).toBe(false);
+    expect(result.status).toBe("unavailable");
+    expect(runCommandMock).toHaveBeenCalledTimes(2);
+    expect(result.message).toContain("Review scope mismatch");
+  });
+
+  it("marks review unavailable when git root cannot be resolved", async () => {
+    runCommandMock
+      .mockResolvedValueOnce({
+        command: "git rev-parse",
+        durationMs: 5,
+        exitCode: 0,
+        output: "origin/main\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 1,
+        output: "",
+      });
+
+    const result = await runReviewTriggerPhase("jsonl");
+
+    expect(result.allowed).toBe(false);
+    expect(result.status).toBe("unavailable");
+    expect(result.message).toContain("No git repository root found");
+    expect(runCommandMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows explicit bypass when git root cannot be resolved", async () => {
+    process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE = "1";
+    runCommandMock
+      .mockResolvedValueOnce({
+        command: "git rev-parse",
+        durationMs: 5,
+        exitCode: 0,
+        output: "origin/main\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 1,
+        output: "",
+      });
+
+    const result = await runReviewTriggerPhase("jsonl");
+
+    expect(result.allowed).toBe(true);
+    expect(result.status).toBe("unavailable");
+    expect(result.bypassed).toBe(true);
+    expect(result.message).toContain("No git repository root found");
   });
 });

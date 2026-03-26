@@ -1,6 +1,7 @@
 import { isAiAgent, isInteractive } from "./ai.js";
 import { runCommand } from "./process.js";
 import { promptYesNo } from "./prompt.js";
+import path from "node:path";
 
 const REVIEW_UNAVAILABLE_BYPASS_ENV = "ROUTA_ALLOW_REVIEW_UNAVAILABLE";
 
@@ -37,6 +38,24 @@ async function resolveReviewBase(): Promise<string> {
     stream: false,
   });
   return upstream.exitCode === 0 ? upstream.output.trim() : "HEAD~1";
+}
+
+async function resolveReviewGitRoot(): Promise<string | null> {
+  const root = await runCommand("git rev-parse --show-toplevel", {
+    stream: false,
+  });
+
+  if (root.exitCode !== 0) {
+    return null;
+  }
+
+  const trimmed = root.output.trim();
+  return trimmed ? path.resolve(trimmed) : null;
+}
+
+function getReviewScopeMismatchMessage(rootPath: string): string {
+  return `Review scope mismatch: hook-runtime expected to run in repository root "${rootPath}", but current directory is "${path.resolve(process.cwd())}".` +
+    ` Set ${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 only if you intentionally want to proceed with potentially shifted scope.`;
 }
 
 function parseReport(reviewOutput: string): ReviewReport {
@@ -124,6 +143,37 @@ function shouldBypassUnavailableReviewGate(env: NodeJS.ProcessEnv = process.env)
 
 export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "human"): Promise<ReviewPhaseResult> {
   const reviewBase = await resolveReviewBase();
+  const reviewRoot = await resolveReviewGitRoot();
+
+  if (reviewRoot && reviewRoot !== path.resolve(process.cwd())) {
+    const message = getReviewScopeMismatchMessage(reviewRoot);
+    if (shouldBypassUnavailableReviewGate()) {
+      if (outputMode === "human") {
+        console.log(message);
+        console.log("");
+      }
+      return buildResultBase(reviewBase, { triggers: [], changed_files: [], diff_stats: { file_count: 0 } }, "unavailable", true, true, message);
+    }
+
+    return buildResultBase(reviewBase, { triggers: [], changed_files: [], diff_stats: { file_count: 0 } }, "unavailable", false, false, message);
+  }
+
+  if (!reviewRoot) {
+    const message =
+      `No git repository root found from current directory (${path.resolve(process.cwd())}). ` +
+      `Review phase requires git context and is blocked by default. Set ${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 to bypass intentionally.`;
+
+    if (shouldBypassUnavailableReviewGate()) {
+      if (outputMode === "human") {
+        console.log(message);
+        console.log("");
+      }
+      return buildResultBase(reviewBase, { triggers: [], changed_files: [], diff_stats: { file_count: 0 } }, "unavailable", true, true, message);
+    }
+
+    return buildResultBase(reviewBase, { triggers: [], changed_files: [], diff_stats: { file_count: 0 } }, "unavailable", false, false, message);
+  }
+
   if (outputMode === "human") {
     console.log(`[review] Base: ${reviewBase}`);
     console.log("");
@@ -131,7 +181,7 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
 
   const review = await runCommand(
     `PYTHONPATH=tools/entrix python3 -m entrix.cli review-trigger --base "${reviewBase}" --json --fail-on-trigger`,
-    { stream: false },
+    { stream: false, cwd: reviewRoot },
   );
 
   if (review.exitCode === 0) {
