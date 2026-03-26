@@ -8,9 +8,9 @@
  *   3. Rust routes        — crates/routa-server/src/api/*.rs
  *
  * Usage:
- *   npx tsx scripts/check-api-parity.ts
- *   npx tsx scripts/check-api-parity.ts --json        # machine-readable output
- *   npx tsx scripts/check-api-parity.ts --fix-hint    # show suggested fixes
+ *   node --import tsx scripts/check-api-parity.ts
+ *   node --import tsx scripts/check-api-parity.ts --json        # machine-readable output
+ *   node --import tsx scripts/check-api-parity.ts --fix-hint    # show suggested fixes
  */
 
 import * as fs from "fs";

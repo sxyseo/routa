@@ -15,9 +15,9 @@
  *   7. Generates a schema coverage report
  *
  * Usage:
- *   npx tsx scripts/validate-openapi-schema.ts
- *   npx tsx scripts/validate-openapi-schema.ts --json
- *   npx tsx scripts/validate-openapi-schema.ts --report
+ *   node --import tsx scripts/validate-openapi-schema.ts
+ *   node --import tsx scripts/validate-openapi-schema.ts --json
+ *   node --import tsx scripts/validate-openapi-schema.ts --report
  */
 
 import * as fs from "fs";

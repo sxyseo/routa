@@ -28,7 +28,7 @@ npm run test:accessibility
 如果改动涉及 `FEATURE_TREE.md` 对应的页面或 API：
 
 ```bash
-python3 scripts/feature-tree-generator.py --save
+node --import tsx scripts/feature-tree-generator.ts --save
 ```
 
 ## 核心回归矩阵
@@ -66,6 +66,6 @@ python3 scripts/feature-tree-generator.py --save
 
 ## 维护规则
 
-- 新增 `src/app/**/page.tsx` 或 `api-contract.yaml` 变更后，先执行 `python3 scripts/feature-tree-generator.py --save`
+- 新增 `src/app/**/page.tsx` 或 `api-contract.yaml` 变更后，先执行 `node --import tsx scripts/feature-tree-generator.ts --save`
 - 若新增用户主链路，补一条 QA 用例，并明确“手工 / 自动化映射”
 - 优先复用已有 e2e 文件；只有出现明确覆盖缺口时，再新增 Playwright spec

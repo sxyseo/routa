@@ -5,7 +5,7 @@ sources:
   - src/app/**/page.tsx
   - api-contract.yaml
 update_policy:
-  - Regenerate with `python3 scripts/feature-tree-generator.py --save`.
+  - Regenerate with `node --import tsx scripts/feature-tree-generator.ts --save`.
   - Do not hand-edit generated endpoint or route tables.
 ---
 
@@ -55,7 +55,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/a2a/tasks/{id}` | Get an A2A task by ID |
 | POST | `/api/a2a/tasks/{id}` | Update / respond to an A2A task |
 
-### A2Ui (2)
+### A2ui (2)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -274,7 +274,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/schedules/tick` | Get tick status for scheduled tasks |
 | POST | `/api/schedules/tick` | Manually trigger the schedule tick |
 
-### Sessions (7)
+### Sessions (8)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -284,6 +284,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | PATCH | `/api/sessions/{id}` | Update session metadata |
 | DELETE | `/api/sessions/{id}` | Delete a session |
 | GET | `/api/sessions/{id}/history` | Get message history for a session |
+| GET | `/api/sessions/{id}/transcript` | Get preferred transcript payload for a session |
 | POST | `/api/sessions/{id}/disconnect` | Disconnect and kill an active session process |
 
 ### Shared-Sessions (12)
@@ -402,3 +403,4 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/worktrees/{id}` | Get a single worktree |
 | DELETE | `/api/worktrees/{id}` | Remove a worktree |
 | POST | `/api/worktrees/{id}/validate` | Validate worktree health on disk |
+

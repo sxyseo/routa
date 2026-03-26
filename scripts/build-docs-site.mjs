@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.join(__dirname, "..");
 const outputDir = path.join(rootDir, "docs-site");
 
-const generatorResult = spawnSync("python3", ["scripts/generate-specialist-docs.py", "--save"], {
+const generatorResult = spawnSync(process.execPath, ["--import", "tsx", "scripts/generate-specialist-docs.ts", "--save"], {
   cwd: rootDir,
   stdio: "inherit",
 });

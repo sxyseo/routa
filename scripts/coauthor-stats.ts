@@ -1,6 +1,7 @@
-#!/usr/bin/env -S node --experimental-strip-types
+#!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 type Options = {
   range?: string;
@@ -29,7 +30,7 @@ type Summary = {
 
 const UNKNOWN_MODEL = "(unknown)";
 
-function parseArgs(argv: string[]): Options {
+export function parseArgs(argv: string[]): Options {
   const options: Options = {
     includeMerges: false,
     json: false,
@@ -74,13 +75,13 @@ function printHelp(): void {
 Co-author stats
 
 Usage:
-  node --experimental-strip-types scripts/coauthor-stats.mts [--range <git-range>] [--include-merges] [--json] [--table]
+  node --import tsx scripts/coauthor-stats.ts [--range <git-range>] [--include-merges] [--json] [--table]
 
 Examples:
-  node --experimental-strip-types scripts/coauthor-stats.mts
-  node --experimental-strip-types scripts/coauthor-stats.mts --range origin/main..HEAD
-  node --experimental-strip-types scripts/coauthor-stats.mts --json
-  node --experimental-strip-types scripts/coauthor-stats.mts --table
+  node --import tsx scripts/coauthor-stats.ts
+  node --import tsx scripts/coauthor-stats.ts --range origin/main..HEAD
+  node --import tsx scripts/coauthor-stats.ts --json
+  node --import tsx scripts/coauthor-stats.ts --table
 `);
 }
 
@@ -141,7 +142,7 @@ function parseCoAuthorLine(line: string): { name: string; tool: string; model: s
   return { name, tool, model, email };
 }
 
-function splitToolModel(name: string): { tool: string; model: string } {
+export function splitToolModel(name: string): { tool: string; model: string } {
   if (!name.endsWith(")")) {
     return { tool: name, model: UNKNOWN_MODEL };
   }
@@ -159,7 +160,7 @@ function splitToolModel(name: string): { tool: string; model: string } {
   return { tool, model };
 }
 
-function summarize(records: CoAuthorRecord[]): Summary {
+export function summarize(records: CoAuthorRecord[]): Summary {
   const commitsWithCoAuthor = new Set(records.map((record) => record.commit)).size;
 
   const toolCounts = countBy(records, (record) => record.tool);
@@ -296,4 +297,6 @@ function main(): void {
   }
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
