@@ -447,10 +447,7 @@ mod tests {
             let key = "ROUTA_SPECIALISTS_RESOURCE_DIR";
             let previous = std::env::var_os(key);
             std::env::set_var(key, value);
-            Self {
-                key,
-                previous,
-            }
+            Self { key, previous }
         }
     }
 
@@ -603,7 +600,6 @@ system_prompt: "Coordinate the team."
 
         assert_eq!(count, 1);
         assert!(loader.get("team-agent-lead").is_some());
-
     }
 
     #[test]
@@ -634,7 +630,6 @@ system_prompt: "Verify the work."
 
         assert_eq!(count, 1);
         assert!(loader.get("team-qa").is_some());
-
     }
 
     #[test]
