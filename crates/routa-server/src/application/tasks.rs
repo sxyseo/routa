@@ -276,6 +276,7 @@ impl TaskApplicationService {
         if has_status_update && !has_column_update {
             sync_task_column_from_status(&mut task);
         }
+        ensure_task_board_context(&self.state, &mut task).await?;
 
         let entering_dev = task.column_id.as_deref() == Some("dev")
             && existing_column_id.as_deref() != Some("dev");
@@ -722,6 +723,77 @@ mod tests {
             plan.task.trigger_session_id.as_deref(),
             Some("session-todo")
         );
+        assert!(plan.should_trigger_agent);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn update_task_backfills_board_context_for_legacy_card_moves() {
+        let (service, db_path) = setup_service().await;
+        let mut task = seed_task(&service, Some("backlog")).await;
+        task.board_id = None;
+        service
+            .state
+            .task_store
+            .save(&task)
+            .await
+            .expect("persist legacy task without board");
+
+        let default_board = service
+            .state
+            .kanban_store
+            .ensure_default_board("default")
+            .await
+            .expect("default board should exist");
+        let mut board = service
+            .state
+            .kanban_store
+            .get(&default_board.id)
+            .await
+            .expect("board load should succeed")
+            .expect("board should exist");
+        let todo = board
+            .columns
+            .iter_mut()
+            .find(|column| column.id == "todo")
+            .expect("todo column should exist");
+        todo.automation = Some(routa_core::models::kanban::KanbanColumnAutomation {
+            enabled: true,
+            transition_type: Some("entry".to_string()),
+            steps: Some(vec![routa_core::models::kanban::KanbanAutomationStep {
+                id: "todo-a2a".to_string(),
+                transport: Some(routa_core::models::kanban::KanbanTransport::A2a),
+                role: Some("CRAFTER".to_string()),
+                specialist_id: Some("kanban-todo-orchestrator".to_string()),
+                specialist_name: Some("Todo Orchestrator".to_string()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+        service
+            .state
+            .kanban_store
+            .update(&board)
+            .await
+            .expect("board update should succeed");
+
+        let plan = service
+            .update_task(
+                &task.id,
+                UpdateTaskCommand {
+                    column_id: Some("todo".to_string()),
+                    ..UpdateTaskCommand::default()
+                },
+            )
+            .await
+            .expect("update task plan");
+
+        assert_eq!(
+            plan.task.board_id.as_deref(),
+            Some(default_board.id.as_str())
+        );
+        assert_eq!(plan.task.column_id.as_deref(), Some("todo"));
         assert!(plan.should_trigger_agent);
 
         let _ = fs::remove_file(db_path);
