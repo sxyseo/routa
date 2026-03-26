@@ -6,10 +6,10 @@
  * Designed for GitHub Actions triggered on issue creation.
  *
  * Usage:
- *   npx tsx scripts/issue-enricher.ts --issue 123
- *   npx tsx scripts/issue-enricher.ts --issue 123 --dry-run
- *   npx tsx scripts/issue-enricher.ts --issue 123 --assign-copilot
- *   npx tsx scripts/issue-enricher.ts --issue 123 --reopen
+ *   npx tsx .github/scripts/issue-enricher.ts --issue 123
+ *   npx tsx .github/scripts/issue-enricher.ts --issue 123 --dry-run
+ *   npx tsx .github/scripts/issue-enricher.ts --issue 123 --assign-copilot
+ *   npx tsx .github/scripts/issue-enricher.ts --issue 123 --reopen
  *
  * Environment:
  *   ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN   # Required
@@ -336,7 +336,7 @@ async function main(): Promise<void> {
   // Parse --issue argument
   const issueIndex = args.indexOf("--issue");
   if (issueIndex === -1 || !args[issueIndex + 1]) {
-    console.error("Usage: npx tsx scripts/issue-enricher.ts --issue <number> [--dry-run] [--reopen] [--assign-copilot] [--skip-sync]");
+    console.error("Usage: npx tsx .github/scripts/issue-enricher.ts --issue <number> [--dry-run] [--reopen] [--assign-copilot] [--skip-sync]");
     process.exit(1);
   }
   const issueNumber = parseInt(args[issueIndex + 1], 10);

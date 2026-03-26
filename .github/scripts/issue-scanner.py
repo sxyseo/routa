@@ -3,9 +3,9 @@
 Issue Scanner - Generate a formatted table view of all issues in docs/issues/
 
 Usage:
-    python scripts/issue-scanner.py              # Table view
-    python scripts/issue-scanner.py --json       # JSON output
-    python scripts/issue-scanner.py --check      # Validation only (exit 1 if errors)
+    python .github/scripts/issue-scanner.py              # Table view
+    python .github/scripts/issue-scanner.py --json       # JSON output
+    python .github/scripts/issue-scanner.py --check      # Validation only (exit 1 if errors)
 """
 
 import sys
@@ -22,7 +22,8 @@ try:
 except ImportError:
     HAS_YAML = False
 
-ISSUES_DIR = Path(__file__).parent.parent / "docs" / "issues"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ISSUES_DIR = REPO_ROOT / "docs" / "issues"
 REQUIRED_FIELDS = ["title", "date", "status", "area"]
 VALID_STATUS = ["open", "investigating", "resolved", "wontfix", "duplicate"]
 VALID_SEVERITY = ["low", "medium", "high", "critical"]

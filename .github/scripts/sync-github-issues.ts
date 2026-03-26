@@ -64,7 +64,7 @@ function printSummary(results: ReturnType<typeof syncGitHubIssuesToDirectory>, d
 }
 
 function printUsage(): void {
-  console.log("Usage: npx tsx scripts/sync-github-issues.ts [--issue <number>] [--state <open|closed|all>] [--limit <n>] [--repo <owner/repo>] [--dry-run]");
+  console.log("Usage: npx tsx .github/scripts/sync-github-issues.ts [--issue <number>] [--state <open|closed|all>] [--limit <n>] [--repo <owner/repo>] [--dry-run]");
   console.log("Omit --limit to sync the full issue set.");
 }
 

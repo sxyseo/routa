@@ -113,7 +113,7 @@ jobs:
         run: |
           echo "### Local issue sync" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          npx tsx scripts/sync-github-issues.ts --state all 2>&1 | tee /tmp/issue-sync-output.txt
+          npx tsx .github/scripts/sync-github-issues.ts --state all 2>&1 | tee /tmp/issue-sync-output.txt
           echo '```' >> $GITHUB_STEP_SUMMARY
           head -80 /tmp/issue-sync-output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -147,7 +147,7 @@ jobs:
           ARGS="$ARGS --skip-sync"
 
           # Run the issue enricher script
-          npx tsx scripts/issue-enricher.ts $ARGS 2>&1 | tee /tmp/enricher-output.txt
+          npx tsx .github/scripts/issue-enricher.ts $ARGS 2>&1 | tee /tmp/enricher-output.txt
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Analysis Output" >> $GITHUB_STEP_SUMMARY

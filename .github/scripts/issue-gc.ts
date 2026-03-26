@@ -6,9 +6,9 @@
  * Designed for GitHub Actions scheduled runs (weekly maintenance).
  *
  * Usage:
- *   npx tsx scripts/issue-gc.ts                    # Full garbage collection
- *   npx tsx scripts/issue-gc.ts --dry-run          # Scan only, no changes
- *   npx tsx scripts/issue-gc.ts --phase1-only      # Python scanner only
+ *   npx tsx .github/scripts/issue-gc.ts                    # Full garbage collection
+ *   npx tsx .github/scripts/issue-gc.ts --dry-run          # Scan only, no changes
+ *   npx tsx .github/scripts/issue-gc.ts --phase1-only      # Python scanner only
  *
  * Environment:
  *   ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN      # Required for Phase 2
@@ -21,7 +21,7 @@ import { join } from "path";
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
-const SCANNER_SCRIPT = "scripts/issue-scanner.py";
+const SCANNER_SCRIPT = ".github/scripts/issue-scanner.py";
 const SKILL_PATH = ".claude/skills/issue-garbage-collector/SKILL.md";
 
 interface ScanResult {
@@ -99,8 +99,8 @@ Follow the SKILL.md instructions to:
 3. For stale issues: Triage (close, escalate, or archive)
 
 Use the quick update commands when possible:
-- python3 scripts/issue-scanner.py --resolve <file>
-- python3 scripts/issue-scanner.py --close <file>
+- python3 .github/scripts/issue-scanner.py --resolve <file>
+- python3 .github/scripts/issue-scanner.py --close <file>
 
 Auto-execute status updates. Only ask for confirmation on merges/deletes.`;
 

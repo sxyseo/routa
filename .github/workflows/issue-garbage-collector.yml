@@ -63,11 +63,11 @@ jobs:
           echo "## 📋 Issue Scanner Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          python3 scripts/issue-scanner.py | tee -a $GITHUB_STEP_SUMMARY
+          python3 .github/scripts/issue-scanner.py | tee -a $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
           # Get JSON output for Phase 2
-          python3 scripts/issue-scanner.py --json > /tmp/scan-result.json
+          python3 .github/scripts/issue-scanner.py --json > /tmp/scan-result.json
           SUSPECTS=$(jq '.summary.suspects' /tmp/scan-result.json)
           echo "suspects=$SUSPECTS" >> $GITHUB_OUTPUT
 
@@ -84,9 +84,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "$INPUT_MODE" == "dry-run" ]; then
-            npx tsx scripts/issue-gc.ts --dry-run 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+            npx tsx .github/scripts/issue-gc.ts --dry-run 2>&1 | tee -a $GITHUB_STEP_SUMMARY
           else
-            npx tsx scripts/issue-gc.ts 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+            npx tsx .github/scripts/issue-gc.ts 2>&1 | tee -a $GITHUB_STEP_SUMMARY
           fi
 
       - name: Skip Phase 2 (No API Key)
