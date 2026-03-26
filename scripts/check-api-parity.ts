@@ -1,4 +1,4 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env node
 /**
  * API Parity Checker
  *
@@ -13,24 +13,24 @@
  *   node --import tsx scripts/check-api-parity.ts --fix-hint    # show suggested fixes
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ROOT = path.resolve(__dirname, "..");
-const jsonMode = process.argv.includes("--json");
-const fixHint = process.argv.includes("--fix-hint");
+import { getCliArgs, isDirectExecution } from "./lib/cli";
+import { fromRoot } from "./lib/paths";
+import {
+  listContractEndpoints,
+  loadOpenApiContract,
+  type RouteEndpoint,
+} from "./lib/openapi-contract";
+
+const args = getCliArgs();
+const jsonMode = args.has("--json");
+const fixHint = args.has("--fix-hint");
 
 // ─────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────
-interface RouteEndpoint {
-  method: string; // GET, POST, DELETE, PATCH, PUT
-  path: string;   // /api/agents, /api/agents/{id}, etc.
-}
-
 interface ParityReport {
   contract: RouteEndpoint[];
   nextjs: RouteEndpoint[];
@@ -46,46 +46,12 @@ interface ParityReport {
 // 1. Parse OpenAPI contract
 // ─────────────────────────────────────────────────────────
 function parseContract(): RouteEndpoint[] {
-  const contractPath = path.join(ROOT, "api-contract.yaml");
-  if (!fs.existsSync(contractPath)) {
-    console.error("❌ api-contract.yaml not found at project root");
+  try {
+    return listContractEndpoints(loadOpenApiContract());
+  } catch (error) {
+    console.error(error instanceof Error ? `❌ ${error.message}` : `❌ ${String(error)}`);
     process.exit(1);
   }
-
-  const content = fs.readFileSync(contractPath, "utf-8");
-  const endpoints: RouteEndpoint[] = [];
-
-  // Simple YAML path parser — no dependency needed
-  // Matches lines like: "  /api/agents:" and "    get:", "    post:"
-  let currentPath = "";
-  const methods = ["get", "post", "put", "delete", "patch", "options", "head"];
-
-  for (const line of content.split("\n")) {
-    // Match path definitions (2-space indented, starts with /)
-    const pathMatch = line.match(/^ {2}(\/api\/\S+):$/);
-    if (pathMatch) {
-      currentPath = pathMatch[1];
-      continue;
-    }
-
-    // Match method definitions (4-space indented)
-    if (currentPath) {
-      const methodMatch = line.match(/^ {4}(\w+):$/);
-      if (methodMatch && methods.includes(methodMatch[1].toLowerCase())) {
-        endpoints.push({
-          method: methodMatch[1].toUpperCase(),
-          path: currentPath,
-        });
-      }
-
-      // Reset on next top-level key
-      if (/^\S/.test(line) && !line.startsWith("#")) {
-        currentPath = "";
-      }
-    }
-  }
-
-  return endpoints;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -136,7 +102,7 @@ function parseNextjsRoutes(): RouteEndpoint[] {
 // 3. Parse Rust routes (Axum routers)
 // ─────────────────────────────────────────────────────────
 function parseRustRoutes(): RouteEndpoint[] {
-  const apiModPath = path.join(ROOT, "crates", "routa-server", "src", "api", "mod.rs");
+  const apiModPath = path.join(fromRoot("crates", "routa-server", "src", "api"), "mod.rs");
   if (!fs.existsSync(apiModPath)) {
     console.error("❌ Rust api/mod.rs not found");
     process.exit(1);
@@ -154,7 +120,7 @@ function parseRustRoutes(): RouteEndpoint[] {
   }
 
   // For each module, parse the router() function to extract routes
-  const apiDir = path.join(ROOT, "crates", "routa-server", "src", "api");
+  const apiDir = fromRoot("crates", "routa-server", "src", "api");
 
   for (const nest of nests) {
     const moduleFile = path.join(apiDir, `${nest.module}.rs`);
@@ -180,7 +146,7 @@ function parseRustRoutes(): RouteEndpoint[] {
 
   // Also check for direct routes in mod.rs and lib.rs (like health_check)
   const directFiles = [apiModContent];
-  const libPath = path.join(ROOT, "crates", "routa-server", "src", "lib.rs");
+  const libPath = fromRoot("crates", "routa-server", "src", "lib.rs");
   if (fs.existsSync(libPath)) {
     directFiles.push(fs.readFileSync(libPath, "utf-8"));
   }
@@ -451,6 +417,24 @@ function printReport(report: ParityReport) {
 // ─────────────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────────────
+export function buildJsonSummary(report: ParityReport) {
+  return {
+    summary: {
+      contractEndpoints: report.contract.length,
+      nextjsEndpoints: report.nextjs.length,
+      rustEndpoints: report.rust.length,
+      missingInNextjs: report.missingInNextjs.length,
+      missingInRust: report.missingInRust.length,
+      extraInNextjs: report.extraInNextjs.length,
+      extraInRust: report.extraInRust.length,
+    },
+    missingInNextjs: report.missingInNextjs,
+    missingInRust: report.missingInRust,
+    extraInNextjs: report.extraInNextjs,
+    extraInRust: report.extraInRust,
+  };
+}
+
 function main() {
   const contract = parseContract();
   const nextjs = parseNextjsRoutes();
@@ -458,27 +442,7 @@ function main() {
   const report = compareRoutes(contract, nextjs, rust);
 
   if (jsonMode) {
-    console.log(
-      JSON.stringify(
-        {
-          summary: {
-            contractEndpoints: report.contract.length,
-            nextjsEndpoints: report.nextjs.length,
-            rustEndpoints: report.rust.length,
-            missingInNextjs: report.missingInNextjs.length,
-            missingInRust: report.missingInRust.length,
-            extraInNextjs: report.extraInNextjs.length,
-            extraInRust: report.extraInRust.length,
-          },
-          missingInNextjs: report.missingInNextjs,
-          missingInRust: report.missingInRust,
-          extraInNextjs: report.extraInNextjs,
-          extraInRust: report.extraInRust,
-        },
-        null,
-        2
-      )
-    );
+    console.log(JSON.stringify(buildJsonSummary(report), null, 2));
     const totalIssues = report.missingInNextjs.length + report.missingInRust.length;
     process.exit(totalIssues > 0 ? 1 : 0);
   }
@@ -487,4 +451,8 @@ function main() {
   process.exit(issues > 0 ? 1 : 0);
 }
 
-main();
+const ROOT = fromRoot();
+
+if (isDirectExecution(import.meta.url)) {
+  main();
+}

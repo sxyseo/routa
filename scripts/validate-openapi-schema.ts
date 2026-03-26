@@ -1,4 +1,4 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env node
 /**
  * OpenAPI Schema Validator (Static Analysis)
  *
@@ -20,15 +20,22 @@
  *   node --import tsx scripts/validate-openapi-schema.ts --report
  */
 
-import * as fs from "fs";
-import * as path from "path";
+import { getCliArgs, isDirectExecution } from "./lib/cli";
+import {
+  collectSchemaUsage,
+  extractRefs,
+  loadOpenApiContract,
+  normalizeComponentSchemaRefs,
+  OPENAPI_HTTP_METHODS,
+  type OpenApiDocument,
+} from "./lib/openapi-contract";
+
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
-import yaml from "js-yaml";
 
-const ROOT = path.resolve(__dirname, "..");
-const jsonMode = process.argv.includes("--json");
-const reportMode = process.argv.includes("--report");
+const args = getCliArgs();
+const jsonMode = args.has("--json");
+const reportMode = args.has("--report");
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -54,96 +61,12 @@ interface SchemaReport {
   }[];
 }
 
-interface OpenAPIDoc {
-  openapi: string;
-  info: { version: string; title: string };
-  components?: {
-    schemas?: Record<string, unknown>;
-  };
-  paths?: Record<string, Record<string, unknown>>;
-}
-
-// ─────────────────────────────────────────────────────────
-// Load contract
-// ─────────────────────────────────────────────────────────
-function loadContract(): OpenAPIDoc {
-  const contractPath = path.join(ROOT, "api-contract.yaml");
-  if (!fs.existsSync(contractPath)) {
-    console.error("❌ api-contract.yaml not found");
-    process.exit(1);
-  }
-  return yaml.load(fs.readFileSync(contractPath, "utf-8")) as OpenAPIDoc;
-}
-
-// ─────────────────────────────────────────────────────────
-// Extract all $ref strings from an object tree
-// ─────────────────────────────────────────────────────────
-function extractRefs(obj: unknown, refs: Set<string> = new Set()): Set<string> {
-  if (!obj || typeof obj !== "object") return refs;
-  if (Array.isArray(obj)) {
-    obj.forEach((item) => extractRefs(item, refs));
-    return refs;
-  }
-  const o = obj as Record<string, unknown>;
-  if (typeof o.$ref === "string") refs.add(o.$ref);
-  for (const value of Object.values(o)) extractRefs(value, refs);
-  return refs;
-}
-
-// ─────────────────────────────────────────────────────────
-// Collect all schemas referenced by operations
-// ─────────────────────────────────────────────────────────
-function collectSchemaUsage(
-  contract: OpenAPIDoc
-): Record<string, { responses: string[]; requests: string[] }> {
-  const usage: Record<string, { responses: string[]; requests: string[] }> = {};
-  const httpMethods = ["get", "post", "put", "delete", "patch", "options", "head"];
-
-  for (const [apiPath, methods] of Object.entries(contract.paths ?? {})) {
-    for (const [method, operation] of Object.entries(methods)) {
-      if (!httpMethods.includes(method.toLowerCase())) continue;
-      if (!operation || typeof operation !== "object") continue;
-
-      const op = operation as Record<string, unknown>;
-      const opId = (op.operationId as string) ?? `${method.toUpperCase()}:${apiPath}`;
-
-      // Response schemas
-      const responses = (op.responses as Record<string, unknown>) ?? {};
-      for (const responseObj of Object.values(responses)) {
-        const refs = extractRefs(responseObj);
-        for (const ref of refs) {
-          const match = ref.match(/^#\/components\/schemas\/(.+)$/);
-          if (match) {
-            const name = match[1];
-            if (!usage[name]) usage[name] = { responses: [], requests: [] };
-            usage[name].responses.push(opId);
-          }
-        }
-      }
-
-      // Request schemas
-      const requestBodyRefs = extractRefs(op.requestBody);
-      for (const ref of requestBodyRefs) {
-        const match = ref.match(/^#\/components\/schemas\/(.+)$/);
-        if (match) {
-          const name = match[1];
-          if (!usage[name]) usage[name] = { responses: [], requests: [] };
-          usage[name].requests.push(opId);
-        }
-      }
-    }
-  }
-
-  return usage;
-}
-
 // ─────────────────────────────────────────────────────────
 // Main validation
 // ─────────────────────────────────────────────────────────
-function validateContract(contract: OpenAPIDoc): SchemaReport {
+export function validateContract(contract: OpenApiDocument): SchemaReport {
   const issues: ValidationIssue[] = [];
   const componentSchemas = contract.components?.schemas ?? {};
-  const httpMethods = ["get", "post", "put", "delete", "patch", "options", "head"];
 
   // ── Check 1: All $refs resolve ──
   const allRefs = extractRefs(contract.paths);
@@ -162,7 +85,7 @@ function validateContract(contract: OpenAPIDoc): SchemaReport {
   const operationIds = new Map<string, string[]>();
   for (const [apiPath, methods] of Object.entries(contract.paths ?? {})) {
     for (const [method, operation] of Object.entries(methods)) {
-      if (!httpMethods.includes(method.toLowerCase())) continue;
+      if (!OPENAPI_HTTP_METHODS.includes(method.toLowerCase() as (typeof OPENAPI_HTTP_METHODS)[number])) continue;
       if (!operation || typeof operation !== "object") continue;
       const op = operation as Record<string, unknown>;
       if (op.operationId) {
@@ -189,26 +112,9 @@ function validateContract(contract: OpenAPIDoc): SchemaReport {
   }
 
   // ── Check 3: All response schemas compile with AJV ──
-  // Normalize all $ref paths: "#/components/schemas/X" → "#/$defs/X"
-  // so that AJV can resolve them relative to the wrapping $defs object.
-  function normalizeRefs(s: unknown): unknown {
-    if (!s || typeof s !== "object") return s;
-    if (Array.isArray(s)) return s.map(normalizeRefs);
-    const obj = s as Record<string, unknown>;
-    if (typeof obj.$ref === "string") {
-      return { $ref: obj.$ref.replace(/^#\/components\/schemas\//, "#/$defs/") };
-    }
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      result[k] = normalizeRefs(v);
-    }
-    return result;
-  }
-
-  // Build a normalized $defs map once
   const normalizedDefs: Record<string, unknown> = {};
   for (const [name, schema] of Object.entries(componentSchemas)) {
-    normalizedDefs[name] = normalizeRefs(schema);
+    normalizedDefs[name] = normalizeComponentSchemaRefs(schema);
   }
 
   const ajv = new Ajv({ allErrors: true, strict: false });
@@ -219,7 +125,7 @@ function validateContract(contract: OpenAPIDoc): SchemaReport {
       // Wrap each schema alongside $defs so internal $refs like #/$defs/X resolve
       const wrappedSchema = {
         $defs: normalizedDefs,
-        ...normalizeRefs(schema) as object,
+        ...(normalizeComponentSchemaRefs(schema) as object),
       };
       ajv.compile(wrappedSchema);
     } catch (err) {
@@ -269,7 +175,7 @@ function validateContract(contract: OpenAPIDoc): SchemaReport {
 
   for (const [apiPath, methods] of Object.entries(contract.paths ?? {})) {
     for (const [method, operation] of Object.entries(methods)) {
-      if (!httpMethods.includes(method.toLowerCase())) continue;
+      if (!OPENAPI_HTTP_METHODS.includes(method.toLowerCase() as (typeof OPENAPI_HTTP_METHODS)[number])) continue;
       if (!operation || typeof operation !== "object") continue;
       totalOps++;
 
@@ -338,7 +244,7 @@ function validateContract(contract: OpenAPIDoc): SchemaReport {
 // ─────────────────────────────────────────────────────────
 // Output
 // ─────────────────────────────────────────────────────────
-function printReport(report: SchemaReport): number {
+export function printReport(report: SchemaReport): number {
   const errors = report.issues.filter((i) => i.severity === "error");
   const warnings = report.issues.filter((i) => i.severity === "warning");
   const infos = report.issues.filter((i) => i.severity === "info");
@@ -417,7 +323,7 @@ function printReport(report: SchemaReport): number {
 // Main
 // ─────────────────────────────────────────────────────────
 function main() {
-  const contract = loadContract();
+  const contract = loadOpenApiContract();
   const report = validateContract(contract);
 
   if (jsonMode) {
@@ -430,4 +336,6 @@ function main() {
   process.exit(errorCount > 0 ? 1 : 0);
 }
 
-main();
+if (isDirectExecution(import.meta.url)) {
+  main();
+}
