@@ -81,10 +81,13 @@ jobs:
 
       - name: Resolve version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
-            version="${{ github.event.inputs.version }}"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_VERSION" ]]; then
+            version="$INPUT_VERSION"
             version="${version#v}"
             version="${version#cli-v}"
           else
@@ -167,8 +170,13 @@ jobs:
           shopt -s nullglob
           for tarball in dist/npm/*.tgz; do
             echo "Publishing ${tarball}"
-            output=$( { npm publish "${tarball}" --access public --tag "${npm_tag}"; } 2>&1 )
+            set +e
+            output=$(npm publish "${tarball}" --access public --tag "${npm_tag}" 2>&1)
             status=$?
+            set -e
+            if [[ ${status} -ne 0 ]]; then
+              echo "${output}"
+            fi
             if [[ ${status} -eq 0 ]]; then
               continue
             fi
