@@ -13,8 +13,9 @@ export default function SpecialistsSettingsPage() {
     <SettingsRouteShell
       title="Specialists"
       description="Create and manage custom specialists, prompts, and model bindings for focused execution roles."
+      badgeLabel="Execution roles"
     >
-      <div className="h-full overflow-y-auto px-6 py-6">
+      <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/70 shadow-sm">
         <SpecialistsTab modelDefs={modelDefs} />
       </div>
     </SettingsRouteShell>

@@ -8,8 +8,9 @@ export default function McpSettingsPage() {
     <SettingsRouteShell
       title="MCP Servers"
       description="Manage Model Context Protocol servers, transports, and local integration points for your workspace."
+      badgeLabel="Integration"
     >
-      <div className="h-full overflow-y-auto px-6 py-6">
+      <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/70 shadow-sm">
         <McpServersTab />
       </div>
     </SettingsRouteShell>

@@ -9,9 +9,10 @@ interface SettingsRouteShellProps {
   title: string;
   description: string;
   children: ReactNode;
+  badgeLabel?: string;
 }
 
-export function SettingsRouteShell({ title, description, children }: SettingsRouteShellProps) {
+export function SettingsRouteShell({ title, description, children, badgeLabel = "Standalone tool" }: SettingsRouteShellProps) {
   const router = useRouter();
 
   return (
@@ -49,6 +50,12 @@ export function SettingsRouteShell({ title, description, children }: SettingsRou
                 </div>
               </div>
             </div>
+            <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 px-4 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-tertiary">{badgeLabel}</p>
+              <p className="mt-2 text-sm leading-6 text-desktop-text-secondary">
+                Use this page for focused configuration without mixing it back into the main Config screen.
+              </p>
+            </div>
           </div>
         </aside>
 
@@ -58,7 +65,11 @@ export function SettingsRouteShell({ title, description, children }: SettingsRou
             <h1 className="mt-2 text-3xl font-semibold text-desktop-text-primary">{title}</h1>
             <p className="mt-2 max-w-2xl text-sm text-desktop-text-secondary">{description}</p>
           </header>
-          <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
+          <main className="flex-1 min-h-0 overflow-y-auto">
+            <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-8 py-8">
+              {children}
+            </div>
+          </main>
         </div>
       </div>
     </DesktopAppShell>
