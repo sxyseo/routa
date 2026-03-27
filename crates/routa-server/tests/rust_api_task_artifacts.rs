@@ -857,8 +857,12 @@ async fn api_a2a_rpc_supports_spec_task_methods() {
     let methods = method_list_json["result"]["methods"]
         .as_array()
         .expect("methods array");
-    assert!(methods.iter().any(|value| value.as_str() == Some("SendMessage")));
-    assert!(methods.iter().any(|value| value.as_str() == Some("GetTask")));
+    assert!(methods
+        .iter()
+        .any(|value| value.as_str() == Some("SendMessage")));
+    assert!(methods
+        .iter()
+        .any(|value| value.as_str() == Some("GetTask")));
 
     let send_message = fixture
         .client

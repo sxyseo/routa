@@ -113,183 +113,182 @@ async fn rpc_handler(
     let id = body.get("id").cloned().unwrap_or(serde_json::json!(null));
     let params = body.get("params").cloned().unwrap_or_default();
 
-    let result = match method {
-        "method_list" => serde_json::json!({
-            "methods": [
-                "SendMessage", "GetTask", "ListTasks", "CancelTask",
-                "method_list", "initialize",
-                "session/new", "session/prompt", "session/cancel", "session/load",
-                "list_agents", "create_agent", "delegate_task", "message_agent",
-            ]
-        }),
+    let result =
+        match method {
+            "method_list" => serde_json::json!({
+                "methods": [
+                    "SendMessage", "GetTask", "ListTasks", "CancelTask",
+                    "method_list", "initialize",
+                    "session/new", "session/prompt", "session/cancel", "session/load",
+                    "list_agents", "create_agent", "delegate_task", "message_agent",
+                ]
+            }),
 
-        "initialize" => serde_json::json!({
-            "protocolVersion": "0.3.0",
-            "agentInfo": { "name": "routa-a2a-bridge", "version": "0.1.0" },
-            "capabilities": { "sessions": true, "coordination": true, "tasks": true },
-        }),
+            "initialize" => serde_json::json!({
+                "protocolVersion": "0.3.0",
+                "agentInfo": { "name": "routa-a2a-bridge", "version": "0.1.0" },
+                "capabilities": { "sessions": true, "coordination": true, "tasks": true },
+            }),
 
-        "SendMessage" => {
-            let workspace_id = params
-                .get("metadata")
-                .and_then(|value| value.get("workspaceId"))
-                .and_then(|value| value.as_str())
-                .unwrap_or("default")
-                .to_string();
-            let prompt = extract_a2a_prompt(&params)?;
-            let task_id = uuid::Uuid::new_v4().to_string();
-            let context_id = params
-                .get("message")
-                .and_then(|value| value.get("contextId"))
-                .and_then(|value| value.as_str())
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-            let title = prompt
-                .lines()
-                .find(|line| !line.trim().is_empty())
-                .map(|line| truncate_text(line.trim(), 80))
-                .filter(|line| !line.is_empty())
-                .unwrap_or_else(|| "A2A task".to_string());
+            "SendMessage" => {
+                let workspace_id = params
+                    .get("metadata")
+                    .and_then(|value| value.get("workspaceId"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("default")
+                    .to_string();
+                let prompt = extract_a2a_prompt(&params)?;
+                let task_id = uuid::Uuid::new_v4().to_string();
+                let context_id = params
+                    .get("message")
+                    .and_then(|value| value.get("contextId"))
+                    .and_then(|value| value.as_str())
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                let title = prompt
+                    .lines()
+                    .find(|line| !line.trim().is_empty())
+                    .map(|line| truncate_text(line.trim(), 80))
+                    .filter(|line| !line.is_empty())
+                    .unwrap_or_else(|| "A2A task".to_string());
 
-            let task = Task::new(
-                task_id.clone(),
-                title,
-                prompt,
-                workspace_id,
-                Some(context_id.clone()),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            );
-            state.task_store.save(&task).await?;
+                let task = Task::new(
+                    task_id.clone(),
+                    title,
+                    prompt,
+                    workspace_id,
+                    Some(context_id.clone()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+                state.task_store.save(&task).await?;
 
-            let state_clone = state.clone();
-            let task_id_clone = task_id.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(200)).await;
-                let _ = state_clone
+                let state_clone = state.clone();
+                let task_id_clone = task_id.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    let _ = state_clone
+                        .task_store
+                        .update_status(&task_id_clone, &TaskStatus::Completed)
+                        .await;
+                });
+
+                build_a2a_task_payload(&task, "submitted", Some(Utc::now().to_rfc3339()))
+            }
+
+            "GetTask" => {
+                let task_id = params
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| ServerError::BadRequest("Missing task id".into()))?;
+                let task =
+                    state.task_store.get(task_id).await?.ok_or_else(|| {
+                        ServerError::NotFound(format!("Task {} not found", task_id))
+                    })?;
+                build_a2a_task_payload(
+                    &task,
+                    map_task_status_to_a2a_state(&task.status),
+                    Some(task.updated_at.to_rfc3339()),
+                )
+            }
+
+            "ListTasks" => {
+                let workspace_id = params
+                    .get("workspaceId")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("default");
+                let tasks = state.task_store.list_by_workspace(workspace_id).await?;
+                serde_json::json!({
+                    "tasks": tasks
+                        .iter()
+                        .map(|task| {
+                            build_a2a_task_payload(
+                                task,
+                                map_task_status_to_a2a_state(&task.status),
+                                Some(task.updated_at.to_rfc3339()),
+                            )["task"].clone()
+                        })
+                        .collect::<Vec<_>>()
+                })
+            }
+
+            "CancelTask" => {
+                let task_id = params
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| ServerError::BadRequest("Missing task id".into()))?;
+                state
                     .task_store
-                    .update_status(&task_id_clone, &TaskStatus::Completed)
-                    .await;
-            });
+                    .update_status(task_id, &TaskStatus::Cancelled)
+                    .await?;
+                let task =
+                    state.task_store.get(task_id).await?.ok_or_else(|| {
+                        ServerError::NotFound(format!("Task {} not found", task_id))
+                    })?;
+                build_a2a_task_payload(&task, "canceled", Some(task.updated_at.to_rfc3339()))
+            }
 
-            build_a2a_task_payload(&task, "submitted", Some(Utc::now().to_rfc3339()))
-        }
+            "list_agents" => {
+                let workspace_id = params
+                    .get("workspaceId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("default");
+                let agents = state.agent_store.list_by_workspace(workspace_id).await?;
+                serde_json::json!({ "agents": agents })
+            }
 
-        "GetTask" => {
-            let task_id = params
-                .get("id")
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| ServerError::BadRequest("Missing task id".into()))?;
-            let task = state
-                .task_store
-                .get(task_id)
-                .await?
-                .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", task_id)))?;
-            build_a2a_task_payload(
-                &task,
-                map_task_status_to_a2a_state(&task.status),
-                Some(task.updated_at.to_rfc3339()),
-            )
-        }
+            "create_agent" => {
+                let name = params
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServerError::BadRequest("Missing name".into()))?;
+                let role = params
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServerError::BadRequest("Missing role".into()))?;
+                let workspace_id = params
+                    .get("workspaceId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("default");
 
-        "ListTasks" => {
-            let workspace_id = params
-                .get("workspaceId")
-                .and_then(|value| value.as_str())
-                .unwrap_or("default");
-            let tasks = state.task_store.list_by_workspace(workspace_id).await?;
-            serde_json::json!({
-                "tasks": tasks
-                    .iter()
-                    .map(|task| {
-                        build_a2a_task_payload(
-                            task,
-                            map_task_status_to_a2a_state(&task.status),
-                            Some(task.updated_at.to_rfc3339()),
-                        )["task"].clone()
-                    })
-                    .collect::<Vec<_>>()
-            })
-        }
+                let agent_role = crate::models::agent::AgentRole::from_str(role)
+                    .ok_or_else(|| ServerError::BadRequest(format!("Invalid role: {}", role)))?;
 
-        "CancelTask" => {
-            let task_id = params
-                .get("id")
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| ServerError::BadRequest("Missing task id".into()))?;
-            state
-                .task_store
-                .update_status(task_id, &TaskStatus::Cancelled)
-                .await?;
-            let task = state
-                .task_store
-                .get(task_id)
-                .await?
-                .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", task_id)))?;
-            build_a2a_task_payload(&task, "canceled", Some(task.updated_at.to_rfc3339()))
-        }
+                let agent = crate::models::agent::Agent::new(
+                    uuid::Uuid::new_v4().to_string(),
+                    name.to_string(),
+                    agent_role,
+                    workspace_id.to_string(),
+                    None,
+                    None,
+                    None,
+                );
+                state.agent_store.save(&agent).await?;
+                serde_json::json!({ "success": true, "agentId": agent.id })
+            }
 
-        "list_agents" => {
-            let workspace_id = params
-                .get("workspaceId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("default");
-            let agents = state.agent_store.list_by_workspace(workspace_id).await?;
-            serde_json::json!({ "agents": agents })
-        }
+            "delegate_task" | "message_agent" => {
+                // Acknowledge and return stub
+                serde_json::json!({
+                    "status": "forwarded",
+                    "sessionId": query.session_id,
+                    "method": method,
+                    "message": "Request forwarded to backend session",
+                })
+            }
 
-        "create_agent" => {
-            let name = params
-                .get("name")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| ServerError::BadRequest("Missing name".into()))?;
-            let role = params
-                .get("role")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| ServerError::BadRequest("Missing role".into()))?;
-            let workspace_id = params
-                .get("workspaceId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("default");
-
-            let agent_role = crate::models::agent::AgentRole::from_str(role)
-                .ok_or_else(|| ServerError::BadRequest(format!("Invalid role: {}", role)))?;
-
-            let agent = crate::models::agent::Agent::new(
-                uuid::Uuid::new_v4().to_string(),
-                name.to_string(),
-                agent_role,
-                workspace_id.to_string(),
-                None,
-                None,
-                None,
-            );
-            state.agent_store.save(&agent).await?;
-            serde_json::json!({ "success": true, "agentId": agent.id })
-        }
-
-        "delegate_task" | "message_agent" => {
-            // Acknowledge and return stub
-            serde_json::json!({
-                "status": "forwarded",
-                "sessionId": query.session_id,
-                "method": method,
-                "message": "Request forwarded to backend session",
-            })
-        }
-
-        _ => {
-            return Ok(Json(serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": { "code": -32601, "message": format!("Unknown method: {}", method) }
-            })));
-        }
-    };
+            _ => {
+                return Ok(Json(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": { "code": -32601, "message": format!("Unknown method: {}", method) }
+                })));
+            }
+        };
 
     Ok(Json(serde_json::json!({
         "jsonrpc": "2.0",
