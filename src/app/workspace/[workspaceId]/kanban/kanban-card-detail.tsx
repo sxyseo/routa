@@ -176,12 +176,6 @@ export function KanbanCardDetail({
     return primaryCodebase?.repoPath ?? null;
   };
 
-  const sessionCwdMismatch = sessionInfo && activeRunSessionId ? (() => {
-    const taskRepoPath = getTaskRepositoryPath();
-    if (!taskRepoPath) return false;
-    return sessionInfo.cwd !== taskRepoPath;
-  })() : undefined;
-
   const currentLane = useMemo(
     () => boardColumns?.find((column) => column.id === (task.columnId ?? "backlog")),
     [boardColumns, task.columnId],
@@ -194,6 +188,11 @@ export function KanbanCardDetail({
   const orderedSessionIds = useMemo(() => getOrderedSessionIds(task), [task]);
   const activeRunSessionId = task.triggerSessionId
     ?? (orderedSessionIds.length > 0 ? orderedSessionIds[orderedSessionIds.length - 1] : undefined);
+  const sessionCwdMismatch = sessionInfo && activeRunSessionId ? (() => {
+    const taskRepoPath = getTaskRepositoryPath();
+    if (!taskRepoPath) return false;
+    return sessionInfo.cwd !== taskRepoPath;
+  })() : undefined;
   const splitMode = !fullWidth;
   const compactMode = splitMode;
 
@@ -949,7 +948,7 @@ function RepositoriesWorktreeRow({
                       onClick={() => onSelectSession((sessionInfo?.sessionId ?? task.triggerSessionId)!)}
                       className="rounded-xl border border-amber-200 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:border-amber-300 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-[#121620] dark:text-amber-300 dark:hover:bg-amber-900/20"
                     >
-                      Open selected run
+                      Open active session
                     </button>
                   )}
                   {canAdoptSessionRepo && sessionRepoCodebase && (

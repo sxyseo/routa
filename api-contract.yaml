@@ -1324,6 +1324,34 @@ paths:
         "500":
           description: Internal server error
 
+  /api/tasks/{id}/runs:
+    get:
+      operationId: listTaskRuns
+      summary: List normalized execution runs for a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The task ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task run ledger
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs]
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "404":
+          description: Task not found
+
   /api/kanban/boards:
     get:
       operationId: listKanbanBoards

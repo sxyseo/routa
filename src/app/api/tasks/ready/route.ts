@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
 import { Task } from "@/core/models/task";
+import { buildTaskEvidenceSummary } from "../task-evidence-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,13 @@ export async function GET(request: NextRequest) {
   const tasks = await system.taskStore.findReadyTasks(workspaceId);
 
   return NextResponse.json({
-    tasks: tasks.map(serializeTask),
+    tasks: await Promise.all(tasks.map((task) => serializeTask(task, system))),
   });
 }
 
-function serializeTask(task: Task) {
+async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSystem>) {
+  const evidenceSummary = await buildTaskEvidenceSummary(task, system);
+
   return {
     id: task.id,
     title: task.title,
@@ -50,6 +53,8 @@ function serializeTask(task: Task) {
     completionSummary: task.completionSummary,
     verificationVerdict: task.verificationVerdict,
     verificationReport: task.verificationReport,
+    artifactSummary: evidenceSummary.artifact,
+    evidenceSummary,
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
   };

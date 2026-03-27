@@ -494,6 +494,26 @@ async fn api_task_artifact_flow_and_gate() {
         json!(true)
     );
 
+    let ready_tasks = fixture
+        .client
+        .get(fixture.endpoint("/api/tasks/ready?workspaceId=default"))
+        .send()
+        .await
+        .expect("ready tasks");
+    assert_eq!(ready_tasks.status(), StatusCode::OK);
+    let ready_tasks_json: Value = ready_tasks.json().await.expect("decode ready tasks");
+    let ready_task = ready_tasks_json["tasks"]
+        .as_array()
+        .expect("ready task array")
+        .iter()
+        .find(|task| task["id"].as_str() == Some(task_id))
+        .expect("ready task");
+    assert_eq!(ready_task["artifactSummary"]["total"], json!(1));
+    assert_eq!(
+        ready_task["evidenceSummary"]["artifact"]["requiredSatisfied"],
+        json!(true)
+    );
+
     let allowed_move = fixture
         .client
         .patch(fixture.endpoint(&format!("/api/tasks/{task_id}")))

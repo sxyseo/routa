@@ -165,6 +165,7 @@ export interface TaskInfo {
   worktreeId?: string;
   artifactSummary?: ArtifactSummaryInfo;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface KanbanColumnAutomationInfo {

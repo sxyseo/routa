@@ -989,7 +989,11 @@ async fn find_ready_tasks(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let workspace_id = query.workspace_id.as_deref().unwrap_or("default");
     let tasks = state.task_store.find_ready_tasks(workspace_id).await?;
-    Ok(Json(serde_json::json!({ "tasks": tasks })))
+    let mut serialized_tasks = Vec::with_capacity(tasks.len());
+    for task in &tasks {
+        serialized_tasks.push(serialize_task_with_evidence(&state, task).await?);
+    }
+    Ok(Json(serde_json::json!({ "tasks": serialized_tasks })))
 }
 
 /// DELETE /api/tasks — Bulk delete all tasks for a workspace
