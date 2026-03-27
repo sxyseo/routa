@@ -1,6 +1,8 @@
+mod detector;
 mod engine;
 mod model;
 mod report;
+mod snapshot;
 mod support;
 mod types;
 
