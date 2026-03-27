@@ -7,15 +7,16 @@
  * static build, then restores it.
  */
 import { execSync } from "child_process";
-import { renameSync, existsSync } from "fs";
-import { join } from "path";
+import { existsSync, renameSync } from "fs";
+import path from "path";
 import { fileURLToPath } from "url";
 
-const rootDir = join(fileURLToPath(import.meta.url), "..", "..");
-const apiDir = join(rootDir, "src/app/api");
-const apiBackup = join(rootDir, "src/app/_api_excluded");
-const wellKnownDir = join(rootDir, "src/app/.well-known");
-const wellKnownBackup = join(rootDir, "src/app/_well-known_excluded");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "..", "..");
+const apiDir = path.join(rootDir, "src/app/api");
+const apiBackup = path.join(rootDir, "src/app/_api_excluded");
+const wellKnownDir = path.join(rootDir, "src/app/.well-known");
+const wellKnownBackup = path.join(rootDir, "src/app/_well-known_excluded");
 
 function moveDir(from, to) {
   if (existsSync(from)) {

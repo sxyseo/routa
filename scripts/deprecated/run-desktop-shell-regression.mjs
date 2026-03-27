@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 
-import { isServerReachable, waitForServer } from "./page-snapshot-lib.mjs";
+import { isServerReachable, waitForServer } from "../page-snapshot-lib.mjs";
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3301";
 const TIMEOUT_MS = 60_000;
@@ -33,10 +33,10 @@ function spawnWithLogs(command, args, env) {
   };
 }
 
-async function waitForExit(child) {
-  return await new Promise((resolve, reject) => {
-    child.on("exit", (code, signal) => resolve({ code: code ?? 1, signal }));
-    child.on("error", reject);
+function waitForExit(child) {
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
   });
 }
 

@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { fromRoot } from "./lib/paths";
-import { loadYamlFile } from "./lib/yaml";
+import { fromRoot } from "../lib/paths";
+import { loadYamlFile } from "../lib/yaml";
 
 type RouteInfo = {
   route: string;
@@ -236,7 +236,7 @@ export function renderMarkdown(tree: FeatureTree): string {
     "  - src/app/**/page.tsx",
     "  - api-contract.yaml",
     "update_policy:",
-    "  - Regenerate with `node --import tsx scripts/feature-tree-generator.ts --save`.",
+    "  - Regenerate with `node --import tsx scripts/docs/feature-tree-generator.ts --save`.",
     "  - Do not hand-edit generated endpoint or route tables.",
     "---",
     "",

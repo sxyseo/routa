@@ -19,7 +19,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "..", "..");
 
 const standaloneDir = path.join(root, ".next-desktop", "standalone");
 const staticDir = path.join(root, ".next-desktop", "static");

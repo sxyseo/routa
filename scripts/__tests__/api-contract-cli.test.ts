@@ -13,7 +13,7 @@ function runScript(relativePath: string, args: string[] = []) {
 
 describe("api contract cli", () => {
   it("emits parity summary JSON", () => {
-    const result = runScript("scripts/check-api-parity.ts", ["--json"]);
+    const result = runScript("scripts/fitness/check-api-parity.ts", ["--json"]);
 
     expect(result.status).toBe(0);
     const parsed = JSON.parse(result.stdout) as {
@@ -25,7 +25,7 @@ describe("api contract cli", () => {
   });
 
   it("emits schema validation JSON report", () => {
-    const result = runScript("scripts/validate-openapi-schema.ts", ["--json"]);
+    const result = runScript("scripts/fitness/validate-openapi-schema.ts", ["--json"]);
 
     expect(result.status).toBe(0);
     const parsed = JSON.parse(result.stdout) as {

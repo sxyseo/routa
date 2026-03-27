@@ -2,7 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 
-import { fromRoot } from "./lib/paths";
+import { fromRoot } from "../lib/paths";
 
 const NEXTJS_URL = process.env.NEXTJS_URL ?? "http://localhost:3000";
 const RUST_URL = process.env.RUST_URL ?? "http://localhost:3210";
@@ -89,7 +89,7 @@ function main(): void {
   heading(`${COLORS.blue}╚══════════════════════════════════════════════════╝${COLORS.reset}\n`);
 
   heading(`${COLORS.blue}[1/2] Static route parity check...${COLORS.reset}\n`);
-  const staticCheck = spawnSync(process.execPath, ["--import", "tsx", fromRoot("scripts", "check-api-parity.ts")], {
+  const staticCheck = spawnSync(process.execPath, ["--import", "tsx", fromRoot("scripts", "fitness", "check-api-parity.ts")], {
     cwd: fromRoot(),
     stdio: "inherit",
   });
@@ -97,7 +97,7 @@ function main(): void {
     heading(`\n${COLORS.green}✅ Static route check passed${COLORS.reset}\n`);
   } else {
     heading(`\n${COLORS.red}❌ Static route check failed${COLORS.reset}`);
-    heading(`${COLORS.yellow}   Run: node --import tsx scripts/check-api-parity.ts --fix-hint${COLORS.reset}\n`);
+    heading(`${COLORS.yellow}   Run: node --import tsx scripts/fitness/check-api-parity.ts --fix-hint${COLORS.reset}\n`);
     errors += 1;
   }
 

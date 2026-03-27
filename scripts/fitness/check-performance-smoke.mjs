@@ -4,7 +4,7 @@ import {
   createSnapshotScriptSession,
   getSnapshotTargetsByIds,
   waitForSnapshotTarget,
-} from "./page-snapshot-lib.mjs";
+} from "../page-snapshot-lib.mjs";
 
 const PERFORMANCE_PAGE_IDS = ["workspace", "kanban", "traces", "session-detail"];
 const BASE_URL = process.env.PAGE_SNAPSHOT_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000";
@@ -40,23 +40,6 @@ async function main() {
       "Performance smoke will use a dedicated snapshot server instead.",
   });
   const { context, page } = await session.createPageSession();
-
-  await page.addInitScript(() => {
-    globalThis.__routaPerf = { longTasks: 0, fcp: null };
-    const observer = new globalThis.PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        if (entry.entryType === "longtask") {
-          globalThis.__routaPerf.longTasks += 1;
-        }
-        if (entry.entryType === "paint" && entry.name === "first-contentful-paint") {
-          globalThis.__routaPerf.fcp = entry.startTime;
-        }
-      }
-    });
-
-    observer.observe({ type: "longtask", buffered: true });
-    observer.observe({ type: "paint", buffered: true });
-  });
 
   let failed = false;
 

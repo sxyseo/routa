@@ -93,6 +93,6 @@ api-contract:
 | 文件 | 用途 |
 |------|------|
 | `/api-contract.yaml` | OpenAPI 契约定义 |
-| `/scripts/check-api-parity.ts` | 一致性检查脚本 |
-| `/scripts/validate-openapi-schema.ts` | Schema 验证脚本 |
+| `/scripts/fitness/check-api-parity.ts` | 一致性检查脚本 |
+| `/scripts/fitness/validate-openapi-schema.ts` | Schema 验证脚本 |
 | `/tests/api-contract/` | 契约测试用例 |

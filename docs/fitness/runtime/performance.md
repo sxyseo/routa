@@ -21,7 +21,7 @@ metrics:
       - src/client/**
       - src/app/styles/**
       - e2e/**
-      - scripts/check-performance-smoke.mjs
+      - scripts/fitness/check-performance-smoke.mjs
       - scripts/page-snapshot-lib.mjs
     description: "关键 workspace / kanban / traces / session detail 路由的导航、FCP、CSS 体积与 long task smoke"
 

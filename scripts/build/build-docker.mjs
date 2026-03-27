@@ -14,7 +14,7 @@
  * them at runtime.
  *
  * Run this script after `npm run build:docker`:
- *   node scripts/build-docker.mjs
+ *   node scripts/build/build-docker.mjs
  */
 
 import { execSync } from "child_process";
@@ -23,7 +23,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "..", "..");
 
 const standaloneDir = path.join(root, ".next", "standalone");
 const chunksDir = path.join(standaloneDir, ".next", "server", "chunks");

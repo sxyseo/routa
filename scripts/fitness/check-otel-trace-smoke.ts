@@ -19,9 +19,9 @@ async function main() {
   process.env.ROUTA_RUNTIME_SERVICES_DELAY_MS = "0";
   process.env.ROUTA_SKIP_RUNTIME_SERVICES = "1";
 
-  const { register } = await import("../src/instrumentation");
+  const { register } = await import("../../src/instrumentation");
   const { shutdownNextRuntimeTelemetry } = await import(
-    "../src/core/telemetry/node-otel"
+    "../../src/core/telemetry/node-otel"
   );
 
   await register();

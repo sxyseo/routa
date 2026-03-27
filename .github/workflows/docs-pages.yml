@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       - name: Build docs site
-        run: node scripts/build-docs-site.mjs
+        run: node scripts/build/build-docs-site.mjs
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

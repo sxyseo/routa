@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { fromRoot } from "./lib/paths";
-import { loadYamlFile } from "./lib/yaml";
+import { fromRoot } from "../lib/paths";
+import { loadYamlFile } from "../lib/yaml";
 
 type SpecialistExecution = {
   role?: string;

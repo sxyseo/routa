@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 
-import { fromRoot } from "./lib/paths";
+import { fromRoot } from "../lib/paths";
 
 function resolveCargoBinary(): string {
   const rustupCargo = spawnSync("rustup", ["which", "cargo"], {

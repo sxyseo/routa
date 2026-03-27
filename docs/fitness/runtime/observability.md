@@ -37,7 +37,7 @@ metrics:
     run_when_changed:
       - src/instrumentation.ts
       - src/core/telemetry/**
-      - scripts/check-otel-trace-smoke.ts
+      - scripts/fitness/check-otel-trace-smoke.ts
       - package.json
       - package-lock.json
     description: "当显式开启 ROUTA_OTEL_ENABLED 时，Next.js Node runtime 会输出最小可验证的 OTel span"

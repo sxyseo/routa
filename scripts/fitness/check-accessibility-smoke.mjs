@@ -8,7 +8,7 @@ import {
   createSnapshotScriptSession,
   getSnapshotTargetsByIds,
   resolveWorkspacePath,
-} from "./page-snapshot-lib.mjs";
+} from "../page-snapshot-lib.mjs";
 
 const ACCESSIBILITY_PAGE_IDS = ["workspace", "kanban", "traces", "session-detail"];
 const BASE_URL = process.env.PAGE_SNAPSHOT_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000";

@@ -5,7 +5,7 @@ sources:
   - src/app/**/page.tsx
   - api-contract.yaml
 update_policy:
-  - Regenerate with `node --import tsx scripts/feature-tree-generator.ts --save`.
+  - Regenerate with `node --import tsx scripts/docs/feature-tree-generator.ts --save`.
   - Do not hand-edit generated endpoint or route tables.
 ---
 
@@ -403,4 +403,3 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/worktrees/{id}` | Get a single worktree |
 | DELETE | `/api/worktrees/{id}` | Remove a worktree |
 | POST | `/api/worktrees/{id}/validate` | Validate worktree health on disk |
-

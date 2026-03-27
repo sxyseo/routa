@@ -8,21 +8,21 @@
  *   3. Rust routes        — crates/routa-server/src/api/*.rs
  *
  * Usage:
- *   node --import tsx scripts/check-api-parity.ts
- *   node --import tsx scripts/check-api-parity.ts --json        # machine-readable output
- *   node --import tsx scripts/check-api-parity.ts --fix-hint    # show suggested fixes
+ *   node --import tsx scripts/fitness/check-api-parity.ts
+ *   node --import tsx scripts/fitness/check-api-parity.ts --json        # machine-readable output
+ *   node --import tsx scripts/fitness/check-api-parity.ts --fix-hint    # show suggested fixes
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { getCliArgs, isDirectExecution } from "./lib/cli";
-import { fromRoot } from "./lib/paths";
+import { getCliArgs, isDirectExecution } from "../lib/cli";
+import { fromRoot } from "../lib/paths";
 import {
   listContractEndpoints,
   loadOpenApiContract,
   type RouteEndpoint,
-} from "./lib/openapi-contract";
+} from "../lib/openapi-contract";
 
 const args = getCliArgs();
 const jsonMode = args.has("--json");

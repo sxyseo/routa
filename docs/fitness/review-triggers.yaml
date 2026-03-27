@@ -37,8 +37,8 @@ review_triggers:
       - api-contract.yaml
     evidence_paths:
       - docs/fitness/api-contract.md
-      - scripts/check-api-parity.ts
-      - scripts/validate-openapi-schema.ts
+      - scripts/fitness/check-api-parity.ts
+      - scripts/fitness/validate-openapi-schema.ts
       - src/app/api/**
       - crates/routa-server/src/api/**
       - docs/fitness/unit-test.md

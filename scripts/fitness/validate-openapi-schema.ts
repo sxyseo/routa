@@ -15,12 +15,12 @@
  *   7. Generates a schema coverage report
  *
  * Usage:
- *   node --import tsx scripts/validate-openapi-schema.ts
- *   node --import tsx scripts/validate-openapi-schema.ts --json
- *   node --import tsx scripts/validate-openapi-schema.ts --report
+ *   node --import tsx scripts/fitness/validate-openapi-schema.ts
+ *   node --import tsx scripts/fitness/validate-openapi-schema.ts --json
+ *   node --import tsx scripts/fitness/validate-openapi-schema.ts --report
  */
 
-import { getCliArgs, isDirectExecution } from "./lib/cli";
+import { getCliArgs, isDirectExecution } from "../lib/cli";
 import {
   collectSchemaUsage,
   extractRefs,
@@ -28,7 +28,7 @@ import {
   normalizeComponentSchemaRefs,
   OPENAPI_HTTP_METHODS,
   type OpenApiDocument,
-} from "./lib/openapi-contract";
+} from "../lib/openapi-contract";
 
 import Ajv from "ajv";
 import addFormats from "ajv-formats";

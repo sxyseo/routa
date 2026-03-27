@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFeatureTree, parsePageComment, renderMarkdown } from "../feature-tree-generator";
+import { buildFeatureTree, parsePageComment, renderMarkdown } from "../docs/feature-tree-generator";
 
 describe("feature-tree-generator", () => {
   it("extracts title and condensed description from page comments", () => {
@@ -21,9 +21,8 @@ describe("feature-tree-generator", () => {
     );
 
     const markdown = renderMarkdown(tree);
-    expect(markdown).toContain("node --import tsx scripts/feature-tree-generator.ts --save");
+    expect(markdown).toContain("node --import tsx scripts/docs/feature-tree-generator.ts --save");
     expect(markdown).toContain("| Home | `/` |  |");
     expect(markdown).toContain("| GET | `/api/agents` | List agents |");
   });
 });
-

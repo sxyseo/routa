@@ -163,30 +163,7 @@ try {
     );
   }
 
-  const rootDir = path.join(stagingRoot, sourceTemplate.name);
-  await fsp.cp(sourcePackage, rootDir, { recursive: true });
-
-  const rootPackageJson = {
-    ...sourceTemplate,
-    version,
-    optionalDependencies: Object.fromEntries(
-      platformPackages.map((platform) => [platform.packageName, version]),
-    ),
-  };
-
-  await fsp.writeFile(
-    path.join(rootDir, "package.json"),
-    `${JSON.stringify(rootPackageJson, null, 2)}\n`,
-    "utf8",
-  );
-
-  const rootTarballName = npmPack(rootDir);
-  await fsp.rename(
-    path.join(rootDir, rootTarballName),
-    path.join(outputDir, rootTarballName),
-  );
-
-  console.log(`Prepared ${version} NPM tarballs in ${outputDir}`);
+  console.log(`Staged npm tarballs in ${outputDir}`);
 } finally {
   await fsp.rm(stagingRoot, { recursive: true, force: true });
 }

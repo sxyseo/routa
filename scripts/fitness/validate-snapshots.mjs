@@ -13,7 +13,7 @@ import {
   selectSnapshotTargets,
   summarizeDiff,
   writeReport,
-} from "./page-snapshot-lib.mjs";
+} from "../page-snapshot-lib.mjs";
 
 async function main() {
   const options = parseCliArgs(process.argv.slice(2));
@@ -89,12 +89,12 @@ async function main() {
         } else {
           report.mismatched += 1;
           const diff = summarizeDiff(expected, actual);
-          report.diffs.push({ 
-            target: target.id, 
-            reason: "content mismatch", 
+          report.diffs.push({
+            target: target.id,
+            reason: "content mismatch",
             similarity: similarityPercent,
             threshold: (effectiveThreshold * 100).toFixed(1),
-            diff 
+            diff
           });
           console.log(`❌ ${target.id}: snapshot mismatch (${similarityPercent}% similar, threshold: ${(effectiveThreshold * 100).toFixed(0)}%)`);
 
@@ -120,7 +120,7 @@ async function main() {
 
   console.log(`\nValidated ${report.validated} snapshots, matched ${report.matched}, mismatched ${report.mismatched}, updated ${report.updated}, missing ${report.missing}.`);
   console.log(`Similarity threshold: ${(options.similarityThreshold * 100).toFixed(0)}%`);
-  
+
   if (report.mismatched > 0 || report.missing > 0) {
     process.exit(options.update ? 0 : 1);
   }

@@ -4,7 +4,7 @@ import {
   firstPromptParagraph,
   renderExecutionSummary,
   renderOverviewMarkdown,
-} from "../generate-specialist-docs";
+} from "../docs/generate-specialist-docs";
 
 describe("generate-specialist-docs", () => {
   it("ignores section headings when extracting prompt summary", () => {
@@ -57,4 +57,3 @@ describe("generate-specialist-docs", () => {
     ).toBe("role=REVIEWER, provider=opencode, model_tier=fast");
   });
 });
-
