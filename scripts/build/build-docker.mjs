@@ -30,6 +30,8 @@ const chunksDir = path.join(standaloneDir, ".next", "server", "chunks");
 const targetDbDir = path.join(chunksDir, "db");
 
 function runEsbuild(entry, outfile) {
+  // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+  // Esbuild args are built from trusted internal constants.
   const result = spawnSync("npx", [
     "esbuild",
     entry,

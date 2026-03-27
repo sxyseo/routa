@@ -34,6 +34,8 @@ const bundleRoot = path.join(
 );
 
 function runNextBuild() {
+  // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+  // Commands are hardcoded and invoked without shell interpolation.
   const result = spawnSync("npx", ["next", "build"], {
     cwd: root,
     stdio: "inherit",
@@ -54,6 +56,8 @@ function runNextBuild() {
 }
 
 function runEsbuild(entry, outfile) {
+  // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+  // Esbuild args are derived from internal constants for packaging.
   const result = spawnSync("npx", [
     "esbuild",
     entry,
