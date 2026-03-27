@@ -33,6 +33,14 @@ Work in your own working directory while coding. Only copy artifacts to the requ
 
 Run each script with `-h` to view detailed usage info.
 
+## Demo screenshots
+
+For high-resolution browser demo screenshots, use:
+
+```bash
+agent-browser --headed open http://127.0.0.1:3000 && agent-browser set viewport 2560 1440 && agent-browser wait --load networkidle && agent-browser screenshot --full artifacts/slide-demo.png
+```
+
 ## Helpers API
 
 Version: 1.2.0 (from `pptxgenjs_helpers/index.js`)
