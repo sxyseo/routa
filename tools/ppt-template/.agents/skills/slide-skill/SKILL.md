@@ -1,3 +1,8 @@
+---
+name: slide-skill
+description: Use this skill as reference material when creating or editing presentation slide decks.
+---
+
 # Slides Skill
 
 Use this skill as reference material when creating or editing presentation slide decks.
