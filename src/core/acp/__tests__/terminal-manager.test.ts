@@ -26,15 +26,41 @@ class FakeProcess extends EventEmitter implements IProcessHandle {
   }
 }
 
-const spawnMock = vi.fn();
-const execSyncMock = vi.fn(() => "/usr/bin/python3\n");
+class FakeNodePty extends EventEmitter {
+  pid = 4321;
+  writes: string[] = [];
+  resizes: Array<{ cols: number; rows: number }> = [];
 
+  write(data: string): void {
+    this.writes.push(data);
+  }
+
+  resize(cols: number, rows: number): void {
+    this.resizes.push({ cols, rows });
+  }
+
+  kill(_signal?: string): void {
+    this.emit("exit", { exitCode: 0 });
+  }
+
+  onData(handler: (data: string) => void): { dispose(): void } {
+    this.on("data", handler);
+    return { dispose: () => this.off("data", handler) };
+  }
+
+  onExit(handler: (event: { exitCode: number; signal?: number }) => void): { dispose(): void } {
+    this.on("exit", handler);
+    return { dispose: () => this.off("exit", handler) };
+  }
+}
+
+const spawnMock = vi.fn();
 vi.mock("@/core/platform", () => ({
   getServerBridge: () => ({
     process: {
       isAvailable: () => true,
       spawn: spawnMock,
-      execSync: execSyncMock,
+      execSync: vi.fn(),
     },
   }),
 }));
@@ -44,14 +70,13 @@ describe("TerminalManager", () => {
   let process: FakeProcess;
 
   beforeEach(() => {
-    manager = new TerminalManager();
+    manager = new TerminalManager({ enableNodePty: false });
     process = new FakeProcess();
     spawnMock.mockReset();
     spawnMock.mockReturnValue(process);
-    execSyncMock.mockClear();
   });
 
-  it("writes browser input back to the terminal process", () => {
+  it("writes browser input back to the spawned terminal process", () => {
     const result = manager.create(
       { command: "/bin/sh", args: ["-c", "cat"] },
       "session-1",
@@ -62,15 +87,10 @@ describe("TerminalManager", () => {
 
     manager.write(result.terminalId, "ls -la\n");
 
-    expect(process.stdin.writes).toEqual([
-      `${JSON.stringify({
-        type: "input",
-        data: Buffer.from("ls -la\n", "utf-8").toString("base64"),
-      })}\n`,
-    ]);
+    expect(process.stdin.writes).toEqual(["ls -la\n"]);
   });
 
-  it("tracks resize metadata without requiring a PTY backend", () => {
+  it("tracks resize metadata without a PTY backend", () => {
     const result = manager.create(
       { command: "/bin/sh", args: ["-c", "cat"], cols: 80, rows: 24 },
       "session-1",
@@ -78,8 +98,65 @@ describe("TerminalManager", () => {
     );
 
     expect(() => manager.resize(result.terminalId, 120, 40)).not.toThrow();
-    expect(process.stdin.writes[0]).toBe(
-      `${JSON.stringify({ type: "resize", cols: 120, rows: 40 })}\n`,
+    expect(process.stdin.writes).toEqual([]);
+  });
+
+  it("prefers node-pty when available and writes terminal data directly", () => {
+    const nodePty = new FakeNodePty();
+    manager = new TerminalManager({ enableNodePty: true });
+    vi.spyOn(manager as any, "loadNodePty").mockReturnValue({
+      spawn: vi.fn(() => nodePty),
+    });
+
+    const emitNotification = vi.fn();
+    const result = manager.create(
+      { command: "/bin/sh", args: ["-c", "cat"], cols: 80, rows: 24 },
+      "session-1",
+      emitNotification,
     );
+
+    manager.write(result.terminalId, "echo hello\n");
+    manager.resize(result.terminalId, 120, 40);
+    nodePty.emit("data", "pty output");
+
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nodePty.writes).toEqual(["echo hello\n"]);
+    expect(nodePty.resizes).toEqual([{ cols: 120, rows: 40 }]);
+    expect(manager.getOutput(result.terminalId)).toEqual({ output: "pty output" });
+    expect(emitNotification).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "terminal_output",
+          data: "pty output",
+        }),
+      }),
+    }));
+  });
+
+  it("emits terminal_exited when the node-pty backend exits", async () => {
+    const nodePty = new FakeNodePty();
+    manager = new TerminalManager({ enableNodePty: true });
+    vi.spyOn(manager as any, "loadNodePty").mockReturnValue({
+      spawn: vi.fn(() => nodePty),
+    });
+
+    const emitNotification = vi.fn();
+    const result = manager.create(
+      { command: "/bin/sh", args: ["-c", "exit 7"] },
+      "session-1",
+      emitNotification,
+    );
+
+    nodePty.emit("exit", { exitCode: 7 });
+
+    await expect(manager.waitForExit(result.terminalId)).resolves.toEqual({ exitCode: 7 });
+    expect(emitNotification).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "terminal_exited",
+          exitCode: 7,
+        }),
+      }),
+    }));
   });
 });

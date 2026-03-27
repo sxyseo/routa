@@ -11,6 +11,8 @@
  * Web (Node.js), Tauri, and Electron environments.
  */
 
+import fs from "node:fs";
+import { EventEmitter } from "node:events";
 import path from "node:path";
 
 import type { IProcessHandle } from "@/core/platform/interfaces";
@@ -33,15 +35,85 @@ interface ManagedTerminal {
   createdAt: Date;
   cols?: number;
   rows?: number;
-  usesPtyBridge: boolean;
-  helperStdoutBuffer?: string;
+  backend: "node-pty" | "spawn";
   exitNotified?: boolean;
+  ptyProcess?: NodePtyProcessHandle;
+}
+
+interface NodePtyTerminal {
+  pid?: number;
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  kill(signal?: string): void;
+  onData(handler: (data: string) => void): { dispose(): void } | void;
+  onExit(handler: (event: { exitCode: number; signal?: number }) => void): { dispose(): void } | void;
+}
+
+interface NodePtyModule {
+  spawn(
+    file: string,
+    args?: string[],
+    options?: {
+      name?: string;
+      cols?: number;
+      rows?: number;
+      cwd?: string;
+      env?: Record<string, string>;
+    },
+  ): NodePtyTerminal;
+}
+
+class NodePtyProcessHandle extends EventEmitter implements IProcessHandle {
+  pid: number | undefined;
+  stdin;
+  stdout;
+  stderr = null;
+  exitCode: number | null = null;
+
+  constructor(private readonly pty: NodePtyTerminal) {
+    super();
+    this.pid = pty.pid;
+    this.stdin = {
+      writable: true,
+      write: (data: string | Buffer) => {
+        this.pty.write(typeof data === "string" ? data : data.toString("utf-8"));
+        return true;
+      },
+    };
+    this.stdout = {
+      on: (event: "data", handler: (chunk: Buffer) => void) => {
+        if (event !== "data") return;
+        this.pty.onData((data) => {
+          handler(Buffer.from(data, "utf-8"));
+        });
+      },
+    };
+
+    this.pty.onExit(({ exitCode, signal }) => {
+      this.exitCode = exitCode;
+      this.emit("exit", exitCode, signal == null ? null : String(signal));
+    });
+  }
+
+  resize(cols: number, rows: number): void {
+    this.pty.resize(cols, rows);
+  }
+
+  kill(signal?: string): void {
+    this.pty.kill(signal);
+  }
+}
+
+interface TerminalManagerOptions {
+  enableNodePty?: boolean;
 }
 
 export class TerminalManager {
   private terminals = new Map<string, ManagedTerminal>();
   private terminalCounter = 0;
-  private ptyBridgeCommand: string | null | undefined;
+  private nodePtyModule: NodePtyModule | null | undefined;
+
+  constructor(private readonly options: TerminalManagerOptions = {}) {}
 
   /**
    * Create a terminal process.
@@ -93,17 +165,19 @@ export class TerminalManager {
       FORCE_COLOR: "1",
       TERM: "xterm-256color",
     };
-    const usePtyBridge = this.canUsePtyBridge(bridge.process);
-    const proc = usePtyBridge
-      ? bridge.process.spawn(
-          this.getPtyBridgeCommand(bridge.process)!,
-          this.buildPtyBridgeArgs(command, args, params),
-          {
-            stdio: ["pipe", "pipe", "pipe"],
+    const rows = typeof params.rows === "number" ? params.rows : undefined;
+    const cols = typeof params.cols === "number" ? params.cols : undefined;
+
+    const nodePty = this.loadNodePty();
+    const proc = nodePty
+      ? new NodePtyProcessHandle(
+          nodePty.spawn(command, args, {
+            name: mergedEnv.TERM,
             cwd,
-            env: mergedEnv,
-            shell: false,
-          },
+            env: { ...process.env, ...mergedEnv },
+            cols: cols ?? 80,
+            rows: rows ?? 24,
+          }),
         )
       : bridge.process.spawn(command, args, {
           stdio: ["pipe", "pipe", "pipe"],
@@ -111,6 +185,7 @@ export class TerminalManager {
           env: mergedEnv,
           shell: true,
         });
+    const backend: ManagedTerminal["backend"] = nodePty ? "node-pty" : "spawn";
 
     const output = "";
     let exitResolve: (code: number) => void;
@@ -127,24 +202,18 @@ export class TerminalManager {
       exited: false,
       exitPromise,
       createdAt: new Date(),
-      cols: typeof params.cols === "number" ? params.cols : undefined,
-      rows: typeof params.rows === "number" ? params.rows : undefined,
-      usesPtyBridge: usePtyBridge,
-      helperStdoutBuffer: "",
+      cols,
+      rows,
+      backend,
       exitNotified: false,
+      ptyProcess: proc instanceof NodePtyProcessHandle ? proc : undefined,
     };
 
-    if (usePtyBridge) {
-      proc.stdout?.on("data", (chunk: Buffer) => {
-        this.handlePtyBridgeStdout(managed, chunk, emitNotification);
-      });
-    } else {
-      // Capture stdout
-      proc.stdout?.on("data", (chunk: Buffer) => {
-        const data = chunk.toString("utf-8");
-        this.appendOutput(managed, data, emitNotification);
-      });
-    }
+    // Capture stdout
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      const data = chunk.toString("utf-8");
+      this.appendOutput(managed, data, emitNotification);
+    });
 
     // Capture stderr (merge into terminal output)
     proc.stderr?.on("data", (chunk: Buffer) => {
@@ -198,14 +267,6 @@ export class TerminalManager {
       throw new Error("Terminal is not writable");
     }
 
-    if (terminal.usesPtyBridge) {
-      terminal.process.stdin.write(`${JSON.stringify({
-        type: "input",
-        data: Buffer.from(data, "utf-8").toString("base64"),
-      })}\n`);
-      return;
-    }
-
     terminal.process.stdin.write(data);
   }
 
@@ -217,12 +278,9 @@ export class TerminalManager {
 
     terminal.cols = typeof cols === "number" ? cols : terminal.cols;
     terminal.rows = typeof rows === "number" ? rows : terminal.rows;
-    if (terminal.usesPtyBridge && terminal.process.stdin?.writable) {
-      terminal.process.stdin.write(`${JSON.stringify({
-        type: "resize",
-        cols: terminal.cols,
-        rows: terminal.rows,
-      })}\n`);
+    if (terminal.backend === "node-pty" && terminal.ptyProcess && terminal.cols && terminal.rows) {
+      terminal.ptyProcess.resize(terminal.cols, terminal.rows);
+      return;
     }
   }
 
@@ -269,84 +327,50 @@ export class TerminalManager {
     });
   }
 
-  private handlePtyBridgeStdout(
-    terminal: ManagedTerminal,
-    chunk: Buffer,
-    emitNotification: TerminalNotificationEmitter,
-  ): void {
-    terminal.helperStdoutBuffer = `${terminal.helperStdoutBuffer ?? ""}${chunk.toString("utf-8")}`;
-    const lines = terminal.helperStdoutBuffer.split("\n");
-    terminal.helperStdoutBuffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      try {
-        const frame = JSON.parse(trimmed) as
-          | { type: "output"; data: string }
-          | { type: "exit"; exitCode?: number };
-        if (frame.type === "output" && typeof frame.data === "string") {
-          this.appendOutput(
-            terminal,
-            Buffer.from(frame.data, "base64").toString("utf-8"),
-            emitNotification,
-          );
-        }
-        if (frame.type === "exit") {
-          this.markExited(terminal, frame.exitCode ?? 0, emitNotification);
-        }
-      } catch {
-        this.appendOutput(terminal, `${trimmed}\n`, emitNotification);
-      }
+  private loadNodePty(): NodePtyModule | null {
+    if (this.options.enableNodePty === false) {
+      return null;
     }
+    if (this.nodePtyModule !== undefined) {
+      return this.nodePtyModule;
+    }
+
+    try {
+      // Loaded dynamically because this native module is optional and only needed on server runtimes.
+      this.ensureNodePtySpawnHelperExecutable();
+      const nodePty = require("node-pty") as NodePtyModule;
+      this.nodePtyModule = typeof nodePty?.spawn === "function" ? nodePty : null;
+    } catch {
+      this.nodePtyModule = null;
+    }
+
+    return this.nodePtyModule;
   }
 
-  private canUsePtyBridge(processAdapter: ReturnType<typeof getServerBridge>["process"]): boolean {
-    return process.platform !== "win32" && Boolean(this.getPtyBridgeCommand(processAdapter));
-  }
-
-  private getPtyBridgeCommand(
-    processAdapter: ReturnType<typeof getServerBridge>["process"],
-  ): string | null {
-    if (this.ptyBridgeCommand !== undefined) {
-      return this.ptyBridgeCommand;
+  private ensureNodePtySpawnHelperExecutable(): void {
+    if (process.platform === "win32") {
+      return;
     }
 
-    for (const candidate of ["python3", "python"]) {
-      if (typeof processAdapter.execSync !== "function") {
-        break;
+    try {
+      const packageJsonPath = require.resolve("node-pty/package.json");
+      const helperPath = path.join(
+        path.dirname(packageJsonPath),
+        "prebuilds",
+        `${process.platform}-${process.arch}`,
+        "spawn-helper",
+      );
+      if (!fs.existsSync(helperPath)) {
+        return;
       }
-      try {
-        const resolved = processAdapter.execSync(`which ${candidate}`).trim().split("\n")[0];
-        if (resolved) {
-          this.ptyBridgeCommand = resolved;
-          return resolved;
-        }
-      } catch {
-        // Try next candidate.
+
+      const currentMode = fs.statSync(helperPath).mode & 0o777;
+      if ((currentMode & 0o111) !== 0o111) {
+        fs.chmodSync(helperPath, 0o755);
       }
+    } catch {
+      // If we cannot normalize helper permissions, node-pty loading will fall back to plain spawn.
     }
-
-    this.ptyBridgeCommand = null;
-    return null;
-  }
-
-  private buildPtyBridgeArgs(
-    command: string,
-    args: string[],
-    params: Record<string, unknown>,
-  ): string[] {
-    const helperPath = path.resolve(process.cwd(), "scripts/pty-bridge.py");
-    const bridgeArgs = [helperPath];
-    if (typeof params.cols === "number") {
-      bridgeArgs.push("--cols", String(params.cols));
-    }
-    if (typeof params.rows === "number") {
-      bridgeArgs.push("--rows", String(params.rows));
-    }
-    bridgeArgs.push("--", command, ...args);
-    return bridgeArgs;
   }
 
   /**

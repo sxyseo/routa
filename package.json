@@ -176,6 +176,7 @@
   "optionalDependencies": {
     "@google/generative-ai-cli": "^1.0.0",
     "better-sqlite3": "^12.6.2",
+    "node-pty": "^1.1.0",
     "opencode-ai": "latest"
   },
   "devDependencies": {
