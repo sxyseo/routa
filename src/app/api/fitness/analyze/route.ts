@@ -150,7 +150,7 @@ function normalizeProfiles(raw: unknown): FitnessProfile[] {
     configured.push(payload.profile);
   }
 
-  const includeBoth = payload.runBoth === true || payload.runBoth === 1;
+  const includeBoth = payload.runBoth === true;
   if (includeBoth && configured.length === 0) {
     return [...FITNESS_PROFILES];
   }

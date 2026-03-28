@@ -11,12 +11,12 @@ import {
   parseMetricNames,
   parsePositiveInt,
   type HookProfileName,
+  type RuntimePhase,
 } from "./config.js";
 import {
   resolveRuntimeProfile,
   runRuntime,
   type HookRuntimeOptions,
-  type RuntimePhase,
 } from "./runtime.js";
 
 export { formatReviewPhaseLabel } from "./runtime.js";

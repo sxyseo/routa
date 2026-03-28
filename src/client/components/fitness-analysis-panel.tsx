@@ -185,7 +185,7 @@ function formatTime(value: string | undefined) {
 }
 
 function formatDuration(ms: number | undefined) {
-  if (!Number.isFinite(ms ?? NaN)) return "未知";
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return "未知";
   if (ms >= 1000) {
     return `${(ms / 1000).toFixed(1)}s`;
   }
@@ -198,33 +198,37 @@ function normalizeApiResponse(payload: unknown): ApiProfileEntry[] {
     return [];
   }
 
-  return ((payload as { profiles: unknown[] }).profiles)
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
+  return ((payload as { profiles: unknown[] }).profiles).reduce<ApiProfileEntry[]>((entries, entry) => {
+    if (!entry || typeof entry !== "object") {
+      return entries;
+    }
 
-      const value = entry as Partial<ApiProfileEntry>;
-      if (
-        value.profile !== "generic" && value.profile !== "agent_orchestrator"
-        || value.status === undefined
-      ) {
-        return null;
-      }
+    const value = entry as Partial<ApiProfileEntry>;
+    if (
+      (value.profile !== "generic" && value.profile !== "agent_orchestrator")
+      || value.status === undefined
+    ) {
+      return entries;
+    }
 
-      const status = value.status;
-      if (status !== "ok" && status !== "missing" && status !== "error") return null;
-      if (value.source !== "analysis" && value.source !== "snapshot") return null;
+    const status = value.status;
+    if (status !== "ok" && status !== "missing" && status !== "error") {
+      return entries;
+    }
+    if (value.source !== "analysis" && value.source !== "snapshot") {
+      return entries;
+    }
 
-      return {
-        profile: value.profile,
-        status,
-        source: value.source,
-        report: value.report as FitnessReport | undefined,
-        error: typeof value.error === "string" ? value.error : undefined,
-        durationMs: typeof value.durationMs === "number" && Number.isFinite(value.durationMs) ? value.durationMs : undefined,
-      };
-    })
-    .filter((entry): entry is ApiProfileEntry => entry !== null)
-    .filter((entry) => PROFILE_ORDER.includes(entry.profile));
+    entries.push({
+      profile: value.profile,
+      status,
+      source: value.source,
+      report: value.report as FitnessReport | undefined,
+      error: typeof value.error === "string" ? value.error : undefined,
+      durationMs: typeof value.durationMs === "number" && Number.isFinite(value.durationMs) ? value.durationMs : undefined,
+    });
+    return entries;
+  }, []);
 }
 
 function buildAnalysisQuery(context: FitnessAnalysisContext): string {
@@ -437,7 +441,11 @@ export function FitnessAnalysisPanel({
       return;
     }
 
-    const payload: AnalyzeResponse = await response.json().catch(() => ({ profiles: [] }) as AnalyzeResponse);
+    const payload: AnalyzeResponse = await response.json().catch(() => ({
+      generatedAt: new Date().toISOString(),
+      requestedProfiles: requestProfiles,
+      profiles: [],
+    }));
     applyProfiles(normalizeApiResponse(payload));
     setLastSnapshotAt(payload.generatedAt);
     } catch (error) {
