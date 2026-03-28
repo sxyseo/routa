@@ -32,12 +32,15 @@ import { AcpError } from "@/core/acp/acp-process";
 import {
   loadHistorySinceEventIdFromDb,
   renameSessionInDb,
+  updateSessionExecutionBindingInDb,
 } from "@/core/acp/session-db-persister";
 import type { SessionUpdateNotification } from "@/core/acp/http-session-store";
+import type { RoutaSessionRecord } from "@/core/acp/http-session-store";
 import { getTerminalManager } from "@/core/acp/terminal-manager";
 import {
   buildExecutionBinding,
   getEmbeddedOwnershipIssue,
+  refreshExecutionBinding,
   requiresRunnerProxy,
   shouldUseRunnerForProvider,
 } from "@/core/acp/execution-backend";
@@ -112,6 +115,23 @@ function requireWorkspaceId(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function refreshEmbeddedSessionLease(
+  store: ReturnType<typeof getHttpSessionStore>,
+  session: RoutaSessionRecord | undefined,
+): void {
+  if (!session || session.executionMode !== "embedded") {
+    return;
+  }
+
+  const refreshed = refreshExecutionBinding(session);
+  store.upsertSession(refreshed);
+  void updateSessionExecutionBindingInDb(session.sessionId, {
+    executionMode: refreshed.executionMode,
+    ownerInstanceId: refreshed.ownerInstanceId,
+    leaseExpiresAt: refreshed.leaseExpiresAt,
+  });
+}
+
 // ─── GET: SSE stream for session/update ────────────────────────────────
 
 export async function GET(request: NextRequest) {
@@ -146,6 +166,7 @@ export async function GET(request: NextRequest) {
   }
 
   const store = getHttpSessionStore();
+  refreshEmbeddedSessionLease(store, sessionRoutingRecord);
 
   // ─── Improved SSE cleanup with multiple safeguards ──────────────────────
   // In Vercel serverless, connections may drop silently. We implement
@@ -382,6 +403,7 @@ export async function POST(request: NextRequest) {
               message: ownershipIssue,
             });
           }
+          refreshEmbeddedSessionLease(getHttpSessionStore(), session);
         }
       }
     }

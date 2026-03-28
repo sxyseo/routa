@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getHttpSessionStore,
+  httpSessionStore,
   getSessionRoutingRecord,
   getRequiredRunnerUrl,
   isForwardedAcpRequest,
   proxyRequestToRunner,
   runnerUnavailableResponse,
   loadHistorySinceEventIdFromDb,
+  updateSessionExecutionBindingInDb,
 } = vi.hoisted(() => {
   const store = {
     attachSse: vi.fn(),
@@ -16,16 +18,19 @@ const {
     detachSse: vi.fn(),
     flushAgentBuffer: vi.fn(),
     getSession: vi.fn(),
+    upsertSession: vi.fn(),
   };
 
   return {
     getHttpSessionStore: vi.fn(() => store),
+    httpSessionStore: store,
     getSessionRoutingRecord: vi.fn(),
     getRequiredRunnerUrl: vi.fn(),
     isForwardedAcpRequest: vi.fn(),
     proxyRequestToRunner: vi.fn(),
     runnerUnavailableResponse: vi.fn(),
     loadHistorySinceEventIdFromDb: vi.fn(),
+    updateSessionExecutionBindingInDb: vi.fn(),
   };
 });
 
@@ -48,6 +53,7 @@ vi.mock("@/core/acp/session-db-persister", async () => {
   return {
     ...actual,
     loadHistorySinceEventIdFromDb,
+    updateSessionExecutionBindingInDb,
   };
 });
 
@@ -82,14 +88,15 @@ describe("/api/acp GET", () => {
     runnerUnavailableResponse.mockReturnValue(new Response("runner unavailable", { status: 503 }));
     proxyRequestToRunner.mockResolvedValue(new Response("proxied", { status: 200 }));
     loadHistorySinceEventIdFromDb.mockResolvedValue([]);
+    updateSessionExecutionBindingInDb.mockResolvedValue(undefined);
 
-    const store = getHttpSessionStore();
-    store.attachSse.mockReset();
-    store.pushConnected.mockReset();
-    store.detachSse.mockReset();
-    store.flushAgentBuffer.mockReset();
-    store.getSession.mockReset();
-    store.getSession.mockReturnValue({ cwd: "/tmp/session" });
+    httpSessionStore.attachSse.mockReset();
+    httpSessionStore.pushConnected.mockReset();
+    httpSessionStore.detachSse.mockReset();
+    httpSessionStore.flushAgentBuffer.mockReset();
+    httpSessionStore.getSession.mockReset();
+    httpSessionStore.upsertSession.mockReset();
+    httpSessionStore.getSession.mockReturnValue({ cwd: "/tmp/session" });
   });
 
   it("replays events after lastEventId before attaching the live SSE stream", async () => {
@@ -109,12 +116,12 @@ describe("/api/acp GET", () => {
     expect(loadHistorySinceEventIdFromDb).toHaveBeenCalledWith("session-1", "evt-1", "/tmp/session");
     expect(body).toContain("id: evt-2");
     expect(body).toContain("\"sessionUpdate\":\"agent_message\"");
-    expect(getHttpSessionStore().attachSse).toHaveBeenCalledWith(
+    expect(httpSessionStore.attachSse).toHaveBeenCalledWith(
       "session-1",
       expect.anything(),
       { skipPending: true },
     );
-    expect(getHttpSessionStore().pushConnected).toHaveBeenCalledWith("session-1");
+    expect(httpSessionStore.pushConnected).toHaveBeenCalledWith("session-1");
   });
 
   it("falls back to normal SSE attach when no replay tail exists", async () => {
@@ -123,10 +130,45 @@ describe("/api/acp GET", () => {
     );
 
     expect(response.headers.get("Content-Type")).toContain("text/event-stream");
-    expect(getHttpSessionStore().attachSse).toHaveBeenCalledWith(
+    expect(httpSessionStore.attachSse).toHaveBeenCalledWith(
       "session-1",
       expect.anything(),
       { skipPending: false },
+    );
+  });
+
+  it("refreshes the embedded lease when the current instance attaches SSE", async () => {
+    getSessionRoutingRecord.mockResolvedValue({
+      sessionId: "session-1",
+      executionMode: "embedded",
+      ownerInstanceId: `next-${process.pid}`,
+      leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+      createdAt: "2026-03-28T00:00:00.000Z",
+      cwd: "/tmp/session",
+      workspaceId: "default",
+    });
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/acp?sessionId=session-1"),
+    );
+
+    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(httpSessionStore.attachSse).toHaveBeenCalled();
+    expect(httpSessionStore.upsertSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        executionMode: "embedded",
+        ownerInstanceId: `next-${process.pid}`,
+        leaseExpiresAt: expect.any(String),
+      }),
+    );
+    expect(updateSessionExecutionBindingInDb).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        executionMode: "embedded",
+        ownerInstanceId: `next-${process.pid}`,
+        leaseExpiresAt: expect.any(String),
+      }),
     );
   });
 
@@ -146,7 +188,7 @@ describe("/api/acp GET", () => {
       error: expect.stringContaining("owned by instance web-2"),
       ownerInstanceId: "web-2",
     });
-    expect(getHttpSessionStore().attachSse).not.toHaveBeenCalled();
+    expect(httpSessionStore.attachSse).not.toHaveBeenCalled();
   });
 });
 
@@ -155,6 +197,8 @@ describe("/api/acp POST", () => {
     vi.clearAllMocks();
     isForwardedAcpRequest.mockReturnValue(false);
     getRequiredRunnerUrl.mockReturnValue(null);
+    updateSessionExecutionBindingInDb.mockResolvedValue(undefined);
+    httpSessionStore.upsertSession.mockReset();
   });
 
   it("returns ACP capabilities for initialize before any process exists", async () => {
@@ -250,5 +294,48 @@ describe("/api/acp POST", () => {
         message: expect.stringContaining("owned by instance web-2"),
       },
     });
+  });
+
+  it("refreshes the embedded lease before handling session methods on the owner instance", async () => {
+    getRequiredRunnerUrl.mockReturnValue("http://runner.internal");
+    getSessionRoutingRecord.mockResolvedValue({
+      sessionId: "session-1",
+      executionMode: "embedded",
+      ownerInstanceId: `next-${process.pid}`,
+      leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+      createdAt: "2026-03-28T00:00:00.000Z",
+      cwd: "/tmp/session",
+      workspaceId: "default",
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/acp", {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 4,
+          method: "session/cancel",
+          params: { sessionId: "session-1" },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(httpSessionStore.upsertSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        executionMode: "embedded",
+        ownerInstanceId: `next-${process.pid}`,
+        leaseExpiresAt: expect.any(String),
+      }),
+    );
+    expect(updateSessionExecutionBindingInDb).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        executionMode: "embedded",
+        ownerInstanceId: `next-${process.pid}`,
+        leaseExpiresAt: expect.any(String),
+      }),
+    );
   });
 });
