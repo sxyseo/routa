@@ -15,6 +15,7 @@ type ApiProfileEntry = {
   source: "analysis" | "snapshot";
   report?: FitnessReport;
   error?: string;
+  durationMs?: number;
 };
 
 type AnalyzeResponse = {
@@ -94,6 +95,7 @@ type FitnessComparison = {
 type ProfilePanelState = {
   state: FitnessProfileState;
   source?: ApiProfileEntry["source"];
+  durationMs?: number;
   report?: FitnessReport;
   error?: string;
   updatedAt?: string;
@@ -168,6 +170,15 @@ function formatTime(value: string | undefined) {
   return date.toLocaleString();
 }
 
+function formatDuration(ms: number | undefined) {
+  if (!Number.isFinite(ms ?? NaN)) return "未知";
+  if (ms >= 1000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
+
+  return `${Math.round(ms)}ms`;
+}
+
 function normalizeApiResponse(payload: unknown): ApiProfileEntry[] {
   if (!payload || typeof payload !== "object" || !Array.isArray((payload as { profiles?: unknown }).profiles)) {
     return [];
@@ -195,6 +206,7 @@ function normalizeApiResponse(payload: unknown): ApiProfileEntry[] {
         source: value.source,
         report: value.report as FitnessReport | undefined,
         error: typeof value.error === "string" ? value.error : undefined,
+        durationMs: typeof value.durationMs === "number" && Number.isFinite(value.durationMs) ? value.durationMs : undefined,
       };
     })
     .filter((entry): entry is ApiProfileEntry => entry !== null)
@@ -209,6 +221,7 @@ export function FitnessAnalysisPanel() {
   const [profiles, setProfiles] = useState<Record<FitnessProfile, ProfilePanelState>>(EMPTY_STATE);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [lastSnapshotAt, setLastSnapshotAt] = useState<string | null>(null);
+  const [copiedRaw, setCopiedRaw] = useState(false);
 
   const selectedState = profiles[selectedProfile];
   const activeReport = selectedState.report;
@@ -240,10 +253,11 @@ export function FitnessAnalysisPanel() {
           continue;
         }
 
-        if (entry.status === "ok" && entry.report) {
+      if (entry.status === "ok" && entry.report) {
           next[profile] = {
             state: "ready",
             source: entry.source,
+            durationMs: entry.durationMs,
             report: entry.report,
             updatedAt: entry.report.generatedAt,
           };
@@ -262,6 +276,7 @@ export function FitnessAnalysisPanel() {
         next[profile] = {
           state: "error",
           source: entry.source,
+          durationMs: entry.durationMs,
           error: entry.error ?? "分析失败",
         };
       }
@@ -387,6 +402,7 @@ export function FitnessAnalysisPanel() {
     const label = clampPercent(score);
     const subtitle = info ? `${info.name} · ${info.focus}` : profile;
     const source = state.source === "analysis" ? "实时分析" : state.source === "snapshot" ? "快照" : "";
+    const durationText = formatDuration(state.durationMs);
 
     return (
       <article
@@ -411,22 +427,21 @@ export function FitnessAnalysisPanel() {
           <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
             {report?.overallLevelName ?? "未分析"}
           </div>
-          <div className="mt-3">
-            <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-              <div
-                className={`h-full rounded-full ${readinessTone(score)} transition-all`}
-                style={{ width: `${label}%` }}
-              />
+            <div className="mt-3">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  className={`h-full rounded-full ${readinessTone(score)} transition-all`}
+                  style={{ width: `${label}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[11px] text-desktop-text-secondary">
+                <span>{label}%</span>
+                <span>耗时 {durationText}</span>
+              </div>
+              <div className="mt-1 text-[11px] text-desktop-text-secondary">
+                {state.updatedAt ? `更新时间 ${formatTime(state.updatedAt)}` : "尚未更新"}
+              </div>
             </div>
-            <div className="mt-2 flex items-center justify-between text-[11px] text-desktop-text-secondary">
-              <span>{label}%</span>
-              {report?.generatedAt ? (
-                <span>更新时间 {formatTime(report.generatedAt)}</span>
-              ) : (
-                <span>尚未更新</span>
-              )}
-            </div>
-          </div>
         </div>
 
         {state.state === "error" && state.error ? (
@@ -695,11 +710,32 @@ export function FitnessAnalysisPanel() {
 
   const renderRaw = () => {
     if (!activeReport) return <div className="rounded-2xl border border-dashed border-desktop-border p-4 text-sm text-desktop-text-secondary">当前无可显示的原始数据。</div>;
+    const jsonText = JSON.stringify(activeReport, null, 2);
 
     return (
-      <pre className="overflow-x-auto rounded-2xl border border-desktop-border bg-slate-950 p-4 text-xs leading-5 text-slate-100">
-        <code>{JSON.stringify(activeReport, null, 2)}</code>
-      </pre>
+      <div className="space-y-2">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={async () => {
+              if (typeof window === "undefined") {
+                return;
+              }
+              await navigator.clipboard.writeText(jsonText);
+              setCopiedRaw(true);
+              window.setTimeout(() => {
+                setCopiedRaw(false);
+              }, 1200);
+            }}
+            className="rounded-full border border-desktop-border px-3 py-1.5 text-xs font-semibold text-desktop-text-secondary hover:bg-desktop-bg-primary/70"
+          >
+            {copiedRaw ? "已复制" : "复制 JSON"}
+          </button>
+        </div>
+        <pre className="overflow-x-auto rounded-2xl border border-desktop-border bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+          <code>{jsonText}</code>
+        </pre>
+      </div>
     );
   };
 
@@ -715,10 +751,15 @@ export function FitnessAnalysisPanel() {
     const generic = profiles.generic.report;
     const orchestrator = profiles.agent_orchestrator.report;
     if (!generic || !orchestrator) return null;
+
+    const genericScore = clampPercent(generic.currentLevelReadiness);
+    const orchestratorScore = clampPercent(orchestrator.currentLevelReadiness);
+    const diff = genericScore - orchestratorScore;
+
     return {
-      genericScore: clampPercent(generic.currentLevelReadiness),
-      orchestratorScore: clampPercent(orchestrator.currentLevelReadiness),
-      diff: clampPercent(generic.currentLevelReadiness - orchestrator.currentLevelReadiness),
+      genericScore,
+      orchestratorScore,
+      diff,
     };
   }, [profiles.generic.report, profiles.agent_orchestrator.report]);
 
@@ -829,7 +870,13 @@ export function FitnessAnalysisPanel() {
           <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
             <div>Generic: {crossProfileDiff.genericScore}%</div>
             <div>Agent Orchestrator: {crossProfileDiff.orchestratorScore}%</div>
-            <div>差值: {crossProfileDiff.diff}%</div>
+            <div>
+              差值:
+              <span className={crossProfileDiff.diff >= 0 ? "ml-1 text-emerald-600" : "ml-1 text-rose-600"}>
+                {crossProfileDiff.diff >= 0 ? "+" : ""}
+                {crossProfileDiff.diff}%
+              </span>
+            </div>
           </div>
         </section>
       ) : null}
