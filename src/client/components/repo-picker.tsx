@@ -46,6 +46,10 @@ interface RepoPickerProps {
   onChange: (selection: RepoSelection | null) => void;
   /** How to render the selected repo path when a repo is chosen */
   pathDisplay?: "inline" | "below-muted" | "hidden";
+  /** Limit existing repo list to additionalRepos only */
+  sourceMode?: "all" | "additional-only";
+  /** Whether clone UI should be shown */
+  allowClone?: boolean;
   /** Additional repos to show (e.g., workspace codebases) */
   additionalRepos?: Array<{
     name: string;
@@ -73,6 +77,8 @@ export function RepoPicker({
   value,
   onChange,
   pathDisplay = "inline",
+  sourceMode = "all",
+  allowClone = true,
   additionalRepos,
 }: RepoPickerProps) {
   const [repos, setRepos] = useState<ClonedRepo[]>([]);
@@ -91,7 +97,13 @@ export function RepoPicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const cloneInputRef = useRef<HTMLInputElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{
+    left: number;
+    width: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+  } | null>(null);
 
   // ── Fetch repos ────────────────────────────────────────────────────
 
@@ -109,8 +121,10 @@ export function RepoPicker({
   }, []);
 
   useEffect(() => {
-    fetchRepos();
-  }, [fetchRepos]);
+    if (sourceMode === "all") {
+      fetchRepos();
+    }
+  }, [fetchRepos, sourceMode]);
 
   // ── Click outside to close ─────────────────────────────────────────
 
@@ -132,10 +146,18 @@ export function RepoPicker({
   const openDropdown = useCallback((ref: HTMLElement | null) => {
     if (!ref) return;
     const rect = ref.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const preferredHeight = 360;
+    const spaceBelow = viewportHeight - rect.bottom - 12;
+    const spaceAbove = rect.top - 12;
+    const openDownward = spaceBelow >= preferredHeight || spaceBelow >= spaceAbove;
     setDropdownPos({
       left: rect.left,
-      bottom: window.innerHeight - rect.top + 6,
+      ...(openDownward
+        ? { top: rect.bottom + 6 }
+        : { bottom: viewportHeight - rect.top + 6 }),
       width: Math.max(rect.width, 420),
+      maxHeight: Math.max(220, Math.min(preferredHeight, openDownward ? spaceBelow : spaceAbove)),
     });
     setShowDropdown(true);
   }, []);
@@ -153,11 +175,11 @@ export function RepoPicker({
   };
 
   useEffect(() => {
-    if (searchQuery && isGitHubInput(searchQuery)) {
+    if (allowClone && searchQuery && isGitHubInput(searchQuery)) {
       setActiveTab("clone");
       setCloneUrl(searchQuery);
     }
-  }, [searchQuery]);
+  }, [allowClone, searchQuery]);
 
   // ── Clone with progress (SSE) ──────────────────────────────────────
 
@@ -300,8 +322,8 @@ export function RepoPicker({
 
   // Merge cloned repos with additional repos (workspace codebases)
   const allRepos = useMemo(() => {
-    const merged: ClonedRepo[] = [...repos];
-    const existingPaths = new Set(repos.map((r) => r.path));
+    const merged: ClonedRepo[] = sourceMode === "additional-only" ? [] : [...repos];
+    const existingPaths = new Set(merged.map((r) => r.path));
 
     // Add additional repos that aren't already in the cloned repos list
     if (additionalRepos) {
@@ -319,7 +341,7 @@ export function RepoPicker({
       }
     }
     return merged;
-  }, [repos, additionalRepos]);
+  }, [additionalRepos, repos, sourceMode]);
 
   const filteredRepos = searchQuery.trim()
     ? allRepos.filter((r) =>
@@ -375,11 +397,13 @@ export function RepoPicker({
           style={{
             position: "fixed",
             left: dropdownPos.left,
+            top: dropdownPos.top,
             bottom: dropdownPos.bottom,
             width: 420,
+            maxHeight: dropdownPos.maxHeight,
             zIndex: 9999,
           }}
-          className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1e2130] shadow-xl overflow-hidden"
+          className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1e2130] shadow-xl overflow-hidden flex max-h-[80vh] flex-col"
         >
           {/* ── Tabs ── */}
           <div className="flex border-b border-slate-100 dark:border-slate-800">
@@ -392,18 +416,20 @@ export function RepoPicker({
               </svg>
               Repositories
             </TabButton>
-            <TabButton
-              active={activeTab === "clone"}
-              onClick={() => {
-                setActiveTab("clone");
-                setTimeout(() => cloneInputRef.current?.focus(), 50);
-              }}
-            >
-              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Clone from GitHub
-            </TabButton>
+            {allowClone ? (
+              <TabButton
+                active={activeTab === "clone"}
+                onClick={() => {
+                  setActiveTab("clone");
+                  setTimeout(() => cloneInputRef.current?.focus(), 50);
+                }}
+              >
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Clone from GitHub
+              </TabButton>
+            ) : null}
           </div>
 
           {/* ── Existing repos tab ── */}
@@ -429,12 +455,12 @@ export function RepoPicker({
               </div>
 
               {/* Repo list */}
-              <div className="max-h-64 overflow-y-auto">
+              <div className="overflow-y-auto">
                 {loadingRepos ? (
                   <EmptyState>Loading repositories...</EmptyState>
                 ) : filteredRepos.length === 0 ? (
                   <EmptyState>
-                    {repos.length === 0
+                    {allRepos.length === 0
                       ? 'No repositories yet. Switch to "Clone from GitHub" to add one.'
                       : "No matching repositories."}
                   </EmptyState>
@@ -458,7 +484,7 @@ export function RepoPicker({
           )}
 
           {/* ── Clone tab ── */}
-          {activeTab === "clone" && (
+          {allowClone && activeTab === "clone" && (
             <div className="p-3 space-y-3">
               {/* URL input */}
               <div>

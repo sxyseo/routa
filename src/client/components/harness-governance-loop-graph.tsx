@@ -702,7 +702,10 @@ export function HarnessGovernanceLoopGraph({
     [hookSummary, instructionSummary, workflowSummary, dimensionCount, metricCount],
   );
 
-  const graphIssues = [specsError, planError, hookState.error, workflowState.error, instructionsState.error].filter(Boolean);
+  const graphIssues = [...new Set(
+    [specsError, planError, hookState.error, workflowState.error, instructionsState.error]
+      .filter((issue): issue is string => Boolean(issue)),
+  )];
   const detailSections = useMemo(
     () => buildDetailSections({
       selectedNodeId,

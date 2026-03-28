@@ -5,6 +5,7 @@ import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { SettingsPageHeader } from "@/client/components/settings-page-header";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
+import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
 import {
   HarnessExecutionPlanFlow,
   type PlanResponse,
@@ -71,6 +72,7 @@ export default function HarnessSettingsPage() {
   const workspaceId = selectedWorkspaceId || workspacesHook.workspaces[0]?.id || "";
   const { codebases } = useCodebases(workspaceId);
   const [selectedCodebaseId, setSelectedCodebaseId] = useState("");
+  const [selectedRepoOverride, setSelectedRepoOverride] = useState<RepoSelection | null>(null);
   const [selectedTier, setSelectedTier] = useState<TierValue>("normal");
   const [specsState, setSpecsState] = useState<{
     loading: boolean;
@@ -110,7 +112,39 @@ export default function HarnessSettingsPage() {
   }, [codebases, selectedCodebaseId]);
 
   useEffect(() => {
-    if (!activeCodebase?.id) {
+    setSelectedRepoOverride(null);
+  }, [workspaceId]);
+
+  const matchedSelectedCodebase = useMemo(() => {
+    if (!selectedRepoOverride) {
+      return activeCodebase;
+    }
+    return codebases.find((codebase) => (
+      codebase.repoPath === selectedRepoOverride.path
+      && (selectedRepoOverride.branch ? (codebase.branch ?? "") === selectedRepoOverride.branch : true)
+    )) ?? codebases.find((codebase) => codebase.repoPath === selectedRepoOverride.path)
+      ?? null;
+  }, [activeCodebase, codebases, selectedRepoOverride]);
+
+  const activeRepoSelection = useMemo(() => {
+    if (selectedRepoOverride) {
+      return selectedRepoOverride;
+    }
+    if (!activeCodebase) {
+      return null;
+    }
+    return {
+      name: activeCodebase.label ?? activeCodebase.repoPath.split("/").pop() ?? activeCodebase.repoPath,
+      path: activeCodebase.repoPath,
+      branch: activeCodebase.branch ?? "",
+    } satisfies RepoSelection;
+  }, [activeCodebase, selectedRepoOverride]);
+
+  const activeRepoPath = activeRepoSelection?.path;
+  const activeRepoCodebaseId = matchedSelectedCodebase?.id;
+
+  useEffect(() => {
+    if (!activeRepoPath) {
       setSpecsState({
         loading: false,
         error: null,
@@ -133,8 +167,10 @@ export default function HarnessSettingsPage() {
       try {
         const query = new URLSearchParams();
         query.set("workspaceId", workspaceId);
-        query.set("codebaseId", activeCodebase.id);
-        query.set("repoPath", activeCodebase.repoPath);
+        if (activeRepoCodebaseId) {
+          query.set("codebaseId", activeRepoCodebaseId);
+        }
+        query.set("repoPath", activeRepoPath);
 
         const response = await fetch(`/api/fitness/specs?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
@@ -174,10 +210,10 @@ export default function HarnessSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeCodebase?.id, activeCodebase?.repoPath, workspaceId]);
+  }, [activeRepoCodebaseId, activeRepoPath, workspaceId]);
 
   useEffect(() => {
-    if (!activeCodebase?.id) {
+    if (!activeRepoPath) {
       setPlanState({
         loading: false,
         error: null,
@@ -197,8 +233,10 @@ export default function HarnessSettingsPage() {
       try {
         const query = new URLSearchParams();
         query.set("workspaceId", workspaceId);
-        query.set("codebaseId", activeCodebase.id);
-        query.set("repoPath", activeCodebase.repoPath);
+        if (activeRepoCodebaseId) {
+          query.set("codebaseId", activeRepoCodebaseId);
+        }
+        query.set("repoPath", activeRepoPath);
         query.set("tier", selectedTier);
         query.set("scope", "local");
 
@@ -235,7 +273,7 @@ export default function HarnessSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeCodebase?.id, activeCodebase?.repoPath, selectedTier, workspaceId]);
+  }, [activeRepoCodebaseId, activeRepoPath, selectedTier, workspaceId]);
 
   const visibleSpec = useMemo(() => {
     if (specsState.files.length === 0) {
@@ -263,7 +301,8 @@ export default function HarnessSettingsPage() {
   const dimensionSpecs = specsState.files.filter((file) => file.kind === "dimension");
   const primaryFiles = specsState.files.filter((file) => file.kind === "rulebook" || file.kind === "manifest" || file.kind === "dimension");
   const auxiliaryFiles = specsState.files.filter((file) => !primaryFiles.includes(file));
-  const selectedRepoLabel = activeCodebase?.label ?? activeCodebase?.repoPath?.split("/").pop() ?? "None";
+  const selectedRepoLabel = activeRepoSelection?.name ?? "None";
+  const selectedRepo = activeRepoSelection;
   const visibleSpecCodeBlocks = useMemo(
     () => (visibleSpec && visibleSpec.language === "markdown" ? extractMarkdownCodeBlocks(visibleSpec.source) : []),
     [visibleSpec],
@@ -306,7 +345,7 @@ export default function HarnessSettingsPage() {
       <div className="space-y-6">
         <SettingsPageHeader
           title="Harness"
-          description="主视角改为研发阶段流转，技术组件退到注释层，仅作为规则、门禁和交付基础设施的支撑说明。"
+          description=""
           metadata={[
             { label: "fitness", value: specsState.loading ? "..." : `${dimensionSpecs.length} dimensions` },
             { label: "dispatch", value: planState.loading ? "..." : `${planState.plan?.metricCount ?? 0} metrics` },
@@ -315,25 +354,32 @@ export default function HarnessSettingsPage() {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Repository</span>
-                <select
-                  value={activeCodebase?.id ?? ""}
-                  onChange={(event) => {
-                    setSelectedCodebaseId(event.target.value);
+                <RepoPicker
+                  value={selectedRepo}
+                  onChange={(selection) => {
+                    setSelectedRepoOverride(selection);
+                    if (!selection) {
+                      setSelectedCodebaseId("");
+                      return;
+                    }
+                    const matchedCodebase = codebases.find((codebase) => (
+                      codebase.repoPath === selection.path
+                      && (selection.branch ? (codebase.branch ?? "") === selection.branch : true)
+                    )) ?? codebases.find((codebase) => codebase.repoPath === selection.path)
+                      ?? codebases.find((codebase) => (
+                        (codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath) === selection.name
+                      ));
+                    setSelectedCodebaseId(matchedCodebase?.id ?? "");
                   }}
-                  className="min-w-44 rounded-md border border-desktop-border bg-desktop-bg-secondary px-2 py-1 text-[11px] text-desktop-text-primary"
-                  disabled={codebases.length === 0 || !workspaceId || workspacesHook.loading}
-                >
-                  <option value="">Select repository</option>
-                  {codebases.map((codebase) => (
-                    <option key={codebase.id} value={codebase.id}>
-                      {codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="min-w-0 truncate text-desktop-text-secondary">
-                <span className="mr-2 text-[10px] font-semibold uppercase tracking-[0.14em]">Path</span>
-                <span className="font-mono text-desktop-text-primary">{activeCodebase?.repoPath ?? "No repository selected"}</span>
+                  pathDisplay="hidden"
+                  sourceMode="additional-only"
+                  allowClone={false}
+                  additionalRepos={codebases.map((codebase) => ({
+                    name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
+                    path: codebase.repoPath,
+                    branch: codebase.branch ?? "",
+                  }))}
+                />
               </div>
             </div>
           )}
@@ -341,8 +387,8 @@ export default function HarnessSettingsPage() {
 
         <HarnessGovernanceLoopGraph
           workspaceId={workspaceId}
-          codebaseId={activeCodebase?.id}
-          repoPath={activeCodebase?.repoPath}
+          codebaseId={activeRepoCodebaseId}
+          repoPath={activeRepoPath}
           repoLabel={selectedRepoLabel}
           selectedTier={selectedTier}
           specsLoading={specsState.loading}
@@ -357,15 +403,15 @@ export default function HarnessSettingsPage() {
 
         <HarnessAgentInstructionsPanel
           workspaceId={workspaceId}
-          codebaseId={activeCodebase?.id}
-          repoPath={activeCodebase?.repoPath}
+          codebaseId={activeRepoCodebaseId}
+          repoPath={activeRepoPath}
           repoLabel={selectedRepoLabel}
         />
 
         <HarnessHookRuntimePanel
           workspaceId={workspaceId}
-          codebaseId={activeCodebase?.id}
-          repoPath={activeCodebase?.repoPath}
+          codebaseId={activeRepoCodebaseId}
+          repoPath={activeRepoPath}
           repoLabel={selectedRepoLabel}
         />
 
@@ -655,8 +701,8 @@ export default function HarnessSettingsPage() {
 
         <HarnessGitHubActionsFlowPanel
           workspaceId={workspaceId}
-          codebaseId={activeCodebase?.id}
-          repoPath={activeCodebase?.repoPath}
+          codebaseId={activeRepoCodebaseId}
+          repoPath={activeRepoPath}
           repoLabel={selectedRepoLabel}
         />
       </div>
