@@ -9,7 +9,7 @@ import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtim
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 
 type RunnerKind = "shell" | "graph" | "sarif";
-type SpecKind = "rulebook" | "dimension" | "narrative" | "policy";
+type SpecKind = "rulebook" | "manifest" | "dimension" | "narrative" | "policy";
 
 type MetricSummary = {
   name: string;
@@ -38,6 +38,7 @@ type FitnessSpecSummary = {
   metrics: MetricSummary[];
   source: string;
   frontmatterSource?: string;
+  manifestEntries?: string[];
 };
 
 type SpecsResponse = {
@@ -296,6 +297,9 @@ export default function HarnessSettingsPage() {
 
   const dimensionSpecs = specsState.files.filter((file) => file.kind === "dimension");
   const rulebookFile = specsState.files.find((file) => file.kind === "rulebook") ?? null;
+  const manifestFile = specsState.files.find((file) => file.kind === "manifest") ?? null;
+  const primaryFiles = specsState.files.filter((file) => file.kind === "rulebook" || file.kind === "manifest" || file.kind === "dimension");
+  const auxiliaryFiles = specsState.files.filter((file) => !primaryFiles.includes(file));
   const selectedRepoLabel = activeCodebase?.label ?? activeCodebase?.repoPath?.split("/").pop() ?? "None";
   const visibleSpecCodeBlocks = useMemo(
     () => (visibleSpec && visibleSpec.language === "markdown" ? extractMarkdownCodeBlocks(visibleSpec.source) : []),
@@ -341,8 +345,8 @@ export default function HarnessSettingsPage() {
           title="Harness"
           description="Entrix fitness specs for the selected repository."
           metadata={[
-            { label: "Specs", value: specsState.loading ? "Loading" : `${dimensionSpecs.length} dimensions` },
-            { label: "Plan", value: planState.loading ? "Loading" : `${planState.plan?.metricCount ?? 0} metrics` },
+            { label: "specs", value: specsState.loading ? "..." : `${dimensionSpecs.length}` },
+            { label: "plan", value: planState.loading ? "..." : `${planState.plan?.metricCount ?? 0}` },
           ]}
           extra={(
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
@@ -387,6 +391,9 @@ export default function HarnessSettingsPage() {
           <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-desktop-text-secondary">
             <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">README = narrative only</span>
             <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">frontmatter metrics = executable dimensions</span>
+            {manifestFile ? (
+              <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">manifest detected</span>
+            ) : null}
             {rulebookFile ? (
               <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">README detected</span>
             ) : null}
@@ -401,7 +408,7 @@ export default function HarnessSettingsPage() {
         />
 
         <section className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
+          <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-3 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Discovery</div>
@@ -412,26 +419,26 @@ export default function HarnessSettingsPage() {
               </div>
             </div>
 
-            <div className="mt-4 space-y-2">
+            <div className="mt-3 space-y-1.5">
               {specsState.loading ? (
-                <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-4 text-[11px] text-desktop-text-secondary">
+                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
                   Loading fitness specs...
                 </div>
               ) : null}
 
               {specsState.error ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-4 text-[11px] text-red-700">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-[11px] text-red-700">
                   {specsState.error}
                 </div>
               ) : null}
 
               {!specsState.loading && !specsState.error && specsState.files.length === 0 ? (
-                <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-4 text-[11px] text-desktop-text-secondary">
+                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
                   No fitness files found for this repository.
                 </div>
               ) : null}
 
-              {specsState.files.map((file) => (
+              {primaryFiles.map((file) => (
                 <button
                   key={file.name}
                   type="button"
@@ -446,18 +453,54 @@ export default function HarnessSettingsPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[12px] font-semibold">{file.name}</div>
-                      <div className="mt-1 text-[11px]">
-                        {file.kind === "dimension" ? (file.dimension ?? "dimension") : file.kind}
-                        <span className="ml-2 font-mono">{file.language}</span>
+                      <div className="text-[11px] font-semibold">{file.name}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-current/75">
+                        <span>{file.kind === "dimension" ? (file.dimension ?? "dimension") : file.kind}</span>
+                        <span className="font-mono">{file.language}</span>
                       </div>
                     </div>
-                    <div className="shrink-0 rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px]">
-                      {file.metricCount} metrics
-                    </div>
+                    {file.metricCount > 0 ? (
+                      <div className="shrink-0 rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px]">
+                        {file.metricCount}
+                      </div>
+                    ) : null}
                   </div>
                 </button>
               ))}
+
+              {auxiliaryFiles.length > 0 ? (
+                <details className="mt-3 rounded-lg border border-desktop-border bg-desktop-bg-primary/60 px-3 py-2">
+                  <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
+                    Auxiliary files
+                  </summary>
+                  <div className="mt-2 space-y-1.5">
+                    {auxiliaryFiles.map((file) => (
+                      <button
+                        key={file.name}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSpecName(file.name);
+                        }}
+                        className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                          visibleSpec?.name === file.name
+                            ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
+                            : "border-desktop-border bg-desktop-bg-primary/80 text-desktop-text-secondary hover:bg-desktop-bg-primary"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-semibold">{file.name}</div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-current/75">
+                              <span>{file.kind}</span>
+                              <span className="font-mono">{file.language}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
             </div>
           </div>
 
@@ -495,6 +538,11 @@ export default function HarnessSettingsPage() {
                       This file stays narrative. Entrix loader skips README and does not turn it into executable dimensions.
                     </div>
                   ) : null}
+                  {visibleSpec.kind === "manifest" ? (
+                    <div className="mt-3 text-[11px] leading-5 text-desktop-text-secondary">
+                      Manifest drives evidence ordering. Dimension specs should follow this file instead of raw directory order.
+                    </div>
+                  ) : null}
                   {visibleSpec.kind === "policy" ? (
                     <div className="mt-3 text-[11px] leading-5 text-desktop-text-secondary">
                       Policy file. This is adjacent to fitness execution, but it is not part of the dimension scoring pipeline.
@@ -523,6 +571,20 @@ export default function HarnessSettingsPage() {
                       />
                     </div>
                   </details>
+                ) : null}
+
+                {visibleSpec.kind === "manifest" && visibleSpec.manifestEntries && visibleSpec.manifestEntries.length > 0 ? (
+                  <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Manifest order</div>
+                    <div className="space-y-1.5">
+                      {visibleSpec.manifestEntries.map((entry, index) => (
+                        <div key={entry} className="flex items-center gap-2 text-[11px] text-desktop-text-secondary">
+                          <span className="w-5 shrink-0 text-right text-[10px] text-desktop-text-secondary">{index + 1}</span>
+                          <span className="font-mono text-desktop-text-primary">{entry}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
 
                 {visibleSpec.language === "yaml" ? (

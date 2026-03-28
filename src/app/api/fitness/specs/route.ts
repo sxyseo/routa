@@ -28,7 +28,7 @@ type MetricSummary = {
 type FitnessSpecSummary = {
   name: string;
   relativePath: string;
-  kind: "rulebook" | "dimension" | "narrative" | "policy";
+  kind: "rulebook" | "manifest" | "dimension" | "narrative" | "policy";
   language: "markdown" | "yaml";
   dimension?: string;
   weight?: number;
@@ -38,6 +38,7 @@ type FitnessSpecSummary = {
   metrics: MetricSummary[];
   source: string;
   frontmatterSource?: string;
+  manifestEntries?: string[];
 };
 
 type FitnessSpecsResponse = {
@@ -227,6 +228,25 @@ function parseMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummar
   };
 }
 
+function parseManifestSpec(relativePath: string, raw: string): FitnessSpecSummary {
+  const parsed = matter(raw);
+  const data = parsed.data as Record<string, unknown>;
+  const manifestEntries = Array.isArray(data.evidence_files)
+    ? data.evidence_files.filter((item): item is string => typeof item === "string")
+    : [];
+
+  return {
+    name: relativePath,
+    relativePath,
+    kind: "manifest",
+    language: "yaml",
+    metricCount: manifestEntries.length,
+    metrics: [],
+    source: raw,
+    manifestEntries,
+  };
+}
+
 function parseNonMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummary {
   return {
     name: relativePath,
@@ -246,6 +266,8 @@ export async function GET(request: NextRequest) {
     const fitnessDir = path.join(repoRoot, "docs", "fitness");
     const entries = await fsp.readdir(fitnessDir, { withFileTypes: true });
     const files: FitnessSpecSummary[] = [];
+    let manifestSpec: FitnessSpecSummary | null = null;
+    const byPath = new Map<string, FitnessSpecSummary>();
 
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (!entry.isFile()) continue;
@@ -253,21 +275,51 @@ export async function GET(request: NextRequest) {
       const fullPath = path.join(fitnessDir, entry.name);
       if (entry.name.endsWith(".md")) {
         const raw = await fsp.readFile(fullPath, "utf-8");
-        files.push(parseMarkdownSpec(entry.name, raw));
+        const spec = parseMarkdownSpec(entry.name, raw);
+        files.push(spec);
+        byPath.set(spec.relativePath, spec);
+        byPath.set(`docs/fitness/${spec.relativePath}`, spec);
         continue;
       }
 
       if (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml")) {
         const raw = await fsp.readFile(fullPath, "utf-8");
-        files.push(parseNonMarkdownSpec(entry.name, raw));
+        const spec = entry.name === "manifest.yaml"
+          ? parseManifestSpec(entry.name, raw)
+          : parseNonMarkdownSpec(entry.name, raw);
+        files.push(spec);
+        byPath.set(spec.relativePath, spec);
+        byPath.set(`docs/fitness/${spec.relativePath}`, spec);
+        if (entry.name === "manifest.yaml") {
+          manifestSpec = spec;
+        }
       }
+    }
+
+    const ordered: FitnessSpecSummary[] = [];
+    const seen = new Set<string>();
+    const push = (spec: FitnessSpecSummary | undefined | null) => {
+      if (!spec || seen.has(spec.relativePath)) return;
+      seen.add(spec.relativePath);
+      ordered.push(spec);
+    };
+
+    push(byPath.get("README.md"));
+    push(manifestSpec);
+
+    for (const entry of manifestSpec?.manifestEntries ?? []) {
+      push(byPath.get(entry));
+    }
+
+    for (const spec of files) {
+      push(spec);
     }
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       repoRoot,
       fitnessDir,
-      files,
+      files: ordered,
     } satisfies FitnessSpecsResponse);
   } catch (error) {
     const message = toMessage(error);
