@@ -216,6 +216,8 @@ function buildPlanGraph(
   const dimensionRowHeight = 180;
   const metricRowOffsetY = 92;
   const metricSpacingX = 264;
+  const metricRowHeight = 176;
+  const metricColumns = 4;
   const rowContentHeight = 124;
   const dimensionPositions = new Map<string, { x: number; y: number }>();
 
@@ -314,12 +316,16 @@ function buildPlanGraph(
 
   if (activeDimension) {
     const dimensionId = `dimension:${activeDimension.name}`;
-    const anchor = dimensionPositions.get(activeDimension.name) ?? { x: dimensionsStartX, y: dimensionsTopY };
+    const detailColumns = Math.min(metricColumns, Math.max(activeDimension.metrics.length, 1));
+    const centeredMetricStartX = Math.max(72, stageX - ((detailColumns - 1) * metricSpacingX) / 2);
+    let metricGridBottom = currentMetricsY;
 
     activeDimension.metrics.forEach((metric, metricIndex) => {
       const metricId = `${dimensionId}:metric:${metric.name}`;
-      const metricX = anchor.x + metricIndex * metricSpacingX;
-      const metricY = currentMetricsY;
+      const metricColumn = metricIndex % metricColumns;
+      const metricRow = Math.floor(metricIndex / metricColumns);
+      const metricX = centeredMetricStartX + metricColumn * metricSpacingX;
+      const metricY = currentMetricsY + metricRow * metricRowHeight;
       const metricStatus: EdgeStatus = metric.hardGate ? "hard" : metric.gate === "warn" ? "warn" : "pass";
 
       nodes.push(buildNode(metricId, metricX, metricY, {
@@ -342,9 +348,10 @@ function buildPlanGraph(
       });
 
       maxMetricRight = Math.max(maxMetricRight, metricX + 208);
+      metricGridBottom = Math.max(metricGridBottom, metricY + rowContentHeight);
     });
 
-    currentMetricsY += rowContentHeight;
+    currentMetricsY = metricGridBottom;
   }
 
   const detailLaneY = currentMetricsY;
