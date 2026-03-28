@@ -915,7 +915,7 @@ export function FitnessAnalysisPanel({
 
         <p className="mt-2 text-xs text-desktop-text-secondary">
           {hasContext
-            ? `当前上下文：${codebaseLabel ?? repoPath ?? "未命名仓库"}`
+            ? `当前上下文：${contextLabel ?? "未命名仓库"}`
             : "上下文未设置，请先选择要分析的 Workspace 与 Repository。"
           }
         </p>
