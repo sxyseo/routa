@@ -21,8 +21,8 @@
     "group": "workspace",
     "priority": "P0",
     "ci": true,
-    "route": "/workspace/default",
-    "pageFile": "src/app/workspace/[workspaceId]/page.tsx",
+    "route": "/workspace/default/overview",
+    "pageFile": "src/app/workspace/[workspaceId]/overview/page.tsx",
     "snapshotFile": "src/app/workspace/[workspaceId]/page.snapshot.yaml",
     "waitFor": {
       "strategy": "selector",

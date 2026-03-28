@@ -2,12 +2,12 @@
  * Workspace Page (Server Component Wrapper)
  *
  * This server component provides generateStaticParams for static export
- * and renders the client component.
+ * and redirects the workspace root to the canonical Kanban work surface.
  *
  * Route: /workspace/[workspaceId]
  */
 
-import { WorkspacePageClient } from "./workspace-page-client";
+import { redirect } from "next/navigation";
 
 // Required for static export - tells Next.js which paths to pre-render.
 // For static export (ROUTA_BUILD_STATIC=1): return placeholder values
@@ -19,6 +19,11 @@ export async function generateStaticParams() {
   return [];
 }
 
-export default function WorkspacePage() {
-  return <WorkspacePageClient />;
+export default async function WorkspacePage({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}) {
+  const { workspaceId } = await params;
+  redirect(`/workspace/${workspaceId}/kanban`);
 }

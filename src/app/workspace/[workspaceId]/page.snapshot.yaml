@@ -1,7 +1,7 @@
 # page-id: workspace
-# route: /workspace/default
-# source-page: src/app/workspace/[workspaceId]/page.tsx
-# url: http://127.0.0.1:61939/workspace/default
+# route: /workspace/default/overview
+# source-page: src/app/workspace/[workspaceId]/overview/page.tsx
+# url: http://127.0.0.1:61939/workspace/default/overview
 # title: Routa - Multi-Agent Coordinator
 # generated-at: 2026-03-28T01:43:00.195Z
 # generator: playwright
@@ -28,10 +28,10 @@
       - /url: /
       - img
       - text: Home
-    - link "Workspace":
-      - /url: /workspace/default
+    - link "Overview":
+      - /url: /workspace/default/overview
       - img
-      - text: Workspace
+      - text: Overview
     - link "Kanban":
       - /url: /workspace/default/kanban
       - img
