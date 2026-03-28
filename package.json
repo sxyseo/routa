@@ -165,6 +165,7 @@
     "next": "^16.2.1",
     "node-cron": "^4.2.1",
     "react": "^19.0.0",
+    "react-complex-tree": "^2.6.1",
     "react-dom": "^19.0.0",
     "smol-toml": "^1.6.0",
     "utf-8-validate": "^6.0.6",

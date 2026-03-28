@@ -12,6 +12,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
+import { HarnessAgentInstructionsPanel } from "@/client/components/harness-agent-instructions-panel";
 import type { TierValue } from "@/client/components/harness-execution-plan-flow";
 
 type HookPhase = "submodule" | "fitness" | "fitness-fast" | "review";
@@ -51,6 +52,11 @@ type WorkflowSummary = {
   flowCount: number;
   jobCount: number;
   remoteSignals: string[];
+};
+
+type InstructionSummary = {
+  fileName: string;
+  fallbackUsed: boolean;
 };
 
 type SummaryState<T> = {
@@ -267,6 +273,13 @@ function buildGraph(args: {
   } = args;
 
   const nodes: Node<LoopNodeData>[] = [
+    buildNode("instructions", -115, 175, {
+      kind: "spec",
+      title: "Instruction File",
+      subtitle: "CLAUDE.md first, AGENTS.md fallback.",
+      meta: ["CLAUDE.md", "AGENTS.md"],
+      tone: "neutral",
+    }),
     buildNode("core", 505, 150, {
       kind: "core",
       title: "Governance Loop",
@@ -319,6 +332,7 @@ function buildGraph(args: {
   ];
 
   const edges: Edge[] = [
+    buildEdge("instructions-hook", "instructions", "hook", "source-right", "target-left", "repo rulebook", "#64748b", "6 4"),
     buildEdge("core-hook", "core", "hook", "source-left", "target-right", "local gate", "#0ea5e9"),
     buildEdge("hook-fitness", "hook", "fitness", "source-top", "target-left", "profile -> dimension", "#38bdf8"),
     buildEdge("fitness-plan", "fitness", "plan", "source-right", "target-top", "frontmatter -> metrics", "#10b981"),
@@ -355,6 +369,11 @@ export function HarnessGovernanceLoopGraph({
     loadedContextKey: "",
   });
   const [workflowState, setWorkflowState] = useState<SummaryState<WorkflowSummary>>({
+    data: null,
+    error: null,
+    loadedContextKey: "",
+  });
+  const [instructionsState, setInstructionsState] = useState<SummaryState<InstructionSummary>>({
     data: null,
     error: null,
     loadedContextKey: "",
@@ -447,6 +466,35 @@ export function HarnessGovernanceLoopGraph({
         });
       });
 
+    void fetch(`/api/harness/instructions?${queryString}`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load guidance document");
+        }
+        if (cancelled) {
+          return;
+        }
+        setInstructionsState({
+          data: {
+            fileName: typeof payload?.fileName === "string" ? payload.fileName : "AGENTS.md",
+            fallbackUsed: Boolean(payload?.fallbackUsed),
+          },
+          error: null,
+          loadedContextKey: contextKey,
+        });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        setInstructionsState({
+          data: null,
+          error: error instanceof Error ? error.message : String(error),
+          loadedContextKey: contextKey,
+        });
+      });
+
     return () => {
       cancelled = true;
     };
@@ -454,6 +502,7 @@ export function HarnessGovernanceLoopGraph({
 
   const hookSummary = hookState.loadedContextKey === contextKey ? hookState.data : null;
   const workflowSummary = workflowState.loadedContextKey === contextKey ? workflowState.data : null;
+  const instructionSummary = instructionsState.loadedContextKey === contextKey ? instructionsState.data : null;
 
   const graph = useMemo(
     () => buildGraph({
@@ -469,7 +518,19 @@ export function HarnessGovernanceLoopGraph({
     [dimensionCount, fitnessFileCount, hardGateCount, hookSummary, metricCount, repoLabel, selectedTier, workflowSummary],
   );
 
-  const graphIssues = [specsError, planError, hookState.error, workflowState.error].filter(Boolean);
+  if (instructionSummary) {
+    const instructionNode = graph.nodes.find((node) => node.id === "instructions");
+    if (instructionNode) {
+      instructionNode.data = {
+        ...instructionNode.data,
+        title: instructionSummary.fileName,
+        subtitle: instructionSummary.fallbackUsed ? "Fallback repository rulebook." : "Preferred repository rulebook.",
+        meta: instructionSummary.fallbackUsed ? ["fallback", "hook preflight"] : ["preferred", "hook preflight"],
+      };
+    }
+  }
+
+  const graphIssues = [specsError, planError, hookState.error, workflowState.error, instructionsState.error].filter(Boolean);
 
   return (
     <section className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
@@ -563,6 +624,13 @@ export function HarnessGovernanceLoopGraph({
               </span>
             ))}
           </div>
+
+          <HarnessAgentInstructionsPanel
+            workspaceId={workspaceId}
+            codebaseId={codebaseId}
+            repoPath={repoPath}
+            repoLabel={repoLabel}
+          />
         </div>
       ) : null}
     </section>

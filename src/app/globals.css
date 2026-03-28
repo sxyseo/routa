@@ -1,5 +1,6 @@
 @import "@xterm/xterm/css/xterm.css";
 @import "@xyflow/react/dist/style.css";
+@import "react-complex-tree/lib/style-modern.css";
 @import "tailwindcss";
 @import "./styles/desktop-theme.css";
 
@@ -88,6 +89,18 @@
   --brand-gray-soft: var(--brand-slate-300);
   --accent: var(--brand-amber-500);
   --accent-hover: var(--brand-amber-600);
+}
+
+.harness-instructions-tree {
+  --rct-color-tree-bg: transparent;
+  --rct-item-height: 32px;
+  --rct-item-padding: 10px;
+  --rct-radius: 10px;
+  --rct-bar-color: rgb(37 99 235);
+  --rct-focus-outline: rgb(37 99 235);
+  --rct-color-focustree-item-selected-bg: rgba(239, 246, 255, 1);
+  --rct-color-focustree-item-hover-bg: rgba(248, 250, 252, 1);
+  --rct-color-focustree-item-active-bg: rgba(226, 232, 240, 1);
 }
 
 html.dark {
