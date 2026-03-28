@@ -324,7 +324,7 @@ export default function HomePage() {
                             </p>
                           </div>
 
-                          <div className="mx-auto mt-10 grid w-full max-w-4xl gap-4 md:grid-cols-3">
+                          <div className="mx-auto mt-10 grid w-full max-w-4xl gap-4 md:grid-cols-4">
                             <Link
                               href={activeWorkspaceId ? `/workspace/${activeWorkspaceId}/kanban` : "/"}
                               className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/8"
@@ -371,6 +371,20 @@ export default function HomePage() {
                                 连接模型、切换角色，确认工作区已经可执行。
                               </p>
                             </button>
+                            <Link
+                              href="/settings/fitness"
+                              className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/8"
+                            >
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                                Fitness
+                              </div>
+                              <div className="mt-3 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                                AI 工程体检
+                              </div>
+                              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                                运行并对比 Generic 与 Agent Orchestrator 两套 profile。
+                              </p>
+                            </Link>
                           </div>
 
                           <section className="mx-auto mt-10 grid w-full max-w-4xl gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
