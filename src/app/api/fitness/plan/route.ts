@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import { promises as fsp } from "fs";
 import matter from "gray-matter";
+import yaml from "js-yaml";
 import * as path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
@@ -194,11 +195,45 @@ function normalizeMetric(rawMetric: unknown): PlannedMetric {
 }
 
 function parseManifestEntries(raw: string): string[] {
-  const parsed = matter(raw);
-  const data = parsed.data as Record<string, unknown>;
-  return Array.isArray(data.evidence_files)
-    ? data.evidence_files.filter((item): item is string => typeof item === "string")
-    : [];
+  try {
+    const parsedManifestYaml = (yaml.load(raw) ?? {}) as { evidence_files?: unknown };
+    return Array.isArray(parsedManifestYaml.evidence_files)
+      ? parsedManifestYaml.evidence_files.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function collectFitnessMarkdownFiles(
+  rootDir: string,
+  relativeDir = "",
+): Promise<Array<{ relativePath: string; fullPath: string }>> {
+  const currentDir = relativeDir ? path.join(rootDir, relativeDir) : rootDir;
+  const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+  const files: Array<{ relativePath: string; fullPath: string }> = [];
+
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const nextRelativePath = relativeDir ? path.posix.join(relativeDir, entry.name) : entry.name;
+    const fullPath = path.join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...await collectFitnessMarkdownFiles(rootDir, nextRelativePath));
+      continue;
+    }
+
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    if (!nextRelativePath.endsWith(".md") || entry.name === "README.md" || entry.name === "REVIEW.md") {
+      continue;
+    }
+
+    files.push({ relativePath: nextRelativePath, fullPath });
+  }
+
+  return files;
 }
 
 export async function GET(request: NextRequest) {
@@ -208,28 +243,19 @@ export async function GET(request: NextRequest) {
     const scope = parseScope(request.nextUrl.searchParams.get("scope"));
     const repoRoot = await resolveRepoRoot(context);
     const fitnessDir = path.join(repoRoot, "docs", "fitness");
-    const entries = await fsp.readdir(fitnessDir, { withFileTypes: true });
     const markdownByPath = new Map<string, { name: string; raw: string }>();
     let manifestEntries: string[] = [];
 
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!entry.isFile()) {
-        continue;
-      }
+    const manifestPath = path.join(fitnessDir, "manifest.yaml");
+    if (fs.existsSync(manifestPath)) {
+      manifestEntries = parseManifestEntries(await fsp.readFile(manifestPath, "utf-8"));
+    }
 
-      const fullPath = path.join(fitnessDir, entry.name);
-      if (entry.name === "manifest.yaml") {
-        manifestEntries = parseManifestEntries(await fsp.readFile(fullPath, "utf-8"));
-        continue;
-      }
-
-      if (!entry.name.endsWith(".md") || entry.name === "README.md" || entry.name === "REVIEW.md") {
-        continue;
-      }
-
-      const raw = await fsp.readFile(fullPath, "utf-8");
-      markdownByPath.set(entry.name, { name: entry.name, raw });
-      markdownByPath.set(`docs/fitness/${entry.name}`, { name: entry.name, raw });
+    const markdownFiles = await collectFitnessMarkdownFiles(fitnessDir);
+    for (const file of markdownFiles) {
+      const raw = await fsp.readFile(file.fullPath, "utf-8");
+      markdownByPath.set(file.relativePath, { name: file.relativePath, raw });
+      markdownByPath.set(`docs/fitness/${file.relativePath}`, { name: file.relativePath, raw });
     }
 
     const orderedMarkdown = new Map<string, { name: string; raw: string }>();

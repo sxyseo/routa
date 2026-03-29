@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import { promises as fsp } from "fs";
 import matter from "gray-matter";
+import yaml from "js-yaml";
 import * as path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
@@ -163,6 +164,46 @@ function isFluencyModelSpec(relativePath: string): boolean {
   return /^harness-fluency(\.profile\.[^.]+|\.model)?\.ya?ml$/u.test(relativePath);
 }
 
+function parseManifestEvidenceEntries(raw: string): string[] {
+  try {
+    const parsedEvidenceManifest = (yaml.load(raw) ?? {}) as { evidence_files?: unknown };
+    return Array.isArray(parsedEvidenceManifest.evidence_files)
+      ? parsedEvidenceManifest.evidence_files.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function collectFitnessFiles(
+  rootDir: string,
+  relativeDir = "",
+): Promise<Array<{ relativePath: string; fullPath: string }>> {
+  const currentDir = relativeDir ? path.join(rootDir, relativeDir) : rootDir;
+  const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+  const files: Array<{ relativePath: string; fullPath: string }> = [];
+
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const nextRelativePath = relativeDir ? path.posix.join(relativeDir, entry.name) : entry.name;
+    const fullPath = path.join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...await collectFitnessFiles(rootDir, nextRelativePath));
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+    if (isFluencyModelSpec(entry.name)) continue;
+    if (!nextRelativePath.endsWith(".md") && !nextRelativePath.endsWith(".yaml") && !nextRelativePath.endsWith(".yml")) {
+      continue;
+    }
+
+    files.push({ relativePath: nextRelativePath, fullPath });
+  }
+
+  return files;
+}
+
 function parseMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummary {
   const parsed = matter(raw);
   const data = parsed.data as Record<string, unknown>;
@@ -233,11 +274,7 @@ function parseMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummar
 }
 
 function parseManifestSpec(relativePath: string, raw: string): FitnessSpecSummary {
-  const parsed = matter(raw);
-  const data = parsed.data as Record<string, unknown>;
-  const manifestEntries = Array.isArray(data.evidence_files)
-    ? data.evidence_files.filter((item): item is string => typeof item === "string")
-    : [];
+  const manifestEntries = parseManifestEvidenceEntries(raw);
 
   return {
     name: relativePath,
@@ -268,34 +305,30 @@ export async function GET(request: NextRequest) {
     const context = parseContext(request.nextUrl.searchParams);
     const repoRoot = await resolveRepoRoot(context);
     const fitnessDir = path.join(repoRoot, "docs", "fitness");
-    const entries = await fsp.readdir(fitnessDir, { withFileTypes: true });
     const files: FitnessSpecSummary[] = [];
     let manifestSpec: FitnessSpecSummary | null = null;
     const byPath = new Map<string, FitnessSpecSummary>();
 
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!entry.isFile()) continue;
-      if (isFluencyModelSpec(entry.name)) continue;
+    const fitnessFiles = await collectFitnessFiles(fitnessDir);
+    for (const file of fitnessFiles) {
+      const raw = await fsp.readFile(file.fullPath, "utf-8");
 
-      const fullPath = path.join(fitnessDir, entry.name);
-      if (entry.name.endsWith(".md")) {
-        const raw = await fsp.readFile(fullPath, "utf-8");
-        const spec = parseMarkdownSpec(entry.name, raw);
+      if (file.relativePath.endsWith(".md")) {
+        const spec = parseMarkdownSpec(file.relativePath, raw);
         files.push(spec);
         byPath.set(spec.relativePath, spec);
         byPath.set(`docs/fitness/${spec.relativePath}`, spec);
         continue;
       }
 
-      if (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml")) {
-        const raw = await fsp.readFile(fullPath, "utf-8");
-        const spec = entry.name === "manifest.yaml"
-          ? parseManifestSpec(entry.name, raw)
-          : parseNonMarkdownSpec(entry.name, raw);
+      if (file.relativePath.endsWith(".yaml") || file.relativePath.endsWith(".yml")) {
+        const spec = path.posix.basename(file.relativePath) === "manifest.yaml"
+          ? parseManifestSpec(file.relativePath, raw)
+          : parseNonMarkdownSpec(file.relativePath, raw);
         files.push(spec);
         byPath.set(spec.relativePath, spec);
         byPath.set(`docs/fitness/${spec.relativePath}`, spec);
-        if (entry.name === "manifest.yaml") {
+        if (path.posix.basename(file.relativePath) === "manifest.yaml") {
           manifestSpec = spec;
         }
       }

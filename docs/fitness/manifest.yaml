@@ -1,6 +1,7 @@
 schema: fitness-manifest-v1
 evidence_files:
   - docs/fitness/code-quality.md
+  - docs/fitness/engineering-governance.md
   - docs/fitness/unit-test.md
   - docs/fitness/security.md
   - docs/fitness/api-contract.md

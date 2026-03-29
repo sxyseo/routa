@@ -52,6 +52,8 @@ jobs:
         include:
           - dimension: code_quality
             label: Code Quality
+          - dimension: engineering_governance
+            label: Engineering Governance
           - dimension: testability
             label: Testability
           - dimension: security

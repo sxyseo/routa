@@ -99,11 +99,12 @@ Fitness = Σ (Weight_i × Score_i) / 100
 阻断: < 80 | 强告警: 80-90 | 通过: ≥ 90
 ```
 
-## Dimensions（九个维度）
+## Dimensions（十个维度）
 
 | 维度 | 权重 | 描述 | 关键指标 | 证据文件 |
 |------|------|------|----------|----------|
-| code_quality | 24% | 代码质量与架构 | Lint通过, 无循环依赖, 文件≤1000行 | [code-quality.md](code-quality.md) |
+| code_quality | 18% | 代码本体质量与静态门禁 | 文件/函数预算, lint/typecheck/clippy, 重复与复杂度 | [code-quality.md](code-quality.md) |
+| engineering_governance | 6% | 工程治理与仓库卫生 | blast radius, 外链可达, scripts 冻结预算, TODO/FIXME 监控 | [engineering-governance.md](engineering-governance.md) |
 | testability | 20% | 测试覆盖与通过率 | 覆盖率≥80%, 通过率100% | [unit-test.md](unit-test.md) |
 | security | 20% | 依赖漏洞与安全扫描 | critical=0, high≤阈值 | [security.md](security.md) |
 | api_contract | 10% | API 契约测试 | Rust API 测试通过, 契约同步 | [rust-api-test.md](rust-api-test.md) |
@@ -137,6 +138,7 @@ Fitness = Σ (Weight_i × Score_i) / 100
 `Defense` workflow 现在按维度拆分 `entrix run --dimension ...`，每个 job 对应一个 fitness 维度：
 
 - `Gate: Code Quality`
+- `Gate: Engineering Governance`
 - `Gate: Testability`
 - `Gate: Security`
 - `Gate: API Contract`

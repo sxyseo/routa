@@ -1,6 +1,6 @@
 ---
 dimension: code_quality
-weight: 24
+weight: 18
 tier: normal
 threshold:
   pass: 90
@@ -24,54 +24,6 @@ metrics:
     hard_gate: false
     tier: fast
     description: "本次变更的代码文件必须满足行数预算；默认 ≤1000 行，Rust(.rs) ≤800 行，历史超标文件按 HEAD 基线冻结"
-
-  - name: scripts_root_file_count_guard
-    command: |
-      base_ref="${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
-      target_limit=20
-      baseline_count=$(git ls-tree -r --name-only "$base_ref" -- scripts 2>/dev/null | awk -F/ 'NF==2' | wc -l | tr -d ' ')
-      current_count=$(find scripts -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
-      baseline_count="${baseline_count:-0}"
-      current_count="${current_count:-0}"
-      effective_limit="$baseline_count"
-      if [ "$effective_limit" -lt "$target_limit" ]; then
-        effective_limit="$target_limit"
-      fi
-      echo "scripts_root_file_count: $current_count"
-      echo "scripts_root_file_limit: $effective_limit"
-      if [ "$current_count" -le "$effective_limit" ]; then
-        echo "scripts_root_file_count_ok"
-      else
-        echo "scripts_root_file_count_blocked"
-        exit 1
-      fi
-    pattern: "scripts_root_file_count_ok"
-    hard_gate: false
-    tier: fast
-    execution_scope: ci
-    gate: advisory
-    kind: atomic
-    analysis: static
-    evidence_type: command
-    scope: [tools]
-    run_when_changed:
-      - scripts/**
-    description: "scripts/ 根目录文件数采用冻结预算；当前超标目录不得继续膨胀，推动按职责归类而不是继续平铺"
-
-  - name: graph_blast_radius_probe
-    command: graph:impact
-    tier: normal
-    execution_scope: ci
-    gate: advisory
-    kind: holistic
-    analysis: static
-    evidence_type: probe
-    scope: [web, rust]
-    run_when_changed:
-      - src/**
-      - apps/**
-      - crates/**
-    description: "通过代码图估算本次变更的 blast radius；图后端缺失时跳过不计分"
 
   - name: function_line_limit
     command: |
@@ -237,13 +189,6 @@ metrics:
     tier: fast
     description: "TypeScript 类型检查必须通过；若检测到 stale .next types，会自动清理后重试一次"
 
-  - name: markdown_external_links
-    command: node --import tsx tools/hook-runtime/src/check-markdown-links.ts 2>&1
-    hard_gate: true
-    tier: normal
-    execution_scope: ci
-    description: "Markdown 中的外链必须可达；429 与需要鉴权的 4xx 记为告警不阻断"
-
   - name: clippy_pass
     command: cargo clippy --workspace -- -D warnings 2>&1
     hard_gate: true
@@ -253,15 +198,6 @@ metrics:
   # ══════════════════════════════════════════════════════════════
   # AI 特有检测
   # ══════════════════════════════════════════════════════════════
-
-  - name: todo_fixme_count
-    command: |
-      grep -rn "TODO\|FIXME\|XXX\|HACK" --include="*.ts" --include="*.tsx" --include="*.rs" \
-        src apps crates 2>/dev/null | wc -l | awk '{print "todo_count:", $1}'
-    pattern: "todo_count: [0-9]$|todo_count: [1-9][0-9]$"
-    hard_gate: false
-    tier: normal
-    description: "TODO/FIXME 数量监控（<100）"
 
   - name: console_log_check
     command: |
@@ -289,9 +225,9 @@ metrics:
 
 # Code Quality 证据
 
-> 本文件检测 AI 生成代码的常见质量问题，作为 maintainability 维度的补充证据。
+> 本文件只覆盖代码本体质量与静态质量底线，不再承接仓库治理或文档卫生类检查。
 >
-> **核心理念**: 通过量化指标约束 AI 的"乱写空间"，防止代码膨胀和质量退化。
+> **核心理念**: 通过量化指标约束 AI 的“乱写空间”，让复杂度、重复、类型逃逸和静态质量退化尽早暴露。
 
 ## 检测矩阵
 
@@ -299,16 +235,15 @@ metrics:
 |--------|------|-----------|------|
 | 文件行数 | 新文件 ≤1000 行，历史超标文件按 HEAD 基线冻结 | ❌ | `python -m entrix.file_budgets` |
 | 历史热点守护 | 已登记热点只允许缩小不允许继续膨胀 | ✅ | `python -m entrix.file_budgets --overrides-only` |
-| scripts 根目录文件数 | 超标目录按基线冻结；当前目标上限 20，已超标时不得继续长大 | ❌ | `git ls-tree` + `find` |
 | 函数行数 | ≤100 行 | ❌ | grep + 人工 |
 | 重复代码 | 变更文件不新增大块 clone | ❌ | jscpd |
 | 结构坏味道 | 变更文件中结构型包装重复 = 0 | ❌ | ast-grep |
 | 圈复杂度 | 变更文件中新增 >15 复杂度函数 = 0 | ❌ | ESLint |
 | 深层嵌套 | 新增 >3 层嵌套 = 0 | ❌ | git diff + grep |
-| 依赖健康检查 | 循环依赖/依赖违规为 0 | ❌ | dependency-cruiser |
+| 依赖健康检查 | 循环依赖/依赖违规为 0 | ✅ | dependency-cruiser |
 | ESLint | 0 errors | ✅ | ESLint |
+| TypeScript 类型检查 | 0 errors | ✅ | smart typecheck |
 | Clippy | 0 warnings | ✅ | Clippy |
-| TODO/FIXME | <100 | ❌ | grep |
 | console.log | 变更中新增数 = 0 | ❌ | git diff + grep |
 | 重复函数名 | 变更中新增重复名 = 0 | ❌ | git diff + grep |
 | any 类型 | 新增 `any` = 0 | ❌ | git diff + grep |
@@ -318,10 +253,10 @@ metrics:
 ### 1. 代码膨胀
 AI 倾向于生成冗长代码，缺乏抽象能力。
 
-**约束**: 新文件 ≤1000 行；历史超标热点必须进入预算冻结，只能缩小不能继续长大；`scripts/` 根目录文件数采用冻结预算，目标收敛到 ≤20；函数 ≤100 行
+**约束**: 新文件 ≤1000 行；历史超标热点必须进入预算冻结，只能缩小不能继续长大；函数 ≤100 行
 
 ### 2. 重复代码
-AI 经常"复制粘贴"式生成，忽略已有实现。
+AI 经常“复制粘贴”式生成，忽略已有实现。
 
 **约束**: 仅检查本次变更文件，且只抓大块复制，避免为压全仓 clone 数做跨语义抽象
 
@@ -336,9 +271,18 @@ AI 使用 `any` 绕过类型检查。
 **约束**: 本次变更不得新增 `: any` 或 `as any`
 
 ### 4. 调试残留
-AI 遗留 console.log 和 TODO。
+AI 遗留 console.log/debug。
 
-**约束**: 本次变更新增 console.log/debug = 0，TODO <100
+**约束**: 本次变更新增 console.log/debug = 0
+
+## 维度边界
+
+以下检查已经迁移到 `engineering_governance` 维度，不再算作 code quality：
+
+- `scripts_root_file_count_guard`
+- `graph_blast_radius_probe`
+- `markdown_external_links`
+- `todo_fixme_count`
 
 ## 本地执行
 
@@ -367,4 +311,5 @@ entrix run
 | `eslint.config.mjs` | ESLint 配置 |
 | `.clippy.toml` | Clippy 配置（如有） |
 | `.dependency-cruiser.cjs` | dependency-cruiser 配置 |
+| `docs/fitness/engineering-governance.md` | 工程治理与仓库卫生检查 |
 | `docs/fitness/README.md` | Fitness 规则手册 |
