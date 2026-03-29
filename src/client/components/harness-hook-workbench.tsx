@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatc
 import {
   Background,
   Controls,
+  Handle,
   MarkerType,
   ReactFlow,
   Position,
@@ -241,21 +242,25 @@ function FlowNodeView({ data }: NodeProps<Node<FlowNodeData>>) {
   const widthClass = data.kind === "hook" ? "w-[300px]" : data.kind === "task" ? "w-[284px]" : "w-[276px]";
   const heightClass = data.kind === "task" ? "min-h-[124px]" : "min-h-[132px]";
   return (
-    <div className={`${widthClass} ${heightClass} rounded-2xl border bg-desktop-bg-primary/95 px-4 py-3 shadow-sm ${tone.border} ${tone.glow}`}>
-      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{data.kind}</div>
-      <div className="mt-1 text-[15px] font-semibold leading-6 text-desktop-text-primary">{data.title}</div>
-      {data.subtitle ? (
-        <div className="mt-1 text-[12px] leading-5 text-desktop-text-secondary">{data.subtitle}</div>
-      ) : null}
-      {data.chips?.length ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {data.chips.map((chip) => (
-            <span key={`${data.id}:${chip}`} className={`rounded-full border px-2 py-0.5 text-[10px] ${tone.badge}`}>
-              {chip}
-            </span>
-          ))}
-        </div>
-      ) : null}
+    <div className="relative">
+      <Handle id="left" type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
+      <Handle id="right" type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
+      <div className={`${widthClass} ${heightClass} rounded-2xl border bg-desktop-bg-primary/95 px-4 py-3 shadow-sm ${tone.border} ${tone.glow}`}>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{data.kind}</div>
+        <div className="mt-1 text-[15px] font-semibold leading-6 text-desktop-text-primary">{data.title}</div>
+        {data.subtitle ? (
+          <div className="mt-1 text-[12px] leading-5 text-desktop-text-secondary">{data.subtitle}</div>
+        ) : null}
+        {data.chips?.length ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {data.chips.map((chip) => (
+              <span key={`${data.id}:${chip}`} className={`rounded-full border px-2 py-0.5 text-[10px] ${tone.badge}`}>
+                {chip}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
