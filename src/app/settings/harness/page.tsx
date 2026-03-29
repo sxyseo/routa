@@ -28,6 +28,17 @@ function extractMarkdownCodeBlocks(source: string) {
   })).filter((block) => block.code.length > 0);
 }
 
+function HarnessLoopPlaceholder({ label }: { label: string }) {
+  return (
+    <section className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{label}</div>
+      <div className="mt-3 rounded-xl border border-dashed border-desktop-border bg-desktop-bg-secondary/60 px-4 py-8 text-center">
+        <div className="text-sm font-semibold text-desktop-text-primary">TOBE Continue</div>
+      </div>
+    </section>
+  );
+}
+
 export default function HarnessSettingsPage() {
   const workspacesHook = useWorkspaces();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
@@ -37,7 +48,7 @@ export default function HarnessSettingsPage() {
   const [selectedRepoOverride, setSelectedRepoOverride] = useState<RepoSelection | null>(null);
   const [selectedTier, setSelectedTier] = useState<TierValue>("normal");
   const [selectedSpecName, setSelectedSpecName] = useState("");
-  const [selectedGovernanceNodeId, setSelectedGovernanceNodeId] = useState("precommit");
+  const [selectedGovernanceNodeId, setSelectedGovernanceNodeId] = useState("coding");
 
   const activeWorkspaceTitle = useMemo(() => {
     return workspacesHook.workspaces.find((workspace) => workspace.id === workspaceId)?.title
@@ -148,8 +159,8 @@ export default function HarnessSettingsPage() {
           />
         );
       case "build":
+        return <HarnessLoopPlaceholder label="构建反馈环" />;
       case "lint":
-      case "test":
         return (
           <HarnessExecutionPlanFlow
             loading={planState.loading}
@@ -162,6 +173,8 @@ export default function HarnessSettingsPage() {
             variant="compact"
           />
         );
+      case "test":
+        return <HarnessLoopPlaceholder label="测试反馈环" />;
       case "review":
         return (
           <HarnessReviewTriggersPanel

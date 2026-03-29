@@ -703,7 +703,7 @@ export function HarnessGovernanceLoopGraph({
   contextPanel,
 }: HarnessGovernanceLoopGraphProps) {
   const hasContext = Boolean(repoPath);
-  const [internalSelectedNodeId, setInternalSelectedNodeId] = useState("precommit");
+  const [internalSelectedNodeId, setInternalSelectedNodeId] = useState("coding");
   const activeSelectedNodeId = selectedNodeId ?? internalSelectedNodeId;
   const hookSummary = useMemo(() => {
     if (!hooksData) {
