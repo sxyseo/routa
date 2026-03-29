@@ -98,6 +98,7 @@ export function FitnessAnalysisPanel({
             source: entry.source,
             durationMs: entry.durationMs,
             report: entry.report,
+            console: entry.console ?? next[profile].console,
             updatedAt: entry.report.generatedAt,
           };
           continue;
@@ -107,6 +108,7 @@ export function FitnessAnalysisPanel({
           next[profile] = {
             state: "empty",
             source: entry.source,
+            console: entry.console ?? next[profile].console,
             error: entry.error ?? "暂无快照",
           };
           continue;
@@ -116,6 +118,7 @@ export function FitnessAnalysisPanel({
           state: "error",
           source: entry.source,
           durationMs: entry.durationMs,
+          console: entry.console ?? next[profile].console,
           error: entry.error ?? "分析失败",
         };
       }
@@ -449,6 +452,12 @@ export function FitnessAnalysisPanel({
               Sibling:
               <span className="ml-1 font-semibold text-desktop-text-primary">
                 {peerDelta === null ? "N/A" : `${peerDelta >= 0 ? "+" : ""}${peerDelta}%`}
+              </span>
+            </div>
+            <div className="rounded-full border border-desktop-border bg-white/80 px-3 py-2 text-[11px] text-desktop-text-secondary dark:bg-white/6">
+              Console:
+              <span className="ml-1 font-semibold text-desktop-text-primary">
+                {selectedState.console?.data ? "Captured" : "N/A"}
               </span>
             </div>
           </div>

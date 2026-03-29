@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { TerminalBubble } from "@/client/components/terminal/terminal-bubble";
 
 import {
   clampPercent,
@@ -421,6 +422,45 @@ function RawView({ report }: { report: FitnessReport }) {
   );
 }
 
+function ConsoleView({ profileState }: { profileState: ProfilePanelState }) {
+  const consoleState = profileState.console;
+
+  if (!consoleState?.data) {
+    return (
+      <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-6 text-sm text-desktop-text-secondary">
+        当前没有 console transcript。先运行一次 profile，后端会捕获 `cargo … fitness fluency` 的 stdout / stderr。
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/60 p-4 text-[11px] text-desktop-text-secondary">
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          <span>
+            Command:
+            <span className="ml-1 font-mono text-desktop-text-primary">{consoleState.command}</span>
+          </span>
+          <span>
+            Exit:
+            <span className="ml-1 font-semibold text-desktop-text-primary">
+              {consoleState.signal ? `signal ${consoleState.signal}` : consoleState.exitCode ?? "unknown"}
+            </span>
+          </span>
+        </div>
+      </div>
+      <TerminalBubble
+        terminalId={`fluency-console-${profileState.updatedAt ?? "latest"}`}
+        command={consoleState.command}
+        args={consoleState.args}
+        data={consoleState.data}
+        exited
+        exitCode={consoleState.signal ? 130 : typeof consoleState.exitCode === "number" ? consoleState.exitCode : 0}
+      />
+    </div>
+  );
+}
+
 export function FitnessAnalysisContent({
   selectedProfile,
   viewMode,
@@ -428,6 +468,10 @@ export function FitnessAnalysisContent({
   report,
   peerReport,
 }: FitnessAnalysisContentProps) {
+  if (viewMode === "console") {
+    return <ConsoleView profileState={profileState} />;
+  }
+
   if (!report) {
     return (
       <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">

@@ -1,7 +1,7 @@
 "use client";
 
 export type FitnessProfile = "generic" | "agent_orchestrator";
-export type ViewMode = "overview" | "capabilities" | "recommendations" | "changes" | "raw";
+export type ViewMode = "overview" | "capabilities" | "recommendations" | "changes" | "console" | "raw";
 
 export type FitnessProfileState = "idle" | "loading" | "ready" | "empty" | "error";
 
@@ -11,15 +11,29 @@ export type CriterionResult = {
   id: string;
   level: string;
   dimension: string;
+  capabilityGroup?: string | null;
+  capabilityGroupName?: string | null;
   weight: number;
   critical: boolean;
   status: CriterionStatus;
   detectorType: string;
+  profiles?: string[];
+  evidenceMode?: string;
   detail: string;
   evidence: string[];
   whyItMatters: string;
   recommendedAction: string;
   evidenceHint: string;
+};
+
+export type FitnessConsole = {
+  command: string;
+  args: string[];
+  data: string;
+  stdout: string;
+  stderr: string;
+  exitCode?: number | null;
+  signal?: string | null;
 };
 
 export type CellResult = {
@@ -77,6 +91,7 @@ export type FitnessReport = {
   modelVersion: number;
   modelPath: string;
   profile: FitnessProfile;
+  mode?: string;
   repoRoot: string;
   generatedAt: string;
   snapshotPath: string;
@@ -89,6 +104,7 @@ export type FitnessReport = {
   blockingTargetLevel?: string | null;
   blockingTargetLevelName?: string | null;
   dimensions: Record<string, FitnessDimensionResult>;
+  capabilityGroups?: Record<string, unknown>;
   cells: CellResult[];
   criteria: CriterionResult[];
   recommendations: FitnessRecommendation[];
@@ -101,6 +117,7 @@ export type ApiProfileEntry = {
   status: "ok" | "missing" | "error";
   source: "analysis" | "snapshot";
   report?: FitnessReport;
+  console?: FitnessConsole;
   error?: string;
   durationMs?: number;
 };
@@ -116,6 +133,7 @@ export type ProfilePanelState = {
   source?: ApiProfileEntry["source"];
   durationMs?: number;
   report?: FitnessReport;
+  console?: FitnessConsole;
   error?: string;
   updatedAt?: string;
 };
@@ -156,6 +174,7 @@ export const VIEW_MODES: Array<{ id: ViewMode; label: string; description: strin
   { id: "capabilities", label: "能力项", description: "按维度拆开每个 level cell 和 criterion" },
   { id: "recommendations", label: "建议", description: "查看推荐动作和证据线索" },
   { id: "changes", label: "变化", description: "对比上一次快照的层级变化" },
+  { id: "console", label: "Console", description: "查看当前 profile 执行时的命令行输出" },
   { id: "raw", label: "原始 JSON", description: "直接检查后端返回结构" },
 ];
 
@@ -187,6 +206,7 @@ export function normalizeApiResponse(payload: unknown): ApiProfileEntry[] {
       status: value.status,
       source: value.source,
       report: value.report as FitnessReport | undefined,
+      console: value.console as FitnessConsole | undefined,
       error: typeof value.error === "string" ? value.error : undefined,
       durationMs: typeof value.durationMs === "number" && Number.isFinite(value.durationMs) ? value.durationMs : undefined,
     });

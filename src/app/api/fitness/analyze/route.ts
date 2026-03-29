@@ -18,6 +18,7 @@ type FitnessProfileResult = {
   source: ApiProfileSource;
   durationMs?: number;
   report?: FitnessReport;
+  console?: FitnessConsole;
   error?: string;
 };
 
@@ -31,13 +32,25 @@ type FitnessCommandResult = {
   status: ApiProfileStatus;
   durationMs: number;
   report?: FitnessReport;
+  console: FitnessConsole;
   error?: string;
+};
+
+type FitnessConsole = {
+  command: string;
+  args: string[];
+  data: string;
+  stdout: string;
+  stderr: string;
+  exitCode?: number | null;
+  signal?: string | null;
 };
 
 type FitnessReport = {
   modelVersion: number;
   modelPath: string;
   profile: FitnessProfile;
+  mode?: string;
   repoRoot: string;
   generatedAt: string;
   snapshotPath: string;
@@ -50,6 +63,7 @@ type FitnessReport = {
   blockingTargetLevel?: string | null;
   blockingTargetLevelName?: string | null;
   dimensions: Record<string, FitnessDimensionResult>;
+  capabilityGroups?: Record<string, unknown>;
   cells: Array<unknown>;
   criteria: Array<unknown>;
   blockingCriteria: Array<unknown>;
@@ -296,6 +310,59 @@ function extractJsonOutput(raw: string): string {
   throw new Error("Unable to parse command JSON output");
 }
 
+function removeReportJsonFromStdout(stdout: string, reportText: string) {
+  if (!stdout || !reportText) return stdout;
+  const index = stdout.lastIndexOf(reportText);
+  if (index < 0) return stdout;
+  return `${stdout.slice(0, index)}${stdout.slice(index + reportText.length)}`;
+}
+
+function buildConsoleTranscript(params: {
+  command: string;
+  args: string[];
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  exitCode?: number | null;
+  signal?: string | null;
+  reportText?: string;
+}): FitnessConsole {
+  const { command, args, stdout, stderr, durationMs, exitCode, signal, reportText } = params;
+  const cleanedStdout = removeReportJsonFromStdout(stdout, reportText ?? "").trim();
+  const cleanedStderr = stderr.trim();
+  const lines = [`$ ${[command, ...args].join(" ")}`, ""];
+
+  if (cleanedStdout) {
+    lines.push("stdout:");
+    lines.push(cleanedStdout);
+    lines.push("");
+  }
+
+  if (cleanedStderr) {
+    lines.push("stderr:");
+    lines.push(cleanedStderr);
+    lines.push("");
+  }
+
+  if (signal) {
+    lines.push(`[signal: ${signal}]`);
+  } else if (typeof exitCode === "number") {
+    lines.push(`[exit ${exitCode} · ${(durationMs / 1000).toFixed(1)}s]`);
+  } else {
+    lines.push(`[completed · ${(durationMs / 1000).toFixed(1)}s]`);
+  }
+
+  return {
+    command,
+    args,
+    data: `${lines.join("\n")}\n`,
+    stdout,
+    stderr,
+    exitCode,
+    signal,
+  };
+}
+
 async function runFitnessProfile(
   repoRoot: string,
   profile: FitnessProfile,
@@ -324,6 +391,7 @@ async function runFitnessProfile(
   }
 
   return await new Promise<FitnessCommandResult>((resolve) => {
+    const command = "cargo";
     const proc = spawn("cargo", args, {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
@@ -342,9 +410,17 @@ async function runFitnessProfile(
     });
 
     proc.on("error", (error) => {
+      const durationMs = Date.now() - startTime;
       resolve({
         status: "error",
-        durationMs: Date.now() - startTime,
+        durationMs,
+        console: buildConsoleTranscript({
+          command,
+          args,
+          stdout,
+          stderr,
+          durationMs,
+        }),
         error: toMessage(error),
       });
     });
@@ -356,6 +432,14 @@ async function runFitnessProfile(
         resolve({
           status: "error",
           durationMs,
+          console: buildConsoleTranscript({
+            command,
+            args,
+            stdout,
+            stderr,
+            durationMs,
+            signal,
+          }),
           error: `Command terminated by signal: ${signal}`,
         });
         return;
@@ -365,6 +449,14 @@ async function runFitnessProfile(
         resolve({
           status: "error",
           durationMs,
+          console: buildConsoleTranscript({
+            command,
+            args,
+            stdout,
+            stderr,
+            durationMs,
+            exitCode: code,
+          }),
           error: `Command failed (exit ${code}): ${stderr || "no stderr output"}`,
         });
         return;
@@ -377,11 +469,28 @@ async function runFitnessProfile(
           status: "ok",
           durationMs,
           report,
+          console: buildConsoleTranscript({
+            command,
+            args,
+            stdout,
+            stderr,
+            durationMs,
+            exitCode: code,
+            reportText,
+          }),
         });
       } catch (error) {
         resolve({
           status: "error",
           durationMs,
+          console: buildConsoleTranscript({
+            command,
+            args,
+            stdout,
+            stderr,
+            durationMs,
+            exitCode: code,
+          }),
           error: toMessage(error),
         });
       }
@@ -415,9 +524,11 @@ function buildResponse(
 
     if (result.status === "ok" && result.report) {
       entry.report = result.report;
+      entry.console = result.console;
       return entry;
     }
 
+    entry.console = result.console;
     entry.error = result.error ?? "分析失败（未知错误）";
     return entry;
   });
