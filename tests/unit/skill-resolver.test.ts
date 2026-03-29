@@ -39,12 +39,12 @@ async function main() {
 
 console.log("\n── Test Group 1: resolveSkillContent (filesystem) ──\n");
 
-await test("finds frontend-design via filesystem", async () => {
-  const content = await resolveSkillContent("frontend-design");
+await test("finds agent-browser via filesystem", async () => {
+  const content = await resolveSkillContent("agent-browser");
   assert(typeof content === "string" && content.length > 100,
     `Expected skill content, got: ${content}`);
-  assert(content!.includes("frontend") || content!.includes("design"),
-    "Content should mention frontend or design");
+  assert(content!.includes("browser") || content!.includes("automation"),
+    "Content should mention browser or automation");
 });
 
 await test("returns undefined for unknown skill", async () => {
@@ -53,8 +53,8 @@ await test("returns undefined for unknown skill", async () => {
 });
 
 await test("finds skill from repo path", async () => {
-  // The project itself has frontend-design in .agents/skills/
-  const content = await resolveSkillContent("frontend-design", process.cwd());
+  // The project itself has agent-browser in .agents/skills/
+  const content = await resolveSkillContent("agent-browser", process.cwd());
   assert(typeof content === "string" && content.length > 100,
     `Expected skill content from repo path`);
 });

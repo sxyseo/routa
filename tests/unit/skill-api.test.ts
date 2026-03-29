@@ -61,10 +61,10 @@ await test("returned skills have name and description", async () => {
   assert(skill.content === undefined, "List should not include content");
 });
 
-await test("frontend-design skill is listed", async () => {
+await test("agent-browser skill is listed", async () => {
   const data = await json("/api/skills");
-  const found = data.skills.find((s: { name: string }) => s.name === "frontend-design");
-  assert(found !== undefined, "frontend-design should be listed");
+  const found = data.skills.find((s: { name: string }) => s.name === "agent-browser");
+  assert(found !== undefined, "agent-browser should be listed");
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -72,11 +72,11 @@ await test("frontend-design skill is listed", async () => {
 // ──────────────────────────────────────────────────────────────────────────────
 console.log("\n── Test Group 2: GET /api/skills?name=X ──\n");
 
-await test("loads frontend-design content", async () => {
-  const data = await json("/api/skills?name=frontend-design");
+await test("loads agent-browser content", async () => {
+  const data = await json("/api/skills?name=agent-browser");
   assert(typeof data.content === "string", `Expected content string, got: ${typeof data.content}`);
   assert(data.content.length > 100, `Content too short: ${data.content.length}`);
-  assert(data.name === "frontend-design", `Expected name 'frontend-design', got: ${data.name}`);
+  assert(data.name === "agent-browser", `Expected name 'agent-browser', got: ${data.name}`);
   console.log(`     Content length: ${data.content.length} bytes`);
   console.log(`     Preview: ${data.content.slice(0, 80).replace(/\n/g, " ")}...`);
 });
@@ -87,7 +87,7 @@ await test("returns 404 for unknown skill", async () => {
 });
 
 await test("includes description and license", async () => {
-  const data = await json("/api/skills?name=frontend-design");
+  const data = await json("/api/skills?name=agent-browser");
   assert(typeof data.description === "string", "Should have description");
   // license is optional but check it's not undefined if present in file
 });
@@ -141,7 +141,7 @@ await test("skillName without skillContent: server resolves from filesystem", as
   const result = await postAcp({
     sessionId: `test-skill-resolve-${Date.now()}`,
     prompt: "create a button",
-    skillName: "frontend-design",
+    skillName: "agent-browser",
     // No skillContent — server must call resolveSkillContent()
   });
   console.log(`     Response type: ${result.type}, status: ${result.status}`);
@@ -166,7 +166,7 @@ await test("skillName with skillContent: content passed directly, no extra resol
   const result = await postAcp({
     sessionId: `test-skill-content-${Date.now()}`,
     prompt: "create a button",
-    skillName: "frontend-design",
+    skillName: "agent-browser",
     skillContent: "## Frontend Design\n\nCreate beautiful UIs.", // provided, skip resolution
   });
   console.log(`     Response type: ${result.type}, status: ${result.status}`);
@@ -185,7 +185,7 @@ await test("skillName with skillContent: content passed directly, no extra resol
 console.log("\n── Test Group 4: skill content format ──\n");
 
 await test("skill content is valid markdown", async () => {
-  const data = await json("/api/skills?name=frontend-design");
+  const data = await json("/api/skills?name=agent-browser");
   const content: string = data.content;
   // Skill content should be a non-trivial markdown string
   assert(content.trim().length > 0, "Content should not be empty");

@@ -79,7 +79,7 @@ const fetchRoutes: StoryFetchRoute[] = [
 
 const skills: SkillSummary[] = [
   { name: "find-skills", description: "Discover and install Codex skills", source: "local" },
-  { name: "frontend-design", description: "Create polished frontend interfaces", source: "local" },
+  { name: "agent-browser", description: "Browser automation CLI for AI agents", source: "local" },
 ];
 
 const repoSkills: SkillSummary[] = [

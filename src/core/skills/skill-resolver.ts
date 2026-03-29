@@ -17,7 +17,7 @@ import { discoverSkillsFromPath, type SkillDefinition } from "./skill-loader";
 /**
  * Resolve skill content by name, searching all available sources.
  *
- * @param skillName - The skill name (e.g. "frontend-design")
+ * @param skillName - The skill name (e.g. "agent-browser")
  * @param repoPath  - Optional repo/working directory to search for repo-local skills
  * @returns The skill content (SKILL.md body), or undefined if not found
  */
