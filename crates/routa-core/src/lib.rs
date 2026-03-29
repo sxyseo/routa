@@ -18,6 +18,7 @@ pub mod db;
 pub mod error;
 pub mod events;
 pub mod git;
+pub mod harness;
 pub mod kanban;
 pub mod mcp;
 pub mod models;

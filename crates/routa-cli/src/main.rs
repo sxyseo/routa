@@ -7,6 +7,7 @@ mod commands;
 
 use crate::commands::acp::AcpAction;
 use crate::commands::fitness::FitnessAction;
+use crate::commands::harness::HarnessAction;
 use clap::{Parser, Subcommand};
 
 /// Routa.js CLI — Multi-agent coordination platform
@@ -178,6 +179,12 @@ enum Commands {
     Fitness {
         #[command(subcommand)]
         action: FitnessAction,
+    },
+
+    /// Detect Harness build/test surfaces from docs/harness/*.yml
+    Harness {
+        #[command(subcommand)]
+        action: HarnessAction,
     },
 
     /// Run YAML-defined agent workflows
@@ -1254,6 +1261,7 @@ async fn main() {
             } => commands::scan::run(project_dir.as_deref(), &output_dir, strict),
 
             Commands::Fitness { action } => commands::fitness::run(action),
+            Commands::Harness { action } => commands::harness::run(action),
 
             Commands::Workflow { action } => {
                 let state = commands::init_state(&cli.db).await;
