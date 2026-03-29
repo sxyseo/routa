@@ -166,9 +166,9 @@ function CapabilityPin({ x, y, color, size = 22 }: { x: number; y: number; color
 }
 
 function FitnessMatrix({ selectedReport }: { selectedReport?: { dimensions?: Record<string, { level?: string | null }> } | undefined }) {
-  const matrixWidth = 1600;
-  const matrixHeight = 560;
-  const margin = { top: 96, right: 30, bottom: 54, left: 214 };
+  const matrixWidth = 1400;
+  const matrixHeight = 360;
+  const margin = { top: 58, right: 16, bottom: 20, left: 160 };
   const plotX = margin.left;
   const plotY = margin.top;
   const plotW = matrixWidth - margin.left - margin.right;
@@ -203,8 +203,8 @@ function FitnessMatrix({ selectedReport }: { selectedReport?: { dimensions?: Rec
   }
 
   return (
-    <div className="mt-2 overflow-x-auto">
-      <div className="min-w-[640px]">
+    <div className="mt-1 overflow-x-auto">
+      <div className="min-w-[560px]">
         <svg
           viewBox={`0 0 ${matrixWidth} ${matrixHeight}`}
           className="h-auto w-full"
@@ -254,9 +254,9 @@ function FitnessMatrix({ selectedReport }: { selectedReport?: { dimensions?: Rec
               <g key={column.key}>
                 <SvgMultilineText
                   x={cx}
-                  y={54}
+                  y={34}
                   lines={column.title}
-                  fontSize={16}
+                  fontSize={13}
                   fontWeight={700}
                   fill={column.color}
                   textAnchor="middle"
@@ -264,9 +264,9 @@ function FitnessMatrix({ selectedReport }: { selectedReport?: { dimensions?: Rec
                 {column.subtitle ? (
                   <text
                     x={cx}
-                    y={88}
+                    y={49}
                     fill={column.color}
-                    fontSize={14}
+                    fontSize={11}
                     fontWeight={700}
                     textAnchor="middle"
                     fontFamily="Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif"
@@ -285,9 +285,9 @@ function FitnessMatrix({ selectedReport }: { selectedReport?: { dimensions?: Rec
               <g key={row.title.join("-")}>
                 <SvgMultilineText
                   x={labelX}
-                  y={cy - (row.title.length - 1) * 11 - 8}
+                  y={cy - (row.title.length - 1) * 8 - 2}
                   lines={row.title}
-                  fontSize={18}
+                  fontSize={13}
                   fontWeight={600}
                   fill="#111"
                   textAnchor="end"
@@ -295,9 +295,9 @@ function FitnessMatrix({ selectedReport }: { selectedReport?: { dimensions?: Rec
                 {row.subtitle ? (
                   <text
                     x={labelX}
-                    y={cy + 28}
+                    y={cy + 19}
                     fill="#A1A1A1"
-                    fontSize={11}
+                    fontSize={9.5}
                     fontWeight={500}
                     textAnchor="end"
                     fontFamily="Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif"
@@ -314,28 +314,17 @@ function FitnessMatrix({ selectedReport }: { selectedReport?: { dimensions?: Rec
               points={polylinePoints}
               fill="none"
               stroke="#757575"
-              strokeWidth={3}
-              strokeDasharray="4 12"
+              strokeWidth={2}
+              strokeDasharray="4 10"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           ) : null}
 
           {points.map((point) => (
-            <CapabilityPin key={`${point.x}-${point.y}`} x={toX(point.x)} y={toY(point.y)} color={point.color} size={24} />
+            <CapabilityPin key={`${point.x}-${point.y}`} x={toX(point.x)} y={toY(point.y)} color={point.color} size={21} />
           ))}
 
-          <text
-            x={matrixWidth - 40}
-            y={matrixHeight - 20}
-            textAnchor="end"
-            fill="#111"
-            fontSize={12}
-            fontWeight={500}
-            fontFamily="Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif"
-          >
-            Adapted from Agile Fluency® project
-          </text>
         </svg>
       </div>
     </div>
@@ -571,8 +560,8 @@ export function FitnessAnalysisPanel({
   const reportReadiness = selectedReport ? `${Math.round(selectedReport.currentLevelReadiness * 100)}%` : "N/A";
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-[28px] border border-desktop-border bg-desktop-bg-secondary/60 p-4 shadow-sm">
+    <div className="space-y-3">
+      <section className="rounded-[28px] border border-desktop-border bg-desktop-bg-secondary/60 p-3 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-[11px] uppercase tracking-[0.14em] text-desktop-text-secondary">
@@ -611,8 +600,8 @@ export function FitnessAnalysisPanel({
           </span>
         </div>
 
-        <div className="mt-2 border-t border-desktop-border/80 pt-2">
-          <div className="text-[11px] uppercase tracking-[0.1em] text-desktop-text-secondary">Capability Matrix</div>
+        <div className="mt-1 border-t border-desktop-border/80 pt-1">
+          <div className="text-[10px] uppercase tracking-[0.1em] text-desktop-text-secondary">Capability Matrix</div>
           <FitnessMatrix selectedReport={selectedReport} />
         </div>
 
