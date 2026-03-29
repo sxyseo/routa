@@ -270,10 +270,10 @@ const flowNodeTypes = {
 };
 
 function HookLifecycleRail() {
-  const { activeEntry, compactMode, dispatch, groupedEntries } = useWorkbenchContext();
+  const { activeEntry, dispatch, groupedEntries } = useWorkbenchContext();
 
   return (
-    <aside className={`rounded-[28px] border border-desktop-border bg-[radial-gradient(circle_at_top,#ffffff,rgba(255,255,255,0.78)_24%,rgba(240,246,255,0.82)_100%)] p-4 shadow-sm ${compactMode ? "" : "2xl:sticky 2xl:top-4 2xl:self-start"}`}>
+    <aside className="rounded-[28px] border border-desktop-border bg-[radial-gradient(circle_at_top,#ffffff,rgba(255,255,255,0.78)_24%,rgba(240,246,255,0.82)_100%)] p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Lifecycle</div>
@@ -300,6 +300,7 @@ function HookLifecycleRail() {
             <div className="mt-2.5 space-y-2">
               {group.entries.map((entry) => {
                 const selected = activeEntry?.name === entry.name;
+                const dimmed = !entry.enabled;
                 return (
                   <button
                     key={entry.name}
@@ -308,39 +309,37 @@ function HookLifecycleRail() {
                       dispatch({ type: "select-hook", hookName: entry.name });
                     }}
                     className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
-                      selected
+                      dimmed
+                        ? "border-slate-200 bg-slate-50/90 text-slate-500"
+                        : selected
                         ? "border-sky-300 bg-sky-50/80 shadow-sm"
-                        : entry.enabled
-                          ? "border-desktop-border bg-white/85 hover:bg-desktop-bg-primary"
-                          : "border-desktop-border bg-desktop-bg-primary/55 hover:bg-desktop-bg-primary/80"
+                        : "border-desktop-border bg-white/85 hover:bg-desktop-bg-primary"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-[12px] font-semibold text-desktop-text-primary">{entry.name}</div>
-                        <div className="mt-1 text-[10px] text-desktop-text-secondary">
+                        <div className={`text-[12px] font-semibold ${dimmed ? "text-slate-500" : "text-desktop-text-primary"}`}>{entry.name}</div>
+                        <div className={`mt-1 text-[10px] ${dimmed ? "text-slate-400" : "text-desktop-text-secondary"}`}>
                           {entry.channelLabel} · {entry.blockingLabel} · {entry.bypassabilityLabel}
                         </div>
                       </div>
                       <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${
                         entry.enabled
                           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : entry.configured
-                            ? "border-amber-200 bg-amber-50 text-amber-800"
-                            : "border-desktop-border bg-desktop-bg-secondary text-desktop-text-secondary"
+                          : "border-slate-200 bg-slate-100 text-slate-500"
                       }`}>
                         {entry.enabled ? "enabled" : entry.configured ? "partial" : "missing"}
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${dimmed ? "border-slate-200 bg-white text-slate-500" : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary"}`}>
                         {entry.stats.taskCount} tasks
                       </span>
-                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${dimmed ? "border-slate-200 bg-white text-slate-500" : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary"}`}>
                         {entry.phases.length} phases
                       </span>
                       {entry.stats.reviewGate ? (
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] ${dimmed ? "border-slate-200 bg-white text-slate-500" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
                           review gate
                         </span>
                       ) : null}
@@ -972,7 +971,10 @@ export function HarnessHookWorkbench({
   unsupportedMessage,
   variant = "full",
 }: HookWorkbenchProps) {
-  const entries = useMemo(() => buildHookWorkbenchEntries(data), [data]);
+  const entries = useMemo(
+    () => buildHookWorkbenchEntries(data).filter((entry) => entry.lifecycleGroup === "commit" || entry.lifecycleGroup === "push"),
+    [data],
+  );
   const groupedEntries = useMemo(() => groupHookEntries(entries), [entries]);
   const defaultHook = useMemo(() => getDefaultWorkbenchHook(entries), [entries]);
   const contextKey = `${workspaceId}:${codebaseId ?? "repo-only"}:${repoPath ?? "unknown"}`;
@@ -1050,38 +1052,12 @@ export function HarnessHookWorkbench({
         ? "rounded-[30px] border border-desktop-border bg-[linear-gradient(180deg,rgba(251,253,255,0.95),rgba(241,246,255,0.92))] p-4"
         : "rounded-[30px] border border-desktop-border bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(238,244,255,0.94))] p-5 shadow-sm"}
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Hook workbench</div>
-            <h2 className="mt-1 text-[18px] font-semibold text-desktop-text-primary">Declarative Git hook console</h2>
-            <div className="mt-1 max-w-3xl text-[12px] leading-5 text-desktop-text-secondary">
-              用生命周期导航、流程画布、配置检查器和运行观测台重新组织当前仓库的 hook 数据。
-              真相源仍然来自 `.husky`、`docs/fitness/runtime/hooks.yaml` 和 `docs/fitness/review-triggers.yaml`。
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 text-[10px]">
-            <span className="rounded-full border border-desktop-border bg-white/80 px-2.5 py-1 text-desktop-text-secondary">
-              {repoLabel}
-            </span>
-            <span className="rounded-full border border-desktop-border bg-white/80 px-2.5 py-1 text-desktop-text-secondary">
-              {entries.filter((entry) => entry.enabled).length} enabled
-            </span>
-            <span className="rounded-full border border-desktop-border bg-white/80 px-2.5 py-1 text-desktop-text-secondary">
-              {data.profiles.length} runtime profiles
-            </span>
-            <span className="rounded-full border border-desktop-border bg-white/80 px-2.5 py-1 text-desktop-text-secondary">
-              {data.reviewTriggerFile?.ruleCount ?? 0} review rules
-            </span>
-          </div>
-        </div>
-
         {unsupportedMessage ? (
-          <HarnessUnsupportedState className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
+          <HarnessUnsupportedState className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
         ) : null}
 
         {!unsupportedMessage && data.warnings.length ? (
-          <div className="mt-4 grid gap-2">
+          <div className="grid gap-2">
             {data.warnings.map((warning) => (
               <div key={warning} className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] text-amber-800">
                 {warning}
@@ -1091,13 +1067,13 @@ export function HarnessHookWorkbench({
         ) : null}
 
         {!unsupportedMessage && entries.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-6 text-[12px] text-desktop-text-secondary">
+          <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-6 text-[12px] text-desktop-text-secondary">
             No hook metadata found for the selected repository.
           </div>
         ) : null}
 
         {!unsupportedMessage && entries.length > 0 ? (
-          <div className={`mt-5 grid gap-4 ${compactMode ? "grid-cols-1" : "2xl:grid-cols-[280px_minmax(0,1fr)_360px]"}`}>
+          <div className={`grid gap-4 ${data.warnings.length ? "mt-4" : ""} ${compactMode ? "grid-cols-1" : "2xl:grid-cols-[280px_minmax(0,1fr)_360px]"}`}>
             <HookLifecycleRail />
             <HookFlowCanvas />
             <HookInspector />
