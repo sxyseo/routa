@@ -34,18 +34,23 @@ function DimensionDensityTooltip({ active, payload }: TooltipContentProps<ValueT
   const datum = payload[0]?.payload as {
     label: string;
     fileName: string;
-    densityScore: number;
+    score: number;
     metricCount: number;
     hardGateCount: number;
+    weight: number;
+    thresholdPass: number;
+    thresholdWarn: number;
   };
 
   return (
     <div className="rounded-xl border border-desktop-border bg-white/95 px-3 py-2 text-[11px] shadow-lg dark:bg-slate-950/95">
       <div className="font-semibold text-desktop-text-primary">{datum.label}</div>
       <div className="mt-1 text-desktop-text-secondary">{datum.fileName}</div>
-      <div className="mt-2 text-desktop-text-primary">score {datum.densityScore}</div>
+      <div className="mt-2 text-desktop-text-primary">score {datum.score}</div>
       <div className="text-desktop-text-secondary">{datum.metricCount} metrics</div>
       <div className="text-desktop-text-secondary">{datum.hardGateCount} hard gates</div>
+      <div className="text-desktop-text-secondary">weight {datum.weight}</div>
+      <div className="text-desktop-text-secondary">pass {datum.thresholdPass} · warn {datum.thresholdWarn}</div>
     </div>
   );
 }
@@ -69,7 +74,7 @@ export function HarnessFitnessFilesDashboard({
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Discovery</div>
           <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Fitness files</h3>
           <p className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">
-            Spec-derived dimension density score from `docs/fitness`.
+            Spec-derived radar score from `docs/fitness`.
           </p>
         </div>
       </div>
@@ -99,12 +104,12 @@ export function HarnessFitnessFilesDashboard({
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Dimension radar</div>
                 <p className="mt-1 text-[12px] leading-5 text-desktop-text-secondary">
-                  Score is normalized from `metricCount`, with the densest dimension fixed at 100.
+                  Score blends `weight`, hard-gate coverage, and threshold strictness. It is derived from specs, not runtime fitness output.
                 </p>
               </div>
               {model.selectedDimension ? (
                 <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
-                  {model.selectedDimension.label} · score {model.selectedDimension.densityScore}
+                  {model.selectedDimension.label} · score {model.selectedDimension.score}
                 </div>
               ) : null}
             </div>
@@ -123,8 +128,8 @@ export function HarnessFitnessFilesDashboard({
                     />
                     <Tooltip content={(props) => <DimensionDensityTooltip {...props} />} />
                     <Radar
-                      name="Density score"
-                      dataKey="densityScore"
+                      name="Spec score"
+                      dataKey="score"
                       stroke="#2563eb"
                       fill="#2563eb"
                       fillOpacity={0.28}

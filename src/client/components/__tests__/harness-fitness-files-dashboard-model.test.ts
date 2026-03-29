@@ -112,13 +112,13 @@ const specFiles: FitnessSpecSummary[] = [
 ];
 
 describe("buildHarnessFitnessFilesDashboardModel", () => {
-  it("builds dimension density chart data from fitness spec files", () => {
+  it("builds spec-derived radar scores from fitness dimension metadata", () => {
     const model = buildHarnessFitnessFilesDashboardModel(specFiles, specFiles[2] ?? null);
 
     expect(model.selectedDimension).toEqual(
       expect.objectContaining({
         label: "evolvability",
-        densityScore: 67,
+        score: 69,
       }),
     );
     expect(model.dimensions).toEqual([
@@ -127,7 +127,10 @@ describe("buildHarnessFitnessFilesDashboardModel", () => {
         fileName: "code-quality.md",
         metricCount: 3,
         hardGateCount: 2,
-        densityScore: 100,
+        weight: 24,
+        thresholdPass: 90,
+        thresholdWarn: 80,
+        score: 86,
         isSelected: false,
       }),
       expect.objectContaining({
@@ -135,7 +138,10 @@ describe("buildHarnessFitnessFilesDashboardModel", () => {
         fileName: "api-contract.md",
         metricCount: 2,
         hardGateCount: 2,
-        densityScore: 67,
+        weight: 8,
+        thresholdPass: 100,
+        thresholdWarn: 95,
+        score: 69,
         isSelected: true,
       }),
     ]);
