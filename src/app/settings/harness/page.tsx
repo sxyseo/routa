@@ -117,6 +117,7 @@ export default function HarnessSettingsPage() {
   );
   const governanceContextPanel = useMemo(() => {
     switch (selectedGovernanceNodeId) {
+      case "thinking":
       case "coding":
         return (
           <HarnessAgentInstructionsPanel
@@ -145,6 +146,7 @@ export default function HarnessSettingsPage() {
             variant="compact"
           />
         );
+      case "build":
       case "lint":
       case "review":
       case "test":
@@ -160,6 +162,7 @@ export default function HarnessSettingsPage() {
             variant="compact"
           />
         );
+      case "commit":
       case "post-commit":
         return (
           <HarnessGitHubActionsFlowPanel
