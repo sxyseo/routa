@@ -104,7 +104,7 @@ export function HarnessFitnessFilesDashboard({
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Dimension radar</div>
                 <p className="mt-1 text-[12px] leading-5 text-desktop-text-secondary">
-                  Score blends `weight`, hard-gate coverage, and threshold strictness. It is derived from specs, not runtime fitness output.
+                  Score blends `weight`, hard-gate coverage, and threshold strictness across manifest-linked dimension specs.
                 </p>
               </div>
               {model.selectedDimension ? (
