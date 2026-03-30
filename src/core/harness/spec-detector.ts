@@ -543,17 +543,19 @@ function detectBmad(repoRoot: string): SpecSource[] {
           const entries = listDirs(dir).filter((d) => d.startsWith(prefix));
           if (entries.length > 0) {
             hasBmadToolIntegration = true;
-            evidence.push(`${base}/${entries[0]}/`);
+            for (const entry of entries) {
+              evidence.push(`${base}/${entry}/`);
+            }
           }
         }
       }
 
-      if (artifacts.length > 0 && hasBmadToolIntegration) {
+      if (artifacts.length > 0) {
         sources.push({
-          kind: "legacy",
+          kind: "framework",
           system: "bmad",
           rootPath: "docs",
-          confidence: "low",
+          confidence: hasBmadToolIntegration ? "medium" : "low",
           status: "legacy",
           evidence,
           children: artifacts,

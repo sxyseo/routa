@@ -23,7 +23,6 @@ const KIND_LABELS: Record<SpecSourceKind, string> = {
   "native-tool": "Native Tool",
   framework: "Framework",
   "tool-integration": "Integration",
-  legacy: "Legacy",
 };
 
 const STATUS_LABELS: Record<SpecStatus, string> = {
@@ -50,7 +49,6 @@ const KIND_STYLES: Record<SpecSourceKind, { bg: string; text: string }> = {
   "native-tool": { bg: "bg-violet-100", text: "text-violet-700" },
   framework: { bg: "bg-sky-100", text: "text-sky-700" },
   "tool-integration": { bg: "bg-zinc-100", text: "text-zinc-600" },
-  legacy: { bg: "bg-amber-100", text: "text-amber-700" },
 };
 
 const SYSTEM_ICONS: Record<string, string> = {
@@ -79,10 +77,11 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 function groupSourcesByCategory(sources: SpecSource[]) {
-  const nativeTools = sources.filter((s) => s.kind === "native-tool");
-  const frameworks = sources.filter((s) => s.kind === "framework");
-  const integrations = sources.filter((s) => s.kind === "tool-integration");
-  const legacy = sources.filter((s) => s.kind === "legacy");
+  const legacy = sources.filter((s) => s.status === "legacy");
+  const activeSources = sources.filter((s) => s.status !== "legacy");
+  const nativeTools = activeSources.filter((s) => s.kind === "native-tool");
+  const frameworks = activeSources.filter((s) => s.kind === "framework");
+  const integrations = activeSources.filter((s) => s.kind === "tool-integration");
   return { nativeTools, frameworks, integrations, legacy };
 }
 
@@ -316,13 +315,18 @@ export function HarnessSpecSourcesPanel({
   const isCompact = variant === "compact";
 
   if (isCompact) {
+    const showUnsupportedMessage = Boolean(unsupportedMessage);
+    const showLoading = Boolean(loading);
+    const showEmptyState = !showLoading && !error && !showUnsupportedMessage && sources.length === 0;
+    const showSourceCards = !showLoading && !showUnsupportedMessage;
+
     return (
-      <div className="space-y-2">
+      <div className="space-y-2" data-testid="spec-sources-compact">
         <div className="flex items-center justify-between gap-2">
           <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
             Spec Sources
           </div>
-          {loading ? (
+          {showLoading ? (
             <span className="text-[10px] text-desktop-text-secondary">Loading...</span>
           ) : (
             <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
@@ -335,13 +339,19 @@ export function HarnessSpecSourcesPanel({
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">{error}</div>
         )}
 
-        {!loading && !error && sources.length === 0 && (
+        {unsupportedMessage && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
+            {unsupportedMessage}
+          </div>
+        )}
+
+        {showEmptyState && (
           <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2 text-[10px] text-desktop-text-secondary">
             No spec sources detected in this repository.
           </div>
         )}
 
-        {sources.map((source) => {
+        {showSourceCards && sources.map((source) => {
           const key = `${source.system}-${source.kind}-${source.rootPath}`;
           return (
             <SpecSourceCard
@@ -358,7 +368,7 @@ export function HarnessSpecSourcesPanel({
 
   // Full variant
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" data-testid="spec-sources-full">
       <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-3 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <div>

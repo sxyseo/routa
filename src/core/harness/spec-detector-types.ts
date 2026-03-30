@@ -1,4 +1,4 @@
-export type SpecSourceKind = "native-tool" | "framework" | "tool-integration" | "legacy";
+export type SpecSourceKind = "native-tool" | "framework" | "tool-integration";
 
 export type SpecSystem = "kiro" | "qoder" | "openspec" | "spec-kit" | "bmad";
 

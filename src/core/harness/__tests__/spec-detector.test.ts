@@ -229,6 +229,34 @@ describe("detectSpecSources", () => {
     expect(bmadSource!.status).toBe("installed-only");
   });
 
+  it("detects legacy BMAD docs without tool folders and keeps the framework kind", () => {
+    writeFile(path.join(tmpDir, "docs/prd.md"), "# PRD");
+    writeFile(path.join(tmpDir, "docs/architecture.md"), "# Architecture");
+
+    const result = detectSpecSources(tmpDir);
+    const bmadSource = result.sources.find((s) => s.system === "bmad");
+
+    expect(bmadSource).toBeDefined();
+    expect(bmadSource!.kind).toBe("framework");
+    expect(bmadSource!.status).toBe("legacy");
+    expect(bmadSource!.confidence).toBe("low");
+    expect(bmadSource!.children.map((c) => c.type)).toEqual(expect.arrayContaining(["prd", "architecture"]));
+  });
+
+  it("bumps legacy BMAD confidence when tool integration evidence is present", () => {
+    writeFile(path.join(tmpDir, "docs/prd.md"), "# PRD");
+    mkdirp(path.join(tmpDir, ".claude/skills/bmad-planner"));
+
+    const result = detectSpecSources(tmpDir);
+    const bmadSource = result.sources.find((s) => s.system === "bmad");
+
+    expect(bmadSource).toBeDefined();
+    expect(bmadSource!.kind).toBe("framework");
+    expect(bmadSource!.status).toBe("legacy");
+    expect(bmadSource!.confidence).toBe("medium");
+    expect(bmadSource!.evidence).toContain(".claude/skills/bmad-planner/");
+  });
+
   // -- Multiple sources --
 
   it("supports multiple sources coexisting", () => {
