@@ -75,16 +75,32 @@ async function updateTomlVersion(relativePath, version) {
   await fs.writeFile(absolutePath, updated, "utf8");
 }
 
-async function updateJsonVersion(relativePath, version) {
+async function updateJsonVersion(relativePath, version, options = {}) {
   const { data } = await readJson(relativePath);
 
-  // Check if version is already correct
-  if (data.version === version) {
+  let changed = false;
+
+  // Update main version
+  if (data.version !== version) {
+    data.version = version;
+    changed = true;
+  }
+
+  // Update optionalDependencies if specified
+  if (options.updateOptionalDeps && data.optionalDependencies) {
+    for (const dep of Object.keys(data.optionalDependencies)) {
+      if (data.optionalDependencies[dep] !== version) {
+        data.optionalDependencies[dep] = version;
+        changed = true;
+      }
+    }
+  }
+
+  if (!changed) {
     console.log(`${relativePath} already at version ${version}`);
     return;
   }
 
-  data.version = version;
   await writeJson(relativePath, data);
 }
 
@@ -102,6 +118,8 @@ await writeJson("package.json", rootPackage.data);
 await updateJsonVersion("apps/desktop/package.json", version);
 await updateTomlVersion("apps/desktop/src-tauri/Cargo.toml", version);
 await updateJsonVersion("apps/desktop/src-tauri/tauri.conf.json", version);
-await updateJsonVersion("packages/routa-cli/package.json", version);
+await updateJsonVersion("packages/routa-cli/package.json", version, {
+  updateOptionalDeps: true,
+});
 
 console.log(`Synchronized release version to ${version}`);
