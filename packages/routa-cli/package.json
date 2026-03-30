@@ -1,6 +1,6 @@
 {
   "name": "routa-cli",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Routa.js CLI for terminal-first workflows.",
   "type": "module",
   "license": "MIT",
