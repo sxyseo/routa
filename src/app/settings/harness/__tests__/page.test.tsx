@@ -1,8 +1,30 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import HarnessSettingsPage from "../page";
+
+const repoPickerMock = vi.fn();
+const localStorageMock = (() => {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+  };
+})();
+
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  value: localStorageMock,
+});
 
 vi.mock("@/client/components/settings-route-shell", () => ({
   SettingsRouteShell: ({ children }: { children: ReactNode }) => (
@@ -11,7 +33,11 @@ vi.mock("@/client/components/settings-route-shell", () => ({
 }));
 
 vi.mock("@/client/components/settings-page-header", () => ({
-  SettingsPageHeader: () => <div data-testid="settings-page-header" />,
+  SettingsPageHeader: ({ extra }: { extra?: ReactNode }) => (
+    <div data-testid="settings-page-header">
+      {extra}
+    </div>
+  ),
 }));
 
 vi.mock("@/client/components/workspace-switcher", () => ({
@@ -23,7 +49,22 @@ vi.mock("@/client/components/codemirror/code-viewer", () => ({
 }));
 
 vi.mock("@/client/components/repo-picker", () => ({
-  RepoPicker: () => <div data-testid="repo-picker" />,
+  RepoPicker: (props: { value: { path: string } | null; onChange: (selection: unknown) => void }) => {
+    repoPickerMock(props);
+    return (
+      <button
+        type="button"
+        data-testid="repo-picker"
+        onClick={() => props.onChange({
+          name: "codex",
+          path: "/Users/phodal/ai/codex",
+          branch: "main",
+        })}
+      >
+        {props.value?.path ?? "empty"}
+      </button>
+    );
+  },
 }));
 
 vi.mock("@/client/components/harness-execution-plan-flow", () => ({
@@ -184,6 +225,11 @@ vi.mock("@/client/hooks/use-harness-settings-data", () => ({
 }));
 
 describe("HarnessSettingsPage", () => {
+  beforeEach(() => {
+    repoPickerMock.mockReset();
+    window.localStorage.clear();
+  });
+
   it("does not inject a duplicate compact instruction panel into the governance loop build context", () => {
     render(<HarnessSettingsPage />);
 
@@ -209,5 +255,18 @@ describe("HarnessSettingsPage", () => {
 
     expect(screen.getByRole("heading", { name: "README.md" })).not.toBeNull();
     expect(screen.getByText(/Entrix loader skips README/i)).not.toBeNull();
+  });
+
+  it("persists the selected local repository for the workspace", () => {
+    const { unmount } = render(<HarnessSettingsPage />);
+
+    fireEvent.click(screen.getByTestId("repo-picker"));
+
+    expect(window.localStorage.getItem("routa.repoSelection.harness.default")).toContain("/Users/phodal/ai/codex");
+
+    unmount();
+    render(<HarnessSettingsPage />);
+
+    expect(screen.getByTestId("repo-picker").textContent).toBe("/Users/phodal/ai/codex");
   });
 });

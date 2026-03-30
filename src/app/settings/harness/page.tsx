@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { SettingsPageHeader } from "@/client/components/settings-page-header";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
@@ -20,6 +20,7 @@ import { HarnessReviewTriggersPanel } from "@/client/components/harness-review-t
 import { HarnessUnsupportedState, getHarnessUnsupportedRepoMessage } from "@/client/components/harness-support-state";
 import { useHarnessSettingsData } from "@/client/hooks/use-harness-settings-data";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
+import { loadRepoSelection, saveRepoSelection } from "@/client/utils/repo-selection-storage";
 
 function extractMarkdownCodeBlocks(source: string) {
   const matches = [...source.matchAll(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g)];
@@ -36,10 +37,25 @@ export default function HarnessSettingsPage() {
   const workspaceId = selectedWorkspaceId || workspacesHook.workspaces[0]?.id || "";
   const { codebases } = useCodebases(workspaceId);
   const [selectedCodebaseId, setSelectedCodebaseId] = useState("");
-  const [selectedRepoOverride, setSelectedRepoOverride] = useState<RepoSelection | null>(null);
+  const [selectedRepoOverrideState, setSelectedRepoOverrideState] = useState<{
+    workspaceId: string;
+    selection: RepoSelection | null;
+  }>({
+    workspaceId: "",
+    selection: null,
+  });
   const [selectedTier, setSelectedTier] = useState<TierValue>("normal");
   const [selectedSpecName, setSelectedSpecName] = useState("");
   const [selectedGovernanceNodeId, setSelectedGovernanceNodeId] = useState("build");
+
+  const persistedRepoSelection = useMemo(
+    () => loadRepoSelection("harness", workspaceId),
+    [workspaceId],
+  );
+  const selectedRepoOverride = selectedRepoOverrideState.workspaceId === workspaceId
+    ? selectedRepoOverrideState.selection
+    : null;
+  const effectiveRepoOverride = selectedRepoOverride ?? persistedRepoSelection;
 
   const activeWorkspaceTitle = useMemo(() => {
     return workspacesHook.workspaces.find((workspace) => workspace.id === workspaceId)?.title
@@ -55,19 +71,19 @@ export default function HarnessSettingsPage() {
   }, [codebases, selectedCodebaseId]);
 
   const matchedSelectedCodebase = useMemo(() => {
-    if (!selectedRepoOverride) {
+    if (!effectiveRepoOverride) {
       return activeCodebase;
     }
     return codebases.find((codebase) => (
-      codebase.repoPath === selectedRepoOverride.path
-      && (selectedRepoOverride.branch ? (codebase.branch ?? "") === selectedRepoOverride.branch : true)
-    )) ?? codebases.find((codebase) => codebase.repoPath === selectedRepoOverride.path)
+      codebase.repoPath === effectiveRepoOverride.path
+      && (effectiveRepoOverride.branch ? (codebase.branch ?? "") === effectiveRepoOverride.branch : true)
+    )) ?? codebases.find((codebase) => codebase.repoPath === effectiveRepoOverride.path)
       ?? null;
-  }, [activeCodebase, codebases, selectedRepoOverride]);
+  }, [activeCodebase, codebases, effectiveRepoOverride]);
 
   const activeRepoSelection = useMemo(() => {
-    if (selectedRepoOverride) {
-      return selectedRepoOverride;
+    if (effectiveRepoOverride) {
+      return effectiveRepoOverride;
     }
     if (!activeCodebase) {
       return null;
@@ -77,7 +93,7 @@ export default function HarnessSettingsPage() {
       path: activeCodebase.repoPath,
       branch: activeCodebase.branch ?? "",
     } satisfies RepoSelection;
-  }, [activeCodebase, selectedRepoOverride]);
+  }, [activeCodebase, effectiveRepoOverride]);
 
   const activeRepoPath = activeRepoSelection?.path;
   const activeRepoCodebaseId = matchedSelectedCodebase?.id;
@@ -120,6 +136,11 @@ export default function HarnessSettingsPage() {
     () => (visibleSpec && visibleSpec.language === "markdown" ? extractMarkdownCodeBlocks(visibleSpec.source) : []),
     [visibleSpec],
   );
+
+  useEffect(() => {
+    saveRepoSelection("harness", workspaceId, activeRepoSelection);
+  }, [activeRepoSelection, workspaceId]);
+
   const governanceContextPanel = useMemo(() => {
     switch (selectedGovernanceNodeId) {
       case "build":
@@ -246,14 +267,14 @@ export default function HarnessSettingsPage() {
           activeWorkspaceTitle={activeWorkspaceTitle}
           onSelect={(nextWorkspaceId) => {
             setSelectedWorkspaceId(nextWorkspaceId);
-            setSelectedRepoOverride(null);
+            setSelectedRepoOverrideState({ workspaceId: nextWorkspaceId, selection: null });
             setSelectedCodebaseId("");
           }}
           onCreate={async (title) => {
             const workspace = await workspacesHook.createWorkspace(title);
             if (workspace) {
               setSelectedWorkspaceId(workspace.id);
-              setSelectedRepoOverride(null);
+              setSelectedRepoOverrideState({ workspaceId: workspace.id, selection: null });
               setSelectedCodebaseId("");
             }
           }}
@@ -287,7 +308,7 @@ export default function HarnessSettingsPage() {
                 <RepoPicker
                   value={selectedRepo}
                   onChange={(selection) => {
-                    setSelectedRepoOverride(selection);
+                    setSelectedRepoOverrideState({ workspaceId, selection });
                     if (!selection) {
                       setSelectedCodebaseId("");
                       return;
