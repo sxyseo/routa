@@ -27,7 +27,7 @@ export function HarnessHookRuntimePanel({
   workspaceId,
   codebaseId,
   repoPath,
-  repoLabel,
+  repoLabel: _repoLabel,
   unsupportedMessage,
   data,
   loading,
@@ -169,10 +169,6 @@ export function HarnessHookRuntimePanel({
 
   return (
     <HarnessHookWorkbench
-      workspaceId={workspaceId}
-      codebaseId={codebaseId}
-      repoPath={repoPath}
-      repoLabel={repoLabel}
       data={resolvedState.data}
       unsupportedMessage={unsupportedMessage}
       variant={variant}
