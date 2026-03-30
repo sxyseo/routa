@@ -25,6 +25,7 @@ import { python } from "@codemirror/lang-python";
 import { json } from "@codemirror/lang-json";
 import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
+import { yaml as yamlLangCM } from "@codemirror/lang-yaml";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { lineNumbers } from "@codemirror/view";
 import hljs from "highlight.js/lib/core";
@@ -89,7 +90,7 @@ const LANGUAGE_MAP: Record<string, LanguageExtension> = {
   xml: { name: "XML", extensions: [html()], aliases: ["xml"] },
   sql: { name: "SQL", extensions: [], aliases: ["sql"] },
   markdown: { name: "Markdown", extensions: [], aliases: ["md", "markdown"] },
-  yaml: { name: "YAML", extensions: [], aliases: ["yaml", "yml"] },
+  yaml: { name: "YAML", extensions: [yamlLangCM()], aliases: ["yaml", "yml"] },
   text: { name: "Plain Text", extensions: [], aliases: ["txt", "text"] },
 };
 

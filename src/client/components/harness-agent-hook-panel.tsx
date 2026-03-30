@@ -147,7 +147,6 @@ export function HarnessAgentHookPanel({
     <HarnessAgentHookWorkbench
       data={resolvedState.data}
       unsupportedMessage={unsupportedMessage}
-      variant={variant}
     />
   );
 }

@@ -1,35 +1,20 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch } from "react";
-import {
-  Background,
-  Controls,
-  Handle,
-  MarkerType,
-  ReactFlow,
-  Position,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from "@xyflow/react";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { AgentHooksResponse } from "@/client/hooks/use-harness-settings-data";
 import {
-  buildAgentHookFlow,
   buildAgentHookWorkbenchEntries,
   buildAgentHookConfigSource,
   getDefaultAgentHookEntry,
   groupAgentHookEntries,
-  type AgentHookFlowNodeSpec,
-  type AgentHookFlowNodeTone,
   type AgentHookWorkbenchEntry,
 } from "./harness-agent-hook-workbench-model";
 
 type AgentHookWorkbenchProps = {
   data: AgentHooksResponse;
   unsupportedMessage?: string | null;
-  variant?: "full" | "compact";
 };
 
 type WorkbenchState = {
@@ -47,50 +32,9 @@ type WorkbenchContextValue = {
   activeEntry: AgentHookWorkbenchEntry | null;
   groupedEntries: ReturnType<typeof groupAgentHookEntries>;
   data: AgentHooksResponse;
-  compactMode: boolean;
 };
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null);
-
-function toneStyles(tone: AgentHookFlowNodeTone) {
-  switch (tone) {
-    case "success":
-      return {
-        border: "border-emerald-200",
-        badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
-        glow: "shadow-emerald-100/70",
-        line: "#059669",
-      };
-    case "warning":
-      return {
-        border: "border-amber-200",
-        badge: "border-amber-200 bg-amber-50 text-amber-800",
-        glow: "shadow-amber-100/70",
-        line: "#d97706",
-      };
-    case "danger":
-      return {
-        border: "border-red-200",
-        badge: "border-red-200 bg-red-50 text-red-700",
-        glow: "shadow-red-100/70",
-        line: "#dc2626",
-      };
-    case "accent":
-      return {
-        border: "border-sky-200",
-        badge: "border-sky-200 bg-sky-50 text-sky-700",
-        glow: "shadow-sky-100/70",
-        line: "#0284c7",
-      };
-    default:
-      return {
-        border: "border-desktop-border",
-        badge: "border-desktop-border bg-desktop-bg-secondary text-desktop-text-secondary",
-        glow: "shadow-black/5",
-        line: "#94a3b8",
-      };
-  }
-}
 
 function createInitialState(contextKey: string, defaultEvent: string): WorkbenchState {
   return {
@@ -125,40 +69,6 @@ function useWorkbenchContext() {
   }
   return context;
 }
-
-type FlowNodeData = AgentHookFlowNodeSpec;
-
-function FlowNodeView({ data }: NodeProps<Node<FlowNodeData>>) {
-  const tone = toneStyles(data.tone);
-  const widthClass = data.kind === "event" ? "w-[300px]" : data.kind === "hook" ? "w-[284px]" : "w-[276px]";
-  const heightClass = "min-h-[100px]";
-  return (
-    <div className="relative">
-      <Handle id="left" type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
-      <Handle id="right" type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
-      <div className={`${widthClass} ${heightClass} rounded-2xl border bg-desktop-bg-primary/95 px-4 py-3 shadow-sm ${tone.border} ${tone.glow}`}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{data.kind}</div>
-        <div className="mt-1 text-[15px] font-semibold leading-6 text-desktop-text-primary">{data.title}</div>
-        {data.subtitle ? (
-          <div className="mt-1 max-w-full truncate text-[12px] leading-5 text-desktop-text-secondary">{data.subtitle}</div>
-        ) : null}
-        {data.chips?.length ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {data.chips.map((chip) => (
-              <span key={`${data.id}:${chip}`} className={`rounded-full border px-2 py-0.5 text-[10px] ${tone.badge}`}>
-                {chip}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-const flowNodeTypes = {
-  workbench: FlowNodeView,
-};
 
 function AgentHookLifecycleRail() {
   const { activeEntry, dispatch, groupedEntries } = useWorkbenchContext();
@@ -224,80 +134,6 @@ function AgentHookLifecycleRail() {
         ))}
       </div>
     </aside>
-  );
-}
-
-function AgentHookFlowCanvas() {
-  const { activeEntry, compactMode } = useWorkbenchContext();
-  const flowHeight = compactMode ? 440 : 680;
-
-  const flow = useMemo(() => {
-    if (!activeEntry) {
-      return { nodes: [], edges: [] };
-    }
-
-    const { nodes, edges } = buildAgentHookFlow(activeEntry);
-    const positionedNodes: Node[] = nodes.map((node) => ({
-      id: node.id,
-      type: "workbench",
-      position: {
-        x: node.column === 0 ? 24 : node.column === 1 ? 388 : 752,
-        y: 24 + node.row * 154,
-      },
-      draggable: false,
-      selectable: false,
-      data: node,
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-    }));
-
-    const positionedEdges: Edge[] = edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: "right",
-      targetHandle: "left",
-      type: "smoothstep",
-      animated: true,
-      style: { stroke: toneStyles(edge.tone).line, strokeWidth: 1.8 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: toneStyles(edge.tone).line },
-    }));
-
-    return { nodes: positionedNodes, edges: positionedEdges };
-  }, [activeEntry]);
-
-  if (!activeEntry) {
-    return (
-      <div className="flex h-64 items-center justify-center rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 text-[11px] text-desktop-text-secondary">
-        Select an event to view its hook flow.
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="rounded-2xl border border-desktop-border bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.98))]"
-      style={{ height: flowHeight }}
-    >
-      <ReactFlow
-        nodes={flow.nodes}
-        edges={flow.edges}
-        nodeTypes={flowNodeTypes}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        zoomOnScroll={false}
-        panOnDrag
-        minZoom={0.4}
-        maxZoom={1.2}
-        fitView
-        fitViewOptions={{ padding: 0.12, minZoom: 0.5, maxZoom: 1 }}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background color="#d7dee7" gap={20} size={1} />
-        <Controls showInteractive={false} />
-      </ReactFlow>
-    </div>
   );
 }
 
@@ -390,9 +226,7 @@ function AgentHookInspector() {
 export function HarnessAgentHookWorkbench({
   data,
   unsupportedMessage,
-  variant = "full",
 }: AgentHookWorkbenchProps) {
-  const compactMode = variant === "compact";
   const entries = useMemo(() => buildAgentHookWorkbenchEntries(data), [data]);
   const groupedEntries = useMemo(() => groupAgentHookEntries(entries), [entries]);
   const defaultEntry = useMemo(() => getDefaultAgentHookEntry(entries), [entries]);
@@ -423,8 +257,7 @@ export function HarnessAgentHookWorkbench({
     activeEntry,
     groupedEntries,
     data,
-    compactMode,
-  }), [activeEntry, compactMode, data, groupedEntries, state]);
+  }), [activeEntry, data, groupedEntries, state]);
 
   if (unsupportedMessage) {
     return <HarnessUnsupportedState />;
@@ -432,10 +265,7 @@ export function HarnessAgentHookWorkbench({
 
   return (
     <WorkbenchContext.Provider value={contextValue}>
-      <section className={compactMode
-        ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-        : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-3 shadow-sm"}
-      >
+      <section className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-3 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Agent hook system</div>
@@ -451,10 +281,9 @@ export function HarnessAgentHookWorkbench({
           </div>
         </div>
 
-        <div className={`grid gap-3 ${compactMode ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[260px_minmax(0,1fr)_280px]"}`}>
+        <div className="grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)]">
           <AgentHookLifecycleRail />
-          <AgentHookFlowCanvas />
-          {compactMode ? null : <AgentHookInspector />}
+          <AgentHookInspector />
         </div>
       </section>
     </WorkbenchContext.Provider>
