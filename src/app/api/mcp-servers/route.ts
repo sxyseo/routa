@@ -14,11 +14,28 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getDatabase, isPostgres } from "@/core/db";
-import { PostgresCustomMcpServerStore } from "@/core/store/custom-mcp-server-store";
-import type { McpServerType } from "@/core/store/custom-mcp-server-store";
+import {
+  CUSTOM_MCP_UNAVAILABLE_ERROR,
+  getCustomMcpServerStore,
+  type CustomMcpServerStore,
+  type McpServerType,
+} from "@/core/store/custom-mcp-server-store";
 
 const VALID_TYPES: McpServerType[] = ["stdio", "http", "sse"];
+
+function requireStore(): { store: CustomMcpServerStore | null; response: NextResponse | null } {
+  const store = getCustomMcpServerStore();
+  if (!store) {
+    return {
+      store: null,
+      response: NextResponse.json(
+        { error: CUSTOM_MCP_UNAVAILABLE_ERROR },
+        { status: 501 },
+      ),
+    };
+  }
+  return { store, response: null };
+}
 
 // ─── GET /api/mcp-servers ───────────────────────────────────────────────────
 
@@ -28,15 +45,9 @@ export async function GET(request: NextRequest) {
     const id = searchParams.get("id");
     const workspaceId = searchParams.get("workspaceId") ?? undefined;
 
-    if (!isPostgres()) {
-      return NextResponse.json(
-        { error: "Custom MCP server persistence currently requires Postgres" },
-        { status: 501 }
-      );
-    }
-
-    const db = getDatabase();
-    const store = new PostgresCustomMcpServerStore(db);
+    const { store, response } = requireStore();
+    if (response) return response;
+    if (!store) return NextResponse.json({ error: CUSTOM_MCP_UNAVAILABLE_ERROR }, { status: 501 });
 
     if (id) {
       const server = await store.get(id);
@@ -61,12 +72,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isPostgres()) {
-      return NextResponse.json(
-        { error: "Custom MCP server persistence currently requires Postgres" },
-        { status: 501 }
-      );
-    }
+    const { store, response } = requireStore();
+    if (response) return response;
+    if (!store) return NextResponse.json({ error: CUSTOM_MCP_UNAVAILABLE_ERROR }, { status: 501 });
 
     const body = await request.json();
     const { id, name, description, type, command, args, url, headers, env, enabled, workspaceId } = body;
@@ -103,9 +111,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const db = getDatabase();
-    const store = new PostgresCustomMcpServerStore(db);
-
     const server = await store.create({
       id,
       name,
@@ -137,12 +142,9 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    if (!isPostgres()) {
-      return NextResponse.json(
-        { error: "Custom MCP server persistence currently requires Postgres" },
-        { status: 501 }
-      );
-    }
+    const { store, response } = requireStore();
+    if (response) return response;
+    if (!store) return NextResponse.json({ error: CUSTOM_MCP_UNAVAILABLE_ERROR }, { status: 501 });
 
     const body = await request.json();
     const { id, name, description, type, command, args, url, headers, env, enabled } = body;
@@ -161,9 +163,6 @@ export async function PUT(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const db = getDatabase();
-    const store = new PostgresCustomMcpServerStore(db);
 
     const server = await store.update(id, {
       name,
@@ -198,12 +197,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    if (!isPostgres()) {
-      return NextResponse.json(
-        { error: "Custom MCP server persistence currently requires Postgres" },
-        { status: 501 }
-      );
-    }
+    const { store, response } = requireStore();
+    if (response) return response;
+    if (!store) return NextResponse.json({ error: CUSTOM_MCP_UNAVAILABLE_ERROR }, { status: 501 });
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -214,9 +210,6 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const db = getDatabase();
-    const store = new PostgresCustomMcpServerStore(db);
 
     const deleted = await store.delete(id);
 

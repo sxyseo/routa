@@ -63,6 +63,11 @@ const TYPE_CHIP: Record<McpServerType, string> = {
   sse: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
 };
 
+async function getResponseErrorMessage(response: Response, fallback: string) {
+  const data = await response.json().catch(() => null) as { error?: string } | null;
+  return data?.error ?? fallback;
+}
+
 export function McpServersTab() {
   const [servers, setServers] = useState<McpServerEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,11 +82,7 @@ export function McpServersTab() {
     try {
       const response = await desktopAwareFetch("/api/mcp-servers");
       if (!response.ok) {
-        setError(
-          response.status === 501
-            ? "Custom MCP server management currently requires Postgres"
-            : "Failed to load MCP servers",
-        );
+        setError(await getResponseErrorMessage(response, "Failed to load MCP servers"));
         return;
       }
       const data = await response.json();
@@ -134,8 +135,7 @@ export function McpServersTab() {
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error ?? "Save failed");
+        throw new Error(await getResponseErrorMessage(response, "Save failed"));
       }
       await load();
       setShowForm(false);
@@ -152,7 +152,10 @@ export function McpServersTab() {
     if (!confirm(`Delete MCP server "${name}"?`)) return;
     setLoading(true);
     try {
-      await desktopAwareFetch(`/api/mcp-servers?id=${id}`, { method: "DELETE" });
+      const response = await desktopAwareFetch(`/api/mcp-servers?id=${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error(await getResponseErrorMessage(response, "Delete failed"));
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -164,11 +167,14 @@ export function McpServersTab() {
   const handleToggle = async (server: McpServerEntry) => {
     setLoading(true);
     try {
-      await desktopAwareFetch("/api/mcp-servers", {
+      const response = await desktopAwareFetch("/api/mcp-servers", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: server.id, enabled: !server.enabled }),
       });
+      if (!response.ok) {
+        throw new Error(await getResponseErrorMessage(response, "Toggle failed"));
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Toggle failed");

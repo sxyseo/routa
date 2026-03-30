@@ -5,9 +5,12 @@
  * Supports CRUD operations and merging with built-in MCP servers.
  */
 
-import { eq, and } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { PostgresDatabase } from "../db";
-import { customMcpServers } from "../db/schema";
+import { getDatabase, getDatabaseDriver, type DatabaseDriver } from "../db";
+import type { SqliteDatabase } from "../db/sqlite";
+import { customMcpServers as pgCustomMcpServers } from "../db/schema";
+import { customMcpServers as sqliteCustomMcpServers } from "../db/sqlite-schema";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +77,27 @@ export interface CustomMcpServerStore {
   listEnabled(workspaceId?: string): Promise<CustomMcpServerConfig[]>;
 }
 
+export const CUSTOM_MCP_UNAVAILABLE_ERROR =
+  "Custom MCP server persistence requires a persistent database (Postgres or SQLite)";
+
+function toConfig(record: Record<string, unknown>): CustomMcpServerConfig {
+  return {
+    id: record.id as string,
+    name: record.name as string,
+    description: (record.description as string) ?? undefined,
+    type: record.type as McpServerType,
+    command: (record.command as string) ?? undefined,
+    args: (record.args as string[]) ?? undefined,
+    url: (record.url as string) ?? undefined,
+    headers: (record.headers as Record<string, string>) ?? undefined,
+    env: (record.env as Record<string, string>) ?? undefined,
+    enabled: (record.enabled as boolean) ?? true,
+    workspaceId: (record.workspaceId as string) ?? undefined,
+    createdAt: record.createdAt as Date | undefined,
+    updatedAt: record.updatedAt as Date | undefined,
+  };
+}
+
 // ─── Postgres Implementation ───────────────────────────────────────────────
 
 export class PostgresCustomMcpServerStore implements CustomMcpServerStore {
@@ -97,40 +121,40 @@ export class PostgresCustomMcpServerStore implements CustomMcpServerStore {
       updatedAt: now,
     };
 
-    await this.db.insert(customMcpServers).values(record);
-    return this.toConfig(record);
+    await this.db.insert(pgCustomMcpServers).values(record);
+    return toConfig(record);
   }
 
   async get(id: string): Promise<CustomMcpServerConfig | null> {
     const results = await this.db
       .select()
-      .from(customMcpServers)
-      .where(eq(customMcpServers.id, id))
+      .from(pgCustomMcpServers)
+      .where(eq(pgCustomMcpServers.id, id))
       .limit(1);
 
     if (results.length === 0) return null;
-    return this.toConfig(results[0]);
+    return toConfig(results[0]);
   }
 
   async list(workspaceId?: string): Promise<CustomMcpServerConfig[]> {
     const results = workspaceId
-      ? await this.db.select().from(customMcpServers).where(eq(customMcpServers.workspaceId, workspaceId))
-      : await this.db.select().from(customMcpServers);
+      ? await this.db.select().from(pgCustomMcpServers).where(eq(pgCustomMcpServers.workspaceId, workspaceId))
+      : await this.db.select().from(pgCustomMcpServers);
 
-    return results.map((r) => this.toConfig(r));
+    return results.map((r) => toConfig(r));
   }
 
   async listEnabled(workspaceId?: string): Promise<CustomMcpServerConfig[]> {
-    const conditions = [eq(customMcpServers.enabled, true)];
+    const conditions = [eq(pgCustomMcpServers.enabled, true)];
     if (workspaceId) {
-      conditions.push(eq(customMcpServers.workspaceId, workspaceId));
+      conditions.push(eq(pgCustomMcpServers.workspaceId, workspaceId));
     }
     const results = await this.db
       .select()
-      .from(customMcpServers)
+      .from(pgCustomMcpServers)
       .where(and(...conditions));
 
-    return results.map((r) => this.toConfig(r));
+    return results.map((r) => toConfig(r));
   }
 
   async update(id: string, input: CustomMcpServerUpdateInput): Promise<CustomMcpServerConfig | null> {
@@ -149,12 +173,12 @@ export class PostgresCustomMcpServerStore implements CustomMcpServerStore {
     if (input.env !== undefined) updateData.env = input.env;
     if (input.enabled !== undefined) updateData.enabled = input.enabled;
 
-    await this.db.update(customMcpServers).set(updateData).where(eq(customMcpServers.id, id));
+    await this.db.update(pgCustomMcpServers).set(updateData).where(eq(pgCustomMcpServers.id, id));
     return this.get(id);
   }
 
   async delete(id: string): Promise<boolean> {
-    await this.db.delete(customMcpServers).where(eq(customMcpServers.id, id));
+    await this.db.delete(pgCustomMcpServers).where(eq(pgCustomMcpServers.id, id));
     const deleted = await this.get(id);
     return deleted === null;
   }
@@ -166,23 +190,114 @@ export class PostgresCustomMcpServerStore implements CustomMcpServerStore {
     }
     return this.create(input);
   }
+}
 
-  private toConfig(record: Record<string, unknown>): CustomMcpServerConfig {
-    return {
-      id: record.id as string,
-      name: record.name as string,
-      description: (record.description as string) ?? undefined,
-      type: record.type as McpServerType,
-      command: (record.command as string) ?? undefined,
-      args: (record.args as string[]) ?? undefined,
-      url: (record.url as string) ?? undefined,
-      headers: (record.headers as Record<string, string>) ?? undefined,
-      env: (record.env as Record<string, string>) ?? undefined,
-      enabled: (record.enabled as boolean) ?? true,
-      workspaceId: (record.workspaceId as string) ?? undefined,
-      createdAt: record.createdAt as Date | undefined,
-      updatedAt: record.updatedAt as Date | undefined,
+export class SqliteCustomMcpServerStore implements CustomMcpServerStore {
+  constructor(private db: SqliteDatabase) {}
+
+  async create(input: CustomMcpServerCreateInput): Promise<CustomMcpServerConfig> {
+    const now = new Date();
+    const record = {
+      id: input.id,
+      name: input.name,
+      description: input.description ?? null,
+      type: input.type,
+      command: input.command ?? null,
+      args: input.args ?? null,
+      url: input.url ?? null,
+      headers: input.headers ?? null,
+      env: input.env ?? null,
+      enabled: input.enabled ?? true,
+      workspaceId: input.workspaceId ?? null,
+      createdAt: now,
+      updatedAt: now,
     };
+
+    await this.db.insert(sqliteCustomMcpServers).values(record);
+    return toConfig(record);
+  }
+
+  async get(id: string): Promise<CustomMcpServerConfig | null> {
+    const results = await this.db
+      .select()
+      .from(sqliteCustomMcpServers)
+      .where(eq(sqliteCustomMcpServers.id, id))
+      .limit(1);
+
+    if (results.length === 0) return null;
+    return toConfig(results[0]);
+  }
+
+  async list(workspaceId?: string): Promise<CustomMcpServerConfig[]> {
+    const results = workspaceId
+      ? await this.db.select().from(sqliteCustomMcpServers).where(eq(sqliteCustomMcpServers.workspaceId, workspaceId))
+      : await this.db.select().from(sqliteCustomMcpServers);
+
+    return results.map((r) => toConfig(r));
+  }
+
+  async listEnabled(workspaceId?: string): Promise<CustomMcpServerConfig[]> {
+    const conditions = [eq(sqliteCustomMcpServers.enabled, true)];
+    if (workspaceId) {
+      conditions.push(eq(sqliteCustomMcpServers.workspaceId, workspaceId));
+    }
+    const results = await this.db
+      .select()
+      .from(sqliteCustomMcpServers)
+      .where(and(...conditions));
+
+    return results.map((r) => toConfig(r));
+  }
+
+  async update(id: string, input: CustomMcpServerUpdateInput): Promise<CustomMcpServerConfig | null> {
+    const existing = await this.get(id);
+    if (!existing) return null;
+
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (input.name !== undefined) updateData.name = input.name;
+    if (input.description !== undefined) updateData.description = input.description;
+    if (input.type !== undefined) updateData.type = input.type;
+    if (input.command !== undefined) updateData.command = input.command;
+    if (input.args !== undefined) updateData.args = input.args;
+    if (input.url !== undefined) updateData.url = input.url;
+    if (input.headers !== undefined) updateData.headers = input.headers;
+    if (input.env !== undefined) updateData.env = input.env;
+    if (input.enabled !== undefined) updateData.enabled = input.enabled;
+
+    await this.db.update(sqliteCustomMcpServers).set(updateData).where(eq(sqliteCustomMcpServers.id, id));
+    return this.get(id);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    await this.db.delete(sqliteCustomMcpServers).where(eq(sqliteCustomMcpServers.id, id));
+    const deleted = await this.get(id);
+    return deleted === null;
+  }
+
+  async upsert(input: CustomMcpServerCreateInput): Promise<CustomMcpServerConfig> {
+    const existing = await this.get(input.id);
+    if (existing) {
+      return (await this.update(input.id, input))!;
+    }
+    return this.create(input);
+  }
+}
+
+export function supportsCustomMcpServerPersistence(driver = getDatabaseDriver()): boolean {
+  return driver === "postgres" || driver === "sqlite";
+}
+
+export function getCustomMcpServerStore(driver = getDatabaseDriver()): CustomMcpServerStore | null {
+  switch (driver as DatabaseDriver) {
+    case "postgres":
+      return new PostgresCustomMcpServerStore(getDatabase());
+    case "sqlite": {
+      const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
+      return new SqliteCustomMcpServerStore(getSqliteDatabase());
+    }
+    default:
+      return null;
   }
 }
 

@@ -196,6 +196,24 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   `);
 
   db.run(sql`
+    CREATE TABLE IF NOT EXISTS custom_mcp_servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      type TEXT NOT NULL,
+      command TEXT,
+      args TEXT,
+      url TEXT,
+      headers TEXT,
+      env TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      workspace_id TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  db.run(sql`
     CREATE TABLE IF NOT EXISTS event_subscriptions (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,

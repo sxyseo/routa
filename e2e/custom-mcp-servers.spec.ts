@@ -118,7 +118,7 @@ test.describe("Custom MCP Servers (Issue #34)", () => {
     const response = await request.get(`${baseURL}/api/mcp-servers`);
     
     if (response.status() === 501) {
-      console.log("⚠ MCP Servers API requires Postgres database (skipping API test)");
+      console.log("⚠ MCP Servers API requires persistent database storage (skipping API test)");
       test.skip();
       return;
     }
@@ -148,7 +148,7 @@ test.describe("Custom MCP Servers (Issue #34)", () => {
     });
     
     if (response.status() === 501) {
-      console.log("⚠ MCP Servers API requires Postgres database (skipping)");
+      console.log("⚠ MCP Servers API requires persistent database storage (skipping)");
       test.skip();
       return;
     }
@@ -165,4 +165,3 @@ test.describe("Custom MCP Servers (Issue #34)", () => {
     }
   });
 });
-

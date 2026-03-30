@@ -41,10 +41,9 @@ import {
 } from "./mcp-config-generator";
 import {
   type CustomMcpServerConfig,
+  getCustomMcpServerStore,
   mergeCustomMcpServers,
-  PostgresCustomMcpServerStore,
 } from "../store/custom-mcp-server-store";
-import { getDatabase, isPostgres } from "../db";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -79,9 +78,8 @@ export function providerSupportsMcp(providerId: string): boolean {
  */
 async function loadCustomMcpServers(workspaceId?: string): Promise<CustomMcpServerConfig[]> {
   try {
-    if (!isPostgres()) return [];
-    const db = getDatabase();
-    const store = new PostgresCustomMcpServerStore(db);
+    const store = getCustomMcpServerStore();
+    if (!store) return [];
     return await store.listEnabled(workspaceId);
   } catch (err) {
     console.warn("[MCP] Failed to load custom MCP servers:", err instanceof Error ? err.message : err);
