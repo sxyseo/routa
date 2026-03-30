@@ -307,10 +307,11 @@ function buildGraph(args: {
     onSelectNode,
   } = args;
 
-  const selectableNodeIds = new Set(["build", "test", "precommit", "review", "post-commit", "release"]);
+  const selectableNodeIds = new Set(["thinking", "build", "test", "precommit", "review", "post-commit", "release"]);
 
   const navigationGraph: Record<string, Partial<Record<"up" | "down" | "left" | "right", string>>> = {
-    build: { right: "test", down: "review" },
+    thinking: { right: "build" },
+    build: { left: "thinking", right: "test", down: "review" },
     test: { left: "build", down: "precommit" },
     precommit: { up: "test", left: "review" },
     review: { up: "build", right: "precommit", left: "post-commit" },
@@ -362,8 +363,8 @@ function buildGraph(args: {
       title: "需求定义",
       tone: "neutral",
       note: "Spec / 需求边界",
-      active: false,
-      ...buildSelectionState("thinking", false),
+      active: true,
+      ...buildSelectionState("thinking", true),
     }),
     buildNode("coding", col2X, internalRowY, {
       nodeId: "coding",
@@ -610,6 +611,12 @@ function buildDetailSections(args: {
         { title: "Instruction source", items: [instructionSummary?.fileName ?? "AGENTS.md"] },
         { title: "Context", items: ["当前节点受 instructions 面板支撑"] },
         { title: "Rulebook", items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : ["当前页未发现 rulebook / manifest"] },
+      ] satisfies LoopDetailSection[];
+    case "thinking":
+      return [
+        { title: "Spec Sources", items: ["Detects AI Coding spec tools and methodology frameworks"] },
+        { title: "Frameworks", items: ["Kiro", "Qoder", "OpenSpec", "Spec Kit", "BMAD"] },
+        { title: "Evidence model", items: ["artifacts-present", "installed-only", "archived", "legacy"] },
       ] satisfies LoopDetailSection[];
     default:
       return [

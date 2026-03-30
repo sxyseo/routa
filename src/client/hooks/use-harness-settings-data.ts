@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PlanResponse, TierValue } from "@/client/components/harness-execution-plan-flow";
+import type { SpecDetectionResponse } from "@/core/harness/spec-detector-types";
 
 export type RunnerKind = "shell" | "graph" | "sarif";
 export type SpecKind = "rulebook" | "manifest" | "dimension" | "narrative" | "policy";
@@ -247,6 +248,7 @@ export function useHarnessSettingsData({
   const [instructionsState, setInstructionsState] = useState<QueryState<InstructionsResponse>>(emptyQueryState);
   const [githubActionsState, setGithubActionsState] = useState<QueryState<GitHubActionsFlowsResponse>>(emptyQueryState);
   const [agentHooksState, setAgentHooksState] = useState<QueryState<AgentHooksResponse>>(emptyQueryState);
+  const [specSourcesState, setSpecSourcesState] = useState<QueryState<SpecDetectionResponse>>(emptyQueryState);
   const [instructionsRefreshToken, setInstructionsRefreshToken] = useState(0);
 
   useEffect(() => {
@@ -492,6 +494,45 @@ export function useHarnessSettingsData({
     setInstructionsRefreshToken((current) => current + 1);
   }, []);
 
+  useEffect(() => {
+    if (!baseQuery) {
+      setSpecSourcesState(emptyQueryState());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchSpecSources = async () => {
+      setSpecSourcesState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await fetch(`/api/harness/spec-sources?${baseQuery.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load spec sources");
+        }
+        if (!cancelled) {
+          setSpecSourcesState({
+            loading: false,
+            error: null,
+            data: payload as SpecDetectionResponse,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSpecSourcesState({
+            loading: false,
+            error: error instanceof Error ? error.message : String(error),
+            data: null,
+          });
+        }
+      }
+    };
+
+    void fetchSpecSources();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseQuery]);
+
   return {
     specsState,
     planState,
@@ -499,6 +540,7 @@ export function useHarnessSettingsData({
     agentHooksState,
     instructionsState,
     githubActionsState,
+    specSourcesState,
     reloadInstructions,
   };
 }

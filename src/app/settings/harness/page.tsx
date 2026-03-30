@@ -18,6 +18,7 @@ import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtim
 import { HarnessAgentHookPanel } from "@/client/components/harness-agent-hook-panel";
 import { HarnessRepoSignalsPanel } from "@/client/components/harness-repo-signals-panel";
 import { HarnessReviewTriggersPanel } from "@/client/components/harness-review-triggers-panel";
+import { HarnessSpecSourcesPanel } from "@/client/components/harness-spec-sources-panel";
 import { HarnessUnsupportedState, getHarnessUnsupportedRepoMessage } from "@/client/components/harness-support-state";
 import { useHarnessSettingsData } from "@/client/hooks/use-harness-settings-data";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
@@ -105,6 +106,7 @@ export default function HarnessSettingsPage() {
     agentHooksState,
     instructionsState,
     githubActionsState,
+    specSourcesState,
     reloadInstructions,
   } = useHarnessSettingsData({
     workspaceId,
@@ -145,6 +147,17 @@ export default function HarnessSettingsPage() {
 
   const governanceContextPanel = useMemo(() => {
     switch (selectedGovernanceNodeId) {
+      case "thinking":
+        return (
+          <HarnessSpecSourcesPanel
+            repoLabel={selectedRepoLabel}
+            unsupportedMessage={unsupportedRepoMessage}
+            data={specSourcesState.data}
+            loading={specSourcesState.loading}
+            error={specSourcesState.error}
+            variant="compact"
+          />
+        );
       case "build":
         return null;
       case "lint":
@@ -250,6 +263,9 @@ export default function HarnessSettingsPage() {
     selectedGovernanceNodeId,
     selectedRepoLabel,
     selectedTier,
+    specSourcesState.data,
+    specSourcesState.error,
+    specSourcesState.loading,
     unsupportedRepoMessage,
     workspaceId,
   ]);
@@ -355,6 +371,14 @@ export default function HarnessSettingsPage() {
           selectedNodeId={selectedGovernanceNodeId}
           onSelectedNodeChange={setSelectedGovernanceNodeId}
           contextPanel={governanceContextPanel}
+        />
+
+        <HarnessSpecSourcesPanel
+          repoLabel={selectedRepoLabel}
+          unsupportedMessage={unsupportedRepoMessage}
+          data={specSourcesState.data}
+          loading={specSourcesState.loading}
+          error={specSourcesState.error}
         />
 
         <HarnessAgentInstructionsPanel

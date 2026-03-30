@@ -124,6 +124,12 @@ vi.mock("@/client/components/harness-review-triggers-panel", () => ({
   HarnessReviewTriggersPanel: () => <div data-testid="review-triggers-panel" />,
 }));
 
+vi.mock("@/client/components/harness-spec-sources-panel", () => ({
+  HarnessSpecSourcesPanel: (props: { variant?: string }) => (
+    <div data-testid={props.variant === "compact" ? "spec-sources-compact" : "spec-sources-full"} />
+  ),
+}));
+
 vi.mock("@/client/components/harness-support-state", () => ({
   HarnessUnsupportedState: () => <div data-testid="unsupported-state" />,
   getHarnessUnsupportedRepoMessage: () => null,
@@ -232,6 +238,16 @@ vi.mock("@/client/hooks/use-harness-settings-data", () => ({
       error: null,
       data: {
         flows: [],
+      },
+    },
+    specSourcesState: {
+      loading: false,
+      error: null,
+      data: {
+        generatedAt: "2026-03-30T00:00:00.000Z",
+        repoRoot: "/Users/phodal/ai/routa-js",
+        sources: [],
+        warnings: [],
       },
     },
     reloadInstructions: vi.fn(async () => {}),
