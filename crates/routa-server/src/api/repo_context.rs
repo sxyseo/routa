@@ -71,12 +71,7 @@ pub fn validate_local_git_repo_path(candidate: &Path) -> Result<(), ServerError>
     Ok(())
 }
 
-pub fn is_routa_repo_root(repo_root: &Path) -> bool {
-    repo_root
-        .join("docs/fitness/harness-fluency.model.yaml")
-        .exists()
-        && repo_root.join("crates/routa-cli").exists()
-}
+
 
 pub async fn resolve_repo_root(
     state: &AppState,
@@ -134,12 +129,6 @@ fn validate_repo_path(candidate: &Path, label: &str) -> Result<(), ServerError> 
     if !candidate.exists() || !candidate.is_dir() {
         return Err(ServerError::BadRequest(format!(
             "{label}不存在或不是目录: {}",
-            candidate.display()
-        )));
-    }
-    if !is_routa_repo_root(candidate) {
-        return Err(ServerError::BadRequest(format!(
-            "{label}不是 Routa 仓库: {}",
             candidate.display()
         )));
     }
