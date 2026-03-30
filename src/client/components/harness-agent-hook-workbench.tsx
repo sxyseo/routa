@@ -26,8 +26,6 @@ import {
   type AgentHookWorkbenchEntry,
 } from "./harness-agent-hook-workbench-model";
 
-type InspectorTab = "basic" | "hooks" | "source";
-
 type AgentHookWorkbenchProps = {
   data: AgentHooksResponse;
   unsupportedMessage?: string | null;
@@ -37,13 +35,11 @@ type AgentHookWorkbenchProps = {
 type WorkbenchState = {
   contextKey: string;
   selectedEvent: string;
-  inspectorTab: InspectorTab;
 };
 
 type WorkbenchAction =
   | { type: "sync"; contextKey: string; events: string[]; defaultEvent: string }
-  | { type: "select-event"; event: string }
-  | { type: "select-tab"; tab: InspectorTab };
+  | { type: "select-event"; event: string };
 
 type WorkbenchContextValue = {
   state: WorkbenchState;
@@ -100,7 +96,6 @@ function createInitialState(contextKey: string, defaultEvent: string): Workbench
   return {
     contextKey,
     selectedEvent: defaultEvent,
-    inspectorTab: "basic",
   };
 }
 
@@ -118,8 +113,6 @@ function workbenchReducer(state: WorkbenchState, action: WorkbenchAction): Workb
     }
     case "select-event":
       return { ...state, selectedEvent: action.event };
-    case "select-tab":
-      return { ...state, inspectorTab: action.tab };
     default:
       return state;
   }
@@ -182,63 +175,45 @@ function AgentHookLifecycleRail() {
         </div>
       </div>
 
-      <div className="mt-4 space-y-4">
+      <div className="mt-3 space-y-3">
         {groupedEntries.map((group) => (
           <section key={group.group}>
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] font-semibold text-desktop-text-primary">{group.label}</div>
-              </div>
+              <div className="text-[11px] font-semibold text-desktop-text-primary">{group.label}</div>
               <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
                 {group.entries.length}
               </div>
             </div>
 
-            <div className="mt-2.5 space-y-2">
+            <div className="mt-1.5 space-y-1.5">
               {group.entries.map((entry) => {
                 const selected = activeEntry?.event === entry.event;
                 return (
                   <button
                     key={entry.event}
                     type="button"
-                    onClick={() => {
-                      dispatch({ type: "select-event", event: entry.event });
-                    }}
-                    className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
+                    onClick={() => dispatch({ type: "select-event", event: entry.event })}
+                    className={`w-full rounded-xl border px-2.5 py-2 text-left transition ${
                       selected
                         ? "border-sky-300 bg-sky-50/80 shadow-sm"
                         : "border-desktop-border bg-white/85 hover:bg-desktop-bg-primary"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[12px] font-semibold text-desktop-text-primary">{entry.event}</div>
-                        <div className="mt-1 text-[10px] text-desktop-text-secondary">
-                          {entry.lifecycleLabel} · {entry.canBlock ? "Can block" : "Non-blocking"}
-                        </div>
-                      </div>
-                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 truncate text-[11px] font-semibold text-desktop-text-primary">{entry.event}</div>
+                      <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] ${
                         entry.stats.hookCount > 0
                           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                           : "border-slate-200 bg-slate-100 text-slate-500"
                       }`}>
-                        {entry.stats.hookCount > 0 ? `${entry.stats.hookCount} hooks` : "none"}
+                        {entry.stats.hookCount > 0 ? `${entry.stats.hookCount}` : "–"}
                       </span>
                     </div>
-                    {entry.stats.hookCount > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {entry.stats.blockingCount > 0 ? (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
-                            {entry.stats.blockingCount} blocking
-                          </span>
-                        ) : null}
-                        {Object.entries(entry.stats.typeDistribution)
-                          .filter(([, count]) => count > 0)
-                          .map(([hookType, count]) => (
-                            <span key={hookType} className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
-                              {count} {hookType}
-                            </span>
-                          ))}
+                    {entry.stats.hookCount > 0 && entry.stats.blockingCount > 0 ? (
+                      <div className="mt-1 flex gap-1">
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
+                          {entry.stats.blockingCount} blocking
+                        </span>
                       </div>
                     ) : null}
                   </button>
@@ -327,143 +302,83 @@ function AgentHookFlowCanvas() {
 }
 
 function AgentHookInspector() {
-  const { state, dispatch, activeEntry, data } = useWorkbenchContext();
-  const tabs: { key: InspectorTab; label: string }[] = [
-    { key: "basic", label: "Basic" },
-    { key: "hooks", label: "Hooks" },
-    { key: "source", label: "Source" },
-  ];
+  const { activeEntry, data } = useWorkbenchContext();
 
   const configSource = useMemo(() => {
-    if (!activeEntry) {
-      return "";
-    }
+    if (!activeEntry) return "";
     return buildAgentHookConfigSource(activeEntry);
   }, [activeEntry]);
 
   return (
     <aside className="rounded-[28px] border border-desktop-border bg-[radial-gradient(circle_at_top,#ffffff,rgba(255,255,255,0.78)_24%,rgba(240,246,255,0.82)_100%)] p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Inspector</div>
-          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">
-            {activeEntry?.event ?? "Event details"}
-          </h3>
-        </div>
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Inspector</div>
+        <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">
+          {activeEntry?.event ?? "Event details"}
+        </h3>
       </div>
 
-      <div className="mt-3 flex gap-1 rounded-xl border border-desktop-border bg-desktop-bg-primary p-1">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => dispatch({ type: "select-tab", tab: tab.key })}
-            className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
-              state.inspectorTab === tab.key
-                ? "bg-desktop-bg-secondary text-desktop-text-primary shadow-sm"
-                : "text-desktop-text-secondary hover:text-desktop-text-primary"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-4">
-        {state.inspectorTab === "basic" && activeEntry ? (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Event</div>
-              <div className="mt-1 text-[13px] font-semibold text-desktop-text-primary">{activeEntry.event}</div>
-            </div>
-            <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Lifecycle group</div>
-              <div className="mt-1 text-[13px] text-desktop-text-primary">{activeEntry.lifecycleLabel}</div>
-            </div>
-            <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Description</div>
-              <div className="mt-1 text-[13px] leading-5 text-desktop-text-primary">{activeEntry.lifecycleDescription}</div>
-            </div>
-            <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Can block</div>
-              <div className="mt-1 flex items-center gap-2">
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                  activeEntry.canBlock
-                    ? "border-amber-200 bg-amber-50 text-amber-800"
-                    : "border-slate-200 bg-slate-100 text-slate-500"
-                }`}>
-                  {activeEntry.canBlock ? "Yes" : "No"}
-                </span>
-              </div>
-            </div>
-            <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Hint</div>
-              <div className="mt-1 text-[12px] leading-5 text-desktop-text-secondary">{activeEntry.hint}</div>
-            </div>
-            {data.warnings.length > 0 ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">Warnings</div>
-                <ul className="mt-1 space-y-1">
-                  {data.warnings.map((warning) => (
-                    <li key={warning} className="text-[11px] text-amber-700">• {warning}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+      <div className="mt-4 space-y-2">
+        {data.warnings.length > 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">Warnings</div>
+            <ul className="mt-1 space-y-1">
+              {data.warnings.map((warning) => (
+                <li key={warning} className="text-[11px] text-amber-700">• {warning}</li>
+              ))}
+            </ul>
           </div>
         ) : null}
 
-        {state.inspectorTab === "hooks" && activeEntry ? (
-          <div className="space-y-2">
-            {activeEntry.hooks.length === 0 ? (
-              <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3 text-[11px] text-desktop-text-secondary">
-                No hooks configured for this event.
-              </div>
-            ) : (
-              activeEntry.hooks.map((hook, index) => (
-                <div key={`${hook.event}:${index}`} className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-[12px] font-semibold text-desktop-text-primary">
-                        {hook.description || `${hook.type} hook`}
+        {activeEntry ? (
+          activeEntry.hooks.length === 0 ? (
+            <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3 text-[11px] text-desktop-text-secondary">
+              No hooks configured for this event.
+            </div>
+          ) : (
+            activeEntry.hooks.map((hook, index) => (
+              <div key={`${hook.event}:${index}`} className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-semibold text-desktop-text-primary">
+                      {hook.description || `${hook.type} hook`}
+                    </div>
+                    {hook.matcher ? (
+                      <div className="mt-0.5 text-[10px] text-desktop-text-secondary">
+                        matcher: <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">{hook.matcher}</code>
                       </div>
-                      {hook.matcher ? (
-                        <div className="mt-1 text-[10px] text-desktop-text-secondary">
-                          matcher: <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">{hook.matcher}</code>
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="flex shrink-0 gap-1">
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${
-                        hook.blocking
-                          ? "border-amber-200 bg-amber-50 text-amber-800"
-                          : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      }`}>
-                        {hook.blocking ? "blocking" : "async"}
-                      </span>
-                      <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
-                        {hook.type}
-                      </span>
-                    </div>
+                    ) : null}
                   </div>
-                  <div className="mt-2 space-y-1 text-[10px] text-desktop-text-secondary">
-                    {hook.command ? <div>command: <code className="rounded bg-slate-100 px-1 py-0.5">{hook.command}</code></div> : null}
-                    {hook.url ? <div>url: <code className="rounded bg-slate-100 px-1 py-0.5">{hook.url}</code></div> : null}
-                    {hook.prompt ? <div>prompt: <code className="rounded bg-slate-100 px-1 py-0.5">{hook.prompt}</code></div> : null}
-                    <div>timeout: {hook.timeout}s</div>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                    {hook.blocking ? (
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">blocking</span>
+                    ) : null}
+                    <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
+                      {hook.type}
+                    </span>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+                <div className="mt-2 space-y-0.5 text-[10px] text-desktop-text-secondary">
+                  {hook.command ? <div>command: <code className="break-all rounded bg-slate-100 px-1 py-0.5">{hook.command}</code></div> : null}
+                  {hook.url ? <div>url: <code className="rounded bg-slate-100 px-1 py-0.5">{hook.url}</code></div> : null}
+                  {hook.prompt ? <div>prompt: <code className="rounded bg-slate-100 px-1 py-0.5">{hook.prompt}</code></div> : null}
+                  <div>timeout: {hook.timeout}s</div>
+                  {hook.source ? (
+                    <div>source: <span className="font-medium text-sky-600">{hook.source}</span></div>
+                  ) : null}
+                </div>
+              </div>
+            ))
+          )
         ) : null}
 
-        {state.inspectorTab === "source" ? (
+        {activeEntry && configSource ? (
           <div className="overflow-hidden rounded-xl border border-desktop-border">
             <CodeViewer
               code={configSource}
               language="yaml"
-              maxHeight="400px"
+              maxHeight="320px"
+              showHeader={false}
             />
           </div>
         ) : null}
