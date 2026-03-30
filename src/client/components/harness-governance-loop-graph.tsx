@@ -36,6 +36,7 @@ type WorkflowSummary = {
   jobCount: number;
   remoteSignals: string[];
   hasRepairLoop: boolean;
+  releaseFlowCount: number;
 };
 
 type InstructionSummary = {
@@ -288,6 +289,15 @@ function detectRepairLoop(flows: GitHubActionsFlow[]) {
   });
 }
 
+function detectReleaseWorkflows(flows: GitHubActionsFlow[]) {
+  const releaseKeywords = ["release", "publish", "deploy"];
+  return flows.filter((flow) => {
+    const id = flow.id.toLowerCase();
+    const name = flow.name.toLowerCase();
+    return releaseKeywords.some((keyword) => id.includes(keyword) || name.includes(keyword));
+  }).length;
+}
+
 function buildGraph(args: {
   hookSummary: HookSummary | null;
   instructionSummary: InstructionSummary | null;
@@ -307,10 +317,11 @@ function buildGraph(args: {
     onSelectNode,
   } = args;
 
-  const selectableNodeIds = new Set(["build", "test", "precommit", "review", "post-commit", "release"]);
+  const selectableNodeIds = new Set(["thinking", "build", "test", "precommit", "review", "post-commit", "release"]);
 
   const navigationGraph: Record<string, Partial<Record<"up" | "down" | "left" | "right", string>>> = {
-    build: { right: "test", down: "review" },
+    thinking: { right: "build" },
+    build: { left: "thinking", right: "test", down: "review" },
     test: { left: "build", down: "precommit" },
     precommit: { up: "test", left: "review" },
     review: { up: "build", right: "precommit", left: "post-commit" },
@@ -362,8 +373,8 @@ function buildGraph(args: {
       title: "需求定义",
       tone: "neutral",
       note: "Spec / 需求边界",
-      active: false,
-      ...buildSelectionState("thinking", false),
+      active: true,
+      ...buildSelectionState("thinking", true),
     }),
     buildNode("coding", col2X, internalRowY, {
       nodeId: "coding",
@@ -441,8 +452,10 @@ function buildGraph(args: {
       layer: "external",
       title: "制品发布",
       tone: "amber",
-      note: "artifact / release",
-      active: false,
+      note: workflowSummary && workflowSummary.releaseFlowCount > 0
+        ? `${workflowSummary.releaseFlowCount} release flows`
+        : "artifact / release",
+      active: Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0),
       ...buildSelectionState("release", true),
     }),
     buildNode("staging", col2X, externalRowY, {
@@ -611,6 +624,12 @@ function buildDetailSections(args: {
         { title: "Context", items: ["当前节点受 instructions 面板支撑"] },
         { title: "Rulebook", items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : ["当前页未发现 rulebook / manifest"] },
       ] satisfies LoopDetailSection[];
+    case "thinking":
+      return [
+        { title: "Spec Sources", items: ["Detects AI Coding spec tools and methodology frameworks"] },
+        { title: "Frameworks", items: ["Kiro", "Qoder", "OpenSpec", "Spec Kit", "BMAD"] },
+        { title: "Evidence model", items: ["artifacts-present", "installed-only", "archived", "legacy"] },
+      ] satisfies LoopDetailSection[];
     default:
       return [
         { title: "Current page signals", items: ["亮色节点可点击，灰色节点表示当前没有对应 panel", "点击 `编码实现`、`本地验证`、`变更门禁`、`代码评审`、`持续交付` 或 `制品发布` 查看上下文"] },
@@ -667,6 +686,7 @@ export function HarnessGovernanceLoopGraph({
       jobCount: flows.reduce((sum, flow) => sum + (flow.jobs?.length ?? 0), 0),
       remoteSignals: summarizeSignals(flows),
       hasRepairLoop: detectRepairLoop(flows),
+      releaseFlowCount: detectReleaseWorkflows(flows),
     } satisfies WorkflowSummary;
   }, [workflowData]);
   const instructionSummary = useMemo(() => {

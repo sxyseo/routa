@@ -10,6 +10,7 @@ use axum::{
 };
 use regex::Regex;
 use routa_core::harness::detect_repo_signals;
+use routa_core::spec_detector::detect_spec_sources;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::process::Command;
@@ -32,6 +33,7 @@ pub fn router() -> Router<AppState> {
         .route("/hooks/preview", get(get_hook_preview))
         .route("/instructions", get(get_harness_instructions))
         .route("/repo-signals", get(get_harness_repo_signals))
+        .route("/spec-sources", get(get_spec_sources))
 }
 
 async fn get_agent_hooks(
@@ -113,6 +115,25 @@ async fn get_harness_repo_signals(
     .await?;
 
     let report = detect_repo_signals(&repo_root).map_err(ServerError::Internal)?;
+    Ok(Json(serde_json::to_value(report).map_err(|error| {
+        ServerError::Internal(format!("Failed to serialize report: {error}"))
+    })?))
+}
+
+async fn get_spec_sources(
+    State(state): State<AppState>,
+    Query(query): Query<RepoContextQuery>,
+) -> Result<Json<Value>, ServerError> {
+    let repo_root = resolve_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "Missing spec sources context. Provide workspaceId, codebaseId, or repoPath.",
+    )
+    .await?;
+
+    let report = detect_spec_sources(&repo_root).map_err(ServerError::Internal)?;
     Ok(Json(serde_json::to_value(report).map_err(|error| {
         ServerError::Internal(format!("Failed to serialize report: {error}"))
     })?))

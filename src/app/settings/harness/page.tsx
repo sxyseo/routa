@@ -18,6 +18,7 @@ import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtim
 import { HarnessAgentHookPanel } from "@/client/components/harness-agent-hook-panel";
 import { HarnessRepoSignalsPanel } from "@/client/components/harness-repo-signals-panel";
 import { HarnessReviewTriggersPanel } from "@/client/components/harness-review-triggers-panel";
+import { HarnessSpecSourcesPanel } from "@/client/components/harness-spec-sources-panel";
 import { HarnessUnsupportedState, getHarnessUnsupportedRepoMessage } from "@/client/components/harness-support-state";
 import { useHarnessSettingsData } from "@/client/hooks/use-harness-settings-data";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
@@ -47,7 +48,7 @@ export default function HarnessSettingsPage() {
   });
   const [selectedTier, setSelectedTier] = useState<TierValue>("normal");
   const [selectedSpecName, setSelectedSpecName] = useState("");
-  const [selectedGovernanceNodeId, setSelectedGovernanceNodeId] = useState("build");
+  const [selectedGovernanceNodeId, setSelectedGovernanceNodeId] = useState<string | null>("build");
 
   const persistedRepoSelection = useMemo(
     () => loadRepoSelection("harness", workspaceId),
@@ -105,6 +106,7 @@ export default function HarnessSettingsPage() {
     agentHooksState,
     instructionsState,
     githubActionsState,
+    specSourcesState,
     reloadInstructions,
   } = useHarnessSettingsData({
     workspaceId,
@@ -143,10 +145,39 @@ export default function HarnessSettingsPage() {
     saveRepoSelection("harness", workspaceId, activeRepoSelection);
   }, [activeRepoSelection, workspaceId]);
 
+
+
   const governanceContextPanel = useMemo(() => {
+    if (selectedGovernanceNodeId === null) {
+      return null;
+    }
     switch (selectedGovernanceNodeId) {
+      case "thinking":
+        return (
+          <HarnessSpecSourcesPanel
+            repoLabel={selectedRepoLabel}
+            unsupportedMessage={unsupportedRepoMessage}
+            data={specSourcesState.data}
+            loading={specSourcesState.loading}
+            error={specSourcesState.error}
+            variant="compact"
+          />
+        );
       case "build":
-        return null;
+        return (
+          <HarnessAgentInstructionsPanel
+            workspaceId={workspaceId}
+            codebaseId={activeRepoCodebaseId}
+            repoPath={activeRepoPath}
+            repoLabel={selectedRepoLabel}
+            unsupportedMessage={unsupportedRepoMessage}
+            data={instructionsState.data}
+            loading={instructionsState.loading}
+            error={instructionsState.error}
+            onAuditRerun={reloadInstructions}
+            variant="compact"
+          />
+        );
       case "lint":
       case "precommit":
         return (
@@ -244,12 +275,19 @@ export default function HarnessSettingsPage() {
     hooksState.data,
     hooksState.error,
     hooksState.loading,
+    instructionsState.data,
+    instructionsState.error,
+    instructionsState.loading,
     planState.data,
     planState.error,
     planState.loading,
+    reloadInstructions,
     selectedGovernanceNodeId,
     selectedRepoLabel,
     selectedTier,
+    specSourcesState.data,
+    specSourcesState.error,
+    specSourcesState.loading,
     unsupportedRepoMessage,
     workspaceId,
   ]);
@@ -352,9 +390,17 @@ export default function HarnessSettingsPage() {
           instructionsData={instructionsState.data}
           instructionsError={instructionsState.error}
           fitnessFiles={specFiles}
-          selectedNodeId={selectedGovernanceNodeId}
+          selectedNodeId={selectedGovernanceNodeId ?? "build"}
           onSelectedNodeChange={setSelectedGovernanceNodeId}
           contextPanel={governanceContextPanel}
+        />
+
+        <HarnessSpecSourcesPanel
+          repoLabel={selectedRepoLabel}
+          unsupportedMessage={unsupportedRepoMessage}
+          data={specSourcesState.data}
+          loading={specSourcesState.loading}
+          error={specSourcesState.error}
         />
 
         <HarnessAgentInstructionsPanel

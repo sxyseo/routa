@@ -62,7 +62,7 @@ jobs:
         if: ${{ inputs.version || github.event.inputs.version }}
         env:
           RELEASE_VERSION: ${{ inputs.version || github.event.inputs.version }}
-        run: node scripts/sync-release-version.mjs --version "${RELEASE_VERSION}"
+        run: node scripts/release/sync-release-version.mjs --version "${RELEASE_VERSION}"
 
       - name: Verify synced release files
         if: ${{ inputs.version || github.event.inputs.version }}

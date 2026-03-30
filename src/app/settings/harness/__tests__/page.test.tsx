@@ -2,9 +2,105 @@ import type { ReactNode } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SpecDetectionResponse } from "@/core/harness/spec-detector-types";
 import HarnessSettingsPage from "../page";
 
 const repoPickerMock = vi.fn();
+function createSpecSourcesData(
+  overrides: Partial<SpecDetectionResponse> = {},
+): SpecDetectionResponse {
+  return {
+    generatedAt: "2026-03-30T00:00:00.000Z",
+    repoRoot: "/Users/phodal/ai/routa-js",
+    sources: [],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+const mockHarnessSettingsData = {
+  specsState: {
+    loading: false,
+    error: null,
+    data: {
+      files: [
+        {
+          name: "README.md",
+          relativePath: "docs/fitness/README.md",
+          kind: "rulebook",
+          language: "markdown",
+          metricCount: 0,
+          metrics: [],
+          source: "# Fitness README\n\n```bash\nentrix run --tier fast\n```",
+          frontmatterSource: undefined,
+        },
+        {
+          name: "code-quality.md",
+          relativePath: "docs/fitness/code-quality.md",
+          kind: "dimension",
+          language: "markdown",
+          dimension: "code_quality",
+          weight: 24,
+          thresholdPass: 90,
+          thresholdWarn: 80,
+          metricCount: 2,
+          metrics: [],
+          source: "# Code quality",
+          frontmatterSource: "---",
+        },
+      ],
+    },
+  },
+  planState: {
+    loading: false,
+    error: null,
+    data: {
+      metricCount: 2,
+      hardGateCount: 1,
+      dimensions: [],
+    },
+  },
+  hooksState: {
+    loading: false,
+    error: null,
+    data: {
+      profiles: [],
+      hookFiles: [],
+    },
+  },
+  agentHooksState: {
+    loading: false,
+    error: null,
+    data: {
+      hooks: [],
+    },
+  },
+  instructionsState: {
+    loading: false,
+    error: null,
+    data: {
+      generatedAt: "2026-03-29T00:00:00.000Z",
+      repoRoot: "/Users/phodal/ai/routa-js",
+      fileName: "CLAUDE.md",
+      relativePath: "CLAUDE.md",
+      source: "# Routa.js",
+      fallbackUsed: false,
+    },
+  },
+  githubActionsState: {
+    loading: false,
+    error: null,
+    data: {
+      flows: [],
+    },
+  },
+  specSourcesState: {
+    loading: false,
+    error: null,
+    data: createSpecSourcesData(),
+  },
+  reloadInstructions: vi.fn(async () => {}),
+};
 const localStorageMock = (() => {
   const store = new Map<string, string>();
   return {
@@ -94,6 +190,7 @@ vi.mock("@/client/components/harness-governance-loop-graph", () => ({
     <div data-testid="governance-loop-graph">
       <div data-testid="selected-node-id">{selectedNodeId}</div>
       <div data-testid="context-panel-state">{contextPanel ? "present" : "absent"}</div>
+      <button type="button" onClick={() => onSelectedNodeChange?.("thinking")}>select-thinking</button>
       <button type="button" onClick={() => onSelectedNodeChange?.("release")}>select-release</button>
       {contextPanel}
     </div>
@@ -122,6 +219,12 @@ vi.mock("@/client/components/harness-repo-signals-panel", () => ({
 
 vi.mock("@/client/components/harness-review-triggers-panel", () => ({
   HarnessReviewTriggersPanel: () => <div data-testid="review-triggers-panel" />,
+}));
+
+vi.mock("@/client/components/harness-spec-sources-panel", () => ({
+  HarnessSpecSourcesPanel: (props: { variant?: string }) => (
+    <div data-testid={props.variant === "compact" ? "spec-sources-compact" : "spec-sources-full"} />
+  ),
 }));
 
 vi.mock("@/client/components/harness-support-state", () => ({
@@ -158,100 +261,31 @@ vi.mock("@/client/hooks/use-workspaces", () => ({
 }));
 
 vi.mock("@/client/hooks/use-harness-settings-data", () => ({
-  useHarnessSettingsData: () => ({
-    specsState: {
-      loading: false,
-      error: null,
-      data: {
-        files: [
-          {
-            name: "README.md",
-            relativePath: "docs/fitness/README.md",
-            kind: "rulebook",
-            language: "markdown",
-            metricCount: 0,
-            metrics: [],
-            source: "# Fitness README\n\n```bash\nentrix run --tier fast\n```",
-            frontmatterSource: undefined,
-          },
-          {
-            name: "code-quality.md",
-            relativePath: "docs/fitness/code-quality.md",
-            kind: "dimension",
-            language: "markdown",
-            dimension: "code_quality",
-            weight: 24,
-            thresholdPass: 90,
-            thresholdWarn: 80,
-            metricCount: 2,
-            metrics: [],
-            source: "# Code quality",
-            frontmatterSource: "---",
-          },
-        ],
-      },
-    },
-    planState: {
-      loading: false,
-      error: null,
-      data: {
-        metricCount: 2,
-        hardGateCount: 1,
-        dimensions: [],
-      },
-    },
-    hooksState: {
-      loading: false,
-      error: null,
-      data: {
-        profiles: [],
-        hookFiles: [],
-      },
-    },
-    agentHooksState: {
-      loading: false,
-      error: null,
-      data: {
-        hooks: [],
-      },
-    },
-    instructionsState: {
-      loading: false,
-      error: null,
-      data: {
-        generatedAt: "2026-03-29T00:00:00.000Z",
-        repoRoot: "/Users/phodal/ai/routa-js",
-        fileName: "CLAUDE.md",
-        relativePath: "CLAUDE.md",
-        source: "# Routa.js",
-        fallbackUsed: false,
-      },
-    },
-    githubActionsState: {
-      loading: false,
-      error: null,
-      data: {
-        flows: [],
-      },
-    },
-    reloadInstructions: vi.fn(async () => {}),
-  }),
+  useHarnessSettingsData: () => mockHarnessSettingsData,
 }));
 
 describe("HarnessSettingsPage", () => {
   beforeEach(() => {
     repoPickerMock.mockReset();
     window.localStorage.clear();
+    mockHarnessSettingsData.specSourcesState = {
+      loading: false,
+      error: null,
+      data: createSpecSourcesData(),
+    };
   });
 
-  it("does not inject a duplicate compact instruction panel into the governance loop build context", () => {
-    render(<HarnessSettingsPage />);
+  it("shows compact instruction panel in the governance loop build context", async () => {
+    const { findByTestId } = render(<HarnessSettingsPage />);
+
+    // Wait for initial node selection to resolve
+    await findByTestId("selected-node-id");
 
     expect(screen.getByTestId("selected-node-id").textContent).toBe("build");
-    expect(screen.getByTestId("context-panel-state").textContent).toBe("absent");
-    expect(screen.getAllByText("Instruction file")).toHaveLength(1);
+    expect(screen.getByTestId("context-panel-state").textContent).toBe("present");
+    expect(screen.getAllByText("Instruction file")).toHaveLength(2);
     expect(screen.getByTestId("instruction-panel-full")).not.toBeNull();
-    expect(screen.queryByTestId("instruction-panel-compact")).toBeNull();
+    expect(screen.getByTestId("instruction-panel-compact")).not.toBeNull();
   });
 
   it("switches the governance context to the release GitHub Actions view", () => {
@@ -262,6 +296,36 @@ describe("HarnessSettingsPage", () => {
     expect(screen.getByTestId("selected-node-id").textContent).toBe("release");
     expect(screen.getByTestId("context-panel-state").textContent).toBe("present");
     expect(within(screen.getByTestId("governance-loop-graph")).getByTestId("github-actions-flow-panel").textContent).toBe("Release");
+  });
+
+  it("renders the compact spec sources panel for the thinking node while keeping the full panel visible", () => {
+    mockHarnessSettingsData.specSourcesState = {
+      loading: false,
+      error: null,
+      data: createSpecSourcesData({
+        sources: [
+          {
+            kind: "framework",
+            system: "bmad",
+            rootPath: "docs",
+            confidence: "low",
+            status: "legacy",
+            evidence: ["docs/prd.md"],
+            children: [{ type: "prd", path: "docs/prd.md" }],
+          },
+        ],
+      }),
+    };
+
+    render(<HarnessSettingsPage />);
+
+    expect(screen.getByTestId("spec-sources-full")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "select-thinking" }));
+
+    expect(screen.getByTestId("selected-node-id").textContent).toBe("thinking");
+    expect(within(screen.getByTestId("governance-loop-graph")).getByTestId("spec-sources-compact")).not.toBeNull();
+    expect(screen.getByTestId("spec-sources-full")).not.toBeNull();
   });
 
   it("defaults the fitness source view to README when no spec is selected", () => {
