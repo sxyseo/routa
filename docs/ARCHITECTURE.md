@@ -79,7 +79,8 @@ Protocol Adapters
   REST, MCP, ACP, A2A, AG-UI, SSE, JSON-RPC normalization
 
 Domain Services
-  orchestration, kanban automation, workflow execution, notes, review, scheduling
+  orchestration, kanban automation, workflow execution, notes, review, scheduling,
+  trace, harness, shared sessions, worker dispatch
 
 Stores / Registries
   workspace, task, session, note, codebase, worktree, schedule, artifact, skill
@@ -129,11 +130,24 @@ Important invariant:
 - Workflows convert a higher-level automation definition into multiple background tasks with dependency ordering.
 - Schedule ticks, webhook events, and polling adapters can all enqueue background tasks instead of invoking execution inline.
 
+### Trace And Review
+
+- Traces record session lifecycle, messages, tool calls, file changes, and VCS context for audit and debugging (`src/core/trace/`, `crates/routa-core/src/trace/`).
+- Trace data is a first-class debugging and attribution mechanism, not an incidental log stream.
+- Review provides multi-phase code review with findings, severity, and validation context (`src/core/review/`).
+
+### Harness And Worker
+
+- Harness detects repository signals, script entrypoints, and spec sources to power governance and quality analysis (`src/core/harness/`).
+- Workers abstract local and Docker-based execution environments (`src/core/worker/`).
+- Sandbox policy resolution in Rust enforces workspace-aware Docker constraints (`crates/routa-core/src/sandbox/`).
+
 ### Note, Memory, Artifact
 
 - Notes support collaborative knowledge capture and use CRDT-based real-time behavior on the TypeScript side.
 - Memory endpoints store workspace-scoped contextual records.
 - Artifacts are structured outputs exchanged between agents, workflows, or coordination tools.
+- Shared sessions enable multi-user or multi-agent coordination with event broadcasting and prompt dispatch (`src/core/shared-session/`).
 
 ## System Factories And Shared State
 
