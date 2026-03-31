@@ -102,6 +102,27 @@ describe("HarnessAgentInstructionsPanel", () => {
     expect(onAuditRerun).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the audit rerun entry visible before the first audit result", () => {
+    const onAuditRerun = vi.fn();
+    render(
+      <HarnessAgentInstructionsPanel
+        workspaceId="default"
+        repoPath="/Users/phodal/ai/routa-js"
+        repoLabel="phodal/routa"
+        data={{
+          ...instructionsData,
+          audit: null,
+        }}
+        onAuditRerun={onAuditRerun}
+      />,
+    );
+
+    expect(screen.getByText("Instruction audit")).not.toBeNull();
+    expect(screen.getByText("Audit has not been run yet in this view. Click Re-run audit to generate a fresh summary.")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Re-run audit/i }));
+    expect(onAuditRerun).toHaveBeenCalledTimes(1);
+  });
+
   it("shows explicit running feedback while audit is refreshing", () => {
     render(
       <HarnessAgentInstructionsPanel

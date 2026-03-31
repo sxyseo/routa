@@ -401,6 +401,7 @@ export function HarnessAgentInstructionsPanel({
       : null;
   const rerunButtonDisabled = Boolean(rerunUnavailableReason) || !canRerunAudit;
   const treeId = compactMode ? "instructions-tree-compact" : "instructions-tree-full";
+  const showAuditPanel = Boolean(auditSummary) || canRerunAudit;
 
   return (
     <HarnessSectionCard
@@ -410,7 +411,7 @@ export function HarnessAgentInstructionsPanel({
       variant={variant}
     >
 
-      {auditSummary ? (
+      {showAuditPanel ? (
         <div className="mt-3 rounded-xl border border-desktop-border bg-desktop-bg-secondary/50 px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
@@ -438,16 +439,20 @@ export function HarnessAgentInstructionsPanel({
                   {rerunUnavailableReason}
                 </span>
               ) : null}
-              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getAuditStatusClass(auditSummary.status)}`}>
-                {auditSummary.status === "ok"
-                  ? "specialist"
-                  : auditSummary.status === "heuristic"
-                    ? "heuristic fallback"
-                    : "error"}
-              </span>
-              <span className="text-[10px] text-desktop-text-secondary">
-                {auditSummary.provider} · {(auditSummary.durationMs / 1000).toFixed(1)}s
-              </span>
+              {auditSummary ? (
+                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getAuditStatusClass(auditSummary.status)}`}>
+                  {auditSummary.status === "ok"
+                    ? "specialist"
+                    : auditSummary.status === "heuristic"
+                      ? "heuristic fallback"
+                      : "error"}
+                </span>
+              ) : null}
+              {auditSummary ? (
+                <span className="text-[10px] text-desktop-text-secondary">
+                  {auditSummary.provider} · {(auditSummary.durationMs / 1000).toFixed(1)}s
+                </span>
+              ) : null}
               {resolvedInstructionsState.loading ? (
                 <span className="rounded-full border border-desktop-accent/30 bg-desktop-accent/10 px-2 py-1 text-[10px] font-medium text-desktop-accent">
                   Running specialist audit...
@@ -456,7 +461,11 @@ export function HarnessAgentInstructionsPanel({
             </div>
           </div>
 
-          {auditSummary.status === "error" ? (
+          {!auditSummary ? (
+            <div className="mt-2 text-[11px] text-desktop-text-secondary">
+              Audit has not been run yet in this view. Click Re-run audit to generate a fresh summary.
+            </div>
+          ) : auditSummary.status === "error" ? (
             <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] text-red-700">
               {auditSummary.error ?? "Audit execution failed."}
             </div>
