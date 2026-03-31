@@ -139,6 +139,21 @@ export default function HarnessSettingsPage() {
   const selectedRepoLabel = activeRepoSelection?.name ?? "None";
   const selectedRepo = activeRepoSelection;
   const unsupportedRepoMessage = getHarnessUnsupportedRepoMessage(specsState.error, planState.error);
+  const hasArchitectureOrAdrSignal = useMemo(() => {
+    const sources = specSourcesState.data?.sources ?? [];
+    return sources.some((source) => {
+      if (source.system !== "bmad") {
+        return false;
+      }
+      return source.children.some((artifact) => {
+        if (artifact.type === "architecture" || artifact.type === "design") {
+          return true;
+        }
+        const normalizedPath = artifact.path.toLowerCase();
+        return normalizedPath.startsWith("docs/architecture") || normalizedPath.startsWith("docs/architcture") || normalizedPath.startsWith("docs/adr/");
+      });
+    });
+  }, [specSourcesState.data]);
   const visibleSpecCodeBlocks = useMemo(
     () => (visibleSpec && visibleSpec.language === "markdown" ? extractMarkdownCodeBlocks(visibleSpec.source) : []),
     [visibleSpec],
@@ -165,6 +180,17 @@ export default function HarnessSettingsPage() {
     }
     switch (selectedGovernanceNodeId) {
       case "thinking":
+        return (
+          <HarnessSpecSourcesPanel
+            repoLabel={selectedRepoLabel}
+            unsupportedMessage={unsupportedRepoMessage}
+            data={specSourcesState.data}
+            loading={specSourcesState.loading}
+            error={specSourcesState.error}
+            variant="compact"
+          />
+        );
+      case "coding":
         return (
           <HarnessSpecSourcesPanel
             repoLabel={selectedRepoLabel}
@@ -273,7 +299,7 @@ export default function HarnessSettingsPage() {
               </div>
             </div>
             <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3 text-[11px] text-desktop-text-secondary">
-              选择 `编码实现`、`本地验证`、`变更门禁`、`代码评审` 或 `持续交付` 节点，可以在这里直接查看对应组件的上下文视图。
+              选择 `设计决策`、`编码实现`、`本地验证`、`变更门禁`、`代码评审` 或 `持续交付` 节点，可以在这里直接查看对应组件的上下文视图。
             </div>
           </div>
         );
@@ -399,6 +425,7 @@ export default function HarnessSettingsPage() {
             instructionsData={instructionsState.data}
             instructionsError={instructionsState.error}
             fitnessFiles={specFiles}
+            designDecisionNodeEnabled={hasArchitectureOrAdrSignal}
             selectedNodeId={selectedGovernanceNodeId}
             onSelectedNodeChange={setSelectedGovernanceNodeId}
             contextPanel={governanceContextPanel}

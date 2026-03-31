@@ -610,20 +610,34 @@ fn detect_bmad(repo_root: &Path) -> Vec<SpecSource> {
             let mut evidence = Vec::new();
             let mut artifacts = Vec::new();
 
-            let legacy_files: Vec<(&str, &str)> = vec![
+            let legacy_files: [(&str, &str); 4] = [
                 ("prd.md", "prd"),
-                ("PRD.md", "prd"),
                 ("architecture.md", "architecture"),
+                ("architcture.md", "architecture"),
                 ("brownfield-architecture.md", "architecture"),
             ];
-
-            for (name, atype) in &legacy_files {
-                if file_exists(&docs_dir.join(name)) {
+            for file in list_files(&docs_dir) {
+                let normalized = file.to_lowercase();
+                if let Some((_, artifact_type)) = legacy_files.iter().find(|(name, _)| normalized == *name) {
+                    let artifact_type = artifact_type.to_string();
                     artifacts.push(SpecArtifact {
-                        artifact_type: atype.to_string(),
-                        path: format!("docs/{name}"),
+                        artifact_type,
+                        path: format!("docs/{file}"),
                     });
-                    evidence.push(format!("docs/{name}"));
+                    evidence.push(format!("docs/{file}"));
+                }
+            }
+
+            let adr_dir = docs_dir.join("adr");
+            if dir_exists(&adr_dir) {
+                for file in list_files(&adr_dir) {
+                    if file.to_lowercase().ends_with(".md") {
+                        artifacts.push(SpecArtifact {
+                            artifact_type: "design".to_string(),
+                            path: format!("docs/adr/{file}"),
+                        });
+                        evidence.push(format!("docs/adr/{file}"));
+                    }
                 }
             }
 
@@ -663,12 +677,16 @@ fn detect_bmad(repo_root: &Path) -> Vec<SpecSource> {
                 }
             }
 
-            if !artifacts.is_empty() && has_bmad_tool {
+            if !artifacts.is_empty() {
                 sources.push(SpecSource {
-                    kind: "legacy".to_string(),
+                    kind: "framework".to_string(),
                     system: "bmad".to_string(),
                     root_path: "docs".to_string(),
-                    confidence: "low".to_string(),
+                    confidence: if has_bmad_tool {
+                        "medium".to_string()
+                    } else {
+                        "low".to_string()
+                    },
                     status: "legacy".to_string(),
                     evidence,
                     children: artifacts,

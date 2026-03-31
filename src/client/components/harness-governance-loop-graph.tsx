@@ -65,6 +65,7 @@ type HarnessGovernanceLoopGraphProps = {
   instructionsData?: InstructionsResponse | null;
   instructionsError?: string | null;
   fitnessFiles?: FitnessSpecSummary[];
+  designDecisionNodeEnabled?: boolean;
   selectedNodeId?: string | null;
   onSelectedNodeChange?: (nodeId: string) => void;
   contextPanel?: ReactNode;
@@ -348,6 +349,7 @@ function buildGraph(args: {
   workflowSummary: WorkflowSummary | null;
   metricCount: number;
   hardGateCount: number;
+  designDecisionNodeEnabled?: boolean;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
 }) {
@@ -357,15 +359,29 @@ function buildGraph(args: {
     workflowSummary,
     metricCount,
     hardGateCount,
+    designDecisionNodeEnabled,
     selectedNodeId,
     onSelectNode,
   } = args;
 
-  const selectableNodeIds = new Set(["thinking", "build", "test", "precommit", "review", "post-commit", "release"]);
+  const hasCodingNode = Boolean(designDecisionNodeEnabled);
+  const selectableNodeIds = new Set([
+    "thinking",
+    ...(hasCodingNode ? ["coding"] : []),
+    "build",
+    "test",
+    "precommit",
+    "review",
+    "post-commit",
+    "release",
+  ]);
 
   const navigationGraph: Record<string, Partial<Record<"up" | "down" | "left" | "right", string>>> = {
-    thinking: { right: "build" },
-    build: { left: "thinking", right: "test", down: "review" },
+    thinking: { right: hasCodingNode ? "coding" : "build" },
+    ...(hasCodingNode ? {
+      coding: { left: "thinking", right: "build" },
+    } : {}),
+    build: { left: hasCodingNode ? "coding" : "thinking", right: "test", down: "review" },
     test: { left: "build", down: "precommit" },
     precommit: { up: "test", left: "review" },
     review: { up: "build", right: "precommit", left: "post-commit" },
@@ -426,9 +442,11 @@ function buildGraph(args: {
       title: "设计决策",
       tone: getLayerTone("internal"),
       note: "ADR / 设计取舍",
-      active: false,
-      unavailableReason: "暂未接入 ADR / 设计决策来源，当前只保留占位阶段。",
-      ...buildSelectionState("coding", false),
+      active: hasCodingNode,
+      unavailableReason: hasCodingNode
+        ? undefined
+        : "暂未接入 ADR / 设计决策来源（docs/ARCHITECTURE.md 或 docs/adr）",
+      ...buildSelectionState("coding", hasCodingNode),
     }),
     buildNode("build", col3X, internalRowY, {
       nodeId: "build",
@@ -682,6 +700,12 @@ function buildDetailSections(args: {
         { title: "Frameworks", items: ["Kiro", "Qoder", "OpenSpec", "Spec Kit", "BMAD"] },
         { title: "Evidence model", items: ["artifacts-present", "installed-only", "archived", "legacy"] },
       ] satisfies LoopDetailSection[];
+    case "coding":
+      return [
+        { title: "Design decision evidence", items: ["ADR / architecture decision files"] },
+        { title: "Evidence locations", items: ["docs/ARCHITECTURE.md", "docs/adr/*.md"] },
+        { title: "Related surface", items: ["Spec Sources panel", "Build / coding pipeline"] },
+      ] satisfies LoopDetailSection[];
     default:
       return [
         { title: "Current page signals", items: ["亮色节点可点击，Unavailable 节点会直接说明缺失的信号或面板", "点击 `编码实现`、`本地验证`、`变更门禁`、`代码评审`、`持续交付` 或 `制品发布` 查看上下文"] },
@@ -696,6 +720,7 @@ export function HarnessGovernanceLoopGraph({
   specsError,
   dimensionCount,
   planError,
+  designDecisionNodeEnabled,
   metricCount,
   hardGateCount,
   unsupportedMessage,
@@ -758,6 +783,7 @@ export function HarnessGovernanceLoopGraph({
       workflowSummary,
       metricCount,
       hardGateCount,
+      designDecisionNodeEnabled,
       selectedNodeId: activeSelectedNodeId,
       onSelectNode: (nodeId) => {
         if (onSelectedNodeChange) {
@@ -767,7 +793,7 @@ export function HarnessGovernanceLoopGraph({
         setInternalSelectedNodeId(nodeId);
       },
     }),
-    [activeSelectedNodeId, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, workflowSummary],
+    [activeSelectedNodeId, designDecisionNodeEnabled, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, workflowSummary],
   );
 
   const graphIssues = [...new Set(

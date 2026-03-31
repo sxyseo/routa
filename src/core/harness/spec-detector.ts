@@ -521,17 +521,27 @@ function detectBmad(repoRoot: string): SpecSource[] {
       const evidence: string[] = [];
       const artifacts: SpecArtifact[] = [];
 
-      const legacyFiles: Array<{ name: string; type: SpecArtifactType }> = [
-        { name: "prd.md", type: "prd" },
-        { name: "PRD.md", type: "prd" },
-        { name: "architecture.md", type: "architecture" },
-        { name: "brownfield-architecture.md", type: "architecture" },
-      ];
+      const legacyFiles: Record<string, SpecArtifactType> = {
+        "prd.md": "prd",
+        "architecture.md": "architecture",
+        "architcture.md": "architecture",
+        "brownfield-architecture.md": "architecture",
+      };
 
-      for (const { name, type } of legacyFiles) {
-        if (fileExists(path.join(docsDir, name))) {
-          artifacts.push({ type, path: `docs/${name}` });
-          evidence.push(`docs/${name}`);
+      for (const fileName of listFiles(docsDir)) {
+        const normalized = fileName.toLowerCase();
+        if (legacyFiles[normalized]) {
+          const type = legacyFiles[normalized];
+          artifacts.push({ type, path: `docs/${fileName}` });
+          evidence.push(`docs/${fileName}`);
+        }
+      }
+
+      const adrDir = path.join(docsDir, "adr");
+      if (dirExists(adrDir)) {
+        for (const file of listFiles(adrDir).filter((entry) => entry.toLowerCase().endsWith(".md"))) {
+          artifacts.push({ type: "design", path: `docs/adr/${file}` });
+          evidence.push(`docs/adr/${file}`);
         }
       }
 
