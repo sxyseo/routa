@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import type {
   HookFileSummary,
   HooksResponse,
@@ -129,12 +130,6 @@ function uniqueLabels(values: string[]): string[] {
 
 function takeLabels(values: string[], limit: number): string[] {
   return uniqueLabels(values).slice(0, limit);
-}
-
-function containerClass(compactMode: boolean): string {
-  return compactMode
-    ? "rounded-2xl border border-amber-200 bg-amber-50/60 p-3"
-    : "rounded-2xl border border-amber-200 bg-amber-50/45 p-3.5 shadow-sm";
 }
 
 function cardGridClass(compactMode: boolean): string {
@@ -522,44 +517,44 @@ export function HarnessReviewTriggersPanel({
   const detailsVisible = canToggleDetails ? showDetails : true;
 
   return (
-    <section className={containerClass(compactMode)}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-800">Review triggers</div>
-        {canToggleDetails && reviewTriggerFile && reviewTriggerFile.rules.length ? (
+    <HarnessSectionCard
+      title="Review triggers"
+      description="Policy profiles and rule summaries that feed review routing and escalation."
+      variant={variant}
+      actions={
+        canToggleDetails && reviewTriggerFile && reviewTriggerFile.rules.length ? (
           <button
             type="button"
-            className="rounded-full border border-amber-200 bg-white/85 px-2.5 py-1 text-[10px] font-semibold text-amber-900 transition-colors hover:bg-white"
+            className="rounded-full border border-desktop-border bg-desktop-bg-primary/65 px-2.5 py-1 text-[10px] font-semibold text-desktop-text-primary transition-colors hover:bg-desktop-bg-primary"
             onClick={() => setShowDetails((current) => !current)}
           >
             {detailsVisible ? "Hide details" : "Show details"}
           </button>
-        ) : null}
-      </div>
-
+        ) : null
+      }
+    >
       {loading ? (
-        <div className="mt-2.5 rounded-xl border border-amber-200 bg-white/90 px-4 py-4 text-[11px] text-amber-900/75">
-          Loading review trigger policies...
-        </div>
+        <HarnessSectionStateFrame tone="warning">Loading review trigger policies...</HarnessSectionStateFrame>
       ) : null}
 
-      {unsupportedMessage ? <HarnessUnsupportedState /> : null}
+      {unsupportedMessage ? (
+        <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-[11px] text-amber-800" />
+      ) : null}
 
       {error && !unsupportedMessage ? (
-        <div className="mt-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-[11px] text-red-700">
-          {error}
-        </div>
+        <HarnessSectionStateFrame tone="error">{error}</HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && !reviewTriggerFile ? (
-        <div className="mt-2.5 rounded-xl border border-amber-200 bg-white/90 px-4 py-4 text-[11px] text-amber-900/75">
+        <HarnessSectionStateFrame tone="warning">
           No `docs/fitness/review-triggers.yaml` file was found for the selected repository.
-        </div>
+        </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && reviewTriggerFile && !reviewTriggerFile.rules.length ? (
-        <div className="mt-2.5 rounded-xl border border-amber-200 bg-white/90 px-4 py-4 text-[11px] text-amber-900/75">
+        <HarnessSectionStateFrame tone="warning">
           The YAML file loaded successfully, but no `review_triggers` entries were parsed.
-        </div>
+        </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && reviewTriggerFile && reviewTriggerFile.rules.length ? (
@@ -607,6 +602,6 @@ export function HarnessReviewTriggersPanel({
           })}
         </div>
       ) : null}
-    </section>
+    </HarnessSectionCard>
   );
 }

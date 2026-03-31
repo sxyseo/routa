@@ -9,6 +9,7 @@ import type {
   SpecSourceKind,
   SpecStatus,
 } from "@/core/harness/spec-detector-types";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 
 type SpecSourcesPanelProps = {
   repoLabel: string;
@@ -322,40 +323,35 @@ export function HarnessSpecSourcesPanel({
     const showLoading = Boolean(loading);
     const showEmptyState = !showLoading && !error && !showUnsupportedMessage && sources.length === 0;
     const showSourceCards = !showLoading && !showUnsupportedMessage;
+    const compactHeaderActions = showLoading ? (
+      <span className="text-[10px] text-desktop-text-secondary">Loading...</span>
+    ) : (
+      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
+        {sources.length} source{sources.length !== 1 ? "s" : ""} · {totalSpecs} spec{totalSpecs !== 1 ? "s" : ""}
+      </span>
+    );
 
     return (
-      <div className="space-y-2" data-testid="spec-sources-compact">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-            Spec Sources
-          </div>
-          {showLoading ? (
-            <span className="text-[10px] text-desktop-text-secondary">Loading...</span>
-          ) : (
-            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
-              {sources.length} source{sources.length !== 1 ? "s" : ""} · {totalSpecs} spec{totalSpecs !== 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
+      <HarnessSectionCard
+        title="Spec Sources"
+        description="Detected AI coding spec sources in this repository."
+        actions={compactHeaderActions}
+        variant="compact"
+        dataTestId="spec-sources-compact"
+      >
+        {error && !unsupportedMessage ? (
+          <HarnessSectionStateFrame tone="error">{error}</HarnessSectionStateFrame>
+        ) : null}
 
-        {error && !unsupportedMessage && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">{error}</div>
-        )}
+        {unsupportedMessage ? <HarnessSectionStateFrame tone="warning">{unsupportedMessage}</HarnessSectionStateFrame> : null}
 
-        {unsupportedMessage && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
-            {unsupportedMessage}
-          </div>
-        )}
+        {showEmptyState ? (
+          <HarnessSectionStateFrame>No spec sources detected in this repository.</HarnessSectionStateFrame>
+        ) : null}
 
-        {showEmptyState && (
-          <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2 text-[10px] text-desktop-text-secondary">
-            No spec sources detected in this repository.
-          </div>
-        )}
-
-        {showSourceCards && sources.map((source) => {
+        {showSourceCards ? sources.map((source) => {
           const key = `${source.system}-${source.kind}-${source.rootPath}`;
+
           return (
             <SpecSourceCard
               key={key}
@@ -364,84 +360,69 @@ export function HarnessSpecSourcesPanel({
               onToggle={() => toggleKey(key)}
             />
           );
-        })}
-      </div>
+        }) : null}
+      </HarnessSectionCard>
     );
   }
 
   // Full variant
   return (
-    <section className="space-y-3" data-testid="spec-sources-full">
-      <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-3 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-desktop-text-primary">Spec Sources</h3>
-            <p className="mt-0.5 text-[10px] text-desktop-text-secondary">
-              Detected AI Coding spec tools, methodology frameworks, and tool integrations for <span className="font-medium text-desktop-text-primary">{repoLabel}</span>
-            </p>
-          </div>
+    <HarnessSectionCard
+      title="Spec Sources"
+      description={`Detected AI Coding spec tools, methodology frameworks, and tool integrations for ${repoLabel}`}
+      variant="full"
+      actions={
+        !loading ? (
           <div className="flex shrink-0 items-center gap-2">
-            {!loading && (
-              <>
-                <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                  {sources.length} source{sources.length !== 1 ? "s" : ""}
-                </span>
-                <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                  {totalSpecs} spec{totalSpecs !== 1 ? "s" : ""}
-                </span>
-                {highConfidenceCount > 0 && (
-                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] text-emerald-700">
-                    {highConfidenceCount} high confidence
-                  </span>
-                )}
-              </>
-            )}
+            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
+              {sources.length} source{sources.length !== 1 ? "s" : ""}
+            </span>
+            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
+              {totalSpecs} spec{totalSpecs !== 1 ? "s" : ""}
+            </span>
+            {highConfidenceCount > 0 ? (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] text-emerald-700">
+                {highConfidenceCount} high confidence
+              </span>
+            ) : null}
           </div>
+        ) : null
+      }
+    >
+      {loading ? (
+        <HarnessSectionStateFrame>Scanning for spec sources...</HarnessSectionStateFrame>
+      ) : null}
+
+      {unsupportedMessage ? <HarnessSectionStateFrame tone="warning">{unsupportedMessage}</HarnessSectionStateFrame> : null}
+
+      {error && !unsupportedMessage ? (
+        <HarnessSectionStateFrame tone="error">{error}</HarnessSectionStateFrame>
+      ) : null}
+
+      {!loading && !error && !unsupportedMessage && sources.length === 0 ? (
+        <HarnessSectionStateFrame>
+          No spec sources detected in this repository. Supported frameworks: Kiro, Qoder, OpenSpec, Spec Kit, BMAD.
+        </HarnessSectionStateFrame>
+      ) : null}
+
+      {!loading && !unsupportedMessage && sources.length > 0 ? (
+        <div className="mt-3 space-y-3" data-testid="spec-sources-full">
+          <SourceGroup title="Native Tools" sources={nativeTools} expandedKeys={expandedKeys} onToggle={toggleKey} />
+          <SourceGroup title="Frameworks" sources={frameworks} expandedKeys={expandedKeys} onToggle={toggleKey} />
+          <SourceGroup title="Integrations" sources={integrations} expandedKeys={expandedKeys} onToggle={toggleKey} />
+          <SourceGroup title="Legacy" sources={legacy} expandedKeys={expandedKeys} onToggle={toggleKey} />
         </div>
+      ) : null}
 
-        {loading && (
-          <div className="mt-3 rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
-            Scanning for spec sources...
-          </div>
-        )}
-
-        {unsupportedMessage && (
-          <div className="mt-3">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
-              {unsupportedMessage}
-            </div>
-          </div>
-        )}
-
-        {error && !unsupportedMessage && (
-          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-[11px] text-red-700">{error}</div>
-        )}
-
-        {!loading && !error && !unsupportedMessage && sources.length === 0 && (
-          <div className="mt-3 rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
-            No spec sources detected in this repository. Supported frameworks: Kiro, Qoder, OpenSpec, Spec Kit, BMAD.
-          </div>
-        )}
-
-        {!loading && !unsupportedMessage && sources.length > 0 && (
-          <div className="mt-3 space-y-3">
-            <SourceGroup title="Native Tools" sources={nativeTools} expandedKeys={expandedKeys} onToggle={toggleKey} />
-            <SourceGroup title="Frameworks" sources={frameworks} expandedKeys={expandedKeys} onToggle={toggleKey} />
-            <SourceGroup title="Integrations" sources={integrations} expandedKeys={expandedKeys} onToggle={toggleKey} />
-            <SourceGroup title="Legacy" sources={legacy} expandedKeys={expandedKeys} onToggle={toggleKey} />
-          </div>
-        )}
-
-        {data?.warnings && data.warnings.length > 0 && (
-          <div className="mt-3 space-y-1">
-            {data.warnings.map((warning, index) => (
-              <div key={`warning-${index}`} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-700">
-                {warning}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+      {data?.warnings && data.warnings.length > 0 ? (
+        <div className="mt-3 space-y-1">
+          {data.warnings.map((warning, index) => (
+            <HarnessSectionStateFrame key={`warning-${index}`} tone="warning">
+              {warning}
+            </HarnessSectionStateFrame>
+          ))}
+        </div>
+      ) : null}
+    </HarnessSectionCard>
   );
 }

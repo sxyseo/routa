@@ -254,7 +254,7 @@ export default function HarnessSettingsPage() {
             <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Connected surfaces</div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {["Instruction file", "Hook system", "Execution plan", "GitHub Actions flow"].map((label) => (
+                {["Instruction file", "Hook systems", "Execution plan", "CI/CD"].map((label) => (
                   <span key={label} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-primary">
                     {label}
                   </span>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { HarnessAgentHookWorkbench } from "@/client/components/harness-agent-hook-workbench";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { AgentHooksResponse } from "@/client/hooks/use-harness-settings-data";
 
@@ -97,57 +98,50 @@ export function HarnessAgentHookPanel({
     ? { loading: loading ?? false, error: error ?? null, data: data ?? null }
     : agentHooksState;
 
-  const sectionClass = variant === "compact"
-    ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-    : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm";
+  const description = "Policy hooks that configure agent-side runtime behavior.";
+  const systemAction = <span className="text-[10px] text-desktop-text-secondary">Agent runtime</span>;
 
   if (resolvedState.loading) {
     return (
-      <section className={sectionClass}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Agent hook system</div>
-        <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
-          Loading agent hooks...
-        </div>
-      </section>
+      <HarnessSectionCard title="Hook systems" description={description} actions={systemAction} variant={variant}>
+        <HarnessSectionStateFrame>Loading agent hooks...</HarnessSectionStateFrame>
+      </HarnessSectionCard>
     );
   }
 
   if (unsupportedMessage) {
     return (
-      <section className={sectionClass}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Agent hook system</div>
-        <HarnessUnsupportedState />
-      </section>
+      <HarnessSectionCard title="Hook systems" description={description} actions={systemAction} variant={variant}>
+        <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
+      </HarnessSectionCard>
     );
   }
 
   if (resolvedState.error) {
     return (
-      <section className={sectionClass}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Agent hook system</div>
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
-          {resolvedState.error}
-        </div>
-      </section>
+      <HarnessSectionCard title="Hook systems" description={description} actions={systemAction} variant={variant}>
+        <HarnessSectionStateFrame tone="error">{resolvedState.error}</HarnessSectionStateFrame>
+      </HarnessSectionCard>
     );
   }
 
   if (!resolvedState.data) {
     return (
-      <section className={sectionClass}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Agent hook system</div>
-        <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
+      <HarnessSectionCard title="Hook systems" description={description} actions={systemAction} variant={variant}>
+        <HarnessSectionStateFrame>
           No agent hook data found for the selected repository.
-        </div>
-      </section>
+        </HarnessSectionStateFrame>
+      </HarnessSectionCard>
     );
   }
 
   return (
-    <HarnessAgentHookWorkbench
-      data={resolvedState.data}
-      unsupportedMessage={unsupportedMessage}
-      variant={variant}
-    />
+    <HarnessSectionCard title="Hook systems" description={description} actions={systemAction} variant={variant}>
+      <HarnessAgentHookWorkbench
+        data={resolvedState.data}
+        unsupportedMessage={unsupportedMessage}
+        variant={variant}
+      />
+    </HarnessSectionCard>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HarnessGitHubActionsFlowGallery } from "@/client/components/harness-github-actions-flow-gallery";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import type {
   GitHubActionsFlow,
   GitHubActionsFlowsResponse,
@@ -27,30 +28,6 @@ type HarnessGitHubActionsFlowPanelProps = {
   variant?: "full" | "compact";
   initialCategory?: WorkflowCategoryKey;
 };
-
-function panelClassName(variant: "full" | "compact") {
-  return variant === "compact"
-    ? "rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(243,247,252,0.92))] p-3.5"
-    : "rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(252,253,255,0.98),rgba(243,247,252,0.94))] p-4 shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
-}
-
-function PanelStateFrame({
-  variant,
-  children,
-}: {
-  variant: "full" | "compact";
-  children: ReactNode;
-}) {
-  return (
-    <section className={panelClassName(variant)}>
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">CI/CD</div>
-      <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.04em] text-slate-950">
-        GitHub Actions Flow Gallery
-      </h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
 
 export function HarnessGitHubActionsFlowPanel({
   workspaceId,
@@ -144,47 +121,78 @@ export function HarnessGitHubActionsFlowPanel({
   const isLoading = hasExternalState
     ? Boolean(loading)
     : (hasContext && resolvedFlowState.loadedContextKey !== contextKey && !resolvedFlowState.error);
+  const flowsSummary = isLoading
+    ? "Loading..."
+    : visibleFlows.length === 0
+      ? "No workflows found"
+      : `${visibleFlows.length} workflow${visibleFlows.length !== 1 ? "s" : ""}`;
+  const stateBadge = (
+    <span className="text-[10px] text-desktop-text-secondary">
+      {flowsSummary}
+    </span>
+  );
 
   if (isLoading) {
     return (
-      <PanelStateFrame variant={variant}>
-        <div className="rounded-[24px] border border-slate-200 bg-white/85 px-4 py-6 text-[12px] text-slate-500">
-          Loading GitHub Actions workflows...
-        </div>
-      </PanelStateFrame>
+      <HarnessSectionCard
+        title="CI/CD"
+        description={`Workflow orchestration for ${repoLabel}.`}
+        actions={stateBadge}
+        variant={variant}
+      >
+        <HarnessSectionStateFrame>Loading GitHub Actions workflows...</HarnessSectionStateFrame>
+      </HarnessSectionCard>
     );
   }
 
   if (unsupportedMessage) {
     return (
-      <PanelStateFrame variant={variant}>
-        <HarnessUnsupportedState />
-      </PanelStateFrame>
+      <HarnessSectionCard
+        title="CI/CD"
+        description={`Workflow orchestration for ${repoLabel}.`}
+        actions={stateBadge}
+        variant={variant}
+      >
+        <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
+      </HarnessSectionCard>
     );
   }
 
   if (resolvedFlowState.error) {
     return (
-      <PanelStateFrame variant={variant}>
-        <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-6 text-[12px] text-red-700">
-          {resolvedFlowState.error}
-        </div>
-      </PanelStateFrame>
+      <HarnessSectionCard
+        title="CI/CD"
+        description={`Workflow orchestration for ${repoLabel}.`}
+        actions={stateBadge}
+        variant={variant}
+      >
+        <HarnessSectionStateFrame tone="error">{resolvedFlowState.error}</HarnessSectionStateFrame>
+      </HarnessSectionCard>
     );
   }
 
   if (visibleFlows.length === 0) {
     return (
-      <PanelStateFrame variant={variant}>
-        <div className="rounded-[24px] border border-slate-200 bg-white/85 px-4 py-6 text-[12px] text-slate-500">
+      <HarnessSectionCard
+        title="CI/CD"
+        description={`Workflow orchestration for ${repoLabel}.`}
+        actions={stateBadge}
+        variant={variant}
+      >
+        <HarnessSectionStateFrame>
           Select a repository to inspect workflow flows.
-        </div>
-      </PanelStateFrame>
+        </HarnessSectionStateFrame>
+      </HarnessSectionCard>
     );
   }
 
   return (
-    <section className={panelClassName(variant)}>
+    <HarnessSectionCard
+      title="CI/CD"
+      description={`Workflow orchestration for ${repoLabel}.`}
+      actions={stateBadge}
+      variant={variant}
+    >
       <HarnessGitHubActionsFlowGallery
         key={initialCategory ?? "Validation"}
         flows={visibleFlows}
@@ -192,6 +200,6 @@ export function HarnessGitHubActionsFlowPanel({
         variant={variant}
         initialCategory={initialCategory}
       />
-    </section>
+    </HarnessSectionCard>
   );
 }

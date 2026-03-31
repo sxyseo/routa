@@ -8,6 +8,7 @@ import {
   type TreeItem,
 } from "react-complex-tree";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { InstructionsResponse } from "@/client/hooks/use-harness-settings-data";
 
@@ -376,33 +377,38 @@ export function HarnessAgentInstructionsPanel({
     }));
   };
 
+  const headerActions = (
+    <div className="flex flex-wrap gap-2 text-[10px]">
+      <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
+        {repoLabel}
+      </span>
+      {resolvedInstructionsState.data?.fallbackUsed ? (
+        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
+          fallback AGENTS.md
+        </span>
+      ) : resolvedInstructionsState.data ? (
+        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
+          preferred CLAUDE.md
+        </span>
+      ) : null}
+    </div>
+  );
+
+  const rerunUnavailableReason = resolvedInstructionsState.loading
+    ? "Audit is currently running."
+    : unsupportedMessage
+      ? "Current repository is marked unsupported."
+      : null;
+  const rerunButtonDisabled = Boolean(rerunUnavailableReason) || !canRerunAudit;
+
   return (
-    <section className={variant === "compact"
-      ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-      : "rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 p-4 shadow-sm"}
+    <HarnessSectionCard
+      eyebrow="Instruction file"
+      title={resolvedInstructionsState.data?.fileName ?? "CLAUDE.md / AGENTS.md"}
+      actions={headerActions}
+      description={`Governance instruction entry file for ${repoLabel}.`}
+      variant={variant}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Instruction file</div>
-          <h4 className="mt-1 text-sm font-semibold text-desktop-text-primary">
-            {resolvedInstructionsState.data?.fileName ?? "CLAUDE.md / AGENTS.md"}
-          </h4>
-        </div>
-        <div className="flex flex-wrap gap-2 text-[10px]">
-          <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
-            {repoLabel}
-          </span>
-          {resolvedInstructionsState.data?.fallbackUsed ? (
-            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
-              fallback AGENTS.md
-            </span>
-          ) : resolvedInstructionsState.data ? (
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
-              preferred CLAUDE.md
-            </span>
-          ) : null}
-        </div>
-      </div>
 
       {auditSummary ? (
         <div className="mt-3 rounded-xl border border-desktop-border bg-desktop-bg-secondary/50 px-3 py-3">
@@ -415,8 +421,9 @@ export function HarnessAgentInstructionsPanel({
                 <button
                   type="button"
                   onClick={handleRerunAudit}
-                  disabled={resolvedInstructionsState.loading}
+                  disabled={rerunButtonDisabled}
                   aria-busy={resolvedInstructionsState.loading}
+                  title={rerunUnavailableReason ?? "Re-run specialist audit"}
                   className="inline-flex items-center gap-1 rounded-full border border-desktop-accent/40 bg-desktop-accent/12 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-desktop-accent transition-colors hover:bg-desktop-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -425,6 +432,11 @@ export function HarnessAgentInstructionsPanel({
                   </svg>
                   {resolvedInstructionsState.loading ? "Running..." : "Re-run audit"}
                 </button>
+              ) : null}
+              {rerunUnavailableReason ? (
+                <span className="rounded-full border border-desktop-accent/40 bg-desktop-accent/12 px-2 py-1 text-[10px] text-desktop-accent">
+                  {rerunUnavailableReason}
+                </span>
               ) : null}
               <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getAuditStatusClass(auditSummary.status)}`}>
                 {auditSummary.status === "ok"
@@ -497,23 +509,21 @@ export function HarnessAgentInstructionsPanel({
       ) : null}
 
       {resolvedInstructionsState.loading ? (
-        <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-secondary/55 px-4 py-5 text-[11px] text-desktop-text-secondary">
+        <HarnessSectionStateFrame tone="neutral">
           Loading guidance document...
-        </div>
+        </HarnessSectionStateFrame>
       ) : null}
 
       {unsupportedMessage ? (
-        <HarnessUnsupportedState />
+        <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-[11px] text-amber-800" />
       ) : null}
 
       {resolvedInstructionsState.error && !unsupportedMessage ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
-          {resolvedInstructionsState.error}
-        </div>
+        <HarnessSectionStateFrame tone="error">{resolvedInstructionsState.error}</HarnessSectionStateFrame>
       ) : null}
 
       {!resolvedInstructionsState.loading && !resolvedInstructionsState.error && !unsupportedMessage && resolvedInstructionsState.data ? (
-        <div className="mt-4">
+        <div className="mt-3">
           <div className={`grid gap-4 ${contentGridClass}`}>
           <div className={`flex ${contentPanelHeightClass} min-h-0 flex-col`}>
             <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-2 py-2 harness-instructions-tree">
@@ -567,6 +577,6 @@ export function HarnessAgentInstructionsPanel({
           </div>
         </div>
       ) : null}
-    </section>
+    </HarnessSectionCard>
   );
 }
