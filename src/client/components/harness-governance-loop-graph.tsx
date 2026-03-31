@@ -128,6 +128,14 @@ function getNodeToneClasses(tone: LoopTone) {
   }
 }
 
+function getLayerTone(layer: LoopLayer): LoopTone {
+  return layer === "internal"
+    ? "sky"
+    : layer === "commit"
+      ? "violet"
+      : "amber";
+}
+
 function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
   const tone = getNodeToneClasses(data.tone);
   const layerLabel: Record<LoopLayer, string> = {
@@ -389,7 +397,7 @@ function buildGraph(args: {
       nodeId: "thinking",
       layer: "internal",
       title: "需求定义",
-      tone: "neutral",
+      tone: getLayerTone("internal"),
       note: "Spec / 需求边界",
       active: true,
       ...buildSelectionState("thinking", true),
@@ -398,7 +406,7 @@ function buildGraph(args: {
       nodeId: "coding",
       layer: "internal",
       title: "设计决策",
-      tone: "sky",
+      tone: getLayerTone("internal"),
       note: "ADR / 设计取舍",
       active: false,
       unavailableReason: "暂未接入 ADR / 设计决策来源，当前只保留占位阶段。",
@@ -408,7 +416,7 @@ function buildGraph(args: {
       nodeId: "build",
       layer: "internal",
       title: "编码实现",
-      tone: "sky",
+      tone: getLayerTone("internal"),
       note: instructionSummary
         ? `受 ${instructionSummary.fileName} 规范约束`
         : "代码实现 / 约束执行",
@@ -419,7 +427,7 @@ function buildGraph(args: {
       nodeId: "test",
       layer: "internal",
       title: "本地验证",
-      tone: "emerald",
+      tone: getLayerTone("internal"),
       note: "测试 / 回归 / smoke",
       active: true,
       ...buildSelectionState("test", true),
@@ -428,7 +436,7 @@ function buildGraph(args: {
       nodeId: "precommit",
       layer: "commit",
       title: "变更门禁",
-      tone: "sky",
+      tone: getLayerTone("commit"),
       note: metricCount > 0
         ? `${metricCount} metrics / ${hardGateCount} hard gates`
         : hookSummary
@@ -441,7 +449,7 @@ function buildGraph(args: {
       nodeId: "review",
       layer: "commit",
       title: "代码评审",
-      tone: "emerald",
+      tone: getLayerTone("commit"),
       note: "规则策略 / 人工 review",
       active: true,
       ...buildSelectionState("review", true),
@@ -450,7 +458,7 @@ function buildGraph(args: {
       nodeId: "commit",
       layer: "commit",
       title: "主干集成",
-      tone: "neutral",
+      tone: getLayerTone("commit"),
       note: "merge / trunk",
       active: false,
       unavailableReason: "暂未接入 trunk merge / 主干集成信号，当前没有对应上下文面板。",
@@ -460,7 +468,7 @@ function buildGraph(args: {
       nodeId: "post-commit",
       layer: "commit",
       title: "持续交付",
-      tone: "violet",
+      tone: getLayerTone("commit"),
       note: workflowSummary
         ? `${workflowSummary.flowCount} flows / ${workflowSummary.jobCount} jobs`
         : "CI/CD / 自动交付",
@@ -471,7 +479,7 @@ function buildGraph(args: {
       nodeId: "release",
       layer: "external",
       title: "制品发布",
-      tone: "amber",
+      tone: getLayerTone("external"),
       note: workflowSummary && workflowSummary.releaseFlowCount > 0
         ? `${workflowSummary.releaseFlowCount} release flows`
         : "artifact / release",
@@ -485,7 +493,7 @@ function buildGraph(args: {
       nodeId: "staging",
       layer: "external",
       title: "预生产验证",
-      tone: "violet",
+      tone: getLayerTone("external"),
       note: "预发验收 / smoke",
       active: false,
       unavailableReason: "暂未接入 staging / 预发验证信号，当前没有可展示的验证面板。",
@@ -495,7 +503,7 @@ function buildGraph(args: {
       nodeId: "production",
       layer: "external",
       title: "生产运行",
-      tone: "amber",
+      tone: getLayerTone("external"),
       note: "真实流量 / 运行状态",
       active: false,
       unavailableReason: "暂未接入 production runtime / 真实流量信号，当前没有运行时上下文。",
@@ -505,7 +513,7 @@ function buildGraph(args: {
       nodeId: "metrics",
       layer: "external",
       title: "监控演进",
-      tone: "emerald",
+      tone: getLayerTone("external"),
       note: "监控 / 反馈闭环",
       active: false,
       unavailableReason: "暂未接入 observability / 反馈闭环信号，当前没有监控与回流数据。",
@@ -788,21 +796,12 @@ export function HarnessGovernanceLoopGraph({
       {hasContext && !unsupportedMessage ? (
         <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="relative overflow-hidden rounded-2xl border border-desktop-border bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.98))]">
-              <div className="pointer-events-none absolute inset-0">
-                <div className="absolute left-[14px] right-[14px] top-[38px] h-[164px] rounded-[40px] border border-emerald-300/70 bg-emerald-50/35" />
-                <div className="absolute left-[14px] right-[14px] top-[208px] h-[164px] rounded-[40px] border border-sky-300/70 bg-sky-50/35" />
-                <div className="absolute left-[14px] right-[14px] top-[380px] h-[164px] rounded-[40px] border border-violet-300/65 bg-violet-50/35" />
-
-                <div className="absolute left-[42px] top-[54px] max-w-[180px] text-left text-slate-600">
-                  <div className="text-[11px] font-semibold tracking-[0.06em]">内部反馈环</div>
-                </div>
-
-                <div className="absolute left-[42px] top-[220px] max-w-[180px] text-left text-slate-600">
-                  <div className="text-[11px] font-semibold tracking-[0.06em]">推送反馈环</div>
-                </div>
-
-                <div className="absolute left-[42px] top-[392px] max-w-[180px] text-left text-slate-600">
-                  <div className="text-[11px] font-semibold tracking-[0.06em]">外部反馈环</div>
+              <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-xl border border-desktop-border bg-white/90 px-3 py-2 text-[11px] text-slate-700 shadow-sm">
+                <div className="mb-1 font-semibold tracking-[0.08em] text-desktop-text-secondary">图注</div>
+                <div className="flex flex-col gap-1 text-[10px] font-medium">
+                  <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />内部反馈环</div>
+                  <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-500" />推送反馈环</div>
+                  <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />外部反馈环</div>
                 </div>
               </div>
               <div style={{ height: graph.minHeight }}>
