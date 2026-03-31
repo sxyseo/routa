@@ -25,6 +25,11 @@ type InstructionsState = {
   data: InstructionsResponse | null;
 };
 
+type LocalRefreshState = {
+  contextKey: string;
+  token: number;
+};
+
 type HarnessAgentInstructionsPanelProps = {
   workspaceId: string;
   codebaseId?: string;
@@ -197,8 +202,12 @@ export function HarnessAgentInstructionsPanel({
     error: null,
     data: null,
   });
-  const [localRefreshToken, setLocalRefreshToken] = useState(0);
+  const [localRefreshState, setLocalRefreshState] = useState<LocalRefreshState>({
+    contextKey: "",
+    token: 0,
+  });
   const [selectedSectionId, setSelectedSectionId] = useState("");
+  const localContextKey = `${workspaceId}:${codebaseId ?? "repo-only"}:${repoPath ?? ""}`;
 
   useEffect(() => {
     if (hasExternalState) {
@@ -230,8 +239,11 @@ export function HarnessAgentInstructionsPanel({
           query.set("codebaseId", codebaseId);
         }
         query.set("repoPath", repoPath);
-        // Disable audit by default - it requires a configured provider and can cause long delays
-        query.set("includeAudit", "0");
+        const includeAudit = (
+          localRefreshState.contextKey === localContextKey &&
+          localRefreshState.token > 0
+        );
+        query.set("includeAudit", includeAudit ? "1" : "0");
 
         const response = await fetch(`/api/harness/instructions?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
@@ -266,7 +278,7 @@ export function HarnessAgentInstructionsPanel({
     return () => {
       cancelled = true;
     };
-  }, [codebaseId, hasExternalState, localRefreshToken, repoPath, workspaceId]);
+  }, [codebaseId, hasExternalState, localContextKey, localRefreshState, repoPath, workspaceId]);
 
   const resolvedInstructionsState = hasExternalState
     ? {
@@ -358,7 +370,10 @@ export function HarnessAgentInstructionsPanel({
     if (!workspaceId || !repoPath) {
       return;
     }
-    setLocalRefreshToken((current) => current + 1);
+    setLocalRefreshState((current) => ({
+      contextKey: localContextKey,
+      token: current.contextKey === localContextKey ? current.token + 1 : 1,
+    }));
   };
 
   return (

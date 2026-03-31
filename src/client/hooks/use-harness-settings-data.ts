@@ -210,6 +210,11 @@ type HarnessSettingsDataArgs = {
   selectedTier: TierValue;
 };
 
+type InstructionRefreshState = {
+  contextKey: string;
+  token: number;
+};
+
 function buildHarnessQuery(workspaceId: string, codebaseId?: string, repoPath?: string) {
   const query = new URLSearchParams();
   query.set("workspaceId", workspaceId);
@@ -249,7 +254,11 @@ export function useHarnessSettingsData({
   const [githubActionsState, setGithubActionsState] = useState<QueryState<GitHubActionsFlowsResponse>>(emptyQueryState);
   const [agentHooksState, setAgentHooksState] = useState<QueryState<AgentHooksResponse>>(emptyQueryState);
   const [specSourcesState, setSpecSourcesState] = useState<QueryState<SpecDetectionResponse>>(emptyQueryState);
-  const [instructionsRefreshToken, setInstructionsRefreshToken] = useState(0);
+  const [instructionsRefreshState, setInstructionsRefreshState] = useState<InstructionRefreshState>({
+    contextKey: "",
+    token: 0,
+  });
+  const instructionsContextKey = baseQuery?.toString() ?? "";
 
   useEffect(() => {
     if (!baseQuery) {
@@ -369,7 +378,7 @@ export function useHarnessSettingsData({
     return () => {
       cancelled = true;
     };
-  }, [baseQuery, instructionsRefreshToken]);
+  }, [baseQuery]);
 
   useEffect(() => {
     if (!baseQuery) {
@@ -382,8 +391,11 @@ export function useHarnessSettingsData({
       setInstructionsState((current) => ({ ...current, loading: true, error: null }));
       try {
         const query = new URLSearchParams(baseQuery);
-        // Disable audit by default - it requires a configured provider and can cause long delays
-        query.set("includeAudit", "0");
+        const includeAudit = (
+          instructionsRefreshState.contextKey === instructionsContextKey &&
+          instructionsRefreshState.token > 0
+        );
+        query.set("includeAudit", includeAudit ? "1" : "0");
         const response = await fetch(`/api/harness/instructions?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -411,7 +423,7 @@ export function useHarnessSettingsData({
     return () => {
       cancelled = true;
     };
-  }, [baseQuery]);
+  }, [baseQuery, instructionsContextKey, instructionsRefreshState]);
 
   useEffect(() => {
     if (!baseQuery) {
@@ -492,8 +504,11 @@ export function useHarnessSettingsData({
   }, [baseQuery]);
 
   const reloadInstructions = useCallback(() => {
-    setInstructionsRefreshToken((current) => current + 1);
-  }, []);
+    setInstructionsRefreshState((current) => ({
+      contextKey: instructionsContextKey,
+      token: current.contextKey === instructionsContextKey ? current.token + 1 : 1,
+    }));
+  }, [instructionsContextKey]);
 
   useEffect(() => {
     if (!baseQuery) {

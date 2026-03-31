@@ -80,6 +80,7 @@ type LoopNodeData = {
   tone: LoopTone;
   note?: string;
   active?: boolean;
+  unavailableReason?: string;
   selected?: boolean;
   onSelect?: () => void;
   onNavigate?: (direction: "up" | "down" | "left" | "right") => void;
@@ -135,6 +136,7 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
     external: "外部反馈环",
   };
   const interactive = typeof data.onSelect === "function";
+  const unavailable = !interactive && Boolean(data.unavailableReason);
   const selectedClasses = data.selected
     ? "ring-2 ring-desktop-accent/70 ring-offset-2 ring-offset-white"
     : "";
@@ -153,8 +155,8 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
         type="button"
         data-governance-node-id={data.nodeId}
         aria-pressed={data.selected}
-        aria-label={`${layerLabel[data.layer]} ${data.title}${data.note ? `，${data.note}` : ""}`}
-        disabled={!interactive}
+        aria-disabled={!interactive}
+        aria-label={`${layerLabel[data.layer]} ${data.title}${data.note ? `，${data.note}` : ""}${data.unavailableReason ? `，当前不可用：${data.unavailableReason}` : ""}`}
         onClick={(event) => {
           if (!interactive) {
             return;
@@ -192,12 +194,17 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
             <div className={`mt-1 text-[13px] font-semibold ${data.active ? "text-desktop-text-primary" : "text-slate-500"}`}>{data.title}</div>
           </div>
           <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${data.active ? tone.badge : "border-slate-200 bg-slate-50 text-slate-400"}`}>
-            阶段
+            {unavailable ? "Unavailable" : "阶段"}
           </span>
         </div>
         {data.note ? (
           <div className={`mt-2 text-[10px] leading-4 ${data.active ? "text-desktop-text-secondary" : "text-slate-400"}`}>
             {data.note}
+          </div>
+        ) : null}
+        {data.unavailableReason ? (
+          <div className="mt-2 rounded-xl border border-dashed border-slate-200 bg-white/70 px-2.5 py-2 text-[10px] leading-4 text-slate-500">
+            {data.unavailableReason}
           </div>
         ) : null}
       </button>
@@ -383,6 +390,7 @@ function buildGraph(args: {
       tone: "sky",
       note: "ADR / 设计取舍",
       active: false,
+      unavailableReason: "暂未接入 ADR / 设计决策来源，当前只保留占位阶段。",
       ...buildSelectionState("coding", false),
     }),
     buildNode("build", col3X, internalRowY, {
@@ -434,6 +442,7 @@ function buildGraph(args: {
       tone: "neutral",
       note: "merge / trunk",
       active: false,
+      unavailableReason: "暂未接入 trunk merge / 主干集成信号，当前没有对应上下文面板。",
       ...buildSelectionState("commit", false),
     }),
     buildNode("post-commit", col1X, commitRowY, {
@@ -456,7 +465,10 @@ function buildGraph(args: {
         ? `${workflowSummary.releaseFlowCount} release flows`
         : "artifact / release",
       active: Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0),
-      ...buildSelectionState("release", true),
+      unavailableReason: workflowSummary && workflowSummary.releaseFlowCount > 0
+        ? undefined
+        : "仓库未检测到 release / publish workflow，暂时无法进入发布上下文。",
+      ...buildSelectionState("release", Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0)),
     }),
     buildNode("staging", col2X, externalRowY, {
       nodeId: "staging",
@@ -465,6 +477,7 @@ function buildGraph(args: {
       tone: "violet",
       note: "预发验收 / smoke",
       active: false,
+      unavailableReason: "暂未接入 staging / 预发验证信号，当前没有可展示的验证面板。",
       ...buildSelectionState("staging", false),
     }),
     buildNode("production", col3X, externalRowY, {
@@ -474,6 +487,7 @@ function buildGraph(args: {
       tone: "amber",
       note: "真实流量 / 运行状态",
       active: false,
+      unavailableReason: "暂未接入 production runtime / 真实流量信号，当前没有运行时上下文。",
       ...buildSelectionState("production", false),
     }),
     buildNode("metrics", col4X, externalRowY, {
@@ -483,6 +497,7 @@ function buildGraph(args: {
       tone: "emerald",
       note: "监控 / 反馈闭环",
       active: false,
+      unavailableReason: "暂未接入 observability / 反馈闭环信号，当前没有监控与回流数据。",
       ...buildSelectionState("metrics", false),
     }),
   ];
@@ -632,7 +647,7 @@ function buildDetailSections(args: {
       ] satisfies LoopDetailSection[];
     default:
       return [
-        { title: "Current page signals", items: ["亮色节点可点击，灰色节点表示当前没有对应 panel", "点击 `编码实现`、`本地验证`、`变更门禁`、`代码评审`、`持续交付` 或 `制品发布` 查看上下文"] },
+        { title: "Current page signals", items: ["亮色节点可点击，Unavailable 节点会直接说明缺失的信号或面板", "点击 `编码实现`、`本地验证`、`变更门禁`、`代码评审`、`持续交付` 或 `制品发布` 查看上下文"] },
         { title: "Connected panels", items: ["Instruction file", "Execution plan", "Review triggers", "GitHub Actions flow", "Repo signals"] },
       ] satisfies LoopDetailSection[];
   }

@@ -168,8 +168,21 @@ vi.mock("@/client/components/harness-execution-plan-flow", () => ({
 }));
 
 vi.mock("@/client/components/harness-agent-instructions-panel", () => ({
-  HarnessAgentInstructionsPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
-    <div data-testid={`instruction-panel-${variant}`}>Instruction file</div>
+  HarnessAgentInstructionsPanel: ({
+    variant = "full",
+    onAuditRerun,
+  }: {
+    variant?: "full" | "compact";
+    onAuditRerun?: () => void;
+  }) => (
+    <div data-testid={`instruction-panel-${variant}`}>
+      <span>Instruction file</span>
+      {onAuditRerun ? (
+        <button type="button" onClick={onAuditRerun}>
+          rerun-audit-{variant}
+        </button>
+      ) : null}
+    </div>
   ),
 }));
 
@@ -268,6 +281,7 @@ describe("HarnessSettingsPage", () => {
   beforeEach(() => {
     repoPickerMock.mockReset();
     window.localStorage.clear();
+    mockHarnessSettingsData.reloadInstructions.mockClear();
     mockHarnessSettingsData.specSourcesState = {
       loading: false,
       error: null,
@@ -286,6 +300,14 @@ describe("HarnessSettingsPage", () => {
     expect(screen.getAllByText("Instruction file")).toHaveLength(2);
     expect(screen.getByTestId("instruction-panel-full")).not.toBeNull();
     expect(screen.getByTestId("instruction-panel-compact")).not.toBeNull();
+  });
+
+  it("wires the instruction audit rerun action to harness data reload", () => {
+    render(<HarnessSettingsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "rerun-audit-full" }));
+
+    expect(mockHarnessSettingsData.reloadInstructions).toHaveBeenCalledTimes(1);
   });
 
   it("switches the governance context to the release GitHub Actions view", () => {
