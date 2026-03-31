@@ -71,19 +71,68 @@ function parseJsonLoose(value: string): SpecialistResponse {
   const trimmed = value.trim();
   if (!trimmed) return {};
 
+  // Strategy 1: Try direct parse
   try {
     return JSON.parse(trimmed) as SpecialistResponse;
   } catch {
-    const fenceStripped = trimmed
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/, "");
-    try {
-      return JSON.parse(fenceStripped) as SpecialistResponse;
-    } catch {
-      return {};
+    // Continue to other strategies
+  }
+
+  // Strategy 2: Try stripping markdown code fences
+  const fenceStripped = trimmed
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/, "");
+  try {
+    return JSON.parse(fenceStripped) as SpecialistResponse;
+  } catch {
+    // Continue to other strategies
+  }
+
+  // Strategy 3: Try to find ALL JSON blocks in markdown fences and use the LAST one
+  // This handles cases where AI shows example format first, then real response
+  const allFenceMatches = Array.from(trimmed.matchAll(/```json\s*\n?([\s\S]*?)\n?```/gi));
+  if (allFenceMatches.length > 0) {
+    // Try from last to first
+    for (let i = allFenceMatches.length - 1; i >= 0; i--) {
+      const match = allFenceMatches[i];
+      if (match && match[1]) {
+        try {
+          return JSON.parse(match[1]) as SpecialistResponse;
+        } catch {
+          // Continue to next match
+        }
+      }
     }
   }
+
+  // Strategy 4: Try to find the LAST valid JSON object
+  // Search from end to find matching brace pairs
+  for (let end = trimmed.length - 1; end >= 0; end--) {
+    if (trimmed[end] === "}") {
+      // Found a closing brace, now find its matching opening brace
+      let depth = 1;
+      for (let start = end - 1; start >= 0; start--) {
+        if (trimmed[start] === "}") depth++;
+        if (trimmed[start] === "{") {
+          depth--;
+          if (depth === 0) {
+            // Found matching pair
+            const candidate = trimmed.slice(start, end + 1);
+            try {
+              return JSON.parse(candidate) as SpecialistResponse;
+            } catch {
+              // This pair didn't work, continue searching
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: return empty object
+  return {};
 }
 
 function loadSpecialistDefinition(specialistId: string): {
