@@ -14,7 +14,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
 import { HarnessMark } from "./harness-mark";
-import { ChevronLeft, CircleUser, Columns2, LayoutGrid, Settings, Server, Calendar, Workflow, House, Share2 } from "lucide-react";
+import { ChevronLeft, CircleUser, Columns2, LayoutGrid, Settings, Server, Calendar, Workflow, House, Share2, MonitorUp, Monitor } from "lucide-react";
 
 
 interface NavItem {
@@ -122,9 +122,7 @@ export function DesktopSidebar({
       label: t.nav.fluency,
       href: settingsFluencyHref,
       icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1115 0m-7.5 0v5.25m0-5.25l3.25-3.25m-3.25 3.25L8.75 8.75" />
-        </svg>
+        <MonitorUp className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
     {
@@ -159,9 +157,7 @@ export function DesktopSidebar({
       label: t.nav.debug,
       href: "/traces",
       icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
-        </svg>
+        <Monitor className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
   ];

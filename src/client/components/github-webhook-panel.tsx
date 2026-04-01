@@ -13,7 +13,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
-import { Plus, RefreshCw, SquarePen, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, SquarePen, Trash2, Link2, Circle, CircleOff } from "lucide-react";
 
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -528,9 +528,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4">
-        <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-        </svg>
+        <Link2 className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       </div>
       <h3 className="text-base font-medium text-slate-900 dark:text-slate-100 mb-1">No webhook triggers configured</h3>
       <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mb-4">
@@ -806,13 +804,9 @@ function WebhookConfigCard({ config, onEdit, onDelete, onRegister, onToggle, reg
           className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
         >
           {config.enabled ? (
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636a9 9 0 1012.728 12.728M5.636 5.636A9 9 0 0118.364 18.364M5.636 5.636L18.364 18.364" />
-            </svg>
+            <CircleOff className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           ) : (
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <circle cx="12" cy="12" r="9" />
-            </svg>
+            <Circle className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           )}
         </button>
       </div>

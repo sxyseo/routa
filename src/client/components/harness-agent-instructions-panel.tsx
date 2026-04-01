@@ -11,6 +11,8 @@ import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { InstructionsResponse } from "@/client/hooks/use-harness-settings-data";
+import { RefreshCw } from "lucide-react";
+
 
 type InstructionSection = {
   id: string;
@@ -427,10 +429,7 @@ export function HarnessAgentInstructionsPanel({
                   title={rerunUnavailableReason ?? "Re-run specialist audit"}
                   className="inline-flex items-center gap-1 rounded-full border border-desktop-accent/40 bg-desktop-accent/12 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-desktop-accent transition-colors hover:bg-desktop-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <path d="M16 10a6 6 0 10-1.76 4.24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                    <path d="M16 6.5V10h-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  <RefreshCw className="h-3 w-3" viewBox="0 0 20 20" fill="none" aria-hidden="true"/>
                   {resolvedInstructionsState.loading ? "Running..." : "Re-run audit"}
                 </button>
               ) : null}

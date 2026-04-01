@@ -14,7 +14,7 @@ import { desktopAwareFetch } from "../utils/diagnostics";
 import { createPortal } from "react-dom";
 import { BranchSelector } from "./branch-selector";
 import { useTranslation } from "@/i18n";
-import { Check, Download, PieChart, Search, X, GitBranch, Book, Folder } from "lucide-react";
+import { Check, Download, PieChart, Search, X, GitBranch, Book, Folder, RefreshCcw } from "lucide-react";
 
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -966,10 +966,7 @@ function SearchIcon() {
 
 function ResetIcon() {
   return (
-    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v5h5" />
-    </svg>
+    <RefreshCcw className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
   );
 }
 

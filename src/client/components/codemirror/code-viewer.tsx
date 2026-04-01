@@ -39,7 +39,7 @@ import {
   subscribeToThemePreference,
   type ResolvedTheme,
 } from "@/client/utils/theme";
-import { Check, ChevronDown, FileText } from "lucide-react";
+import { Check, ChevronDown, FileText, Copy, ChevronUp } from "lucide-react";
 
 
 hljs.registerLanguage("bash", bashLang);
@@ -342,10 +342,7 @@ export function CodeViewer({
                 {copied ? (
                   <Check className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                 ) : (
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
+                  <Copy className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                 )}
               </button>
             )}
@@ -359,9 +356,7 @@ export function CodeViewer({
                 {collapsed ? (
                   <ChevronDown className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                 ) : (
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-                  </svg>
+                  <ChevronUp className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                 )}
               </button>
             )}

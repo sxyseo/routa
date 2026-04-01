@@ -8,7 +8,7 @@ import {
   normalizeGitHubWorkflowEventTokens,
   type GitHubWorkflowCategory,
 } from "@/core/github/workflow-classifier";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Bot, Check, Download, RefreshCcw, X } from "lucide-react";
 
 
 type HarnessGitHubActionsFlowGalleryProps = {
@@ -156,27 +156,19 @@ function CategoryIcon({ category }: { category: WorkflowCategoryKey }) {
   switch (category) {
     case "Validation":
       return (
-        <svg {...commonProps}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12.5 9.25 17 19 7.5" />
-        </svg>
+        <Check {...commonProps} />
       );
     case "Release":
       return (
-        <svg {...commonProps}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v10m0 0 4-4m-4 4-4-4M5 19h14" />
-        </svg>
+        <Download {...commonProps} />
       );
     case "Automation":
       return (
-        <svg {...commonProps}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v4M15 17v4M5.5 6.5l2.8 2.8M15.7 14.7l2.8 2.8M3 12h4m10 0h4M5.5 17.5l2.8-2.8m7.4-5.4 2.8-2.8M15 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm0 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-        </svg>
+        <Bot {...commonProps} />
       );
     case "Maintenance":
       return (
-        <svg {...commonProps}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6.5 8 4l2.5-2.5M13.5 17.5 16 20l-2.5 2.5M6 7.5A7 7 0 0 1 18 12M18 16.5A7 7 0 0 1 6 12" />
-        </svg>
+        <RefreshCcw {...commonProps} />
       );
   }
 }
@@ -639,9 +631,7 @@ function WorkflowDetailDialog({
               onClick={onClose}
               className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
-              </svg>
+              <X className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
             </button>
           </div>
         </div>

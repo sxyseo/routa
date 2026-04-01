@@ -18,7 +18,7 @@ import {
   type TeamTaskNode,
   type SessionLaneItem,
 } from "./team-run-page-model";
-import { Check } from "lucide-react";
+import { Check, Eye, Info } from "lucide-react";
 
 
 export function ObjectiveSidebarSection({
@@ -317,19 +317,14 @@ function TaskStatusGlyph({ status }: { status: NormalizedTaskStatus }) {
   if (status === "waiting-review") {
     return (
       <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12S5.25 6.75 12 6.75 21.75 12 21.75 12 18.75 17.25 12 17.25 2.25 12 2.25 12z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
-        </svg>
+        <Eye className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </div>
     );
   }
   if (status === "blocked") {
     return (
       <div className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 4.5h.008v.008H12v-.008z" />
-        </svg>
+        <Info className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </div>
     );
   }

@@ -26,7 +26,7 @@ import {
 import {TracePanel} from "@/client/components/trace-panel";
 import type {WorkspaceData, CodebaseData} from "../hooks/use-workspaces";
 import {getFileChangesSummary} from "../utils/file-changes-tracker";
-import { TriangleAlert, X } from "lucide-react";
+import { TriangleAlert, X, KeyRound } from "lucide-react";
 
 
 // ─── Message Types ─────────────────────────────────────────────────────
@@ -440,9 +440,7 @@ export function ChatPanel({
                         key={method.id}
                         className="flex items-start gap-2 p-2 rounded-md bg-amber-100/50 dark:bg-amber-800/20"
                       >
-                        <svg className="w-4 h-4 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                        </svg>
+                        <KeyRound className="w-4 h-4 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                         <div className="min-w-0">
                           <div className="text-xs font-medium text-amber-800 dark:text-amber-200">
                             {method.name}

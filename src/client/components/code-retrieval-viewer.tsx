@@ -14,7 +14,7 @@
 
 import { useState, useMemo } from "react";
 import { CodeBlock } from "./code-block";
-import { ChevronRight, FileText } from "lucide-react";
+import { ChevronRight, FileText, ChevronDown } from "lucide-react";
 
 
 interface CodeSection {
@@ -209,17 +209,7 @@ export function CodeRetrievalViewer({
                     </span>
                   )}
                 </div>
-                <svg
-                  className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${
-                    selectedSection === index ? "rotate-180" : ""
-                  }`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7 7" />
-                </svg>
+                <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${selectedSection === index ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
               </button>
 
               {/* Code content */}

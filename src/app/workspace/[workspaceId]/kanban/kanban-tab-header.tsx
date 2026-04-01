@@ -2,7 +2,7 @@ import { useTranslation } from "@/i18n";
 import { Select } from "@/client/components/select";
 import { QueueStatusBadge } from "./kanban-tab-helpers";
 import type { KanbanBoardInfo } from "../types";
-import { Columns2 } from "lucide-react";
+import { Columns2, RefreshCw } from "lucide-react";
 
 
 interface KanbanTabHeaderProps {
@@ -105,9 +105,7 @@ export function KanbanTabHeader({
             className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-[#1f232f] dark:hover:text-slate-200"
             title={t.common.refresh}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.581m15.356 2A8.001 8.001 0 004.581 9m0 0H9m11 11v-5h-.582m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <RefreshCw className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           </button>
         </div>
       </div>

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import type { LaneHandoffInfo, LaneSessionInfo, SessionKanbanContext } from "@/client/types/kanban-context";
 import { desktopAwareFetch, shouldSuppressTeardownError } from "../utils/diagnostics";
 import { useTranslation } from "@/i18n";
-import { SquarePen, Trash2, Zap, ArrowUp, ArrowDown } from "lucide-react";
+import { SquarePen, Trash2, Zap, ArrowUp, ArrowDown, FileText, GitBranch, ArrowUpDown } from "lucide-react";
 
 
 interface SessionInfo {
@@ -354,15 +354,7 @@ export function SessionContextPanel({
       {context.kanbanContext && (
         <div className="border-b border-slate-100 dark:border-slate-800">
           <div className="px-3 py-2 flex items-center gap-1.5">
-            <svg
-              className="w-3.5 h-3.5 text-emerald-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h8m-8 5h5m-5 5h8M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
-            </svg>
+            <FileText className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               {t.sessions.kanbanStory}
             </span>
@@ -487,15 +479,7 @@ export function SessionContextPanel({
       {hasHierarchy && (
         <div className="border-b border-slate-100 dark:border-slate-800">
           <div className="px-3 py-2 flex items-center gap-1.5">
-            <svg
-              className="w-3.5 h-3.5 text-slate-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
+            <GitBranch className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               {t.sessions.hierarchy}
             </span>
@@ -518,9 +502,7 @@ export function SessionContextPanel({
             {context.siblings.length > 0 && (
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5 px-2 py-1">
-                  <svg className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                  </svg>
+                  <ArrowUpDown className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">
                     {context.siblings.length} Sibling Session{context.siblings.length > 1 ? "s" : ""}
                   </span>

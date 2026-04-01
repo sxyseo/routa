@@ -16,7 +16,7 @@ import { CodeEditor } from "@/client/components/codemirror";
 import { DashboardCard, AgentRoleIcon, AgentStatusDot } from "./ui-components";
 import type { NoteData } from "@/client/hooks/use-notes";
 import type { SessionInfo, BackgroundTaskInfo, TaskInfo, TraceInfo } from "./types";
-import { Columns2, LayoutGrid, Plus, X, CodeXml, Download, CircleUser, ChartColumn } from "lucide-react";
+import { Columns2, LayoutGrid, Plus, X, CodeXml, Download, CircleUser, ChartColumn, Monitor } from "lucide-react";
 
 
 interface OverviewA2UITabProps {
@@ -361,9 +361,7 @@ export function OverviewA2UITab({
                 title: t.a2ui.timeline,
                 description: t.a2ui.timelineDesc,
                 icon: (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
-                  </svg>
+                  <Monitor className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
                 ),
                 accent: "text-emerald-500 dark:text-emerald-400",
                 bg: "bg-emerald-50 dark:bg-emerald-900/20",

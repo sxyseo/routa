@@ -13,7 +13,7 @@ import {
   KANBAN_SPECIALIST_LANGUAGE_LABELS,
   type KanbanSpecialistLanguage,
 } from "./kanban-specialist-language";
-import { Trash2 } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 
 
 interface SpecialistOption {
@@ -260,9 +260,7 @@ export function KanbanCard({
         title={t.kanban.dragCard}
         aria-label={t.kanban.dragCard}
       >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6h.01M14 6h.01M10 12h.01M14 12h.01M10 18h.01M14 18h.01" />
-        </svg>
+        <GripVertical className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </div>
 
       <button

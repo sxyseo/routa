@@ -6,7 +6,7 @@ import { ModelDropdown } from "./model-dropdown";
 import { RepoPicker } from "../../repo-picker";
 import { Select } from "../../select";
 import type { SetupViewProps } from "../types";
-import { Sparkles } from "lucide-react";
+import { Sparkles, ArrowRight } from "lucide-react";
 
 
 export function SetupView({
@@ -88,9 +88,7 @@ export function SetupView({
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               开始
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-              </svg>
+              <ArrowRight className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
             </button>
           </div>
         </div>

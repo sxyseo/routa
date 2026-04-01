@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "./button";
 import type { WorkspaceData } from "../hooks/use-workspaces";
 import { useTranslation } from "@/i18n";
-import { ChevronDown, Folder, Plus } from "lucide-react";
+import { ChevronDown, Folder, Plus, Check } from "lucide-react";
 
 
 interface WorkspaceSwitcherProps {
@@ -105,9 +105,7 @@ export function WorkspaceSwitcher({
                   <Folder className="w-3 h-3 shrink-0 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   <span className="truncate flex-1">{ws.title}</span>
                   {ws.id === activeWorkspaceId && (
-                    <svg className="w-3 h-3 shrink-0 text-desktop-accent" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
+                    <Check className="w-3 h-3 shrink-0 text-desktop-accent" fill="currentColor" viewBox="0 0 20 20"/>
                   )}
                 </Button>
               ))}
@@ -194,9 +192,7 @@ export function WorkspaceSwitcher({
                 <Folder className="w-3.5 h-3.5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                 <span className="truncate flex-1">{ws.title}</span>
                 {ws.id === activeWorkspaceId && (
-                  <svg className="w-3 h-3 text-blue-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
+                  <Check className="w-3 h-3 text-blue-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"/>
                 )}
               </Button>
             ))}

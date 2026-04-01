@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { Button } from "./button";
-import { Check, ChevronDown, Download, RefreshCw, Search, GitBranch } from "lucide-react";
+import { Check, ChevronDown, Download, RefreshCw, Search, GitBranch, Globe } from "lucide-react";
 
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -393,9 +393,7 @@ function BranchItem({
         <Check className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}/>
       )}
       {isRemote && (
-        <svg className="w-2.5 h-2.5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
+        <Globe className="w-2.5 h-2.5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
       )}
       <span className="truncate font-mono">{branch}</span>
     </Button>

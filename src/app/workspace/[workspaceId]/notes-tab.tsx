@@ -5,7 +5,7 @@ import { useTranslation } from "@/i18n";
 import { formatRelativeTime } from "./ui-components";
 import type { NoteData } from "@/client/hooks/use-notes";
 import type { SessionInfo } from "./types";
-import { ChevronRight, Plus, Trash2, NotebookText } from "lucide-react";
+import { ChevronRight, Plus, Trash2, NotebookText, SquarePen } from "lucide-react";
 
 
 type NotesTabProps = {
@@ -172,9 +172,7 @@ export function NotesTab({
                   <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono shrink-0 w-12 text-right">{formatRelativeTime(note.updatedAt)}</span>
                   <button onClick={() => { setEditingNoteId(note.id); setEditForm({ title: note.title, content: note.content }); setExpandedNote(note.id); }}
                     className="p-1 rounded hover:bg-slate-100 dark:hover:bg-[#191c28] text-slate-400 hover:text-slate-600 transition-colors shrink-0">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
-                    </svg>
+                    <SquarePen className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   </button>
                   <button onClick={() => handleDelete(note.id)} disabled={deletingNoteId === note.id}
                     className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 transition-colors disabled:opacity-50 shrink-0">

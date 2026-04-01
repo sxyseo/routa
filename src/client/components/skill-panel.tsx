@@ -17,7 +17,7 @@ import { useSkills, type UseSkillsState, type UseSkillsActions, type CatalogType
 import type { SkillsShSkill, GithubCatalogSkill } from "../skill-client";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
 import { useTranslation } from "@/i18n";
-import { ChevronRight, Download, PieChart, Search, X, CircleCheck } from "lucide-react";
+import { ChevronRight, Download, PieChart, Search, X, CircleCheck, Lightbulb, Upload } from "lucide-react";
 
 
 interface SkillPanelProps {
@@ -79,9 +79,7 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
           className="flex items-center gap-1.5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
         >
           <ChevronRight className={`w-3 h-3 text-slate-400 transition-transform ${collapsed ? "" : "rotate-90"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-          <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
+          <Lightbulb className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.story.skills}</span>
           {allDisplaySkills.length > 0 && (
             <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
@@ -995,9 +993,7 @@ function SkillUploadModal({
               </div>
             ) : (
               <div>
-                <svg className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                </svg>
+                <Upload className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
                   Drop a .zip file here or click to browse
                 </div>

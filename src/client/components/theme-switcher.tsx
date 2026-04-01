@@ -12,6 +12,8 @@ import {
   type ResolvedTheme,
   type ThemePreference,
 } from "../utils/theme";
+import { Moon, Sun } from "lucide-react";
+
 
 interface ThemeSwitcherProps {
   showLabel?: boolean;
@@ -59,21 +61,9 @@ export function ThemeSwitcher({ showLabel = false, compact = false, className = 
       >
         <span className="flex items-center gap-1.5">
           {nextTheme === "light" ? (
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 3v2.25M12 18.75V21M4.72 4.72l1.59 1.59M17.69 17.69l1.59 1.59M3 12h2.25M18.75 12H21M4.72 19.28l1.59-1.59M17.69 6.31l1.59-1.59M15.75 12A3.75 3.75 0 118.25 12a3.75 3.75 0 017.5 0z"
-              />
-            </svg>
+            <Sun className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
           ) : (
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 12.79A9 9 0 1111.21 3c-.04.3-.06.6-.06.91A7.5 7.5 0 0018.09 11c.31 0 .61-.02.91-.06z"
-              />
-            </svg>
+            <Moon className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
           )}
           {!compact ? <span>{label}</span> : null}
         </span>

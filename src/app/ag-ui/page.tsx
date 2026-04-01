@@ -16,7 +16,7 @@ import Link from "next/link";
 import { v4 as uuidv4 } from "uuid";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { Select } from "@/client/components/select";
-import { ChevronLeft, X } from "lucide-react";
+import { ChevronLeft, X, MessageSquare, RefreshCw } from "lucide-react";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -780,9 +780,7 @@ export default function AGUIPage() {
           >
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-600">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12 mb-3 opacity-50">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
+                <MessageSquare viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12 mb-3 opacity-50"/>
                 <p className="text-sm font-medium">
                   Send a message to test the {protocolMode === "ag-ui" ? "AG-UI" : "ACP"} protocol
                 </p>
@@ -886,12 +884,7 @@ export default function AGUIPage() {
             onClick={() => setShowEvents(true)}
             className="fixed bottom-6 right-6 rounded-full bg-blue-500 hover:bg-blue-600 text-white p-3 shadow-lg transition-all hover:scale-105"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <polyline points="17 1 21 5 17 9" />
-              <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-              <polyline points="7 23 3 19 7 15" />
-              <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-            </svg>
+            <RefreshCw viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"/>
           </button>
         )}
       </main>

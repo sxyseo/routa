@@ -11,7 +11,7 @@ import {
   PROVIDER_DISPLAY_PREFERENCES_CHANGED_EVENT,
   saveProviderDisplayPreferences,
 } from "../utils/custom-acp-providers";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, GripVertical } from "lucide-react";
 
 
 interface AcpProviderDropdownProps {
@@ -343,9 +343,7 @@ export function AcpProviderDropdown({
                             checked ? "cursor-grab hover:bg-slate-100 dark:hover:bg-slate-800" : "cursor-not-allowed opacity-40"
                           }`}
                         >
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01" />
-                          </svg>
+                          <GripVertical className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                         </button>
                         <input
                           type="checkbox"

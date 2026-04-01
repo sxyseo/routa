@@ -25,7 +25,7 @@ import {
 import type { ColumnAutomationConfig } from "./kanban-settings-modal";
 import type { KanbanBoardInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import type { KanbanRepoChanges } from "./kanban-file-changes-types";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ArrowRight } from "lucide-react";
 
 
 interface SpecialistOption {
@@ -280,9 +280,7 @@ export function KanbanBoardSurface({
                   {agentLoading ? "..." : (
                     <>
                       <span>{kanbanTaskAgentCopy.send}</span>
-                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-6-6 6 6-6 6" />
-                      </svg>
+                      <ArrowRight className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                     </>
                   )}
                 </button>

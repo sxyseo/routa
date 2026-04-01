@@ -1,7 +1,7 @@
 // Small reusable UI components for the workspace dashboard
 
 import React from "react";
-import { Check, CircleCheck, Clock, X } from "lucide-react";
+import { Check, CircleCheck, Clock, X, CircleOff, XCircle } from "lucide-react";
 
 
 // ─── Tab Button ────────────────────────────────────────────────────
@@ -125,9 +125,7 @@ export function TaskStatusIcon({ status }: { status: string }) {
   if (s === "BLOCKED" || s === "CANCELLED") {
     return (
       <div className="w-7 h-7 rounded-md bg-red-50 dark:bg-red-900/20 flex items-center justify-center shrink-0">
-        <svg className="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-        </svg>
+        <CircleOff className="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </div>
     );
   }
@@ -273,9 +271,7 @@ export function BgTaskStatusIcon({ status }: { status: string }) {
   }
   if (status === "FAILED" || status === "CANCELLED") {
     return (
-      <svg className={`w-4 h-4 ${cls} shrink-0`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
+      <XCircle className={`w-4 h-4 ${cls} shrink-0`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
     );
   }
   return (

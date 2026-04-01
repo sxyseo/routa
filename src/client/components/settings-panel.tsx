@@ -42,7 +42,7 @@ import {
   type SettingsPanelProps,
   type SettingsTab,
 } from "./settings-panel-shared";
-import { ArrowLeft, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, RefreshCw, TriangleAlert, X, Package } from "lucide-react";
 
 export {
   getModelDefinitionByAlias,
@@ -693,9 +693,7 @@ function DockerOpenCodeSection({ embedded = false }: { embedded?: boolean }) {
     <div className={`space-y-2 ${embedded ? "" : "rounded-lg border border-slate-200 p-3 dark:border-slate-700"}`}>
       {!embedded && (
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7" />
-          </svg>
+          <Package className="w-4 h-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Docker OpenCode</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">auth.json</span>
         </div>

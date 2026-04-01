@@ -21,7 +21,7 @@ import { storePendingPrompt } from "../utils/pending-prompt";
 import { loadProviderConnectionConfig, getModelDefinitionByAlias, DockerConfigModal } from "./settings-panel";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { useTranslation } from "@/i18n";
-import { Check, ChevronDown, Folder } from "lucide-react";
+import { Check, ChevronDown, Folder, CircleUser, Sun, Zap } from "lucide-react";
 
 
 type AgentRole = "ROUTA" | "CRAFTER" | "DEVELOPER";
@@ -342,9 +342,7 @@ export function HomeInput({
               /* ── Specialist mode: show specialist pill as primary selector ── */
               <div className="flex items-center gap-1.5">
                 <div className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
-                  <svg className="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                  </svg>
+                  <CircleUser className="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
                   <span className="max-w-[140px] truncate">
                     {selectedSpecialist?.name ?? t.home.customSpecialist}
                   </span>
@@ -400,10 +398,7 @@ export function HomeInput({
                         ? "bg-blue-600 text-white shadow-[0_14px_26px_-18px_rgba(37,99,235,0.68)] dark:bg-blue-500 dark:text-white"
                         : "text-slate-500 hover:bg-blue-50/70 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300"
                     }`}>
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "ROUTA" ? 2.5 : 2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1M4.22 4.22l.707.707m13.857 13.857l.707.707M1 12h1m20 0h1M4.22 19.78l.707-.707m13.857-13.857l.707-.707"/>
-                      <circle cx="12" cy="12" r="3" stroke="currentColor" />
-                    </svg>
+                    <Sun className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "ROUTA" ? 2.5 : 2}/>
                     {t.home.multiAgent}
                   </button>
                   <button type="button" onClick={() => setSelectedRole("CRAFTER")}
@@ -413,9 +408,7 @@ export function HomeInput({
                         ? "bg-amber-500 text-white shadow-[0_14px_26px_-18px_rgba(245,158,11,0.65)] dark:bg-amber-500 dark:text-white"
                         : "text-slate-500 hover:bg-amber-50/70 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300"
                     }`}>
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "CRAFTER" ? 2.5 : 2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-                    </svg>
+                    <Zap className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "CRAFTER" ? 2.5 : 2}/>
                     {t.home.crafter}
                   </button>
                 </div>
@@ -428,9 +421,7 @@ export function HomeInput({
                       <button type="button" onClick={() => setShowSpecialistDropdown((v) => !v)}
                         className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2 py-1 text-xs text-slate-500 transition-all hover:border-amber-300 hover:bg-slate-100 hover:text-amber-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-amber-700 dark:hover:bg-slate-800 dark:hover:text-amber-300"
                         title="Use a custom specialist instead">
-                        <svg className="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                        </svg>
+                        <CircleUser className="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
                         Custom
                         <ChevronDown className="w-2.5 h-2.5 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                       </button>

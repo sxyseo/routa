@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "@/i18n";
+import { ChevronUp } from "lucide-react";
+
 
 export type HarnessNavSection = {
   id: string;
@@ -132,17 +134,7 @@ export function HarnessFloatingNav({ sections }: HarnessFloatingNavProps) {
         className="flex h-12 w-12 items-center justify-center rounded-full border border-desktop-border bg-white shadow-lg transition-all hover:scale-105 hover:shadow-xl dark:bg-[#1a1d2e]"
         aria-label={isOpen ? t.settings.harness.collapseNavigation : t.settings.harness.expandNavigation}
       >
-        <svg
-          className={`h-5 w-5 text-desktop-text-primary transition-transform ${
-            isOpen ? "rotate-0" : "rotate-180"
-          }`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-        </svg>
+        <ChevronUp className={`h-5 w-5 text-desktop-text-primary transition-transform ${isOpen ? "rotate-0" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </button>
     </div>
   );
