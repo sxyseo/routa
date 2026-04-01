@@ -2,6 +2,19 @@ use crate::state::AppState;
 
 use super::{rpc_tool_result, tool_result_error, tool_result_json};
 
+fn required_str_arg<'a>(
+    args: &'a serde_json::Value,
+    key: &str,
+) -> Result<&'a str, serde_json::Value> {
+    match args.get(key).and_then(|value| value.as_str()) {
+        Some(value) if !value.trim().is_empty() => Ok(value),
+        _ => Err(tool_result_error(&format!(
+            "Missing required argument: {}",
+            key
+        ))),
+    }
+}
+
 pub(super) async fn execute(
     state: &AppState,
     name: &str,
@@ -288,37 +301,77 @@ pub(super) async fn execute(
             Ok(result) => tool_result_json(&result),
             Err(error) => tool_result_error(&error),
         },
-        "request_previous_lane_handoff" => match rpc_tool_result(
-            state,
-            "kanban.requestPreviousLaneHandoff",
-            serde_json::json!({
-                "taskId": args.get("taskId").and_then(|v| v.as_str()).unwrap_or(""),
-                "requestType": args.get("requestType").and_then(|v| v.as_str()).unwrap_or(""),
-                "request": args.get("request").and_then(|v| v.as_str()).unwrap_or(""),
-                "sessionId": args.get("sessionId").and_then(|v| v.as_str()).unwrap_or(""),
-            }),
-        )
-        .await
-        {
-            Ok(result) => tool_result_json(&result),
-            Err(error) => tool_result_error(&error),
-        },
-        "submit_lane_handoff" => match rpc_tool_result(
-            state,
-            "kanban.submitLaneHandoff",
-            serde_json::json!({
-                "taskId": args.get("taskId").and_then(|v| v.as_str()).unwrap_or(""),
-                "handoffId": args.get("handoffId").and_then(|v| v.as_str()).unwrap_or(""),
-                "status": args.get("status").and_then(|v| v.as_str()).unwrap_or(""),
-                "summary": args.get("summary").and_then(|v| v.as_str()).unwrap_or(""),
-                "sessionId": args.get("sessionId").and_then(|v| v.as_str()).unwrap_or(""),
-            }),
-        )
-        .await
-        {
-            Ok(result) => tool_result_json(&result),
-            Err(error) => tool_result_error(&error),
-        },
+        "request_previous_lane_handoff" => {
+            let task_id = match required_str_arg(args, "taskId") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            let request_type = match required_str_arg(args, "requestType") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            let request = match required_str_arg(args, "request") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            let session_id = match required_str_arg(args, "sessionId") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            match rpc_tool_result(
+                state,
+                "kanban.requestPreviousLaneHandoff",
+                serde_json::json!({
+                    "taskId": task_id,
+                    "requestType": request_type,
+                    "request": request,
+                    "sessionId": session_id,
+                }),
+            )
+            .await
+            {
+                Ok(result) => tool_result_json(&result),
+                Err(error) => tool_result_error(&error),
+            }
+        }
+        "submit_lane_handoff" => {
+            let task_id = match required_str_arg(args, "taskId") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            let handoff_id = match required_str_arg(args, "handoffId") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            let status = match required_str_arg(args, "status") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            let summary = match required_str_arg(args, "summary") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            let session_id = match required_str_arg(args, "sessionId") {
+                Ok(value) => value,
+                Err(error) => return Some(error),
+            };
+            match rpc_tool_result(
+                state,
+                "kanban.submitLaneHandoff",
+                serde_json::json!({
+                    "taskId": task_id,
+                    "handoffId": handoff_id,
+                    "status": status,
+                    "summary": summary,
+                    "sessionId": session_id,
+                }),
+            )
+            .await
+            {
+                Ok(result) => tool_result_json(&result),
+                Err(error) => tool_result_error(&error),
+            }
+        }
         _ => return None,
     };
 

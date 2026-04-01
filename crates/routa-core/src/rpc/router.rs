@@ -255,6 +255,16 @@ impl RpcRouter {
                 let r = methods::kanban::decompose_tasks(&self.state, p).await?;
                 Ok(serde_json::to_value(r).unwrap())
             }
+            "kanban.requestPreviousLaneHandoff" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::request_previous_lane_handoff(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.submitLaneHandoff" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::submit_lane_handoff(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
 
             // ----- Notes -----
             "notes.list" => {

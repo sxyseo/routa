@@ -18,6 +18,7 @@
 mod automation;
 mod boards;
 mod cards;
+mod handoffs;
 mod queries;
 mod shared;
 
@@ -33,6 +34,10 @@ pub use cards::{
     CreateCardResult, DecomposeTaskItem, DecomposeTasksParams, DecomposeTasksResult,
     DeleteCardParams, DeleteCardResult, MoveCardParams, MoveCardResult, UpdateCardParams,
     UpdateCardResult,
+};
+pub use handoffs::{
+    request_previous_lane_handoff, submit_lane_handoff, RequestPreviousLaneHandoffParams,
+    RequestPreviousLaneHandoffResult, SubmitLaneHandoffParams, SubmitLaneHandoffResult,
 };
 pub use queries::{
     list_cards_by_column, search_cards, ListCardsByColumnParams, ListCardsByColumnResult,
@@ -52,7 +57,10 @@ mod tests {
     use crate::models::kanban::{
         KanbanAutomationStep, KanbanBoard, KanbanColumn, KanbanColumnAutomation, KanbanTransport,
     };
-    use crate::models::task::{Task, TaskLaneSessionStatus};
+    use crate::models::task::{
+        Task, TaskLaneHandoff, TaskLaneHandoffRequestType, TaskLaneHandoffStatus, TaskLaneSession,
+        TaskLaneSessionStatus,
+    };
     use crate::rpc::error::RpcError;
     use crate::state::{AppState, AppStateInner};
     use std::sync::Arc;
@@ -904,5 +912,191 @@ mod tests {
         .expect("decompose should succeed");
         assert_eq!(decomposed.count, 2);
         assert_eq!(decomposed.cards.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn request_previous_lane_handoff_persists_failed_delivery() {
+        let state = setup_state().await;
+        let boards = list_boards(
+            &state,
+            ListBoardsParams {
+                workspace_id: "default".to_string(),
+            },
+        )
+        .await
+        .expect("list boards should succeed");
+        let board_id = boards.boards[0].id.clone();
+
+        let mut task = Task::new(
+            "task-handoff".to_string(),
+            "Review failing runtime".to_string(),
+            "Need help from the previous lane".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        task.board_id = Some(board_id);
+        task.column_id = Some("review".to_string());
+        task.lane_sessions = vec![
+            TaskLaneSession {
+                session_id: "session-dev".to_string(),
+                routa_agent_id: None,
+                column_id: Some("dev".to_string()),
+                column_name: Some("Dev".to_string()),
+                step_id: None,
+                step_index: None,
+                step_name: None,
+                provider: None,
+                role: None,
+                specialist_id: None,
+                specialist_name: None,
+                transport: None,
+                external_task_id: None,
+                context_id: None,
+                attempt: None,
+                loop_mode: None,
+                completion_requirement: None,
+                objective: None,
+                last_activity_at: None,
+                recovered_from_session_id: None,
+                recovery_reason: None,
+                status: TaskLaneSessionStatus::Completed,
+                started_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+            },
+            TaskLaneSession {
+                session_id: "session-review".to_string(),
+                routa_agent_id: None,
+                column_id: Some("review".to_string()),
+                column_name: Some("Review".to_string()),
+                step_id: None,
+                step_index: None,
+                step_name: None,
+                provider: None,
+                role: None,
+                specialist_id: None,
+                specialist_name: None,
+                transport: None,
+                external_task_id: None,
+                context_id: None,
+                attempt: None,
+                loop_mode: None,
+                completion_requirement: None,
+                objective: None,
+                last_activity_at: None,
+                recovered_from_session_id: None,
+                recovery_reason: None,
+                status: TaskLaneSessionStatus::Running,
+                started_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+            },
+        ];
+        state
+            .task_store
+            .save(&task)
+            .await
+            .expect("task save should succeed");
+
+        let result = request_previous_lane_handoff(
+            &state,
+            RequestPreviousLaneHandoffParams {
+                task_id: task.id.clone(),
+                request_type: "runtime_context".to_string(),
+                request: "Please share the startup steps".to_string(),
+                session_id: "session-review".to_string(),
+            },
+        )
+        .await
+        .expect("handoff request should succeed");
+
+        assert_eq!(result.status, TaskLaneHandoffStatus::Failed);
+        assert_eq!(result.target_session_id, "session-dev");
+
+        let saved = state
+            .task_store
+            .get(&task.id)
+            .await
+            .expect("task get should succeed")
+            .expect("task should exist");
+        assert_eq!(saved.lane_handoffs.len(), 1);
+        assert_eq!(
+            saved.lane_handoffs[0].request_type,
+            TaskLaneHandoffRequestType::RuntimeContext
+        );
+        assert_eq!(saved.lane_handoffs[0].status, TaskLaneHandoffStatus::Failed);
+        assert!(saved.lane_handoffs[0].response_summary.is_some());
+    }
+
+    #[tokio::test]
+    async fn submit_lane_handoff_updates_existing_record() {
+        let state = setup_state().await;
+
+        let mut task = Task::new(
+            "task-handoff-submit".to_string(),
+            "Respond to lane request".to_string(),
+            "Return environment details".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        task.lane_handoffs = vec![TaskLaneHandoff {
+            id: "handoff-1".to_string(),
+            from_session_id: "session-review".to_string(),
+            to_session_id: "session-dev".to_string(),
+            from_column_id: Some("review".to_string()),
+            to_column_id: Some("dev".to_string()),
+            request_type: TaskLaneHandoffRequestType::RuntimeContext,
+            request: "Please share the command".to_string(),
+            status: TaskLaneHandoffStatus::Delivered,
+            requested_at: Utc::now().to_rfc3339(),
+            responded_at: None,
+            response_summary: None,
+        }];
+        state
+            .task_store
+            .save(&task)
+            .await
+            .expect("task save should succeed");
+
+        let result = submit_lane_handoff(
+            &state,
+            SubmitLaneHandoffParams {
+                task_id: task.id.clone(),
+                handoff_id: "handoff-1".to_string(),
+                status: "completed".to_string(),
+                summary: "Environment prepared and command rerun".to_string(),
+                session_id: "session-dev".to_string(),
+            },
+        )
+        .await
+        .expect("handoff submit should succeed");
+
+        assert_eq!(result.status, TaskLaneHandoffStatus::Completed);
+
+        let saved = state
+            .task_store
+            .get(&task.id)
+            .await
+            .expect("task get should succeed")
+            .expect("task should exist");
+        assert_eq!(
+            saved.lane_handoffs[0].status,
+            TaskLaneHandoffStatus::Completed
+        );
+        assert_eq!(
+            saved.lane_handoffs[0].response_summary.as_deref(),
+            Some("Environment prepared and command rerun")
+        );
+        assert!(saved.lane_handoffs[0].responded_at.is_some());
     }
 }
