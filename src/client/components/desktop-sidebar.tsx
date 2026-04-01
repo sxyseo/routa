@@ -195,14 +195,13 @@ export function DesktopSidebar({
     >
       <div className={`border-b border-desktop-border px-2 py-2 ${collapsed ? "flex items-center justify-center" : "flex items-center justify-between gap-2"}`}>
         {!collapsed ? (
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 rounded-xl px-2 py-1 text-sm font-semibold text-desktop-text-primary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+          <div
+            className="flex items-center gap-1.5 rounded-xl px-2 py-1 text-sm font-semibold text-desktop-text-primary"
             title="Routa"
           >
             <Image src="/logo.svg" alt="Routa" width={18} height={18} className="rounded-md" />
             <span>Routa</span>
-          </Link>
+          </div>
         ) : null}
         <button
           type="button"
