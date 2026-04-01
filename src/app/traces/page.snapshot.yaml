@@ -1,80 +1,56 @@
 # page-id: traces
 # route: /traces?view=trace
 # source-page: src/app/traces/page.tsx
-# url: http://127.0.0.1:61902/traces?view=trace
+# url: http://127.0.0.1:58768/traces?view=trace
 # title: Routa - Multi-Agent Coordinator
-# generated-at: 2026-03-28T01:41:45.252Z
+# generated-at: 2026-04-01T12:41:18.097Z
 # generator: playwright
 # playwright-version: 1.58.2
 - banner:
   - img "Routa"
   - text: Routa
-  - button "Default Workspace":
-    - img
-    - text: Default Workspace
-    - img
+  - button "Default Workspace"
   - button "Docker fixture" [disabled]
   - button "EN"
   - button "中文"
-  - button "Light" [pressed]:
-    - img
-  - button "Dark":
-    - img
+  - button "Light" [pressed]
+  - button "Dark"
   - link "Home":
     - /url: /
 - complementary:
-  - button "Collapse sidebar":
+  - button "Close sidebar":
     - img
   - navigation:
     - link "Home":
       - /url: /
-      - img
-      - text: Home
-    - link "Overview":
-      - /url: /workspace/default/overview
-      - img
-      - text: Overview
     - link "Kanban":
       - /url: /workspace/default/kanban
-      - img
-      - text: Kanban
+    - link "Overview":
+      - /url: /workspace/default/overview
     - link "Team":
       - /url: /workspace/default/team
-      - img
-      - text: Team
     - link "MCP Servers":
       - /url: /settings/mcp
-      - img
-      - text: MCP Servers
     - link "Schedules":
       - /url: /settings/schedules
-      - img
-      - text: Schedules
+    - link "Harness":
+      - /url: /settings/harness?workspaceId=default
+    - link "Fluency":
+      - /url: /settings/fluency?workspaceId=default
     - link "Workflows":
       - /url: /settings/workflows
-      - img
-      - text: Workflows
     - link "Specialists":
       - /url: /settings/specialists
-      - img
-      - text: Specialists
-  - link "Config":
+  - link "Settings":
     - /url: /settings
-    - img
-    - text: Config
   - link "Debug":
     - /url: /traces
-    - img
-    - text: Debug
 - main:
-  - img
   - heading "Agent Trace Viewer" [level=1]
   - paragraph: Browse and analyze agent execution traces
   - text: "Session:"
   - code: <id>…
-  - button "Copy link":
-    - text: Copy link
-    - img
+  - button "Copy link"
   - button "Hide Sessions"
   - button "Refresh"
   - button "Chat"
@@ -105,12 +81,8 @@
     - button "Tools"
     - button "Thoughts"
     - text: ▶ Session Started opencode <time> 🤖 Agent <time> → <time>
-    - button "🔧 codebase-retrieval ⏳":
-      - text: 🔧 codebase-retrieval ⏳
-      - img
-    - button "🔧 codebase-retrieval ✓":
-      - text: 🔧 codebase-retrieval ✓
-      - img
+    - button "🔧 codebase-retrieval ⏳"
+    - button "🔧 codebase-retrieval ✓"
     - paragraph: Prepared a stable snapshot runtime with seeded workspace, Kanban, session, and trace data.
     - text: ✓ Completed end_turn <time>
 - alert
