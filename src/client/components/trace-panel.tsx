@@ -220,10 +220,10 @@ function inferToolName(name: string, input: unknown): string {
   return name;
 }
 
-function formatLaneSessionSummary(session: LaneSessionInfo): string {
+function formatLaneSessionSummary(session: LaneSessionInfo, t: ReturnType<typeof useTranslation>["t"]): string {
   return [
-    session.columnName ?? session.columnId ?? "Unknown lane",
-    session.stepName ?? (typeof session.stepIndex === "number" ? `Step ${session.stepIndex + 1}` : undefined),
+    session.columnName ?? session.columnId ?? t.trace.unknownLane,
+    session.stepName ?? (typeof session.stepIndex === "number" ? `${t.trace.step} ${session.stepIndex + 1}` : undefined),
     session.provider,
     session.role,
   ].filter(Boolean).join(" • ");
@@ -242,9 +242,11 @@ function getTraceMetadataString(trace: TraceRecord, key: string): string | null 
 function InlineToolView({
   merged,
   formatTime,
+  t,
 }: {
   merged: MergedToolRecord;
   formatTime: (timestamp: string) => string;
+  t: ReturnType<typeof useTranslation>["t"];
 }) {
   const [expanded, setExpanded] = useState(true); // Default expanded
   const { toolCall, toolResult } = merged;
@@ -321,7 +323,7 @@ function InlineToolView({
             <div className="rounded-md border border-slate-200 dark:border-slate-700/60 overflow-hidden">
               <div className="px-2 py-1 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60">
                 <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                  Input
+                  {t.trace.input}
                 </span>
               </div>
               <div className="px-2 py-1.5 bg-white dark:bg-slate-900/40">
@@ -333,7 +335,7 @@ function InlineToolView({
             <div className="rounded-md border border-amber-200 dark:border-amber-800/40 overflow-hidden">
               <div className="px-2 py-1 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/40">
                 <span className="text-[9px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wider">
-                  Tool Context
+                  {t.trace.toolContext}
                 </span>
               </div>
               <div className="px-2 py-1.5 bg-white dark:bg-slate-900/40">
@@ -382,9 +384,11 @@ function InlineThoughtView({ trace }: { trace: TraceRecord }) {
 function UserMessageBubble({
   trace,
   formatTime,
+  t,
 }: {
   trace: TraceRecord;
   formatTime: (timestamp: string) => string;
+  t: ReturnType<typeof useTranslation>["t"];
 }) {
   const content = trace.conversation?.fullContent || trace.conversation?.contentPreview || "";
 
@@ -397,14 +401,14 @@ function UserMessageBubble({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">User</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{t.trace.user}</span>
           <span className="text-[10px] text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
             {formatTime(trace.timestamp)}
           </span>
         </div>
         <div className="px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30">
           <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
-            {content || <span className="italic text-slate-400">(empty)</span>}
+            {content || <span className="italic text-slate-400">{t.trace.empty}</span>}
           </p>
         </div>
       </div>
@@ -416,9 +420,11 @@ function UserMessageBubble({
 function AgentResponseBlock({
   turn,
   formatTime,
+  t,
 }: {
   turn: ConversationTurn;
   formatTime: (timestamp: string) => string;
+  t: ReturnType<typeof useTranslation>["t"];
 }) {
   const [thoughtsExpanded, setThoughtsExpanded] = useState(false);
 
@@ -452,7 +458,7 @@ function AgentResponseBlock({
               : "text-red-500 dark:text-red-400"
               }`}
           >
-            {evt.eventType === "session_start" ? "▶ Session Started" : "■ Session Ended"}
+            {evt.eventType === "session_start" ? `▶ ${t.trace.sessionStarted}` : `■ ${t.trace.sessionEnded}`}
             <span className="ml-2 font-normal text-slate-400">{formatTime(evt.timestamp)}</span>
           </span>
         ))}
@@ -523,7 +529,7 @@ function AgentResponseBlock({
             className="flex items-center gap-1.5 mb-2 text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
           >
             <ChevronRight className={`w-3 h-3 transition-transform ${thoughtsExpanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            💭 {thoughts.length} thought{thoughts.length > 1 ? "s" : ""}
+            {t.trace.thoughtsLabel} {thoughts.length} {t.trace.thoughts}
           </button>
         )}
         {thoughtsExpanded && thoughts.map((t) => <InlineThoughtView key={t.id} trace={t} />)}
@@ -552,6 +558,7 @@ function AgentResponseBlock({
                   key={`tool-${idx}-${item.merged.toolCallId}`}
                   merged={item.merged}
                   formatTime={formatTime}
+                  t={t}
                 />
               );
             }
@@ -760,11 +767,11 @@ export function TracePanel({ sessionId }: TracePanelProps) {
       <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1.5 shrink-0 overflow-x-auto">
         {(
           [
-            { key: "all", label: "All", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-            { key: "user_message", label: "User", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+            { key: "all", label: t.trace.all, active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+            { key: "user_message", label: t.trace.user, active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
             { key: "agent_message", label: "Agent", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-            { key: "tools", label: "Tools", active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
-            { key: "agent_thought", label: "Thoughts", active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
+            { key: "tools", label: t.trace.tools, active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
+            { key: "agent_thought", label: t.trace.thoughts, active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
           ] as const
         ).map(({ key, label, active }) => (
           <button
@@ -784,7 +791,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
         <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-emerald-50/50 dark:bg-emerald-900/10">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">
-              Kanban Story
+              {t.trace.kanbanStory}
             </span>
             {kanbanContext.columnId && (
               <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-[#13151d] dark:text-emerald-300">
@@ -800,7 +807,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
           </div>
           {kanbanContext.currentLaneSession && (
             <div className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">
-              {t.trace.currentLaneSession}: {formatLaneSessionSummary(kanbanContext.currentLaneSession)}
+              {t.trace.currentLaneSession}: {formatLaneSessionSummary(kanbanContext.currentLaneSession, t)}
               {" · "}
               <span className="font-semibold uppercase tracking-wide">
                 {kanbanContext.currentLaneSession.status}
@@ -809,12 +816,12 @@ export function TracePanel({ sessionId }: TracePanelProps) {
           )}
           {kanbanContext.previousLaneSession && (
             <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
-              {t.trace.previousLaneSession}: {formatLaneSessionSummary(kanbanContext.previousLaneSession)}
+              {t.trace.previousLaneSession}: {formatLaneSessionSummary(kanbanContext.previousLaneSession, t)}
             </div>
           )}
           {kanbanContext.previousLaneRun && (
             <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
-              {t.trace.previousLaneRun}: {formatLaneSessionSummary(kanbanContext.previousLaneRun)}
+              {t.trace.previousLaneRun}: {formatLaneSessionSummary(kanbanContext.previousLaneRun, t)}
             </div>
           )}
           {kanbanContext.relatedHandoffs.length > 0 && (
@@ -881,6 +888,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
                     key={trace.id}
                     trace={trace}
                     formatTime={formatTime}
+                    t={t}
                   />
                 );
               }
@@ -890,6 +898,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
                 key={`turn-${idx}`}
                 turn={turn}
                 formatTime={formatTime}
+                t={t}
               />
             );
           })}

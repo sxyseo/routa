@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { Select } from "./select";
+import { useTranslation } from "@/i18n";
 import { SquarePen, Trash2, X, Briefcase } from "lucide-react";
 
 
@@ -26,25 +27,32 @@ export interface SpecialistConfig {
 export type AgentRole = "ROUTA" | "CRAFTER" | "GATE" | "DEVELOPER";
 export type ModelTier = "FAST" | "BALANCED" | "SMART";
 
-const ROLE_LABELS: Record<AgentRole, string> = {
-  ROUTA: "Coordinator",
-  CRAFTER: "Implementor",
-  GATE: "Verifier",
-  DEVELOPER: "Developer",
-};
+// Helper functions to get labels from translation
+function getRoleLabels(t: ReturnType<typeof useTranslation>["t"]): Record<AgentRole, string> {
+  return {
+    ROUTA: t.specialists.coordinator,
+    CRAFTER: t.specialists.implementor,
+    GATE: t.specialists.verifier,
+    DEVELOPER: t.specialists.developer,
+  };
+}
 
-const ROLE_DESCRIPTIONS: Record<AgentRole, string> = {
-  ROUTA: "Plans work, breaks down tasks, coordinates sub-agents",
-  CRAFTER: "Executes implementation tasks, writes code",
-  GATE: "Reviews work and verifies completeness",
-  DEVELOPER: "Plans then implements itself — no delegation",
-};
+function getRoleDescriptions(t: ReturnType<typeof useTranslation>["t"]): Record<AgentRole, string> {
+  return {
+    ROUTA: t.specialists.coordinatorDesc,
+    CRAFTER: t.specialists.implementorDesc,
+    GATE: t.specialists.verifierDesc,
+    DEVELOPER: t.specialists.developerDesc,
+  };
+}
 
-const TIER_LABELS: Record<ModelTier, string> = {
-  FAST: "Fast (Low Cost)",
-  BALANCED: "Balanced",
-  SMART: "Smart (High Capability)",
-};
+function getTierLabels(t: ReturnType<typeof useTranslation>["t"]): Record<ModelTier, string> {
+  return {
+    FAST: t.specialists.fast,
+    BALANCED: t.specialists.balanced,
+    SMART: t.specialists.smart,
+  };
+}
 
 // ─── Component Props ───────────────────────────────────────────────────────
 
@@ -69,6 +77,7 @@ interface SpecialistForm {
 // ─── Specialist Manager Component ───────────────────────────────────────────
 
 export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
+  const { t } = useTranslation();
   const [specialists, setSpecialists] = useState<SpecialistConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,16 +113,16 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
       const response = await desktopAwareFetch("/api/specialists");
       if (!response.ok) {
         if (response.status === 501) {
-          setError("Specialist management requires Postgres database");
+          setError(t.specialists.requiresPostgres);
         } else {
-          throw new Error("Failed to load specialists");
+          throw new Error(t.specialists.failedToLoad);
         }
         return;
       }
       const data = await response.json();
       setSpecialists(data.specialists || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load specialists");
+      setError(err instanceof Error ? err.message : t.specialists.failedToLoad);
     } finally {
       setLoading(false);
     }
@@ -128,10 +137,10 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "sync" }),
       });
-      if (!response.ok) throw new Error("Failed to sync specialists");
+      if (!response.ok) throw new Error(t.specialists.failedToSync);
       await loadSpecialists();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync specialists");
+      setError(err instanceof Error ? err.message : t.specialists.failedToSync);
     } finally {
       setSyncing(false);
     }
@@ -148,31 +157,31 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
       });
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to save specialist");
+        throw new Error(data.error || t.specialists.failedToSave);
       }
       await loadSpecialists();
       setEditingId(null);
       setShowCreateForm(false);
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save specialist");
+      setError(err instanceof Error ? err.message : t.specialists.failedToSave);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this specialist?")) return;
+    if (!confirm(t.specialists.deleteConfirm)) return;
     setLoading(true);
     setError(null);
     try {
       const response = await desktopAwareFetch(`/api/specialists?id=${id}`, {
         method: "DELETE",
       });
-      if (!response.ok) throw new Error("Failed to delete specialist");
+      if (!response.ok) throw new Error(t.specialists.failedToDelete);
       await loadSpecialists();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete specialist");
+      setError(err instanceof Error ? err.message : t.specialists.failedToDelete);
     } finally {
       setLoading(false);
     }
@@ -229,7 +238,7 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Specialists</h2>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.specialists.manageSpecialists}</h2>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -237,7 +246,7 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
               disabled={syncing}
               className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded-md hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 transition-colors"
             >
-              {syncing ? "Syncing..." : "Sync Bundled"}
+              {syncing ? `${t.common.loading}...` : t.specialists.sync}
             </button>
             <button
               onClick={onClose}
@@ -261,13 +270,13 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
               {/* Specialists List */}
               <div className="mb-4 flex justify-between items-center">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {specialists.length} specialists configured
+                  {specialists.length} {t.specialists.configured}
                 </p>
                 <button
                   onClick={() => setShowCreateForm(true)}
                   className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
                 >
-                  + New Specialist
+                  {t.specialists.newSpecialist}
                 </button>
               </div>
 
@@ -288,10 +297,10 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                               ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
                               : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
                           }`}>
-                            {specialist.source}
+                            {t.specialists.source[specialist.source] || specialist.source}
                           </span>
                           <span className="px-2 py-0.5 text-xs rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                            {ROLE_LABELS[specialist.role]}
+                            {getRoleLabels(t)[specialist.role]}
                           </span>
                         </div>
                         {specialist.description && (
@@ -299,16 +308,16 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                         )}
                         <div className="space-y-1">
                           <p className="text-xs text-slate-500 dark:text-slate-500">
-                            Tier: {TIER_LABELS[specialist.defaultModelTier]}
+                            {t.specialists.tier}: {getTierLabels(t)[specialist.defaultModelTier]}
                           </p>
                           {specialist.defaultProvider ? (
                             <p className="text-xs text-slate-500 dark:text-slate-500">
-                              Provider: <span className="font-mono">{specialist.defaultProvider}</span>
+                              {t.specialists.provider}: <span className="font-mono">{specialist.defaultProvider}</span>
                             </p>
                           ) : null}
                           {specialist.defaultAdapter ? (
                             <p className="text-xs text-slate-500 dark:text-slate-500">
-                              Adapter: <span className="font-mono">{specialist.defaultAdapter}</span>
+                              {t.specialists.adapter}: <span className="font-mono">{specialist.defaultAdapter}</span>
                             </p>
                           ) : null}
                         </div>
@@ -338,7 +347,7 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
 
               {specialists.length === 0 && !loading && (
                 <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                  <p>No specialists found. Click &quot;Sync Bundled&quot; to load default specialists.</p>
+                  <p>{t.specialists.noSpecialistsFound} {t.specialists.noSpecialistsHint}</p>
                 </div>
               )}
             </>
@@ -347,21 +356,21 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
               {/* Create/Edit Form */}
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">
-                  {editingId ? "Edit Specialist" : "New Specialist"}
+                  {editingId ? t.specialists.editSpecialist : t.specialists.newSpecialistForm}
                 </h3>
 
                 <div className="grid grid-cols-2 gap-4">
                   {/* ID */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      ID *
+                      {t.specialists.id} *
                     </label>
                     <input
                       type="text"
                       value={form.id}
                       onChange={(e) => setForm({ ...form, id: e.target.value })}
                       disabled={!!editingId}
-                      placeholder="e.g., my-specialist"
+                      placeholder={t.specialists.idPlaceholder}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 disabled:opacity-50 disabled:bg-slate-100 dark:disabled:bg-slate-800"
                     />
                   </div>
@@ -369,13 +378,13 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                   {/* Name */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Name *
+                      {t.specialists.name} *
                     </label>
                     <input
                       type="text"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      placeholder="e.g., My Custom Specialist"
+                      placeholder={t.specialists.namePlaceholder}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
                     />
                   </div>
@@ -384,13 +393,13 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                 {/* Description */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Description
+                    {t.specialists.description}
                   </label>
                   <input
                     type="text"
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Brief description of this specialist"
+                    placeholder={t.specialists.descriptionPlaceholder}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
                   />
                 </div>
@@ -399,16 +408,16 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                   {/* Role */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Role *
+                      {t.specialists.role} *
                     </label>
                     <Select
                       value={form.role}
                       onChange={(e) => setForm({ ...form, role: e.target.value as AgentRole })}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100"
                     >
-                      {Object.entries(ROLE_LABELS).map(([key, label]) => (
+                      {Object.entries(getRoleLabels(t)).map(([key, label]) => (
                         <option key={key} value={key}>
-                          {label} - {ROLE_DESCRIPTIONS[key as AgentRole]}
+                          {label} - {getRoleDescriptions(t)[key as AgentRole]}
                         </option>
                       ))}
                     </Select>
@@ -417,14 +426,14 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                   {/* Model Tier */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Default Model Tier *
+                      {t.specialists.defaultModelTier} *
                     </label>
                     <Select
                       value={form.defaultModelTier}
                       onChange={(e) => setForm({ ...form, defaultModelTier: e.target.value as ModelTier })}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100"
                     >
-                      {Object.entries(TIER_LABELS).map(([key, label]) => (
+                      {Object.entries(getTierLabels(t)).map(([key, label]) => (
                         <option key={key} value={key}>
                           {label}
                         </option>
@@ -437,34 +446,34 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                   {/* Default Provider */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Default ACP Provider
+                      {t.specialists.defaultAcpProvider}
                     </label>
                     <input
                       type="text"
                       value={form.defaultProvider}
                       onChange={(e) => setForm({ ...form, defaultProvider: e.target.value })}
-                      placeholder="e.g., claude"
+                      placeholder={t.specialists.defaultProviderPlaceholder}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
                     />
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Leave empty to use workspace or caller defaults
+                      {t.specialists.defaultProviderHint}
                     </p>
                   </div>
 
                   {/* Default Adapter */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Default Adapter
+                      {t.specialists.defaultAdapterLabel}
                     </label>
                     <input
                       type="text"
                       value={form.defaultAdapter}
                       onChange={(e) => setForm({ ...form, defaultAdapter: e.target.value })}
-                      placeholder="e.g., acp"
+                      placeholder={t.specialists.defaultAdapterPlaceholder}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
                     />
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Optional runtime hint used by direct execution flows
+                      {t.specialists.defaultAdapterHint}
                     </p>
                   </div>
                 </div>
@@ -472,29 +481,29 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                 {/* Model Override */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Model Override (optional)
+                    {t.specialists.modelOverride}
                   </label>
                   <input
                     type="text"
                     value={form.model}
                     onChange={(e) => setForm({ ...form, model: e.target.value })}
-                    placeholder="e.g., claude:opus-4.6"
+                    placeholder={t.specialists.modelOverridePlaceholder}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
                   />
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Use format provider:model (e.g., claude:opus-4.6) or leave empty for tier-based selection
+                    {t.specialists.modelOverrideHint}
                   </p>
                 </div>
 
                 {/* System Prompt */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    System Prompt *
+                    {t.specialists.systemPromptLabel} *
                   </label>
                   <textarea
                     value={form.systemPrompt}
                     onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
-                    placeholder="Enter the system prompt for this specialist..."
+                    placeholder={t.specialists.systemPromptPlaceholder}
                     rows={8}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 font-mono"
                   />
@@ -503,13 +512,13 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                 {/* Role Reminder */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Role Reminder
+                    {t.specialists.roleReminderLabel}
                   </label>
                   <input
                     type="text"
                     value={form.roleReminder}
                     onChange={(e) => setForm({ ...form, roleReminder: e.target.value })}
-                    placeholder="Short reminder shown to the agent"
+                    placeholder={t.specialists.roleReminderPlaceholder}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
                   />
                 </div>
@@ -521,14 +530,14 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
                     disabled={loading}
                     className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
                   >
-                    Cancel
+                    {t.specialists.cancel}
                   </button>
                   <button
                     onClick={handleSave}
                     disabled={loading || !form.id || !form.name || !form.systemPrompt}
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {loading ? "Saving..." : editingId ? "Update" : "Create"}
+                    {loading ? t.specialists.saving : editingId ? t.common.update : t.common.create}
                   </button>
                 </div>
               </div>

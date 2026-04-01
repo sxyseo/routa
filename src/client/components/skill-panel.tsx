@@ -735,21 +735,13 @@ function SkillCloneModal({
         {/* Body */}
         <div className="p-5 space-y-4">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Clone a GitHub repo containing skills (with{" "}
-            <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px]">
-              SKILL.md
-            </code>{" "}
-            files). Skills will be imported to{" "}
-            <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px]">
-              .agents/skills/
-            </code>
-            .
+            {t.skills.cloneRepoHint}
           </p>
 
           {/* URL input */}
           <div>
             <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Repository URL
+              {t.skills.repositoryUrl}
             </label>
             <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] overflow-hidden">
               <span className="pl-3 text-[10px] text-slate-400 dark:text-slate-500 font-mono whitespace-nowrap">
@@ -781,9 +773,7 @@ function SkillCloneModal({
 
           {/* Examples */}
           <div className="flex flex-wrap gap-1.5">
-            <span className="text-[10px] text-slate-400 dark:text-slate-500">
-              Examples:
-            </span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">{t.skills.examples}</span>
             {[
               "vercel-labs/agent-skills",
             ].map((example) => (
@@ -815,7 +805,7 @@ function SkillCloneModal({
           {result && (
             <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2">
               <div className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mb-1">
-                Imported {result.count}!
+                {t.skills.importedCount.replace("{count}", String(result.count))}
               </div>
               <div className="flex flex-wrap gap-1">
                 {result.imported.map((name) => (
@@ -883,7 +873,7 @@ function SkillUploadModal({
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.name.endsWith(".zip")) {
-      setError("Please select a .zip file");
+      setError(t.skills.selectZipFile + " (.zip)");
       return;
     }
     setError(null);
@@ -953,7 +943,7 @@ function SkillUploadModal({
         {/* Body */}
         <div className="p-5">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-            Upload a .zip file containing SKILL.md and any related files.
+            {t.skills.uploadZipHint}
             It will be extracted to the <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px]">.agents/skills/</code> directory.
           </p>
 
@@ -988,14 +978,14 @@ function SkillUploadModal({
                   {selectedFile.name}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  {(selectedFile.size / 1024).toFixed(1)} KB - Click to change
+                  {`${(selectedFile.size / 1024).toFixed(1)} KB - ${t.skills.clickToChange}`}
                 </div>
               </div>
             ) : (
               <div>
                 <Upload className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Drop a .zip file here or click to browse
+                  {t.skills.dropZoneClick}
                 </div>
               </div>
             )}
@@ -1009,7 +999,7 @@ function SkillUploadModal({
 
           {success && (
             <div className="mt-3 px-3 py-2 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-xs">
-              Skill uploaded successfully! Reloading...
+              {t.skills.uploadSuccess}
             </div>
           )}
         </div>
@@ -1027,7 +1017,7 @@ function SkillUploadModal({
             disabled={!selectedFile || uploading || success}
             className="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {uploading ? t.skills.uploading : success ? "Done!" : t.skills.uploadAction}
+            {uploading ? t.skills.uploading : success ? t.skills.done : t.skills.uploadAction}
           </button>
         </div>
       </div>

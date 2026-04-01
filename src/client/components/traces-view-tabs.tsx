@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslation } from "@/i18n";
 import { Button } from "./button";
 
 export type TraceViewTab = "chat" | "event-bridge";
@@ -12,11 +13,12 @@ interface TracesViewTabsProps {
 }
 
 const TAB_DEFINITIONS: Array<{ key: TraceViewTab; label: string; color: string }> = [
-  { key: "chat", label: "Chat", color: "bg-desktop-trace-chat" },
-  { key: "event-bridge", label: "Trace", color: "bg-desktop-trace-event-bridge" },
+  { key: "chat", label: "traces:chat", color: "bg-desktop-trace-chat" },
+  { key: "event-bridge", label: "traces:traceTab", color: "bg-desktop-trace-event-bridge" },
 ];
 
 export function TracesViewTabs({ activeTab, onTabChange, className }: TracesViewTabsProps) {
+  const { t } = useTranslation();
   return (
     <div className={className ?? ""}>
       <div
@@ -36,7 +38,7 @@ export function TracesViewTabs({ activeTab, onTabChange, className }: TracesView
                 : "text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
             }`}
           >
-            {label}
+            {key === "chat" ? t.traces.chat : t.traces.traceTab}
           </Button>
         ))}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "@/i18n";
 
 interface DockerStatusResponse {
   available: boolean;
@@ -18,6 +19,7 @@ interface DockerStatusIndicatorProps {
 }
 
 export function DockerStatusIndicator({ compact = false, className = "" }: DockerStatusIndicatorProps) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<DockerStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,13 +33,13 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
       setStatus({
         available: false,
         daemonRunning: false,
-        error: "Docker status check failed",
+        error: t.dockerStatus.checkFailed,
         checkedAt: new Date().toISOString(),
       });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void refresh();
@@ -47,12 +49,12 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const isChecking = loading && !status;
   const isRetryable = !available && !isChecking;
   const label = isChecking
-    ? "Checking Docker..."
+    ? t.dockerStatus.checking
     : available
-      ? `Docker ${status?.version ?? "ready"}`
+      ? t.dockerStatus.ready.replace("{{version}}", status?.version ?? "ready")
       : loading
-        ? "Retrying Docker..."
-        : "Docker unavailable · Retry";
+        ? t.dockerStatus.retrying
+        : t.dockerStatus.unavailable;
   const toneClass = isChecking
     ? "border-gray-200 text-gray-500 bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:bg-gray-800/30"
     : available
@@ -73,8 +75,8 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const title = available
     ? status?.error ?? label
     : loading
-      ? "Refreshing Docker status"
-      : status?.error ?? "Docker unavailable. Click to refresh status.";
+      ? t.dockerStatus.refreshing
+      : status?.error ?? t.dockerStatus.clickToRefresh;
 
   return (
     <div className="flex items-center">

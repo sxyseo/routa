@@ -16,6 +16,7 @@ import { createPortal } from "react-dom";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { Button } from "./button";
 import { Check, ChevronDown, Download, RefreshCw, Search, GitBranch, Globe } from "lucide-react";
+import { useTranslation } from "@/i18n";
 
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ export function BranchSelector({
   onBranchChange,
   disabled = false,
 }: BranchSelectorProps) {
+  const { t } = useTranslation();
   const [showDropdown, setShowDropdown] = useState(false);
   const [branchData, setBranchData] = useState<BranchData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -236,7 +238,7 @@ export function BranchSelector({
         )}
         {/* Uncommitted changes dot */}
         {status?.hasUncommittedChanges && (
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 ml-0.5" title="Uncommitted changes" />
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 ml-0.5" title={t.branchSelector.uncommittedChanges} />
         )}
         <ChevronIcon />
       </Button>
@@ -259,7 +261,7 @@ export function BranchSelector({
           <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                Switch branch
+                {t.branchSelector.switchBranch}
               </span>
               <Button
                 type="button"
@@ -268,7 +270,7 @@ export function BranchSelector({
                 onClick={() => fetchBranches(true)}
                 disabled={loading}
                 className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                title="Fetch remote branches"
+                title={t.branchSelector.fetchRemote}
               >
                 <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
               </Button>
@@ -282,7 +284,7 @@ export function BranchSelector({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter branches..."
+                placeholder={t.branchSelector.filterBranches}
                 className="flex-1 bg-transparent text-[11px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setShowDropdown(false);
@@ -302,7 +304,7 @@ export function BranchSelector({
               className="w-full px-3 py-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 border-b border-slate-100 dark:border-slate-800 transition-colors"
             >
               <Download className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
-              Pull {status.behind} new commit{status.behind > 1 ? "s" : ""}
+              {t.branchSelector.pullNewCommits.replace("{{count}}", String(status.behind)).replace("{{plural}}", status.behind > 1 ? "s" : "")}
             </Button>
           )}
 
@@ -310,7 +312,7 @@ export function BranchSelector({
           <div className="max-h-56 overflow-y-auto">
             {loading && !branchData ? (
               <div className="px-3 py-3 text-xs text-slate-400 text-center">
-                Loading branches...
+                {t.branchSelector.loadingBranches}
               </div>
             ) : (
               <>
@@ -318,7 +320,7 @@ export function BranchSelector({
                 {localBranches.length > 0 && (
                   <>
                     <div className="px-3 py-1 text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                      Local
+                      {t.branchSelector.local}
                     </div>
                     {localBranches.map((b) => (
                       <BranchItem
@@ -335,7 +337,7 @@ export function BranchSelector({
                 {remoteBranches.length > 0 && (
                   <>
                     <div className="px-3 py-1 mt-1 text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider border-t border-slate-50 dark:border-slate-800 pt-1.5">
-                      Remote
+                      {t.branchSelector.remote}
                     </div>
                     {remoteBranches.map((b) => (
                       <BranchItem
@@ -351,7 +353,7 @@ export function BranchSelector({
 
                 {localBranches.length === 0 && remoteBranches.length === 0 && (
                   <div className="px-3 py-3 text-xs text-slate-400 text-center">
-                    {searchQuery ? "No matching branches." : "No branches found."}
+                    {searchQuery ? t.branchSelector.noMatchingBranches : t.branchSelector.noBranchesFound}
                   </div>
                 )}
               </>

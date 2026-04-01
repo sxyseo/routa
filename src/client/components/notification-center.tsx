@@ -157,7 +157,7 @@ export function NotificationBell() {
               <div className="flex items-center gap-2">
                 {unreadCount > 0 && (
                   <button onClick={markAllAsRead} className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline">
-                    Mark all read
+                    {t.notifications.markAllRead}
                   </button>
                 )}
                 <a href="/messages" className="text-[10px] text-amber-600 dark:text-amber-500 hover:underline">

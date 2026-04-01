@@ -5,6 +5,7 @@ import { CodeBlock } from "./code-block";
 import { CodeRetrievalViewer } from "./code-retrieval-viewer";
 import { FileOutputViewer, parseFileOutput } from "./file-output-viewer";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
+import { useTranslation } from "@/i18n";
 import { ChevronRight } from "lucide-react";
 
 
@@ -98,23 +99,23 @@ export function tryParseJsonString(value: string): unknown | null {
   }
 }
 
-export function summarizeToolOutput(output: unknown): string {
+export function summarizeToolOutput(output: unknown, t: ReturnType<typeof useTranslation>["t"]): string {
   if (output == null) return "";
 
   if (typeof output === "string") {
     const parsed = tryParseJsonString(output);
-    if (parsed != null) return summarizeToolOutput(parsed);
+    if (parsed != null) return summarizeToolOutput(parsed, t);
 
     const condensed = output.replace(/\s+/g, " ").trim();
     return condensed.length > 72 ? `${condensed.slice(0, 72)}…` : condensed;
   }
 
   if (Array.isArray(output)) {
-    return `JSON array · ${output.length} items`;
+    return `${t.toolCallContent.jsonArray} ${output.length} ${t.toolCallContent.items}`;
   }
 
   if (typeof output === "object") {
-    return `JSON object · ${Object.keys(output as Record<string, unknown>).length} keys`;
+    return `${t.toolCallContent.jsonObject} ${Object.keys(output as Record<string, unknown>).length} ${t.toolCallContent.keys}`;
   }
 
   return String(output);
@@ -143,6 +144,7 @@ export function ToolOutputView({
   output: unknown;
   toolName?: string;
 }) {
+  const { t } = useTranslation();
   const normalized = useMemo(() => normalizeOutput(output), [output]);
   const [mode, setMode] = useState<"tree" | "raw" | "code">("code");
   const [richTextExpanded, setRichTextExpanded] = useState(false);
@@ -237,7 +239,7 @@ export function ToolOutputView({
       <div>
         <div className="px-2 py-1 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
           <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            Output (Code Sections)
+            {t.toolCallContent.outputCodeSections}
           </span>
         </div>
         <div className="p-2">
@@ -256,9 +258,9 @@ export function ToolOutputView({
             className="flex items-center gap-1.5 text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider hover:text-slate-600 dark:hover:text-slate-300"
           >
             <ChevronRight className={`w-3 h-3 transition-transform ${richTextExpanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            Output (Rendered)
+            {t.toolCallContent.outputRendered}
           </button>
-          <span className="text-[9px] text-slate-400 dark:text-slate-500">{richTextContent.length} chars</span>
+          <span className="text-[9px] text-slate-400 dark:text-slate-500">{richTextContent.length} {t.toolCallContent.chars}</span>
         </div>
         {richTextExpanded ? (
           <div className="p-3 max-h-[500px] overflow-y-auto bg-white dark:bg-slate-900/40">
@@ -284,8 +286,8 @@ export function ToolOutputView({
     const fileOutputParsed = parseFileOutput(innerOutput, isSearchTool ? "search" : "read");
     if (fileOutputParsed.kind !== "unknown") {
       const label = isSearchTool
-        ? `Search Results (${fileOutputParsed.matchCount ?? fileOutputParsed.searchMatches?.length ?? 0} matches)`
-        : "File Content";
+        ? `${t.toolCallContent.searchResults} (${fileOutputParsed.matchCount ?? fileOutputParsed.searchMatches?.length ?? 0} ${t.toolCallContent.matches})`
+        : t.toolCallContent.fileContent;
 
       return (
         <div>
@@ -311,9 +313,9 @@ export function ToolOutputView({
       <div>
         <div className="px-2 py-1 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
           <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            Output
+            {t.toolCallContent.output}
           </span>
-          {isLarge && <span className="text-[9px] text-slate-400 dark:text-slate-500">{text.length} chars</span>}
+          {isLarge && <span className="text-[9px] text-slate-400 dark:text-slate-500">{text.length} {t.toolCallContent.chars}</span>}
         </div>
         <CodeBlock
           content={text}
@@ -330,7 +332,7 @@ export function ToolOutputView({
     <div>
       <div className="px-2 py-1 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
         <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-          Output (JSON)
+          {t.toolCallContent.outputJson}
         </span>
         <div className="flex gap-1">
           <button
@@ -341,7 +343,7 @@ export function ToolOutputView({
                 : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
             }`}
           >
-            Code
+            {t.toolCallContent.codeTab}
           </button>
           <button
             onClick={() => setMode("tree")}
@@ -351,7 +353,7 @@ export function ToolOutputView({
                 : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
             }`}
           >
-            Tree
+            {t.toolCallContent.treeTab}
           </button>
           <button
             onClick={() => setMode("raw")}
@@ -361,7 +363,7 @@ export function ToolOutputView({
                 : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
             }`}
           >
-            Raw
+            {t.toolCallContent.rawTab}
           </button>
         </div>
       </div>

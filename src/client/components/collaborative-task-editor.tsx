@@ -22,6 +22,7 @@ import { MarkdownViewer } from "./markdown/markdown-viewer";
 import { type CrafterAgent, CraftersView } from "./task-panel";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
+import type { TranslationDictionary } from "@/i18n";
 import { Check, ChevronDown, FileText, X, Zap } from "lucide-react";
 
 
@@ -179,7 +180,7 @@ export function CollaborativeTaskEditor({
           <div className="flex items-center gap-1.5">
             {hasRunning && (
               <span className="text-xs font-medium text-amber-600 dark:text-amber-400 animate-pulse">
-                Executing{runningCrafterCount > 0 ? ` (${runningCrafterCount})` : ""}...
+                {t.collaborativeTasks.executing}{runningCrafterCount > 0 ? ` (${runningCrafterCount})` : ""}...
               </span>
             )}
             {pendingNotes.length > 0 && !hasRunning && (
@@ -214,7 +215,7 @@ export function CollaborativeTaskEditor({
                 }`}
               />
               <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                {connected ? "Live" : "Off"}
+                {connected ? t.collaborativeTasks.live : t.collaborativeTasks.off}
               </span>
             </div>
           </div>
@@ -222,7 +223,7 @@ export function CollaborativeTaskEditor({
 
         <div className="flex items-center gap-2">
           <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-900/30 text-slate-600 dark:text-slate-300">
-            CRDT
+            {t.collaborativeTasks.crdt}
           </span>
           <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             {t.tasks.concurrency}
@@ -289,7 +290,7 @@ export function CollaborativeTaskEditor({
           {taskNotes.length === 0 && (
             <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
               <div className="space-y-1.5">
-                <div className="text-sm">No task notes yet</div>
+                <div className="text-sm">{t.collaborativeTasks.noTaskNotes}</div>
                 <div>Tasks will appear here when ROUTA creates them</div>
               </div>
             </div>
@@ -407,7 +408,7 @@ export function CollaborativeTaskEditor({
             {taskNotes.length === 0 && (
               <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
                 <div className="space-y-1.5">
-                  <div className="text-sm">No task notes yet</div>
+                  <div className="text-sm">{t.collaborativeTasks.noTaskNotes}</div>
                   <div>Tasks will appear here when ROUTA creates them</div>
                 </div>
               </div>
@@ -445,28 +446,30 @@ interface TaskNoteCardProps {
   executeDisabled?: boolean;
 }
 
-const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  PENDING: {
-    label: "Pending",
-    color: "text-slate-600 dark:text-slate-400",
-    bg: "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700",
-  },
-  IN_PROGRESS: {
-    label: "In Progress",
-    color: "text-amber-600 dark:text-amber-400",
-    bg: "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800",
-  },
-  COMPLETED: {
-    label: "Completed",
-    color: "text-emerald-600 dark:text-emerald-400",
-    bg: "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800",
-  },
-  FAILED: {
-    label: "Failed",
-    color: "text-red-600 dark:text-red-400",
-    bg: "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800",
-  },
-};
+function getStatusLabels(t: TranslationDictionary): Record<string, { label: string; color: string; bg: string }> {
+  return {
+    PENDING: {
+      label: t.collaborativeTasks.status.pending,
+      color: "text-slate-600 dark:text-slate-400",
+      bg: "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700",
+    },
+    IN_PROGRESS: {
+      label: t.collaborativeTasks.status.inProgress,
+      color: "text-amber-600 dark:text-amber-400",
+      bg: "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800",
+    },
+    COMPLETED: {
+      label: t.collaborativeTasks.status.completed,
+      color: "text-emerald-600 dark:text-emerald-400",
+      bg: "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800",
+    },
+    FAILED: {
+      label: t.collaborativeTasks.status.failed,
+      color: "text-red-600 dark:text-red-400",
+      bg: "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800",
+    },
+  };
+}
 
 // ─── Parse task content into structured sections ────────────────────────────
 interface ParsedTaskSections {
@@ -605,7 +608,8 @@ function TaskNoteCard({
 }: TaskNoteCardProps) {
   const { t } = useTranslation();
   const status = note.metadata.taskStatus ?? "PENDING";
-  const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.PENDING;
+  const statusLabels = getStatusLabels(t);
+  const statusInfo = statusLabels[status] ?? statusLabels.PENDING;
 
   const statusIcon = {
     PENDING: (

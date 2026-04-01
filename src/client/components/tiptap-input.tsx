@@ -73,7 +73,7 @@ interface SuggestionItem {
   path?: string;
 }
 
-function createSuggestionDropdown(triggerChar?: string) {
+function createSuggestionDropdown(triggerChar?: string, getT?: () => ReturnType<typeof useTranslation>["t"]) {
   let popup: HTMLDivElement | null = null;
   let selectedIndex = 0;
   let currentItems: SuggestionItem[] = [];
@@ -104,15 +104,21 @@ function createSuggestionDropdown(triggerChar?: string) {
       const empty = document.createElement("div");
       empty.style.cssText =
         "padding: 12px 14px; color: #9ca3af; font-size: 12px; text-align: center;";
+      const t = getT?.();
+      if (!t) {
+        empty.textContent = "No results";
+        p.appendChild(empty);
+        return;
+      }
 
       // Show different message based on trigger character
       if (currentTriggerChar === "@") {
         empty.innerHTML = `
-          <div style="margin-bottom: 4px;">📁 No files found</div>
-          <div style="font-size: 11px; opacity: 0.7;">Clone a repository first to search files</div>
+          <div style="margin-bottom: 4px;">📁 ${t.chatPanel.noResults}</div>
+          <div style="font-size: 11px; opacity: 0.7;">${t.chatPanel.cloneRepoFirst}</div>
         `;
       } else {
-        empty.textContent = "No results";
+        empty.textContent = t.chatPanel.noResults;
       }
       p.appendChild(empty);
       return;
@@ -277,7 +283,8 @@ interface FileSearchContext {
 }
 
 function createAtMention(
-  getFileSearchContext: () => FileSearchContext
+  getFileSearchContext: () => FileSearchContext,
+  getT?: () => ReturnType<typeof useTranslation>["t"]
 ) {
   return Mention.extend({ name: "atMention" }).configure({
     HTMLAttributes: {
@@ -349,7 +356,7 @@ function createAtMention(
           return [];
         }
       },
-      render: () => createSuggestionDropdown("@"),
+      render: () => createSuggestionDropdown("@", getT),
     },
   });
 }
@@ -357,7 +364,8 @@ function createAtMention(
 // ─── # Mention Extension (providers + sessions) ────────────────────────
 
 function createHashMention(
-  getAgentItems: () => SuggestionItem[]
+  getAgentItems: () => SuggestionItem[],
+  getT?: () => ReturnType<typeof useTranslation>["t"]
 ) {
   return Mention.extend({ name: "hashMention" }).configure({
     HTMLAttributes: {
@@ -389,7 +397,7 @@ function createHashMention(
           (p.description ?? "").toLowerCase().includes(query.toLowerCase())
         );
       },
-      render: () => createSuggestionDropdown("#"),
+      render: () => createSuggestionDropdown("#", getT),
     },
   });
 }
@@ -397,7 +405,8 @@ function createHashMention(
 // ─── Skill Command Extension (/ trigger) ───────────────────────────────
 
 function createSkillMention(
-  getSkills: () => SuggestionItem[]
+  getSkills: () => SuggestionItem[],
+  getT?: () => ReturnType<typeof useTranslation>["t"]
 ) {
   return Mention.extend({ name: "skillMention" }).configure({
     HTMLAttributes: {
@@ -427,7 +436,7 @@ function createSkillMention(
           (s.description ?? "").toLowerCase().includes(query.toLowerCase())
         );
       },
-      render: () => createSuggestionDropdown("/"),
+      render: () => createSuggestionDropdown("/", getT),
     },
   });
 }
@@ -732,11 +741,11 @@ export function TiptapInput({
         HTMLAttributes: { class: "flex items-start gap-2" },
       }),
       // eslint-disable-next-line react-hooks/refs -- Tiptap suggestions resolve these getters later during editor interaction, not during React render
-      createAtMention(() => fileSearchContextRef.current),
+      createAtMention(() => fileSearchContextRef.current, () => t),
       // eslint-disable-next-line react-hooks/refs -- Tiptap suggestions resolve these getters later during editor interaction, not during React render
-      createHashMention(() => agentItemsRef.current),
+      createHashMention(() => agentItemsRef.current, () => t),
       // eslint-disable-next-line react-hooks/refs -- Tiptap suggestions resolve these getters later during editor interaction, not during React render
-      createSkillMention(() => mergedSkillItemsRef.current),
+      createSkillMention(() => mergedSkillItemsRef.current, () => t),
       // eslint-disable-next-line react-hooks/refs -- EnterToSend intentionally calls the latest ref-backed send handler
       EnterToSend.configure({
         onSend: handleSendProxy,
@@ -994,11 +1003,11 @@ export function TiptapInput({
                   setModelFilter("");
                 }}
                 className={modelButtonClass}
-                title="Select model"
+                title={t.chatPanel.selectModel}
               >
                 <Monitor className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                 <span className={`font-medium truncate ${isHero ? "max-w-[180px] text-slate-700 dark:text-slate-200" : "max-w-[140px] text-slate-700 dark:text-slate-300"}`}>
-                  {selectedModel ? selectedModel.split("/").pop() : "Default model"}
+                  {selectedModel ? selectedModel.split("/").pop() : t.chatPanel.defaultModel}
                 </span>
                 {modelLoading
                   ? <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -1018,7 +1027,7 @@ export function TiptapInput({
                       type="text"
                       value={modelFilter}
                       onChange={(e) => setModelFilter(e.target.value)}
-                      placeholder="Filter models..."
+                      placeholder={t.chatPanel.filterModels}
                       className="w-full px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-transparent outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -1033,7 +1042,7 @@ export function TiptapInput({
                           : "hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300"
                       }`}
                     >
-                      <span className="font-medium">Default model</span>
+                      <span className="font-medium">{t.chatPanel.defaultModel}</span>
                     </button>
                     {availableModels
                       .filter((m) => !modelFilter || m.toLowerCase().includes(modelFilter.toLowerCase()))
@@ -1056,7 +1065,7 @@ export function TiptapInput({
                       ))
                     }
                     {availableModels.length === 0 && !modelLoading && (
-                      <div className="px-3 py-3 text-xs text-slate-400 text-center">No models found</div>
+                      <div className="px-3 py-3 text-xs text-slate-400 text-center">{t.chatPanel.noModelsFound}</div>
                     )}
                   </div>
                 </div>
@@ -1070,12 +1079,12 @@ export function TiptapInput({
               <ModeChip
                 active={claudeMode === "acceptEdits"}
                 onClick={() => setClaudeMode("acceptEdits")}
-                label="Brave"
+                label={t.chatPanel.brave}
               />
               <ModeChip
                 active={claudeMode === "plan"}
                 onClick={() => setClaudeMode("plan")}
-                label="Plan"
+                label={t.chatPanel.plan}
               />
             </div>
           )}
@@ -1084,32 +1093,32 @@ export function TiptapInput({
               <ModeChip
                 active={opencodeMode === "build"}
                 onClick={() => setOpencodeMode("build")}
-                label="Build"
+                label={t.chatPanel.build}
               />
               <ModeChip
                 active={opencodeMode === "plan"}
                 onClick={() => setOpencodeMode("plan")}
-                label="Plan"
+                label={t.chatPanel.plan}
               />
             </div>
           )}
 
           {/* Usage indicator (shown when we have usage data) */}
           {usageInfo && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-500 dark:text-slate-400 font-mono" title={`Input: ${usageInfo.inputTokens.toLocaleString()} tokens\nOutput: ${usageInfo.outputTokens.toLocaleString()} tokens`}>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-500 dark:text-slate-400 font-mono" title={`Input: ${usageInfo.inputTokens.toLocaleString()} ${t.chatPanel.tokens}\nOutput: ${usageInfo.outputTokens.toLocaleString()} ${t.chatPanel.tokens}`}>
               <Zap className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
               <span>{usageInfo.totalTokens.toLocaleString()}</span>
-              <span className="text-slate-400 dark:text-slate-500">tokens</span>
+              <span className="text-slate-400 dark:text-slate-500">{t.chatPanel.tokens}</span>
             </div>
           )}
 
           {/* Hints + send */}
           <span className={hintClass}>
-            <kbd className={hintKbdClass}>@</kbd> file
+            <kbd className={hintKbdClass}>@</kbd> {t.chatPanel.fileHint}
             <span className="mx-1.5">&middot;</span>
-            <kbd className={hintKbdClass}>#</kbd> agent
+            <kbd className={hintKbdClass}>#</kbd> {t.chatPanel.agentHint}
             <span className="mx-1.5">&middot;</span>
-            <kbd className={hintKbdClass}>/</kbd> skill
+            <kbd className={hintKbdClass}>/</kbd> {t.chatPanel.skillHint}
           </span>
           {loading ? (
             <button

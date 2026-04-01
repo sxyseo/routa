@@ -100,6 +100,7 @@ export function RepoPicker({
   allowClone = true,
   additionalRepos,
 }: RepoPickerProps) {
+  const { t } = useTranslation();
   const [repos, setRepos] = useState<ClonedRepo[]>([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -466,7 +467,7 @@ export function RepoPicker({
           className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
         >
           <GitRepoIcon className="w-3.5 h-3.5" />
-          <span>Select, clone, or load a repository...</span>
+          <span>{t.repoPicker.selectCloneOrLoad}</span>
         </button>
       )}
 
@@ -492,7 +493,7 @@ export function RepoPicker({
               onClick={() => setActiveTab("existing")}
             >
               <Book className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"/>
-              Repositories
+              {t.repoPicker.repositories}
             </TabButton>
             {allowClone ? (
               <TabButton
@@ -503,7 +504,7 @@ export function RepoPicker({
                 }}
               >
                 <Download className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
-                Clone from GitHub
+                {t.repoPicker.cloneFromGitHub}
               </TabButton>
             ) : null}
             <TabButton
@@ -511,7 +512,7 @@ export function RepoPicker({
               onClick={() => setActiveTab("local")}
             >
               <Folder className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
-              Local Project
+              {t.repoPicker.localProject}
             </TabButton>
           </div>
 
@@ -527,7 +528,7 @@ export function RepoPicker({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search repositories, paste GitHub URL, or enter local path..."
+                    placeholder={t.repoPicker.searchPlaceholder}
                     className="flex-1 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none"
                     onKeyDown={(e) => {
                       if (e.key === "Escape") setShowDropdown(false);
@@ -540,16 +541,16 @@ export function RepoPicker({
               {/* Repo list */}
               <div className="overflow-y-auto">
                 {loadingRepos ? (
-                  <EmptyState>Loading repositories...</EmptyState>
+                  <EmptyState>{t.repoPicker.loadingRepositories}</EmptyState>
                 ) : filteredRepos.length === 0 ? (
                   <EmptyState>
                     {allRepos.length === 0
-                      ? 'No repositories yet. Switch to "Clone from GitHub" or "Local Project" to add one.'
-                      : "No matching repositories."}
+                      ? t.repoPicker.noRepositoriesYet
+                      : t.repoPicker.noMatchingRepositories}
                   </EmptyState>
                 ) : (
                   <>
-                    <SectionHeader>Available Repositories</SectionHeader>
+                    <SectionHeader>{t.repoPicker.availableRepositories}</SectionHeader>
                     {filteredRepos.map((repo) => (
                       <RepoListItem
                         key={repo.path}
@@ -572,7 +573,7 @@ export function RepoPicker({
               {/* URL input */}
               <div>
                 <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">
-                  Repository URL
+                  {t.repoPicker.repositoryUrl}
                 </label>
                 <div className="flex items-center gap-1.5">
                   <div className="flex-1 flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] overflow-hidden">
@@ -591,7 +592,7 @@ export function RepoPicker({
                         );
                         setCloneError(null);
                       }}
-                      placeholder="owner/repo"
+                      placeholder={t.repoPicker.ownerRepo}
                       className="flex-1 px-1.5 py-2 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none font-mono"
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && cloneUrl.trim()) {
@@ -654,18 +655,18 @@ export function RepoPicker({
                 {cloning ? (
                   <>
                     <Spinner />
-                    Cloning...
+                    {t.repoPicker.cloning}
                   </>
                 ) : (
                   <>
                     <Download className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
-                    Clone Repository
+                    {t.repoPicker.cloneRepository}
                   </>
                 )}
               </button>
 
               <div className="text-[10px] text-slate-400 dark:text-slate-500">
-                The repo will be cloned and used as the agent working directory.
+                {t.repoPicker.cloneHint}
               </div>
             </div>
           )}
@@ -674,7 +675,7 @@ export function RepoPicker({
             <div className="p-3 space-y-3">
               <div>
                 <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">
-                  Local Repository Path
+                  {t.repoPicker.localRepositoryPath}
                 </label>
                 <input
                   type="text"
@@ -683,7 +684,7 @@ export function RepoPicker({
                     setLocalPath(e.target.value);
                     setLocalRepoError(null);
                   }}
-                  placeholder="/Users/you/project or ~/project"
+                  placeholder={t.repoPicker.localPathPlaceholder}
                   className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none"
                   onKeyDown={handleLocalPathKeyDown}
                   autoFocus
@@ -707,18 +708,18 @@ export function RepoPicker({
                 {loadingLocalRepo ? (
                   <>
                     <Spinner />
-                    Loading Project...
+                    {t.repoPicker.loadingProject}
                   </>
                 ) : (
                   <>
                     <Folder className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
-                    Use Local Project
+                    {t.repoPicker.useLocalProject}
                   </>
                 )}
               </button>
 
               <div className="text-[10px] text-slate-400 dark:text-slate-500">
-                The path must exist locally and already be a git repository.
+                {t.repoPicker.localProjectHint}
               </div>
             </div>
           )}
@@ -848,6 +849,7 @@ function RepoListItem({
   onBranchChange: (branch: string) => void | Promise<void>;
   onReset: () => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [resetting, setResetting] = useState(false);
 
   const handleReset = async () => {
@@ -887,11 +889,11 @@ function RepoListItem({
               {repo.branch}
             </span>
             {!repo.status.clean && (
-              <span className="text-[9px] text-amber-600 dark:text-amber-400">modified</span>
+              <span className="text-[9px] text-amber-600 dark:text-amber-400">{t.repoPicker.modified}</span>
             )}
             {repo.status.behind > 0 && (
               <span className="text-[9px] text-blue-600 dark:text-blue-400">
-                {repo.status.behind} behind
+                {repo.status.behind} {t.repoPicker.behind}
               </span>
             )}
           </div>
@@ -909,10 +911,10 @@ function RepoListItem({
             onClick={handleReset}
             disabled={resetting}
             className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
-            title="Discard local changes"
+            title={t.repoPicker.discardChanges}
           >
             <ResetIcon />
-            {resetting ? "Resetting..." : "Reset"}
+            {resetting ? t.repoPicker.resetting : t.repoPicker.reset}
           </button>
         )}
       </div>

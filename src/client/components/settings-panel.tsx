@@ -190,6 +190,7 @@ function RolesTab({
   onChange: (role: AgentRoleKey, field: "provider" | "model", value: string) => void;
   onOpenModelsTab: () => void;
 }) {
+  const { t } = useTranslation();
   const datalistId = useId();
 
   return (
@@ -231,7 +232,7 @@ function RolesTab({
                   </optgroup>
                 )}
                 {customProviders.length > 0 && (
-                  <optgroup label="Custom">
+                  <optgroup label={t.settings.customProvider}>
                     {customProviders.map((provider) => (
                       <option
                         key={provider.id}
@@ -309,8 +310,8 @@ function CustomAcpProvidersSection() {
     setError(null);
     const name = form.name.trim();
     const command = form.command.trim();
-    if (!name) { setError("Name is required"); return; }
-    if (!command) { setError("Command is required"); return; }
+    if (!name) { setError(t.settings.nameRequired); return; }
+    if (!command) { setError(t.settings.commandRequired); return; }
 
     const args = form.args
       .split(/\s+/)
@@ -411,7 +412,7 @@ function CustomAcpProvidersSection() {
             <input
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Optional description"
+              placeholder={t.settings.optionalDescription}
               className={inputCls}
             />
           </div>
@@ -476,6 +477,7 @@ interface ProviderCatalogSectionProps {
 }
 
 function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
+  const { t } = useTranslation();
   const [hiddenProviderIds, setHiddenProviderIds] = useState<string[]>(() => loadHiddenProviders());
 
   const handleToggle = (providerId: string) => {
@@ -524,7 +526,7 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
                         {provider.name}
                       </p>
                       <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        {provider.source === "registry" ? "Registry" : isCustomProvider(provider) ? "Custom" : "Built-in"}
+                        {provider.source === "registry" ? t.settings.registry : isCustomProvider(provider) ? t.settings.customProvider : t.settings.builtIn}
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-400 font-mono truncate">
@@ -534,7 +536,7 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
                 </div>
                 <div className="ml-2 flex items-center gap-2 shrink-0">
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                    {isHidden ? "Hidden" : "Shown"}
+                    {isHidden ? t.settings.hidden : t.settings.shown}
                   </span>
                   {provider.status && (
                     <span
@@ -571,6 +573,7 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
 }
 
 function WebhooksTab() {
+  const { t } = useTranslation();
   const [showFullPanel, setShowFullPanel] = useState(false);
   const isTauriEnv = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -585,7 +588,7 @@ function WebhooksTab() {
           <button
             onClick={() => setShowFullPanel(false)}
             className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-            title="Back to overview"
+            title={t.settings.backToOverview}
           >
             <ArrowLeft className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           </button>

@@ -677,7 +677,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
         {/* Enable toggle */}
         <button
           onClick={onToggle}
-          title={schedule.enabled ? "Disable schedule" : "Enable schedule"}
+          title={schedule.enabled ? t.schedules.disableSchedule : t.schedules.enableSchedule}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 mt-0.5 ${
             schedule.enabled ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-600"
           }`}
@@ -694,7 +694,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
         <button
           onClick={onRunNow}
           disabled={isRunning || !schedule.enabled}
-          title={schedule.enabled ? "Run schedule now" : "Enable schedule to run"}
+          title={schedule.enabled ? t.schedules.runScheduleNow : t.schedules.enableToRun}
           className="flex items-center gap-1 px-2.5 py-1 text-xs bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300 rounded-md transition-colors disabled:opacity-40"
         >
           {isRunning ? (

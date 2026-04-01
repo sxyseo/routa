@@ -174,7 +174,7 @@ export function SessionContextPanel({
 
   const formatLaneSessionLabel = (session: LaneSessionInfo) =>
     [
-      session.columnName ?? session.columnId ?? "Unknown lane",
+      session.columnName ?? session.columnId ?? t.sessions.unknownLane,
       session.stepName ?? (typeof session.stepIndex === "number" ? `Step ${session.stepIndex + 1}` : undefined),
       session.provider,
       session.role,
@@ -319,7 +319,7 @@ export function SessionContextPanel({
                       setRenamingId(context.current.sessionId);
                     }}
                     className="p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-400 hover:text-blue-600 dark:hover:text-blue-300"
-                    title="Rename"
+                    title={t.sessions.rename}
                   >
                     <SquarePen className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   </button>
