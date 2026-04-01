@@ -117,29 +117,11 @@ async fn create_worktree(
         )));
     }
 
-    // Get workspace to check for custom worktreeRoot in metadata
-    let workspace = state.workspace_store.get(&workspace_id).await?;
-    let worktree_root = workspace
-        .as_ref()
-        .and_then(|ws| ws.metadata.get("worktreeRoot"))
-        .filter(|s| !s.trim().is_empty())
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| git::get_default_workspace_worktree_root(&workspace_id));
-
-    // Use codebase label (or fallback to codebase_id) for the directory name
-    let codebase_label = codebase
-        .label
-        .as_ref()
-        .map(|l| git::branch_to_safe_dir_name(l))
-        .unwrap_or_else(|| git::branch_to_safe_dir_name(&codebase_id));
-
-    // Compute worktree path: {worktreeRoot}/{codebaseLabel}/{branchDir}
-    let worktree_dir = body
-        .label
-        .as_ref()
-        .map(|l| git::branch_to_safe_dir_name(l))
-        .unwrap_or_else(|| git::branch_to_safe_dir_name(&branch));
-    let worktree_path = worktree_root.join(&codebase_label).join(&worktree_dir);
+    // Compute worktree path
+    let worktree_path = git::get_worktree_base_dir()
+        .join(&codebase.workspace_id)
+        .join(&codebase_id)
+        .join(git::branch_to_safe_dir_name(&branch));
 
     // Ensure parent directory exists
     if let Some(parent) = worktree_path.parent() {
