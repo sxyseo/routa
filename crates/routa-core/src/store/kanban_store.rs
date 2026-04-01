@@ -4,10 +4,8 @@ use rusqlite::OptionalExtension;
 use crate::db::Database;
 use crate::error::ServerError;
 use crate::models::kanban::{
-    apply_recommended_automation_to_columns,
-    default_kanban_board,
-    normalize_default_kanban_column_positions,
-    KanbanBoard,
+    apply_recommended_automation_to_columns, default_kanban_board,
+    normalize_default_kanban_column_positions, KanbanBoard,
 };
 
 #[derive(Clone)]

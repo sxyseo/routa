@@ -242,7 +242,9 @@ pub fn default_kanban_columns() -> Vec<KanbanColumn> {
     ]
 }
 
-fn normalize_kanban_automation_step_ids(mut steps: Vec<KanbanAutomationStep>) -> Vec<KanbanAutomationStep> {
+fn normalize_kanban_automation_step_ids(
+    mut steps: Vec<KanbanAutomationStep>,
+) -> Vec<KanbanAutomationStep> {
     for (index, step) in steps.iter_mut().enumerate() {
         if step.id.trim().is_empty() {
             step.id = format!("step-{}", index + 1);
@@ -265,7 +267,8 @@ fn normalize_kanban_automation_step_ids(mut steps: Vec<KanbanAutomationStep>) ->
 }
 
 fn normalize_kanban_automation(mut automation: KanbanColumnAutomation) -> KanbanColumnAutomation {
-    let mut steps = normalize_kanban_automation_step_ids(automation.steps.clone().unwrap_or_default());
+    let mut steps =
+        normalize_kanban_automation_step_ids(automation.steps.clone().unwrap_or_default());
     if automation.enabled && steps.is_empty() {
         steps = vec![KanbanAutomationStep {
             id: "step-1".to_string(),
@@ -301,7 +304,13 @@ fn legacy_specialist_ids_for_stage(stage: &str) -> &'static [&'static str] {
         "backlog" => &["issue-enricher", "kanban-workflow", "kanban-agent"],
         "todo" => &["routa", "developer", "kanban-workflow"],
         "dev" => &["pr-reviewer", "developer", "claude-code", "kanban-workflow"],
-        "review" => &["desk-check", "gate", "pr-reviewer", "kanban-workflow", "kanban-review-guard"],
+        "review" => &[
+            "desk-check",
+            "gate",
+            "pr-reviewer",
+            "kanban-workflow",
+            "kanban-review-guard",
+        ],
         "blocked" => &["claude-code", "developer", "routa", "kanban-workflow"],
         "done" => &["gate", "verifier", "claude-code", "kanban-workflow"],
         _ => &[],
@@ -341,38 +350,50 @@ fn build_recommended_automation(
 
 fn recommended_automation_for_stage(stage: &str) -> Option<KanbanColumnAutomation> {
     match stage {
-        "backlog" => Some(build_recommended_automation(vec![recommended_step(
-            "backlog-refiner",
-            "CRAFTER",
-            "Backlog Refiner",
-        )], true)),
-        "todo" => Some(build_recommended_automation(vec![recommended_step(
-            "todo-orchestrator",
-            "CRAFTER",
-            "Todo Orchestrator",
-        )], false)),
-        "dev" => Some(build_recommended_automation(vec![recommended_step(
-            "dev-executor",
-            "CRAFTER",
-            "Dev Crafter",
-        )], false)),
-        "review" => Some(build_recommended_automation(vec![
-            recommended_step("qa-frontend", "GATE", "QA Frontend"),
-            recommended_step("review-guard", "GATE", "Review Guard"),
-        ], false)).map(|mut automation| {
-            automation.required_artifacts = Some(vec!["screenshot".to_string(), "test_results".to_string()]);
+        "backlog" => Some(build_recommended_automation(
+            vec![recommended_step(
+                "backlog-refiner",
+                "CRAFTER",
+                "Backlog Refiner",
+            )],
+            true,
+        )),
+        "todo" => Some(build_recommended_automation(
+            vec![recommended_step(
+                "todo-orchestrator",
+                "CRAFTER",
+                "Todo Orchestrator",
+            )],
+            false,
+        )),
+        "dev" => Some(build_recommended_automation(
+            vec![recommended_step("dev-executor", "CRAFTER", "Dev Crafter")],
+            false,
+        )),
+        "review" => Some(build_recommended_automation(
+            vec![
+                recommended_step("qa-frontend", "GATE", "QA Frontend"),
+                recommended_step("review-guard", "GATE", "Review Guard"),
+            ],
+            false,
+        ))
+        .map(|mut automation| {
+            automation.required_artifacts =
+                Some(vec!["screenshot".to_string(), "test_results".to_string()]);
             automation
         }),
-        "blocked" => Some(build_recommended_automation(vec![recommended_step(
-            "blocked-resolver",
-            "CRAFTER",
-            "Blocked Resolver",
-        )], false)),
-        "done" => Some(build_recommended_automation(vec![recommended_step(
-            "done-reporter",
-            "GATE",
-            "Done Reporter",
-        )], false)),
+        "blocked" => Some(build_recommended_automation(
+            vec![recommended_step(
+                "blocked-resolver",
+                "CRAFTER",
+                "Blocked Resolver",
+            )],
+            false,
+        )),
+        "done" => Some(build_recommended_automation(
+            vec![recommended_step("done-reporter", "GATE", "Done Reporter")],
+            false,
+        )),
         _ => None,
     }
 }
@@ -552,9 +573,7 @@ pub fn apply_recommended_automation_to_columns(columns: Vec<KanbanColumn>) -> Ve
     normalize_default_kanban_column_positions(columns)
 }
 
-fn get_primary_step(
-    automation: &KanbanColumnAutomation,
-) -> Option<KanbanAutomationStep> {
+fn get_primary_step(automation: &KanbanColumnAutomation) -> Option<KanbanAutomationStep> {
     automation_steps(automation).into_iter().next()
 }
 

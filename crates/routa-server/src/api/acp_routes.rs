@@ -49,7 +49,10 @@ async fn resolve_session_cwd(
     }
 
     if let Ok(codebases) = state.codebase_store.list_by_workspace(workspace_id).await {
-        if let Some(codebase) = codebases.into_iter().find(|codebase| !codebase.repo_path.trim().is_empty()) {
+        if let Some(codebase) = codebases
+            .into_iter()
+            .find(|codebase| !codebase.repo_path.trim().is_empty())
+        {
             return codebase.repo_path;
         }
     }
@@ -435,7 +438,13 @@ async fn acp_rpc(
 
             let launch_options = SessionLaunchOptions {
                 specialist_id: specialist_id.clone(),
-                specialist_system_prompt: params.get("systemPrompt").and_then(|v| v.as_str()).map(str::trim).filter(|prompt| !prompt.is_empty()).map(str::to_string).or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
+                specialist_system_prompt: params
+                    .get("systemPrompt")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|prompt| !prompt.is_empty())
+                    .map(str::to_string)
+                    .or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
                 allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
                 ..SessionLaunchOptions::default()
             };
@@ -662,7 +671,13 @@ async fn acp_rpc(
                     .or(Some("CRAFTER".to_string()));
                 let launch_options = SessionLaunchOptions {
                     specialist_id: specialist_id.clone(),
-                    specialist_system_prompt: params.get("systemPrompt").and_then(|v| v.as_str()).map(str::trim).filter(|prompt| !prompt.is_empty()).map(str::to_string).or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
+                    specialist_system_prompt: params
+                        .get("systemPrompt")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|prompt| !prompt.is_empty())
+                        .map(str::to_string)
+                        .or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
                     allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
                     ..SessionLaunchOptions::default()
                 };

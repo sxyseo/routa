@@ -71,8 +71,6 @@ pub fn validate_local_git_repo_path(candidate: &Path) -> Result<(), ServerError>
     Ok(())
 }
 
-
-
 pub async fn resolve_repo_root(
     state: &AppState,
     workspace_id: Option<&str>,
