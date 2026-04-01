@@ -158,6 +158,7 @@ const en: TranslationDictionary = {
       repositorySignals: "Repository Signals",
       hookSystems: "Hook Systems",
       reviewTriggers: "Review Triggers",
+      codeowners: "CODEOWNERS",
       entrixFitness: "Entrix Fitness",
       ciCd: "CI/CD",
       quickNavigation: "Quick Navigation",
