@@ -268,6 +268,7 @@ function buildPlanGraph(
   expandedDimensions: Set<string>,
   toggleDimension: (name: string) => void,
 ): { nodes: Node<PlanNodeData>[]; edges: Edge[]; minHeight: number } {
+  const dimensions = plan.dimensions ?? [];
   const nodes: Node<PlanNodeData>[] = [];
   const edges: Edge[] = [];
 
@@ -282,7 +283,7 @@ function buildPlanGraph(
   const dispatchCenterX = dispatchX + 146;
   const dimensionsTopY = 214;
   const dimensionColumnWidth = 260;
-  const dimensionColumns = Math.max(plan.dimensions.length, 1);
+  const dimensionColumns = Math.max(dimensions.length, 1);
   const dimensionsGridWidth = (dimensionColumns - 1) * dimensionColumnWidth + 252;
   const dimensionsStartX = Math.round(Math.max(88, dispatchCenterX - dimensionsGridWidth / 2));
   const dimensionCardHeight = 208;
@@ -376,9 +377,9 @@ function buildPlanGraph(
   );
 
   let dimensionGridBottom = dimensionsTopY;
-  const activeDimensionName = plan.dimensions.find((dimension) => expandedDimensions.has(dimension.name))?.name ?? null;
+  const activeDimensionName = dimensions.find((dimension) => expandedDimensions.has(dimension.name))?.name ?? null;
 
-  plan.dimensions.forEach((dimension, dimensionIndex) => {
+  dimensions.forEach((dimension, dimensionIndex) => {
     const dimensionColumn = dimensionIndex % dimensionColumns;
     const dimensionRow = Math.floor(dimensionIndex / dimensionColumns);
     const dimensionX = Math.round(dimensionsStartX + dimensionColumn * dimensionColumnWidth);
@@ -420,7 +421,7 @@ function buildPlanGraph(
     dimensionGridBottom = Math.max(dimensionGridBottom, dimensionY + dimensionCardHeight);
   });
 
-  const activeDimension = plan.dimensions.find((dimension) => expandedDimensions.has(dimension.name)) ?? null;
+  const activeDimension = dimensions.find((dimension) => expandedDimensions.has(dimension.name)) ?? null;
   let contentBottom = dimensionGridBottom;
 
   if (activeDimension) {
@@ -526,7 +527,7 @@ export function HarnessExecutionPlanFlow({
       return new Set<string>();
     }
 
-    return new Set(plan.dimensions.slice(0, 1).map((dimension) => dimension.name));
+    return new Set((plan.dimensions ?? []).slice(0, 1).map((dimension) => dimension.name));
   }, [compactMode, plan]);
 
   const expandedDimensions = useMemo(() => {
@@ -598,7 +599,7 @@ export function HarnessExecutionPlanFlow({
                 const base = current.planKey === planKey ? current.names : expandedDimensions;
                 return {
                   planKey,
-                  names: base.size > 0 ? new Set<string>() : new Set(plan.dimensions.slice(0, 1).map((dimension) => dimension.name)),
+                  names: base.size > 0 ? new Set<string>() : new Set((plan.dimensions ?? []).slice(0, 1).map((dimension) => dimension.name)),
                 };
               });
             }}

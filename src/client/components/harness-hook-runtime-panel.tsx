@@ -5,6 +5,7 @@ import { HarnessHookWorkbench } from "@/client/components/harness-hook-workbench
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { HooksResponse } from "@/client/hooks/use-harness-settings-data";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 type HooksPanelProps = {
   workspaceId: string;
@@ -74,7 +75,7 @@ export function HarnessHookRuntimePanel({
         }
         query.set("repoPath", repoPath);
 
-        const response = await fetch(`/api/harness/hooks?${query.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/hooks?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load hook runtime");

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type {
   HarnessRepoSignalsResponse,
   HarnessScriptSignal,
@@ -85,7 +86,7 @@ export function HarnessRepoSignalsPanel({
     const fetchSignals = async () => {
       setState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/repo-signals?${query.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/repo-signals?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load repository signals");

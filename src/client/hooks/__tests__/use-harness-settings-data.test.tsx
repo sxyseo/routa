@@ -28,9 +28,12 @@ describe("useHarnessSettingsData", () => {
 
       if (url.startsWith("/api/fitness/plan?")) {
         return okJson({
+          generatedAt: "2026-03-31T00:00:00.000Z",
+          repoRoot: "/repo",
+          tier: "normal",
+          scope: "local",
           metricCount: 31,
           hardGateCount: 13,
-          dimensions: [],
         });
       }
 
@@ -40,11 +43,12 @@ describe("useHarnessSettingsData", () => {
           repoRoot: "/repo",
           hooksDir: "/repo/.husky",
           configFile: null,
-          reviewTriggerFile: null,
+          reviewTriggerFile: {
+            relativePath: "docs/fitness/review-triggers.yaml",
+            source: "review_triggers: []",
+            ruleCount: 0,
+          },
           releaseTriggerFile: null,
-          hookFiles: [],
-          profiles: [],
-          warnings: [],
         });
       }
 
@@ -82,8 +86,14 @@ describe("useHarnessSettingsData", () => {
           generatedAt: "2026-03-31T00:00:00.000Z",
           repoRoot: "/repo",
           workflowsDir: "/repo/.github/workflows",
-          flows: [],
-          warnings: [],
+          flows: [
+            {
+              id: "ci",
+              name: "CI",
+              event: "push",
+              yaml: "name: CI",
+            },
+          ],
         });
       }
 
@@ -92,8 +102,6 @@ describe("useHarnessSettingsData", () => {
           generatedAt: "2026-03-31T00:00:00.000Z",
           repoRoot: "/repo",
           configFile: null,
-          hooks: [],
-          warnings: [],
         });
       }
 
@@ -101,8 +109,40 @@ describe("useHarnessSettingsData", () => {
         return okJson({
           generatedAt: "2026-03-31T00:00:00.000Z",
           repoRoot: "/repo",
-          sources: [],
-          warnings: [],
+          sources: [
+            {
+              kind: "framework",
+              system: "kiro",
+              rootPath: ".kiro/specs",
+              confidence: "high",
+              status: "artifacts-present",
+              evidence: ["found .kiro/specs"],
+            },
+          ],
+        });
+      }
+
+      if (url.startsWith("/api/harness/design-decisions?")) {
+        return okJson({
+          generatedAt: "2026-03-31T00:00:00.000Z",
+          repoRoot: "/repo",
+          sources: [
+            {
+              kind: "canonical-doc",
+              label: "Architecture",
+              rootPath: "docs",
+              confidence: "high",
+              status: "documents-present",
+            },
+          ],
+        });
+      }
+
+      if (url.startsWith("/api/harness/codeowners?")) {
+        return okJson({
+          generatedAt: "2026-03-31T00:00:00.000Z",
+          repoRoot: "/repo",
+          codeownersFile: "CODEOWNERS",
         });
       }
 
@@ -115,10 +155,6 @@ describe("useHarnessSettingsData", () => {
             source: "schema: harness-automation-v1",
             schema: "harness-automation-v1",
           },
-          definitions: [],
-          pendingSignals: [],
-          recentRuns: [],
-          warnings: [],
         });
       }
 
@@ -176,5 +212,42 @@ describe("useHarnessSettingsData", () => {
       && String(url).includes("repoPath=%2Frepo")
       && !String(url).includes("workspaceId=")
     ))).toBe(true);
+  });
+
+  it("normalizes sparse harness payloads before exposing panel state", async () => {
+    const { result } = renderHook(() => useHarnessSettingsData({
+      workspaceId: "default",
+      repoPath: "/repo",
+      selectedTier: "normal",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.automationsState.loading).toBe(false);
+      expect(result.current.codeownersState.loading).toBe(false);
+    });
+
+    expect(result.current.planState.data?.dimensions).toEqual([]);
+    expect(result.current.planState.data?.runnerCounts).toEqual({
+      shell: 0,
+      graph: 0,
+      sarif: 0,
+    });
+    expect(result.current.hooksState.data?.hookFiles).toEqual([]);
+    expect(result.current.hooksState.data?.profiles).toEqual([]);
+    expect(result.current.hooksState.data?.reviewTriggerFile?.rules).toEqual([]);
+    expect(result.current.githubActionsState.data?.flows[0]?.jobs).toEqual([]);
+    expect(result.current.agentHooksState.data?.hooks).toEqual([]);
+    expect(result.current.specSourcesState.data?.sources[0]?.children).toEqual([]);
+    expect(result.current.designDecisionsState.data?.sources[0]?.artifacts).toEqual([]);
+    expect(result.current.codeownersState.data?.owners).toEqual([]);
+    expect(result.current.codeownersState.data?.rules).toEqual([]);
+    expect(result.current.codeownersState.data?.coverage).toEqual({
+      unownedFiles: [],
+      overlappingFiles: [],
+      sensitiveUnownedFiles: [],
+    });
+    expect(result.current.automationsState.data?.definitions).toEqual([]);
+    expect(result.current.automationsState.data?.pendingSignals).toEqual([]);
+    expect(result.current.automationsState.data?.recentRuns).toEqual([]);
   });
 });

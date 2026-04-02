@@ -416,8 +416,10 @@ export function buildHookWorkbenchEntries(data: HooksResponse | null | undefined
     return [];
   }
 
-  const hookFilesByName = new Map(data.hookFiles.map((hook) => [hook.name, hook]));
-  const profilesByName = new Map(data.profiles.map((profile) => [profile.name, profile]));
+  const hookFiles = data.hookFiles ?? [];
+  const profiles = data.profiles ?? [];
+  const hookFilesByName = new Map(hookFiles.map((hook) => [hook.name, hook]));
+  const profilesByName = new Map(profiles.map((profile) => [profile.name, profile]));
 
   const catalogEntries = HOOK_CATALOG.map((catalogEntry) => {
     const hookFile = hookFilesByName.get(catalogEntry.name) ?? null;
@@ -428,7 +430,7 @@ export function buildHookWorkbenchEntries(data: HooksResponse | null | undefined
   });
 
   const catalogNames = new Set(HOOK_CATALOG.map((entry) => entry.name));
-  const extraEntries = data.hookFiles
+  const extraEntries = hookFiles
     .filter((hook) => !catalogNames.has(hook.name))
     .map((hook) => buildOtherHookEntry(
       hook,

@@ -261,7 +261,19 @@ vi.mock("@/client/components/harness-lifecycle-view", () => ({
 }));
 
 vi.mock("@/client/components/harness-github-actions-flow-panel", () => ({
-  HarnessGitHubActionsFlowPanel: () => <div data-testid="github-actions-flow-panel" />,
+  HarnessGitHubActionsFlowPanel: ({
+    repoPath,
+    data,
+  }: {
+    repoPath?: string;
+    data?: { flows?: unknown[] } | null;
+  }) => (
+    <div
+      data-testid="github-actions-flow-panel"
+      data-repo-path={repoPath ?? ""}
+      data-flow-count={String(data?.flows?.length ?? 0)}
+    />
+  ),
 }));
 
 vi.mock("@/client/components/harness-hook-runtime-panel", () => ({
@@ -392,13 +404,13 @@ describe("HarnessSettingsPage", () => {
     expect(screen.getByText("Test Feedback")).not.toBeNull();
   });
 
-  it("uses workspace-only context until a repo is explicitly selected", () => {
+  it("uses the active codebase context by default", () => {
     render(<HarnessSettingsPage />);
 
     expect(useHarnessSettingsDataMock).toHaveBeenCalledWith({
       workspaceId: "default",
-      codebaseId: undefined,
-      repoPath: undefined,
+      codebaseId: "cb-1",
+      repoPath: "/Users/phodal/ai/routa-js",
       selectedTier: "normal",
     });
     expect(window.localStorage.getItem("routa.repoSelection.harness.default")).toBeNull();
@@ -524,6 +536,23 @@ describe("HarnessSettingsPage", () => {
     render(<HarnessSettingsPage />);
 
     expect(screen.getByTestId("automation-panel-full")).not.toBeNull();
+  });
+
+  it("passes the active repo context into the CI/CD section", () => {
+    currentSearchParams = new URLSearchParams("section=ci-cd");
+    mockHarnessSettingsData.githubActionsState = {
+      loading: false,
+      error: null,
+      data: {
+        flows: [{ id: "ci", name: "CI" }],
+      },
+    };
+
+    render(<HarnessSettingsPage />);
+
+    const panel = screen.getByTestId("github-actions-flow-panel");
+    expect(panel.getAttribute("data-repo-path")).toBe("/Users/phodal/ai/routa-js");
+    expect(panel.getAttribute("data-flow-count")).toBe("1");
   });
 
   it("resizes the explorer pane via the drag handle", () => {

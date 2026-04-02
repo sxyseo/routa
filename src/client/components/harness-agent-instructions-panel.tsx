@@ -11,6 +11,7 @@ import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { InstructionsResponse } from "@/client/hooks/use-harness-settings-data";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { RefreshCw } from "lucide-react";
 
 
@@ -250,7 +251,7 @@ export function HarnessAgentInstructionsPanel({
         );
         query.set("includeAudit", includeAudit ? "1" : "0");
 
-        const response = await fetch(`/api/harness/instructions?${query.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/instructions?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load guidance document");

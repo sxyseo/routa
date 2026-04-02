@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PlanResponse, TierValue } from "@/client/components/harness-execution-plan-flow";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { HarnessAutomationResponse } from "@/core/harness/automation-types";
 import type { DesignDecisionResponse } from "@/core/harness/design-decision-types";
 import type { CodeownersResponse } from "@/core/harness/codeowners-types";
@@ -265,6 +266,209 @@ function emptyQueryState<T>(): QueryState<T> {
   };
 }
 
+function safeArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeSpecsResponse(payload: Partial<SpecsResponse> | null | undefined): SpecsResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    fitnessDir: payload?.fitnessDir ?? "",
+    files: safeArray(payload?.files).map((file) => ({
+      ...file,
+      metrics: safeArray(file.metrics),
+      manifestEntries: safeArray(file.manifestEntries),
+    })),
+  };
+}
+
+function normalizePlanResponse(payload: Partial<PlanResponse> | null | undefined): PlanResponse {
+  const dimensions = safeArray(payload?.dimensions).map((dimension) => ({
+    ...dimension,
+    metrics: safeArray(dimension.metrics),
+  }));
+  const metrics = dimensions.flatMap((dimension) => dimension.metrics);
+  const derivedRunnerCounts = metrics.reduce<Record<RunnerKind, number>>((counts, metric) => {
+    if (metric.runner === "graph" || metric.runner === "sarif") {
+      counts[metric.runner] += 1;
+    } else {
+      counts.shell += 1;
+    }
+    return counts;
+  }, { shell: 0, graph: 0, sarif: 0 });
+
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    tier: payload?.tier ?? "normal",
+    scope: payload?.scope ?? "local",
+    repoRoot: payload?.repoRoot ?? "",
+    dimensionCount: payload?.dimensionCount ?? dimensions.length,
+    metricCount: payload?.metricCount ?? metrics.length,
+    hardGateCount: payload?.hardGateCount ?? metrics.filter((metric) => metric.hardGate).length,
+    runnerCounts: {
+      shell: payload?.runnerCounts?.shell ?? derivedRunnerCounts.shell,
+      graph: payload?.runnerCounts?.graph ?? derivedRunnerCounts.graph,
+      sarif: payload?.runnerCounts?.sarif ?? derivedRunnerCounts.sarif,
+    },
+    dimensions,
+  };
+}
+
+function normalizeHooksResponse(payload: Partial<HooksResponse> | null | undefined): HooksResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    hooksDir: payload?.hooksDir ?? "",
+    configFile: payload?.configFile ?? null,
+    reviewTriggerFile: payload?.reviewTriggerFile
+      ? {
+        ...payload.reviewTriggerFile,
+        rules: safeArray(payload.reviewTriggerFile.rules),
+      }
+      : null,
+    releaseTriggerFile: payload?.releaseTriggerFile
+      ? {
+        ...payload.releaseTriggerFile,
+        rules: safeArray(payload.releaseTriggerFile.rules),
+      }
+      : null,
+    hookFiles: safeArray(payload?.hookFiles),
+    profiles: safeArray(payload?.profiles),
+    warnings: safeArray(payload?.warnings),
+  };
+}
+
+function normalizeInstructionsResponse(
+  payload: Partial<InstructionsResponse> | null | undefined,
+): InstructionsResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    fileName: payload?.fileName ?? "",
+    relativePath: payload?.relativePath ?? "",
+    source: payload?.source ?? "",
+    fallbackUsed: Boolean(payload?.fallbackUsed),
+    audit: payload?.audit ?? null,
+  };
+}
+
+function normalizeGitHubActionsFlowsResponse(
+  payload: Partial<GitHubActionsFlowsResponse> | null | undefined,
+): GitHubActionsFlowsResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    workflowsDir: payload?.workflowsDir ?? "",
+    flows: safeArray(payload?.flows).map((flow) => ({
+      ...flow,
+      jobs: safeArray(flow.jobs).map((job) => ({
+        ...job,
+        needs: safeArray(job.needs),
+      })),
+    })),
+    warnings: safeArray(payload?.warnings),
+  };
+}
+
+function normalizeAgentHooksResponse(
+  payload: Partial<AgentHooksResponse> | null | undefined,
+): AgentHooksResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    configFile: payload?.configFile ?? null,
+    configFiles: safeArray(payload?.configFiles),
+    hooks: safeArray(payload?.hooks),
+    warnings: safeArray(payload?.warnings),
+  };
+}
+
+function normalizeSpecDetectionResponse(
+  payload: Partial<SpecDetectionResponse> | null | undefined,
+): SpecDetectionResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    sources: safeArray(payload?.sources).map((source) => ({
+      ...source,
+      evidence: safeArray(source.evidence),
+      children: safeArray(source.children),
+      features: Array.isArray(source.features)
+        ? source.features.map((feature) => ({
+          ...feature,
+          documents: safeArray(feature.documents),
+        }))
+        : undefined,
+    })),
+    warnings: safeArray(payload?.warnings),
+  };
+}
+
+function normalizeDesignDecisionResponse(
+  payload: Partial<DesignDecisionResponse> | null | undefined,
+): DesignDecisionResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    sources: safeArray(payload?.sources).map((source) => ({
+      ...source,
+      artifacts: safeArray(source.artifacts),
+    })),
+    warnings: safeArray(payload?.warnings),
+  };
+}
+
+function normalizeCodeownersResponse(
+  payload: Partial<CodeownersResponse> | null | undefined,
+): CodeownersResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    codeownersFile: payload?.codeownersFile ?? null,
+    owners: safeArray(payload?.owners),
+    rules: safeArray(payload?.rules).map((rule) => ({
+      ...rule,
+      owners: safeArray(rule.owners),
+    })),
+    coverage: {
+      unownedFiles: safeArray(payload?.coverage?.unownedFiles),
+      overlappingFiles: safeArray(payload?.coverage?.overlappingFiles),
+      sensitiveUnownedFiles: safeArray(payload?.coverage?.sensitiveUnownedFiles),
+    },
+    correlation: payload?.correlation
+      ? {
+        ...payload.correlation,
+        triggerCorrelations: safeArray(payload.correlation.triggerCorrelations).map((correlation) => ({
+          ...correlation,
+          ownerGroups: safeArray(correlation.ownerGroups),
+          unownedPaths: safeArray(correlation.unownedPaths),
+          overlappingPaths: safeArray(correlation.overlappingPaths),
+        })),
+        hotspots: safeArray(payload.correlation.hotspots).map((hotspot) => ({
+          ...hotspot,
+          samplePaths: safeArray(hotspot.samplePaths),
+        })),
+      }
+      : undefined,
+    warnings: safeArray(payload?.warnings),
+  };
+}
+
+function normalizeAutomationsResponse(
+  payload: Partial<HarnessAutomationResponse> | null | undefined,
+): HarnessAutomationResponse {
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    configFile: payload?.configFile ?? null,
+    definitions: safeArray(payload?.definitions),
+    pendingSignals: safeArray(payload?.pendingSignals),
+    recentRuns: safeArray(payload?.recentRuns),
+    warnings: safeArray(payload?.warnings),
+  };
+}
+
 export function useHarnessSettingsData({
   workspaceId,
   codebaseId,
@@ -303,7 +507,7 @@ export function useHarnessSettingsData({
     const fetchSpecs = async () => {
       setSpecsState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/fitness/specs?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/fitness/specs?${baseQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load fitness specs");
@@ -312,7 +516,7 @@ export function useHarnessSettingsData({
           setSpecsState({
             loading: false,
             error: null,
-            data: payload as SpecsResponse,
+            data: normalizeSpecsResponse(payload as Partial<SpecsResponse>),
           });
         }
       } catch (error) {
@@ -345,7 +549,7 @@ export function useHarnessSettingsData({
         const query = new URLSearchParams(baseQuery);
         query.set("tier", selectedTier);
         query.set("scope", "local");
-        const response = await fetch(`/api/fitness/plan?${query.toString()}`);
+        const response = await desktopAwareFetch(`/api/fitness/plan?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load fitness plan");
@@ -354,7 +558,7 @@ export function useHarnessSettingsData({
           setPlanState({
             loading: false,
             error: null,
-            data: payload as PlanResponse,
+            data: normalizePlanResponse(payload as Partial<PlanResponse>),
           });
         }
       } catch (error) {
@@ -384,7 +588,7 @@ export function useHarnessSettingsData({
     const fetchHooks = async () => {
       setHooksState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/hooks?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/hooks?${baseQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load hook runtime");
@@ -393,7 +597,7 @@ export function useHarnessSettingsData({
           setHooksState({
             loading: false,
             error: null,
-            data: payload as HooksResponse,
+            data: normalizeHooksResponse(payload as Partial<HooksResponse>),
           });
         }
       } catch (error) {
@@ -429,7 +633,7 @@ export function useHarnessSettingsData({
           instructionsRefreshState.token > 0
         );
         query.set("includeAudit", includeAudit ? "1" : "0");
-        const response = await fetch(`/api/harness/instructions?${query.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/instructions?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load guidance document");
@@ -438,7 +642,7 @@ export function useHarnessSettingsData({
           setInstructionsState({
             loading: false,
             error: null,
-            data: payload as InstructionsResponse,
+            data: normalizeInstructionsResponse(payload as Partial<InstructionsResponse>),
           });
         }
       } catch (error) {
@@ -468,7 +672,7 @@ export function useHarnessSettingsData({
     const fetchGithubActions = async () => {
       setGithubActionsState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/github-actions?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/github-actions?${baseQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load GitHub Actions workflows");
@@ -477,7 +681,7 @@ export function useHarnessSettingsData({
           setGithubActionsState({
             loading: false,
             error: null,
-            data: payload as GitHubActionsFlowsResponse,
+            data: normalizeGitHubActionsFlowsResponse(payload as Partial<GitHubActionsFlowsResponse>),
           });
         }
       } catch (error) {
@@ -507,7 +711,7 @@ export function useHarnessSettingsData({
     const fetchAgentHooks = async () => {
       setAgentHooksState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/agent-hooks?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/agent-hooks?${baseQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load agent hooks");
@@ -516,7 +720,7 @@ export function useHarnessSettingsData({
           setAgentHooksState({
             loading: false,
             error: null,
-            data: payload as AgentHooksResponse,
+            data: normalizeAgentHooksResponse(payload as Partial<AgentHooksResponse>),
           });
         }
       } catch (error) {
@@ -553,7 +757,7 @@ export function useHarnessSettingsData({
     const fetchSpecSources = async () => {
       setSpecSourcesState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/spec-sources?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/spec-sources?${baseQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load spec sources");
@@ -562,7 +766,7 @@ export function useHarnessSettingsData({
           setSpecSourcesState({
             loading: false,
             error: null,
-            data: payload as SpecDetectionResponse,
+            data: normalizeSpecDetectionResponse(payload as Partial<SpecDetectionResponse>),
           });
         }
       } catch (error) {
@@ -592,7 +796,7 @@ export function useHarnessSettingsData({
     const fetchDesignDecisions = async () => {
       setDesignDecisionsState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/design-decisions?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/design-decisions?${baseQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load design decisions");
@@ -601,7 +805,7 @@ export function useHarnessSettingsData({
           setDesignDecisionsState({
             loading: false,
             error: null,
-            data: payload as DesignDecisionResponse,
+            data: normalizeDesignDecisionResponse(payload as Partial<DesignDecisionResponse>),
           });
         }
       } catch (error) {
@@ -631,7 +835,7 @@ export function useHarnessSettingsData({
     const fetchCodeowners = async () => {
       setCodeownersState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/codeowners?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/codeowners?${baseQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load CODEOWNERS");
@@ -640,7 +844,7 @@ export function useHarnessSettingsData({
           setCodeownersState({
             loading: false,
             error: null,
-            data: payload as CodeownersResponse,
+            data: normalizeCodeownersResponse(payload as Partial<CodeownersResponse>),
           });
         }
       } catch (error) {
@@ -670,7 +874,7 @@ export function useHarnessSettingsData({
     const fetchAutomations = async () => {
       setAutomationsState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/automations?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/automations?${baseQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load repo-defined automations");
@@ -679,7 +883,7 @@ export function useHarnessSettingsData({
           setAutomationsState({
             loading: false,
             error: null,
-            data: payload as HarnessAutomationResponse,
+            data: normalizeAutomationsResponse(payload as Partial<HarnessAutomationResponse>),
           });
         }
       } catch (error) {

@@ -138,4 +138,15 @@ describe("harness-hook-workbench-model", () => {
     expect(runtimeSource).toContain("  - review");
     expect(runtimeSource).toContain("  - ts_test_pass");
   });
+
+  it("tolerates missing hook file and profile arrays", () => {
+    const entries = buildHookWorkbenchEntries({
+      ...createHooksResponse(),
+      hookFiles: undefined as unknown as HooksResponse["hookFiles"],
+      profiles: undefined as unknown as HooksResponse["profiles"],
+    });
+
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.find((entry) => entry.name === "pre-commit")?.configured).toBe(false);
+  });
 });

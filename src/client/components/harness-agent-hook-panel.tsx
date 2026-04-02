@@ -5,6 +5,7 @@ import { HarnessAgentHookWorkbench } from "@/client/components/harness-agent-hoo
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { AgentHooksResponse } from "@/client/hooks/use-harness-settings-data";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 type AgentHookPanelProps = {
   workspaceId: string;
@@ -66,7 +67,7 @@ export function HarnessAgentHookPanel({
         }
         query.set("repoPath", repoPath);
 
-        const response = await fetch(`/api/harness/agent-hooks?${query.toString()}`);
+        const response = await desktopAwareFetch(`/api/harness/agent-hooks?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load agent hooks");

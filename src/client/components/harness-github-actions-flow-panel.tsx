@@ -8,6 +8,7 @@ import type {
   GitHubActionsFlow,
   GitHubActionsFlowsResponse,
 } from "@/client/hooks/use-harness-settings-data";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { GitHubWorkflowCategory as WorkflowCategoryKey } from "@/core/github/workflow-classifier";
 
 type FlowState = {
@@ -29,6 +30,20 @@ type HarnessGitHubActionsFlowPanelProps = {
   initialCategory?: WorkflowCategoryKey;
   hideHeader?: boolean;
 };
+
+function normalizeFlows(flows: GitHubActionsFlowsResponse["flows"] | null | undefined): GitHubActionsFlow[] {
+  return Array.isArray(flows)
+    ? flows.map((flow) => ({
+      ...flow,
+      jobs: Array.isArray(flow.jobs)
+        ? flow.jobs.map((job) => ({
+          ...job,
+          needs: Array.isArray(job.needs) ? job.needs : [],
+        }))
+        : [],
+    }))
+    : [];
+}
 
 export function HarnessGitHubActionsFlowPanel({
   workspaceId,
@@ -74,7 +89,7 @@ export function HarnessGitHubActionsFlowPanel({
         query.set("repoPath", repoPath);
       }
 
-      void fetch(`/api/harness/github-actions?${query.toString()}`)
+      void desktopAwareFetch(`/api/harness/github-actions?${query.toString()}`)
         .then(async (response) => {
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) {
@@ -85,7 +100,7 @@ export function HarnessGitHubActionsFlowPanel({
           }
           setFlowState({
             error: null,
-            flows: Array.isArray(payload?.flows) ? payload.flows as GitHubActionsFlow[] : [],
+            flows: normalizeFlows(Array.isArray(payload?.flows) ? payload.flows as GitHubActionsFlow[] : []),
             loadedContextKey: contextKey,
           });
         })
@@ -110,7 +125,7 @@ export function HarnessGitHubActionsFlowPanel({
   const resolvedFlowState = hasExternalState
     ? {
       error: error ?? null,
-      flows: Array.isArray(data?.flows) ? data.flows : [],
+      flows: normalizeFlows(data?.flows),
       loadedContextKey: contextKey,
     }
     : flowState;
