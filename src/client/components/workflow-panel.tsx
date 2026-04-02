@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
 import { PieChart, SquarePen, Trash2, X, Play } from "lucide-react";
@@ -308,13 +309,13 @@ function EditorModal({ workflow, onClose, onSaved }: EditorModalProps) {
     try {
       let res: Response;
       if (isNew) {
-        res = await fetch("/api/workflows", {
+        res = await desktopAwareFetch("/api/workflows", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: id.trim(), yamlContent }),
         });
       } else {
-        res = await fetch(`/api/workflows/${workflow!.id}`, {
+        res = await desktopAwareFetch(`/api/workflows/${encodeURIComponent(workflow!.id)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ yamlContent }),
@@ -441,7 +442,7 @@ function ExecuteModal({ workflow, onClose }: ExecuteModalProps) {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch(`/api/workflows/${encodeURIComponent(workflow.id)}/trigger`, {
+      const res = await desktopAwareFetch(`/api/workflows/${encodeURIComponent(workflow.id)}/trigger`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -675,7 +676,7 @@ export function WorkflowPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/workflows");
+      const res = await desktopAwareFetch("/api/workflows");
       if (!res.ok) {
         setError(t.workflows.noWorkflows);
         return;
@@ -696,7 +697,7 @@ export function WorkflowPanel() {
   const handleDelete = useCallback(
     async (workflow: Workflow) => {
       try {
-        const res = await fetch(`/api/workflows/${workflow.id}`, { method: "DELETE" });
+        const res = await desktopAwareFetch(`/api/workflows/${encodeURIComponent(workflow.id)}`, { method: "DELETE" });
         if (res.ok) {
           await fetchWorkflows();
         }
