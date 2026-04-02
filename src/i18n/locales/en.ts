@@ -158,7 +158,7 @@ const en: TranslationDictionary = {
       agentInstructions: "Agent Instructions",
       designDecisions: "Design Decisions",
       repositorySignals: "Test Feedback",
-      automations: "Automations",
+      automations: "Cleanup & Correction",
       hookSystems: "Hook Systems",
       reviewTriggers: "Review Triggers",
       releaseTriggers: "Release Triggers",

@@ -154,7 +154,7 @@ const zh: TranslationDictionary = {
       agentInstructions: "Agent 指令",
       designDecisions: "设计决策",
       repositorySignals: "测试反馈",
-      automations: "自动化",
+      automations: "清理与纠错",
       hookSystems: "Hook 系统",
       reviewTriggers: "评审触发器",
       releaseTriggers: "发布触发器",

@@ -53,7 +53,7 @@ function severityBadgeClass(severity: HarnessAutomationPendingSignal["severity"]
 function formatStatus(status: HarnessAutomationRuntimeStatus) {
   switch (status) {
     case "definition-only":
-      return "Definition only";
+      return "Configured only";
     case "active":
       return "Active";
     case "paused":
@@ -64,6 +64,30 @@ function formatStatus(status: HarnessAutomationRuntimeStatus) {
       return "Idle";
     case "clear":
       return "Clear";
+  }
+}
+
+function formatSourceType(value: HarnessAutomationDefinitionSummary["sourceType"]) {
+  switch (value) {
+    case "finding":
+      return "Finding-driven";
+    case "schedule":
+      return "Scheduled";
+    case "review-signal":
+      return "Review signal";
+    case "external-event":
+      return "External event";
+  }
+}
+
+function formatTargetType(value: HarnessAutomationDefinitionSummary["targetType"]) {
+  switch (value) {
+    case "specialist":
+      return "Specialist";
+    case "workflow":
+      return "Workflow";
+    case "background-task":
+      return "Background task";
   }
 }
 
@@ -79,7 +103,7 @@ function SummaryStat({ label, value }: { label: string; value: string | number }
   return (
     <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2">
       <div className="text-[10px] uppercase tracking-[0.14em] text-desktop-text-secondary">{label}</div>
-      <div className="mt-1 text-[13px] font-semibold text-desktop-text-primary">{value}</div>
+      <div className="mt-1 break-all text-[13px] font-semibold text-desktop-text-primary">{value}</div>
     </div>
   );
 }
@@ -88,17 +112,17 @@ function DefinitionTable({ definitions }: { definitions: HarnessAutomationDefini
   return (
     <div className="overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary/80">
       <div className="border-b border-desktop-border/70 px-4 py-3">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Definitions</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Configured Mechanisms</div>
       </div>
       {definitions.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-left">
             <thead className="bg-white/60">
               <tr className="text-[10px] uppercase tracking-[0.12em] text-desktop-text-secondary">
-                <th className="px-4 py-2.5 font-semibold">Automation</th>
-                <th className="px-4 py-2.5 font-semibold">Source</th>
-                <th className="px-4 py-2.5 font-semibold">Target</th>
-                <th className="px-4 py-2.5 font-semibold">Runtime</th>
+                <th className="px-4 py-2.5 font-semibold">Mechanism</th>
+                <th className="px-4 py-2.5 font-semibold">Trigger</th>
+                <th className="px-4 py-2.5 font-semibold">Execution Target</th>
+                <th className="px-4 py-2.5 font-semibold">Runtime State</th>
                 <th className="px-4 py-2.5 font-semibold">Pending</th>
               </tr>
             </thead>
@@ -117,7 +141,7 @@ function DefinitionTable({ definitions }: { definitions: HarnessAutomationDefini
                   <td className="px-4 py-3 align-top">
                     <div className="space-y-1">
                       <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                        {definition.sourceType}
+                        {formatSourceType(definition.sourceType)}
                       </span>
                       <div className="max-w-[240px] text-[11px] text-desktop-text-primary">{definition.sourceLabel}</div>
                     </div>
@@ -125,7 +149,7 @@ function DefinitionTable({ definitions }: { definitions: HarnessAutomationDefini
                   <td className="px-4 py-3 align-top">
                     <div className="space-y-1">
                       <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                        {definition.targetType}
+                        {formatTargetType(definition.targetType)}
                       </span>
                       <div className="max-w-[260px] text-[11px] text-desktop-text-primary">{definition.targetLabel}</div>
                     </div>
@@ -149,7 +173,7 @@ function DefinitionTable({ definitions }: { definitions: HarnessAutomationDefini
           </table>
         </div>
       ) : (
-        <div className="px-4 py-5 text-[11px] text-desktop-text-secondary">No automation definitions found.</div>
+        <div className="px-4 py-5 text-[11px] text-desktop-text-secondary">No cleanup/correction mechanisms are configured yet.</div>
       )}
     </div>
   );
@@ -159,7 +183,7 @@ function PendingSignalsTable({ pendingSignals }: { pendingSignals: HarnessAutoma
   return (
     <div className="overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary/80">
       <div className="border-b border-desktop-border/70 px-4 py-3">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Pending Signals</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Pending Cleanup / Correction</div>
       </div>
       {pendingSignals.length > 0 ? (
         <div className="overflow-x-auto">
@@ -167,7 +191,7 @@ function PendingSignalsTable({ pendingSignals }: { pendingSignals: HarnessAutoma
             <thead className="bg-white/60">
               <tr className="text-[10px] uppercase tracking-[0.12em] text-desktop-text-secondary">
                 <th className="px-4 py-2.5 font-semibold">Signal</th>
-                <th className="px-4 py-2.5 font-semibold">Automation</th>
+                <th className="px-4 py-2.5 font-semibold">Configured Mechanism</th>
                 <th className="px-4 py-2.5 font-semibold">Severity</th>
                 <th className="px-4 py-2.5 font-semibold">Window</th>
               </tr>
@@ -200,7 +224,7 @@ function PendingSignalsTable({ pendingSignals }: { pendingSignals: HarnessAutoma
           </table>
         </div>
       ) : (
-        <div className="px-4 py-5 text-[11px] text-desktop-text-secondary">No pending automation signals.</div>
+        <div className="px-4 py-5 text-[11px] text-desktop-text-secondary">No cleanup or correction signals are waiting for follow-up.</div>
       )}
     </div>
   );
@@ -210,14 +234,14 @@ function RecentRunsTable({ recentRuns }: { recentRuns: HarnessAutomationRecentRu
   return (
     <div className="overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary/80">
       <div className="border-b border-desktop-border/70 px-4 py-3">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Recent Runs</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Recent Execution State</div>
       </div>
       {recentRuns.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-left">
             <thead className="bg-white/60">
               <tr className="text-[10px] uppercase tracking-[0.12em] text-desktop-text-secondary">
-                <th className="px-4 py-2.5 font-semibold">Automation</th>
+                <th className="px-4 py-2.5 font-semibold">Configured Mechanism</th>
                 <th className="px-4 py-2.5 font-semibold">Status</th>
                 <th className="px-4 py-2.5 font-semibold">Last Run</th>
                 <th className="px-4 py-2.5 font-semibold">Next Run</th>
@@ -246,7 +270,7 @@ function RecentRunsTable({ recentRuns }: { recentRuns: HarnessAutomationRecentRu
           </table>
         </div>
       ) : (
-        <div className="px-4 py-5 text-[11px] text-desktop-text-secondary">No runtime schedule records matched these definitions.</div>
+        <div className="px-4 py-5 text-[11px] text-desktop-text-secondary">No runtime records matched these repo-defined mechanisms.</div>
       )}
     </div>
   );
@@ -256,7 +280,7 @@ export function HarnessAutomationPanel({
   data,
   loading,
   error,
-  repoLabel: _repoLabel,
+  repoLabel,
   unsupportedMessage,
   variant = "full",
   hideHeader = false,
@@ -267,18 +291,26 @@ export function HarnessAutomationPanel({
     pendingSignals: data?.pendingSignals.length ?? 0,
     recentRuns: data?.recentRuns.length ?? 0,
   }), [data]);
+  const configSummary = useMemo(() => ({
+    sourceOfTruth: data?.configFile?.relativePath ?? "No checked-in config file",
+    findingDriven: data?.definitions.filter((definition) => definition.sourceType === "finding").length ?? 0,
+    scheduledRuns: data?.definitions.filter((definition) => definition.sourceType === "schedule").length ?? 0,
+    runtimeBindings: data?.definitions.filter((definition) => Boolean(definition.runtimeBinding)).length ?? 0,
+  }), [data]);
+  const repoContextLabel = repoLabel.trim() || "This repository";
 
   return (
     <HarnessSectionCard
-      title="Repo-defined Automations"
-      description="Checked-in automation definitions, pending findings, and runtime schedule state."
+      eyebrow="Repo-defined Governance"
+      title="Cleanup & Correction Loop"
+      description="Checked-in configuration for recurring cleanup, correction, and follow-up execution."
       hideHeader={hideHeader}
       variant={variant}
       dataTestId={dataTestId}
     >
       {loading ? (
         <HarnessSectionStateFrame>
-          Loading repo-defined automations...
+          Loading repo-defined cleanup/correction configuration...
         </HarnessSectionStateFrame>
       ) : null}
 
@@ -290,10 +322,44 @@ export function HarnessAutomationPanel({
 
       {!loading && !error && !unsupportedMessage && data ? (
         <div className="space-y-4">
+          <div className="overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary/80">
+            <div className="border-b border-desktop-border/70 px-4 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Configuration Surface</div>
+              <div className="mt-1 text-[12px] font-semibold text-desktop-text-primary">Repo-defined source of truth</div>
+              <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">
+                {repoContextLabel} keeps this mechanism in versioned YAML. The runtime rows below are for tracking and recovery, not for authoring the primary configuration.
+              </div>
+            </div>
+
+            <div className="grid gap-2 border-b border-desktop-border/70 p-3 md:grid-cols-4">
+              <SummaryStat label="Source of Truth" value={configSummary.sourceOfTruth} />
+              <SummaryStat label="Finding Rules" value={configSummary.findingDriven} />
+              <SummaryStat label="Scheduled Runs" value={configSummary.scheduledRuns} />
+              <SummaryStat label="Runtime Bindings" value={configSummary.runtimeBindings} />
+            </div>
+
+            <div className="p-3">
+              {data.configFile ? (
+                <CodeViewer
+                  code={data.configFile.source}
+                  filename={data.configFile.relativePath}
+                  language="yaml"
+                  maxHeight="320px"
+                  showHeader={false}
+                  wordWrap
+                />
+              ) : (
+                <HarnessSectionStateFrame>
+                  No checked-in cleanup/correction config file was found for this repository yet.
+                </HarnessSectionStateFrame>
+              )}
+            </div>
+          </div>
+
           <div className="grid gap-2 md:grid-cols-3">
-            <SummaryStat label="Definitions" value={summary.definitions} />
+            <SummaryStat label="Configured Rules" value={summary.definitions} />
             <SummaryStat label="Pending Signals" value={summary.pendingSignals} />
-            <SummaryStat label="Recent Runs" value={summary.recentRuns} />
+            <SummaryStat label="Recent Executions" value={summary.recentRuns} />
           </div>
 
           <DefinitionTable definitions={data.definitions} />
@@ -304,24 +370,6 @@ export function HarnessAutomationPanel({
             <HarnessSectionStateFrame tone="warning">
               {data.warnings.join(" ")}
             </HarnessSectionStateFrame>
-          ) : null}
-
-          {data.configFile ? (
-            <details className="rounded-sm border border-desktop-border bg-desktop-bg-primary/70">
-              <summary className="cursor-pointer px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                Config Source · {data.configFile.relativePath}
-              </summary>
-              <div className="border-t border-desktop-border p-3">
-                <CodeViewer
-                  code={data.configFile.source}
-                  filename={data.configFile.relativePath}
-                  language="yaml"
-                  maxHeight="320px"
-                  showHeader={false}
-                  wordWrap
-                />
-              </div>
-            </details>
           ) : null}
         </div>
       ) : null}

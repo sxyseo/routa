@@ -310,7 +310,7 @@ export default function HarnessConsolePage() {
     map.set("spec-sources", specSourcesState.data ? { label: `${specSourcesState.data.sources?.length ?? 0} sources` } : null);
     map.set("agent-instructions", instructionsState.data ? { label: instructionsState.data.fileName, tone: instructionsState.data.fallbackUsed ? "warning" : "success" } : null);
     map.set("design-decisions", designDecisionsState.data ? { label: `${designDecisionsState.data.sources?.length ?? 0} docs` } : null);
-    map.set("automations", automationsState.data ? { label: `${automationsState.data.definitions.length} defs` } : null);
+    map.set("automations", automationsState.data ? { label: `${automationsState.data.definitions.length} rules` } : null);
     map.set("hook-systems", hookCount > 0 ? { label: `${hookCount} hooks` } : null);
     map.set("review-triggers", hooksState.data?.reviewTriggerFile ? { label: `${hooksState.data.reviewTriggerFile.ruleCount} rules` } : null);
     map.set("release-triggers", hooksState.data?.releaseTriggerFile ? { label: `${hooksState.data.releaseTriggerFile.ruleCount} rules` } : null);
@@ -343,7 +343,7 @@ export default function HarnessConsolePage() {
     { id: "agent-instructions", label: t.settings.harness.agentInstructions, shortLabel: "Instructions", code: "AI", group: "intent" },
     { id: "design-decisions", label: t.settings.harness.designDecisions, shortLabel: "ADR", code: "DD", group: "intent" },
     { id: "repo-signals", label: t.settings.harness.repositorySignals, shortLabel: "Feedback", code: "RS", group: "signal" },
-    { id: "automations", label: t.settings.harness.automations, shortLabel: "Automation", code: "AT", group: "flow" },
+    { id: "automations", label: t.settings.harness.automations, shortLabel: "Cleanup", code: "CC", group: "flow" },
     { id: "hook-systems", label: t.settings.harness.hookSystems, shortLabel: "Hooks", code: "HK", group: "control" },
     { id: "review-triggers", label: t.settings.harness.reviewTriggers, shortLabel: "Review", code: "RV", group: "control" },
     { id: "release-triggers", label: t.settings.harness.releaseTriggers, shortLabel: "Release", code: "RL", group: "control" },
@@ -677,7 +677,7 @@ export default function HarnessConsolePage() {
       case "repo-signals":
         return <HarnessRepoSignalsPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...sharedProps} mode="test" hideHeader />;
       case "automations":
-        return <HarnessAutomationPanel {...sharedProps} data={automationsState.data} loading={automationsState.loading} error={automationsState.error} hideHeader />;
+        return <HarnessAutomationPanel {...sharedProps} data={automationsState.data} loading={automationsState.loading} error={automationsState.error} />;
       case "hook-systems":
         return (
           <div className="space-y-4">
@@ -973,7 +973,7 @@ export default function HarnessConsolePage() {
               <span>{activeWorkspaceTitle ?? "-"}</span>
             </div>
             <div className="flex items-center gap-3">
-              <span>{automationCount} automations</span>
+              <span>{automationCount} cleanup rules</span>
               <span>{hookCount} hooks</span>
               <span>{workflowCount} workflows</span>
             </div>

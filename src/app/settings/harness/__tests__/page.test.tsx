@@ -220,12 +220,6 @@ vi.mock("@/client/components/harness-design-decision-panel", () => ({
   ),
 }));
 
-vi.mock("@/client/components/harness-automation-panel", () => ({
-  HarnessAutomationPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
-    <div data-testid={`automation-panel-${variant}`}>Automations</div>
-  ),
-}));
-
 vi.mock("@/client/components/harness-fitness-files-dashboard", () => ({
   HarnessFitnessFilesDashboard: () => <div data-testid="fitness-files-dashboard" />,
 }));
@@ -273,7 +267,7 @@ vi.mock("@/client/components/harness-repo-signals-panel", () => ({
 
 vi.mock("@/client/components/harness-automation-panel", () => ({
   HarnessAutomationPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
-    <div data-testid={`automation-panel-${variant}`}>Repo automations</div>
+    <div data-testid={`automation-panel-${variant}`}>Cleanup &amp; correction</div>
   ),
 }));
 
@@ -374,6 +368,7 @@ describe("HarnessSettingsPage", () => {
     expect(screen.getByText("Control")).not.toBeNull();
     expect(screen.getByText("Flow")).not.toBeNull();
     expect(screen.getByText("Signal")).not.toBeNull();
+    expect(screen.getByText("Cleanup & Correction")).not.toBeNull();
     expect(screen.getByText("Test Feedback")).not.toBeNull();
   });
 
