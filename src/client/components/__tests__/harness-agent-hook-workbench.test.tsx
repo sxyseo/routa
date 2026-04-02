@@ -69,7 +69,7 @@ describe("HarnessAgentHookWorkbench", () => {
     expect(within(flow).getByText("Allow")).not.toBeNull();
     expect(within(flow).getByText("Block")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Hooks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Basic" }));
     expect(screen.getAllByText("Guard dangerous shell commands").length).toBeGreaterThan(0);
   });
 
@@ -80,7 +80,7 @@ describe("HarnessAgentHookWorkbench", () => {
 
     const flow = screen.getByTestId("agent-hook-flow");
 
-    fireEvent.click(screen.getByRole("button", { name: "Hooks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Basic" }));
     expect(screen.getAllByText("Audit tool results").length).toBeGreaterThan(0);
     expect(within(flow).getByText("Signal")).not.toBeNull();
   });

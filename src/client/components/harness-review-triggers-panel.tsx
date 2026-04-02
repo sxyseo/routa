@@ -138,7 +138,9 @@ function takeLabels(values: string[], limit: number): string[] {
 }
 
 function cardGridClass(compactMode: boolean): string {
-  return compactMode ? "mt-2.5 grid grid-cols-1 gap-2.5" : "mt-2.5 grid gap-2.5 md:grid-cols-2 xl:grid-cols-4";
+  return compactMode
+    ? "mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2"
+    : "mt-2.5 grid gap-2.5 md:grid-cols-2 xl:grid-cols-4";
 }
 
 function isRiskRule(rule: ReviewTriggerRuleSummary): boolean {

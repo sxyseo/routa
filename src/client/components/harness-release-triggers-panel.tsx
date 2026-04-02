@@ -26,6 +26,7 @@ type ReleaseDimensionCard = {
   barValue: number;
   tone: ReleaseDimensionTone;
   rules: ReleaseTriggerRuleSummary[];
+  detailClass?: string;
 };
 
 const TONE_STYLES: Record<
@@ -173,6 +174,7 @@ function buildReleaseDimensionCards(rules: ReleaseTriggerRuleSummary[]): Release
       barValue: driftScore,
       tone: driftRules.length ? toneFromScore(driftScore) : "info",
       rules: driftRules,
+      detailClass: "max-h-52 overflow-y-auto pr-0.5",
     },
     {
       key: "boundary",
@@ -357,8 +359,8 @@ function DimensionCard({
         />
       </div>
 
-      {showDetails && card.rules.length > 0 && (
-        <div className="mt-2.5 space-y-2">
+        {showDetails && card.rules.length > 0 && (
+        <div className={`mt-2.5 space-y-2 ${card.detailClass ?? ""}`}>
           {card.rules.map((rule) => (
             <RuleDetailCard key={rule.name} rule={rule} tone={card.tone} />
           ))}
