@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import type {
@@ -26,7 +28,7 @@ type ReleaseDimensionCard = {
   barValue: number;
   tone: ReleaseDimensionTone;
   rules: ReleaseTriggerRuleSummary[];
-  detailClass?: string;
+  compactRuleLimit?: number;
 };
 
 const TONE_STYLES: Record<
@@ -174,7 +176,7 @@ function buildReleaseDimensionCards(rules: ReleaseTriggerRuleSummary[]): Release
       barValue: driftScore,
       tone: driftRules.length ? toneFromScore(driftScore) : "info",
       rules: driftRules,
-      detailClass: "max-h-52 overflow-y-auto pr-0.5",
+      compactRuleLimit: 2,
     },
     {
       key: "boundary",
@@ -335,6 +337,11 @@ function DimensionCard({
   showDetails: boolean;
 }) {
   const styles = TONE_STYLES[card.tone];
+  const isDriftLayer = card.key === "drift";
+  const [showAllDriftRules, setShowAllDriftRules] = useState(false);
+  const driftLimit = card.compactRuleLimit ?? 0;
+  const shouldCompactDrift = isDriftLayer && showDetails && card.rules.length > driftLimit && driftLimit > 0;
+  const visibleRules = shouldCompactDrift && !showAllDriftRules ? card.rules.slice(0, driftLimit) : card.rules;
 
   return (
     <div className={`rounded-2xl border p-3 ${styles.border} bg-desktop-bg-secondary/70`}>
@@ -359,13 +366,37 @@ function DimensionCard({
         />
       </div>
 
-        {showDetails && card.rules.length > 0 && (
-        <div className={`mt-2.5 space-y-2 ${card.detailClass ?? ""}`}>
-          {card.rules.map((rule) => (
+      {showDetails && card.rules.length > 0 && (
+        <div className="mt-2.5 space-y-2">
+          {visibleRules.map((rule) => (
             <RuleDetailCard key={rule.name} rule={rule} tone={card.tone} />
           ))}
         </div>
       )}
+
+      {shouldCompactDrift && !showAllDriftRules ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            className="rounded-full border border-desktop-border bg-desktop-bg-primary/65 px-2.5 py-1 text-[10px] font-semibold text-desktop-text-primary"
+            onClick={() => setShowAllDriftRules(true)}
+          >
+            Show all {card.rules.length} rules
+          </button>
+        </div>
+      ) : null}
+
+      {shouldCompactDrift && showAllDriftRules ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            className="rounded-full border border-desktop-border bg-desktop-bg-primary/65 px-2.5 py-1 text-[10px] font-semibold text-desktop-text-primary"
+            onClick={() => setShowAllDriftRules(false)}
+          >
+            Collapse to preview
+          </button>
+        </div>
+      ) : null}
 
       {!showDetails && card.rules.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">

@@ -165,50 +165,68 @@ export function HarnessRepoSignalsPanel({
       ) : null}
 
       {!state.loading && !state.error && !unsupportedMessage && state.data ? (
-        <div className="mt-4 space-y-4">
-          <div className="overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80">
-            <div className="border-b border-desktop-border/70 px-4 py-3">
-              <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>Overview</div>
+        <div className={`mt-4 ${mode === "test" ? "grid gap-3 md:grid-cols-2" : "space-y-4"}`}>
+          {mode === "build" ? (
+            <div className="overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80">
+              <div className="border-b border-desktop-border/70 px-4 py-3">
+                <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>Overview</div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-collapse text-left">
+                  <tbody>
+                    {summaryRows.map((row) => (
+                      <tr key={row.label} className="border-t border-desktop-border/60 first:border-t-0">
+                        <th className="w-28 px-4 py-3 align-top text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
+                          {row.label}
+                        </th>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            {row.values.length > 0 ? row.values.map((value) => (
+                              <span key={`${row.label}-${value}`} className={`rounded-full border px-2.5 py-1 text-[10px] ${tone.badge}`}>
+                                {value}
+                              </span>
+                            )) : (
+                              <span className="text-[11px] text-desktop-text-secondary">No signal</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse text-left">
-                <tbody>
-                  {summaryRows.map((row) => (
-                    <tr key={row.label} className="border-t border-desktop-border/60 first:border-t-0">
-                      <th className="w-28 px-4 py-3 align-top text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
-                        {row.label}
-                      </th>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          {row.values.length > 0 ? row.values.map((value) => (
-                            <span key={`${row.label}-${value}`} className={`rounded-full border px-2.5 py-1 text-[10px] ${tone.badge}`}>
-                              {value}
-                            </span>
-                          )) : (
-                            <span className="text-[11px] text-desktop-text-secondary">No signal</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          ) : null}
 
-          <div className="overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80">
+          <div className={`overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 ${mode === "test" ? "md:col-span-2" : ""}`}>
             <div className="border-b border-desktop-border/70 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>Entrypoints</div>
-                  <div className="mt-1 text-[11px] text-desktop-text-secondary">
-                    {mode === "build"
-                      ? "每组只显示一个主入口，剩余变体收纳为摘要。"
-                      : "每组只显示一个主入口，剩余 unit / e2e / quality / coverage 变体收纳为摘要。"}
-                  </div>
                 </div>
               </div>
             </div>
+
+            {mode === "test" && summaryRows.length > 0 ? (
+              <div className="border-b border-desktop-border/70 px-4 py-2.5">
+                <div className="grid gap-2 md:grid-cols-2">
+                  {summaryRows.map((row) => (
+                    <div key={row.label} className="space-y-1">
+                      <div className="text-[11px] font-semibold text-desktop-text-primary">{row.label}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {row.values.length > 0 ? row.values.map((value) => (
+                          <span key={`${row.label}-${value}`} className={`rounded-full border px-2.5 py-1 text-[10px] ${tone.badge}`}>
+                            {value}
+                          </span>
+                        )) : (
+                          <span className="text-[11px] text-desktop-text-secondary">No signal</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {scriptGroups.length > 0 ? (
               <div className="overflow-x-auto">
@@ -237,7 +255,7 @@ export function HarnessRepoSignalsPanel({
                             {primary?.name ?? "—"}
                           </td>
                           <td className="px-4 py-3 align-top">
-                            <div className="max-w-[460px] break-all font-mono text-[10px] leading-5 text-desktop-text-secondary">
+                            <div className="max-w-full break-all font-mono text-[10px] leading-5 text-desktop-text-secondary">
                               {primary?.command ?? "—"}
                             </div>
                           </td>
@@ -266,7 +284,7 @@ export function HarnessRepoSignalsPanel({
           </div>
 
           {state.data.warnings.length > 0 ? (
-            <div className="space-y-2">
+            <div className={`space-y-2 ${mode === "test" ? "md:col-span-2" : ""}`}>
               {state.data.warnings.map((warning) => (
                 <div key={warning} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
                   {warning}
