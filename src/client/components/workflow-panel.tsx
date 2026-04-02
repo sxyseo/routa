@@ -560,14 +560,18 @@ function WorkflowCard({ workflow, onEdit, onDelete, onRun }: WorkflowCardProps) 
   const [expanded, setExpanded] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
 
-  const triggerBadge = workflow.trigger?.type
-    ? { [t.workflows.manual]: t.workflows.manual, [t.workflows.webhook]: t.workflows.webhook, [t.workflows.schedule]: t.workflows.schedule }[workflow.trigger.type] ?? workflow.trigger.type
-    : t.workflows.manual;
+  const triggerType = workflow.trigger?.type ?? "manual";
+  const triggerBadgeMap: Record<string, string> = {
+    manual: t.workflows.manual,
+    webhook: t.workflows.webhook,
+    schedule: t.workflows.schedule,
+  };
+  const triggerBadge = triggerBadgeMap[triggerType] ?? triggerType;
 
   const triggerColors: Record<string, string> = {
-    Manual: "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300",
-    Webhook: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-    Schedule: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
+    manual: "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300",
+    webhook: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+    schedule: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
   };
 
   const handleDelete = async () => {
@@ -590,7 +594,7 @@ function WorkflowCard({ workflow, onEdit, onDelete, onRun }: WorkflowCardProps) 
             <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
               {workflow.name}
             </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${triggerColors[triggerBadge] ?? triggerColors.Manual}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${triggerColors[triggerType] ?? triggerColors.manual}`}>
               {triggerBadge}
             </span>
             <span className="text-[10px] text-slate-400 dark:text-slate-500">
