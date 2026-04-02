@@ -480,13 +480,13 @@ describe("HarnessSettingsPage", () => {
     const explorer = screen.getByTestId("harness-console-explorer");
     const resizer = screen.getByTestId("harness-console-explorer-resizer");
 
-    expect(explorer.getAttribute("style")).toContain("296px");
+    expect(explorer.getAttribute("style")).toContain("240px");
 
-    fireEvent.mouseDown(resizer, { clientX: 296 });
-    fireEvent.mouseMove(document, { clientX: 360 });
+    fireEvent.mouseDown(resizer, { clientX: 240 });
+    fireEvent.mouseMove(document, { clientX: 304 });
     fireEvent.mouseUp(document);
 
-    expect(explorer.getAttribute("style")).toContain("360px");
+    expect(explorer.getAttribute("style")).toContain("304px");
   });
 
   it("resizes the bottom panel via the drag handle", () => {

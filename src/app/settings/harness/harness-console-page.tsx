@@ -75,7 +75,7 @@ const GOVERNANCE_NODE_SECTION_MAP: Partial<Record<string, SectionId>> = {
   "post-commit": "ci-cd",
 };
 
-const DEFAULT_EXPLORER_WIDTH = 296;
+const DEFAULT_EXPLORER_WIDTH = 240;
 const MIN_EXPLORER_WIDTH = 220;
 const MAX_EXPLORER_WIDTH = 460;
 const DEFAULT_BOTTOM_PANEL_HEIGHT = 280;
