@@ -529,7 +529,7 @@ function AgentResponseBlock({
             className="flex items-center gap-1.5 mb-2 text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
           >
             <ChevronRight className={`w-3 h-3 transition-transform ${thoughtsExpanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            {t.trace.thoughtsLabel} {thoughts.length} {t.trace.thoughts}
+            {t.trace.thoughtsLabel} {t.trace.thoughtsCount.replace("{count}", String(thoughts.length))}
           </button>
         )}
         {thoughtsExpanded && thoughts.map((t) => <InlineThoughtView key={t.id} trace={t} />)}

@@ -944,7 +944,6 @@ function SkillUploadModal({
         <div className="p-5">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
             {t.skills.uploadZipHint}
-            It will be extracted to the <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px]">.agents/skills/</code> directory.
           </p>
 
           {/* Drop zone */}

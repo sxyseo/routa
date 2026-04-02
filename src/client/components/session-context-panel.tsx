@@ -175,7 +175,7 @@ export function SessionContextPanel({
   const formatLaneSessionLabel = (session: LaneSessionInfo) =>
     [
       session.columnName ?? session.columnId ?? t.sessions.unknownLane,
-      session.stepName ?? (typeof session.stepIndex === "number" ? `Step ${session.stepIndex + 1}` : undefined),
+      session.stepName ?? (typeof session.stepIndex === "number" ? t.sessions.stepLabel.replace("{n}", String(session.stepIndex + 1)) : undefined),
       session.provider,
       session.role,
     ].filter(Boolean).join(" • ");

@@ -559,6 +559,8 @@ export function TiptapInput({
   variant = "default",
 }: TiptapInputProps) {
   const { t } = useTranslation();
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
   const isHero = variant === "hero";
   const [claudeMode, setClaudeMode] = useState<"acceptEdits" | "plan">("acceptEdits");
   const [opencodeMode, setOpencodeMode] = useState<"build" | "plan">("build");
@@ -741,11 +743,11 @@ export function TiptapInput({
         HTMLAttributes: { class: "flex items-start gap-2" },
       }),
       // eslint-disable-next-line react-hooks/refs -- Tiptap suggestions resolve these getters later during editor interaction, not during React render
-      createAtMention(() => fileSearchContextRef.current, () => t),
+      createAtMention(() => fileSearchContextRef.current, () => tRef.current),
       // eslint-disable-next-line react-hooks/refs -- Tiptap suggestions resolve these getters later during editor interaction, not during React render
-      createHashMention(() => agentItemsRef.current, () => t),
+      createHashMention(() => agentItemsRef.current, () => tRef.current),
       // eslint-disable-next-line react-hooks/refs -- Tiptap suggestions resolve these getters later during editor interaction, not during React render
-      createSkillMention(() => mergedSkillItemsRef.current, () => t),
+      createSkillMention(() => mergedSkillItemsRef.current, () => tRef.current),
       // eslint-disable-next-line react-hooks/refs -- EnterToSend intentionally calls the latest ref-backed send handler
       EnterToSend.configure({
         onSend: handleSendProxy,
@@ -1105,7 +1107,7 @@ export function TiptapInput({
 
           {/* Usage indicator (shown when we have usage data) */}
           {usageInfo && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-500 dark:text-slate-400 font-mono" title={`Input: ${usageInfo.inputTokens.toLocaleString()} ${t.chatPanel.tokens}\nOutput: ${usageInfo.outputTokens.toLocaleString()} ${t.chatPanel.tokens}`}>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-500 dark:text-slate-400 font-mono" title={`${t.chatPanel.inputLabel}: ${usageInfo.inputTokens.toLocaleString()} ${t.chatPanel.tokens}\n${t.chatPanel.outputLabel}: ${usageInfo.outputTokens.toLocaleString()} ${t.chatPanel.tokens}`}>
               <Zap className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
               <span>{usageInfo.totalTokens.toLocaleString()}</span>
               <span className="text-slate-400 dark:text-slate-500">{t.chatPanel.tokens}</span>

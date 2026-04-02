@@ -265,6 +265,8 @@ export interface TranslationDictionary {
     filterModels: string;
     noModelsFound: string;
     tokens: string;
+    inputLabel: string;
+    outputLabel: string;
     fileHint: string;
     agentHint: string;
     skillHint: string;
@@ -1209,6 +1211,7 @@ export interface TranslationDictionary {
     fleet: string;
     duplicateWarning: string;
     duplicateWarningSuffix: string;
+    duplicateWarningWithTitle: string;
     sourceLabel: string;
     clickDispatchHint: string;
     viewSession: string;
@@ -1382,10 +1385,10 @@ export interface TranslationDictionary {
     openSession: string;
     open: string;
     unknownLane: string;
+    stepLabel: string;
     recentSessions: string;
     showAll: string;
-    showLess: string;
-    noSessionsHint: string;
+    showLess: string;    noSessionsHint: string;
     deleteConfirm: string;
     deleteFailed: string;
     renameFailed: string;
@@ -1505,6 +1508,7 @@ export interface TranslationDictionary {
     user: string;
     empty: string;
     thoughts: string;
+    thoughtsCount: string;
     thoughtsLabel: string;
     kanbanStory: string;
     all: string;
@@ -1621,6 +1625,9 @@ export interface TranslationDictionary {
     reconnect: string;
     status: string;
     error: string;
+    loadHistoryFailed: string;
+    parseSseFailed: string;
+    eventSourceDisconnected: string;
     historySnapshot: string;
     replayEvents: string;
   };

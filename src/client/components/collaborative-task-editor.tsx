@@ -291,7 +291,7 @@ export function CollaborativeTaskEditor({
             <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
               <div className="space-y-1.5">
                 <div className="text-sm">{t.collaborativeTasks.noTaskNotes}</div>
-                <div>Tasks will appear here when ROUTA creates them</div>
+                <div>{t.collaborativeTasks.tasksWillAppear}</div>
               </div>
             </div>
           )}
@@ -409,7 +409,7 @@ export function CollaborativeTaskEditor({
               <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
                 <div className="space-y-1.5">
                   <div className="text-sm">{t.collaborativeTasks.noTaskNotes}</div>
-                  <div>Tasks will appear here when ROUTA creates them</div>
+                  <div>{t.collaborativeTasks.tasksWillAppear}</div>
                 </div>
               </div>
             )}

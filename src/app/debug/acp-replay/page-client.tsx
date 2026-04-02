@@ -46,7 +46,7 @@ export function AcpReplayDebugPageClient() {
       })
       .catch((fetchError: unknown) => {
         if (!closed) {
-          setError(fetchError instanceof Error ? fetchError.message : "Failed to load history");
+          setError(fetchError instanceof Error ? fetchError.message : t.debug.loadHistoryFailed);
         }
       });
 
@@ -59,12 +59,12 @@ export function AcpReplayDebugPageClient() {
         setStatus("streaming");
         setEvents((current) => [...current, nextEvent]);
       } catch (parseError) {
-        setError(parseError instanceof Error ? parseError.message : "Failed to parse SSE payload");
+        setError(parseError instanceof Error ? parseError.message : t.debug.parseSseFailed);
       }
     };
     source.onerror = () => {
       setStatus("error");
-      setError("EventSource disconnected");
+      setError(t.debug.eventSourceDisconnected);
       source.close();
     };
 

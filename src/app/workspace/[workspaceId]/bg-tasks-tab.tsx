@@ -110,7 +110,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
         t.agentId === agentId.trim() &&
         t.prompt.slice(0, 120).toLowerCase() === promptKey
     );
-    setDuplicateWarning(dupe ? `${t.bgTasks.duplicateWarning} "${dupe.title}" ${t.bgTasks.duplicateWarningSuffix}` : null);
+    setDuplicateWarning(dupe ? t.bgTasks.duplicateWarningWithTitle.replace("{title}", dupe.title) : null);
   };
 
   const handleEditTask = async () => {
