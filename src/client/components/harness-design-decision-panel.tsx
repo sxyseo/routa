@@ -4,10 +4,9 @@ import { HarnessUnsupportedState } from "@/client/components/harness-support-sta
 import type {
   DesignDecisionArtifact,
   DesignDecisionConfidence,
+  DesignDecisionStatus,
   DesignDecisionResponse,
   DesignDecisionSource,
-  DesignDecisionSourceKind,
-  DesignDecisionSourceStatus,
 } from "@/core/harness/design-decision-types";
 
 type HarnessDesignDecisionPanelProps = {
@@ -19,25 +18,18 @@ type HarnessDesignDecisionPanelProps = {
   variant?: "full" | "compact";
 };
 
-const SOURCE_KIND_LABELS: Record<DesignDecisionSourceKind, string> = {
-  "canonical-doc": "Canonical Doc",
-  "decision-records": "Decision Records",
-};
-
-const SOURCE_STATUS_LABELS: Record<DesignDecisionSourceStatus, string> = {
-  "documents-present": "Has Documents",
-  missing: "Missing",
-};
-
-const ARTIFACT_TYPE_LABELS: Record<DesignDecisionArtifact["type"], string> = {
-  architecture: "Architecture",
-  adr: "ADR",
-};
-
 const CONFIDENCE_STYLES: Record<DesignDecisionConfidence, { bg: string; text: string }> = {
   high: { bg: "bg-emerald-100", text: "text-emerald-700" },
   medium: { bg: "bg-amber-100", text: "text-amber-700" },
   low: { bg: "bg-zinc-100", text: "text-zinc-500" },
+};
+
+const DECISION_STATUS_STYLES: Record<DesignDecisionStatus, { bg: string; text: string; label: string }> = {
+  canonical: { bg: "bg-sky-100", text: "text-sky-700", label: "Canonical" },
+  accepted: { bg: "bg-emerald-100", text: "text-emerald-700", label: "Accepted" },
+  superseded: { bg: "bg-amber-100", text: "text-amber-700", label: "Superseded" },
+  deprecated: { bg: "bg-zinc-200", text: "text-zinc-700", label: "Deprecated" },
+  unknown: { bg: "bg-zinc-100", text: "text-zinc-500", label: "Unknown" },
 };
 
 function ConfidenceBadge({ confidence }: { confidence: DesignDecisionConfidence }) {
@@ -49,38 +41,23 @@ function ConfidenceBadge({ confidence }: { confidence: DesignDecisionConfidence 
   );
 }
 
-function SourceKindBadge({ kind }: { kind: DesignDecisionSourceKind }) {
+function DecisionStatusBadge({ status }: { status: DesignDecisionStatus }) {
+  const style = DECISION_STATUS_STYLES[status];
   return (
-    <span className="inline-flex items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-medium text-sky-700">
-      {SOURCE_KIND_LABELS[kind]}
-    </span>
-  );
-}
-
-function SourceStatusBadge({ status }: { status: DesignDecisionSourceStatus }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-desktop-border bg-desktop-bg-secondary px-1.5 py-0.5 text-[9px] font-medium text-desktop-text-secondary">
-      {SOURCE_STATUS_LABELS[status]}
-    </span>
-  );
-}
-
-function ArtifactTypeTag({ type }: { type: DesignDecisionArtifact["type"] }) {
-  return (
-    <span className="inline-flex items-center rounded border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[9px] font-mono text-desktop-text-secondary">
-      {ARTIFACT_TYPE_LABELS[type]}
+    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${style.bg} ${style.text}`}>
+      {style.label}
     </span>
   );
 }
 
 function DecisionArtifactListRow({ artifact }: { artifact: DesignDecisionArtifact }) {
   return (
-    <div className="flex items-center gap-2 rounded px-1.5 py-1 text-[10px] hover:bg-desktop-bg-secondary/60">
-      <ArtifactTypeTag type={artifact.type} />
+    <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] hover:bg-desktop-bg-secondary/60">
       <span className="min-w-0 flex-1 truncate text-desktop-text-primary" title={artifact.title}>
         {artifact.title}
       </span>
-      <span className="truncate font-mono text-desktop-text-secondary" title={artifact.path}>
+      {artifact.type === "adr" ? <DecisionStatusBadge status={artifact.status} /> : null}
+      <span className="shrink-0 truncate font-mono text-[10px] text-desktop-text-secondary" title={artifact.path}>
         {artifact.path.split("/").pop() ?? artifact.path}
       </span>
     </div>
@@ -88,31 +65,34 @@ function DecisionArtifactListRow({ artifact }: { artifact: DesignDecisionArtifac
 }
 
 function DecisionSourceCard({ source }: { source: DesignDecisionSource }) {
+  if (source.kind === "canonical-doc" && source.artifacts.length === 1) {
+    const artifact = source.artifacts[0];
+    return (
+      <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[12px] font-semibold text-desktop-text-primary">{artifact.title}</div>
+            <div className="mt-1 text-[10px] text-desktop-text-secondary">{artifact.path}</div>
+          </div>
+          <ConfidenceBadge confidence={source.confidence} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80">
-      <div className="flex items-start gap-3 px-3 py-2">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-desktop-border bg-desktop-bg-secondary text-[10px] font-bold text-desktop-text-primary">
-          {source.kind === "canonical-doc" ? "A" : "ADR"}
-        </div>
+      <div className="px-3 py-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3">
             <span className="text-[12px] font-semibold text-desktop-text-primary">{source.label}</span>
-            <SourceKindBadge kind={source.kind} />
             <ConfidenceBadge confidence={source.confidence} />
           </div>
-          <div className="mt-0.5 flex items-center gap-2">
-            <SourceStatusBadge status={source.status} />
-            <span className="text-[10px] text-desktop-text-secondary">{source.rootPath}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
-            {source.artifacts.length} doc{source.artifacts.length !== 1 ? "s" : ""}
-          </span>
+          <div className="mt-1 text-[10px] text-desktop-text-secondary">{source.rootPath}</div>
         </div>
       </div>
 
-      <div className="space-y-1 border-t border-desktop-border px-3 py-3">
+      <div className="space-y-1 border-t border-desktop-border px-3 py-2">
         {source.artifacts.map((artifact) => <DecisionArtifactListRow key={artifact.id} artifact={artifact} />)}
       </div>
     </div>
@@ -139,12 +119,7 @@ function SourceGroup({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{title}</div>
-        <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
-          {sources.length}
-        </span>
-      </div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{title}</div>
       <div className="space-y-3">
         {sources.map((source) => (
           <DecisionSourceCard
