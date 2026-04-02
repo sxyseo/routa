@@ -97,63 +97,6 @@ export function HarnessCodeownersPanel({
             </div>
           ) : null}
 
-          {data.owners.length > 0 ? (
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">Owner groups</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {data.owners.map((o) => (
-                  <span
-                    key={o.name}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[11px]"
-                  >
-                    <span className="font-medium text-desktop-text-primary">{o.name}</span>
-                    <span className="rounded bg-desktop-bg-secondary px-1.5 py-0.5 text-[10px] text-desktop-text-secondary">{o.kind}</span>
-                    <span className="text-[10px] text-desktop-text-secondary">{o.matchedFileCount} files</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {data.rules.length > 0 ? (
-            <div className="max-h-56 overflow-x-auto overflow-y-auto rounded-sm border border-desktop-border">
-              <table className="w-full min-w-[480px] border-collapse text-left text-[11px]">
-                <thead>
-                  <tr className="border-b border-desktop-border bg-desktop-bg-secondary/60">
-                    <th className="px-3 py-2 font-semibold text-desktop-text-secondary">Pattern</th>
-                    <th className="px-3 py-2 font-semibold text-desktop-text-secondary">Owners</th>
-                    <th className="px-3 py-2 font-semibold text-desktop-text-secondary">Line</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rules.map((rule) => (
-                    <tr key={`${rule.line}-${rule.pattern}`} className="border-b border-desktop-border/80">
-                      <td className="px-3 py-2 font-mono text-desktop-text-primary">{rule.pattern}</td>
-                      <td className="px-3 py-2 text-desktop-text-primary">{rule.owners.join(", ")}</td>
-                      <td className="px-3 py-2 text-desktop-text-secondary">{rule.line}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <ListBlock title="Unowned files (sample)" items={data.coverage.unownedFiles} tone="amber" rowLimit={compactMode ? 5 : 8} />
-            <ListBlock
-              title="Overlapping matches (sample)"
-              items={data.coverage.overlappingFiles}
-              tone="neutral"
-              rowLimit={compactMode ? 5 : 8}
-            />
-          </div>
-          <ListBlock
-            title="Sensitive paths without ownership"
-            items={data.coverage.sensitiveUnownedFiles}
-            tone="rose"
-            rowLimit={compactMode ? 5 : 8}
-          />
-
           {data.correlation?.triggerCorrelations.length ? (
             <div className="space-y-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
@@ -225,6 +168,65 @@ export function HarnessCodeownersPanel({
               </ul>
             </div>
           ) : null}
+
+          {data.owners.length > 0 ? (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">Owner groups</div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {data.owners.map((o) => (
+                  <div
+                    key={o.name}
+                    className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-3 py-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="min-w-0 truncate text-[11px] font-medium text-desktop-text-primary">{o.name}</span>
+                      <span className="rounded bg-desktop-bg-secondary px-1.5 py-0.5 text-[10px] text-desktop-text-secondary">{o.kind}</span>
+                    </div>
+                    <div className="mt-1 text-[10px] text-desktop-text-secondary">{o.matchedFileCount} files</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {data.rules.length > 0 ? (
+            <div className="max-h-56 overflow-x-auto overflow-y-auto rounded-sm border border-desktop-border">
+              <table className="w-full min-w-[480px] border-collapse text-left text-[11px]">
+                <thead>
+                  <tr className="border-b border-desktop-border bg-desktop-bg-secondary/60">
+                    <th className="px-3 py-2 font-semibold text-desktop-text-secondary">Pattern</th>
+                    <th className="px-3 py-2 font-semibold text-desktop-text-secondary">Owners</th>
+                    <th className="px-3 py-2 font-semibold text-desktop-text-secondary">Line</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rules.map((rule) => (
+                    <tr key={`${rule.line}-${rule.pattern}`} className="border-b border-desktop-border/80">
+                      <td className="px-3 py-2 font-mono text-desktop-text-primary">{rule.pattern}</td>
+                      <td className="px-3 py-2 text-desktop-text-primary">{rule.owners.join(", ")}</td>
+                      <td className="px-3 py-2 text-desktop-text-secondary">{rule.line}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <ListBlock title="Unowned files (sample)" items={data.coverage.unownedFiles} tone="amber" rowLimit={compactMode ? 5 : 8} />
+            <ListBlock
+              title="Overlapping matches (sample)"
+              items={data.coverage.overlappingFiles}
+              tone="neutral"
+              rowLimit={compactMode ? 5 : 8}
+            />
+          </div>
+          <ListBlock
+            title="Sensitive paths without ownership"
+            items={data.coverage.sensitiveUnownedFiles}
+            tone="rose"
+            rowLimit={compactMode ? 5 : 8}
+          />
         </div>
       ) : null}
     </HarnessSectionCard>

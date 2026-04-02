@@ -50,6 +50,13 @@ interface SectionDef {
   code: string;
 }
 
+type SectionStatusTone = "neutral" | "success" | "warning";
+
+type SectionStatus = {
+  label: string;
+  tone?: SectionStatusTone;
+};
+
 const SECTIONS: SectionDef[] = [
   { id: "overview", label: "Overview", shortLabel: "Overview", code: "OV" },
   { id: "spec-sources", label: "Spec Sources", shortLabel: "Specs", code: "SP" },
@@ -97,6 +104,17 @@ function extractMarkdownCodeBlocks(source: string) {
   })).filter((block) => block.code.length > 0);
 }
 
+function sectionStatusClass(tone: SectionStatusTone = "neutral") {
+  switch (tone) {
+    case "success":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "warning":
+      return "border-amber-200 bg-amber-50 text-amber-800";
+    default:
+      return "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary";
+  }
+}
+
 export default function HarnessConsolePage() {
   const workspacesHook = useWorkspaces();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
@@ -109,7 +127,6 @@ export default function HarnessConsolePage() {
   }>({ workspaceId: "", selection: null });
   const [selectedTier, setSelectedTier] = useState<TierValue>("normal");
   const [selectedSpecName, setSelectedSpecName] = useState("");
-  const [sectionFilter, setSectionFilter] = useState("");
 
   const persistedRepoSelection = useMemo(
     () => loadRepoSelection("harness", workspaceId),
@@ -296,14 +313,35 @@ export default function HarnessConsolePage() {
     document.addEventListener("mouseup", handleMouseUp);
   }
 
-  const visibleSections = useMemo(() => {
-    const normalizedFilter = sectionFilter.trim().toLowerCase();
-    if (!normalizedFilter) {
-      return SECTIONS;
-    }
-    return SECTIONS.filter((section) => [section.label, section.shortLabel, section.code]
-      .some((value) => value.toLowerCase().includes(normalizedFilter)));
-  }, [sectionFilter]);
+  const sectionStatuses = useMemo((): Map<SectionId, SectionStatus | null> => {
+    const map = new Map<SectionId, SectionStatus | null>();
+    map.set("spec-sources", specSourcesState.data ? { label: `${specSourcesState.data.sources?.length ?? 0} sources` } : null);
+    map.set("agent-instructions", instructionsState.data ? { label: instructionsState.data.fileName, tone: instructionsState.data.fallbackUsed ? "warning" : "success" } : null);
+    map.set("design-decisions", designDecisionsState.data ? { label: `${designDecisionsState.data.sources?.length ?? 0} docs` } : null);
+    map.set("hook-systems", hookCount > 0 ? { label: `${hookCount} hooks` } : null);
+    map.set("review-triggers", hooksState.data?.reviewTriggerFile ? { label: `${hooksState.data.reviewTriggerFile.ruleCount} rules` } : null);
+    map.set("release-triggers", hooksState.data?.releaseTriggerFile ? { label: `${hooksState.data.releaseTriggerFile.ruleCount} rules` } : null);
+    map.set("codeowners", resolvedCodeownersState.data
+      ? {
+          label: resolvedCodeownersState.data.codeownersFile ? "ready" : "missing",
+          tone: resolvedCodeownersState.data.codeownersFile ? "success" : "warning",
+        }
+      : null);
+    map.set("entrix-fitness", specFiles.length > 0 ? { label: `${dimensionSpecs.length}d / ${planState.data?.metricCount ?? 0}m` } : null);
+    map.set("ci-cd", workflowCount > 0 ? { label: `${workflowCount} flows` } : null);
+    return map;
+  }, [
+    designDecisionsState.data,
+    dimensionSpecs.length,
+    hookCount,
+    hooksState.data,
+    instructionsState.data,
+    planState.data?.metricCount,
+    resolvedCodeownersState.data,
+    specFiles.length,
+    specSourcesState.data,
+    workflowCount,
+  ]);
 
   const selectedGovernanceSection = selectedGovernanceNodeId
     ? (GOVERNANCE_NODE_SECTION_MAP[selectedGovernanceNodeId] ?? null)
@@ -729,20 +767,12 @@ export default function HarnessConsolePage() {
             <div className="mt-1 truncate text-[11px] text-desktop-text-secondary">{selectedRepoLabel}</div>
           </div>
 
-          <div className="border-b border-desktop-border px-3 py-2">
-            <input
-              value={sectionFilter}
-              onChange={(event) => setSectionFilter(event.target.value)}
-              placeholder="Search sections"
-              className="desktop-input w-full"
-            />
-          </div>
-
           <div className="flex-1 overflow-y-auto px-2 py-2 desktop-scrollbar-thin">
             <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Sections</div>
             <div className="space-y-1">
-              {visibleSections.map((section) => {
+              {SECTIONS.map((section) => {
                 const isActive = activeSection === section.id;
+                const status = sectionStatuses.get(section.id) ?? null;
                 return (
                   <button
                     key={section.id}
@@ -755,6 +785,11 @@ export default function HarnessConsolePage() {
                     }`}
                   >
                     <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-desktop-text-primary">{section.label}</span>
+                    {status ? (
+                      <span className={`ml-2 shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-medium ${sectionStatusClass(status.tone)}`}>
+                        {status.label}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

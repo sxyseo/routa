@@ -182,46 +182,6 @@ function MetricCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function CategoryTabs({
-  categories,
-  selectedCategory,
-  onSelect,
-}: {
-  categories: WorkflowCategoryEntry[];
-  selectedCategory: WorkflowCategoryKey;
-  onSelect: (category: WorkflowCategoryKey) => void;
-}) {
-  return (
-    <div className="flex gap-1.5 overflow-x-auto pb-1">
-      {categories.map((category) => {
-        const selected = selectedCategory === category.key;
-        const disabled = category.flows.length === 0;
-
-        return (
-          <button
-            key={category.key}
-            type="button"
-            disabled={disabled}
-            onClick={() => onSelect(category.key)}
-            className={cx(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10px] font-medium transition-colors",
-              disabled
-                ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                : selected
-                ? "border-sky-300 bg-sky-50 text-sky-700"
-                : "border-slate-200 bg-white/90 text-slate-600",
-            )}
-          >
-            <CategoryIcon category={category.key} />
-            <span>{category.key}</span>
-            <span className="rounded-full border border-current/15 px-1.5 py-0.5 text-[10px]">{category.flows.length}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function MiniDagPreview({ flow }: { flow: GitHubActionsFlow }) {
   const lanes = buildDependencyLanes(flow.jobs);
   const visibleLanes = lanes.slice(0, 3);
@@ -665,14 +625,39 @@ export function HarnessGitHubActionsFlowGallery({
     [categories],
   );
 
-  const [selectedCategory, setSelectedCategory] = useState<WorkflowCategoryKey>(initialCategory ?? "Validation");
+  const defaultExpandedCategories = useMemo(() => {
+    const nonEmptyCategories = categories
+      .filter((category) => category.flows.length > 0)
+      .map((category) => category.key);
+
+    if (nonEmptyCategories.length === 0) {
+      return new Set<WorkflowCategoryKey>([initialCategory ?? firstCategory]);
+    }
+
+    if (compactMode) {
+      return new Set<WorkflowCategoryKey>([
+        initialCategory && nonEmptyCategories.includes(initialCategory)
+          ? initialCategory
+          : nonEmptyCategories[0] ?? firstCategory,
+      ]);
+    }
+
+    return new Set<WorkflowCategoryKey>(
+      initialCategory ? [initialCategory, ...nonEmptyCategories] : nonEmptyCategories,
+    );
+  }, [categories, compactMode, firstCategory, initialCategory]);
+
+  const [expandedCategories, setExpandedCategories] = useState<Set<WorkflowCategoryKey> | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState("");
   const [selectedJobId, setSelectedJobId] = useState("");
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  const effectiveCategory = categories.find((category) => category.key === selectedCategory && category.flows.length > 0)?.key ?? firstCategory;
-  const activeCategory = categories.find((category) => category.key === effectiveCategory) ?? categories[0];
-  const activeFlow = activeCategory?.flows.find((flow) => flow.id === selectedFlowId) ?? activeCategory?.flows[0] ?? null;
+  const activeExpandedCategories = expandedCategories ?? defaultExpandedCategories;
+  const allFlows = useMemo(() => categories.flatMap((category) => category.flows), [categories]);
+  const firstExpandedFlow = categories.find((category) => (
+    activeExpandedCategories.has(category.key) && category.flows.length > 0
+  ))?.flows[0] ?? null;
+  const activeFlow = allFlows.find((flow) => flow.id === selectedFlowId) ?? firstExpandedFlow ?? allFlows[0] ?? null;
   const activeJob = activeFlow?.jobs.find((job) => job.id === selectedJobId) ?? activeFlow?.jobs[0] ?? null;
 
   const cardsSection = (
@@ -685,38 +670,93 @@ export function HarnessGitHubActionsFlowGallery({
         </div>
       </div>
 
-      <div className="mt-2.5">
-        <CategoryTabs
-          categories={categories}
-          selectedCategory={effectiveCategory}
-          onSelect={(category) => {
-            setSelectedCategory(category);
-            setSelectedFlowId("");
-            setSelectedJobId("");
-          }}
-        />
-      </div>
+      <div className="mt-2.5 space-y-2">
+        {categories.map((category) => {
+          const expanded = activeExpandedCategories.has(category.key);
+          return (
+            <section key={category.key} className="overflow-hidden rounded-sm border border-slate-200/80 bg-white/95">
+              <button
+                type="button"
+                aria-label={`${category.key} category`}
+                aria-expanded={expanded}
+                onClick={() => {
+                  setExpandedCategories((current) => {
+                    const next = new Set(current ?? defaultExpandedCategories);
+                    if (compactMode) {
+                      if (next.has(category.key) && next.size === 1) {
+                        next.delete(category.key);
+                      } else {
+                        next.clear();
+                        next.add(category.key);
+                      }
+                      return next;
+                    }
 
-      {(activeCategory?.flows.length ?? 0) > 0 ? (
-        <div className={cx("mt-2.5 grid gap-2", compactMode ? "grid-cols-1" : "xl:grid-cols-2")}>
-          {activeCategory?.flows.map((flow) => (
-            <WorkflowCard
-              key={flow.id}
-              flow={flow}
-              selected={activeFlow?.id === flow.id}
-              onSelect={() => {
-                setSelectedFlowId(flow.id);
-                setSelectedJobId("");
-                setIsDetailOpen(true);
-              }}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-4 rounded-sm border border-dashed border-slate-200 bg-white/70 px-4 py-10 text-center text-[12px] text-slate-500">
-          {activeCategory?.emptyHint}
-        </div>
-      )}
+                    if (next.has(category.key)) {
+                      next.delete(category.key);
+                    } else {
+                      next.add(category.key);
+                    }
+                    return next;
+                  });
+                }}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-slate-50/80"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white/90 text-slate-600">
+                    <CategoryIcon category={category.key} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[12px] font-semibold text-slate-900">{category.key}</span>
+                    <span className="block truncate text-[10px] text-slate-500">
+                      {category.flows.length > 0
+                        ? `${category.flows.length} workflow${category.flows.length === 1 ? "" : "s"}`
+                        : category.emptyHint}
+                    </span>
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[10px] text-slate-600">
+                    {category.flows.length}
+                  </span>
+                  <ArrowRight
+                    className={cx("h-4 w-4 text-slate-400 transition-transform", expanded && "rotate-90")}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                  />
+                </span>
+              </button>
+
+              {expanded ? (
+                <div className="border-t border-slate-200/80 px-3 py-3">
+                  {category.flows.length > 0 ? (
+                    <div className={cx("grid gap-2", compactMode ? "grid-cols-1" : "xl:grid-cols-2")}>
+                      {category.flows.map((flow) => (
+                        <WorkflowCard
+                          key={flow.id}
+                          flow={flow}
+                          selected={activeFlow?.id === flow.id}
+                          onSelect={() => {
+                            setSelectedFlowId(flow.id);
+                            setSelectedJobId("");
+                            setIsDetailOpen(true);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-sm border border-dashed border-slate-200 bg-white/70 px-4 py-8 text-center text-[12px] text-slate-500">
+                      {category.emptyHint}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
     </>
   );
 

@@ -335,6 +335,8 @@ describe("HarnessSettingsPage", () => {
     expect(screen.getAllByTestId("harness-console-explorer")).toHaveLength(1);
     expect(screen.getByTestId("workspace-switcher")).not.toBeNull();
     expect(screen.queryByTestId("harness-console-bottom-panel")).toBeNull();
+    expect(screen.queryByPlaceholderText("Search sections")).toBeNull();
+    expect(screen.getByText("CLAUDE.md")).not.toBeNull();
     expect(screen.queryByText("Workbench Context")).toBeNull();
     expect(screen.queryByText("Quick Actions")).toBeNull();
     expect(screen.queryByRole("button", { name: "Open context" })).toBeNull();
