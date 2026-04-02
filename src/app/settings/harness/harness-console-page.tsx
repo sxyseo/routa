@@ -847,18 +847,12 @@ export default function HarnessConsolePage() {
           data-testid="harness-console-explorer"
           style={{ width: `${explorerWidth}px` }}
         >
-          <div className="border-b border-desktop-border px-3 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Explorer</div>
-            <div className="mt-1 truncate text-[11px] text-desktop-text-secondary">{selectedRepoLabel}</div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-2 py-2 desktop-scrollbar-thin">
-            <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Sections</div>
-              <div className="space-y-3">
-                <div className="space-y-1">
+          <div className="flex-1 overflow-y-auto px-2 py-3 desktop-scrollbar-thin">
+            <div className="space-y-3">
+              <div className="space-y-1">
                 {renderExplorerSectionButton(sections[0] as SectionDef)}
-                </div>
-                {groupedSections.map((group) => (
+              </div>
+              {groupedSections.map((group) => (
                 <div key={group.id} className="space-y-1">
                   <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
                     {group.label}

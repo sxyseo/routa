@@ -399,6 +399,15 @@ describe("HarnessSettingsPage", () => {
     expect(screen.queryByTestId("lifecycle-view")).toBeNull();
   });
 
+  it("opens the automations tab from the section query parameter on first render", () => {
+    currentSearchParams = new URLSearchParams("section=automations");
+
+    render(<HarnessSettingsPage />);
+
+    expect(screen.getByTestId("automation-panel-full")).not.toBeNull();
+    expect(screen.queryByTestId("lifecycle-view")).toBeNull();
+  });
+
   it("updates the section query parameter when opening another section", () => {
     render(<HarnessSettingsPage />);
 
