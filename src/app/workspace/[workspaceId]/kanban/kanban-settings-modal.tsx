@@ -141,6 +141,9 @@ function createEmptyAutomationStep(index: number): KanbanAutomationStep {
 }
 
 function getStepTransport(step?: KanbanAutomationStep): KanbanTransport {
+  if (step?.transport === "a2a") {
+    return "acp";
+  }
   return step?.transport ?? "acp";
 }
 
@@ -148,31 +151,14 @@ function isA2AStep(step?: KanbanAutomationStep): boolean {
   return getStepTransport(step) === "a2a";
 }
 
-function setAutomationStepTransport(step: KanbanAutomationStep, transport: KanbanTransport): KanbanAutomationStep {
-  if (transport === "a2a") {
-    return {
-      ...step,
-      transport,
-      providerId: undefined,
-    };
-  }
-
+function setAutomationStepTransport(step: KanbanAutomationStep, _transport: KanbanTransport): KanbanAutomationStep {
   return {
     ...step,
-    transport,
+    transport: "acp",
     agentCardUrl: undefined,
     skillId: undefined,
     authConfigId: undefined,
   };
-}
-
-function getAutomationTransportMode(
-  automation: ColumnAutomationConfig | undefined,
-): "acp" | "a2a" | "mixed" {
-  const steps = getKanbanAutomationSteps(automation);
-  const transports = new Set(steps.map((step) => getStepTransport(step)));
-  if (transports.size > 1) return "mixed";
-  return transports.has("a2a") ? "a2a" : "acp";
 }
 
 function getAutomationTransportLabel(
@@ -183,9 +169,6 @@ function getAutomationTransportLabel(
     return "Manual";
   }
 
-  const transportMode = getAutomationTransportMode(automation);
-  if (transportMode === "a2a") return "A2A";
-  if (transportMode === "mixed") return "Mixed";
   return "ACP";
 }
 
@@ -1266,69 +1249,21 @@ function ColumnAutomationWorkspace({
                   ))))}
                 >
                   <option value="acp">ACP</option>
-                  <option value="a2a">A2A</option>
                 </SelectControl>
               </ConfigField>
-              {firstStepTransport === "acp" ? (
-                <ConfigField label={t.kanban.providerLabel}>
-                  <ProviderField
-                    providers={availableProviders}
-                    value={firstStep?.providerId}
-                    ariaLabel="Provider"
-                    dataTestId="kanban-settings-provider"
-                    onChange={(providerId) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                      stepIndex === 0
-                        ? { ...currentStep, providerId }
-                        : currentStep
-                    ))))}
-                  />
-                </ConfigField>
-              ) : (
-                <ConfigField label={t.kanban.agentCardUrl}>
-                  <input
-                    aria-label={t.kanban.agentCardUrl}
-                    type="url"
-                    value={firstStep?.agentCardUrl ?? ""}
-                    onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                      stepIndex === 0
-                        ? { ...currentStep, agentCardUrl: event.target.value || undefined }
-                        : currentStep
-                    ))))}
-                    placeholder="https://agents.example.com/agent-card.json"
-                    className={INPUT_CLASS}
-                  />
-                </ConfigField>
-              )}
-              {firstStepTransport === "a2a" && (
-                <ConfigField label={t.kanban.skillId}>
-                  <input
-                    aria-label={t.kanban.skillId}
-                    value={firstStep?.skillId ?? ""}
-                    onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                      stepIndex === 0
-                        ? { ...currentStep, skillId: event.target.value || undefined }
-                        : currentStep
-                    ))))}
-                    placeholder="review"
-                    className={INPUT_CLASS}
-                  />
-                </ConfigField>
-              )}
-              {firstStepTransport === "a2a" && (
-                <ConfigField label={t.kanban.authConfigId}>
-                  <input
-                    aria-label={t.kanban.authConfigId}
-                    value={firstStep?.authConfigId ?? ""}
-                    onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                      stepIndex === 0
-                        ? { ...currentStep, authConfigId: event.target.value || undefined }
-                        : currentStep
-                    ))))}
-                    placeholder="agent-auth"
-                    className={INPUT_CLASS}
-                  />
-                </ConfigField>
-              )}
+              <ConfigField label={t.kanban.providerLabel}>
+                <ProviderField
+                  providers={availableProviders}
+                  value={firstStep?.providerId}
+                  ariaLabel="Provider"
+                  dataTestId="kanban-settings-provider"
+                  onChange={(providerId) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
+                    stepIndex === 0
+                      ? { ...currentStep, providerId }
+                      : currentStep
+                  ))))}
+                />
+              </ConfigField>
               <ConfigField label={t.kanban.role}>
                 <SelectControl
                   aria-label={t.kanban.role}
@@ -1425,54 +1360,21 @@ function ColumnAutomationWorkspace({
                                   ))))}
                                 >
                                   <option value="acp">ACP</option>
-                                  <option value="a2a">A2A</option>
                                 </SelectControl>
                               </ConfigField>
-                              {stepTransport === "acp" ? (
-                                <ConfigField label={`Provider ${index + 1}`}>
-                                  <ProviderField
-                                    providers={availableProviders}
-                                    value={step.providerId}
-                                    ariaLabel={`Provider ${index + 1}`}
-                                    dataTestId={`kanban-settings-provider-${index + 1}`}
-                                    onChange={(providerId) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                                      stepIndex === index
-                                        ? { ...currentStep, providerId }
-                                        : currentStep
-                                    ))))}
-                                  />
-                                </ConfigField>
-                              ) : (
-                                <ConfigField label={`Agent Card URL ${index + 1}`}>
-                                  <input
-                                    aria-label={`Agent Card URL ${index + 1}`}
-                                    type="url"
-                                    value={step.agentCardUrl ?? ""}
-                                    onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                                      stepIndex === index
-                                        ? { ...currentStep, agentCardUrl: event.target.value || undefined }
-                                        : currentStep
-                                    ))))}
-                                    placeholder="https://agents.example.com/agent-card.json"
-                                    className={INPUT_CLASS}
-                                  />
-                                </ConfigField>
-                              )}
-                              {stepTransport === "a2a" && (
-                                <ConfigField label={`Skill ID ${index + 1}`}>
-                                  <input
-                                    aria-label={`Skill ID ${index + 1}`}
-                                    value={step.skillId ?? ""}
-                                    onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                                      stepIndex === index
-                                        ? { ...currentStep, skillId: event.target.value || undefined }
-                                        : currentStep
-                                    ))))}
-                                    placeholder="review"
-                                    className={INPUT_CLASS}
-                                  />
-                                </ConfigField>
-                              )}
+                              <ConfigField label={`Provider ${index + 1}`}>
+                                <ProviderField
+                                  providers={availableProviders}
+                                  value={step.providerId}
+                                  ariaLabel={`Provider ${index + 1}`}
+                                  dataTestId={`kanban-settings-provider-${index + 1}`}
+                                  onChange={(providerId) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
+                                    stepIndex === index
+                                      ? { ...currentStep, providerId }
+                                      : currentStep
+                                  ))))}
+                                />
+                              </ConfigField>
                               {stepTransport === "a2a" && (
                                 <ConfigField label={`Auth Config ID ${index + 1}`}>
                                   <input

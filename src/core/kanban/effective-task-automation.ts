@@ -57,7 +57,7 @@ export function resolveKanbanAutomationStep(
 
   return {
     ...step,
-    transport: step.transport ?? "acp",
+    transport: step.transport === "a2a" ? "acp" : (step.transport ?? "acp"),
     providerId: step.providerId ?? specialist?.defaultProvider,
     role: step.role ?? specialist?.role,
     specialistName: step.specialistName ?? specialist?.name,

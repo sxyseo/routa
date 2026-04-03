@@ -366,6 +366,9 @@ function emitAutomationEvent(params: {
 }
 
 function getStepTransport(step?: KanbanAutomationStep): KanbanTransport {
+  if (step?.transport === "a2a") {
+    return "acp";
+  }
   return step?.transport ?? "acp";
 }
 
@@ -374,6 +377,11 @@ function getA2AFailureMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function isAcpPromptTimeoutError(error: unknown): boolean {
+  const message = getA2AFailureMessage(error);
+  return message.includes("Timeout waiting for session/prompt");
 }
 
 async function triggerAcpTaskAgent(params: {
@@ -442,15 +450,14 @@ async function triggerAcpTaskAgent(params: {
     });
 
     await consumeAcpPromptResponse(response);
-    emitAutomationEvent({
-      eventBus: params.eventBus,
-      type: AgentEventType.AGENT_COMPLETED,
-      workspaceId: params.workspaceId,
-      sessionId,
-      transport: "acp",
-      success: true,
-    });
   })().catch((error) => {
+    if (isAcpPromptTimeoutError(error)) {
+      console.warn(
+        "[kanban] ACP task session prompt is still running after HTTP timeout; waiting for lifecycle events:",
+        error,
+      );
+      return;
+    }
     console.error("[kanban] Failed to auto-prompt ACP task session:", error);
     emitAutomationEvent({
       eventBus: params.eventBus,

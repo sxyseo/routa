@@ -150,7 +150,7 @@ describe("resolveEffectiveTaskAutomation", () => {
     });
   });
 
-  it("keeps A2A-only lane steps instead of dropping them during normalization", () => {
+  it("downgrades legacy A2A-only lane steps to ACP during normalization", () => {
     const resolved = resolveEffectiveTaskAutomation(
       {
         columnId: "review",
@@ -172,10 +172,10 @@ describe("resolveEffectiveTaskAutomation", () => {
     );
 
     expect(resolved.canRun).toBe(true);
-    expect(resolved.transport).toBe("a2a");
+    expect(resolved.transport).toBe("acp");
     expect(resolved.step).toMatchObject({
       id: "remote-review",
-      transport: "a2a",
+      transport: "acp",
       agentCardUrl: "https://agents.example.com/reviewer/agent-card.json",
       skillId: "review",
     });
