@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { CanonicalStoryParseResult } from "@/core/kanban/canonical-story";
 import { useTranslation } from "@/i18n";
 
@@ -88,6 +89,63 @@ function formatStatus(status: InvestStatus, t: ReturnType<typeof useTranslation>
   }
 }
 
+function CompactField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 dark:border-slate-700 dark:bg-[#0f141d]">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+        {label}
+      </div>
+      <div className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-slate-700 dark:text-slate-200">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function CompactDisclosure({
+  title,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen || undefined}
+      className="group rounded-xl border border-slate-200/80 bg-white/90 dark:border-slate-700 dark:bg-[#0f141d]"
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+            {title}
+          </div>
+          {summary && (
+            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              {summary}
+            </div>
+          )}
+        </div>
+        <span className="shrink-0 text-[11px] font-medium text-slate-400 transition-colors group-hover:text-slate-600 dark:group-hover:text-slate-300">
+          +
+        </span>
+      </summary>
+      <div className="border-t border-slate-200/70 px-3 py-2.5 dark:border-slate-700">
+        {children}
+      </div>
+    </details>
+  );
+}
+
 export function CanonicalStoryRenderer({
   parseResult,
   compact = false,
@@ -132,6 +190,145 @@ export function CanonicalStoryRenderer({
     { label: t.kanbanDetail.investSmall, check: story.invest.small },
     { label: t.kanbanDetail.investTestable, check: story.invest.testable },
   ] as const;
+
+  if (compact) {
+    return (
+      <div
+        className={joinClasses(
+          "canonical-story-renderer not-prose rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/40 dark:bg-emerald-900/10",
+          className,
+        )}
+        data-testid="canonical-story-renderer"
+      >
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                {t.kanbanDetail.validYaml}
+              </span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                {t.kanbanDetail.structuredStory}
+              </span>
+            </div>
+
+            <div className="text-base font-semibold leading-7 text-slate-950 dark:text-slate-50">
+              {story.title}
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+              <span className="rounded-full border border-slate-200 bg-white/90 px-2 py-1 dark:border-slate-700 dark:bg-[#0f141d]">
+                {t.kanbanDetail.version} {story.version}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white/90 px-2 py-1 dark:border-slate-700 dark:bg-[#0f141d]">
+                {t.language}: {story.language}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white/90 px-2 py-1 dark:border-slate-700 dark:bg-[#0f141d]">
+                {t.kanbanDetail.acceptanceCriteria}: {story.acceptance_criteria.length}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white/90 px-2 py-1 dark:border-slate-700 dark:bg-[#0f141d]">
+                {t.kanbanDetail.independentStoryCheck}: {formatStatus(story.dependencies_and_sequencing.independent_story_check, t)}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <CompactField label={t.kanbanDetail.problemStatement} value={story.problem_statement} />
+            <CompactField label={t.kanbanDetail.userValue} value={story.user_value} />
+          </div>
+
+          <CompactDisclosure
+            title={t.kanbanDetail.acceptanceCriteria}
+            summary={`#${story.acceptance_criteria.length}`}
+            defaultOpen
+          >
+            <div className="space-y-2">
+              {story.acceptance_criteria.map((criterion) => (
+                <div
+                  key={criterion.id}
+                  className="rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/70"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:border-slate-700 dark:bg-[#0f141d] dark:text-slate-300">
+                      {criterion.id}
+                    </span>
+                    <span
+                      className={joinClasses(
+                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                        getStatusTone(criterion.testable ? "pass" : "fail"),
+                      )}
+                    >
+                      {criterion.testable ? t.kanbanDetail.investTestable : t.kanbanDetail.fail}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-6 text-slate-700 dark:text-slate-200">
+                    {criterion.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CompactDisclosure>
+
+          <CompactDisclosure
+            title={t.kanbanDetail.investSummary}
+            summary={investItems.map(({ label, check }) => `${label}: ${formatStatus(check.status, t)}`).join(" · ")}
+          >
+            <div className="grid gap-2">
+              {investItems.map(({ label, check }) => (
+                <div
+                  key={label}
+                  className="rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/70"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                      {label}
+                    </div>
+                    <span
+                      className={joinClasses(
+                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                        getStatusTone(check.status),
+                      )}
+                    >
+                      {formatStatus(check.status, t)}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-6 text-slate-700 dark:text-slate-200">
+                    {check.reason}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CompactDisclosure>
+
+          <CompactDisclosure
+            title={`${t.kanbanDetail.affectedAreas} / ${t.kanbanDetail.dependsOn}`}
+            summary={`${story.constraints_and_affected_areas.length} · ${story.dependencies_and_sequencing.depends_on.length}`}
+          >
+            <div className="grid gap-2">
+              <ListBlock
+                label={t.kanbanDetail.affectedAreas}
+                items={story.constraints_and_affected_areas}
+                emptyLabel={t.kanbanDetail.none}
+              />
+              <ListBlock
+                label={t.kanbanDetail.dependsOn}
+                items={story.dependencies_and_sequencing.depends_on}
+                emptyLabel={t.kanbanDetail.none}
+              />
+              <CompactField
+                label={t.kanbanDetail.unblockCondition}
+                value={story.dependencies_and_sequencing.unblock_condition || t.kanbanDetail.none}
+              />
+              <ListBlock
+                label={t.kanbanDetail.outOfScope}
+                items={story.out_of_scope}
+                emptyLabel={t.kanbanDetail.none}
+              />
+            </div>
+          </CompactDisclosure>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
