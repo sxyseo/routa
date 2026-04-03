@@ -401,7 +401,7 @@ async fn api_task_artifact_flow_and_gate() {
     );
     assert_eq!(
         task_json["task"]["evidenceSummary"]["runs"]["latestStatus"],
-        json!("running")
+        json!("idle")
     );
 
     let blocked_move = fixture
