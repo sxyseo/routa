@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { dispatchSessionPromptMock } = vi.hoisted(() => ({
+  dispatchSessionPromptMock: vi.fn(),
+}));
+
+vi.mock("@/app/api/acp/acp-session-prompt", () => ({
+  dispatchSessionPrompt: dispatchSessionPromptMock,
+}));
+
 import { createInMemorySystem } from "../../routa-system";
 import { getHttpSessionStore } from "../../acp/http-session-store";
 import {
@@ -7,7 +15,6 @@ import {
   resetWorkflowOrchestrator,
   startWorkflowOrchestrator,
 } from "../workflow-orchestrator-singleton";
-import { getInternalApiOrigin } from "../agent-trigger";
 
 describe("workflow orchestrator singleton prompt path", () => {
   beforeEach(() => {
@@ -16,6 +23,7 @@ describe("workflow orchestrator singleton prompt path", () => {
 
   afterEach(() => {
     resetWorkflowOrchestrator();
+    dispatchSessionPromptMock.mockReset();
   });
 
   it("sends recovery prompt via agent tools when routa agent session exists", async () => {
@@ -44,9 +52,6 @@ describe("workflow orchestrator singleton prompt path", () => {
     const messageAgent = vi
       .spyOn(system.tools, "messageAgent")
       .mockResolvedValue({ success: true, data: { delivered: true } });
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, {
-      status: 200,
-    }));
 
     startWorkflowOrchestrator(system);
     const orchestrator = getWorkflowOrchestrator(system);
@@ -81,7 +86,7 @@ describe("workflow orchestrator singleton prompt path", () => {
       toAgentId: sessionAgentId,
       message: expect.stringContaining(`acp session id = ${sessionId}`),
     });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(dispatchSessionPromptMock).not.toHaveBeenCalled();
   });
 
   it("falls back to session/prompt when agent message fails", async () => {
@@ -105,9 +110,7 @@ describe("workflow orchestrator singleton prompt path", () => {
 
     vi.spyOn(system.tools, "readAgentConversation").mockResolvedValue({ success: true, data: { messages: [] } });
     vi.spyOn(system.tools, "messageAgent").mockResolvedValue({ success: false, error: "temporary failure" });
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, {
-      status: 200,
-    }));
+    dispatchSessionPromptMock.mockResolvedValue(undefined);
 
     startWorkflowOrchestrator(system);
     const orchestrator = getWorkflowOrchestrator(system);
@@ -133,11 +136,10 @@ describe("workflow orchestrator singleton prompt path", () => {
       mode: "watchdog_retry",
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      `${getInternalApiOrigin()}/api/acp`,
-      expect.objectContaining({
-        method: "POST",
-      }),
-    );
+    expect(dispatchSessionPromptMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId,
+      workspaceId: "default",
+      prompt: [expect.objectContaining({ type: "text" })],
+    }));
   });
 });

@@ -1,5 +1,5 @@
 import { getAcpProcessManager } from "@/core/acp/processer";
-import { getHttpSessionStore } from "@/core/acp/http-session-store";
+import { getHttpSessionStore, type SessionUpdateNotification } from "@/core/acp/http-session-store";
 import { getPresetById } from "@/core/acp/acp-presets";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
@@ -8,6 +8,9 @@ import { isClaudeCodeSdkConfigured } from "@/core/acp/claude-code-sdk-adapter";
 import { getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
+import { ensureMcpForProvider } from "@/core/acp/mcp-setup";
+import { getDefaultRoutaMcpConfig } from "@/core/acp/mcp-config-generator";
+import { consumeAcpPromptResponse } from "@/core/acp/prompt-response";
 import { buildCoordinatorPrompt } from "@/core/orchestration/specialist-prompts";
 import {
   createTraceRecord,
@@ -49,6 +52,69 @@ type ClaudeMcpConfigBuilder = (
 
 type WorkspaceIdResolver = (value: unknown) => string | null;
 type SsePayloadEncoder = (payload: unknown) => string;
+
+interface DispatchSessionPromptParams {
+  sessionId: string;
+  prompt: string | Array<{ type: string; text?: string; [key: string]: unknown }>;
+  workspaceId?: string;
+  provider?: string;
+  cwd?: string;
+  skillName?: string;
+  skillContent?: string;
+}
+
+function inlineJsonrpcResponse(
+  id: string | number | null,
+  result: unknown,
+  error?: { code: number; message: string },
+): Response {
+  const body = error
+    ? { jsonrpc: "2.0", id, error }
+    : { jsonrpc: "2.0", id, result };
+  return new Response(JSON.stringify(body), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function inlineRequireWorkspaceId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function inlineEncodeSsePayload(payload: unknown): string {
+  const params = typeof payload === "object" && payload !== null
+    ? (payload as { params?: { eventId?: string } }).params
+    : undefined;
+  const eventId = typeof params?.eventId === "string" ? params.eventId : undefined;
+  return `${eventId ? `id: ${eventId}\n` : ""}data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function inlineCreateSessionUpdateForwarder(
+  store: ReturnType<typeof getHttpSessionStore>,
+  sessionId: string,
+): (msg: { method?: string; params?: Record<string, unknown> }) => void {
+  return (msg) => {
+    if (msg.method !== "session/update" || !msg.params) return;
+    store.pushNotification({
+      ...msg.params,
+      sessionId,
+    } as SessionUpdateNotification);
+  };
+}
+
+async function inlineBuildMcpConfigForClaude(
+  workspaceId?: string,
+  sessionId?: string,
+  toolMode?: "essential" | "full",
+  mcpProfile?: McpServerProfile,
+): Promise<string[]> {
+  const config = workspaceId
+    ? getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile)
+    : undefined;
+  const result = await ensureMcpForProvider("claude", config);
+  return result.mcpConfigs;
+}
 
 function markSessionPromptError(
   store: ReturnType<typeof getHttpSessionStore>,
@@ -769,4 +835,17 @@ export async function handleSessionPrompt({
       message,
     });
   }
+}
+
+export async function dispatchSessionPrompt(params: DispatchSessionPromptParams): Promise<void> {
+  const response = await handleSessionPrompt({
+    id: params.sessionId,
+    params: params as unknown as Record<string, unknown>,
+    jsonrpcResponse: inlineJsonrpcResponse,
+    createSessionUpdateForwarder: inlineCreateSessionUpdateForwarder,
+    buildMcpConfigForClaude: inlineBuildMcpConfigForClaude,
+    requireWorkspaceId: inlineRequireWorkspaceId,
+    encodeSsePayload: inlineEncodeSsePayload,
+  });
+  await consumeAcpPromptResponse(response);
 }

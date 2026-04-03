@@ -50,6 +50,7 @@ export interface KanbanCardDetailProps {
   sessionInfo?: SessionInfo | null;
   sessions?: SessionInfo[];
   fullWidth?: boolean;
+  selectedProvider?: string | null;
   onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   onRetryTrigger: (taskId: string) => Promise<void>;
   onDelete: () => void;
@@ -156,6 +157,7 @@ export function KanbanCardDetail({
   sessionInfo,
   sessions,
   fullWidth,
+  selectedProvider,
   onPatchTask,
   onRetryTrigger,
   onDelete,
@@ -465,6 +467,7 @@ export function KanbanCardDetail({
                 sessionInfo={sessionInfo}
                 specialists={specialists}
                 specialistLanguage={specialistLanguage}
+                selectedProvider={selectedProvider}
                 onPatchTask={onPatchTask}
                 onRetryTrigger={onRetryTrigger}
                 onProviderChange={onProviderChange}
@@ -1012,6 +1015,7 @@ function ExecutionSection({
   sessionInfo,
   specialists,
   specialistLanguage,
+  selectedProvider,
   onPatchTask,
   onRetryTrigger,
   onProviderChange,
@@ -1024,6 +1028,7 @@ function ExecutionSection({
   sessionInfo?: SessionInfo | null;
   specialists: SpecialistOption[];
   specialistLanguage: KanbanSpecialistLanguage;
+  selectedProvider?: string | null;
   onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   onRetryTrigger: (taskId: string) => Promise<void>;
   onProviderChange?: (providerId: string | null) => void;
@@ -1038,10 +1043,31 @@ function ExecutionSection({
   const effectiveAutomation = resolveEffectiveTaskAutomation(task, boardColumns, resolveSpecialist);
   const canRunTask = effectiveAutomation.canRun && task.columnId !== "done";
   const hasCardOverride = Boolean(task.assignedProvider || task.assignedRole || task.assignedSpecialistId || task.assignedSpecialistName);
+  const usesSelectedProvider = Boolean(
+    !task.assignedProvider
+    && selectedProvider
+    && effectiveAutomation.transport !== "a2a",
+  );
+  const manualRunTarget = usesSelectedProvider
+    ? formatEffectiveAutomationTarget(
+        {
+          ...effectiveAutomation,
+          providerId: selectedProvider ?? undefined,
+        },
+        availableProviders,
+        specialists,
+      )
+    : formatEffectiveAutomationTarget(effectiveAutomation, availableProviders, specialists);
+  const manualRunSourceLabel = hasCardOverride
+    ? usesSelectedProvider
+      ? "the current ACP provider with this card override"
+      : "this card override"
+    : usesSelectedProvider
+      ? "the current ACP provider with this lane's role and specialist"
+      : "the current lane default";
   const laneName = lane?.name ?? task.columnId ?? "backlog";
   const laneSteps = lane?.automation ? getKanbanAutomationSteps(lane.automation) : [];
   const cardSpecialist = getSpecialistName(task.assignedSpecialistId, task.assignedSpecialistName, specialists);
-  const effectiveRunTarget = formatEffectiveAutomationTarget(effectiveAutomation, availableProviders, specialists);
   const failureMessage = getPromptFailureMessage(task, sessionInfo);
   const activeRunSessionId = task.triggerSessionId
     ?? (task.laneSessions && task.laneSessions.length > 0 ? task.laneSessions[task.laneSessions.length - 1]?.sessionId : undefined);
@@ -1051,14 +1077,28 @@ function ExecutionSection({
   const failedRunProviderId = task.triggerSessionId
     ? sessionInfo?.sessionId === task.triggerSessionId
       ? sessionInfo.provider
-      : activeLaneSession?.provider ?? task.assignedProvider ?? effectiveAutomation.providerId
-    : task.assignedProvider ?? effectiveAutomation.providerId;
+      : activeLaneSession?.provider ?? task.assignedProvider ?? (usesSelectedProvider ? selectedProvider ?? undefined : effectiveAutomation.providerId)
+    : task.assignedProvider ?? (usesSelectedProvider ? selectedProvider ?? undefined : effectiveAutomation.providerId);
   const failedRunLabel = activeLaneSession?.transport === "a2a" || effectiveAutomation.transport === "a2a"
     ? "current A2A run"
     : getProviderName(
       failedRunProviderId,
       availableProviders,
     );
+  const effectiveRunTarget = activeLaneSession
+    ? formatEffectiveAutomationTarget(
+        {
+          ...effectiveAutomation,
+          transport: activeLaneSession.transport === "a2a" ? "a2a" : "acp",
+          providerId: activeLaneSession.provider ?? effectiveAutomation.providerId,
+          role: activeLaneSession.role ?? effectiveAutomation.role,
+          specialistId: activeLaneSession.specialistId ?? effectiveAutomation.specialistId,
+          specialistName: activeLaneSession.specialistName ?? effectiveAutomation.specialistName,
+        },
+        availableProviders,
+        specialists,
+      )
+    : manualRunTarget;
   const lanePipeline = laneSteps.length > 0
     ? laneSteps.map((step) => formatAutomationStepSummary(step, availableProviders, specialists)).join(" -> ")
     : t.kanbanDetail.noLaneAutomation;
@@ -1211,9 +1251,9 @@ function ExecutionSection({
       </details>
       {canRunTask && (
         <div className={`mt-2 border-l-2 border-sky-300/80 px-3 py-2 text-xs text-sky-800 dark:border-sky-700/70 dark:text-sky-200 ${compact ? "leading-[1.125rem]" : "leading-[1.2rem]"}`}>
-          Manual {hasRecordedRuns ? "reruns" : "runs"} use {effectiveAutomation.source === "card" ? "this card override" : "the current lane default"}:
+          Manual {hasRecordedRuns ? "reruns" : "runs"} use {manualRunSourceLabel}:
           {" "}
-          {effectiveRunTarget}
+          {manualRunTarget}
         </div>
       )}
       {failureMessage && (

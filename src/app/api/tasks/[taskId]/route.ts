@@ -109,6 +109,7 @@ export async function PATCH(
     repoPath?: string;
     syncToGitHub?: boolean;
     retryTrigger?: boolean;
+    retryProviderId?: string;
     codebaseIds?: string[];
     worktreeId?: string | null;
   };
@@ -117,6 +118,7 @@ export async function PATCH(
       repoPath?: string;
       syncToGitHub?: boolean;
       retryTrigger?: boolean;
+      retryProviderId?: string;
     };
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -318,6 +320,9 @@ export async function PATCH(
     body.assignedProvider !== undefined || body.assignedSpecialistId !== undefined || body.assignedRole !== undefined
   );
   const retryingTrigger = body.retryTrigger === true;
+  const retryProviderId = typeof body.retryProviderId === "string" && body.retryProviderId.trim().length > 0
+    ? body.retryProviderId.trim()
+    : undefined;
 
   if ((enteringDev || assignedWhileInDev || retryingTrigger) && !nextTask.triggerSessionId) {
     // Determine which codebase to use: first from task's codebaseIds, else repo path, else default
@@ -371,6 +376,7 @@ export async function PATCH(
       task: nextTask,
       expectedColumnId: nextTask.columnId,
       ignoreExistingTrigger: retryingTrigger,
+      providerOverride: retryProviderId,
     });
     if (triggerResult.sessionId) {
       nextTask.triggerSessionId = triggerResult.sessionId;

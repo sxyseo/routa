@@ -1143,7 +1143,20 @@ export function KanbanTab({
   }
 
   async function retryTaskTrigger(taskId: string) {
-    const updated = await patchTask(taskId, { retryTrigger: true });
+    const task = localTasks.find((item) => item.id === taskId);
+    const effectiveAutomation = task
+      ? resolveEffectiveTaskAutomation(task, board?.columns ?? [], resolveSpecialist)
+      : undefined;
+    const retryProviderId = task
+      && !task.assignedProvider
+      && effectiveAutomation?.transport !== "a2a"
+      && acp?.selectedProvider
+      ? acp.selectedProvider
+      : undefined;
+    const updated = await patchTask(taskId, {
+      retryTrigger: true,
+      ...(retryProviderId ? { retryProviderId } : {}),
+    });
     if (updated.triggerSessionId) {
       // Keep the task detail open and update the session ID
       setActiveSessionId(updated.triggerSessionId);

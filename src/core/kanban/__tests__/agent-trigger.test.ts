@@ -3,8 +3,16 @@ import { buildTaskPrompt, resolveKanbanAutomationProvider, triggerAssignedTaskAg
 import { createTask } from "../../models/task";
 import { AgentEventType, type EventBus } from "../../events/event-bus";
 
+const { dispatchSessionPromptMock } = vi.hoisted(() => ({
+  dispatchSessionPromptMock: vi.fn(),
+}));
+
 vi.mock("../../acp/claude-code-sdk-adapter", () => ({
   isClaudeCodeSdkConfigured: vi.fn(),
+}));
+
+vi.mock("@/app/api/acp/acp-session-prompt", () => ({
+  dispatchSessionPrompt: dispatchSessionPromptMock,
 }));
 
 const sendMessageMock = vi.fn();
@@ -497,6 +505,7 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
     vi.unstubAllGlobals();
     sendMessageMock.mockReset();
     waitForCompletionMock.mockReset();
+    dispatchSessionPromptMock.mockReset();
   });
 
   it("does not emit AGENT_COMPLETED when ACP prompt submission succeeds", async () => {
@@ -508,12 +517,9 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }))
-      .mockResolvedValueOnce(new Response("", {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
       }));
     vi.stubGlobal("fetch", fetchMock);
+    dispatchSessionPromptMock.mockResolvedValue(undefined);
 
     const eventBus = { emit: vi.fn() };
     const task = createTask({
@@ -540,6 +546,11 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
       displayTarget: "codex",
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(dispatchSessionPromptMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "sess-1",
+      workspaceId: "default",
+      cwd: "/tmp/project",
+    }));
     expect(eventBus.emit).not.toHaveBeenCalledWith(expect.objectContaining({
       type: AgentEventType.AGENT_COMPLETED,
       agentId: "sess-1",
@@ -555,16 +566,9 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        jsonrpc: "2.0",
-        id: "prompt",
-        error: { code: -32000, message: "Timeout waiting for session/prompt (id=3)" },
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
       }));
     vi.stubGlobal("fetch", fetchMock);
+    dispatchSessionPromptMock.mockRejectedValue(new Error("Timeout waiting for session/prompt (id=3)"));
 
     const eventBus = { emit: vi.fn() };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -607,6 +611,58 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
     }));
   });
 
+  it("emits AGENT_FAILED when in-process prompt dispatch fails immediately", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: "new",
+        result: { sessionId: "sess-error" },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    dispatchSessionPromptMock.mockRejectedValue(new Error("fetch failed"));
+
+    const eventBus = { emit: vi.fn() };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const task = createTask({
+      id: "task-acp-error",
+      title: "Run ACP task with dispatch failure",
+      objective: "Surface prompt dispatch failures",
+      workspaceId: "default",
+      columnId: "dev",
+      assignedProvider: "codex",
+      assignedRole: "DEVELOPER",
+    });
+
+    const result = await triggerAssignedTaskAgent({
+      origin: "http://127.0.0.1:3000",
+      workspaceId: "default",
+      cwd: "/tmp/project",
+      task,
+      eventBus: eventBus as unknown as EventBus,
+    });
+
+    expect(result).toMatchObject({
+      sessionId: "sess-error",
+      transport: "acp",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[kanban] Failed to auto-prompt ACP task session:",
+      expect.any(Error),
+    );
+    expect(eventBus.emit).toHaveBeenCalledWith(expect.objectContaining({
+      type: AgentEventType.AGENT_FAILED,
+      agentId: "sess-error",
+      data: expect.objectContaining({
+        sessionId: "sess-error",
+        error: "fetch failed",
+      }),
+    }));
+  });
+
   it("downgrades legacy A2A transport steps to ACP session prompts", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
@@ -616,12 +672,9 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }))
-      .mockResolvedValueOnce(new Response("", {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
       }));
     vi.stubGlobal("fetch", fetchMock);
+    dispatchSessionPromptMock.mockResolvedValue(undefined);
 
     const task = createTask({
       id: "task-a2a-legacy",
@@ -653,6 +706,9 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
     });
     expect(sendMessageMock).not.toHaveBeenCalled();
     expect(waitForCompletionMock).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(dispatchSessionPromptMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "sess-downgraded",
+    }));
   });
 });

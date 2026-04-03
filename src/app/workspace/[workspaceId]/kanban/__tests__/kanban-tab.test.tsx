@@ -483,6 +483,113 @@ describe("KanbanTab manual card creation", () => {
   });
 });
 
+describe("KanbanTab manual run provider selection", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the current ACP provider for a manual rerun while keeping the lane specialist", async () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+    const automatedBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [
+        {
+          id: "backlog",
+          name: "Backlog",
+          position: 0,
+          stage: "backlog",
+          automation: {
+            enabled: true,
+            providerId: "opencode",
+            role: "ROUTA",
+            specialistId: "backlog-refiner",
+            specialistName: "Backlog Refiner",
+            transitionType: "exit",
+          },
+        },
+      ],
+    };
+    const acp = {
+      connected: true,
+      sessionId: null,
+      updates: [],
+      providers: [],
+      selectedProvider: "codex",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(),
+      respondToUserInput: vi.fn(),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PATCH" && url === "/api/tasks/task-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            task: {
+              ...createTask("task-1", "Story One"),
+              triggerSessionId: "session-123",
+            },
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[automatedBoard]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[
+          { id: "opencode", name: "OpenCode", description: "OpenCode provider", command: "opencode", status: "available" },
+          { id: "codex", name: "Codex", description: "Codex provider", command: "codex-acp", status: "available" },
+        ]}
+        specialists={[{ id: "backlog-refiner", name: "Backlog Refiner", role: "ROUTA" }]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+        acp={acp}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
+
+    const runButton = await screen.findByTestId("kanban-detail-run");
+    expect(screen.getByText(/Manual runs use the current ACP provider with this lane's role and specialist/i)).toBeTruthy();
+    expect(screen.getAllByText("Codex · ROUTA · Backlog Refiner").length).toBeGreaterThan(0);
+
+    fireEvent.click(runButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ retryTrigger: true, retryProviderId: "codex" }),
+      });
+    });
+  });
+});
+
 describe("KanbanCardDetail changes tab", () => {
   it("loads task-scoped worktree changes when the changes tab opens", async () => {
     desktopAwareFetch.mockResolvedValue({
@@ -635,7 +742,7 @@ describe.skip("KanbanTab card detail manual runs", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ retryTrigger: true }),
+        body: JSON.stringify({ retryTrigger: true, retryProviderId: "claude" }),
       });
     });
   });

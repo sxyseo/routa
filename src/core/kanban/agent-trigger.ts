@@ -3,7 +3,7 @@ import type { Task, TaskEvidenceSummary, TaskInvestValidation, TaskStoryReadines
 import { getNextHappyPathColumnId, type KanbanColumn } from "../models/kanban";
 import { AgentEventType, type EventBus } from "../events/event-bus";
 import { isClaudeCodeSdkConfigured } from "../acp/claude-code-sdk-adapter";
-import { consumeAcpPromptResponse } from "../acp/prompt-response";
+import { dispatchSessionPrompt } from "@/app/api/acp/acp-session-prompt";
 import { getA2AOutboundClient } from "../a2a";
 import { resolveA2AAuthConfig } from "../a2a/a2a-auth-config";
 import { formatArtifactSummary, resolveKanbanTransitionArtifacts } from "./transition-artifacts";
@@ -426,30 +426,19 @@ async function triggerAcpTaskAgent(params: {
   }
 
   void (async () => {
-    const response = await fetch(`${params.origin}/api/acp`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: uuidv4(),
-        method: "session/prompt",
-        params: {
-          sessionId,
-          workspaceId: params.workspaceId,
-          provider,
-          cwd: params.cwd,
-          prompt: [{
-            type: "text",
-            text: buildTaskPrompt(params.task, params.boardColumns, {
-              currentSessionId: sessionId,
-              summaryContext: params.summaryContext,
-            }),
-          }],
-        },
-      }),
+    await dispatchSessionPrompt({
+      sessionId,
+      workspaceId: params.workspaceId,
+      provider,
+      cwd: params.cwd,
+      prompt: [{
+        type: "text",
+        text: buildTaskPrompt(params.task, params.boardColumns, {
+          currentSessionId: sessionId,
+          summaryContext: params.summaryContext,
+        }),
+      }],
     });
-
-    await consumeAcpPromptResponse(response);
   })().catch((error) => {
     if (isAcpPromptTimeoutError(error)) {
       console.warn(

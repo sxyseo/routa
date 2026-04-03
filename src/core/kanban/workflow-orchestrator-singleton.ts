@@ -33,8 +33,8 @@ import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } f
 import { getKanbanDevSessionSupervision } from "./board-session-supervision";
 import { upsertTaskLaneSession } from "./task-lane-history";
 import { getHttpSessionStore } from "../acp/http-session-store";
-import { consumeAcpPromptResponse } from "../acp/prompt-response";
 import { getSpecialistById } from "../orchestration/specialist-prompts";
+import { dispatchSessionPrompt } from "@/app/api/acp/acp-session-prompt";
 import type { ColumnTransitionData } from "./column-transition";
 import {
   buildTaskEvidenceSummary,
@@ -105,6 +105,7 @@ export async function enqueueKanbanTaskSession(
     expectedColumnId?: string;
     ignoreExistingTrigger?: boolean;
     mutateTask?: (task: NonNullable<Awaited<ReturnType<RoutaSystem["taskStore"]["get"]>>>) => void;
+    providerOverride?: string;
     step?: KanbanAutomationStep;
     stepIndex?: number;
     supervision?: AutomationSessionSupervisionContext;
@@ -136,6 +137,7 @@ async function startKanbanTaskSession(
     expectedColumnId?: string;
     ignoreExistingTrigger?: boolean;
     mutateTask?: (task: NonNullable<Awaited<ReturnType<RoutaSystem["taskStore"]["get"]>>>) => void;
+    providerOverride?: string;
     step?: KanbanAutomationStep;
     stepIndex?: number;
     supervision?: AutomationSessionSupervisionContext;
@@ -207,12 +209,16 @@ async function startKanbanTaskSession(
     board?.columns ?? [],
     resolveKanbanSpecialist,
   );
+  const providerOverride = params.providerOverride?.trim() || undefined;
   const sessionStep = resolveKanbanAutomationStep(params.step, resolveKanbanSpecialist)
     ?? effectiveAutomation.step;
   const sessionStepIndex = params.stepIndex ?? effectiveAutomation.stepIndex;
+  const sessionProviderId = providerOverride
+    ?? sessionStep?.providerId
+    ?? effectiveAutomation.providerId;
   const taskForSession = {
     ...nextTask,
-    assignedProvider: sessionStep?.providerId ?? effectiveAutomation.providerId,
+    assignedProvider: sessionProviderId,
     assignedRole: sessionStep?.role ?? effectiveAutomation.role,
     assignedSpecialistId: sessionStep?.specialistId ?? effectiveAutomation.specialistId,
     assignedSpecialistName: sessionStep?.specialistName ?? effectiveAutomation.specialistName,
@@ -251,7 +257,7 @@ async function startKanbanTaskSession(
       stepId: sessionStep?.id,
       stepIndex: sessionStepIndex,
       stepName: sessionStep?.specialistName ?? sessionStep?.specialistId ?? sessionStep?.role,
-      provider: sessionStep?.providerId ?? effectiveAutomation.providerId,
+      provider: sessionProviderId,
       role: sessionStep?.role ?? effectiveAutomation.role,
       specialistId: sessionStep?.specialistId ?? effectiveAutomation.specialistId,
       specialistName: sessionStep?.specialistName ?? effectiveAutomation.specialistName,
@@ -340,25 +346,11 @@ async function sendPromptToKanbanSession(
     );
   }
 
-  const response = await fetch(`${getInternalApiOrigin()}/api/acp`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: params.sessionId,
-      method: "session/prompt",
-      params: {
-        sessionId: params.sessionId,
-        workspaceId: params.workspaceId,
-        prompt: [{ type: "text", text: params.prompt }],
-      },
-    }),
+  await dispatchSessionPrompt({
+    sessionId: params.sessionId,
+    workspaceId: params.workspaceId,
+    prompt: [{ type: "text", text: params.prompt }],
   });
-
-  if (!response.ok) {
-    throw new Error(`session/prompt HTTP ${response.status}`);
-  }
-  await consumeAcpPromptResponse(response);
 }
 
 export function getKanbanSessionQueue(system: RoutaSystem): KanbanSessionQueue {

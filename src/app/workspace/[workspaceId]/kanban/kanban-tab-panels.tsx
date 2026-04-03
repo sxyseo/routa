@@ -673,6 +673,7 @@ export function KanbanTaskDetailOverlay({
                   sessionInfo={sessionInfo}
                   sessions={combinedSessions}
                   fullWidth={!hasSessionPane}
+                  selectedProvider={acp?.selectedProvider ?? null}
                   onPatchTask={patchTask}
                   onRetryTrigger={retryTaskTrigger}
                   onDelete={() => confirmDeleteTask(task)}

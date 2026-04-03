@@ -347,6 +347,55 @@ describe("/api/tasks/[taskId]", () => {
     expect(data.task.triggerSessionId).toBe("session-new");
   });
 
+  it("passes a retry provider override without persisting a card provider override", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Retry with ACP provider",
+      objective: "Keep lane specialist but switch provider for this run",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "backlog",
+      status: TaskStatus.PENDING,
+      triggerSessionId: "session-old",
+      assignedRole: "ROUTA",
+      assignedSpecialistId: "backlog-refiner",
+      assignedSpecialistName: "Backlog Refiner",
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ retryTrigger: true, retryProviderId: "codex" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(enqueueKanbanTaskSession).toHaveBeenCalledWith(system, expect.objectContaining({
+      expectedColumnId: "backlog",
+      ignoreExistingTrigger: true,
+      providerOverride: "codex",
+    }));
+    expect(capturedEnqueueTask).toMatchObject({
+      id: "task-1",
+      assignedProvider: undefined,
+      assignedRole: "ROUTA",
+      assignedSpecialistId: "backlog-refiner",
+    });
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-1",
+      assignedProvider: undefined,
+      assignedRole: "ROUTA",
+      assignedSpecialistId: "backlog-refiner",
+      triggerSessionId: "session-new",
+    }));
+    expect(data.task.triggerSessionId).toBe("session-new");
+  });
+
   it("rejects moving a card out of a lane while later automation steps are still pending", async () => {
     const existingTask = createTask({
       id: "task-1",
