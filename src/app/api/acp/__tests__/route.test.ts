@@ -10,6 +10,7 @@ const {
   proxyRequestToRunner,
   runnerUnavailableResponse,
   loadHistorySinceEventIdFromDb,
+  loadSessionFromLocalStorage,
   updateSessionExecutionBindingInDb,
 } = vi.hoisted(() => {
   const store = {
@@ -30,6 +31,7 @@ const {
     proxyRequestToRunner: vi.fn(),
     runnerUnavailableResponse: vi.fn(),
     loadHistorySinceEventIdFromDb: vi.fn(),
+    loadSessionFromLocalStorage: vi.fn(),
     updateSessionExecutionBindingInDb: vi.fn(),
   };
 });
@@ -53,6 +55,7 @@ vi.mock("@/core/acp/session-db-persister", async () => {
   return {
     ...actual,
     loadHistorySinceEventIdFromDb,
+    loadSessionFromLocalStorage,
     updateSessionExecutionBindingInDb,
   };
 });
@@ -88,6 +91,7 @@ describe("/api/acp GET", () => {
     runnerUnavailableResponse.mockReturnValue(new Response("runner unavailable", { status: 503 }));
     proxyRequestToRunner.mockResolvedValue(new Response("proxied", { status: 200 }));
     loadHistorySinceEventIdFromDb.mockResolvedValue([]);
+    loadSessionFromLocalStorage.mockResolvedValue(null);
     updateSessionExecutionBindingInDb.mockResolvedValue(undefined);
 
     httpSessionStore.attachSse.mockReset();
@@ -363,5 +367,43 @@ describe("/api/acp POST", () => {
         leaseExpiresAt: expect.any(String),
       }),
     );
+  });
+
+  it("recreates prompt sessions using local session metadata when the in-memory store is empty", async () => {
+    httpSessionStore.getSession.mockReturnValue(undefined);
+    loadSessionFromLocalStorage.mockResolvedValue({
+      id: "session-1",
+      name: "Recovered session",
+      cwd: "/tmp/recovered",
+      workspaceId: "workspace-1",
+      provider: "opencode",
+      role: "CRAFTER",
+      specialistId: "kanban-backlog-refiner",
+      createdAt: "2026-04-03T00:00:00.000Z",
+      updatedAt: "2026-04-03T00:00:00.000Z",
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/acp", {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 5,
+          method: "session/prompt",
+          params: {
+            sessionId: "session-1",
+            prompt: [{ type: "text", text: "continue" }],
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.not.toMatchObject({
+      error: {
+        message: "workspaceId is required to recreate the session",
+      },
+    });
+    expect(loadSessionFromLocalStorage).toHaveBeenCalledWith("session-1");
   });
 });

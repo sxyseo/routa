@@ -123,7 +123,7 @@ export function ChatPanel({
   onInputPrefillConsumed,
 }: ChatPanelProps) {
   const { t } = useTranslation();
-  const { connected, loading, error, authError, updates, prompt, clearAuthError } = acp;
+  const { connected, loading, error, authError, updates, promptSession, clearAuthError } = acp;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [copiedRepoPath, setCopiedRepoPath] = useState(false);
   // View mode: 'chat' or 'trace'
@@ -297,6 +297,9 @@ export function ChatPanel({
     // Ensure we have a session — pass cwd and provider
     const sid = context.sessionId ?? activeSessionId ?? (await onEnsureSession(cwd, context.provider, context.mode, context.model));
     if (!sid) return;
+    if (acp.sessionId !== sid) {
+      await onSelectSession(sid);
+    }
     if (context.mode) {
       await acp.setMode(context.mode);
     }
@@ -341,13 +344,13 @@ export function ChatPanel({
       return next;
     });
 
-    await prompt(finalPrompt, skillContext);
+    await promptSession(sid, finalPrompt, skillContext);
 
     // Reset streaming refs after sending
     resetStreamingRefs(sid);
 
     // Task extraction is now handled by the useEffect that watches messagesBySession
-  }, [activeSessionId, onEnsureSession, onSelectSession, prompt, repoSelection, onLoadSkill, acp, resetStreamingRefs, setMessagesBySession]);
+  }, [activeSessionId, onEnsureSession, onSelectSession, promptSession, repoSelection, onLoadSkill, acp, resetStreamingRefs, setMessagesBySession]);
 
   // ── Setup State ──────────────────────────────────────────────────────
 

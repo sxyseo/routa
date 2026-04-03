@@ -1204,6 +1204,152 @@ describe.skip("KanbanTab card detail manual runs", () => {
     });
   });
 
+  it("follows the newest task session when automation starts a new run", async () => {
+    const acp = {
+      connected: true,
+      sessionId: "session-123",
+      updates: [],
+      providers: [{ id: "codex", name: "Codex", description: "Codex provider", command: "codex-acp" }],
+      selectedProvider: "codex",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(),
+      respondToUserInput: vi.fn(),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    const firstTask = {
+      ...createTask("task-1", "Story One", {
+        triggerSessionId: "session-123",
+        sessionIds: ["session-123"],
+        laneSessions: [
+          {
+            sessionId: "session-123",
+            provider: "codex",
+            role: "CRAFTER",
+            specialistId: "todo",
+            specialistName: "Todo Crafter",
+            status: "completed",
+            columnId: "todo",
+            columnName: "Todo",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    };
+
+    const secondTask = {
+      ...firstTask,
+      triggerSessionId: "session-456",
+      sessionIds: ["session-123", "session-456"],
+      laneSessions: [
+        ...(firstTask.laneSessions ?? []),
+        {
+          sessionId: "session-456",
+          provider: "codex",
+          role: "CRAFTER",
+          specialistId: "dev",
+          specialistName: "Dev Crafter",
+          status: "running",
+          columnId: "dev",
+          columnName: "Dev",
+          startedAt: "2025-01-01T00:10:00.000Z",
+        },
+      ],
+    };
+
+    const { rerender } = render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[firstTask]}
+        sessions={[
+          {
+            sessionId: "session-123",
+            workspaceId: "workspace-1",
+            cwd: "/tmp/repo",
+            provider: "codex",
+            role: "CRAFTER",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            name: "Todo run",
+          },
+          {
+            sessionId: "session-456",
+            workspaceId: "workspace-1",
+            cwd: "/tmp/repo",
+            provider: "codex",
+            role: "CRAFTER",
+            createdAt: "2025-01-01T00:10:00.000Z",
+            name: "Dev run",
+          },
+        ]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+        acp={acp}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
+
+    await waitFor(() => {
+      expect(acp.selectSession).toHaveBeenCalledWith("session-123");
+    });
+
+    rerender(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[secondTask]}
+        sessions={[
+          {
+            sessionId: "session-123",
+            workspaceId: "workspace-1",
+            cwd: "/tmp/repo",
+            provider: "codex",
+            role: "CRAFTER",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            name: "Todo run",
+          },
+          {
+            sessionId: "session-456",
+            workspaceId: "workspace-1",
+            cwd: "/tmp/repo",
+            provider: "codex",
+            role: "CRAFTER",
+            createdAt: "2025-01-01T00:10:00.000Z",
+            name: "Dev run",
+          },
+        ]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+        acp={acp}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(acp.selectSession).toHaveBeenCalledWith("session-456");
+    });
+  });
+
   it("closes the card detail from the run tabs close button", async () => {
     vi.stubGlobal("scrollIntoView", vi.fn());
     window.HTMLElement.prototype.scrollIntoView = vi.fn();

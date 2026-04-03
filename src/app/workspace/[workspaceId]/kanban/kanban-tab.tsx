@@ -189,6 +189,7 @@ export function KanbanTab({
   const [isTaskDetailFullscreen, setIsTaskDetailFullscreen] = useState(false);
   const sessionBackfillInFlightRef = useRef(new Set<string>());
   const emptySessionRecoveryRef = useRef<string | null>(null);
+  const previousPreferredTaskSessionIdRef = useRef<string | null>(null);
 
   const sessionMap = useMemo(() => {
     const map = new Map<string, SessionInfo>();
@@ -436,12 +437,25 @@ export function KanbanTab({
   }, [activeTaskId]);
 
   useEffect(() => {
-    if (!activeTask || !preferredActiveTaskSessionId) return;
+    if (!activeTask) {
+      previousPreferredTaskSessionIdRef.current = null;
+      return;
+    }
+    if (!preferredActiveTaskSessionId) {
+      previousPreferredTaskSessionIdRef.current = null;
+      return;
+    }
+    const previousPreferredTaskSessionId = previousPreferredTaskSessionIdRef.current;
     setActiveSessionId((current) => {
       if (!current) return preferredActiveTaskSessionId;
       if (!taskOwnsSession(activeTask, current)) return preferredActiveTaskSessionId;
+      if (current === preferredActiveTaskSessionId) return current;
+      if (previousPreferredTaskSessionId && current === previousPreferredTaskSessionId) {
+        return preferredActiveTaskSessionId;
+      }
       return current;
     });
+    previousPreferredTaskSessionIdRef.current = preferredActiveTaskSessionId;
   }, [activeTask, preferredActiveTaskSessionId]);
 
   useEffect(() => {

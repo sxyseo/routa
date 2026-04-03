@@ -13,10 +13,13 @@ import {
   createTraceRecord,
   withWorkspaceId,
   withMetadata,
-  withConversation,
   recordTrace,
 } from "@/core/trace";
-import { persistSessionToDb, updateSessionExecutionBindingInDb } from "@/core/acp/session-db-persister";
+import {
+  loadSessionFromLocalStorage,
+  persistSessionToDb,
+  updateSessionExecutionBindingInDb,
+} from "@/core/acp/session-db-persister";
 import { resolveSkillContent } from "@/core/skills/skill-resolver";
 import {
   buildExecutionBinding,
@@ -158,21 +161,22 @@ async function ensurePromptSessionExists(args: {
   console.log(`[ACP Route] Session ${sessionId} not found, auto-creating with default settings...`);
 
   const storedSession = store.getSession(sessionId);
-  const cwd = storedSession?.cwd ?? (params.cwd as string | undefined) ?? process.cwd();
+  const persistedSession = storedSession ? null : await loadSessionFromLocalStorage(sessionId);
+  const cwd = storedSession?.cwd ?? persistedSession?.cwd ?? (params.cwd as string | undefined) ?? process.cwd();
   const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
-  const provider = (params.provider as string | undefined) ?? storedSession?.provider ?? defaultProvider;
-  const workspaceId = requireWorkspaceId(params.workspaceId) ?? storedSession?.workspaceId;
+  const provider = (params.provider as string | undefined) ?? storedSession?.provider ?? persistedSession?.provider ?? defaultProvider;
+  const workspaceId = requireWorkspaceId(params.workspaceId) ?? storedSession?.workspaceId ?? persistedSession?.workspaceId;
   if (!workspaceId) {
     return jsonrpcResponse(id ?? null, null, {
       code: -32602,
       message: "workspaceId is required to recreate the session",
     });
   }
-  const role = storedSession?.role ?? "CRAFTER";
+  const role = storedSession?.role ?? persistedSession?.role ?? "CRAFTER";
   const toolMode = storedSession?.toolMode;
   const mcpProfile = storedSession?.mcpProfile;
   const allowedNativeTools = storedSession?.allowedNativeTools;
-  const specialistId = storedSession?.specialistId;
+  const specialistId = storedSession?.specialistId ?? persistedSession?.specialistId;
   const specialistSystemPrompt = storedSession?.specialistSystemPrompt;
 
   try {
@@ -480,16 +484,7 @@ export async function handleSessionPrompt({
 
   store.pushUserMessage(sessionId, visiblePromptText);
   await persistSessionHistorySnapshot(sessionId, store);
-
   const sessionRecord = store.getSession(sessionId);
-  const userMsgTrace = withConversation(
-    createTraceRecord(sessionId, "user_message", { provider: sessionRecord?.provider ?? "unknown" }),
-    {
-      role: "user",
-      contentPreview: visiblePromptText.slice(0, 200),
-    },
-  );
-  recordTrace(sessionRecord?.cwd ?? process.cwd(), userMsgTrace);
 
   if (manager.isOpencodeAdapterSession(sessionId) || await manager.isOpencodeSdkSessionAsync(sessionId)) {
     const opcAdapter = await manager.getOrRecreateOpencodeSdkAdapter(
