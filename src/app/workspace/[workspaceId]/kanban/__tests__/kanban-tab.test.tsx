@@ -349,6 +349,120 @@ describe("KanbanTab GitHub import", () => {
   });
 });
 
+describe("KanbanTab manual card creation", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves the selected ACP provider when creating a manual card", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks" && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            task: createTask("task-manual", "create a js hello world", {
+              assignedProvider: "codex",
+              codebaseIds: ["codebase-1"],
+            }),
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[]}
+        sessions={[]}
+        providers={[{
+          id: "codex",
+          name: "Codex",
+          description: "Codex provider",
+          command: "codex-acp",
+          status: "available",
+        }]}
+        specialists={[]}
+        codebases={[{
+          id: "codebase-1",
+          repoPath: "/Users/phodal/repos/routa-js",
+          sourceUrl: "https://github.com/phodal/routa-js",
+          isDefault: true,
+          label: "routa-js",
+          branch: "main",
+        }]}
+        acp={{
+          connected: true,
+          sessionId: null,
+          updates: [],
+          providers: [],
+          selectedProvider: "codex",
+          loading: false,
+          error: null,
+          authError: null,
+          dockerConfigError: null,
+          setProvider: vi.fn(),
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          createSession: vi.fn(),
+          createSessionWithOptions: vi.fn(),
+          createSessionWithWorkspace: vi.fn(),
+          prompt: vi.fn(),
+          cancel: vi.fn(),
+          listSessions: vi.fn(),
+          selectSession: vi.fn(),
+          deleteSession: vi.fn(),
+          listProviderModels: vi.fn(),
+          clearAuthError: vi.fn(),
+        } as UseAcpState & UseAcpActions}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Manual" }));
+    fireEvent.change(screen.getByPlaceholderText("Task title"), {
+      target: { value: "create a js hello world" },
+    });
+
+    const editor = document.querySelector("[contenteditable='true']");
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Expected TipTap editor");
+    }
+    editor.innerHTML = "<p>Create a JavaScript Hello World example.</p>";
+    fireEvent.input(editor);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Create" }).hasAttribute("disabled")).toBe(false);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: "workspace-1",
+          boardId: "board-1",
+          title: "create a js hello world",
+          objective: "Create a JavaScript Hello World example.",
+          testCases: [],
+          priority: "medium",
+          labels: [],
+          createGitHubIssue: false,
+          creationSource: "manual",
+          repoPath: "/Users/phodal/repos/routa-js",
+          codebaseIds: ["codebase-1"],
+          assignedProvider: "codex",
+        }),
+      });
+    });
+  });
+});
+
 describe("KanbanCardDetail changes tab", () => {
   it("loads task-scoped worktree changes when the changes tab opens", async () => {
     desktopAwareFetch.mockResolvedValue({

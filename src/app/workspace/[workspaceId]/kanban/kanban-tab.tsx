@@ -981,6 +981,7 @@ export function KanbanTab({
 
   async function createTaskCard() {
     const effectiveCodebaseIds = draft.codebaseIds.length > 0 ? draft.codebaseIds : allCodebaseIds;
+    const selectedProvider = acp?.selectedProvider;
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -998,6 +999,7 @@ export function KanbanTab({
           ? codebases.find((codebase) => codebase.id === effectiveCodebaseIds[0])?.repoPath
           : defaultCodebase?.repoPath,
         codebaseIds: effectiveCodebaseIds,
+        assignedProvider: selectedProvider,
       }),
     });
     const data = await response.json();
