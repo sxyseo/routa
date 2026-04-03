@@ -593,18 +593,22 @@ async fn run_fitness_profile(
 }
 
 async fn run_architecture_suite(repo_root: &Path, suite: &str) -> Result<Value, String> {
+    let app_root = std::env::current_dir().map_err(|error| error.to_string())?;
+    let script_path = app_root.join("scripts/fitness/check-backend-architecture.ts");
     let args = vec![
-        "--import",
-        "tsx",
-        "scripts/fitness/check-backend-architecture.ts",
-        "--suite",
-        suite,
-        "--json",
+        "--import".to_string(),
+        "tsx".to_string(),
+        script_path.to_string_lossy().to_string(),
+        "--repo-root".to_string(),
+        repo_root.to_string_lossy().to_string(),
+        "--suite".to_string(),
+        suite.to_string(),
+        "--json".to_string(),
     ];
 
     let output = Command::new("node")
         .args(&args)
-        .current_dir(repo_root)
+        .current_dir(&app_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

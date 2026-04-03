@@ -91,49 +91,7 @@ type ArchitectureReport = {
   notes: string[];
 };
 
-const TS_CONFIG_PATH = fromRoot("tsconfig.json");
-
-const RULES: ArchitectureRuleDefinition[] = [
-  {
-    id: "ts_backend_core_no_core_to_app",
-    title: "src/core must not depend on src/app",
-    suite: "boundaries",
-    build: (projectFiles) => projectFiles(TS_CONFIG_PATH)
-      .inFolder("src/core/**")
-      .shouldNot()
-      .dependOnFiles()
-      .inFolder("src/app/**"),
-  },
-  {
-    id: "ts_backend_core_no_core_to_client",
-    title: "src/core must not depend on src/client",
-    suite: "boundaries",
-    build: (projectFiles) => projectFiles(TS_CONFIG_PATH)
-      .inFolder("src/core/**")
-      .shouldNot()
-      .dependOnFiles()
-      .inFolder("src/client/**"),
-  },
-  {
-    id: "ts_backend_core_no_api_to_client",
-    title: "src/app/api must not depend on src/client",
-    suite: "boundaries",
-    build: (projectFiles) => projectFiles(TS_CONFIG_PATH)
-      .inFolder("src/app/api/**")
-      .shouldNot()
-      .dependOnFiles()
-      .inFolder("src/client/**"),
-  },
-  {
-    id: "ts_backend_core_no_cycles",
-    title: "src/core should be cycle free",
-    suite: "cycles",
-    build: (projectFiles) => projectFiles(TS_CONFIG_PATH)
-      .inFolder("src/core/**")
-      .should()
-      .haveNoCycles(),
-  },
-];
+const APP_ROOT = fromRoot();
 
 function normalizeSuite(raw: string): SuiteName {
   return raw === "cycles" ? "cycles" : "boundaries";
@@ -157,6 +115,65 @@ function hasFlag(argv: string[], flag: string): boolean {
   return argv.includes(flag);
 }
 
+function parseRepoRoot(argv: string[]): string | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--repo-root" && argv[index + 1]) {
+      return path.resolve(argv[index + 1]);
+    }
+    if (arg.startsWith("--repo-root=")) {
+      return path.resolve(arg.slice("--repo-root=".length));
+    }
+  }
+
+  const envRepoRoot = process.env.ROUTA_ARCH_REPO_ROOT?.trim();
+  return envRepoRoot ? path.resolve(envRepoRoot) : null;
+}
+
+function buildRules(tsConfigPath: string): ArchitectureRuleDefinition[] {
+  return [
+    {
+      id: "ts_backend_core_no_core_to_app",
+      title: "src/core must not depend on src/app",
+      suite: "boundaries",
+      build: (projectFiles) => projectFiles(tsConfigPath)
+        .inFolder("src/core/**")
+        .shouldNot()
+        .dependOnFiles()
+        .inFolder("src/app/**"),
+    },
+    {
+      id: "ts_backend_core_no_core_to_client",
+      title: "src/core must not depend on src/client",
+      suite: "boundaries",
+      build: (projectFiles) => projectFiles(tsConfigPath)
+        .inFolder("src/core/**")
+        .shouldNot()
+        .dependOnFiles()
+        .inFolder("src/client/**"),
+    },
+    {
+      id: "ts_backend_core_no_api_to_client",
+      title: "src/app/api must not depend on src/client",
+      suite: "boundaries",
+      build: (projectFiles) => projectFiles(tsConfigPath)
+        .inFolder("src/app/api/**")
+        .shouldNot()
+        .dependOnFiles()
+        .inFolder("src/client/**"),
+    },
+    {
+      id: "ts_backend_core_no_cycles",
+      title: "src/core should be cycle free",
+      suite: "cycles",
+      build: (projectFiles) => projectFiles(tsConfigPath)
+        .inFolder("src/core/**")
+        .should()
+        .haveNoCycles(),
+    },
+  ];
+}
+
 function resolveArchUnitCandidates(): string[] {
   const configured = process.env.ROUTA_ARCHUNITTS_PATH?.trim();
   const candidates = [
@@ -171,7 +188,7 @@ function resolveArchUnitCandidates(): string[] {
 }
 
 async function loadArchUnit(): Promise<{ module: ArchUnitModule; source: string } | null> {
-  const nodePath = path.join(fromRoot(), "node_modules");
+  const nodePath = path.join(APP_ROOT, "node_modules");
   process.env.NODE_PATH = process.env.NODE_PATH
     ? `${nodePath}${path.delimiter}${process.env.NODE_PATH}`
     : nodePath;
@@ -253,15 +270,19 @@ function normalizeViolation(raw: unknown): NormalizedViolation {
 }
 
 async function runSuite(suite: SuiteName): Promise<ArchitectureReport> {
+  const repoRoot = parseRepoRoot(process.argv.slice(2)) ?? process.cwd();
+  const tsConfigPath = path.join(repoRoot, "tsconfig.json");
+  process.chdir(repoRoot);
+
   const archUnit = await loadArchUnit();
   if (!archUnit) {
     return {
       generatedAt: new Date().toISOString(),
-      repoRoot: fromRoot(),
+      repoRoot,
       suite,
       summaryStatus: "skipped",
       archUnitSource: null,
-      tsconfigPath: TS_CONFIG_PATH,
+      tsconfigPath: tsConfigPath,
       ruleCount: 0,
       failedRuleCount: 0,
       results: [],
@@ -271,7 +292,7 @@ async function runSuite(suite: SuiteName): Promise<ArchitectureReport> {
     };
   }
 
-  const rules = RULES.filter((rule) => rule.suite === suite);
+  const rules = buildRules(tsConfigPath).filter((rule) => rule.suite === suite);
   const results: RuleResult[] = [];
 
   for (const rule of rules) {
@@ -291,11 +312,11 @@ async function runSuite(suite: SuiteName): Promise<ArchitectureReport> {
 
   return {
     generatedAt: new Date().toISOString(),
-    repoRoot: fromRoot(),
+    repoRoot,
     suite,
     summaryStatus: failedRuleCount > 0 ? "fail" : "pass",
     archUnitSource: archUnit.source,
-    tsconfigPath: TS_CONFIG_PATH,
+    tsconfigPath: tsConfigPath,
     ruleCount: results.length,
     failedRuleCount,
     results,

@@ -1,3 +1,4 @@
+import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { safeSpawn } from "@/core/utils/safe-exec";
 import {
@@ -202,18 +203,22 @@ function normalizeSuiteReport(value: unknown, suite: SuiteName, repoRoot: string
 }
 
 async function executeSuite(repoRoot: string, suite: SuiteName): Promise<ArchitectureSuiteReport> {
+  const appRoot = process.cwd();
+  const scriptPath = path.join(appRoot, "scripts", "fitness", "check-backend-architecture.ts");
   const command = process.execPath;
   const args = [
     "--import",
     "tsx",
-    "scripts/fitness/check-backend-architecture.ts",
+    scriptPath,
+    "--repo-root",
+    repoRoot,
     "--suite",
     suite,
     "--json",
   ];
 
   const child = safeSpawn(command, args, {
-    cwd: repoRoot,
+    cwd: appRoot,
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
