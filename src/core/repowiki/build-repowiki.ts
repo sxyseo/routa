@@ -135,7 +135,7 @@ function buildWorkflows(topLevelFolders: string[]): Array<{ name: string; descri
 }
 
 function buildGlossary(topLevelFolders: string[]): Array<{ term: string; meaning: string; sourcePath?: string }> {
-  const glossary = [
+  const glossary: Array<{ term: string; meaning: string; sourcePath?: string }> = [
     { term: "RepoWiki", meaning: "Intermediate architecture-aware repository knowledge artifact." },
     { term: "Storyline context", meaning: "Slide-ready narrative hints generated from repository evidence." },
   ];
