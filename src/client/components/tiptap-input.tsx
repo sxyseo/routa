@@ -564,6 +564,14 @@ export function TiptapInput({
   const isHero = variant === "hero";
   const [claudeMode, setClaudeMode] = useState<"acceptEdits" | "plan">("acceptEdits");
   const [opencodeMode, setOpencodeMode] = useState<"build" | "plan">("build");
+  const commandHintsPlaceholder = useMemo(
+    () => `@ ${t.chatPanel.fileHint}, # ${t.chatPanel.agentHint}, / ${t.chatPanel.skillHint}`,
+    [t],
+  );
+  const composerPlaceholder = useMemo(() => {
+    if (/[#@/]/.test(placeholder)) return placeholder;
+    return `${placeholder} ${commandHintsPlaceholder}`;
+  }, [commandHintsPlaceholder, placeholder]);
 
   // Model selector state
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -590,12 +598,6 @@ export function TiptapInput({
   const modelButtonClass = isHero
     ? "flex items-center gap-2 rounded-lg border border-[#d6e5fb] px-3 py-1.5 text-sm transition-colors hover:bg-sky-50 dark:border-white/10 dark:hover:bg-white/5"
     : "flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs transition-colors";
-  const hintClass = isHero
-    ? "ml-auto mr-1 text-xs text-slate-400 dark:text-slate-500"
-    : "ml-auto mr-1 text-[10px] text-slate-300 dark:text-slate-600";
-  const hintKbdClass = isHero
-    ? "rounded bg-sky-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-500 dark:bg-white/8 dark:text-slate-400"
-    : "px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 font-mono";
   const sendButtonClass = isHero
     ? "shrink-0 flex h-11 w-11 items-center justify-center rounded-[18px] bg-blue-600 text-white shadow-[0_12px_26px_-14px_rgba(37,99,235,0.75)] transition-all hover:bg-blue-700 hover:shadow-[0_16px_30px_-16px_rgba(37,99,235,0.85)] disabled:opacity-40 disabled:cursor-not-allowed"
     : "shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
@@ -721,7 +723,7 @@ export function TiptapInput({
         },
       }),
       Placeholder.configure({
-        placeholder,
+        placeholder: composerPlaceholder,
         emptyEditorClass: "is-editor-empty",
         showOnlyWhenEditable: true,
         showOnlyCurrent: true,
@@ -758,7 +760,7 @@ export function TiptapInput({
       attributes: {
         class: editorClass,
         "data-testid": "tiptap-editor",
-        "aria-label": placeholder,
+        "aria-label": composerPlaceholder,
         role: "textbox",
         "aria-multiline": "true",
       },
@@ -1114,14 +1116,6 @@ export function TiptapInput({
             </div>
           )}
 
-          {/* Hints + send */}
-          <span className={hintClass}>
-            <kbd className={hintKbdClass}>@</kbd> {t.chatPanel.fileHint}
-            <span className="mx-1.5">&middot;</span>
-            <kbd className={hintKbdClass}>#</kbd> {t.chatPanel.agentHint}
-            <span className="mx-1.5">&middot;</span>
-            <kbd className={hintKbdClass}>/</kbd> {t.chatPanel.skillHint}
-          </span>
           {loading ? (
             <button
               type="button"
