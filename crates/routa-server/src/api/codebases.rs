@@ -35,6 +35,10 @@ pub fn router() -> Router<AppState> {
             get(get_reposlide),
         )
         .route(
+            "/workspaces/{workspace_id}/codebases/{codebase_id}/wiki",
+            get(get_wiki),
+        )
+        .route(
             "/codebases/{id}",
             patch(update_codebase).delete(delete_codebase),
         )
@@ -322,6 +326,7 @@ const IGNORE_DIRS: &[&str] = &[
 const MAX_DEPTH: usize = 4;
 const MAX_CHILDREN: usize = 50;
 const MAX_DIR_FOCUS_SLIDES: usize = 6;
+const MAX_REPOWIKI_MODULES: usize = 8;
 
 const ENTRY_POINT_FILES: &[&str] = &[
     "README.md",
@@ -359,6 +364,37 @@ const KEY_FILE_NAMES: &[&str] = &[
     "CONTRIBUTING.md",
     "LICENSE",
     "CHANGELOG.md",
+];
+
+const REPOWIKI_ROOT_FILE_ANCHORS: &[&str] = &[
+    "README.md",
+    "README",
+    "AGENTS.md",
+    "package.json",
+    "Cargo.toml",
+    "pyproject.toml",
+    "go.mod",
+];
+
+const REPOWIKI_NESTED_FILE_ANCHORS: &[&str] = &["docs/ARCHITECTURE.md", "docs/adr/README.md"];
+
+const REPOWIKI_DIRECTORY_ANCHORS: &[&str] = &[
+    "src/app",
+    "src/core",
+    "src/client",
+    "crates",
+    "docs",
+    "apps",
+    "api",
+];
+
+const REPOWIKI_STORYLINE_KEY_FILES: &[&str] = &[
+    "README.md",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "CONTRIBUTING.md",
+    "Cargo.toml",
+    "package.json",
 ];
 
 #[derive(Debug, Serialize)]
@@ -542,6 +578,288 @@ fn detect_key_files(tree: &RepoTreeNode) -> Vec<serde_json::Value> {
             })
         })
         .collect()
+}
+
+fn extract_architecture_anchors(tree: &RepoTreeNode) -> Vec<serde_json::Value> {
+    let mut anchors = Vec::new();
+
+    for child in tree.children.as_deref().unwrap_or(&[]) {
+        if child.node_type != "file" {
+            continue;
+        }
+
+        if REPOWIKI_ROOT_FILE_ANCHORS
+            .iter()
+            .any(|anchor| matches_root_file_anchor(&child.name, anchor))
+        {
+            anchors.push(serde_json::json!({
+                "kind": "file",
+                "path": child.path,
+                "reason": format!("Architecture/documentation anchor ({})", child.name),
+            }));
+        }
+    }
+
+    for anchor in REPOWIKI_DIRECTORY_ANCHORS {
+        if let Some(node) = find_node_by_path(tree, anchor) {
+            anchors.push(serde_json::json!({
+                "kind": "directory",
+                "path": node.path,
+                "reason": "Architecture anchor directory",
+            }));
+        }
+    }
+
+    for anchor in REPOWIKI_NESTED_FILE_ANCHORS {
+        if let Some(node) = find_node_by_path(tree, anchor) {
+            if node.node_type == "file" {
+                anchors.push(serde_json::json!({
+                    "kind": "file",
+                    "path": node.path,
+                    "reason": format!("Architecture/documentation anchor ({})", node.name),
+                }));
+            }
+        }
+    }
+
+    anchors
+}
+
+fn matches_root_file_anchor(file_name: &str, anchor: &str) -> bool {
+    let base_name = anchor.split('.').next().unwrap_or(anchor);
+    file_name == anchor || file_name == base_name || file_name.starts_with(&format!("{base_name}."))
+}
+
+fn build_repowiki_modules(tree: &RepoTreeNode) -> Vec<serde_json::Value> {
+    let mut modules: Vec<&RepoTreeNode> = tree
+        .children
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .filter(|child| child.node_type == "directory")
+        .collect();
+    modules.sort_by(|left, right| {
+        right
+            .file_count
+            .unwrap_or(0)
+            .cmp(&left.file_count.unwrap_or(0))
+    });
+
+    modules
+        .into_iter()
+        .take(MAX_REPOWIKI_MODULES)
+        .map(|child| {
+            serde_json::json!({
+                "name": child.name,
+                "path": child.path,
+                "fileCount": child.file_count.unwrap_or(0),
+                "role": infer_module_role(&child.name),
+            })
+        })
+        .collect()
+}
+
+fn infer_module_role(name: &str) -> &'static str {
+    match name {
+        "src" => "Primary application source code.",
+        "docs" => "Documentation, architecture notes, and operational guides.",
+        "crates" => "Rust service/runtime modules.",
+        "apps" => "Application entrypoints and package surfaces.",
+        "app" => "User-facing application layer.",
+        _ => "Core repository module area.",
+    }
+}
+
+fn build_repository_role_summary(top_level_folders: &[String]) -> String {
+    if top_level_folders.is_empty() {
+        return "Repository is compact and mostly root-file driven.".to_string();
+    }
+
+    format!(
+        "Repository is organized around {}.",
+        top_level_folders
+            .iter()
+            .take(4)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+fn build_runtime_boundaries(top_level_folders: &[String]) -> Vec<String> {
+    let mut boundaries = Vec::new();
+
+    if top_level_folders.iter().any(|folder| folder == "src") {
+        boundaries.push("Source runtime boundary under src/".to_string());
+    }
+    if top_level_folders.iter().any(|folder| folder == "crates") {
+        boundaries.push("Rust/Axum backend boundary under crates/".to_string());
+    }
+    if top_level_folders.iter().any(|folder| folder == "apps") {
+        boundaries.push("Multi-app boundary under apps/".to_string());
+    }
+    if top_level_folders.iter().any(|folder| folder == "docs") {
+        boundaries.push("Documentation and architecture boundary under docs/".to_string());
+    }
+
+    boundaries
+}
+
+fn build_cross_layer_relationships(top_level_folders: &[String]) -> Vec<String> {
+    if top_level_folders.iter().any(|folder| folder == "src")
+        && top_level_folders.iter().any(|folder| folder == "crates")
+    {
+        return vec![
+            "Next.js app layer in src/ coordinates with Rust services in crates/.".to_string(),
+        ];
+    }
+
+    if top_level_folders.iter().any(|folder| folder == "src")
+        && top_level_folders.iter().any(|folder| folder == "docs")
+    {
+        return vec![
+            "Implementation in src/ is guided by architecture and ADR documents in docs/."
+                .to_string(),
+        ];
+    }
+
+    vec!["Cross-layer relationships require deeper file-level inspection.".to_string()]
+}
+
+fn build_repowiki_workflows(top_level_folders: &[String]) -> Vec<serde_json::Value> {
+    let top_level_paths = top_level_folders
+        .iter()
+        .map(|folder| format!("{folder}/"))
+        .collect::<Vec<_>>();
+    let repo_orientation_paths = [
+        vec!["README.md".to_string(), "AGENTS.md".to_string()],
+        top_level_paths.clone(),
+    ]
+    .concat();
+
+    vec![
+        serde_json::json!({
+            "name": "Repo orientation",
+            "description": "Start from README/AGENTS and map top-level modules before detailed tracing.",
+            "relatedPaths": repo_orientation_paths,
+        }),
+        serde_json::json!({
+            "name": "Architecture walkthrough",
+            "description": "Trace runtime boundaries and handoffs between major layers.",
+            "relatedPaths": top_level_paths,
+        }),
+    ]
+}
+
+fn build_repowiki_glossary(top_level_folders: &[String]) -> Vec<serde_json::Value> {
+    let mut glossary = vec![
+        serde_json::json!({
+            "term": "RepoWiki",
+            "meaning": "Intermediate architecture-aware repository knowledge artifact."
+        }),
+        serde_json::json!({
+            "term": "Storyline context",
+            "meaning": "Slide-ready narrative hints generated from repository evidence."
+        }),
+    ];
+
+    if top_level_folders.iter().any(|folder| folder == "crates") {
+        glossary.push(serde_json::json!({
+            "term": "crates",
+            "meaning": "Rust package/workspace area.",
+            "sourcePath": "crates/",
+        }));
+    }
+
+    if top_level_folders.iter().any(|folder| folder == "src") {
+        glossary.push(serde_json::json!({
+            "term": "src",
+            "meaning": "Application source root.",
+            "sourcePath": "src/",
+        }));
+    }
+
+    glossary
+}
+
+fn build_repowiki_storyline_context(
+    tree: &RepoTreeNode,
+    anchors: &[serde_json::Value],
+) -> serde_json::Value {
+    let mut focus_areas: Vec<&RepoTreeNode> = tree
+        .children
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .filter(|child| child.node_type == "directory")
+        .collect();
+    focus_areas.sort_by(|left, right| {
+        right
+            .file_count
+            .unwrap_or(0)
+            .cmp(&left.file_count.unwrap_or(0))
+    });
+
+    let focus_areas = focus_areas
+        .into_iter()
+        .take(MAX_DIR_FOCUS_SLIDES)
+        .map(|directory| {
+            serde_json::json!({
+                "path": directory.path,
+                "fileCount": directory.file_count.unwrap_or(0),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let entry_points = anchors
+        .iter()
+        .filter(|anchor| {
+            anchor
+                .get("kind")
+                .and_then(|value| value.as_str())
+                .unwrap_or("file")
+                == "file"
+        })
+        .filter_map(|anchor| anchor.get("path").and_then(|value| value.as_str()))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    let key_files = tree
+        .children
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .filter(|child| {
+            child.node_type == "file" && REPOWIKI_STORYLINE_KEY_FILES.contains(&child.name.as_str())
+        })
+        .map(|child| child.path.clone())
+        .collect::<Vec<_>>();
+
+    let primary_module = focus_areas
+        .first()
+        .and_then(|area| area.get("path"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("the primary module");
+
+    serde_json::json!({
+        "suggestedSections": [
+            "Repository overview",
+            "Top-level architecture",
+            "Runtime boundaries",
+            "Important modules and responsibilities",
+            "Key files and why they matter",
+            "Main workflows / narratives",
+            "Slide-ready storyline hints",
+        ],
+        "entryPoints": entry_points,
+        "keyFiles": key_files,
+        "focusAreas": focus_areas,
+        "narrativeHints": [
+            format!("Start from docs/README and then explain {}.", primary_module),
+            "Call out cross-layer boundaries between app/core/client or equivalent runtime layers.",
+            "Label inferred conclusions explicitly when source files do not state intent directly.",
+        ],
+    })
 }
 
 fn build_focus_directories(tree: &RepoTreeNode) -> Vec<serde_json::Value> {
@@ -849,4 +1167,210 @@ async fn get_reposlide(
             "prompt": prompt,
         },
     })))
+}
+
+async fn get_wiki(
+    State(state): State<AppState>,
+    axum::extract::Path((workspace_id, codebase_id)): axum::extract::Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let codebase = state
+        .codebase_store
+        .get(&codebase_id)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", codebase_id)))?;
+
+    if codebase.workspace_id != workspace_id {
+        return Err(ServerError::NotFound(format!(
+            "Codebase {} not found in workspace {}",
+            codebase_id, workspace_id
+        )));
+    }
+
+    if codebase.repo_path.is_empty() {
+        return Err(ServerError::BadRequest(
+            "Codebase has no repository path".to_string(),
+        ));
+    }
+
+    let tree = scan_repo_tree(&codebase.repo_path);
+    let source_type = codebase
+        .source_type
+        .as_ref()
+        .map(CodebaseSourceType::as_str)
+        .unwrap_or("local");
+    let summary = compute_summary(&tree, source_type, codebase.branch.as_deref());
+    let anchors = extract_architecture_anchors(&tree);
+    let modules = build_repowiki_modules(&tree);
+
+    let source_links = anchors
+        .iter()
+        .filter_map(|anchor| {
+            anchor.get("path").map(|path| {
+                serde_json::json!({
+                    "label": path,
+                    "path": path,
+                })
+            })
+        })
+        .chain(modules.iter().map(|module| {
+            serde_json::json!({
+                "label": module
+                    .get("name")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("."),
+                "path": module
+                    .get("path")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("."),
+            })
+        }))
+        .collect::<Vec<_>>();
+
+    let top_level_folders = summary.top_level_folders.clone();
+    let storyline_context = build_repowiki_storyline_context(&tree, &anchors);
+
+    Ok(Json(serde_json::json!({
+        "codebase": {
+            "id": codebase.id,
+            "workspaceId": codebase.workspace_id,
+            "label": codebase.label,
+            "repoPath": codebase.repo_path,
+            "sourceType": source_type,
+            "sourceUrl": codebase.source_url,
+            "branch": codebase.branch,
+        },
+        "summary": {
+            "totalFiles": summary.total_files,
+            "totalDirectories": summary.total_directories,
+            "topLevelFolders": summary.top_level_folders,
+            "sourceType": summary.source_type,
+            "branch": summary.branch,
+            "repositoryRoleSummary": build_repository_role_summary(&top_level_folders),
+        },
+        "anchors": anchors,
+        "modules": modules,
+        "architecture": {
+            "runtimeBoundaries": build_runtime_boundaries(&top_level_folders),
+            "crossLayerRelationships": build_cross_layer_relationships(&top_level_folders),
+        },
+        "workflows": build_repowiki_workflows(&top_level_folders),
+        "glossary": build_repowiki_glossary(&top_level_folders),
+        "sourceLinks": source_links,
+        "storylineContext": storyline_context,
+    })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(name: &str, path: &str) -> RepoTreeNode {
+        RepoTreeNode {
+            name: name.to_string(),
+            path: path.to_string(),
+            node_type: "file".to_string(),
+            children: None,
+            file_count: None,
+        }
+    }
+
+    fn directory(
+        name: &str,
+        path: &str,
+        file_count: u64,
+        children: Vec<RepoTreeNode>,
+    ) -> RepoTreeNode {
+        RepoTreeNode {
+            name: name.to_string(),
+            path: path.to_string(),
+            node_type: "directory".to_string(),
+            children: Some(children),
+            file_count: Some(file_count),
+        }
+    }
+
+    fn sample_tree() -> RepoTreeNode {
+        directory(
+            "repo",
+            ".",
+            6,
+            vec![
+                file("README.md", "README.md"),
+                file("packagefoo.js", "packagefoo.js"),
+                directory("app", "app", 1, vec![file("page.tsx", "app/page.tsx")]),
+                directory(
+                    "docs",
+                    "docs",
+                    2,
+                    vec![
+                        file("ARCHITECTURE.md", "docs/ARCHITECTURE.md"),
+                        directory(
+                            "adr",
+                            "docs/adr",
+                            1,
+                            vec![file("README.md", "docs/adr/README.md")],
+                        ),
+                    ],
+                ),
+                directory(
+                    "src",
+                    "src",
+                    2,
+                    vec![directory(
+                        "app",
+                        "src/app",
+                        1,
+                        vec![file("page.tsx", "src/app/page.tsx")],
+                    )],
+                ),
+            ],
+        )
+    }
+
+    #[test]
+    fn repowiki_extract_architecture_anchors_includes_nested_docs_and_skips_false_positives() {
+        let anchors = extract_architecture_anchors(&sample_tree());
+
+        let paths = anchors
+            .iter()
+            .filter_map(|anchor| anchor.get("path").and_then(|value| value.as_str()))
+            .collect::<Vec<_>>();
+
+        assert!(paths.contains(&"README.md"));
+        assert!(paths.contains(&"docs/ARCHITECTURE.md"));
+        assert!(paths.contains(&"docs/adr/README.md"));
+        assert!(!paths.contains(&"packagefoo.js"));
+    }
+
+    #[test]
+    fn repowiki_storyline_and_modules_match_expected_semantics() {
+        let tree = sample_tree();
+        let anchors = extract_architecture_anchors(&tree);
+        let modules = build_repowiki_modules(&tree);
+        let storyline = build_repowiki_storyline_context(&tree, &anchors);
+
+        let app_module = modules
+            .iter()
+            .find(|module| module.get("path").and_then(|value| value.as_str()) == Some("app"))
+            .expect("expected app module");
+        assert_eq!(
+            app_module
+                .get("role")
+                .and_then(|value| value.as_str())
+                .expect("expected role"),
+            "User-facing application layer."
+        );
+
+        let entry_points = storyline
+            .get("entryPoints")
+            .and_then(|value| value.as_array())
+            .expect("expected entry points");
+        let entry_paths = entry_points
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>();
+        assert!(entry_paths.contains(&"README.md"));
+        assert!(entry_paths.contains(&"docs/ARCHITECTURE.md"));
+        assert!(!entry_paths.contains(&"docs"));
+    }
 }

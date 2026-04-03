@@ -3450,6 +3450,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/workspaces/{workspaceId}/codebases/{codebaseId}/wiki:
+    get:
+      operationId: getRepoWiki
+      summary: Generate an architecture-aware RepoWiki summary payload for a codebase
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: codebaseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: RepoWiki payload
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Codebase has no repository path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Workspace or codebase not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: RepoWiki generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ── Codebases ──
   /api/codebases/{id}:
     patch:
