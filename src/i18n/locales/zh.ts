@@ -897,6 +897,7 @@ const zh: TranslationDictionary = {
     missing: "缺失",
     sessionMismatch: "会话不匹配",
     backendAgents: "后端代理",
+    importGithubIssues: "导入 Issues",
     boardSettings: "设置",
     queued: "排队中",
     starting: "启动中",
@@ -1331,6 +1332,25 @@ const zh: TranslationDictionary = {
     linkRepositories: "关联仓库",
     noSelectionHint: "未选择 → 将关联工作区内所有仓库。",
     create: "创建",
+  },
+
+  kanbanImport: {
+    title: "导入 GitHub Issues",
+    description: "从已关联仓库加载 issue，并转换成看板卡片。",
+    repository: "仓库",
+    loading: "正在加载 GitHub issues…",
+    loadFailed: "加载 GitHub issues 失败。",
+    noIssues: "没有可导入的 issue。",
+    issuesLoaded: "个 issue",
+    selectAll: "全选",
+    clearSelection: "清空",
+    importSelected: "导入所选",
+    importing: "导入中…",
+    importFailed: "导入 GitHub issues 失败。",
+    alreadyImported: "已导入",
+    updatedAt: "更新于",
+    stateOpen: "开放",
+    stateClosed: "关闭",
   },
 
   kanbanBgAgent: {

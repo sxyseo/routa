@@ -8,6 +8,7 @@ import {
   resolveEffectiveTaskAutomation,
 } from "@/core/kanban/effective-task-automation";
 import type {
+  GitHubIssueListItemInfo,
   KanbanAgentPromptHandler,
   KanbanBoardInfo,
   SessionInfo,
@@ -15,6 +16,7 @@ import type {
   WorktreeInfo,
 } from "../types";
 import { EMPTY_DRAFT, type TaskDraft } from "../kanban-create-modal";
+import { KanbanGitHubImportModal } from "./kanban-github-import-modal";
 import { KanbanSettingsModal, type ColumnAutomationConfig } from "./kanban-settings-modal";
 import { scheduleKanbanRefreshBurst } from "./kanban-agent-input";
 import {
@@ -118,6 +120,7 @@ export function KanbanTab({
     () => codebases.find((codebase) => codebase.isDefault) ?? codebases[0] ?? null,
     [codebases],
   );
+  const githubImportEnabled = codebases.length > 0;
   const githubAvailable = Boolean(defaultCodebase?.sourceUrl?.includes("github.com"));
 
   const [selectedBoardId, setSelectedBoardId] = useState<string | null>(defaultBoardId);
@@ -125,6 +128,7 @@ export function KanbanTab({
   const autoPatchedTasksRef = useRef(new Set<string>());
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showGitHubImportModal, setShowGitHubImportModal] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>({
     ...EMPTY_DRAFT,
     createGitHubIssue: false,
@@ -986,6 +990,58 @@ export function KanbanTab({
     onRefresh();
   }
 
+  async function importGitHubIssues(
+    codebaseId: string,
+    issues: GitHubIssueListItemInfo[],
+    repo: string,
+  ) {
+    const importedTasks: TaskInfo[] = [];
+
+    for (const issue of issues) {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          boardId: selectedBoardId ?? defaultBoardId,
+          columnId: "backlog",
+          title: issue.title,
+          objective: issue.body?.trim() || issue.title,
+          labels: issue.labels,
+          codebaseIds: [codebaseId],
+          githubId: issue.id,
+          githubNumber: issue.number,
+          githubUrl: issue.url,
+          githubRepo: repo,
+          githubState: issue.state,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error === "string"
+            ? data.error
+            : `Failed to import GitHub issue #${issue.number}`,
+        );
+      }
+      importedTasks.push(data.task as TaskInfo);
+    }
+
+    if (importedTasks.length > 0) {
+      setLocalTasks((current) => {
+        const next = [...current];
+        const existingIds = new Set(current.map((task) => task.id));
+        for (const task of importedTasks) {
+          if (!existingIds.has(task.id)) {
+            next.push(task);
+          }
+        }
+        return next;
+      });
+      onRefresh();
+    }
+  }
+
   async function retryTaskTrigger(taskId: string) {
     const updated = await patchTask(taskId, { retryTrigger: true });
     if (updated.triggerSessionId) {
@@ -1115,6 +1171,8 @@ export function KanbanTab({
           boards={boards}
           selectedBoardId={selectedBoardId}
           onSelectBoard={setSelectedBoardId}
+          githubImportEnabled={githubImportEnabled}
+          onOpenGitHubImport={() => setShowGitHubImportModal(true)}
           onOpenSettings={() => setShowSettings(true)}
           onRefresh={onRefresh}
         />
@@ -1135,6 +1193,8 @@ export function KanbanTab({
         boards={boards}
         selectedBoardId={selectedBoardId}
         onSelectBoard={setSelectedBoardId}
+        githubImportEnabled={githubImportEnabled}
+        onOpenGitHubImport={() => setShowGitHubImportModal(true)}
         onOpenSettings={() => setShowSettings(true)}
         onRefresh={onRefresh}
       />
@@ -1196,6 +1256,15 @@ export function KanbanTab({
         githubAvailable={githubAvailable}
         codebases={codebases}
         allCodebaseIds={allCodebaseIds}
+      />
+
+      <KanbanGitHubImportModal
+        show={showGitHubImportModal}
+        workspaceId={workspaceId}
+        codebases={codebases}
+        tasks={localTasks}
+        onClose={() => setShowGitHubImportModal(false)}
+        onImport={importGitHubIssues}
       />
 
       <KanbanTaskDetailOverlay

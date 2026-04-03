@@ -46,6 +46,12 @@ impl TaskApplicationService {
             assigned_specialist_name,
             create_github_issue,
             repo_path,
+            codebase_ids,
+            github_id,
+            github_number,
+            github_url,
+            github_repo,
+            github_state,
         } = command;
 
         let workspace_id = workspace_id.unwrap_or_else(|| "default".to_string());
@@ -77,6 +83,12 @@ impl TaskApplicationService {
         task.assigned_role = assigned_role;
         task.assigned_specialist_id = assigned_specialist_id;
         task.assigned_specialist_name = assigned_specialist_name;
+        task.codebase_ids = codebase_ids.unwrap_or_default();
+        task.github_id = github_id;
+        task.github_number = github_number;
+        task.github_url = github_url;
+        task.github_repo = github_repo;
+        task.github_state = github_state;
         let entering_dev = task.column_id.as_deref() == Some("dev");
 
         let column_automation =
@@ -127,9 +139,12 @@ impl TaskApplicationService {
             }
         }
 
+        let should_create_github_issue =
+            create_github_issue.unwrap_or(false) && task.github_number.is_none();
+
         Ok(CreateTaskPlan {
             task,
-            create_github_issue: create_github_issue.unwrap_or(false),
+            create_github_issue: should_create_github_issue,
             should_trigger_agent: entering_dev || column_automation.is_some(),
             entering_dev,
             repo_path,
@@ -381,6 +396,12 @@ pub struct CreateTaskCommand {
     pub assigned_specialist_name: Option<String>,
     pub create_github_issue: Option<bool>,
     pub repo_path: Option<String>,
+    pub codebase_ids: Option<Vec<String>>,
+    pub github_id: Option<String>,
+    pub github_number: Option<i64>,
+    pub github_url: Option<String>,
+    pub github_repo: Option<String>,
+    pub github_state: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -505,6 +526,12 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: None,
                 repo_path: None,
+                codebase_ids: None,
+                github_id: None,
+                github_number: None,
+                github_url: None,
+                github_repo: None,
+                github_state: None,
             })
             .await
             .expect("build seed task");
@@ -550,6 +577,12 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: Some(true),
                 repo_path: Some("/tmp/repo".to_string()),
+                codebase_ids: None,
+                github_id: None,
+                github_number: None,
+                github_url: None,
+                github_repo: None,
+                github_state: None,
             })
             .await
             .expect("create task plan");
@@ -600,6 +633,12 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: None,
                 repo_path: None,
+                codebase_ids: None,
+                github_id: None,
+                github_number: None,
+                github_url: None,
+                github_repo: None,
+                github_state: None,
             })
             .await
             .expect_err("invalid priority should fail");

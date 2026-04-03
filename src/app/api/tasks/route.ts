@@ -12,7 +12,11 @@ import { getRoutaSystem } from "@/core/routa-system";
 import { createTask, Task, TaskStatus, TaskPriority } from "@/core/models/task";
 import { v4 as uuidv4 } from "uuid";
 import { ensureDefaultBoard } from "@/core/kanban/boards";
-import { buildTaskGitHubIssueBody, createGitHubIssue, parseGitHubRepo } from "@/core/kanban/github-issues";
+import {
+  buildTaskGitHubIssueBody,
+  createGitHubIssue,
+  resolveGitHubRepo,
+} from "@/core/kanban/github-issues";
 import {
   normalizeTaskCreationSource,
   shouldCreateGitHubIssueOnTaskCreate,
@@ -127,6 +131,11 @@ export async function POST(request: NextRequest) {
     creationSource,
     repoPath,
     codebaseIds,
+    githubId,
+    githubNumber,
+    githubUrl,
+    githubRepo,
+    githubState,
   } = body;
 
   const normalizedTitle = typeof title === "string" ? title : "";
@@ -163,6 +172,22 @@ export async function POST(request: NextRequest) {
   const requestedCodebaseIds = Array.isArray(codebaseIds)
     ? codebaseIds.filter((id): id is string => typeof id === "string")
     : [];
+  const normalizedGitHubId = typeof githubId === "string" && githubId.trim()
+    ? githubId.trim()
+    : undefined;
+  const normalizedGitHubNumber = typeof githubNumber === "number" && Number.isFinite(githubNumber)
+    ? githubNumber
+    : undefined;
+  const normalizedGitHubUrl = typeof githubUrl === "string" && githubUrl.trim()
+    ? githubUrl.trim()
+    : undefined;
+  const normalizedGitHubRepo = typeof githubRepo === "string" && githubRepo.trim()
+    ? githubRepo.trim()
+    : undefined;
+  const normalizedGitHubState = typeof githubState === "string" && githubState.trim()
+    ? githubState.trim()
+    : undefined;
+  const hasImportedGitHubIssue = Boolean(normalizedGitHubRepo && normalizedGitHubNumber !== undefined);
 
   if (!normalizedTitle) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
@@ -188,23 +213,35 @@ export async function POST(request: NextRequest) {
     ? requestedCodebaseIds
     : workspaceCodebases.map((codebase) => codebase.id);
 
+  if (hasImportedGitHubIssue) {
+    const existingTask = (await system.taskStore.listByWorkspace(normalizedWorkspaceId)).find((task) =>
+      task.githubRepo === normalizedGitHubRepo && task.githubNumber === normalizedGitHubNumber
+    );
+    if (existingTask) {
+      return NextResponse.json(
+        { error: `GitHub issue #${normalizedGitHubNumber} is already imported as task ${existingTask.id}` },
+        { status: 409 },
+      );
+    }
+  }
+
   const codebase = normalizedRepoPath
     ? await system.codebaseStore.findByRepoPath(normalizedWorkspaceId, normalizedRepoPath)
     : normalizedCodebaseIds.length > 0
       ? await system.codebaseStore.get(normalizedCodebaseIds[0])
       : await system.codebaseStore.getDefault(normalizedWorkspaceId);
 
-  const repo = parseGitHubRepo(codebase?.sourceUrl);
+  const repo = resolveGitHubRepo(codebase?.sourceUrl, codebase?.repoPath ?? normalizedRepoPath);
 
-  let githubId: string | undefined;
-  let githubNumber: number | undefined;
-  let githubUrl: string | undefined;
-  let githubRepo: string | undefined;
-  let githubState: string | undefined;
-  let githubSyncedAt: Date | undefined;
+  let nextGitHubId: string | undefined = normalizedGitHubId;
+  let nextGitHubNumber: number | undefined = normalizedGitHubNumber;
+  let nextGitHubUrl: string | undefined = normalizedGitHubUrl;
+  let nextGitHubRepo: string | undefined = normalizedGitHubRepo;
+  let nextGitHubState: string | undefined = normalizedGitHubState;
+  let githubSyncedAt: Date | undefined = hasImportedGitHubIssue ? new Date() : undefined;
   let lastSyncError: string | undefined;
 
-  if (normalizedCreateGitHubIssue) {
+  if (normalizedCreateGitHubIssue && !hasImportedGitHubIssue) {
     if (!repo) {
       lastSyncError = "Selected codebase is not linked to a GitHub repository.";
     } else {
@@ -215,11 +252,11 @@ export async function POST(request: NextRequest) {
           labels: normalizedLabels,
           assignees: normalizedAssignee ? [normalizedAssignee] : undefined,
         });
-        githubId = issue.id;
-        githubNumber = issue.number;
-        githubUrl = issue.url;
-        githubRepo = issue.repo;
-        githubState = issue.state;
+        nextGitHubId = issue.id;
+        nextGitHubNumber = issue.number;
+        nextGitHubUrl = issue.url;
+        nextGitHubRepo = issue.repo;
+        nextGitHubState = issue.state;
         githubSyncedAt = new Date();
       } catch (error) {
         lastSyncError = error instanceof Error ? error.message : "GitHub issue create failed";
@@ -250,11 +287,11 @@ export async function POST(request: NextRequest) {
     assignedRole: normalizedAssignedRole,
     assignedSpecialistId: normalizedAssignedSpecialistId,
     assignedSpecialistName: normalizedAssignedSpecialistName,
-    githubId,
-    githubNumber,
-    githubUrl,
-    githubRepo,
-    githubState,
+    githubId: nextGitHubId,
+    githubNumber: nextGitHubNumber,
+    githubUrl: nextGitHubUrl,
+    githubRepo: nextGitHubRepo,
+    githubState: nextGitHubState,
     githubSyncedAt,
     lastSyncError,
     codebaseIds: normalizedCodebaseIds,

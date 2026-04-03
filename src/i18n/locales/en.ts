@@ -902,6 +902,7 @@ const en: TranslationDictionary = {
     missing: "missing",
     sessionMismatch: "session mismatch",
     backendAgents: "Backend Agents",
+    importGithubIssues: "Import Issues",
     boardSettings: "Settings",
     queued: "Queued",
     starting: "Starting",
@@ -1336,6 +1337,25 @@ const en: TranslationDictionary = {
     linkRepositories: "Link Repositories",
     noSelectionHint: "No selection → all workspace repositories will be linked.",
     create: "Create",
+  },
+
+  kanbanImport: {
+    title: "Import GitHub Issues",
+    description: "Load issues from a linked repository and turn them into Kanban cards.",
+    repository: "Repository",
+    loading: "Loading GitHub issues…",
+    loadFailed: "Failed to load GitHub issues.",
+    noIssues: "No issues available to import.",
+    issuesLoaded: "issues loaded",
+    selectAll: "Select all",
+    clearSelection: "Clear",
+    importSelected: "Import selected",
+    importing: "Importing…",
+    importFailed: "Failed to import GitHub issues.",
+    alreadyImported: "Already imported",
+    updatedAt: "Updated",
+    stateOpen: "Open",
+    stateClosed: "Closed",
   },
 
   kanbanBgAgent: {

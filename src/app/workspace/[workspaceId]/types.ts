@@ -223,6 +223,18 @@ export interface TaskInfo {
   updatedAt?: string;
 }
 
+export interface GitHubIssueListItemInfo {
+  id: string;
+  number: number;
+  title: string;
+  body?: string;
+  url: string;
+  state: "open" | "closed";
+  labels: string[];
+  assignees: string[];
+  updatedAt?: string;
+}
+
 export interface KanbanColumnAutomationInfo {
   enabled: boolean;
   steps?: Array<{

@@ -922,6 +922,7 @@ export interface TranslationDictionary {
     missing: string;
     sessionMismatch: string;
     backendAgents: string;
+    importGithubIssues: string;
     boardSettings: string;
     // Card status
     queued: string;
@@ -1367,6 +1368,25 @@ export interface TranslationDictionary {
     linkRepositories: string;
     noSelectionHint: string;
     create: string;
+  };
+
+  kanbanImport: {
+    title: string;
+    description: string;
+    repository: string;
+    loading: string;
+    loadFailed: string;
+    noIssues: string;
+    issuesLoaded: string;
+    selectAll: string;
+    clearSelection: string;
+    importSelected: string;
+    importing: string;
+    importFailed: string;
+    alreadyImported: string;
+    updatedAt: string;
+    stateOpen: string;
+    stateClosed: string;
   };
 
   // Kanban background agents

@@ -18,7 +18,8 @@ use crate::api::tasks_automation::{
     auto_create_worktree, resolve_codebase, trigger_assigned_task_agent,
 };
 use crate::api::tasks_github::{
-    build_task_issue_body, create_github_issue, resolve_github_repo, update_github_issue,
+    build_task_issue_body, create_github_issue, resolve_github_repo_for_codebase,
+    update_github_issue,
 };
 use crate::application::tasks::{CreateTaskCommand, TaskApplicationService, UpdateTaskCommand};
 use crate::error::ServerError;
@@ -353,6 +354,12 @@ struct CreateTaskRequest {
     assigned_specialist_name: Option<String>,
     create_github_issue: Option<bool>,
     repo_path: Option<String>,
+    codebase_ids: Option<Vec<String>>,
+    github_id: Option<String>,
+    github_number: Option<i64>,
+    github_url: Option<String>,
+    github_repo: Option<String>,
+    github_state: Option<String>,
 }
 
 async fn create_task(
@@ -362,10 +369,33 @@ async fn create_task(
     let service = TaskApplicationService::new(state.clone());
     let plan = service.create_task(create_task_command(body)).await?;
     let mut task = plan.task;
+    if let (Some(repo), Some(number)) = (task.github_repo.as_ref(), task.github_number) {
+        if let Some(existing) = state
+            .task_store
+            .list_by_workspace(&task.workspace_id)
+            .await?
+            .into_iter()
+            .find(|candidate| {
+                candidate.github_repo.as_deref() == Some(repo.as_str())
+                    && candidate.github_number == Some(number)
+            })
+        {
+            return Err(ServerError::Conflict(format!(
+                "GitHub issue #{} is already imported as task {}",
+                number, existing.id
+            )));
+        }
+        task.github_synced_at = Some(Utc::now());
+    }
     let codebase = resolve_codebase(&state, &task.workspace_id, plan.repo_path.as_deref()).await?;
 
     if plan.create_github_issue {
-        match resolve_github_repo(codebase.as_ref().map(|item| item.repo_path.as_str())) {
+        match resolve_github_repo_for_codebase(
+            codebase
+                .as_ref()
+                .and_then(|item| item.source_url.as_deref()),
+            codebase.as_ref().map(|item| item.repo_path.as_str()),
+        ) {
             Some(repo) => match create_github_issue(
                 &repo,
                 &task.title,
@@ -522,6 +552,12 @@ fn create_task_command(body: CreateTaskRequest) -> CreateTaskCommand {
         assigned_specialist_name: body.assigned_specialist_name,
         create_github_issue: body.create_github_issue,
         repo_path: body.repo_path,
+        codebase_ids: body.codebase_ids,
+        github_id: body.github_id,
+        github_number: body.github_number,
+        github_url: body.github_url,
+        github_repo: body.github_repo,
+        github_state: body.github_state,
     }
 }
 
