@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type {
@@ -34,6 +34,16 @@ type ArchitectureCluster = {
   label: string;
   count: number;
   sample: string;
+};
+
+type ArchitectureDetailView = "summary" | "boundaries" | "cycles" | "violations";
+
+type PrimaryFinding = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  metric: string;
+  summary: string;
 };
 
 function formatSignedDelta(value: number): string {
@@ -192,6 +202,34 @@ function summarizeRule(rule: ArchitectureRuleResult): string {
   return buildViolationSummary(first);
 }
 
+function summarizeComparison(copy: {
+  noComparison: string;
+  noMaterialChanges: string;
+  failedRuleDeltaLabel: string;
+  violationDeltaLabel: string;
+  newFailuresTitle: string;
+  resolvedRulesTitle: string;
+}, comparison: ArchitectureQualityResponse["comparison"]): string {
+  if (!comparison) {
+    return copy.noComparison;
+  }
+  if (
+    comparison.failedRuleDelta === 0
+    && comparison.violationDelta === 0
+    && comparison.newFailingRules.length === 0
+    && comparison.resolvedRules.length === 0
+  ) {
+    return copy.noMaterialChanges;
+  }
+
+  return [
+    `${copy.failedRuleDeltaLabel} ${formatSignedDelta(comparison.failedRuleDelta)}`,
+    `${copy.violationDeltaLabel} ${formatSignedDelta(comparison.violationDelta)}`,
+    `${copy.newFailuresTitle} ${comparison.newFailingRules.length}`,
+    `${copy.resolvedRulesTitle} ${comparison.resolvedRules.length}`,
+  ].join(" · ");
+}
+
 export function HarnessArchitectureQualityPanel({
   repoLabel: _repoLabel,
   unsupportedMessage,
@@ -204,6 +242,7 @@ export function HarnessArchitectureQualityPanel({
   const { t } = useTranslation();
   const copy = t.settings.harness.architectureQuality;
   const actionLabel = data ? t.common.refresh : copy.runScanLabel;
+  const [detailView, setDetailView] = useState<ArchitectureDetailView>("summary");
 
   const failedRules = useMemo(
     () => (data?.reports ?? []).flatMap((report) => report.results.filter((result) => result.status === "fail")),
@@ -228,6 +267,62 @@ export function HarnessArchitectureQualityPanel({
     () => buildCycleHotspotClusters(failedRules.filter((rule) => rule.suite === "cycles")),
     [failedRules],
   );
+  const primaryFindings = useMemo<PrimaryFinding[]>(() => {
+    const findings: PrimaryFinding[] = [];
+    const topBoundaryLeak = boundaryLeakClusters[0];
+    const topCycleHotspot = cycleHotspotClusters[0];
+    const topFailedRule = failedRules[0];
+
+    if (topBoundaryLeak) {
+      findings.push({
+        id: "boundary-leak",
+        eyebrow: copy.boundaryLeaksTitle,
+        title: topBoundaryLeak.label,
+        metric: `${topBoundaryLeak.count}`,
+        summary: topBoundaryLeak.sample,
+      });
+    }
+
+    if (topCycleHotspot) {
+      findings.push({
+        id: "cycle-hotspot",
+        eyebrow: copy.cycleHotspotsTitle,
+        title: topCycleHotspot.label,
+        metric: `${topCycleHotspot.count}`,
+        summary: topCycleHotspot.sample,
+      });
+    }
+
+    if (topFailedRule) {
+      findings.push({
+        id: "failed-rule",
+        eyebrow: copy.failedRulesTitle,
+        title: topFailedRule.title,
+        metric: `${topFailedRule.violationCount}`,
+        summary: summarizeRule(topFailedRule),
+      });
+    }
+
+    return findings.slice(0, 3);
+  }, [boundaryLeakClusters, copy.boundaryLeaksTitle, copy.cycleHotspotsTitle, copy.failedRulesTitle, cycleHotspotClusters, failedRules]);
+  const boundaryFailedRules = useMemo(
+    () => failedRules.filter((rule) => rule.suite === "boundaries"),
+    [failedRules],
+  );
+  const cycleFailedRules = useMemo(
+    () => failedRules.filter((rule) => rule.suite === "cycles"),
+    [failedRules],
+  );
+  const comparisonSummary = useMemo(
+    () => summarizeComparison(copy, data?.comparison ?? null),
+    [copy, data?.comparison],
+  );
+  const detailViews = useMemo(() => ([
+    { id: "summary", label: copy.summaryViewLabel },
+    { id: "boundaries", label: copy.boundariesViewLabel },
+    { id: "cycles", label: copy.cyclesViewLabel },
+    { id: "violations", label: copy.violationsViewLabel },
+  ] satisfies Array<{ id: ArchitectureDetailView; label: string }>), [copy]);
 
   const statusLabel = data?.summaryStatus === "fail"
     ? copy.statusFail
@@ -251,19 +346,45 @@ export function HarnessArchitectureQualityPanel({
 
       {!loading && !error && !unsupportedMessage && !data ? (
         <HarnessSectionStateFrame>
-          <div className="space-y-3">
-            <div>{copy.idleDescription}</div>
-            {onRefresh ? (
-              <button type="button" className="desktop-btn desktop-btn-secondary" onClick={onRefresh}>
-                {copy.runScanLabel}
-              </button>
-            ) : null}
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <div>{copy.idleDescription}</div>
+              <div className="text-[11px] text-desktop-text-secondary">{copy.idleChecksTitle}</div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3" data-testid="architecture-idle-highlights">
+              {[copy.idleChecksBoundaries, copy.idleChecksCycles, copy.idleChecksSnapshots].map((item) => (
+                <div
+                  key={item}
+                  className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary"
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && data ? (
         <div className="space-y-4">
+          <div className={`rounded-sm border px-4 py-3 ${statusTone(data.summaryStatus)}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em]">{copy.statusLabel}</div>
+                <div className="text-[16px] font-semibold">{statusLabel}</div>
+                <div className="text-[11px] opacity-90">
+                  {copy.failedRulesLabel}: {data.failedRuleCount} · {copy.violationsLabel}: {data.violationCount} · {copy.rulesLabel}: {data.ruleCount}
+                </div>
+              </div>
+              {data.comparison ? (
+                <div className="max-w-[32rem] text-[11px] opacity-90">
+                  {copy.previousScanLabel}: {data.comparison.previousGeneratedAt}
+                  <div className="mt-1">{comparisonSummary}</div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2">
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.statusLabel}</div>
@@ -285,217 +406,280 @@ export function HarnessArchitectureQualityPanel({
             </div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.compareTitle}</div>
-              {data.comparison ? (
-                <div className="mt-2 space-y-3">
-                  <div className="text-[11px] text-desktop-text-secondary">
-                    {copy.previousScanLabel}: {data.comparison.previousGeneratedAt}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                    <div className={`rounded-sm border px-3 py-2 ${deltaTone(data.comparison.failedRuleDelta)}`}>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em]">{copy.failedRuleDeltaLabel}</div>
-                      <div className="mt-2 text-[18px] font-semibold">{formatSignedDelta(data.comparison.failedRuleDelta)}</div>
-                    </div>
-                    <div className={`rounded-sm border px-3 py-2 ${deltaTone(data.comparison.violationDelta)}`}>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em]">{copy.violationDeltaLabel}</div>
-                      <div className="mt-2 text-[18px] font-semibold">{formatSignedDelta(data.comparison.violationDelta)}</div>
-                    </div>
-                    <div className={`rounded-sm border px-3 py-2 ${deltaTone(data.comparison.newFailingRules.length)}`}>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em]">{copy.newFailuresTitle}</div>
-                      <div className="mt-2 text-[18px] font-semibold">{data.comparison.newFailingRules.length}</div>
-                    </div>
-                    <div className={`rounded-sm border px-3 py-2 ${deltaTone(data.comparison.resolvedRules.length, "recovery")}`}>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em]">{copy.resolvedRulesTitle}</div>
-                      <div className="mt-2 text-[18px] font-semibold">{data.comparison.resolvedRules.length}</div>
-                    </div>
-                  </div>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <div>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.newFailuresTitle}</div>
-                      {data.comparison.newFailingRules.length > 0 ? (
-                        <div className="mt-2 space-y-2">
-                          {data.comparison.newFailingRules.slice(0, 4).map((rule) => (
-                            <div key={`${rule.suite}:${rule.id}`} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
-                              <div className="text-[11px] font-semibold text-desktop-text-primary">{rule.title}</div>
-                              <div className="mt-1 text-[10px] text-desktop-text-secondary">{formatSuiteLabel(rule.suite, copy)} · {formatSignedDelta(rule.violationDelta)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
-                          {copy.noNewFailures}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.resolvedRulesTitle}</div>
-                      {data.comparison.resolvedRules.length > 0 ? (
-                        <div className="mt-2 space-y-2">
-                          {data.comparison.resolvedRules.slice(0, 4).map((rule) => (
-                            <div key={`${rule.suite}:${rule.id}`} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
-                              <div className="text-[11px] font-semibold text-desktop-text-primary">{rule.title}</div>
-                              <div className="mt-1 text-[10px] text-desktop-text-secondary">{formatSuiteLabel(rule.suite, copy)} · {formatSignedDelta(rule.violationDelta)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
-                          {copy.noResolvedRules}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
-                  {copy.noComparison}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.notesLabel}</div>
-              <div className="mt-2 space-y-2 text-[11px] text-desktop-text-secondary">
-                <div>{copy.sourceLabel}: {data.archUnitSource ?? t.common.unavailable}</div>
-                <div>{copy.tsconfigLabel}: {data.tsconfigPath || t.common.unavailable}</div>
-                <div>{copy.snapshotPathLabel}: {data.snapshotPath || t.common.unavailable}</div>
-                {(data.notes ?? []).length > 0 ? (
-                  <ul className="list-inside list-disc space-y-1">
-                    {data.notes.map((note) => (
-                      <li key={note}>{note}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            </div>
+          <div className="flex flex-wrap gap-2" data-testid="architecture-detail-tabs">
+            {detailViews.map((view) => {
+              const active = detailView === view.id;
+              return (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => setDetailView(view.id)}
+                  aria-pressed={active}
+                  className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                    active
+                      ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary"
+                      : "border-desktop-border bg-desktop-bg-primary/80 text-desktop-text-secondary hover:text-desktop-text-primary"
+                  }`}
+                >
+                  {view.label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
-              <div className="flex items-center justify-between gap-3">
+          {detailView === "summary" ? (
+            <div className="space-y-4" data-testid="architecture-view-summary">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.primaryFindingsTitle}</div>
+                  {primaryFindings.length > 0 ? (
+                    <div className="mt-2 grid gap-2 xl:grid-cols-3">
+                      {primaryFindings.map((finding) => (
+                        <div key={finding.id} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{finding.eyebrow}</div>
+                            <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] font-semibold text-desktop-text-primary">{finding.metric}</div>
+                          </div>
+                          <div className="mt-2 text-[12px] font-semibold text-desktop-text-primary" title={finding.title}>{finding.title}</div>
+                          <div className="mt-1 truncate font-mono text-[10px] text-desktop-text-secondary" title={finding.summary}>{finding.summary}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
+                      {copy.noPrimaryFindings}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.compareTitle}</div>
+                  <div className="mt-2 text-[11px] text-desktop-text-secondary">
+                    {data.comparison
+                      ? `${copy.previousScanLabel}: ${data.comparison.previousGeneratedAt}`
+                      : copy.noComparison}
+                  </div>
+                  {data.comparison ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <div className={`rounded-sm border px-3 py-2 ${deltaTone(data.comparison.failedRuleDelta)}`}>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.12em]">{copy.failedRuleDeltaLabel}</div>
+                        <div className="mt-2 text-[18px] font-semibold">{formatSignedDelta(data.comparison.failedRuleDelta)}</div>
+                      </div>
+                      <div className={`rounded-sm border px-3 py-2 ${deltaTone(data.comparison.violationDelta)}`}>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.12em]">{copy.violationDeltaLabel}</div>
+                        <div className="mt-2 text-[18px] font-semibold">{formatSignedDelta(data.comparison.violationDelta)}</div>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 rounded-sm border border-dashed border-desktop-border px-3 py-3 text-[11px] text-desktop-text-secondary">
+                    {comparisonSummary}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.failedRulesTitle}</div>
+                  <button
+                    type="button"
+                    className="text-[11px] font-medium text-desktop-accent hover:underline"
+                    onClick={() => setDetailView("violations")}
+                  >
+                    {copy.violationsViewLabel}
+                  </button>
+                </div>
+                {failedRules.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {failedRules.map((rule) => (
+                      <div key={rule.id} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold text-desktop-text-primary">{rule.title}</span>
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
+                            {formatSuiteLabel(rule.suite, copy)}
+                          </span>
+                          <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] text-rose-700">
+                            {rule.violationCount}
+                          </span>
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[10px] text-desktop-text-secondary" title={summarizeRule(rule)}>
+                          {summarizeRule(rule)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
+                    {copy.noFailedRules}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {detailView === "boundaries" ? (
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]" data-testid="architecture-view-boundaries">
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.boundaryLeaksTitle}</div>
+                {boundaryLeakClusters.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {boundaryLeakClusters.slice(0, 10).map((cluster) => (
+                      <div key={cluster.label} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold text-desktop-text-primary">{cluster.label}</span>
+                          <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] text-rose-700">
+                            {cluster.count}
+                          </span>
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[10px] text-desktop-text-secondary" title={cluster.sample}>
+                          {cluster.sample}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
+                    {copy.noBoundaryLeaks}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.failedRulesTitle}</div>
-                {data.archUnitSource ? (
-                  <div className="truncate text-[10px] text-desktop-text-secondary">
-                    {copy.sourceLabel}: {data.archUnitSource}
-                  </div>
-                ) : null}
-              </div>
-              {failedRules.length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  {failedRules.map((rule) => (
-                    <div key={rule.id} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] font-semibold text-desktop-text-primary">{rule.title}</span>
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
-                          {formatSuiteLabel(rule.suite, copy)}
-                        </span>
-                        <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] text-rose-700">
-                          {rule.violationCount}
-                        </span>
+                {boundaryFailedRules.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {boundaryFailedRules.map((rule) => (
+                      <div key={rule.id} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-semibold text-desktop-text-primary">{rule.title}</span>
+                          <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] text-rose-700">
+                            {rule.violationCount}
+                          </span>
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[10px] text-desktop-text-secondary" title={summarizeRule(rule)}>
+                          {summarizeRule(rule)}
+                        </div>
                       </div>
-                      <div className="mt-1 break-all font-mono text-[10px] text-desktop-text-secondary">
-                        {summarizeRule(rule)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
-                  {copy.noFailedRules}
-                </div>
-              )}
-            </div>
-
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.boundaryLeaksTitle}</div>
-              {boundaryLeakClusters.length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  {boundaryLeakClusters.slice(0, 8).map((cluster) => (
-                    <div key={cluster.label} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] font-semibold text-desktop-text-primary">{cluster.label}</span>
-                        <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] text-rose-700">
-                          {cluster.count}
-                        </span>
-                      </div>
-                      <div className="mt-1 break-all font-mono text-[10px] text-desktop-text-secondary">
-                        {cluster.sample}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
-                  {copy.noBoundaryLeaks}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.cycleHotspotsTitle}</div>
-              {cycleHotspotClusters.length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  {cycleHotspotClusters.slice(0, 8).map((cluster) => (
-                    <div key={cluster.label} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] font-semibold text-desktop-text-primary">{cluster.label}</span>
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
-                          {cluster.count}
-                        </span>
-                      </div>
-                      <div className="mt-1 break-all font-mono text-[10px] text-desktop-text-secondary">
-                        {cluster.sample}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
-                  {copy.noCycleHotspots}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.topViolationsTitle}</div>
-            {flattenedViolations.length > 0 ? (
-              <div className="mt-2 overflow-x-auto overflow-y-auto rounded-sm border border-desktop-border desktop-scrollbar-thin">
-                <table className="w-full min-w-[640px] border-collapse text-left text-[11px]">
-                  <thead>
-                    <tr className="border-b border-desktop-border bg-desktop-bg-secondary/60">
-                      <th className="px-3 py-2 font-semibold text-desktop-text-secondary">{copy.ruleColumn}</th>
-                      <th className="px-3 py-2 font-semibold text-desktop-text-secondary">{copy.suiteColumn}</th>
-                      <th className="px-3 py-2 font-semibold text-desktop-text-secondary">{copy.countColumn}</th>
-                      <th className="px-3 py-2 font-semibold text-desktop-text-secondary">{copy.summaryColumn}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {flattenedViolations.slice(0, 16).map((violation, index) => (
-                      <tr key={`${violation.ruleId}-${violation.kindLabel}-${index}`} className="border-b border-desktop-border/70">
-                        <td className="px-3 py-2 text-desktop-text-primary">
-                          <div className="font-medium">{violation.ruleTitle}</div>
-                          <div className="text-[10px] text-desktop-text-secondary">{violation.kindLabel}</div>
-                        </td>
-                        <td className="px-3 py-2 text-desktop-text-secondary">{formatSuiteLabel(violation.suite, copy)}</td>
-                        <td className="px-3 py-2 text-desktop-text-secondary">{violation.count}</td>
-                        <td className="px-3 py-2 break-all font-mono text-[10px] text-desktop-text-primary">{violation.summary}</td>
-                      </tr>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
+                    {copy.noFailedRules}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
-                {copy.noViolations}
+            </div>
+          ) : null}
+
+          {detailView === "cycles" ? (
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]" data-testid="architecture-view-cycles">
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.cycleHotspotsTitle}</div>
+                {cycleHotspotClusters.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {cycleHotspotClusters.slice(0, 10).map((cluster) => (
+                      <div key={cluster.label} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold text-desktop-text-primary">{cluster.label}</span>
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
+                            {cluster.count}
+                          </span>
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[10px] text-desktop-text-secondary" title={cluster.sample}>
+                          {cluster.sample}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
+                    {copy.noCycleHotspots}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.failedRulesTitle}</div>
+                {cycleFailedRules.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {cycleFailedRules.map((rule) => (
+                      <div key={rule.id} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-semibold text-desktop-text-primary">{rule.title}</span>
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
+                            {rule.violationCount}
+                          </span>
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[10px] text-desktop-text-secondary" title={summarizeRule(rule)}>
+                          {summarizeRule(rule)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
+                    {copy.noFailedRules}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {detailView === "violations" ? (
+            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3" data-testid="architecture-view-violations">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{copy.topViolationsTitle}</div>
+              {flattenedViolations.length > 0 ? (
+                <div className="mt-2 overflow-x-auto overflow-y-auto rounded-sm border border-desktop-border desktop-scrollbar-thin">
+                  <table className="w-full min-w-[640px] border-collapse text-left text-[11px]">
+                    <thead>
+                      <tr className="border-b border-desktop-border bg-desktop-bg-secondary/60">
+                        <th className="px-3 py-2 font-semibold text-desktop-text-secondary">{copy.ruleColumn}</th>
+                        <th className="px-3 py-2 font-semibold text-desktop-text-secondary">{copy.suiteColumn}</th>
+                        <th className="px-3 py-2 font-semibold text-desktop-text-secondary">{copy.countColumn}</th>
+                        <th className="px-3 py-2 font-semibold text-desktop-text-secondary">{copy.summaryColumn}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {flattenedViolations.slice(0, 24).map((violation, index) => (
+                        <tr key={`${violation.ruleId}-${violation.kindLabel}-${index}`} className="border-b border-desktop-border/70">
+                          <td className="px-3 py-2 text-desktop-text-primary">
+                            <div className="font-medium">{violation.ruleTitle}</div>
+                            <div className="text-[10px] text-desktop-text-secondary">{violation.kindLabel}</div>
+                          </td>
+                          <td className="px-3 py-2 text-desktop-text-secondary">{formatSuiteLabel(violation.suite, copy)}</td>
+                          <td className="px-3 py-2 text-desktop-text-secondary">{violation.count}</td>
+                          <td className="px-3 py-2 font-mono text-[10px] text-desktop-text-primary">
+                            <div className="truncate max-w-[38rem]" title={violation.summary}>{violation.summary}</div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="mt-2 rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
+                  {copy.noViolations}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <details className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3" data-testid="architecture-execution-details">
+            <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
+              {copy.executionDetailsTitle}
+            </summary>
+            <div className="mt-3 space-y-2 text-[11px] text-desktop-text-secondary">
+              <div className="truncate" title={data.archUnitSource ?? ""}>{copy.sourceLabel}: {data.archUnitSource ?? t.common.unavailable}</div>
+              <div className="truncate" title={data.tsconfigPath}>{copy.tsconfigLabel}: {data.tsconfigPath || t.common.unavailable}</div>
+              <div className="truncate" title={data.snapshotPath}>{copy.snapshotPathLabel}: {data.snapshotPath || t.common.unavailable}</div>
+              {(data.notes ?? []).length > 0 ? (
+                <ul className="list-inside list-disc space-y-1">
+                  {data.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </details>
         </div>
       ) : null}
     </>
