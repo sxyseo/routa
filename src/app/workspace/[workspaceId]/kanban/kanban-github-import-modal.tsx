@@ -59,17 +59,32 @@ export function KanbanGitHubImportModal({
   const [pullsPayload, setPullsPayload] = useState<GitHubPullsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIssueIds, setSelectedIssueIds] = useState<string[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
 
+  const fallbackLoadError = activeTab === "issues" ? t.kanbanImport.loadFailed : t.kanbanImport.loadPullsFailed;
+  const fallbackImportError = activeTab === "issues" ? t.kanbanImport.importFailed : t.kanbanImport.importPullsFailed;
+
   useEffect(() => {
-    if (!show) return;
+    if (!show) {
+      setIssuesPayload(null);
+      setPullsPayload(null);
+      return;
+    }
     const defaultCodebase = codebases.find((codebase) => codebase.isDefault) ?? codebases[0];
     setSelectedCodebaseId(defaultCodebase?.id ?? "");
-    setSelectedIssueIds([]);
+    setSelectedItemIds([]);
     setError(null);
   }, [codebases, show]);
+
+  useEffect(() => {
+    if (!show || !selectedCodebaseId) return;
+    setIssuesPayload(null);
+    setPullsPayload(null);
+    setSelectedItemIds([]);
+    setError(null);
+  }, [selectedCodebaseId, show]);
 
   useEffect(() => {
     if (!show || !selectedCodebaseId) return;
@@ -111,10 +126,10 @@ export function KanbanGitHubImportModal({
             pulls: Array.isArray(data?.pulls) ? data.pulls as GitHubPRListItemInfo[] : [],
           });
         }
-        setSelectedIssueIds([]);
+        setSelectedItemIds([]);
       } catch (fetchError) {
         if (controller.signal.aborted) return;
-        setError(fetchError instanceof Error ? fetchError.message : (activeTab === "issues" ? t.kanbanImport.loadFailed : t.kanbanImport.loadPullsFailed));
+        setError(fetchError instanceof Error ? fetchError.message : fallbackLoadError);
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -123,11 +138,11 @@ export function KanbanGitHubImportModal({
     })();
 
     return () => controller.abort();
-  }, [activeTab, reloadNonce, selectedCodebaseId, show, t.kanbanImport.loadFailed, t.kanbanImport.loadPullsFailed, workspaceId]);
+  }, [activeTab, reloadNonce, selectedCodebaseId, show, t.kanbanImport.loadFailed, t.kanbanImport.loadPullsFailed, workspaceId, fallbackLoadError]);
 
   // Reset selection when tab changes
   useEffect(() => {
-    setSelectedIssueIds([]);
+    setSelectedItemIds([]);
     setError(null);
   }, [activeTab]);
 
@@ -184,7 +199,7 @@ export function KanbanGitHubImportModal({
 
   if (!show) return null;
 
-  const canImport = Boolean(selectedIssueIds.length > 0 && selectedCodebaseId && currentRepo);
+  const canImport = Boolean(selectedItemIds.length > 0 && selectedCodebaseId && currentRepo);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -259,14 +274,14 @@ export function KanbanGitHubImportModal({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setSelectedIssueIds(currentSelectableIds)}
+                onClick={() => setSelectedItemIds(currentSelectableIds)}
                 className="text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
               >
                 {t.kanbanImport.selectAll}
               </button>
               <button
                 type="button"
-                onClick={() => setSelectedIssueIds([])}
+                onClick={() => setSelectedItemIds([])}
                 className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               >
                 {t.kanbanImport.clearSelection}
@@ -292,7 +307,7 @@ export function KanbanGitHubImportModal({
             ) : (
               <div className="divide-y divide-slate-200 dark:divide-slate-700">
                 {selectableIssues.map(({ issue, imported }) => {
-                  const checked = selectedIssueIds.includes(issue.id);
+                  const checked = selectedItemIds.includes(issue.id);
                   const updatedAtLabel = formatIssueTimestamp(issue.updatedAt);
                   return (
                     <label
@@ -307,7 +322,7 @@ export function KanbanGitHubImportModal({
                         checked={checked}
                         disabled={imported || submitting}
                         onChange={(event) => {
-                          setSelectedIssueIds((current) => {
+                          setSelectedItemIds((current) => {
                             if (event.target.checked) {
                               return [...current, issue.id];
                             }
@@ -366,7 +381,7 @@ export function KanbanGitHubImportModal({
             ) : (
               <div className="divide-y divide-slate-200 dark:divide-slate-700">
                 {selectablePulls.map(({ pull, imported }) => {
-                  const checked = selectedIssueIds.includes(pull.id);
+                  const checked = selectedItemIds.includes(pull.id);
                   const updatedAtLabel = formatIssueTimestamp(pull.updatedAt);
                   return (
                     <label
@@ -381,7 +396,7 @@ export function KanbanGitHubImportModal({
                         checked={checked}
                         disabled={imported || submitting}
                         onChange={(event) => {
-                          setSelectedIssueIds((current) => {
+                          setSelectedItemIds((current) => {
                             if (event.target.checked) {
                               return [...current, pull.id];
                             }
@@ -467,18 +482,18 @@ export function KanbanGitHubImportModal({
               try {
                 if (activeTab === "issues") {
                   const issues = selectableIssues
-                    .filter(({ issue, imported }) => !imported && selectedIssueIds.includes(issue.id))
+                    .filter(({ issue, imported }) => !imported && selectedItemIds.includes(issue.id))
                     .map(({ issue }) => issue);
                   await onImport(selectedCodebaseId, issues, currentRepo);
                 } else {
                   const pulls = selectablePulls
-                    .filter(({ pull, imported }) => !imported && selectedIssueIds.includes(pull.id))
+                    .filter(({ pull, imported }) => !imported && selectedItemIds.includes(pull.id))
                     .map(({ pull }) => pull);
                   await onImportPulls(selectedCodebaseId, pulls, currentRepo);
                 }
                 onClose();
               } catch (importError) {
-                setError(importError instanceof Error ? importError.message : (activeTab === "issues" ? t.kanbanImport.importFailed : t.kanbanImport.importPullsFailed));
+                setError(importError instanceof Error ? importError.message : fallbackImportError);
               } finally {
                 setSubmitting(false);
               }
