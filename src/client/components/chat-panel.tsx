@@ -26,7 +26,7 @@ import {
 import {TracePanel} from "@/client/components/trace-panel";
 import type {WorkspaceData, CodebaseData} from "../hooks/use-workspaces";
 import {getFileChangesSummary} from "../utils/file-changes-tracker";
-import { TriangleAlert, X, KeyRound } from "lucide-react";
+import { TriangleAlert, X, KeyRound, Copy, Check } from "lucide-react";
 import { useTranslation } from "@/i18n";
 
 
@@ -125,6 +125,7 @@ export function ChatPanel({
   const { t } = useTranslation();
   const { connected, loading, error, authError, updates, prompt, clearAuthError } = acp;
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [copiedRepoPath, setCopiedRepoPath] = useState(false);
   // View mode: 'chat' or 'trace'
   const [viewMode, setViewMode] = useState<"chat" | "trace">("chat");
 
@@ -590,9 +591,25 @@ export function ChatPanel({
                   <span className="font-medium text-slate-500 dark:text-slate-400">
                     {t.sessions.repoPath}
                   </span>
-                  <span className="truncate font-mono" title={repoSelection.path}>
+                  <span className="min-w-0 flex-1 truncate font-mono" title={repoSelection.path}>
                     {shortenRepoPath(repoSelection.path)}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(repoSelection.path).then(() => {
+                        setCopiedRepoPath(true);
+                        window.setTimeout(() => setCopiedRepoPath(false), 1500);
+                      }).catch(() => {
+                        setCopiedRepoPath(false);
+                      });
+                    }}
+                    className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                    title={t.common.copyToClipboard}
+                    aria-label={t.common.copyToClipboard}
+                  >
+                    {copiedRepoPath ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  </button>
                 </div>
               )}
             </div>

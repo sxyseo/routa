@@ -76,17 +76,22 @@ export function shortenRepoPath(path: string): string {
   if (!trimmed) return path;
 
   const normalized = trimmed.replace(/^\/Users\/[^/]+/, "~");
-
   const segments = normalized.split("/").filter(Boolean);
-  if (normalized.startsWith("~") && segments.length <= 4) {
+
+  if (normalized.startsWith("~") && segments.length <= 3) {
     return normalized;
   }
-  if (!normalized.startsWith("~") && segments.length <= 3) {
+  if (!normalized.startsWith("~") && segments.length <= 2) {
     return normalized;
   }
 
-  const tail = segments.slice(-3).join("/");
-  return normalized.startsWith("~") ? `~/.../${tail}` : `.../${tail}`;
+  const basename = segments[segments.length - 1] ?? normalized;
+  const parent = segments[segments.length - 2] ?? "";
+  const compactBase = shortenRepoName(basename, 18, 10);
+  const compactParent = parent.length > 18 ? `${parent.slice(0, 8)}...${parent.slice(-6)}` : parent;
+  const prefix = normalized.startsWith("~") ? "~" : "...";
+
+  return `${prefix}/.../${compactParent}/${compactBase}`;
 }
 
 export function shortenRepoName(name: string, maxHead = 20, maxTail = 10): string {

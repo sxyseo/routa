@@ -109,7 +109,7 @@ describe("RepoPicker", () => {
       "issue-cf7f1e28-feat-kanban-very-long-worktree-name\n/Users/phodal/.routa/workspace/default/default/fcfe6cca-4de0-43da-b869-8641df9625e4/issue-cf7f1e28-feat-kanban-very-long-worktree-name",
     );
 
-    expect(screen.getByText("~/.../default/fcfe6cca-4de0-43da-b869-8641df9625e4/issue-cf7f1e28-feat-kanban-very-long-worktree-name")).toBeTruthy();
+    expect(screen.getByText(/^~\/\.\.\.\/fcfe6cca.*\/issue-cf7f1e28.*name$/)).toBeTruthy();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /copy to clipboard/i }));
