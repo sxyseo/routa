@@ -1,5 +1,6 @@
 schema: fitness-manifest-v1
 evidence_files:
+  - docs/fitness/backend-architecture.md
   - docs/fitness/code-quality.md
   - docs/fitness/engineering-governance.md
   - docs/fitness/unit-test.md
