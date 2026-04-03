@@ -630,7 +630,7 @@ export function KanbanTaskDetailOverlay({
   );
   const selectedLaneSession = getTaskLaneSession(activeTask, activeSessionId);
   const isA2ASessionPane = Boolean(activeTask && isA2ATaskSession(activeTask, activeSessionId));
-  const hasSessionPane = Boolean(!isTaskDetailFullscreen && (showEmptySessionPane || isA2ASessionPane || (activeSessionId && acp)));
+  const hasSessionPane = Boolean(showEmptySessionPane || isA2ASessionPane || (activeSessionId && acp));
   const selectTaskSession = (task: TaskInfo, sessionId: string) => {
     setActiveSessionId(sessionId);
     if (acp && canSelectTaskSessionInAcp(task, sessionId, sessionMap)) {
@@ -639,8 +639,16 @@ export function KanbanTaskDetailOverlay({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6 animate-in fade-in duration-150">
-      <div className="relative h-[88vh] w-full max-w-7xl overflow-hidden border border-slate-200 bg-white shadow-sm dark:border-[#1c1f2e] dark:bg-[#12141c] animate-in zoom-in-95 duration-150">
+    <div
+      className={`fixed inset-0 z-50 flex bg-black/50 animate-in fade-in duration-150 ${
+        isTaskDetailFullscreen ? "items-stretch justify-stretch px-0 py-0" : "items-center justify-center px-4 py-6"
+      }`}
+    >
+      <div
+        className={`relative w-full overflow-hidden border border-slate-200 bg-white shadow-sm dark:border-[#1c1f2e] dark:bg-[#12141c] animate-in zoom-in-95 duration-150 ${
+          isTaskDetailFullscreen ? "h-screen max-w-none border-0" : "h-[88vh] max-w-7xl"
+        }`}
+      >
         <div ref={detailSplitContainerRef} className="flex h-full">
           {activeTaskId && (() => {
             const task = activeTask;

@@ -204,7 +204,7 @@ export function KanbanCardDetail({
     return sessionInfo.cwd !== taskRepoPath;
   })() : undefined;
   const splitMode = !fullWidth;
-  const compactMode = splitMode || Boolean(isFullscreen);
+  const compactMode = splitMode;
   const tabStateKey = `${task.id}:${splitMode ? "split" : "full"}`;
   const activeTab = tabSelections[tabStateKey] ?? "description";
   const detailTabs = [
@@ -325,11 +325,7 @@ export function KanbanCardDetail({
         <div className={compactMode ? "space-y-3" : "space-y-4"}>
           {activeTab === "description" && (
             <>
-              <DetailSection
-                title={t.kanbanDetail.description}
-                description={compactMode ? undefined : t.kanbanDetail.descriptionHint}
-                compact={compactMode}
-              >
+              <section className={compactMode ? "space-y-2 border-b border-slate-200/80 py-2 dark:border-[#232736]" : "space-y-2 border-b border-slate-200/70 py-2.5 dark:border-[#232736]"}>
                 <KanbanDescriptionEditor
                   value={displayedObjective}
                   compact={compactMode}
@@ -347,7 +343,7 @@ export function KanbanCardDetail({
                     }
                   }}
                 />
-              </DetailSection>
+              </section>
 
               {canonicalStory.hasYamlBlock && (
                 <DetailSection
