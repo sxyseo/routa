@@ -295,9 +295,11 @@ fn analyze_normal(
             AnalysisLang::Java => {
                 analyze_java_normal(root, path, &source, nodes, edges);
             }
-            AnalysisLang::Rust | AnalysisLang::TypeScript => {
-                // For now, fall back to fast mode for Rust/TypeScript
-                // TODO: Implement normal mode for these languages
+            AnalysisLang::Rust => {
+                analyze_rust_normal(root, path, &source, nodes, edges);
+            }
+            AnalysisLang::TypeScript => {
+                analyze_typescript_normal(root, path, &source, nodes, edges);
             }
             AnalysisLang::Auto => continue,
         }
@@ -1545,6 +1547,512 @@ fn find_child_text(node: Node, kind: &str, source: &[u8]) -> String {
         }
     }
     String::new()
+}
+
+// ─── Rust Normal Mode Analysis ───────────────────────────────────────────────
+
+fn analyze_rust_normal(
+    root: &Path,
+    path: &Path,
+    source: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&rust_language())
+        .expect("Rust grammar load failed");
+
+    let Some(tree) = parser.parse(source, None) else {
+        return;
+    };
+
+    let relative_path = repo_relative_path(root, path);
+    let file_id = relative_path.clone();
+
+    // Add file node
+    nodes.entry(file_id.clone()).or_insert_with(|| GraphNode {
+        id: file_id.clone(),
+        path: relative_path.clone(),
+        language: "rust".to_string(),
+        kind: NodeKind::File,
+        name: None,
+        package_name: None,
+        parent_id: None,
+        start_line: None,
+        end_line: None,
+    });
+
+    // Extract module path from file path (e.g., src/foo/bar.rs -> foo::bar)
+    let module_path = extract_rust_module_path(root, path);
+
+    // Extract all Rust AST nodes
+    extract_rust_ast_nodes(
+        tree.root_node(),
+        source.as_bytes(),
+        &file_id,
+        &module_path,
+        nodes,
+        edges,
+    );
+}
+
+fn extract_rust_module_path(root: &Path, path: &Path) -> String {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let mut parts: Vec<&str> = Vec::new();
+
+    for component in relative.components() {
+        if let std::path::Component::Normal(os_str) = component {
+            if let Some(s) = os_str.to_str() {
+                if s != "src" && s != "lib.rs" && s != "main.rs" {
+                    let name = s.trim_end_matches(".rs");
+                    if !name.is_empty() && name != "mod" {
+                        parts.push(name);
+                    }
+                }
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        "crate".to_string()
+    } else {
+        parts.join("::")
+    }
+}
+
+fn extract_rust_ast_nodes(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    match node.kind() {
+        "struct_item" => {
+            extract_rust_struct(node, source, file_id, module_path, nodes, edges);
+        }
+        "trait_item" => {
+            extract_rust_trait(node, source, file_id, module_path, nodes, edges);
+        }
+        "impl_item" => {
+            extract_rust_impl(node, source, file_id, module_path, nodes, edges);
+        }
+        "function_item" => {
+            extract_rust_function(node, source, file_id, module_path, nodes, edges);
+        }
+        "enum_item" => {
+            extract_rust_enum(node, source, file_id, module_path, nodes, edges);
+        }
+        _ => {}
+    }
+
+    for child in node.children(&mut node.walk()) {
+        extract_rust_ast_nodes(child, source, file_id, module_path, nodes, edges);
+    }
+}
+
+fn extract_rust_struct(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    _edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let struct_name = find_child_text(node, "type_identifier", source);
+    if struct_name.is_empty() {
+        return;
+    }
+
+    let full_name = format!("{}::{}", module_path, struct_name);
+    let struct_id = format!("struct:{}", full_name);
+
+    nodes.entry(struct_id.clone()).or_insert_with(|| GraphNode {
+        id: struct_id.clone(),
+        path: file_id.to_string(),
+        language: "rust".to_string(),
+        kind: NodeKind::Class, // Use Class for struct
+        name: Some(struct_name.clone()),
+        package_name: Some(module_path.to_string()),
+        parent_id: None,
+        start_line: Some(node.start_position().row + 1),
+        end_line: Some(node.end_position().row + 1),
+    });
+}
+
+fn extract_rust_trait(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    _edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let trait_name = find_child_text(node, "type_identifier", source);
+    if trait_name.is_empty() {
+        return;
+    }
+
+    let full_name = format!("{}::{}", module_path, trait_name);
+    let trait_id = format!("trait:{}", full_name);
+
+    nodes.entry(trait_id.clone()).or_insert_with(|| GraphNode {
+        id: trait_id,
+        path: file_id.to_string(),
+        language: "rust".to_string(),
+        kind: NodeKind::Interface, // Use Interface for trait
+        name: Some(trait_name),
+        package_name: Some(module_path.to_string()),
+        parent_id: None,
+        start_line: Some(node.start_position().row + 1),
+        end_line: Some(node.end_position().row + 1),
+    });
+}
+
+fn extract_rust_impl(
+    node: Node,
+    source: &[u8],
+    _file_id: &str,
+    module_path: &str,
+    _nodes: &mut BTreeMap<String, GraphNode>,
+    edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    // Extract impl Trait for Type pattern
+    // Collect all type_identifiers to find trait and type
+    let mut type_identifiers = Vec::new();
+
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "type_identifier" {
+            if let Ok(name) = child.utf8_text(source) {
+                type_identifiers.push(name.trim().to_string());
+            }
+        }
+    }
+
+    // If we have 2 type identifiers, it's "impl Trait for Type"
+    if type_identifiers.len() == 2 {
+        let trait_name = &type_identifiers[0];
+        let type_name = &type_identifiers[1];
+
+        let struct_id = format!("struct:{}::{}", module_path, type_name);
+        let trait_id = format!("trait:{}::{}", module_path, trait_name);
+
+        edges.insert((
+            struct_id,
+            trait_id,
+            EdgeKind::Implements,
+            trait_name.clone(),
+            false,
+        ));
+    }
+}
+
+fn extract_rust_function(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    _edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let fn_name = find_child_text(node, "identifier", source);
+    if fn_name.is_empty() {
+        return;
+    }
+
+    let full_name = format!("{}::{}", module_path, fn_name);
+    let fn_id = format!("fn:{}", full_name);
+
+    nodes.entry(fn_id).or_insert_with(|| GraphNode {
+        id: format!("fn:{}", full_name),
+        path: file_id.to_string(),
+        language: "rust".to_string(),
+        kind: NodeKind::Method,
+        name: Some(fn_name),
+        package_name: Some(module_path.to_string()),
+        parent_id: None,
+        start_line: Some(node.start_position().row + 1),
+        end_line: Some(node.end_position().row + 1),
+    });
+}
+
+fn extract_rust_enum(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    _edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let enum_name = find_child_text(node, "type_identifier", source);
+    if enum_name.is_empty() {
+        return;
+    }
+
+    let full_name = format!("{}::{}", module_path, enum_name);
+    let enum_id = format!("enum:{}", full_name);
+
+    nodes.entry(enum_id).or_insert_with(|| GraphNode {
+        id: format!("enum:{}", full_name),
+        path: file_id.to_string(),
+        language: "rust".to_string(),
+        kind: NodeKind::Enum,
+        name: Some(enum_name),
+        package_name: Some(module_path.to_string()),
+        parent_id: None,
+        start_line: Some(node.start_position().row + 1),
+        end_line: Some(node.end_position().row + 1),
+    });
+}
+
+// ─── TypeScript Normal Mode Analysis ─────────────────────────────────────────
+
+fn analyze_typescript_normal(
+    root: &Path,
+    path: &Path,
+    source: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&typescript_language())
+        .expect("TypeScript grammar load failed");
+
+    let Some(tree) = parser.parse(source, None) else {
+        return;
+    };
+
+    let relative_path = repo_relative_path(root, path);
+    let file_id = relative_path.clone();
+
+    // Add file node
+    nodes.entry(file_id.clone()).or_insert_with(|| GraphNode {
+        id: file_id.clone(),
+        path: relative_path.clone(),
+        language: "typescript".to_string(),
+        kind: NodeKind::File,
+        name: None,
+        package_name: None,
+        parent_id: None,
+        start_line: None,
+        end_line: None,
+    });
+
+    let module_path = relative_path.trim_end_matches(".ts")
+        .trim_end_matches(".tsx")
+        .replace('/', ".");
+
+    // Extract all TypeScript AST nodes
+    extract_typescript_ast_nodes(
+        tree.root_node(),
+        source.as_bytes(),
+        &file_id,
+        &module_path,
+        nodes,
+        edges,
+    );
+}
+
+fn extract_typescript_ast_nodes(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    match node.kind() {
+        "class_declaration" => {
+            extract_typescript_class(node, source, file_id, module_path, nodes, edges);
+        }
+        "interface_declaration" => {
+            extract_typescript_interface(node, source, file_id, module_path, nodes, edges);
+        }
+        "function_declaration" => {
+            extract_typescript_function(node, source, file_id, module_path, nodes, edges);
+        }
+        "enum_declaration" => {
+            extract_typescript_enum(node, source, file_id, module_path, nodes, edges);
+        }
+        _ => {}
+    }
+
+    for child in node.children(&mut node.walk()) {
+        extract_typescript_ast_nodes(child, source, file_id, module_path, nodes, edges);
+    }
+}
+
+fn extract_typescript_class(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let class_name = find_child_text(node, "type_identifier", source);
+    if class_name.is_empty() {
+        return;
+    }
+
+    let full_name = format!("{}.{}", module_path, class_name);
+    let class_id = format!("class:{}", full_name);
+
+    nodes.entry(class_id.clone()).or_insert_with(|| GraphNode {
+        id: class_id.clone(),
+        path: file_id.to_string(),
+        language: "typescript".to_string(),
+        kind: NodeKind::Class,
+        name: Some(class_name.clone()),
+        package_name: Some(module_path.to_string()),
+        parent_id: None,
+        start_line: Some(node.start_position().row + 1),
+        end_line: Some(node.end_position().row + 1),
+    });
+
+    // Extract extends/implements - recursively search for extends_clause and implements_clause
+    extract_typescript_inheritance(&node, source, &class_id, module_path, edges);
+}
+
+fn extract_typescript_inheritance(
+    node: &Node,
+    source: &[u8],
+    class_id: &str,
+    module_path: &str,
+    edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    for child in node.children(&mut node.walk()) {
+        match child.kind() {
+            "extends_clause" => {
+                // Find all type_identifier nodes in extends_clause
+                for type_child in child.children(&mut child.walk()) {
+                    if type_child.kind() == "type_identifier" || type_child.kind() == "identifier" {
+                        let super_class = type_child.utf8_text(source).unwrap_or("").trim();
+                        if !super_class.is_empty() {
+                            edges.insert((
+                                class_id.to_string(),
+                                format!("class:{}.{}", module_path, super_class),
+                                EdgeKind::Extends,
+                                super_class.to_string(),
+                                false,
+                            ));
+                        }
+                    }
+                }
+            }
+            "implements_clause" => {
+                // Find all type_identifier nodes in implements_clause
+                for type_child in child.children(&mut child.walk()) {
+                    if type_child.kind() == "type_identifier" || type_child.kind() == "identifier" {
+                        let interface_name = type_child.utf8_text(source).unwrap_or("").trim();
+                        if !interface_name.is_empty() {
+                            edges.insert((
+                                class_id.to_string(),
+                                format!("interface:{}.{}", module_path, interface_name),
+                                EdgeKind::Implements,
+                                interface_name.to_string(),
+                                false,
+                            ));
+                        }
+                    }
+                }
+            }
+            _ => {
+                // Recursively search in children
+                extract_typescript_inheritance(&child, source, class_id, module_path, edges);
+            }
+        }
+    }
+}
+
+fn extract_typescript_interface(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    _edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let interface_name = find_child_text(node, "type_identifier", source);
+    if interface_name.is_empty() {
+        return;
+    }
+
+    let full_name = format!("{}.{}", module_path, interface_name);
+    let interface_id = format!("interface:{}", full_name);
+
+    nodes.entry(interface_id).or_insert_with(|| GraphNode {
+        id: format!("interface:{}", full_name),
+        path: file_id.to_string(),
+        language: "typescript".to_string(),
+        kind: NodeKind::Interface,
+        name: Some(interface_name),
+        package_name: Some(module_path.to_string()),
+        parent_id: None,
+        start_line: Some(node.start_position().row + 1),
+        end_line: Some(node.end_position().row + 1),
+    });
+}
+
+fn extract_typescript_function(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    _edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let fn_name = find_child_text(node, "identifier", source);
+    if fn_name.is_empty() {
+        return;
+    }
+
+    let full_name = format!("{}.{}", module_path, fn_name);
+    let fn_id = format!("function:{}", full_name);
+
+    nodes.entry(fn_id).or_insert_with(|| GraphNode {
+        id: format!("function:{}", full_name),
+        path: file_id.to_string(),
+        language: "typescript".to_string(),
+        kind: NodeKind::Method,
+        name: Some(fn_name),
+        package_name: Some(module_path.to_string()),
+        parent_id: None,
+        start_line: Some(node.start_position().row + 1),
+        end_line: Some(node.end_position().row + 1),
+    });
+}
+
+fn extract_typescript_enum(
+    node: Node,
+    source: &[u8],
+    file_id: &str,
+    module_path: &str,
+    nodes: &mut BTreeMap<String, GraphNode>,
+    _edges: &mut BTreeSet<(String, String, EdgeKind, String, bool)>,
+) {
+    let enum_name = find_child_text(node, "identifier", source);
+    if enum_name.is_empty() {
+        return;
+    }
+
+    let full_name = format!("{}.{}", module_path, enum_name);
+    let enum_id = format!("enum:{}", full_name);
+
+    nodes.entry(enum_id).or_insert_with(|| GraphNode {
+        id: format!("enum:{}", full_name),
+        path: file_id.to_string(),
+        language: "typescript".to_string(),
+        kind: NodeKind::Enum,
+        name: Some(enum_name),
+        package_name: Some(module_path.to_string()),
+        parent_id: None,
+        start_line: Some(node.start_position().row + 1),
+        end_line: Some(node.end_position().row + 1),
+    });
 }
 
 #[cfg(test)]
