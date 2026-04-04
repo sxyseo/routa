@@ -3,27 +3,34 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
 const EXPECTED_HOOKS_PATH = ".husky/_";
-const REQUIRED_HOOK_FILES = ["h", "pre-commit", "pre-push", "post-commit"] as const;
+const require = createRequire(import.meta.url);
+const HUSKY_BIN_PATH = path.join(path.dirname(require.resolve("husky")), "bin.js");
+const REQUIRED_PROJECT_HOOK_FILES = ["pre-commit", "pre-push", "post-commit"] as const;
+const REQUIRED_RUNTIME_HOOK_FILES = ["h", ...REQUIRED_PROJECT_HOOK_FILES] as const;
 
 export type HookInstallStatus = "synced" | "repaired" | "skipped";
+export type HookInstallSkipReason = "not-in-git-worktree" | "husky-disabled";
 
 export type HookInstallResult = {
   currentHooksPath: string | null;
   expectedHooksPath: string;
   repoRoot: string | null;
+  runtimeBootstrapped: boolean;
+  skipReason?: HookInstallSkipReason;
   status: HookInstallStatus;
 };
 
-type GitCommandResult = {
+type CommandResult = {
   exitCode: number;
   stderr: string;
   stdout: string;
 };
 
-function runGit(args: string[], cwd: string): GitCommandResult {
-  const result = spawnSync("git", args, {
+function runCommand(command: string, args: string[], cwd: string): CommandResult {
+  const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -34,6 +41,14 @@ function runGit(args: string[], cwd: string): GitCommandResult {
     stderr: result.stderr ?? "",
     stdout: result.stdout ?? "",
   };
+}
+
+function runGit(args: string[], cwd: string): CommandResult {
+  return runCommand("git", args, cwd);
+}
+
+function isHuskyDisabled(): boolean {
+  return process.env.HUSKY === "0";
 }
 
 export function resolveGitRepoRoot(cwd = process.cwd()): string | null {
@@ -56,14 +71,55 @@ export function readLocalHooksPath(repoRoot: string): string | null {
   return hooksPath.length > 0 ? hooksPath : null;
 }
 
-export function assertTrackedHookRuntime(repoRoot: string): void {
-  const missingFiles = REQUIRED_HOOK_FILES.filter((file) => {
-    return !fs.existsSync(path.join(repoRoot, EXPECTED_HOOKS_PATH, file));
+function assertManagedHookEntrypoints(repoRoot: string): void {
+  const missingFiles = REQUIRED_PROJECT_HOOK_FILES.filter((file) => {
+    return !fs.existsSync(path.join(repoRoot, ".husky", file));
   });
 
   if (missingFiles.length > 0) {
     throw new Error(
-      `Missing tracked Husky runtime files under ${EXPECTED_HOOKS_PATH}: ${missingFiles.join(", ")}`,
+      `Missing managed Husky hook entrypoints under .husky: ${missingFiles.join(", ")}`,
+    );
+  }
+}
+
+function getMissingHookRuntimeFiles(repoRoot: string): string[] {
+  return REQUIRED_RUNTIME_HOOK_FILES.filter((file) => {
+    return !fs.existsSync(path.join(repoRoot, EXPECTED_HOOKS_PATH, file));
+  });
+}
+
+function bootstrapHuskyRuntime(repoRoot: string): boolean {
+  const missingFiles = getMissingHookRuntimeFiles(repoRoot);
+  if (missingFiles.length === 0) {
+    return false;
+  }
+
+  if (isHuskyDisabled()) {
+    return false;
+  }
+
+  const result = runCommand(process.execPath, [HUSKY_BIN_PATH], repoRoot);
+  if (result.exitCode !== 0) {
+    const details = result.stderr.trim() || result.stdout.trim() || "unknown husky install failure";
+    throw new Error(`Unable to bootstrap Husky runtime under ${EXPECTED_HOOKS_PATH}: ${details}`);
+  }
+
+  const remainingFiles = getMissingHookRuntimeFiles(repoRoot);
+  if (remainingFiles.length > 0) {
+    throw new Error(
+      `Husky runtime is incomplete under ${EXPECTED_HOOKS_PATH} after bootstrap: ${remainingFiles.join(", ")}`,
+    );
+  }
+
+  return true;
+}
+
+export function assertHookRuntime(repoRoot: string): void {
+  const missingFiles = getMissingHookRuntimeFiles(repoRoot);
+  if (missingFiles.length > 0) {
+    throw new Error(
+      `Husky runtime is incomplete under ${EXPECTED_HOOKS_PATH}: ${missingFiles.join(", ")}`,
     );
   }
 }
@@ -75,19 +131,38 @@ export function ensureLocalGitHooks(cwd = process.cwd()): HookInstallResult {
       currentHooksPath: null,
       expectedHooksPath: EXPECTED_HOOKS_PATH,
       repoRoot: null,
+      runtimeBootstrapped: false,
+      skipReason: "not-in-git-worktree",
       status: "skipped",
     };
   }
 
-  assertTrackedHookRuntime(repoRoot);
+  if (isHuskyDisabled()) {
+    return {
+      currentHooksPath: readLocalHooksPath(repoRoot),
+      expectedHooksPath: EXPECTED_HOOKS_PATH,
+      repoRoot,
+      runtimeBootstrapped: false,
+      skipReason: "husky-disabled",
+      status: "skipped",
+    };
+  }
+
+  assertManagedHookEntrypoints(repoRoot);
 
   const currentHooksPath = readLocalHooksPath(repoRoot);
-  if (currentHooksPath === EXPECTED_HOOKS_PATH) {
+  const runtimeBootstrapped = bootstrapHuskyRuntime(repoRoot);
+  const syncedHooksPath = readLocalHooksPath(repoRoot);
+
+  assertHookRuntime(repoRoot);
+
+  if (syncedHooksPath === EXPECTED_HOOKS_PATH) {
     return {
       currentHooksPath,
       expectedHooksPath: EXPECTED_HOOKS_PATH,
       repoRoot,
-      status: "synced",
+      runtimeBootstrapped,
+      status: currentHooksPath === EXPECTED_HOOKS_PATH ? "synced" : "repaired",
     };
   }
 
@@ -101,13 +176,22 @@ export function ensureLocalGitHooks(cwd = process.cwd()): HookInstallResult {
     currentHooksPath,
     expectedHooksPath: EXPECTED_HOOKS_PATH,
     repoRoot,
+    runtimeBootstrapped,
     status: "repaired",
   };
 }
 
 function formatMessage(result: HookInstallResult): string {
   if (result.status === "skipped") {
+    if (result.skipReason === "husky-disabled") {
+      return "[hooks:sync] skipped: HUSKY=0 disables Husky runtime installation.";
+    }
+
     return "[hooks:sync] skipped: not inside a git worktree.";
+  }
+
+  if (result.status === "synced" && result.runtimeBootstrapped) {
+    return `[hooks:sync] bootstrapped Husky runtime under ${result.expectedHooksPath}; core.hooksPath already matches ${result.expectedHooksPath}.`;
   }
 
   if (result.status === "synced") {
@@ -115,6 +199,10 @@ function formatMessage(result: HookInstallResult): string {
   }
 
   const from = result.currentHooksPath ?? "<unset>";
+  if (result.runtimeBootstrapped) {
+    return `[hooks:sync] bootstrapped Husky runtime and repaired core.hooksPath: ${from} -> ${result.expectedHooksPath}.`;
+  }
+
   return `[hooks:sync] repaired core.hooksPath: ${from} -> ${result.expectedHooksPath}.`;
 }
 

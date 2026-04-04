@@ -79,7 +79,7 @@ export function inspectGitControlPlane(cwd = process.cwd()) {
     issues.push(
       createIssue(
         "missing-husky-runtime",
-        `Tracked Husky runtime is incomplete: missing ${missingHookRuntimeFiles.join(", ")} under ${EXPECTED_HOOKS_PATH}.`,
+        `Husky runtime is missing or incomplete: missing ${missingHookRuntimeFiles.join(", ")} under ${EXPECTED_HOOKS_PATH}. Run \`npm run hooks:sync\`.`,
         "warning",
         { missingHookRuntimeFiles },
       ),
@@ -162,6 +162,9 @@ export function buildSessionStartDoctorOutput(report) {
   const hints = [];
   if (report.issues.some((issue) => issue.code === "hooks-path-drift")) {
     hints.push("repair hooksPath with `npm run hooks:sync`");
+  }
+  if (report.issues.some((issue) => issue.code === "missing-husky-runtime")) {
+    hints.push("reinstall Husky runtime with `npm run hooks:sync`");
   }
   if (
     report.issues.some((issue) =>
