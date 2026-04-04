@@ -67,4 +67,62 @@ describe("buildReviewAnalysisPayload", () => {
     expect(payload.reviewRules).toContain("Ignore formatting-only issues.");
     expect(payload.configSnippets.some((snippet) => snippet.path === "AGENTS.md")).toBe(true);
   }, 15_000);
+
+  it("collects historical related files from nearby blame context", () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-review-history-"));
+    tempDirs.push(repoDir);
+
+    git(repoDir, "init", "-b", "main");
+    git(repoDir, "config", "user.name", "Routa Test");
+    git(repoDir, "config", "user.email", "test@example.com");
+
+    fs.writeFileSync(
+      path.join(repoDir, "example.ts"),
+      [
+        "import { helper } from './helper';",
+        "export const value = helper(1);",
+        "export const trailing = 'stable';",
+        "",
+      ].join("\n"),
+    );
+    fs.writeFileSync(
+      path.join(repoDir, "helper.ts"),
+      [
+        "export function helper(input: number): number {",
+        "  return input + 1;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    git(repoDir, "add", ".");
+    gitNoGpgCommit(repoDir, "commit", "-m", "initial shared context");
+
+    fs.writeFileSync(
+      path.join(repoDir, "example.ts"),
+      [
+        "import { helper } from './helper';",
+        "export const value = helper(2);",
+        "export const trailing = 'stable';",
+        "",
+      ].join("\n"),
+    );
+
+    git(repoDir, "add", "example.ts");
+    gitNoGpgCommit(repoDir, "commit", "-m", "update example only");
+
+    const payload = buildReviewAnalysisPayload({
+      repoPath: repoDir,
+      base: "HEAD~1",
+      head: "HEAD",
+    });
+
+    expect(payload.changedFiles).toEqual(["example.ts"]);
+    expect(payload.historicalRelatedFiles?.[0]).toMatchObject({
+      path: "helper.ts",
+      sourceFiles: ["example.ts"],
+    });
+    expect(payload.historicalRelatedFiles?.[0]?.score).toBeGreaterThan(0);
+    expect(payload.historicalRelatedFiles?.[0]?.relatedCommits).toHaveLength(1);
+  }, 15_000);
 });

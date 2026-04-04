@@ -56,6 +56,23 @@ components:
         content:
           type: string
 
+    HistoricalRelatedFile:
+      type: object
+      required: [path, score, sourceFiles, relatedCommits]
+      properties:
+        path:
+          type: string
+        score:
+          type: number
+        sourceFiles:
+          type: array
+          items:
+            type: string
+        relatedCommits:
+          type: array
+          items:
+            type: string
+
     ReviewAnalysisPayload:
       type: object
       required: [repoPath, repoRoot, base, head, changedFiles, diffStat, diff, configSnippets]
@@ -82,6 +99,10 @@ components:
             $ref: "#/components/schemas/ReviewConfigSnippet"
         reviewRules:
           type: string
+        historicalRelatedFiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoricalRelatedFile"
 
     ReviewRawPhaseOutput:
       type: object

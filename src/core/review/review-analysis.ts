@@ -3,6 +3,10 @@ import * as path from "path";
 
 import { getSpecialistById, buildSpecialistFirstPrompt } from "../orchestration/specialist-prompts";
 import { gitExec, safeExecSync } from "../utils/safe-exec";
+import {
+  buildHistoricalRelatedFiles,
+  type HistoricalRelatedFile,
+} from "./historical-related-files";
 import { buildReviewWorkerPrompt, type ReviewWorkerType } from "./review-worker-prompts";
 
 const CONFIG_CANDIDATES = [
@@ -35,6 +39,7 @@ export interface ReviewAnalysisPayload {
   configSnippets: Array<{ path: string; content: string }>;
   reviewRules?: string;
   graphReviewContext?: unknown;
+  historicalRelatedFiles?: HistoricalRelatedFile[];
 }
 
 export interface ReviewAnalysisResult {
@@ -91,21 +96,28 @@ export function buildReviewAnalysisPayload(options: ReviewAnalyzeOptions = {}): 
   const base = options.base ?? "HEAD~1";
   const head = options.head ?? "HEAD";
   const diffRange = `${base}..${head}`;
+  const changedFiles = gitExec(["diff", "--name-only", diffRange], { cwd: repoRoot })
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 
   return {
     repoPath: repoRoot,
     repoRoot,
     base,
     head,
-    changedFiles: gitExec(["diff", "--name-only", diffRange], { cwd: repoRoot })
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean),
+    changedFiles,
     diffStat: gitExec(["diff", "--stat", diffRange], { cwd: repoRoot }).trim(),
     diff: truncate(gitExec(["diff", "--unified=3", diffRange], { cwd: repoRoot }), 40_000),
     configSnippets: loadConfigSnippets(repoRoot),
     reviewRules: loadReviewRules(repoRoot, options.rulesFile),
     graphReviewContext: loadGraphReviewContext(repoRoot, base),
+    historicalRelatedFiles: buildHistoricalRelatedFiles({
+      repoRoot,
+      diffRange,
+      head,
+      changedFiles,
+    }),
   };
 }
 

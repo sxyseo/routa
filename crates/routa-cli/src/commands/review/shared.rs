@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use routa_core::git::{compute_historical_related_files, HistoricalRelatedFile};
 use routa_core::workflow::specialist::{SpecialistDef, SpecialistLoader};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -62,6 +63,8 @@ pub(crate) struct ReviewInputPayload {
     pub config_snippets: Vec<ConfigSnippet>,
     pub review_rules: Option<String>,
     pub graph_review_context: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub historical_related_files: Option<Vec<HistoricalRelatedFile>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -359,6 +362,10 @@ pub(crate) fn build_review_input_payload(
     );
     let review_rules = load_review_rules(repo_root, rules_file)?;
     let config_snippets = load_config_snippets(repo_root);
+    let historical_related_files =
+        compute_historical_related_files(repo_root, &diff_range, head, 20)
+            .ok()
+            .filter(|items| !items.is_empty());
 
     Ok(ReviewInputPayload {
         repo_path: repo_root.display().to_string(),
@@ -371,6 +378,7 @@ pub(crate) fn build_review_input_payload(
         config_snippets,
         review_rules,
         graph_review_context: load_graph_review_context(repo_root, base),
+        historical_related_files,
     })
 }
 

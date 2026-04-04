@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use axum::{routing::post, Json, Router};
+use routa_core::git::{compute_historical_related_files, HistoricalRelatedFile};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ServerError;
@@ -59,6 +60,8 @@ struct ReviewAnalysisPayload {
     review_rules: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     graph_review_context: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    historical_related_files: Option<Vec<HistoricalRelatedFile>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -302,6 +305,10 @@ fn build_review_payload(
     rules_file: Option<&str>,
 ) -> Result<ReviewAnalysisPayload, ServerError> {
     let diff_range = format!("{}..{}", base, head);
+    let historical_related_files =
+        compute_historical_related_files(repo_root, &diff_range, head, 20)
+            .ok()
+            .filter(|items| !items.is_empty());
 
     Ok(ReviewAnalysisPayload {
         repo_path: repo_root.display().to_string(),
@@ -324,6 +331,7 @@ fn build_review_payload(
         config_snippets: load_config_snippets(repo_root)?,
         review_rules: load_review_rules(repo_root, rules_file)?,
         graph_review_context: load_graph_review_context(repo_root, base),
+        historical_related_files,
     })
 }
 

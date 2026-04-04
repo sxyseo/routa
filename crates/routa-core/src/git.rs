@@ -3,6 +3,8 @@
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -324,6 +326,29 @@ pub struct RepoChanges {
     pub files: Vec<GitFileChange>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoricalRelatedFile {
+    pub path: String,
+    pub score: f64,
+    pub source_files: Vec<String>,
+    pub related_commits: Vec<String>,
+}
+
+#[derive(Default)]
+struct HistoricalCandidateAggregate {
+    hits: u32,
+    source_files: BTreeSet<String>,
+    related_commits: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone)]
+struct BlameChunk {
+    commit: String,
+    start: u32,
+    end: u32,
+}
+
 pub fn get_repo_status(repo_path: &str) -> RepoStatus {
     let mut status = RepoStatus {
         clean: true,
@@ -451,6 +476,297 @@ pub fn get_repo_changes(repo_path: &str) -> RepoChanges {
         status,
         files,
     }
+}
+
+fn git_output_at_path(repo_root: &Path, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo_root)
+        .output()
+        .map_err(|err| format!("Failed to run git {}: {}", args.join(" "), err))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+/// Build historical co-change context for a review diff range.
+///
+/// The output is intentionally compact and best-effort friendly for review payloads.
+pub fn compute_historical_related_files(
+    repo_root: &Path,
+    diff_range: &str,
+    head: &str,
+    max_results: usize,
+) -> Result<Vec<HistoricalRelatedFile>, String> {
+    let changed_files: Vec<String> =
+        git_output_at_path(repo_root, &["diff", "--name-only", diff_range])?
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect();
+
+    if changed_files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let source_files: Vec<String> = changed_files.into_iter().take(8).collect();
+    let changed_file_set: BTreeSet<String> = source_files.iter().cloned().collect();
+    let mut candidate_map: HashMap<String, HistoricalCandidateAggregate> = HashMap::new();
+    let mut blame_cache: HashMap<String, Vec<BlameChunk>> = HashMap::new();
+    let mut commit_paths_cache: HashMap<String, Vec<String>> = HashMap::new();
+
+    for source_file in &source_files {
+        if !file_exists_at_revision(repo_root, head, source_file) {
+            continue;
+        }
+
+        let line_samples = collect_interesting_lines(repo_root, diff_range, source_file)?;
+        if line_samples.is_empty() {
+            continue;
+        }
+
+        let blame_chunks = load_blame_chunks(repo_root, head, source_file, &mut blame_cache)?;
+        if blame_chunks.is_empty() {
+            continue;
+        }
+
+        let mut interesting_commits: Vec<(String, u32)> =
+            collect_interesting_commits(&blame_chunks, &line_samples)
+                .into_iter()
+                .collect();
+        interesting_commits
+            .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+        interesting_commits.truncate(8);
+
+        for (commit_sha, hits) in interesting_commits {
+            let changed_in_commit =
+                load_changed_files_for_commit(repo_root, &commit_sha, &mut commit_paths_cache)?;
+
+            for candidate_path in changed_in_commit {
+                if candidate_path.is_empty()
+                    || candidate_path == *source_file
+                    || changed_file_set.contains(&candidate_path)
+                {
+                    continue;
+                }
+
+                let entry = candidate_map
+                    .entry(candidate_path)
+                    .or_insert_with(HistoricalCandidateAggregate::default);
+                entry.hits = entry.hits.saturating_add(hits);
+                entry.source_files.insert(source_file.clone());
+                entry.related_commits.insert(commit_sha.clone());
+            }
+        }
+    }
+
+    if candidate_map.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut related_files: Vec<HistoricalRelatedFile> = candidate_map
+        .into_iter()
+        .map(|(path, aggregate)| HistoricalRelatedFile {
+            path,
+            score: aggregate.hits as f64,
+            source_files: aggregate.source_files.into_iter().collect(),
+            related_commits: aggregate.related_commits.into_iter().collect(),
+        })
+        .collect();
+
+    related_files.sort_by(|left, right| {
+        right
+            .score
+            .partial_cmp(&left.score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| right.source_files.len().cmp(&left.source_files.len()))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+
+    if max_results > 0 && related_files.len() > max_results {
+        related_files.truncate(max_results);
+    }
+
+    Ok(related_files)
+}
+
+fn file_exists_at_revision(repo_root: &Path, revision: &str, file_path: &str) -> bool {
+    Command::new("git")
+        .args(["cat-file", "-e", &format!("{}:{}", revision, file_path)])
+        .current_dir(repo_root)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn collect_interesting_lines(
+    repo_root: &Path,
+    diff_range: &str,
+    file_path: &str,
+) -> Result<Vec<u32>, String> {
+    let raw_diff = git_output_at_path(
+        repo_root,
+        &["diff", "--unified=0", diff_range, "--", file_path],
+    )?;
+    if raw_diff.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let hunk_pattern = Regex::new(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+        .map_err(|err| format!("Failed to compile diff hunk regex: {}", err))?;
+    let mut interesting_lines = BTreeSet::new();
+
+    for line in raw_diff.lines() {
+        let Some(captures) = hunk_pattern.captures(line) else {
+            continue;
+        };
+
+        let start = captures
+            .get(1)
+            .and_then(|value| value.as_str().parse::<u32>().ok())
+            .unwrap_or(0);
+        let count = captures
+            .get(2)
+            .and_then(|value| value.as_str().parse::<u32>().ok())
+            .unwrap_or(1);
+        let span = if count == 0 { 1 } else { count };
+        let end = start.saturating_add(span.saturating_sub(1));
+
+        for line_number in [start.saturating_sub(1), start, end, end.saturating_add(1)] {
+            if line_number > 0 {
+                interesting_lines.insert(line_number);
+            }
+        }
+    }
+
+    Ok(interesting_lines.into_iter().collect())
+}
+
+fn load_blame_chunks(
+    repo_root: &Path,
+    revision: &str,
+    file_path: &str,
+    cache: &mut HashMap<String, Vec<BlameChunk>>,
+) -> Result<Vec<BlameChunk>, String> {
+    let cache_key = format!("{}:{}", revision, file_path);
+    if let Some(chunks) = cache.get(&cache_key) {
+        return Ok(chunks.clone());
+    }
+
+    let raw_blame = match git_output_at_path(
+        repo_root,
+        &["blame", "--incremental", revision, "--", file_path],
+    ) {
+        Ok(output) => output,
+        Err(_) => {
+            cache.insert(cache_key, Vec::new());
+            return Ok(Vec::new());
+        }
+    };
+
+    let header_pattern = Regex::new(r"^([0-9a-f]{40}) \d+ (\d+) (\d+)$")
+        .map_err(|err| format!("Failed to compile blame regex: {}", err))?;
+    let mut chunks = Vec::new();
+    let mut current_chunk: Option<BlameChunk> = None;
+
+    for line in raw_blame.lines() {
+        if let Some(captures) = header_pattern.captures(line) {
+            let commit = captures
+                .get(1)
+                .map(|value| value.as_str().to_string())
+                .unwrap_or_default();
+            let start = captures
+                .get(2)
+                .and_then(|value| value.as_str().parse::<u32>().ok())
+                .unwrap_or(0);
+            let num_lines = captures
+                .get(3)
+                .and_then(|value| value.as_str().parse::<u32>().ok())
+                .unwrap_or(0);
+            current_chunk = Some(BlameChunk {
+                commit,
+                start,
+                end: start.saturating_add(num_lines),
+            });
+            continue;
+        }
+
+        if line.starts_with("filename ") {
+            if let Some(chunk) = current_chunk.take() {
+                chunks.push(chunk);
+            }
+        }
+    }
+
+    chunks.sort_by(|left, right| left.start.cmp(&right.start));
+    cache.insert(cache_key, chunks.clone());
+    Ok(chunks)
+}
+
+fn collect_interesting_commits(
+    blame_chunks: &[BlameChunk],
+    line_numbers: &[u32],
+) -> HashMap<String, u32> {
+    let mut commit_hits = HashMap::new();
+
+    for line_number in line_numbers {
+        if let Some(chunk) = blame_chunks
+            .iter()
+            .find(|candidate| *line_number >= candidate.start && *line_number < candidate.end)
+        {
+            *commit_hits.entry(chunk.commit.clone()).or_insert(0) += 1;
+        }
+    }
+
+    commit_hits
+}
+
+fn load_changed_files_for_commit(
+    repo_root: &Path,
+    commit: &str,
+    cache: &mut HashMap<String, Vec<String>>,
+) -> Result<Vec<String>, String> {
+    if let Some(files) = cache.get(commit) {
+        return Ok(files.clone());
+    }
+
+    let raw_files = match git_output_at_path(
+        repo_root,
+        &[
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            "-m",
+            commit,
+        ],
+    ) {
+        Ok(output) => output,
+        Err(_) => {
+            cache.insert(commit.to_string(), Vec::new());
+            return Ok(Vec::new());
+        }
+    };
+
+    let files: Vec<String> = raw_files
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    cache.insert(commit.to_string(), files.clone());
+    Ok(files)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -868,8 +1184,26 @@ pub fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::fs;
+    use std::path::Path;
+    use std::process::Command;
     use tempfile::tempdir;
+
+    fn git(cwd: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .expect("git command should run");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
 
     #[test]
     fn parse_github_url_supports_multiple_formats() {
@@ -1018,6 +1352,106 @@ mod tests {
             "feature-new-ui-2026"
         );
         assert_eq!(branch_to_safe_dir_name("release-1.2.3"), "release-1.2.3");
+    }
+
+    #[test]
+    fn compute_historical_related_files_collects_cochange_context() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path();
+
+        git(repo, &["init", "-b", "main"]);
+        git(repo, &["config", "user.name", "Routa Test"]);
+        git(repo, &["config", "user.email", "test@example.com"]);
+
+        fs::write(
+            repo.join("example.ts"),
+            "import { helper } from './helper';\nexport const value = helper(1);\nexport const trailing = 'stable';\n",
+        )
+        .unwrap();
+        fs::write(
+            repo.join("helper.ts"),
+            "export function helper(input: number): number {\n  return input + 1;\n}\n",
+        )
+        .unwrap();
+        git(repo, &["add", "."]);
+        git(
+            repo,
+            &[
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "-m",
+                "initial shared context",
+            ],
+        );
+
+        fs::write(
+            repo.join("example.ts"),
+            "import { helper } from './helper';\nexport const value = helper(2);\nexport const trailing = 'stable';\n",
+        )
+        .unwrap();
+        git(repo, &["add", "example.ts"]);
+        git(
+            repo,
+            &[
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "-m",
+                "update example only",
+            ],
+        );
+
+        let related = compute_historical_related_files(repo, "HEAD~1..HEAD", "HEAD", 20).unwrap();
+        assert!(!related.is_empty());
+
+        let mut unique_paths = HashSet::new();
+        for item in &related {
+            assert!(unique_paths.insert(item.path.clone()));
+            assert!(item.score > 0.0);
+            assert!(!item.source_files.is_empty());
+            assert!(!item.related_commits.is_empty());
+        }
+
+        let helper = related
+            .iter()
+            .find(|item| item.path == "helper.ts")
+            .expect("helper.ts should be suggested");
+        assert_eq!(helper.source_files, vec!["example.ts".to_string()]);
+        assert_eq!(helper.related_commits.len(), 1);
+    }
+
+    #[test]
+    fn compute_historical_related_files_handles_deleted_files_without_failing() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path();
+
+        git(repo, &["init", "-b", "main"]);
+        git(repo, &["config", "user.name", "Routa Test"]);
+        git(repo, &["config", "user.email", "test@example.com"]);
+
+        fs::write(repo.join("keep.rs"), "pub fn keep() {}\n").unwrap();
+        fs::write(repo.join("drop.rs"), "pub fn drop() {}\n").unwrap();
+        git(repo, &["add", "."]);
+        git(
+            repo,
+            &["-c", "commit.gpgSign=false", "commit", "-m", "initial"],
+        );
+
+        fs::write(
+            repo.join("keep.rs"),
+            "pub fn keep() { println!(\"keep\"); }\n",
+        )
+        .unwrap();
+        fs::remove_file(repo.join("drop.rs")).unwrap();
+        git(repo, &["add", "-A"]);
+        git(
+            repo,
+            &["-c", "commit.gpgSign=false", "commit", "-m", "delete drop"],
+        );
+
+        let related = compute_historical_related_files(repo, "HEAD~1..HEAD", "HEAD", 20).unwrap();
+        assert!(related.is_empty());
     }
 
     #[test]
