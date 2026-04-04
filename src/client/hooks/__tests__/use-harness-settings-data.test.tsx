@@ -336,6 +336,43 @@ describe("useHarnessSettingsData", () => {
     expect(result.current.architectureState.data?.snapshotPath).toBe("/repo/docs/fitness/reports/backend-architecture-latest.json");
   });
 
+  it("can prefer the current repo for architecture without changing other harness requests", async () => {
+    const { result } = renderHook(() => useHarnessSettingsData({
+      workspaceId: "default",
+      codebaseId: "mirror-codebase",
+      repoPath: "/mirror",
+      selectedTier: "normal",
+      enableArchitecture: true,
+      preferCurrentRepoForArchitecture: true,
+    }));
+
+    await waitFor(() => {
+      expect(result.current.specsState.loading).toBe(false);
+      expect(result.current.planState.loading).toBe(false);
+    });
+
+    act(() => {
+      result.current.reloadArchitecture();
+    });
+
+    await waitFor(() => {
+      expect(result.current.architectureState.loading).toBe(false);
+      expect(result.current.architectureState.data?.ruleCount).toBe(4);
+    });
+
+    expect(fetchMock.mock.calls.some(([url]) => (
+      String(url).startsWith("/api/fitness/specs?")
+      && String(url).includes("codebaseId=mirror-codebase")
+      && String(url).includes("repoPath=%2Fmirror")
+    ))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => (
+      String(url).startsWith("/api/fitness/architecture?")
+      && String(url).includes("workspaceId=default")
+      && !String(url).includes("codebaseId=")
+      && !String(url).includes("repoPath=")
+    ))).toBe(true);
+  });
+
   it("exposes architecture comparison data after a subsequent scan", async () => {
     const { result } = renderHook(() => useHarnessSettingsData({
       workspaceId: "default",

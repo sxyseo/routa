@@ -212,7 +212,6 @@ export default function HarnessConsolePage() {
 
   const activeRepoPath = activeRepoSelection?.path;
   const activeRepoCodebaseId = effectiveRepoOverride ? matchedSelectedCodebase?.id : activeCodebase?.id;
-
   const {
     specsState,
     planState,
@@ -233,6 +232,7 @@ export default function HarnessConsolePage() {
     repoPath: activeRepoPath,
     selectedTier,
     enableArchitecture: architectureSectionActive,
+    preferCurrentRepoForArchitecture: workspaceId === "default" && !effectiveRepoOverride,
   });
 
   const resolvedCodeownersState = useMemo(

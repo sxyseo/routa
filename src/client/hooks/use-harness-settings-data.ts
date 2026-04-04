@@ -325,6 +325,7 @@ type HarnessSettingsDataArgs = {
   repoPath?: string;
   selectedTier: TierValue;
   enableArchitecture?: boolean;
+  preferCurrentRepoForArchitecture?: boolean;
 };
 
 type InstructionRefreshState = {
@@ -694,11 +695,19 @@ export function useHarnessSettingsData({
   repoPath,
   selectedTier,
   enableArchitecture = false,
+  preferCurrentRepoForArchitecture = false,
 }: HarnessSettingsDataArgs) {
   const hasRepoContext = Boolean(workspaceId || codebaseId || repoPath);
-  const baseQuery = useMemo(
-    () => (hasRepoContext ? buildHarnessQuery(workspaceId, codebaseId, repoPath) : null),
-    [codebaseId, hasRepoContext, repoPath, workspaceId],
+  const baseQuery = useMemo(() => (hasRepoContext ? buildHarnessQuery(workspaceId, codebaseId, repoPath) : null), [codebaseId, hasRepoContext, repoPath, workspaceId]);
+  const architectureQuery = useMemo(
+    () => (hasRepoContext
+      ? buildHarnessQuery(
+        workspaceId,
+        preferCurrentRepoForArchitecture && workspaceId ? undefined : codebaseId,
+        preferCurrentRepoForArchitecture && workspaceId ? undefined : repoPath,
+      )
+      : null),
+    [codebaseId, hasRepoContext, preferCurrentRepoForArchitecture, repoPath, workspaceId],
   );
 
   const [specsState, setSpecsState] = useState<QueryState<SpecsResponse>>(emptyQueryState);
@@ -712,20 +721,11 @@ export function useHarnessSettingsData({
   const [designDecisionsState, setDesignDecisionsState] = useState<QueryState<DesignDecisionResponse>>(emptyQueryState);
   const [codeownersState, setCodeownersState] = useState<QueryState<CodeownersResponse>>(emptyQueryState);
   const [automationsState, setAutomationsState] = useState<QueryState<HarnessAutomationResponse>>(emptyQueryState);
-  const [instructionsRefreshState, setInstructionsRefreshState] = useState<InstructionRefreshState>({
-    contextKey: "",
-    token: 0,
-  });
-  const [architectureRefreshState, setArchitectureRefreshState] = useState<ArchitectureRefreshState>({
-    contextKey: "",
-    token: 0,
-  });
+  const [instructionsRefreshState, setInstructionsRefreshState] = useState<InstructionRefreshState>({ contextKey: "", token: 0 });
+  const [architectureRefreshState, setArchitectureRefreshState] = useState<ArchitectureRefreshState>({ contextKey: "", token: 0 });
   const instructionsContextKey = baseQuery?.toString() ?? "";
-  const architectureContextKey = baseQuery?.toString() ?? "";
-
-  useEffect(() => {
-    setArchitectureState(emptyQueryState());
-  }, [architectureContextKey]);
+  const architectureContextKey = architectureQuery?.toString() ?? "";
+  useEffect(() => { setArchitectureState(emptyQueryState()); }, [architectureContextKey]);
 
   useEffect(() => {
     if (!baseQuery) {
@@ -809,7 +809,7 @@ export function useHarnessSettingsData({
   }, [baseQuery, selectedTier]);
 
   useEffect(() => {
-    if (!baseQuery) {
+    if (!architectureQuery) {
       return;
     }
     if (!enableArchitecture) {
@@ -828,7 +828,7 @@ export function useHarnessSettingsData({
     const fetchArchitecture = async () => {
       setArchitectureState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await desktopAwareFetch(`/api/fitness/architecture?${baseQuery.toString()}`);
+        const response = await desktopAwareFetch(`/api/fitness/architecture?${architectureQuery.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load architecture quality");
@@ -855,7 +855,7 @@ export function useHarnessSettingsData({
     return () => {
       cancelled = true;
     };
-  }, [architectureContextKey, architectureRefreshState, baseQuery, enableArchitecture]);
+  }, [architectureContextKey, architectureQuery, architectureRefreshState, enableArchitecture]);
 
   useEffect(() => {
     if (!baseQuery) {

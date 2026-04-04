@@ -436,6 +436,7 @@ describe("HarnessSettingsPage", () => {
       repoPath: "/Users/phodal/ai/routa-js",
       selectedTier: "normal",
       enableArchitecture: false,
+      preferCurrentRepoForArchitecture: true,
     });
     expect(window.localStorage.getItem("routa.repoSelection.harness.default")).toBeNull();
   });
@@ -471,6 +472,7 @@ describe("HarnessSettingsPage", () => {
       repoPath: "/Users/phodal/ai/routa-js",
       selectedTier: "normal",
       enableArchitecture: true,
+      preferCurrentRepoForArchitecture: true,
     });
   });
 
@@ -493,6 +495,7 @@ describe("HarnessSettingsPage", () => {
       repoPath: "/Users/phodal/ai/codex",
       selectedTier: "normal",
       enableArchitecture: false,
+      preferCurrentRepoForArchitecture: false,
     });
     expect(window.localStorage.getItem("routa.repoSelection.harness.default")).toContain("/Users/phodal/ai/codex");
   });
