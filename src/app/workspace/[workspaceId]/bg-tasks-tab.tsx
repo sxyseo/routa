@@ -545,7 +545,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
               <button
                 data-testid="dispatch-submit-btn"
                 onClick={handleDispatchTask}
-                disabled={dispatchLoading || !dispatchPrompt.trim() || !dispatchAgentId.trim()}
+                disabled={dispatchLoading || !dispatchPrompt.trim() || !dispatchAgentId.trim() || !!duplicateWarning}
                 className="px-3 py-1.5 rounded-md text-[12px] font-medium bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition-colors"
               >
                 {dispatchLoading ? t.bgTasks.dispatching : t.bgTasks.dispatchNow}
