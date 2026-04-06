@@ -2088,7 +2088,7 @@ entrypointGroups:
 
 fn generate_playbooks_from_history(
     repo_root: &Path,
-    options: &HarnessEngineeringOptions,
+    _options: &HarnessEngineeringOptions,
 ) -> Result<HarnessEngineeringReport, String> {
     use learning::*;
 
@@ -2216,12 +2216,8 @@ fn build_evolution_context(
     options: &HarnessEngineeringOptions,
 ) -> EvolutionContext {
     // Try to get session ID from AppState (if running through ACP)
-    let session_id = state.and_then(|_s| {
-        // AppState might have session tracking - check local_session_provider
-        // For now, return None until we wire up the actual session capture
-        // TODO: Capture actual session ID from trace writer
-        None::<String>
-    });
+    // TODO: Capture actual session ID from trace writer
+    let session_id: Option<String> = state.and(None);
 
     // Infer workflow type from options
     let workflow = if options.bootstrap {

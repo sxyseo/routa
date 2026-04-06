@@ -100,7 +100,7 @@ pub fn detect_common_patterns(
             
             gap_pattern_groups
                 .entry(pattern_key)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(entry);
         }
     }
@@ -135,7 +135,7 @@ fn extract_patch_order_consensus(entries: &[&EvolutionHistory]) -> Vec<String> {
         for (idx, patch_id) in entry.patches_applied.iter().enumerate() {
             patch_positions
                 .entry(patch_id.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(idx);
         }
     }
