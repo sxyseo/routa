@@ -91,6 +91,7 @@ async fn reports_missing_bootstrap_surfaces_for_weak_repo() {
             ai_provider: None,
             ai_provider_timeout_ms: None,
             ai_provider_retries: 0,
+            learn: false,
         },
         None,
     )
@@ -162,6 +163,7 @@ async fn classifies_fluency_blockers_into_harness_and_non_harness() {
             ai_provider: None,
             ai_provider_timeout_ms: None,
             ai_provider_retries: 0,
+            learn: false,
         },
         None,
     )
@@ -215,6 +217,7 @@ definitions:
             ai_provider: None,
             ai_provider_timeout_ms: None,
             ai_provider_retries: 0,
+            learn: false,
         },
         None,
     )
@@ -276,6 +279,7 @@ async fn apply_mode_creates_harness_files() {
             ai_provider: None,
             ai_provider_timeout_ms: None,
             ai_provider_retries: 0,
+            learn: false,
         },
         None,
     )
@@ -353,6 +357,7 @@ async fn apply_mode_rolls_back_when_ratchet_regresses() {
             ai_provider: None,
             ai_provider_timeout_ms: None,
             ai_provider_retries: 0,
+            learn: false,
         },
         None,
     )
@@ -414,6 +419,7 @@ fn verification_plan_executes_successfully() {
             ai_provider: None,
             ai_provider_timeout_ms: None,
             ai_provider_retries: 0,
+            learn: false,
         },
     )
     .expect("verification succeeds");
@@ -446,6 +452,7 @@ fn verification_plan_reports_failures() {
             ai_provider: None,
             ai_provider_timeout_ms: None,
             ai_provider_retries: 0,
+            learn: false,
         },
     )
     .unwrap_err();

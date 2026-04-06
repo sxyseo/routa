@@ -50,6 +50,9 @@ cargo run -p routa-cli -- harness evolve --repo-root /path/to/repo --bootstrap -
 # Harness Engineering + AI specialist（deterministic report 仍是权威输入）
 cargo run -p routa-cli -- harness evolve --ai --provider claude --format json
 
+# Trace Learning: 从演进历史中生成 playbook（需要 3+ 成功运行）
+cargo run -p routa-cli -- harness evolve --learn
+
 # 包管理器快捷入口（仍走 Rust CLI）
 npm run fitness:fluency
 
@@ -106,12 +109,14 @@ Harness Fluency 默认跑通用 `generic` 模型；如果要评估编排型 agen
 - `synthesize`: 在 dry-run 模式下给出 low-risk patch candidates 和 verification plan
 - `verify`: `--apply` 只会自动落低风险 patch，随后立即执行 verification plan；任一步失败都会回滚本轮变更
 - `ratchet`: verification 通过后会重新运行 fluency baseline，对 `generic` / `agent_orchestrator` 快照做比较；若 level、dimension、baseline score 或已通过 criterion 出现回退，则整轮变更回滚；若没有历史快照，则会建立新的 baseline snapshot
+- **`learn`** (NEW): 分析演进历史，提取模式并生成 playbook（需 3+ 成功运行）
 
 边界：
 
 - 这条命令不会把所有 fitness failure 都当成 harness mutation 目标
 - medium/high-risk patch 仍然需要人工 review，除非显式 `--force`
 - `harness evolve` 只负责 fluency baseline 的闭环比较与持久化，不替代 `entrix` 的规则执行，也不会把所有 repo-level failure 自动转成 harness mutation
+- **Trace Learning** 是可选的增强功能，详见 [Harness Trace Learning](../features/harness-trace-learning.md)
 
 ### Tier 分层
 

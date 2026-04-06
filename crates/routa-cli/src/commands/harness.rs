@@ -108,6 +108,10 @@ pub struct HarnessEvolveArgs {
     #[arg(long, default_value_t = false)]
     pub force: bool,
 
+    /// Generate playbooks from evolution history (trace learning mode).
+    #[arg(long, default_value_t = false)]
+    pub learn: bool,
+
     /// Use AI specialist for contextual recommendations (experimental).
     #[arg(long, default_value_t = false)]
     pub ai: bool,
@@ -445,6 +449,7 @@ async fn run_evolve(db_path: &str, args: &HarnessEvolveArgs) -> Result<(), Strin
             ai_provider: args.provider.clone(),
             ai_provider_timeout_ms: args.provider_timeout_ms,
             ai_provider_retries: args.provider_retries,
+            learn: args.learn,
         },
         state.as_ref(),
     )

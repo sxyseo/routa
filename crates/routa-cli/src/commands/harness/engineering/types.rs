@@ -1,6 +1,6 @@
 //! Type definitions for Harness Engineering
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +17,7 @@ pub struct HarnessEngineeringOptions {
     pub ai_provider: Option<String>,
     pub ai_provider_timeout_ms: Option<u64>,
     pub ai_provider_retries: u8,
+    pub learn: bool,  // Generate playbooks from evolution history
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -242,15 +243,44 @@ pub(super) struct FluencyBlockingCriterion {
     pub evidence_hint: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct EvolutionHistory {
     pub timestamp: String,
     pub repo_root: String,
     pub mode: String,
+
+    // NEW: Link to agent traces
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+
+    // NEW: Task fingerprint
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<String>,
+
+    // NEW: Evidence bundle
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gaps_detected: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gap_categories: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changed_paths: Option<Vec<String>>,
+
+    // Existing fields
     pub patches_applied: Vec<String>,
     pub patches_failed: Vec<String>,
     pub success_rate: f64,
+
+    // NEW: Failure context
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rollback_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_messages: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -258,4 +288,16 @@ pub(super) struct EvolutionHistory {
 pub(super) struct Snapshot {
     pub timestamp: String,
     pub files: std::collections::BTreeMap<String, String>,
+}
+
+/// Context for evolution history recording
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(super) struct EvolutionContext {
+    pub session_id: Option<String>,
+    pub workflow: Option<String>,
+    pub gaps_detected: usize,
+    pub gap_categories: Vec<String>,
+    pub rollback_reason: Option<String>,
+    pub error_messages: Option<Vec<String>>,
 }

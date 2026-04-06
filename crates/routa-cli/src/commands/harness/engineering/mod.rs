@@ -3,9 +3,12 @@
 //! Self-bootstrapping harness engineering agent with evaluation, patch generation,
 //! and controlled auto-evolution capabilities.
 
+mod learning;
 mod ratchet;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_learning;
 mod types;
 
 use self::ratchet::{run_ratchet_loop, ApplyOutcome};
@@ -43,6 +46,11 @@ pub async fn evaluate_harness_engineering(
 ) -> Result<HarnessEngineeringReport, String> {
     let mut warnings = Vec::new();
 
+    // Learn mode: Generate playbooks from evolution history
+    if options.learn {
+        return generate_playbooks_from_history(repo_root, options);
+    }
+
     // Bootstrap mode: detect weak repo and synthesize initial harness
     if options.bootstrap {
         if should_bootstrap(repo_root) {
@@ -73,7 +81,23 @@ pub async fn evaluate_harness_engineering(
 
     let mut recommended_actions = build_recommended_actions(&gaps);
     let mut patch_candidates = build_patch_candidates(repo_root, repo_signals.as_ref(), &gaps);
-    patch_candidates.sort_by(|left, right| left.id.cmp(&right.id));
+
+    // NEW (Phase 2): Load playbooks and apply learned strategies
+    let playbooks = learning::load_playbooks_for_task(repo_root, "harness_evolution").unwrap_or_else(|e| {
+        if !options.json_output {
+            eprintln!("Warning: Failed to load playbooks: {}", e);
+        }
+        Vec::new()
+    });
+
+    if let Some(playbook) = learning::find_matching_playbook(&playbooks, &gaps) {
+        learning::display_preflight_guidance(playbook, &gaps, options.json_output);
+        learning::reorder_patches_by_playbook(&mut patch_candidates, playbook);
+    } else {
+        // No matching playbook, use default sorting
+        patch_candidates.sort_by(|left, right| left.id.cmp(&right.id));
+    }
+
     let verification_plan = build_verification_plan(repo_root);
 
     let summary = HarnessEngineeringSummary {
@@ -159,11 +183,19 @@ pub async fn evaluate_harness_engineering(
     }
 
     let apply_outcome = if options.apply && !patch_candidates.is_empty() {
+        // Build evolution context for trace learning
+        let evolution_context = build_evolution_context(
+            state,
+            &gaps,
+            options,
+        );
+
         Some(apply_patches(
             repo_root,
             &patch_candidates,
             &verification_plan,
             options,
+            Some(&evolution_context),
         )?)
     } else {
         None
@@ -1409,11 +1441,22 @@ async fn bootstrap_weak_repository(
     }];
 
     let apply_outcome = if options.apply && !patch_candidates.is_empty() {
+        // Build evolution context for bootstrap mode
+        let evolution_context = EvolutionContext {
+            session_id: None,
+            workflow: Some("bootstrap".to_string()),
+            gaps_detected: gaps.len(),
+            gap_categories: gaps.iter().map(|g| g.category.clone()).collect(),
+            rollback_reason: None,
+            error_messages: None,
+        };
+
         Some(apply_patches(
             repo_root,
             &patch_candidates,
             &verification_plan,
             options,
+            Some(&evolution_context),
         )?)
     } else {
         None
@@ -1731,6 +1774,7 @@ fn apply_patches(
     patches: &[HarnessEngineeringPatchCandidate],
     verification_plan: &[HarnessEngineeringVerificationStep],
     options: &HarnessEngineeringOptions,
+    evolution_context: Option<&EvolutionContext>,
 ) -> Result<ApplyOutcome, String> {
     // Separate patches by risk level
     let low_risk: Vec<_> = patches.iter().filter(|p| p.risk == "low").collect();
@@ -1818,7 +1862,7 @@ fn apply_patches(
             eprintln!("  ↻ Rolling back changes...");
             rollback_snapshot(repo_root, &snapshot)?;
             if let Err(history_error) =
-                record_evolution_outcome(repo_root, &[], &selected_for_apply)
+                record_evolution_outcome(repo_root, &[], &selected_for_apply, evolution_context)
             {
                 eprintln!(
                     "  ⚠️  Warning: Failed to record evolution history: {}",
@@ -1836,7 +1880,7 @@ fn apply_patches(
             eprintln!("  ↻ Rolling back...");
             rollback_snapshot(repo_root, &snapshot)?;
             if let Err(history_error) =
-                record_evolution_outcome(repo_root, &[], &selected_for_apply)
+                record_evolution_outcome(repo_root, &[], &selected_for_apply, evolution_context)
             {
                 eprintln!(
                     "  ⚠️  Warning: Failed to record evolution history: {}",
@@ -1855,7 +1899,7 @@ fn apply_patches(
             eprintln!("  ↻ Rolling back verified changes...");
             rollback_snapshot(repo_root, &snapshot)?;
             if let Err(history_error) =
-                record_evolution_outcome(repo_root, &[], &selected_for_apply)
+                record_evolution_outcome(repo_root, &[], &selected_for_apply, evolution_context)
             {
                 eprintln!(
                     "  ⚠️  Warning: Failed to record evolution history: {}",
@@ -1873,7 +1917,7 @@ fn apply_patches(
             eprintln!("  ↻ Rolling back verified changes...");
             rollback_snapshot(repo_root, &snapshot)?;
             if let Err(history_error) =
-                record_evolution_outcome(repo_root, &[], &selected_for_apply)
+                record_evolution_outcome(repo_root, &[], &selected_for_apply, evolution_context)
             {
                 eprintln!(
                     "  ⚠️  Warning: Failed to record evolution history: {}",
@@ -1884,7 +1928,7 @@ fn apply_patches(
         }
     };
 
-    if let Err(error) = record_evolution_outcome(repo_root, &selected_for_apply, &[]) {
+    if let Err(error) = record_evolution_outcome(repo_root, &selected_for_apply, &[], evolution_context) {
         eprintln!(
             "  ⚠️  Warning: Failed to record evolution history: {}",
             error
@@ -2058,20 +2102,171 @@ entrypointGroups:
 
 // Phase 3: Feedback Learning Loop (Foundation)
 
-#[derive(Debug, Serialize)]
-struct EvolutionHistory {
-    timestamp: String,
-    repo_root: String,
-    mode: String,
-    patches_applied: Vec<String>,
-    patches_failed: Vec<String>,
-    success_rate: f64,
+fn generate_playbooks_from_history(
+    repo_root: &Path,
+    _options: &HarnessEngineeringOptions,
+) -> Result<HarnessEngineeringReport, String> {
+    use learning::*;
+
+    println!("📊 Harness Evolution - Learning Mode");
+    println!("  Loading evolution history...");
+
+    let history = load_evolution_history(repo_root)?;
+
+    if history.is_empty() {
+        return Err("No evolution history found. Run `harness evolve --apply` first to generate data.".to_string());
+    }
+
+    println!("  Found {} evolution runs", history.len());
+
+    // Detect patterns (min 80% success rate)
+    let patterns = detect_common_patterns(&history, 0.8);
+
+    if patterns.is_empty() {
+        println!("  ⚠️  No patterns detected (need 3+ successful runs with same gap combination)");
+        println!("\nℹ️  Run `harness evolve --apply` multiple times to generate learning data.");
+        return Err("Not enough data for pattern extraction. Need 3+ successful runs with matching gap patterns.".to_string());
+    }
+
+    println!("  Detected {} common patterns:", patterns.len());
+    for pattern in &patterns {
+        println!(
+            "    - Gap pattern: {:?} (seen {} times, avg success: {:.1}%)",
+            pattern.gap_categories,
+            pattern.occurrence_count,
+            pattern.avg_success_rate * 100.0
+        );
+    }
+
+    // Generate playbook candidates
+    let playbooks = generate_playbook_candidates(repo_root, &patterns)?;
+
+    println!("  Generated {} playbook candidates:", playbooks.len());
+
+    // Save playbooks
+    for playbook in &playbooks {
+        save_playbook(repo_root, playbook)?;
+        println!(
+            "    ✓ {}.json (confidence: {:.1}%, evidence: {} runs)",
+            playbook.id,
+            playbook.confidence * 100.0,
+            playbook.provenance.evidence_count
+        );
+    }
+
+    let playbook_dir = repo_root.join("docs/fitness/playbooks");
+    println!("\n✅ Playbooks saved to {}", playbook_dir.display());
+
+    // Create minimal report (learning mode doesn't use full report structure)
+    let default_inputs = HarnessEngineeringInputs {
+        repo_signals: None,
+        templates: TemplateSummary {
+            templates_checked: 0,
+            drift_error_count: 0,
+            drift_warning_count: 0,
+            missing_sensor_files: 0,
+            missing_automation_refs: 0,
+            warnings: 0,
+        },
+        automations: AutomationSummary {
+            definition_count: 0,
+            pending_signal_count: 0,
+            recent_run_count: 0,
+            definition_only_count: 0,
+            warnings: 0,
+        },
+        specs: SpecSummary {
+            source_count: 0,
+            feature_count: 0,
+            systems: vec![],
+            warnings: 0,
+        },
+        fitness: FitnessSummary {
+            manifest_present: false,
+            fluency_snapshots_loaded: 0,
+            blocking_criteria_count: 0,
+            critical_blocking_criteria_count: 0,
+        },
+    };
+
+    Ok(HarnessEngineeringReport {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        repo_root: repo_root.display().to_string(),
+        mode: "learn".to_string(),
+        report_path: playbook_dir.display().to_string(),
+        summary: HarnessEngineeringSummary {
+            total_gaps: 0,
+            blocking_gaps: 0,
+            harness_mutation_candidates: playbooks.len(),
+            non_harness_gaps: 0,
+            low_risk_patch_candidates: playbooks.len(),
+        },
+        inputs: default_inputs,
+        gaps: vec![],
+        recommended_actions: playbooks
+            .iter()
+            .enumerate()
+            .map(|(idx, p)| HarnessEngineeringAction {
+                gap_id: format!("playbook-{}", idx),
+                priority: 1,
+                action: format!("Review playbook: {}", p.id),
+                rationale: format!(
+                    "Generated from {} successful runs with {:.0}% confidence",
+                    p.provenance.evidence_count,
+                    p.confidence * 100.0
+                ),
+            })
+            .collect(),
+        patch_candidates: vec![],
+        verification_plan: vec![],
+        verification_results: vec![],
+        ratchet: None,
+        ai_assessment: None,
+        warnings: vec![],
+    })
+}
+
+fn build_evolution_context(
+    state: Option<&AppState>,
+    gaps: &[HarnessEngineeringGap],
+    options: &HarnessEngineeringOptions,
+) -> EvolutionContext {
+    // Try to get session ID from AppState (if running through ACP)
+    // TODO: Capture actual session ID from trace writer
+    let session_id: Option<String> = state.and(None);
+
+    // Infer workflow type from options
+    let workflow = if options.bootstrap {
+        Some("bootstrap".to_string())
+    } else if options.apply {
+        Some("auto-apply".to_string())
+    } else {
+        Some("evaluation".to_string())
+    };
+
+    // Aggregate gap categories
+    let mut gap_categories: Vec<String> = gaps
+        .iter()
+        .map(|gap| gap.category.clone())
+        .collect();
+    gap_categories.sort();
+    gap_categories.dedup();
+
+    EvolutionContext {
+        session_id,
+        workflow,
+        gaps_detected: gaps.len(),
+        gap_categories,
+        rollback_reason: None,
+        error_messages: None,
+    }
 }
 
 fn record_evolution_outcome(
     repo_root: &Path,
     applied: &[&HarnessEngineeringPatchCandidate],
     failed: &[&HarnessEngineeringPatchCandidate],
+    context: Option<&EvolutionContext>,
 ) -> Result<(), String> {
     let history_dir = repo_root.join("docs/fitness/evolution");
     fs::create_dir_all(&history_dir)
@@ -2083,6 +2278,32 @@ fn record_evolution_outcome(
         timestamp: Utc::now().to_rfc3339(),
         repo_root: repo_root.display().to_string(),
         mode: "auto-apply".to_string(),
+
+        // NEW: Link to agent traces
+        session_id: context.and_then(|ctx| ctx.session_id.clone()),
+
+        // NEW: Task fingerprint
+        task_type: Some("harness_evolution".to_string()),
+        workflow: context.and_then(|ctx| ctx.workflow.clone()),
+        trigger: Some(if context.is_some() { "manual" } else { "unknown" }.to_string()),
+
+        // NEW: Evidence bundle
+        gaps_detected: context.map(|ctx| ctx.gaps_detected),
+        gap_categories: context.map(|ctx| ctx.gap_categories.clone()),
+        changed_paths: context.and_then(|_ctx| {
+            if applied.is_empty() {
+                None
+            } else {
+                Some(
+                    applied
+                        .iter()
+                        .flat_map(|p| p.targets.iter().cloned())
+                        .collect(),
+                )
+            }
+        }),
+
+        // Existing fields
         patches_applied: applied.iter().map(|p| p.id.clone()).collect(),
         patches_failed: failed.iter().map(|p| p.id.clone()).collect(),
         success_rate: if applied.is_empty() && failed.is_empty() {
@@ -2090,6 +2311,10 @@ fn record_evolution_outcome(
         } else {
             applied.len() as f64 / (applied.len() + failed.len()) as f64
         },
+
+        // NEW: Failure context
+        rollback_reason: context.and_then(|ctx| ctx.rollback_reason.clone()),
+        error_messages: context.and_then(|ctx| ctx.error_messages.clone()),
     };
 
     let json_line = serde_json::to_string(&record)
