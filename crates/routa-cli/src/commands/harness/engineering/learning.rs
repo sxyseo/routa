@@ -6,10 +6,10 @@ use super::types::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::Path;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Playbook candidate generated from successful evolution runs
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybookCandidate {
     pub id: String,
@@ -19,7 +19,7 @@ pub struct PlaybookCandidate {
     pub provenance: PlaybookProvenance,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybookStrategy {
     pub preferred_patch_order: Vec<String>,
@@ -27,14 +27,14 @@ pub struct PlaybookStrategy {
     pub anti_patterns: Vec<AntiPattern>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AntiPattern {
     pub do_not: String,
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybookProvenance {
     pub source_runs: Vec<String>,
@@ -237,7 +237,7 @@ fn extract_anti_patterns(failed_runs: &[&EvolutionHistory]) -> Vec<AntiPattern> 
     anti_patterns
 }
 
-/// Save playbook to YAML file
+/// Save playbook to JSON file
 pub fn save_playbook(
     repo_root: &Path,
     playbook: &PlaybookCandidate,
@@ -255,4 +255,132 @@ pub fn save_playbook(
         .map_err(|e| format!("Failed to write playbook: {}", e))?;
 
     Ok(())
+}
+
+/// Load playbooks for a specific task type
+pub fn load_playbooks_for_task(
+    repo_root: &Path,
+    task_type: &str,
+) -> Result<Vec<PlaybookCandidate>, String> {
+    let playbook_dir = repo_root.join("docs/fitness/playbooks");
+
+    if !playbook_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let entries = fs::read_dir(&playbook_dir)
+        .map_err(|e| format!("Failed to read playbooks dir: {}", e))?;
+
+    let mut playbooks = Vec::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read playbook file {:?}: {}", path, e))?;
+
+        match serde_json::from_str::<PlaybookCandidate>(&content) {
+            Ok(playbook) if playbook.task_type == task_type => {
+                playbooks.push(playbook);
+            }
+            Ok(_) => {
+                // Skip playbooks for other task types
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to parse playbook {:?}: {}", path, e);
+            }
+        }
+    }
+
+    // Sort by confidence (descending)
+    playbooks.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+
+    Ok(playbooks)
+}
+
+/// Find the best matching playbook for given gaps
+pub fn find_matching_playbook<'a>(
+    playbooks: &'a [PlaybookCandidate],
+    gaps: &[super::HarnessEngineeringGap],
+) -> Option<&'a PlaybookCandidate> {
+    if gaps.is_empty() || playbooks.is_empty() {
+        return None;
+    }
+
+    // Extract and sort current gap categories
+    let mut current_categories: Vec<String> = gaps
+        .iter()
+        .map(|g| g.category.clone())
+        .collect();
+    current_categories.sort();
+    current_categories.dedup();
+
+    // Find exact match
+    playbooks.iter().find(|pb| {
+        let mut playbook_pattern = pb.strategy.gap_patterns.clone();
+        playbook_pattern.sort();
+        playbook_pattern == current_categories
+    })
+}
+
+/// Reorder patches based on playbook strategy
+pub fn reorder_patches_by_playbook(
+    patches: &mut Vec<super::HarnessEngineeringPatchCandidate>,
+    playbook: &PlaybookCandidate,
+) {
+    use std::collections::HashMap;
+
+    // Create priority map from playbook order
+    let priority_map: HashMap<String, usize> = playbook
+        .strategy
+        .preferred_patch_order
+        .iter()
+        .enumerate()
+        .map(|(idx, id)| (id.clone(), idx))
+        .collect();
+
+    // Sort patches by priority
+    // Patches in playbook come first (by their order)
+    // Patches not in playbook come last (preserve original order)
+    patches.sort_by_key(|patch| {
+        priority_map.get(&patch.id).copied().unwrap_or(usize::MAX)
+    });
+}
+
+/// Display preflight guidance from playbook
+pub fn display_preflight_guidance(
+    playbook: &PlaybookCandidate,
+    json_output: bool,
+) {
+    if json_output {
+        return; // Skip in JSON mode
+    }
+
+    println!();
+    println!("🧠 Loaded learned playbook (confidence: {:.0}%)", playbook.confidence * 100.0);
+    println!("  ID: {}", playbook.id);
+    println!("  Evidence: {} successful runs", playbook.provenance.evidence_count);
+
+    if !playbook.strategy.preferred_patch_order.is_empty() {
+        println!();
+        println!("💡 Recommended patch order:");
+        for (idx, patch_id) in playbook.strategy.preferred_patch_order.iter().enumerate() {
+            println!("  {}. {}", idx + 1, patch_id);
+        }
+    }
+
+    if !playbook.strategy.anti_patterns.is_empty() {
+        println!();
+        println!("⚠️  Known issues:");
+        for anti in &playbook.strategy.anti_patterns {
+            println!("  - {}: {}", anti.do_not, anti.reason);
+        }
+    }
+
+    println!();
 }

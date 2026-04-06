@@ -81,7 +81,23 @@ pub async fn evaluate_harness_engineering(
 
     let mut recommended_actions = build_recommended_actions(&gaps);
     let mut patch_candidates = build_patch_candidates(repo_root, repo_signals.as_ref(), &gaps);
-    patch_candidates.sort_by(|left, right| left.id.cmp(&right.id));
+
+    // NEW (Phase 2): Load playbooks and apply learned strategies
+    let playbooks = learning::load_playbooks_for_task(repo_root, "harness_evolution").unwrap_or_else(|e| {
+        if !options.json_output {
+            eprintln!("Warning: Failed to load playbooks: {}", e);
+        }
+        Vec::new()
+    });
+
+    if let Some(playbook) = learning::find_matching_playbook(&playbooks, &gaps) {
+        learning::display_preflight_guidance(playbook, options.json_output);
+        learning::reorder_patches_by_playbook(&mut patch_candidates, playbook);
+    } else {
+        // No matching playbook, use default sorting
+        patch_candidates.sort_by(|left, right| left.id.cmp(&right.id));
+    }
+
     let verification_plan = build_verification_plan(repo_root);
 
     let summary = HarnessEngineeringSummary {

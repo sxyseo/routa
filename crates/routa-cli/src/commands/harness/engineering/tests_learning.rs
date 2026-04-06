@@ -85,9 +85,9 @@ fn test_generate_playbook_candidates() {
 fn test_save_playbook() {
     let temp_dir = TempDir::new().unwrap();
     let repo_root = temp_dir.path();
-    
-    use super::learning::{PlaybookCandidate, PlaybookStrategy, PlaybookProvenance, AntiPattern};
-    
+
+    use super::learning::{PlaybookCandidate, PlaybookStrategy, PlaybookProvenance};
+
     let playbook = PlaybookCandidate {
         id: "test-playbook".to_string(),
         task_type: "harness_evolution".to_string(),
@@ -103,13 +103,141 @@ fn test_save_playbook() {
             evidence_count: 3,
         },
     };
-    
+
     save_playbook(repo_root, &playbook).unwrap();
-    
+
     let playbook_file = repo_root.join("docs/fitness/playbooks/test-playbook.json");
     assert!(playbook_file.exists());
-    
+
     let content = fs::read_to_string(playbook_file).unwrap();
     assert!(content.contains("test-playbook"));
     assert!(content.contains("harness_evolution"));
+}
+
+#[test]
+fn test_load_playbooks_for_task() {
+    let temp_dir = TempDir::new().unwrap();
+    let repo_root = temp_dir.path();
+
+    // Create playbook directory
+    let playbook_dir = repo_root.join("docs/fitness/playbooks");
+    fs::create_dir_all(&playbook_dir).unwrap();
+
+    // Save a playbook
+    let playbook_json = r#"{
+        "id": "test-playbook",
+        "taskType": "harness_evolution",
+        "confidence": 0.95,
+        "strategy": {
+            "preferredPatchOrder": ["patch.A"],
+            "gapPatterns": ["missing_automation"],
+            "antiPatterns": []
+        },
+        "provenance": {
+            "sourceRuns": ["2026-04-06T01:00:00Z"],
+            "successRate": 0.95,
+            "evidenceCount": 3
+        }
+    }"#;
+
+    fs::write(playbook_dir.join("test-playbook.json"), playbook_json).unwrap();
+
+    // Load playbooks
+    let playbooks = load_playbooks_for_task(repo_root, "harness_evolution").unwrap();
+
+    assert_eq!(playbooks.len(), 1);
+    assert_eq!(playbooks[0].id, "test-playbook");
+    assert_eq!(playbooks[0].confidence, 0.95);
+}
+
+#[test]
+fn test_find_matching_playbook() {
+    use super::learning::{find_matching_playbook, PlaybookCandidate, PlaybookStrategy, PlaybookProvenance};
+    use super::HarnessEngineeringGap;
+
+    let playbooks = vec![
+        PlaybookCandidate {
+            id: "playbook-1".to_string(),
+            task_type: "harness_evolution".to_string(),
+            confidence: 0.95,
+            strategy: PlaybookStrategy {
+                preferred_patch_order: vec![],
+                gap_patterns: vec!["missing_automation".to_string()],
+                anti_patterns: vec![],
+            },
+            provenance: PlaybookProvenance {
+                source_runs: vec![],
+                success_rate: 0.95,
+                evidence_count: 3,
+            },
+        },
+    ];
+
+    let gaps = vec![
+        HarnessEngineeringGap {
+            id: "gap-1".to_string(),
+            category: "missing_automation".to_string(),
+            severity: "medium".to_string(),
+            title: "Test Gap".to_string(),
+            detail: "test detail".to_string(),
+            evidence: vec![],
+            suggested_fix: "test fix".to_string(),
+            harness_mutation_candidate: true,
+        },
+    ];
+
+    let matched = find_matching_playbook(&playbooks, &gaps);
+    assert!(matched.is_some());
+    assert_eq!(matched.unwrap().id, "playbook-1");
+}
+
+#[test]
+fn test_reorder_patches_by_playbook() {
+    use super::learning::{reorder_patches_by_playbook, PlaybookCandidate, PlaybookStrategy, PlaybookProvenance};
+    use super::HarnessEngineeringPatchCandidate;
+
+    let playbook = PlaybookCandidate {
+        id: "test".to_string(),
+        task_type: "harness_evolution".to_string(),
+        confidence: 0.95,
+        strategy: PlaybookStrategy {
+            preferred_patch_order: vec!["patch.B".to_string(), "patch.A".to_string()],
+            gap_patterns: vec![],
+            anti_patterns: vec![],
+        },
+        provenance: PlaybookProvenance {
+            source_runs: vec![],
+            success_rate: 0.95,
+            evidence_count: 3,
+        },
+    };
+
+    let mut patches = vec![
+        HarnessEngineeringPatchCandidate {
+            id: "patch.A".to_string(),
+            risk: "low".to_string(),
+            title: "Patch A".to_string(),
+            rationale: "Test A".to_string(),
+            targets: vec![],
+            change_kind: "create".to_string(),
+            script_name: None,
+            script_command: None,
+        },
+        HarnessEngineeringPatchCandidate {
+            id: "patch.B".to_string(),
+            risk: "low".to_string(),
+            title: "Patch B".to_string(),
+            rationale: "Test B".to_string(),
+            targets: vec![],
+            change_kind: "create".to_string(),
+            script_name: None,
+            script_command: None,
+        },
+    ];
+
+    reorder_patches_by_playbook(&mut patches, &playbook);
+
+    // Should be reordered: B, A
+    assert_eq!(patches[0].id, "patch.B");
+    assert_eq!(patches[1].id, "patch.A");
 }
