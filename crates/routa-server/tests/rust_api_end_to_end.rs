@@ -97,8 +97,9 @@ fn run_git(repo_path: &std::path::Path, args: &[&str]) {
 fn init_git_repo(repo_path: &std::path::Path) {
     fs::create_dir_all(repo_path).expect("create repo dir");
     run_git(repo_path, &["init", "--initial-branch=main"]);
-    run_git(repo_path, &["config", "user.email", "test@example.com"]);
-    run_git(repo_path, &["config", "user.name", "Routa Test"]);
+    // Use --local to scope test credentials to this repo only
+    run_git(repo_path, &["config", "--local", "user.email", "test@example.com"]);
+    run_git(repo_path, &["config", "--local", "user.name", "Routa Test"]);
 }
 
 fn json_has_error(resp: &Value, expected: &str) -> bool {

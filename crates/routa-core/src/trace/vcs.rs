@@ -131,8 +131,9 @@ mod tests {
         std::fs::create_dir(&repo_path).expect("repo dir should be created");
 
         run_git(&repo_path, &["init", "-b", "main"]);
-        run_git(&repo_path, &["config", "user.name", "Routa Test"]);
-        run_git(&repo_path, &["config", "user.email", "test@example.com"]);
+        // Use --local to scope test credentials to this repo only
+        run_git(&repo_path, &["config", "--local", "user.name", "Routa Test"]);
+        run_git(&repo_path, &["config", "--local", "user.email", "test@example.com"]);
         std::fs::write(repo_path.join("README.md"), "test repo\n")
             .expect("fixture file should be written");
         run_git(&repo_path, &["add", "README.md"]);

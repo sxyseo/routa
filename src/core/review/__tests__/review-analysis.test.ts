@@ -35,8 +35,9 @@ describe("buildReviewAnalysisPayload", () => {
     tempDirs.push(repoDir);
 
     git(repoDir, "init", "-b", "main");
-    git(repoDir, "config", "user.name", "Routa Test");
-    git(repoDir, "config", "user.email", "test@example.com");
+    // Use --local to scope test credentials to this repo only
+    git(repoDir, "config", "--local", "user.name", "Routa Test");
+    git(repoDir, "config", "--local", "user.email", "test@example.com");
 
     fs.writeFileSync(path.join(repoDir, "AGENTS.md"), "# Test\n");
     fs.mkdirSync(path.join(repoDir, ".routa"), { recursive: true });
@@ -73,8 +74,9 @@ describe("buildReviewAnalysisPayload", () => {
     tempDirs.push(repoDir);
 
     git(repoDir, "init", "-b", "main");
-    git(repoDir, "config", "user.name", "Routa Test");
-    git(repoDir, "config", "user.email", "test@example.com");
+    // Use --local to scope test credentials to this repo only
+    git(repoDir, "config", "--local", "user.name", "Routa Test");
+    git(repoDir, "config", "--local", "user.email", "test@example.com");
 
     fs.writeFileSync(
       path.join(repoDir, "example.ts"),

@@ -166,6 +166,53 @@ export class WorkspaceTools {
   }): Promise<ToolResult> {
     const cwd = params.cwd ?? this.defaultCwd ?? getServerBridge().env.currentDir();
     try {
+      // Validate git user configuration before committing
+      const { stdout: userName } = await execFileAsync(
+        "git",
+        ["config", "user.name"],
+        { cwd, timeout: 5000 }
+      ).catch(() => ({ stdout: "" }));
+
+      const { stdout: userEmail } = await execFileAsync(
+        "git",
+        ["config", "user.email"],
+        { cwd, timeout: 5000 }
+      ).catch(() => ({ stdout: "" }));
+
+      const name = userName.trim();
+      const email = userEmail.trim();
+
+      // Block commits with test/placeholder credentials
+      const suspiciousPatterns = [
+        { pattern: /test@example\.com/i, field: "email" },
+        { pattern: /routa test/i, field: "name" },
+        { pattern: /^test$/i, field: "name" },
+        { pattern: /placeholder/i, field: "name" },
+        { pattern: /placeholder/i, field: "email" },
+      ];
+
+      for (const { pattern, field } of suspiciousPatterns) {
+        const value = field === "name" ? name : email;
+        if (pattern.test(value)) {
+          return errorResult(
+            `Cannot commit: Git user.${field} is set to suspicious test value "${value}". ` +
+            `Please configure your git identity:\n` +
+            `  git config user.name "Your Name"\n` +
+            `  git config user.email "your.email@example.com"`
+          );
+        }
+      }
+
+      // Warn if git identity is not configured at all
+      if (!name || !email) {
+        return errorResult(
+          `Cannot commit: Git user identity is not configured. ` +
+          `Please set your identity:\n` +
+          `  git config user.name "Your Name"\n` +
+          `  git config user.email "your.email@example.com"`
+        );
+      }
+
       // Optionally stage all changes
       if (params.stageAll) {
         await execFileAsync("git", ["add", "-A"], { cwd, timeout: 10000 });
@@ -200,6 +247,7 @@ export class WorkspaceTools {
         hash: hashOutput.trim(),
         message: params.message,
         output: stdout.trim(),
+        author: `${name} <${email}>`,
         filesCommitted: staged
           .trim()
           .split("\n")
