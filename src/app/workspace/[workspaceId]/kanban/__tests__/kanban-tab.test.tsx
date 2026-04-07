@@ -896,8 +896,122 @@ describe("KanbanCardDetail changes tab", () => {
 
     expect(await screen.findByText("feature-worktree")).toBeTruthy();
     expect(screen.getByText("/tmp/worktrees/story-one")).toBeTruthy();
-    expect(screen.getByText("src/app.tsx")).toBeTruthy();
-    expect(screen.getByText("notes/todo.md")).toBeTruthy();
+    expect(screen.getByText("app.tsx")).toBeTruthy();
+    expect(screen.getByText("todo.md")).toBeTruthy();
+    expect(screen.getByTitle("src")).toBeTruthy();
+    expect(screen.getByTitle("notes")).toBeTruthy();
+  });
+
+  it("loads and renders a file diff preview when a change row is selected", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/tasks/task-1/changes") {
+        return {
+          ok: true,
+          json: async () => ({
+            changes: {
+              codebaseId: "codebase-1",
+              repoPath: "/tmp/repos/main",
+              label: "feature-worktree",
+              branch: "task/story-one",
+              status: {
+                clean: false,
+                ahead: 0,
+                behind: 0,
+                modified: 1,
+                untracked: 0,
+              },
+              files: [
+                { path: "src/app.tsx", status: "modified" },
+              ],
+              source: "worktree",
+              worktreeId: "wt-1",
+              worktreePath: "/tmp/worktrees/story-one",
+            },
+          }),
+        } as Response;
+      }
+      if (url === "/api/tasks/task-1/changes/file?path=src%2Fapp.tsx&status=modified") {
+        return {
+          ok: true,
+          json: async () => ({
+            diff: {
+              path: "src/app.tsx",
+              status: "modified",
+              patch: [
+                "diff --git a/src/app.tsx b/src/app.tsx",
+                "index 1111111..2222222 100644",
+                "--- a/src/app.tsx",
+                "+++ b/src/app.tsx",
+                "@@ -1 +1 @@",
+                "-const next = 1;",
+                "+const next = 2;",
+              ].join("\n"),
+            },
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+    });
+
+    render(
+      <KanbanCardDetail
+        task={createTask("task-1", "Story One", {
+          worktreeId: "wt-1",
+          codebaseIds: ["codebase-1"],
+        })}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repos/main",
+          branch: "main",
+          isDefault: true,
+          sourceType: "github",
+          sourceUrl: "https://example.com/repo.git",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        allCodebaseIds={["codebase-1"]}
+        worktreeCache={{
+          "wt-1": {
+            id: "wt-1",
+            codebaseId: "codebase-1",
+            workspaceId: "workspace-1",
+            worktreePath: "/tmp/worktrees/story-one",
+            branch: "task/story-one",
+            baseBranch: "main",
+            status: "active",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+          },
+        }}
+        onPatchTask={vi.fn(async () => createTask("task-1", "Story One"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+    await waitFor(() => {
+      expect(desktopAwareFetch).toHaveBeenCalledWith("/api/tasks/task-1/changes", { cache: "no-store" });
+    });
+
+    fireEvent.click(await screen.findByTestId("kanban-file-row-src/app.tsx"));
+
+    await waitFor(() => {
+      expect(desktopAwareFetch).toHaveBeenCalledWith(
+        "/api/tasks/task-1/changes/file?path=src%2Fapp.tsx&status=modified",
+        { cache: "no-store", signal: expect.any(AbortSignal) },
+      );
+    });
+
+    expect(await screen.findByText(/\+const next = 2;/)).toBeTruthy();
+    expect(screen.getByText(/-const next = 1;/)).toBeTruthy();
   });
 });
 

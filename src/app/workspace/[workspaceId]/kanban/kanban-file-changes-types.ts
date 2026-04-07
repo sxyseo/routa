@@ -37,3 +37,10 @@ export interface KanbanTaskChanges extends KanbanRepoChanges {
   worktreeId?: string;
   worktreePath?: string;
 }
+
+export interface KanbanFileDiffPreview {
+  path: string;
+  previousPath?: string;
+  status: KanbanFileChangeStatus;
+  patch: string;
+}

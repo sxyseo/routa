@@ -35,7 +35,7 @@ describe("KanbanTab file changes panel", () => {
 
     expect(screen.getByText("package-lock.json")).toBeTruthy();
     expect(screen.getByTitle("package-lock.json")).toBeTruthy();
-    expect(container.firstElementChild?.className).toContain("grid-cols-[auto_minmax(0,1fr)]");
+    expect(container.firstElementChild?.className).toContain("grid-cols-[auto_minmax(0,1fr)_auto]");
   });
 
   it("splits nested paths into filename and directory rows for readability", () => {

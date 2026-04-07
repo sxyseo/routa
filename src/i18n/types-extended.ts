@@ -674,6 +674,10 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     loadingChanges: string;
     noChanges: string;
     noRepoChanges: string;
+    clickFileToInspectDiff: string;
+    loadingFileDiff: string;
+    failedToLoadFileDiff: string;
+    noDiffAvailable: string;
     worktreeSource: string;
     repoSource: string;
     dirty: string;

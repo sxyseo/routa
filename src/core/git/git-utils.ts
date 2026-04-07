@@ -13,6 +13,7 @@
  */
 
 import * as path from "path";
+import * as fs from "fs";
 
 import { getServerBridge } from "@/core/platform";
 
@@ -127,6 +128,13 @@ export interface RepoChanges {
   branch: string;
   status: RepoStatus;
   files: GitFileChange[];
+}
+
+export interface RepoFileDiff {
+  path: string;
+  previousPath?: string;
+  status: FileChangeStatus;
+  patch: string;
 }
 
 export interface RepoDeliveryStatus {
@@ -333,6 +341,90 @@ export function getRepoChanges(repoPath: string): RepoChanges {
       files: [],
     };
   }
+}
+
+function buildSyntheticAddedDiff(repoPath: string, file: GitFileChange): string {
+  const absolutePath = path.join(repoPath, file.path);
+  const content = fs.readFileSync(absolutePath, "utf8");
+  const lines = content.split(/\r?\n/);
+  const lineCount = content.length === 0 ? 0 : lines.length;
+  const hunkHeader = `@@ -0,0 +1,${lineCount} @@`;
+
+  return [
+    `diff --git a/${file.path} b/${file.path}`,
+    "new file mode 100644",
+    "--- /dev/null",
+    `+++ b/${file.path}`,
+    hunkHeader,
+    ...lines.map((line) => `+${line}`),
+  ].join("\n");
+}
+
+function buildSyntheticRenameDiff(file: GitFileChange): string {
+  return [
+    `diff --git a/${file.previousPath ?? file.path} b/${file.path}`,
+    "similarity index 100%",
+    `rename from ${file.previousPath ?? file.path}`,
+    `rename to ${file.path}`,
+  ].join("\n");
+}
+
+function getFirstNonEmptyGitDiff(repoPath: string, commands: string[]): string {
+  for (const command of commands) {
+    try {
+      const patch = gitExecSync(command, repoPath);
+      if (patch.trim()) {
+        return patch;
+      }
+    } catch {
+      // Ignore and try the next diff variant.
+    }
+  }
+
+  return "";
+}
+
+export function getRepoFileDiff(repoPath: string, file: GitFileChange): RepoFileDiff {
+  const quotedPath = shellQuote(file.path);
+  const patch = getFirstNonEmptyGitDiff(repoPath, [
+    `git --no-pager diff --no-ext-diff --find-renames --find-copies -- ${quotedPath}`,
+    `git --no-pager diff --no-ext-diff --find-renames --find-copies --cached -- ${quotedPath}`,
+    `git --no-pager diff --no-ext-diff --find-renames --find-copies HEAD -- ${quotedPath}`,
+  ]);
+
+  if (patch) {
+    return {
+      path: file.path,
+      previousPath: file.previousPath,
+      status: file.status,
+      patch,
+    };
+  }
+
+  if (file.status === "untracked" || file.status === "added") {
+    return {
+      path: file.path,
+      previousPath: file.previousPath,
+      status: file.status,
+      patch: buildSyntheticAddedDiff(repoPath, file),
+    };
+  }
+
+  if (file.status === "renamed" && file.previousPath) {
+    return {
+      path: file.path,
+      previousPath: file.previousPath,
+      status: file.status,
+      patch: buildSyntheticRenameDiff(file),
+    };
+  }
+
+  return {
+    path: file.path,
+    previousPath: file.previousPath,
+    status: file.status,
+    patch: "",
+  };
 }
 
 export function getRepoDeliveryStatus(

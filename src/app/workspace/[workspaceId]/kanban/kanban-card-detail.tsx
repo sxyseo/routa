@@ -16,8 +16,8 @@ import { getKanbanAutomationSteps, type KanbanAutomationStep } from "@/core/mode
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import { KanbanCardActivityPanel } from "./kanban-card-activity";
 import { KanbanDescriptionEditor } from "./kanban-description-editor";
-import { FileRow, formatChangeSummary } from "./kanban-file-changes-panel";
-import type { KanbanTaskChanges } from "./kanban-file-changes-types";
+import { FileRow, formatChangeSummary, STATUS_BADGE } from "./kanban-file-changes-panel";
+import type { KanbanFileChangeItem, KanbanFileDiffPreview, KanbanTaskChanges } from "./kanban-file-changes-types";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import {
   createKanbanSpecialistResolver,
@@ -515,6 +515,7 @@ export function KanbanCardDetail({
               compact={compactMode}
             >
               <TaskChangesPanel
+                taskId={task.id}
                 changes={taskChanges}
                 loading={taskChangesLoading}
                 compact={compactMode}
@@ -848,15 +849,101 @@ function EvidenceBundlePanel({
 }
 
 function TaskChangesPanel({
+  taskId,
   changes,
   loading = false,
   compact = false,
 }: {
+  taskId: string;
   changes: KanbanTaskChanges | null;
   loading?: boolean;
   compact?: boolean;
 }) {
   const { t } = useTranslation();
+  const [pinnedFileKey, setPinnedFileKey] = useState<string | null>(null);
+  const [diffCache, setDiffCache] = useState<Record<string, KanbanFileDiffPreview>>({});
+  const [diffErrors, setDiffErrors] = useState<Record<string, string>>({});
+  const [loadingFileKey, setLoadingFileKey] = useState<string | null>(null);
+
+  const fileKey = (file: KanbanFileChangeItem) => `${file.status}:${file.previousPath ?? ""}:${file.path}`;
+  const activeFile = useMemo(() => {
+    const preferredKey = pinnedFileKey;
+    if (!changes?.files.length || !preferredKey) return null;
+    return changes.files.find((file) => fileKey(file) === preferredKey) ?? null;
+  }, [changes?.files, pinnedFileKey]);
+  const activeFileKey = activeFile ? fileKey(activeFile) : null;
+  const activeDiff = activeFileKey ? diffCache[activeFileKey] : undefined;
+  const activeDiffError = activeFileKey ? diffErrors[activeFileKey] : undefined;
+
+  useEffect(() => {
+    if (!changes?.files.length) {
+      setPinnedFileKey(null);
+      return;
+    }
+
+    const availableKeys = new Set(changes.files.map((file) => fileKey(file)));
+    if (pinnedFileKey && !availableKeys.has(pinnedFileKey)) {
+      setPinnedFileKey(null);
+    }
+  }, [changes?.files, pinnedFileKey]);
+
+  useEffect(() => {
+    if (!taskId || !changes || changes.error || !activeFile || !activeFileKey || diffCache[activeFileKey]) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      path: activeFile.path,
+      status: activeFile.status,
+    });
+    if (activeFile.previousPath) {
+      params.set("previousPath", activeFile.previousPath);
+    }
+
+    const loadDiff = async () => {
+      setLoadingFileKey(activeFileKey);
+      setDiffErrors((current) => {
+        if (!(activeFileKey in current)) return current;
+        const next = { ...current };
+        delete next[activeFileKey];
+        return next;
+      });
+
+      try {
+        const response = await desktopAwareFetch(
+          `/api/tasks/${encodeURIComponent(taskId)}/changes/file?${params.toString()}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        const data = await response.json().catch(() => ({}));
+        if (controller.signal.aborted) return;
+        if (!response.ok) {
+          throw new Error(data.error ?? t.kanbanDetail.failedToLoadFileDiff);
+        }
+
+        const diff = (data.diff ?? {
+          path: activeFile.path,
+          previousPath: activeFile.previousPath,
+          status: activeFile.status,
+          patch: "",
+        }) as KanbanFileDiffPreview;
+        setDiffCache((current) => ({ ...current, [activeFileKey]: diff }));
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setDiffErrors((current) => ({
+          ...current,
+          [activeFileKey]: error instanceof Error ? error.message : t.kanbanDetail.failedToLoadFileDiff,
+        }));
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingFileKey((current) => (current === activeFileKey ? null : current));
+        }
+      }
+    };
+
+    void loadDiff();
+    return () => controller.abort();
+  }, [activeFile, activeFileKey, changes, diffCache, t.kanbanDetail.failedToLoadFileDiff, taskId]);
 
   if (loading) {
     return (
@@ -927,10 +1014,175 @@ function TaskChangesPanel({
           {changes.repoPath ? t.kanbanDetail.noChanges : t.kanbanDetail.noRepoChanges}
         </div>
       ) : (
-        <div className="space-y-2">
-          {changes.files.map((file) => (
-            <FileRow key={`${changes.codebaseId}-${file.path}-${file.status}`} file={file} />
-          ))}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-1 dark:border-[#202433] dark:bg-[#0d1018]">
+            <div className="space-y-0.5">
+              {changes.files.map((file) => {
+                const key = fileKey(file);
+                return (
+                  <FileRow
+                    key={`${changes.codebaseId}-${key}`}
+                    file={file}
+                    selected={key === activeFileKey}
+                    onClick={() => setPinnedFileKey(key)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+          <TaskFileDiffPreview
+            file={activeFile}
+            diff={activeDiff}
+            loading={loadingFileKey === activeFileKey && !activeDiff}
+            error={activeDiffError}
+            compact={compact}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ParsedDiffPreview {
+  path: string;
+  additions: number;
+  deletions: number;
+  lines: Array<{ kind: "meta" | "hunk" | "add" | "remove" | "context"; text: string }>;
+}
+
+function parseFileDiffPreview(diff: KanbanFileDiffPreview): ParsedDiffPreview {
+  const lines = diff.patch.split("\n");
+  let additions = 0;
+  let deletions = 0;
+  let resolvedPath = diff.path;
+
+  const parsedLines = lines.map((line) => {
+    if (line.startsWith("+++ b/")) {
+      resolvedPath = line.slice(6);
+      return { kind: "meta" as const, text: line };
+    }
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      additions += 1;
+      return { kind: "add" as const, text: line };
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      deletions += 1;
+      return { kind: "remove" as const, text: line };
+    }
+    if (line.startsWith("@@")) {
+      return { kind: "hunk" as const, text: line };
+    }
+    if (
+      line.startsWith("diff --git ")
+      || line.startsWith("index ")
+      || line.startsWith("--- ")
+      || line.startsWith("new file mode ")
+      || line.startsWith("deleted file mode ")
+      || line.startsWith("similarity index ")
+      || line.startsWith("rename from ")
+      || line.startsWith("rename to ")
+    ) {
+      return { kind: "meta" as const, text: line };
+    }
+    return { kind: "context" as const, text: line };
+  });
+
+  return {
+    path: resolvedPath,
+    additions,
+    deletions,
+    lines: parsedLines,
+  };
+}
+
+function TaskFileDiffPreview({
+  file,
+  diff,
+  loading,
+  error,
+  compact = false,
+}: {
+  file: KanbanFileChangeItem | null;
+  diff?: KanbanFileDiffPreview;
+  loading: boolean;
+  error?: string;
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+
+  if (!file) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200/80 px-3 py-4 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+        {t.kanbanDetail.clickFileToInspectDiff}
+      </div>
+    );
+  }
+
+  const badge = STATUS_BADGE[file.status];
+  const parsedDiff = diff ? parseFileDiffPreview(diff) : null;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white dark:border-[#202433] dark:bg-[#0d1018]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/70 px-3 py-2 dark:border-[#202433]">
+        <div className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
+          <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${badge.className}`}>
+            {badge.short}
+          </span>
+          <span className="truncate pl-0.5 text-sm font-medium text-slate-900 dark:text-slate-100" title={file.path}>
+            {file.path}
+          </span>
+          {file.previousPath && (
+            <>
+              <span />
+              <div className="truncate pl-0.5 text-[11px] text-slate-500 dark:text-slate-400" title={file.previousPath}>
+                {t.kanban.fromPath} {file.previousPath}
+              </div>
+            </>
+          )}
+        </div>
+        {parsedDiff && (
+          <div className="shrink-0 text-[11px] font-mono">
+            <span className="text-emerald-600 dark:text-emerald-300">+{parsedDiff.additions}</span>
+            {" "}
+            <span className="text-rose-600 dark:text-rose-300">-{parsedDiff.deletions}</span>
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className={`px-3 py-3 text-sm text-slate-500 dark:text-slate-400 ${compact ? "leading-5" : "leading-6"}`}>
+          {t.kanbanDetail.loadingFileDiff}
+        </div>
+      ) : error ? (
+        <div className={`border-l-2 border-rose-400/80 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/70 dark:text-rose-300 ${compact ? "leading-5" : "leading-6"}`}>
+          {error}
+        </div>
+      ) : !diff?.patch.trim() || !parsedDiff ? (
+        <div className={`px-3 py-3 text-sm text-slate-500 dark:text-slate-400 ${compact ? "leading-5" : "leading-6"}`}>
+          {t.kanbanDetail.noDiffAvailable}
+        </div>
+      ) : (
+        <div className="max-h-[28rem] overflow-auto">
+          <pre className="min-w-full bg-slate-950/95 px-0 py-0 text-[11px] leading-5 text-slate-100">
+            {parsedDiff.lines.map((line, index) => (
+              <div
+                key={`${line.text}-${index}`}
+                className={
+                  line.kind === "add"
+                    ? "bg-emerald-950/70 px-3 text-emerald-100"
+                    : line.kind === "remove"
+                      ? "bg-rose-950/60 px-3 text-rose-100"
+                      : line.kind === "hunk"
+                        ? "bg-sky-950/60 px-3 text-sky-100"
+                        : line.kind === "meta"
+                          ? "bg-slate-900 px-3 text-slate-400"
+                          : "px-3 text-slate-200"
+                }
+              >
+                {line.text || " "}
+              </div>
+            ))}
+          </pre>
         </div>
       )}
     </div>

@@ -78,15 +78,30 @@ function splitFilePath(path: string): { name: string; directory: string | null }
   };
 }
 
-export function FileRow({ file }: { file: KanbanFileChangeItem }) {
+interface FileRowProps {
+  file: KanbanFileChangeItem;
+  selected?: boolean;
+  onClick?: (file: KanbanFileChangeItem) => void;
+}
+
+export function FileRow({
+  file,
+  selected = false,
+  onClick,
+}: FileRowProps) {
   const { t } = useTranslation();
   const badge = STATUS_BADGE[file.status];
   const StatusIcon = badge.icon;
   const { name, directory } = splitFilePath(file.path);
   const previous = file.previousPath ? splitFilePath(file.previousPath) : null;
-
-  return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-1.5 rounded-md px-1 py-1 transition-colors hover:bg-slate-100/80 dark:hover:bg-[#171b27]">
+  const interactive = typeof onClick === "function";
+  const containerClassName = `grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-1.5 gap-y-0 rounded-md px-1 py-1 text-left transition-colors ${
+    selected
+      ? "bg-amber-50/80 dark:bg-amber-900/10"
+      : "hover:bg-slate-100/80 dark:hover:bg-[#171b27]"
+  }`;
+  const content = (
+    <>
       <span
         className={`inline-flex h-4 w-4 shrink-0 items-center justify-center self-start rounded-sm ${badge.className}`}
         title={file.status}
@@ -95,23 +110,16 @@ export function FileRow({ file }: { file: KanbanFileChangeItem }) {
         <StatusIcon className="h-2.5 w-2.5" />
       </span>
       <div className="min-w-0 overflow-hidden">
-        <div className="flex items-start justify-between gap-1.5">
-          <div className="min-w-0 flex-1">
-            <div className="block truncate text-[11px] font-medium leading-4 text-slate-800 dark:text-slate-100" title={name}>
-              {name}
-            </div>
-          </div>
-          <span className={`shrink-0 rounded-sm px-1 py-0 text-[7px] leading-4 font-semibold tracking-wide ${badge.className}`}>
-            {badge.short}
-          </span>
+        <div className="block truncate pl-0.5 text-[11px] font-medium leading-4 text-slate-800 dark:text-slate-100" title={name}>
+          {name}
         </div>
         {directory && (
-          <div className="block truncate text-[9px] leading-3.5 text-slate-500 dark:text-slate-400" title={directory}>
+          <div className="block truncate pl-0.5 text-[9px] leading-3.5 text-slate-500 dark:text-slate-400" title={directory}>
             {directory}
           </div>
         )}
         {previous && (
-          <div className="mt-0.5 flex items-center gap-1 text-[9px] leading-3.5 text-slate-400 dark:text-slate-500">
+          <div className="mt-0.5 flex items-center gap-1 pl-0.5 text-[9px] leading-3.5 text-slate-400 dark:text-slate-500">
             <ArrowRightLeft className="h-2.5 w-2.5 shrink-0" />
             <span className="truncate" title={previous.name}>
               {previous.name}
@@ -129,8 +137,27 @@ export function FileRow({ file }: { file: KanbanFileChangeItem }) {
           </div>
         )}
       </div>
-    </div>
+      <span className={`mt-0.5 shrink-0 self-start rounded-sm px-1 py-0 text-[7px] leading-4 font-semibold tracking-wide ${badge.className}`}>
+        {badge.short}
+      </span>
+    </>
   );
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        className={containerClassName}
+        onClick={() => onClick?.(file)}
+        data-testid={`kanban-file-row-${file.path}`}
+        aria-pressed={selected}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={containerClassName}>{content}</div>;
 }
 
 export function KanbanFileChangesPanel({
