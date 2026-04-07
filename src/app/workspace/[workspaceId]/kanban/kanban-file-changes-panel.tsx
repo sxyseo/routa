@@ -3,7 +3,18 @@
 import React from "react";
 import { useTranslation } from "@/i18n";
 import type { KanbanRepoChanges, KanbanFileChangeItem, KanbanFileChangeStatus } from "./kanban-file-changes-types";
-import { ChevronRight } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  ChevronRight,
+  Copy,
+  FilePlus2,
+  Pencil,
+  Plus,
+  Trash2,
+  Type,
+  type LucideIcon,
+} from "lucide-react";
 
 
 interface KanbanFileChangesPanelProps {
@@ -25,15 +36,15 @@ const DEFAULT_CHANGE_SUMMARY_COPY: ChangeSummaryCopy = {
   untrackedCount: "{count} untracked",
 };
 
-export const STATUS_BADGE: Record<KanbanFileChangeStatus, { short: string; className: string }> = {
-  modified: { short: "M", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
-  added: { short: "A", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-  deleted: { short: "D", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
-  renamed: { short: "R", className: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" },
-  copied: { short: "C", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300" },
-  untracked: { short: "??", className: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
-  typechange: { short: "T", className: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300" },
-  conflicted: { short: "U", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+export const STATUS_BADGE: Record<KanbanFileChangeStatus, { short: string; className: string; icon: LucideIcon }> = {
+  modified: { short: "M", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300", icon: Pencil },
+  added: { short: "A", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300", icon: Plus },
+  deleted: { short: "D", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300", icon: Trash2 },
+  renamed: { short: "R", className: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300", icon: ArrowRightLeft },
+  copied: { short: "C", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300", icon: Copy },
+  untracked: { short: "??", className: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300", icon: FilePlus2 },
+  typechange: { short: "T", className: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300", icon: Type },
+  conflicted: { short: "U", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300", icon: AlertTriangle },
 };
 
 export function formatChangeSummary(
@@ -54,22 +65,67 @@ export function getKanbanFileChangesSummary(repos: KanbanRepoChanges[]) {
   return { changedRepos, changedFiles };
 }
 
+function splitFilePath(path: string): { name: string; directory: string | null } {
+  const normalized = path.trim();
+  const lastSlash = normalized.lastIndexOf("/");
+  if (lastSlash === -1) {
+    return { name: normalized, directory: null };
+  }
+
+  return {
+    name: normalized.slice(lastSlash + 1) || normalized,
+    directory: normalized.slice(0, lastSlash),
+  };
+}
+
 export function FileRow({ file }: { file: KanbanFileChangeItem }) {
   const { t } = useTranslation();
   const badge = STATUS_BADGE[file.status];
+  const StatusIcon = badge.icon;
+  const { name, directory } = splitFilePath(file.path);
+  const previous = file.previousPath ? splitFilePath(file.previousPath) : null;
 
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2 rounded-xl border border-slate-200/70 bg-slate-50/80 px-2.5 py-2 dark:border-[#202433] dark:bg-[#11141d]">
-      <span className={`inline-flex min-w-7 shrink-0 justify-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${badge.className}`}>
-        {badge.short}
+    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-1.5 rounded-md px-1 py-1 transition-colors hover:bg-slate-100/80 dark:hover:bg-[#171b27]">
+      <span
+        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center self-start rounded-sm ${badge.className}`}
+        title={file.status}
+        aria-label={file.status}
+      >
+        <StatusIcon className="h-2.5 w-2.5" />
       </span>
       <div className="min-w-0 overflow-hidden">
-        <div className="block truncate text-[11px] font-medium text-slate-700 dark:text-slate-200" title={file.path}>
-          {file.path}
+        <div className="flex items-start justify-between gap-1.5">
+          <div className="min-w-0 flex-1">
+            <div className="block truncate text-[11px] font-medium leading-4 text-slate-800 dark:text-slate-100" title={name}>
+              {name}
+            </div>
+          </div>
+          <span className={`shrink-0 rounded-sm px-1 py-0 text-[7px] leading-4 font-semibold tracking-wide ${badge.className}`}>
+            {badge.short}
+          </span>
         </div>
-        {file.previousPath && (
-          <div className="block truncate text-[10px] text-slate-400 dark:text-slate-500" title={file.previousPath}>
-            {t.kanban.fromPath} {file.previousPath}
+        {directory && (
+          <div className="block truncate text-[9px] leading-3.5 text-slate-500 dark:text-slate-400" title={directory}>
+            {directory}
+          </div>
+        )}
+        {previous && (
+          <div className="mt-0.5 flex items-center gap-1 text-[9px] leading-3.5 text-slate-400 dark:text-slate-500">
+            <ArrowRightLeft className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate" title={previous.name}>
+              {previous.name}
+            </span>
+            {previous.directory && (
+              <span className="truncate text-slate-400/90 dark:text-slate-500" title={previous.directory}>
+                {t.kanban.fromPath} {previous.directory}
+              </span>
+            )}
+            {!previous.directory && (
+              <span className="truncate" title={file.previousPath}>
+                {t.kanban.fromPath}
+              </span>
+            )}
           </div>
         )}
       </div>

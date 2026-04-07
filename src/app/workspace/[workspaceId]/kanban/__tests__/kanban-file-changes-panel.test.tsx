@@ -38,6 +38,31 @@ describe("KanbanTab file changes panel", () => {
     expect(container.firstElementChild?.className).toContain("grid-cols-[auto_minmax(0,1fr)]");
   });
 
+  it("splits nested paths into filename and directory rows for readability", () => {
+    render(
+      <FileRow file={{ path: "src/client/components/__tests__/tiptap-input.test.tsx", status: "untracked" }} />,
+    );
+
+    expect(screen.getByText("tiptap-input.test.tsx")).toBeTruthy();
+    expect(screen.getByTitle("src/client/components/__tests__")).toBeTruthy();
+  });
+
+  it("shows renamed source metadata as a secondary row", () => {
+    render(
+      <FileRow
+        file={{
+          path: "src/app/workspace/[workspaceId]/kanban/kanban-file-changes-panel.tsx",
+          previousPath: "src/app/workspace/[workspaceId]/kanban/file-drawer.tsx",
+          status: "renamed",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("kanban-file-changes-panel.tsx")).toBeTruthy();
+    expect(screen.getByText("file-drawer.tsx")).toBeTruthy();
+    expect(screen.getAllByTitle("src/app/workspace/[workspaceId]/kanban").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("renders repo sync progress inline with the repos section", () => {
     render(
       <KanbanTab
@@ -113,7 +138,8 @@ describe("KanbanTab file changes panel", () => {
 
     expect(screen.getByTestId("kanban-file-changes-panel")).toBeTruthy();
     expect(screen.getByText("File Changes")).toBeTruthy();
-    expect(screen.getByText("src/app.tsx")).toBeTruthy();
+    expect(screen.getByText("app.tsx")).toBeTruthy();
+    expect(screen.getByTitle("src")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Hide" }));
 
