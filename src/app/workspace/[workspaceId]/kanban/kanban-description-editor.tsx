@@ -8,7 +8,7 @@ import { marked } from "marked";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import { useTranslation } from "@/i18n";
 
-function markdownToHtml(markdown: string): string {
+export function markdownToHtml(markdown: string): string {
   if (!markdown.trim()) return "";
   try {
     return marked.parse(markdown, { async: false, breaks: true, gfm: true }) as string;
@@ -127,7 +127,7 @@ function serializeNode(node: Node): string {
   }
 }
 
-function htmlToMarkdown(html: string): string {
+export function htmlToMarkdown(html: string): string {
   if (!html.trim()) return "";
   const document = new DOMParser().parseFromString(html, "text/html");
   return collapseBlankLines(serializeChildren(document.body));
