@@ -13,6 +13,7 @@ import {
   formatSessionTimestamp,
   getLaneSessionStepLabel,
   getOrderedSessionIds,
+  getStableOrderedSessionIds,
   getSpecialistName,
   type KanbanSpecialistOption,
 } from "./kanban-card-session-utils";
@@ -301,7 +302,7 @@ export function KanbanCardActivityBar({
     task.id,
     `${task.updatedAt ?? ""}:${task.triggerSessionId ?? ""}:${task.laneSessions?.length ?? 0}`,
   );
-  const orderedSessionIds = runs?.map((run) => run.sessionId ?? run.id) ?? getOrderedSessionIds(task);
+  const orderedSessionIds = getStableOrderedSessionIds(task, runs);
   const laneSessions = task.laneSessions ?? [];
   const laneSessionMap = new Map(laneSessions.map((entry) => [entry.sessionId, entry]));
   const sessionMap = new Map(sessions.map((session) => [session.sessionId, session]));
@@ -443,7 +444,7 @@ function SessionHistoryPanel({
   const { t } = useTranslation();
   const copy = getKanbanSessionCopy(specialistLanguage);
   const laneSessions = task.laneSessions ?? [];
-  const orderedSessionIds = runs?.map((run) => run.sessionId ?? run.id) ?? getOrderedSessionIds(task);
+  const orderedSessionIds = getStableOrderedSessionIds(task, runs);
 
   if (orderedSessionIds.length === 0) {
     return (
