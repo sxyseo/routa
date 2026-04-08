@@ -24,6 +24,7 @@ export async function loadKanbanFileDiff({
   }
 
   if (taskId) {
+    const controller = new AbortController();
     const params = new URLSearchParams({
       path: file.path,
       status: file.status,
@@ -33,7 +34,7 @@ export async function loadKanbanFileDiff({
     }
     const response = await desktopAwareFetch(
       `/api/tasks/${encodeURIComponent(taskId)}/changes/file?${params.toString()}`,
-      { cache: "no-store" }
+      { cache: "no-store", signal: controller.signal }
     );
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

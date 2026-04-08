@@ -3,6 +3,7 @@
 import React from "react";
 import { X } from "lucide-react";
 import type { KanbanFileChangeItem } from "../kanban-file-changes-types";
+import { parseUnifiedDiffPreview } from "../kanban-diff-preview";
 
 interface KanbanInlineDiffViewerProps {
   file: KanbanFileChangeItem | null;
@@ -24,29 +25,7 @@ export function KanbanInlineDiffViewer({
   embedded = false,
 }: KanbanInlineDiffViewerProps) {
   if (!file) return null;
-
-  const parseDiff = (diffText: string) => {
-    const lines = diffText.split("\n");
-    const chunks: { type: "add" | "remove" | "context" | "header"; content: string; lineNum?: string }[] = [];
-
-    for (const line of lines) {
-      if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
-        chunks.push({ type: "header", content: line });
-      } else if (line.startsWith("+")) {
-        chunks.push({ type: "add", content: line.substring(1) });
-      } else if (line.startsWith("-")) {
-        chunks.push({ type: "remove", content: line.substring(1) });
-      } else if (line.startsWith(" ")) {
-        chunks.push({ type: "context", content: line.substring(1) });
-      } else {
-        chunks.push({ type: "context", content: line });
-      }
-    }
-
-    return chunks;
-  };
-
-  const chunks = diff ? parseDiff(diff) : [];
+  const parsedDiff = diff ? parseUnifiedDiffPreview({ patch: diff }) : null;
 
   return (
     <div className={embedded ? "border-t border-slate-200/70 pt-2 dark:border-slate-800/80" : "rounded-lg border border-slate-200/70 bg-white dark:border-slate-700 dark:bg-[#12141c]"}>
@@ -87,25 +66,25 @@ export function KanbanInlineDiffViewer({
           </div>
         ) : (
           <div className="font-mono text-[10px]">
-            {chunks.map((chunk, i) => {
+            {parsedDiff?.lines.map((line, i) => {
               const getStyles = () => {
-                const prefix = chunk.type === "add" ? "+" : chunk.type === "remove" ? "-" : " ";
+                const prefix = line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " ";
 
-                if (chunk.type === "add") {
+                if (line.kind === "add") {
                   return {
                     bgClass: "bg-emerald-50 dark:bg-emerald-900/20",
                     textClass: "text-emerald-900 dark:text-emerald-300",
                     prefix,
                   };
                 }
-                if (chunk.type === "remove") {
+                if (line.kind === "remove") {
                   return {
                     bgClass: "bg-rose-50 dark:bg-rose-900/20",
                     textClass: "text-rose-900 dark:text-rose-300",
                     prefix,
                   };
                 }
-                if (chunk.type === "header") {
+                if (line.kind === "meta" || line.kind === "hunk") {
                   return {
                     bgClass: "bg-sky-50 dark:bg-sky-900/20",
                     textClass: "text-sky-900 dark:text-sky-300",
@@ -126,10 +105,24 @@ export function KanbanInlineDiffViewer({
                   key={i}
                   className={`${embedded ? "px-0" : "px-3"} py-0.5 ${bgClass} ${textClass}`}
                 >
-                  <span className="inline-block w-3 select-none opacity-50">
-                    {prefix}
-                  </span>
-                  <span className="whitespace-pre">{chunk.content}</span>
+                  {line.kind === "add" || line.kind === "remove" || line.kind === "context" ? (
+                    <div className="grid grid-cols-[2rem_2rem_1rem_minmax(0,1fr)]">
+                      <span className="select-none pr-1 text-right opacity-50">
+                        {typeof line.oldLineNumber === "number" ? (
+                          <span data-testid={`kanban-diff-old-line-${i}`}>{line.oldLineNumber}</span>
+                        ) : ""}
+                      </span>
+                      <span className="select-none pr-1 text-right opacity-50">
+                        {typeof line.newLineNumber === "number" ? (
+                          <span data-testid={`kanban-diff-new-line-${i}`}>{line.newLineNumber}</span>
+                        ) : ""}
+                      </span>
+                      <span className="select-none opacity-50">{prefix}</span>
+                      <span className="whitespace-pre">{line.text.slice(1) || " "}</span>
+                    </div>
+                  ) : (
+                    <span className="whitespace-pre">{line.text}</span>
+                  )}
                 </div>
               );
             })}
