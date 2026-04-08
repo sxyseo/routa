@@ -36,6 +36,35 @@ interface PermissionRequestPayload {
     scope?: string;
     decision?: string;
     outcome?: string;
+    sessionId?: string;
+    options?: PermissionRequestOption[];
+    toolCall?: PermissionRequestToolCall;
+}
+
+interface PermissionRequestOption {
+    optionId?: string;
+    name?: string;
+    kind?: string;
+}
+
+interface PermissionRequestToolCall {
+    toolCallId?: string;
+    kind?: string;
+    status?: string;
+    title?: string;
+    content?: Array<{
+        type?: string;
+        content?: {
+            type?: string;
+            text?: string;
+        };
+    }>;
+    rawInput?: {
+        reason?: string;
+        command?: string[];
+        proposed_execpolicy_amendment?: string[];
+        [key: string]: unknown;
+    };
 }
 
 export function hasAskUserQuestionAnswers(message: ChatMessage): boolean {
@@ -158,7 +187,56 @@ export function isPermissionRequestMessage(message: ChatMessage): boolean {
     if (message.toolKind === "request-permissions") return true;
     if (message.toolName === "RequestPermissions") return true;
     const payload = message.toolRawInput as PermissionRequestPayload | undefined;
-    return Boolean(payload?.permissions);
+    return Boolean(payload?.permissions || payload?.toolCall || payload?.options?.length);
+}
+
+function extractPermissionReason(rawInput: PermissionRequestPayload): string | null {
+    if (typeof rawInput.reason === "string" && rawInput.reason.trim().length > 0) {
+        return rawInput.reason.trim();
+    }
+    const nestedReason = rawInput.toolCall?.rawInput?.reason;
+    if (typeof nestedReason === "string" && nestedReason.trim().length > 0) {
+        return nestedReason.trim();
+    }
+    const contentText = rawInput.toolCall?.content
+        ?.map((item) => item.content?.text)
+        .find((text): text is string => typeof text === "string" && text.trim().length > 0);
+    return contentText?.trim() ?? null;
+}
+
+function extractPermissionTitle(rawInput: PermissionRequestPayload, fallback: string): string {
+    const title = rawInput.toolCall?.title;
+    if (typeof title === "string" && title.trim().length > 0) return title.trim();
+    return fallback;
+}
+
+function extractRequestedPermissions(rawInput: PermissionRequestPayload): Record<string, unknown> {
+    const directPermissions = rawInput.permissions;
+    if (directPermissions && typeof directPermissions === "object") {
+        return directPermissions;
+    }
+    const nestedPermissions = rawInput.toolCall?.rawInput?.proposed_execpolicy_amendment;
+    if (Array.isArray(nestedPermissions) && nestedPermissions.length > 0) {
+        return { command_prefix: nestedPermissions };
+    }
+    const command = rawInput.toolCall?.rawInput?.command;
+    if (Array.isArray(command) && command.length > 0) {
+        return { command };
+    }
+    return {};
+}
+
+function mapPermissionOutcome(rawInput: PermissionRequestPayload): "approve" | "deny" | null {
+    if (rawInput.outcome === "denied") return "deny";
+    if (rawInput.outcome === "approved") return "approve";
+    if (rawInput.decision === "deny") return "deny";
+    if (rawInput.decision === "approve") return "approve";
+    return null;
+}
+
+function getOptionLabel(option: PermissionRequestOption | undefined, fallback: string): string {
+    if (typeof option?.name === "string" && option.name.trim().length > 0) return option.name.trim();
+    return fallback;
 }
 
 function AssistantBubble({content}: { content: string }) {
@@ -547,16 +625,14 @@ export function PermissionRequestBubble({
     const [submitError, setSubmitError] = useState<string | null>(null);
     const isCompleted = message.toolStatus === "completed";
     const isFailed = message.toolStatus === "failed";
-    const requestedPermissions = rawInput.permissions ?? {};
-    const outcome = rawInput.outcome === "denied"
-        ? "deny"
-        : rawInput.outcome === "approved"
-            ? "approve"
-            : rawInput.decision === "deny"
-                ? "deny"
-                : rawInput.decision === "approve"
-                    ? "approve"
-                    : null;
+    const requestedPermissions = extractRequestedPermissions(rawInput);
+    const reason = extractPermissionReason(rawInput);
+    const requestTitle = extractPermissionTitle(rawInput, t.messageBubble.requestPermissions);
+    const outcome = mapPermissionOutcome(rawInput);
+    const options = rawInput.options ?? [];
+    const alwaysOption = options.find((option) => option.optionId === "approved-for-session" || option.kind === "allow_always");
+    const onceOption = options.find((option) => option.optionId === "approved" || option.kind === "allow_once");
+    const denyOption = options.find((option) => option.optionId === "abort" || option.kind === "reject_once");
     const scopeLabel = scope === "session"
         ? t.messageBubble.permissionScopeSession
         : t.messageBubble.permissionScopeTurn;
@@ -592,13 +668,16 @@ export function PermissionRequestBubble({
                         {t.messageBubble.requestPermissions}
                     </span>
                 </div>
-                {rawInput.reason ? (
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {requestTitle}
+                </div>
+                {reason ? (
                     <div className="space-y-1">
                         <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                             {t.messageBubble.permissionReason}
                         </div>
                         <div className="text-xs text-slate-700 dark:text-slate-300">
-                            {rawInput.reason}
+                            {reason}
                         </div>
                     </div>
                 ) : null}
@@ -618,8 +697,8 @@ export function PermissionRequestBubble({
                                 disabled={submitting}
                                 className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-200"
                             >
-                                <option value="turn">{t.messageBubble.permissionScopeTurn}</option>
-                                <option value="session">{t.messageBubble.permissionScopeSession}</option>
+                                <option value="turn">{getOptionLabel(onceOption, t.messageBubble.permissionScopeTurn)}</option>
+                                <option value="session">{getOptionLabel(alwaysOption, t.messageBubble.permissionScopeSession)}</option>
                             </select>
                             <button
                                 type="button"
@@ -627,7 +706,9 @@ export function PermissionRequestBubble({
                                 onClick={() => void handleSubmit("approve")}
                                 className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
                             >
-                                {t.common.save}
+                                {scope === "session"
+                                    ? getOptionLabel(alwaysOption, t.common.save)
+                                    : getOptionLabel(onceOption, t.common.save)}
                             </button>
                             <button
                                 type="button"
@@ -635,7 +716,7 @@ export function PermissionRequestBubble({
                                 onClick={() => void handleSubmit("deny")}
                                 className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
                             >
-                                {t.common.cancel}
+                                {getOptionLabel(denyOption, t.common.cancel)}
                             </button>
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400">

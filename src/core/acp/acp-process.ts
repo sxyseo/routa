@@ -853,7 +853,11 @@ export class AcpProcess {
         const normalizedOptions = options.map((option) => ({
             optionId: typeof option.optionId === "string" ? option.optionId : undefined,
             kind: typeof option.kind === "string" ? option.kind : undefined,
-        })).filter((option): option is { optionId: string; kind?: string } => typeof option.optionId === "string");
+        })).flatMap((option) => (
+            typeof option.optionId === "string"
+                ? [{ optionId: option.optionId, kind: option.kind }]
+                : []
+        ));
 
         if (decision === "deny") {
             return this.findPermissionOptionId(normalizedOptions, [
