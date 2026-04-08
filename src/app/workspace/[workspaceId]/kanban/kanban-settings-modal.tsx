@@ -477,7 +477,7 @@ export function KanbanSettingsModal({
                           key={column.id}
                           type="button"
                           onClick={() => setSelectedColumnId(column.id)}
-                          className={`min-w-0 rounded-[10px] border px-2 py-1 text-left transition ${
+                          className={`w-full min-w-0 rounded-[10px] border px-2 py-1 text-left transition ${
                             active
                               ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10 dark:border-amber-400/40 dark:bg-slate-900"
                               : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#111722] dark:hover:border-slate-700"
