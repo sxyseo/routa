@@ -193,6 +193,7 @@ export async function handleSessionNew({
   const customCommand = (p.customCommand as string | undefined);
   const customArgs = Array.isArray(p.customArgs) ? (p.customArgs as string[]) : undefined;
   const authJson = (p.authJson as string | undefined);
+  const autoApprovePermissions = p.autoApprovePermissions === true;
 
   if (customCommand !== undefined && (typeof customCommand !== "string" || !customCommand.trim())) {
     return jsonrpcResponse(id ?? null, null, {
@@ -476,6 +477,11 @@ export async function handleSessionNew({
           cwd,
           provider,
           forwardSessionUpdate,
+          {
+            provider,
+            role,
+            autoApprovePermissions,
+          },
         );
       } else {
         const extraArgs: string[] = [];
@@ -493,6 +499,11 @@ export async function handleSessionNew({
           workspaceId,
           toolMode,
           mcpProfile,
+          {
+            provider,
+            role,
+            autoApprovePermissions,
+          },
         );
       }
 

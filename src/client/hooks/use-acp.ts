@@ -197,6 +197,8 @@ export interface UseAcpActions {
       mcpProfile?: McpServerProfile,
       /** Optional session-scoped system prompt injected before the first user turn */
       systemPrompt?: string,
+      /** Allow unattended permission approvals for automation sessions. */
+      autoApprovePermissions?: boolean,
     ) => Promise<AcpNewSessionResult | null>;
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
@@ -473,6 +475,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       allowedNativeTools?: string[],
       mcpProfile?: McpServerProfile,
       systemPrompt?: string,
+      autoApprovePermissions?: boolean,
     ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
@@ -507,6 +510,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           customCommand: customProvider?.command,
           customArgs: customProvider?.args,
           authJson,
+          autoApprovePermissions,
         });
         sessionIdRef.current = result.sessionId;
         setState((s) => ({

@@ -675,6 +675,9 @@ export function KanbanTab({
       undefined,
       "full",
       [],
+      undefined,
+      undefined,
+      true,
     );
 
     if (!result?.sessionId) {

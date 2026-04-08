@@ -1,5 +1,11 @@
 import {AcpProcess} from "@/core/acp/acp-process";
-import {buildConfigFromPreset, buildConfigFromInline, ManagedProcess, NotificationHandler} from "@/core/acp/processer";
+import {
+    buildConfigFromPreset,
+    buildConfigFromInline,
+    type AcpSessionContext,
+    ManagedProcess,
+    NotificationHandler,
+} from "@/core/acp/processer";
 import {ClaudeCodeProcess, buildClaudeCodeConfig, mapClaudeModeToPermissionMode} from "@/core/acp/claude-code-process";
 import {ensureMcpForProvider, parseMcpServersFromConfigs, providerSupportsMcp} from "@/core/acp/mcp-setup";
 import {getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
@@ -111,6 +117,7 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
+        sessionContext?: Omit<AcpSessionContext, "sessionId">,
     ): Promise<string> {
         // Check if we should use OpenCode SDK adapter (serverless + configured)
         if (presetId === "opencode" && shouldUseOpencodeAdapter()) {
@@ -136,6 +143,12 @@ export class AcpProcessManager {
         await proc.start();
         await proc.initialize();
         const acpSessionId = await proc.newSession(cwd);
+        proc.setSessionContext({
+            sessionId,
+            provider: sessionContext?.provider ?? presetId,
+            role: sessionContext?.role,
+            autoApprovePermissions: sessionContext?.autoApprovePermissions,
+        });
         if (initialModeId) {
             try {
                 await proc.sendRequest("session/set_mode", {
@@ -176,6 +189,7 @@ export class AcpProcessManager {
         cwd: string,
         displayName: string,
         onNotification: NotificationHandler,
+        sessionContext?: Omit<AcpSessionContext, "sessionId">,
     ): Promise<string> {
         const config = buildConfigFromInline(command, args, cwd, displayName);
         const proc = new AcpProcess(config, onNotification);
@@ -183,6 +197,12 @@ export class AcpProcessManager {
         await proc.start();
         await proc.initialize();
         const acpSessionId = await proc.newSession(cwd);
+        proc.setSessionContext({
+            sessionId,
+            provider: sessionContext?.provider ?? displayName,
+            role: sessionContext?.role,
+            autoApprovePermissions: sessionContext?.autoApprovePermissions,
+        });
 
         this.processes.set(sessionId, {
             process: proc,

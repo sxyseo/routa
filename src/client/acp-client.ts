@@ -193,6 +193,8 @@ export class BrowserAcpClient {
     customArgs?: string[];
     /** Docker OpenCode: auth.json content to mount into container */
     authJson?: string;
+    /** Allow unattended permission approvals for automation sessions. */
+    autoApprovePermissions?: boolean;
   }): Promise<AcpNewSessionResult> {
     const result = await this.rpc<AcpNewSessionResult>("session/new", {
       cwd: params.cwd,
@@ -220,6 +222,7 @@ export class BrowserAcpClient {
       customCommand: params.customCommand,
       customArgs: params.customArgs,
       authJson: params.authJson,
+      autoApprovePermissions: params.autoApprovePermissions,
     });
     this._sessionId = result.sessionId;
 

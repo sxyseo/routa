@@ -1,8 +1,15 @@
-import {AcpProcessConfig, JsonRpcMessage, NotificationHandler, PendingRequest} from "@/core/acp/processer";
+import {
+    AcpProcessConfig,
+    AcpSessionContext,
+    JsonRpcMessage,
+    NotificationHandler,
+    PendingRequest,
+} from "@/core/acp/processer";
 import {needsShell} from "@/core/acp/utils";
 import {getTerminalManager} from "@/core/acp/terminal-manager";
 import type {IProcessHandle} from "@/core/platform/interfaces";
 import {getServerBridge} from "@/core/platform";
+import {AgentRole} from "@/core/models/agent";
 
 /**
  * Manages a single ACP agent process and its JSON-RPC communication.
@@ -75,6 +82,7 @@ export class AcpProcess {
     private _alive = false;
     private _config: AcpProcessConfig;
     private _initResult: AcpInitResult | null = null;
+    private _sessionContext: AcpSessionContext | null = null;
 
     constructor(config: AcpProcessConfig, onNotification: NotificationHandler) {
         this._config = config;
@@ -99,6 +107,10 @@ export class AcpProcess {
 
     get presetId(): string | undefined {
         return this._config.preset?.id;
+    }
+
+    setSessionContext(context: AcpSessionContext): void {
+        this._sessionContext = context;
     }
 
     /**
@@ -559,6 +571,30 @@ export class AcpProcess {
                 const rawInput = (params && typeof params === "object")
                     ? params as Record<string, unknown>
                     : {};
+                if (this.shouldAutoApprovePermissionRequest(rawInput)) {
+                    const result = this.buildPermissionApprovalResult(rawInput);
+                    this.writeMessage({
+                        jsonrpc: "2.0",
+                        id,
+                        result,
+                    });
+                    this.onNotification({
+                        jsonrpc: "2.0",
+                        method: "session/update",
+                        params: {
+                            sessionId: this._sessionId ?? "pending",
+                            update: {
+                                sessionUpdate: "tool_call_update",
+                                title: "RequestPermissions",
+                                toolCallId,
+                                kind: "request-permissions",
+                                status: "completed",
+                                rawInput: result,
+                            },
+                        },
+                    });
+                    break;
+                }
                 this.pendingInteractiveRequests.set(toolCallId, {
                     requestId: id!,
                     method,
@@ -730,6 +766,39 @@ export class AcpProcess {
                 });
             }
         }
+    }
+
+    private shouldAutoApprovePermissionRequest(params: Record<string, unknown>): boolean {
+        if (!this._sessionContext?.autoApprovePermissions) {
+            return false;
+        }
+
+        const provider = (this._sessionContext.provider ?? this.presetId ?? "").toLowerCase();
+        if (provider !== "codex" && provider !== "codex-acp") {
+            return false;
+        }
+
+        return typeof params === "object" && params !== null;
+    }
+
+    private buildPermissionApprovalResult(params: Record<string, unknown>): Record<string, unknown> {
+        const requestedPermissions = (
+            typeof params.permissions === "object" && params.permissions !== null
+        ) ? params.permissions as Record<string, unknown> : undefined;
+        const role = (this._sessionContext?.role ?? "").toUpperCase();
+        const scope = role === AgentRole.ROUTA ? "session" : "turn";
+
+        if (requestedPermissions) {
+            return {
+                permissions: requestedPermissions,
+                scope,
+                outcome: "approved",
+            };
+        }
+
+        return {
+            outcome: {outcome: "approved"},
+        };
     }
 
     private writeMessage(msg: Record<string, unknown>): void {

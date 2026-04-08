@@ -451,6 +451,7 @@ export function KanbanPageClient() {
       options?.allowedNativeTools,
       options?.mcpProfile,
       options?.systemPrompt,
+      true,
     );
 
     if (!result?.sessionId) {
