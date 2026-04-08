@@ -32,8 +32,8 @@ interface KanbanGitHubImportModalProps {
   codebases: CodebaseData[];
   tasks: TaskInfo[];
   onClose: () => void;
-  onImport: (codebaseId: string, issues: GitHubIssueListItemInfo[], repo: string) => Promise<void>;
-  onImportPulls: (codebaseId: string, pulls: GitHubPRListItemInfo[], repo: string) => Promise<void>;
+  onImport: (codebaseId: string, issues: GitHubIssueListItemInfo[], repo: string, mergeAsSingleCard: boolean) => Promise<void>;
+  onImportPulls: (codebaseId: string, pulls: GitHubPRListItemInfo[], repo: string, mergeAsSingleCard: boolean) => Promise<void>;
 }
 
 function formatIssueTimestamp(value?: string): string | null {
@@ -62,6 +62,7 @@ export function KanbanGitHubImportModal({
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [mergeAsSingleCard, setMergeAsSingleCard] = useState(false);
 
   const fallbackImportError = activeTab === "issues" ? t.kanbanImport.importFailed : t.kanbanImport.importPullsFailed;
 
@@ -75,6 +76,7 @@ export function KanbanGitHubImportModal({
     setSelectedCodebaseId(defaultCodebase?.id ?? "");
     setSelectedItemIds([]);
     setError(null);
+    setMergeAsSingleCard(false);
   }, [codebases, show]);
 
   useEffect(() => {
@@ -290,6 +292,22 @@ export function KanbanGitHubImportModal({
           )}
         </div>
 
+        <label className="mb-3 flex items-start gap-3 rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={mergeAsSingleCard}
+            disabled={submitting}
+            onChange={(event) => setMergeAsSingleCard(event.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span className="min-w-0">
+            <span className="block font-medium">{t.kanbanImport.mergeAsSingleCard}</span>
+            <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+              {t.kanbanImport.mergeAsSingleCardHint}
+            </span>
+          </span>
+        </label>
+
         <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700">
           {loading ? (
             <div className="flex h-40 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
@@ -484,12 +502,12 @@ export function KanbanGitHubImportModal({
                   const issues = selectableIssues
                     .filter(({ issue, imported }) => !imported && selectedItemIds.includes(issue.id))
                     .map(({ issue }) => issue);
-                  await onImport(selectedCodebaseId, issues, currentRepo);
+                  await onImport(selectedCodebaseId, issues, currentRepo, mergeAsSingleCard);
                 } else {
                   const pulls = selectablePulls
                     .filter(({ pull, imported }) => !imported && selectedItemIds.includes(pull.id))
                     .map(({ pull }) => pull);
-                  await onImportPulls(selectedCodebaseId, pulls, currentRepo);
+                  await onImportPulls(selectedCodebaseId, pulls, currentRepo, mergeAsSingleCard);
                 }
                 onClose();
               } catch (importError) {

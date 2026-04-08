@@ -1108,8 +1108,8 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     draftBadge: "草稿",
     mergedBadge: "已合并",
     branchInfo: "→",
+    mergeAsSingleCard: "合并为一张卡", mergeAsSingleCardHint: "把所选项创建为一个任务，并将标题、链接和摘要合并到同一段描述中。", mergedIssuesTitle: "合并导入的 GitHub issues", mergedPullsTitle: "合并导入的 GitHub pull requests", mergedSourceListHeading: "来源链接", mergedSummaryLabel: "摘要",
   },
-
   kanbanBgAgent: {
     backgroundAgents: "后台智能体",
     bgAgentDesc: "可视化此工作区的专属后台智能体及其驱动的队列路由。",

@@ -1108,8 +1108,8 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     draftBadge: "Draft",
     mergedBadge: "Merged",
     branchInfo: "→",
+    mergeAsSingleCard: "Merge into one card", mergeAsSingleCardHint: "Create a single task from the selected items and combine titles, links, and summaries into one description.", mergedIssuesTitle: "Merged GitHub issues", mergedPullsTitle: "Merged GitHub pull requests", mergedSourceListHeading: "Source links", mergedSummaryLabel: "Summary",
   },
-
   kanbanBgAgent: {
     backgroundAgents: "Background Agents",
     bgAgentDesc: "Visualize this workspace's dedicated background agents and the queue routes they are driving.",

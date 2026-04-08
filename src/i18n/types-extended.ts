@@ -1120,8 +1120,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     draftBadge: string;
     mergedBadge: string;
     branchInfo: string;
+    mergeAsSingleCard: string; mergeAsSingleCardHint: string; mergedIssuesTitle: string; mergedPullsTitle: string; mergedSourceListHeading: string; mergedSummaryLabel: string;
   };
-
   // Kanban background agents
   kanbanBgAgent: {
     backgroundAgents: string;

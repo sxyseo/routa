@@ -341,8 +341,7 @@ describe("KanbanTab GitHub import", () => {
     fireEvent.click(screen.getByRole("button", { name: /import issues/i }));
 
     expect(await screen.findByRole("link", { name: /imported issue/i })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getAllByRole("checkbox")[1]!);
     fireEvent.click(screen.getByRole("button", { name: /import selected/i }));
 
     await waitFor(() => {
@@ -366,6 +365,7 @@ describe("KanbanTab GitHub import", () => {
       });
     });
   });
+
 });
 
 describe("KanbanTab manual card creation", () => {

@@ -41,6 +41,9 @@ import {
   resolveKanbanBoardAutoProviderId,
   taskOwnsSession,
 } from "./kanban-tab-helpers";
+import {
+  importGitHubItems,
+} from "./kanban-github-import";
 import { KanbanTabHeader } from "./kanban-tab-header";
 import {
   KanbanCodebaseModal,
@@ -1172,38 +1175,34 @@ export function KanbanTab({
     codebaseId: string,
     issues: GitHubIssueListItemInfo[],
     repo: string,
+    mergeAsSingleCard: boolean,
   ) {
     await ensureBoardAutoProviderPersisted();
-    const importedTasks: TaskInfo[] = [];
-    for (const issue of issues) {
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId,
-          boardId: selectedBoardId ?? defaultBoardId,
-          columnId: "backlog",
-          title: issue.title,
-          objective: issue.body?.trim() || issue.title,
-          labels: issue.labels,
-          codebaseIds: [codebaseId],
-          githubId: issue.id,
-          githubNumber: issue.number,
-          githubUrl: issue.url,
-          githubRepo: repo,
-          githubState: issue.state,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          typeof data?.error === "string"
-            ? data.error
-            : `Failed to import GitHub issue #${issue.number}`,
-        );
-      }
-      importedTasks.push(data.task as TaskInfo);
-    }
+    const importedTasks = await importGitHubItems({
+      workspaceId,
+      boardId: selectedBoardId ?? defaultBoardId,
+      codebaseId,
+      items: issues,
+      mergeAsSingleCard,
+      mergedTitle: t.kanbanImport.mergedIssuesTitle,
+      mergedObjectiveLabels: { heading: t.kanbanImport.mergedSourceListHeading, summary: t.kanbanImport.mergedSummaryLabel },
+      mergeFallbackMessage: t.kanbanImport.importFailed,
+      createItemPayload: (issue) => ({
+        workspaceId,
+        boardId: selectedBoardId ?? defaultBoardId,
+        columnId: "backlog",
+        title: issue.title,
+        objective: issue.body?.trim() || issue.title,
+        labels: issue.labels,
+        codebaseIds: [codebaseId],
+        githubId: issue.id,
+        githubNumber: issue.number,
+        githubUrl: issue.url,
+        githubRepo: repo,
+        githubState: issue.state,
+      }),
+      createItemFallbackMessage: (issue) => `Failed to import GitHub issue #${issue.number}`,
+    });
 
     if (importedTasks.length > 0) {
       setLocalTasks((current) => {
@@ -1224,39 +1223,35 @@ export function KanbanTab({
     codebaseId: string,
     pulls: GitHubPRListItemInfo[],
     repo: string,
+    mergeAsSingleCard: boolean,
   ) {
     await ensureBoardAutoProviderPersisted();
-    const importedTasks: TaskInfo[] = [];
-    for (const pull of pulls) {
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId,
-          boardId: selectedBoardId ?? defaultBoardId,
-          columnId: "backlog",
-          title: pull.title,
-          objective: pull.body?.trim() || pull.title,
-          labels: pull.labels,
-          codebaseIds: [codebaseId],
-          githubId: pull.id,
-          githubNumber: pull.number,
-          githubUrl: pull.url,
-          githubRepo: repo,
-          githubState: pull.state,
-          isPullRequest: true,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          typeof data?.error === "string"
-            ? data.error
-            : `Failed to import GitHub pull request #${pull.number}`,
-        );
-      }
-      importedTasks.push(data.task as TaskInfo);
-    }
+    const importedTasks = await importGitHubItems({
+      workspaceId,
+      boardId: selectedBoardId ?? defaultBoardId,
+      codebaseId,
+      items: pulls,
+      mergeAsSingleCard,
+      mergedTitle: t.kanbanImport.mergedPullsTitle,
+      mergedObjectiveLabels: { heading: t.kanbanImport.mergedSourceListHeading, summary: t.kanbanImport.mergedSummaryLabel },
+      mergeFallbackMessage: t.kanbanImport.importPullsFailed,
+      createItemPayload: (pull) => ({
+        workspaceId,
+        boardId: selectedBoardId ?? defaultBoardId,
+        columnId: "backlog",
+        title: pull.title,
+        objective: pull.body?.trim() || pull.title,
+        labels: pull.labels,
+        codebaseIds: [codebaseId],
+        githubId: pull.id,
+        githubNumber: pull.number,
+        githubUrl: pull.url,
+        githubRepo: repo,
+        githubState: pull.state,
+        isPullRequest: true,
+      }),
+      createItemFallbackMessage: (pull) => `Failed to import GitHub pull request #${pull.number}`,
+    });
 
     if (importedTasks.length > 0) {
       setLocalTasks((current) => {
