@@ -118,6 +118,7 @@ describe("/api/tasks/[taskId]", () => {
       id: "task-1",
       title: "Retry review",
       objective: "Retry review",
+      comment: "Review requested another verification pass.",
       workspaceId: "workspace-1",
       boardId: "board-1",
       columnId: "todo",
@@ -151,6 +152,7 @@ describe("/api/tasks/[taskId]", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
+    expect(data.task.comment).toBe("Review requested another verification pass.");
     expect(data.task.artifactSummary).toEqual({
       total: 0,
       byType: {},

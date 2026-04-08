@@ -75,6 +75,7 @@ describe("/api/tasks GET", () => {
         id: "task-1",
         title: "Artifact summary",
         objective: "Return artifact counts with task list data.",
+        comment: "Backlog refinement note from update_card.",
         workspaceId: "workspace-1",
         boardId: "board-1",
         columnId: "dev",
@@ -133,6 +134,7 @@ describe("/api/tasks GET", () => {
     expect(data.tasks).toHaveLength(1);
     expect(data.tasks[0]).toMatchObject({
       id: "task-1",
+      comment: "Backlog refinement note from update_card.",
       artifactSummary: {
         total: 2,
         byType: {

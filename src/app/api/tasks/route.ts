@@ -376,6 +376,7 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     id: task.id,
     title: task.title,
     objective: task.objective,
+    comment: task.comment,
     scope: task.scope,
     acceptanceCriteria: task.acceptanceCriteria,
     verificationCommands: task.verificationCommands,
