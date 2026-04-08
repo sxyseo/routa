@@ -312,7 +312,7 @@ export function KanbanEnhancedFileChangesPanel({
       {/* Panel */}
       <aside
         className="absolute inset-y-0 right-0 z-30 flex h-full w-[22rem] flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]"
-        data-testid="kanban-enhanced-file-changes-panel"
+        data-testid="kanban-file-changes-panel"
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-[#191c28]">
