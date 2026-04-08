@@ -112,13 +112,14 @@ export function KanbanTab({
 }: KanbanTabProps) {
   const { t } = useTranslation();
   const kanbanTaskAgentCopy = getKanbanTaskAgentCopy(specialistLanguage);
+  const [localBoards, setLocalBoards] = useState<KanbanBoardInfo[]>(boards);
   const resolveSpecialist = useMemo(
     () => createKanbanSpecialistResolver(specialists),
     [specialists],
   );
   const defaultBoardId = useMemo(
-    () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
-    [boards],
+    () => localBoards.find((board) => board.isDefault)?.id ?? localBoards[0]?.id ?? null,
+    [localBoards],
   );
   const allCodebaseIds = useMemo(
     () => codebases.map((codebase) => codebase.id),
@@ -224,8 +225,8 @@ export function KanbanTab({
     [activeTask],
   );
   const board = useMemo(
-    () => boards.find((item) => item.id === selectedBoardId) ?? null,
-    [boards, selectedBoardId],
+    () => localBoards.find((item) => item.id === selectedBoardId) ?? null,
+    [localBoards, selectedBoardId],
   );
   const boardQueue = board?.queue;
   const boardAutoProviderId = useMemo(
@@ -354,6 +355,10 @@ export function KanbanTab({
     specialistLanguage,
     workspaceId,
   ]);
+
+  useEffect(() => {
+    setLocalBoards(boards);
+  }, [boards]);
 
   useEffect(() => {
     setSelectedBoardId(defaultBoardId);
@@ -1419,7 +1424,7 @@ export function KanbanTab({
           board={board}
           boardQueue={boardQueue}
           repoHealth={repoHealth}
-          boards={boards}
+          boards={localBoards}
           selectedBoardId={selectedBoardId}
           onSelectBoard={setSelectedBoardId}
           githubImportEnabled={githubImportEnabled}
@@ -1441,7 +1446,7 @@ export function KanbanTab({
         board={board}
         boardQueue={boardQueue}
         repoHealth={repoHealth}
-        boards={boards}
+        boards={localBoards}
         selectedBoardId={selectedBoardId}
         onSelectBoard={setSelectedBoardId}
         githubImportEnabled={githubImportEnabled}
@@ -1592,6 +1597,14 @@ export function KanbanTab({
             if (!response.ok) {
               const data = await response.json();
               throw new Error(data.error ?? "Failed to save settings");
+            }
+
+            const data = await response.json();
+            const updatedBoard = data.board as KanbanBoardInfo | undefined;
+            if (updatedBoard) {
+              setLocalBoards((current) => current.map((item) => (
+                item.id === updatedBoard.id ? updatedBoard : item
+              )));
             }
 
             setVisibleColumns(updatedColumns.filter((col) => col.visible !== false).map((col) => col.id));

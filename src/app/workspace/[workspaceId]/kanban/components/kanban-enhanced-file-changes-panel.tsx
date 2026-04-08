@@ -46,10 +46,28 @@ export function KanbanEnhancedFileChangesPanel({
   const [diffError, setDiffError] = useState<string | null>(null);
   const [commits, setCommits] = useState<KanbanCommitInfo[]>([]);
   const [commitsLoading, setCommitsLoading] = useState(false);
+  const [commitsRefreshToken, setCommitsRefreshToken] = useState(0);
+  const [commitsOpen, setCommitsOpen] = useState(false);
+  const [commitsLoaded, setCommitsLoaded] = useState(false);
+  const [lastLoadedCommitsRefreshToken, setLastLoadedCommitsRefreshToken] = useState(0);
 
   // Support both sidebar mode (repos) and embedded mode (changes)
   const activeRepo = repos && repos.length > 0 ? repos[0] : null;
   const codebaseId = changes?.codebaseId || activeRepo?.codebaseId || "";
+
+  const handleGitSuccess = useCallback(() => {
+    onRefresh?.();
+    setCommitsRefreshToken((token) => token + 1);
+  }, [onRefresh]);
+
+  const handleGitError = useCallback((error: string) => {
+    // Silently log Git operation errors - they're expected when codebase is not a valid git repo
+    if (error.includes("work tree") || error.includes("git repository")) {
+      // Expected: codebase may not be a git repository or may be in a special state
+      return;
+    }
+    console.error("Git operation failed:", error);
+  }, []);
 
   const {
     stageFiles,
@@ -66,19 +84,8 @@ export function KanbanEnhancedFileChangesPanel({
   } = useGitOperations({
     workspaceId,
     codebaseId,
-    onSuccess: () => {
-      onRefresh?.();
-      // Refresh commits after successful operations
-      loadCommits();
-    },
-    onError: (error) => {
-      // Silently log Git operation errors - they're expected when codebase is not a valid git repo
-      if (error.includes("work tree") || error.includes("git repository")) {
-        // Expected: codebase may not be a git repository or may be in a special state
-        return;
-      }
-      console.error("Git operation failed:", error);
-    },
+    onSuccess: handleGitSuccess,
+    onError: handleGitError,
   });
 
   // Separate files into unstaged and staged
@@ -186,6 +193,8 @@ export function KanbanEnhancedFileChangesPanel({
     try {
       const fetchedCommits = await getCommits(20); // Get last 20 commits
       setCommits(fetchedCommits);
+      setCommitsLoaded(true);
+      setLastLoadedCommitsRefreshToken(commitsRefreshToken);
     } catch (error) {
       // Silently fail if not a git repository - this is expected
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -193,15 +202,26 @@ export function KanbanEnhancedFileChangesPanel({
         console.error("Failed to load commits:", error);
       }
       setCommits([]); // Set empty commits array
+      setCommitsLoaded(true);
+      setLastLoadedCommitsRefreshToken(commitsRefreshToken);
     } finally {
       setCommitsLoading(false);
     }
-  }, [codebaseId, embedded, getCommits]);
+  }, [codebaseId, embedded, getCommits, commitsRefreshToken]);
 
-  // Load commits on mount and when codebaseId changes
   useEffect(() => {
+    setCommits([]);
+    setCommitsLoaded(false);
+    setCommitsOpen(false);
+    setLastLoadedCommitsRefreshToken(0);
+  }, [codebaseId]);
+
+  // Load commits only when the section is expanded, and after successful git operations
+  useEffect(() => {
+    if (!commitsOpen) return;
+    if (commitsLoaded && commitsRefreshToken === lastLoadedCommitsRefreshToken) return;
     loadCommits();
-  }, [loadCommits]);
+  }, [loadCommits, commitsOpen, commitsLoaded, commitsRefreshToken, lastLoadedCommitsRefreshToken]);
 
   const handleFileClick = useCallback(async (file: KanbanFileChangeItem, staged = false) => {
     setActiveDiffFile(file);
@@ -516,6 +536,8 @@ export function KanbanEnhancedFileChangesPanel({
                 onFileClick={handleCommitFileClick}
                 onOpenCommit={handleOpenCommit}
                 onRevertCommit={handleRevertCommit}
+                expanded={commitsOpen}
+                onToggle={() => setCommitsOpen((open) => !open)}
                 loading={commitsLoading}
               />
 

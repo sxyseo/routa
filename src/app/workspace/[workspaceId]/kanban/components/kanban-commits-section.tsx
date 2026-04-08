@@ -10,6 +10,8 @@ interface KanbanCommitsSectionProps {
   onFileClick?: (file: KanbanFileChangeItem, commitSha: string) => void;
   onOpenCommit?: (commit: KanbanCommitInfo) => void;
   onRevertCommit?: (commit: KanbanCommitInfo) => void;
+  expanded?: boolean;
+  onToggle?: () => void;
   loading?: boolean;
 }
 
@@ -18,6 +20,8 @@ export function KanbanCommitsSection({
   onFileClick,
   onOpenCommit,
   onRevertCommit,
+  expanded = false,
+  onToggle,
   loading = false,
 }: KanbanCommitsSectionProps) {
   const [expandedCommits, setExpandedCommits] = useState<Set<string>>(new Set());
@@ -37,7 +41,11 @@ export function KanbanCommitsSection({
   return (
     <section className="rounded-2xl border border-slate-200/70 bg-slate-50/70 dark:border-[#202433] dark:bg-[#0d1018]">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left"
+      >
         <div className="flex items-center gap-2">
           <GitCommit className="h-4 w-4 text-slate-400" />
           <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -47,9 +55,15 @@ export function KanbanCommitsSection({
             ({commits.length})
           </span>
         </div>
-      </div>
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 text-slate-400" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-slate-400" />
+        )}
+      </button>
 
       {/* Content */}
+      {expanded && (
       <div className="border-t border-slate-200/70 px-3.5 py-3 dark:border-[#202433]">
         {loading ? (
           <div className="flex items-center justify-center py-6 text-xs text-slate-400 dark:text-slate-500">
@@ -162,6 +176,7 @@ export function KanbanCommitsSection({
           </div>
         )}
       </div>
+      )}
     </section>
   );
 }
