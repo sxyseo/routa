@@ -35,19 +35,19 @@ export function DesktopNavRail({
       ),
     },
     {
+      id: "sessions",
+      label: t.nav.sessions,
+      href: `/workspace/${workspaceId}/sessions`,
+      icon: (
+        <ScrollText className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+      ),
+    },
+    {
       id: "kanban",
       label: t.nav.kanban,
       href: `/workspace/${workspaceId}/kanban`,
       icon: (
         <Columns2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "records",
-      label: t.nav.records,
-      href: `/workspace/${workspaceId}/overview`,
-      icon: (
-        <ScrollText className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
     {

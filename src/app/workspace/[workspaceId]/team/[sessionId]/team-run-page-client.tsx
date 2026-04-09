@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
+import { Select } from "@/client/components/select";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { ChatPanel } from "@/client/components/chat-panel";
 import type { ChatMessage } from "@/client/components/chat-panel/types";
@@ -137,6 +138,21 @@ function delegationRoleMatchesSession(targetRosterId: string, child: SessionInfo
     return normalizedRole === "ROUTA";
   }
   return normalizedRole === "CRAFTER" || normalizedRole === "DEVELOPER";
+}
+
+function isTopLevelTeamRun(session: SessionInfo): boolean {
+  if (session.parentSessionId) return false;
+  if (session.specialistId === TEAM_LEAD_SPECIALIST_ID) return true;
+  if (session.role?.toUpperCase() !== "ROUTA") return false;
+
+  const normalizedName = (session.name ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!normalizedName) return false;
+
+  return (
+    normalizedName.startsWith("team -")
+    || normalizedName.startsWith("team run")
+    || normalizedName.includes("team lead")
+  );
 }
 
 export function TeamRunPageClient() {
@@ -494,6 +510,11 @@ export function TeamRunPageClient() {
   }, [fetchSpecialists, flushMetadataRefresh]);
 
   const workspace = workspacesHook.workspaces.find((item) => item.id === workspaceId);
+  const teamRuns = useMemo(() => (
+    [...workspaceSessions]
+      .filter((entry) => isTopLevelTeamRun(entry))
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+  ), [workspaceSessions]);
   const specialistsById = useMemo(
     () => new Map(specialists.map((specialist) => [specialist.id, specialist])),
     [specialists],
@@ -1342,7 +1363,7 @@ export function TeamRunPageClient() {
     >
       <div className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary">
         <header className="shrink-0 border-b border-desktop-border px-4 py-3" data-testid="team-run-page-header">
-          <div className="mx-auto flex w-full max-w-[1760px] items-center justify-between gap-3">
+          <div className="mx-auto flex w-full max-w-440 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <Link
                 href={`/workspace/${workspaceId}/team`}
@@ -1374,6 +1395,19 @@ export function TeamRunPageClient() {
             </div>
 
             <div className="flex items-center gap-2">
+              {teamRuns.length > 1 ? (
+                <Select
+                  value={sessionId}
+                  onChange={(event) => router.push(`/workspace/${workspaceId}/team/${event.target.value}`)}
+                  className="h-8 min-h-8 max-w-60 rounded-md border border-desktop-border bg-desktop-bg-secondary px-2 text-[11px] text-desktop-text-secondary"
+                >
+                  {teamRuns.map((run) => (
+                    <option key={run.sessionId} value={run.sessionId}>
+                      {run.name ?? `Team run ${run.sessionId.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
               <Link
                 href={`/workspace/${workspaceId}/team`}
                 className="inline-flex items-center gap-1.5 rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"

@@ -180,12 +180,12 @@ export function SessionPageClient() {
   }, [codebases]);
 
   const handleWorkspaceSelect = useCallback((wsId: string) => {
-    router.push(`/workspace/${wsId}/overview`);
+    router.push(`/workspace/${wsId}/sessions`);
   }, [router]);
 
   const handleWorkspaceCreate = useCallback(async (title: string) => {
     const ws = await workspacesHook.createWorkspace(title);
-    if (ws) router.push(`/workspace/${ws.id}/overview`);
+    if (ws) router.push(`/workspace/${ws.id}/sessions`);
   }, [workspacesHook, router]);
 
   const acp = useAcp();
@@ -872,11 +872,11 @@ export function SessionPageClient() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => router.push(`/workspace/${workspaceId}/overview`)}
+                onClick={() => router.push(`/workspace/${workspaceId}/sessions`)}
                 className="inline-flex items-center gap-1.5 rounded-full border border-black/8 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
               >
                 <ScrollText className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7} />
-                {t.nav.records}
+                {t.nav.sessions}
               </button>
               <button
                 type="button"

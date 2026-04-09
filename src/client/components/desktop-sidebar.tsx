@@ -4,7 +4,7 @@
  * Desktop Sidebar Navigation — VS Code-style left navigation for Tauri app.
  *
  * Provides a compact icon-based navigation with:
- * - Primary navigation icons (Overview, Kanban, Traces)
+ * - Primary navigation icons (Home, Sessions, Kanban, Team)
  * - Secondary actions (Settings)
  * - Workspace indicator
  */
@@ -16,7 +16,7 @@ import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
 import { AdvancedNavMenu } from "./advanced-nav-menu";
 import { SettingsPopupMenu } from "./settings-popup-menu";
-import { ChevronLeft, Columns2, House, ScrollText } from "lucide-react";
+import { ChevronLeft, Columns2, House, ScrollText, Share2 } from "lucide-react";
 
 
 interface NavItem {
@@ -65,6 +65,15 @@ export function DesktopSidebar({
       ),
     },
     {
+      id: "sessions",
+      label: t.nav.sessions,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/sessions` : "/",
+      requiresWorkspace: true,
+      icon: (
+        <ScrollText className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+      ),
+    },
+    {
       id: "kanban",
       label: t.nav.kanban,
       href: workspaceBaseHref ? `${workspaceBaseHref}/kanban` : "/",
@@ -74,12 +83,12 @@ export function DesktopSidebar({
       ),
     },
     {
-      id: "records",
-      label: t.nav.records,
-      href: workspaceBaseHref ? `${workspaceBaseHref}/overview` : "/",
+      id: "team",
+      label: t.nav.team,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/team` : "/",
       requiresWorkspace: true,
       icon: (
-        <ScrollText className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+        <Share2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}/>
       ),
     },
   ];

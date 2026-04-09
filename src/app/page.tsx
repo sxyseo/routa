@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import type { RepoSelection } from "@/client/components/repo-picker";
 import { RepoPicker } from "@/client/components/repo-picker";
 import { OnboardingCard } from "@/client/components/home-page-sections";
-import { HomeInput } from "@/client/components/home-input";
 import {
   SettingsPanel,
   loadDefaultProviders,
@@ -29,7 +28,6 @@ import {
   type OnboardingMode,
 } from "@/client/utils/onboarding";
 import { useTranslation } from "@/i18n";
-import { buildKanbanTaskAgentPrompt } from "@/app/workspace/[workspaceId]/kanban/i18n/kanban-task-agent";
 import type { SessionInfo } from "@/app/workspace/[workspaceId]/types";
 
 interface WorkspaceHomeData {
@@ -39,8 +37,6 @@ interface WorkspaceHomeData {
 const EMPTY_HOME_DATA: WorkspaceHomeData = {
   sessions: [],
 };
-
-const TEAM_LEAD_SPECIALIST_ID = "team-agent-lead";
 
 function formatRelativeTime(value: string | undefined, hydrated: boolean) {
   if (!value) return "刚刚";
@@ -61,10 +57,26 @@ function getSessionLabel(session: SessionInfo) {
   return `会话 ${session.sessionId.slice(0, 8)}`;
 }
 
+function isTopLevelTeamRun(session: SessionInfo) {
+  if (session.parentSessionId) return false;
+  if (session.specialistId === "team-agent-lead") return true;
+  if (session.role?.toUpperCase() !== "ROUTA") return false;
+
+  const normalizedName = (session.name ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!normalizedName) return false;
+
+  return (
+    normalizedName.startsWith("team -")
+    || normalizedName.startsWith("team run")
+    || normalizedName.includes("team lead")
+  );
+}
+
 export default function HomePage() {
+  const router = useRouter();
   const workspacesHook = useWorkspaces();
   const acp = useAcp();
-  const { t, locale } = useTranslation();
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
 
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
@@ -219,70 +231,16 @@ export default function HomePage() {
   }, [activeWorkspaceId, fetchCodebases, workspacesHook.workspaces]);
 
   const activeWorkspace = workspacesHook.workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
-  const requestedLaunchModeId = searchParams.get("mode");
+  const requestedSurfaceId = searchParams.get("mode");
   const activeData = activeWorkspaceId ? (workspaceHomeData[activeWorkspaceId] ?? EMPTY_HOME_DATA) : EMPTY_HOME_DATA;
   const recentSessions = useMemo(() => (
-    [...activeData.sessions].sort((left, right) => (
-      new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-    )).slice(0, 3)
+    [...activeData.sessions]
+      .filter((session) => !isTopLevelTeamRun(session))
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      .slice(0, 3)
   ), [activeData.sessions]);
   const latestSession = recentSessions[0] ?? null;
   const hasCodebase = codebases.length > 0;
-  const homeLaunchModes = useMemo(() => {
-    if (!activeWorkspaceId) return [];
-
-    return [
-      {
-        id: "session",
-        label: t.home.modeSessionTitle,
-        description: t.home.modeSessionDescription,
-        placeholder: t.home.modeSessionPlaceholder,
-        defaultAgentRole: "ROUTA" as const,
-        allowRoleSwitch: true,
-        allowCustomSpecialist: true,
-        dispatchMode: "pending-prompt" as const,
-        buildSessionUrl: (nextWorkspaceId: string | null, sessionId: string) =>
-          `/workspace/${nextWorkspaceId ?? activeWorkspaceId}/sessions/${sessionId}`,
-      },
-      {
-        id: "planning",
-        label: t.home.modePlanningTitle,
-        description: t.home.modePlanningDescription,
-        placeholder: t.home.modePlanningPlaceholder,
-        defaultAgentRole: "CRAFTER" as const,
-        allowRoleSwitch: false,
-        allowCustomSpecialist: false,
-        dispatchMode: "pending-prompt" as const,
-        buildSessionUrl: (nextWorkspaceId: string | null, sessionId: string) =>
-          `/workspace/${nextWorkspaceId ?? activeWorkspaceId}/sessions/${sessionId}`,
-        sessionConfig: {
-          role: "CRAFTER",
-          mcpProfile: "kanban-planning",
-          systemPrompt: (text: string) => buildKanbanTaskAgentPrompt({
-            workspaceId: activeWorkspaceId,
-            boardId: "default",
-            repoPath: codebases[0]?.repoPath,
-            agentInput: text,
-            language: locale === "zh" ? "zh-CN" : "en",
-          }),
-        },
-      },
-      {
-        id: "team",
-        label: t.home.modeTeamTitle,
-        description: t.home.modeTeamDescription,
-        placeholder: t.home.modeTeamPlaceholder,
-        defaultAgentRole: "ROUTA" as const,
-        allowRoleSwitch: false,
-        allowCustomSpecialist: false,
-        lockedSpecialistId: TEAM_LEAD_SPECIALIST_ID,
-        requireRepoSelection: true,
-        dispatchMode: "pending-prompt" as const,
-        buildSessionUrl: (nextWorkspaceId: string | null, sessionId: string) =>
-          `/workspace/${nextWorkspaceId ?? activeWorkspaceId}/team/${sessionId}`,
-      },
-    ];
-  }, [activeWorkspaceId, codebases, locale, t.home.modePlanningDescription, t.home.modePlanningPlaceholder, t.home.modePlanningTitle, t.home.modeSessionDescription, t.home.modeSessionPlaceholder, t.home.modeSessionTitle, t.home.modeTeamDescription, t.home.modeTeamPlaceholder, t.home.modeTeamTitle]);
 
   const hasWorkspace = workspacesHook.workspaces.length > 0;
   const hasProviderConfig =
@@ -296,6 +254,24 @@ export default function HomePage() {
     hasWorkspace &&
     !onboardingCompleted &&
     (!hasProviderConfig || preferredMode === null);
+
+  useEffect(() => {
+    if (!activeWorkspaceId || !requestedSurfaceId) return;
+
+    if (requestedSurfaceId === "session") {
+      router.replace(`/workspace/${activeWorkspaceId}/sessions`);
+      return;
+    }
+
+    if (requestedSurfaceId === "team") {
+      router.replace(`/workspace/${activeWorkspaceId}/team`);
+      return;
+    }
+
+    if (requestedSurfaceId === "planning") {
+      router.replace(`/workspace/${activeWorkspaceId}/kanban`);
+    }
+  }, [activeWorkspaceId, requestedSurfaceId, router]);
 
   return (
     <DesktopAppShell
@@ -370,15 +346,52 @@ export default function HomePage() {
                         />
                       )}
 
-                      {/* Main input — explicit launcher modes */}
-                      <div className="rounded-3xl border border-black/6 bg-white/80 p-4 shadow-sm dark:border-white/8 dark:bg-white/5">
-                        <HomeInput
-                          workspaceId={activeWorkspaceId ?? undefined}
-                          variant="default"
-                          launchModes={homeLaunchModes}
-                          initialLaunchModeId={requestedLaunchModeId}
-                        />
-                      </div>
+                      {activeWorkspaceId ? (
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <Link
+                            href={`/workspace/${activeWorkspaceId}/sessions`}
+                            className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
+                          >
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                              {t.nav.sessions}
+                            </div>
+                            <div className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              {t.home.modeSessionTitle}
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                              {t.home.modeSessionDescription}
+                            </div>
+                          </Link>
+                          <Link
+                            href={`/workspace/${activeWorkspaceId}/kanban`}
+                            className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
+                          >
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                              {t.nav.kanban}
+                            </div>
+                            <div className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              {t.nav.kanban}
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                              {t.workspace.kanbanDescription}
+                            </div>
+                          </Link>
+                          <Link
+                            href={`/workspace/${activeWorkspaceId}/team`}
+                            className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
+                          >
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                              {t.nav.team}
+                            </div>
+                            <div className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              {t.home.modeTeamTitle}
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                              {t.home.modeTeamDescription}
+                            </div>
+                          </Link>
+                        </div>
+                      ) : null}
 
                       {/* Readiness checklist */}
                       <div className="rounded-[20px] border border-black/6 bg-white/80 px-5 py-4 dark:border-white/8 dark:bg-white/5">
@@ -453,14 +466,14 @@ export default function HomePage() {
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {activeWorkspaceId && (
                               <Link
-                                href={`/workspace/${activeWorkspaceId}/overview`}
+                                href={`/workspace/${activeWorkspaceId}/sessions`}
                                 className="flex flex-col rounded-2xl border border-black/6 bg-[#faf9f4] p-4 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:hover:bg-white/8"
                               >
                                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                  {t.nav.records}
+                                  {t.nav.sessions}
                                 </div>
                                 <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                                  {t.workspace.recoveryRoutingContext}
+                                  {t.workspace.recoverSession}
                                 </div>
                               </Link>
                             )}

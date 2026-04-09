@@ -1,4 +1,4 @@
-import { WorkspacePageClient } from "../workspace-page-client";
+import { redirect } from "next/navigation";
 
 export async function generateStaticParams() {
   if (process.env.ROUTA_BUILD_STATIC === "1") {
@@ -7,6 +7,11 @@ export async function generateStaticParams() {
   return [];
 }
 
-export default function WorkspaceOverviewPage() {
-  return <WorkspacePageClient />;
+export default async function WorkspaceOverviewPage({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}) {
+  const { workspaceId } = await params;
+  redirect(`/workspace/${workspaceId}/sessions`);
 }

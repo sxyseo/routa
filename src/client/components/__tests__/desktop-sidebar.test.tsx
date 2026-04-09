@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const pathnameState = vi.hoisted(() => ({
@@ -12,22 +12,21 @@ vi.mock("next/navigation", () => ({
 import { DesktopSidebar } from "../desktop-sidebar";
 
 describe("DesktopSidebar", () => {
-  it("keeps only Home, Kanban, and Overview in the primary navigation", () => {
+  it("keeps Home, Sessions, Kanban, and Team in the primary navigation", () => {
     render(<DesktopSidebar workspaceId="default" />);
 
-    const links = screen.getAllByRole("link").slice(0, 3);
-    expect(links.map((link) => link.textContent)).toEqual(["Home", "Kanban", "Overview"]);
+    const links = screen.getAllByRole("link").slice(0, 4);
+    expect(links.map((link) => link.textContent)).toEqual(["Home", "Sessions", "Kanban", "Team"]);
 
+    expect(screen.getByRole("link", { name: "Sessions" }).getAttribute("href")).toBe("/workspace/default/sessions");
     expect(screen.getByRole("link", { name: "Kanban" }).getAttribute("href")).toBe("/workspace/default/kanban");
-    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe("/workspace/default/overview");
+    expect(screen.getByRole("link", { name: "Team" }).getAttribute("href")).toBe("/workspace/default/team");
   });
 
-  it("moves advanced workspace tools into the Advanced menu", () => {
+  it("shows advanced workspace tools as direct sidebar links", () => {
     render(<DesktopSidebar workspaceId="default" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
-
-    expect(screen.getByRole("link", { name: "Team" }).getAttribute("href")).toBe("/workspace/default/team");
+    expect(screen.getByRole("link", { name: "MCP Servers" }).getAttribute("href")).toBe("/settings/mcp");
     expect(screen.getByRole("link", { name: "Harness" }).getAttribute("href")).toBe(
       "/settings/harness?workspaceId=default",
     );
