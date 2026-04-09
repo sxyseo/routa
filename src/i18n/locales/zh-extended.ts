@@ -1202,6 +1202,9 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     concurrencyLabel: "并发数",
     installAgents: "安装代理",
     openInNewTab: "在新标签页中打开",
+    resume: "恢复",
+    resuming: "恢复中...",
+    resumeHint: "恢复这个持久化会话，并重新绑定到当前 ACP 运行时。",
   },
 
   mcp: {

@@ -1202,6 +1202,9 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     concurrencyLabel: "Concurrency",
     installAgents: "Install Agents",
     openInNewTab: "Open in new tab",
+    resume: "Resume",
+    resuming: "Resuming...",
+    resumeHint: "Resume this persisted session and rebind it to the current ACP runtime.",
   },
 
   mcp: {

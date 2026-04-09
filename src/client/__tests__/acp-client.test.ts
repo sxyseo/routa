@@ -106,4 +106,42 @@ describe("BrowserAcpClient", () => {
       "Session is currently owned by instance web-2 until 2099-01-01T00:00:00.000Z.",
     ]);
   });
+
+  it("loads an existing session and attaches SSE to it", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      if (body?.method === "session/load") {
+        return new Response(JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            sessionId: "session-resume-1",
+            provider: "codex",
+            acpStatus: "ready",
+            resumeMode: "native",
+          },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(null, { status: 204 });
+    }));
+
+    const client = new BrowserAcpClient("");
+    const result = await client.loadSession({
+      sessionId: "session-resume-1",
+      cwd: "/tmp/codex",
+    });
+
+    expect(result).toMatchObject({
+      sessionId: "session-resume-1",
+      provider: "codex",
+      resumeMode: "native",
+    });
+    expect(client.sessionId).toBe("session-resume-1");
+    await vi.waitFor(() => {
+      expect(MockEventSource.instances[0]?.url).toContain("sessionId=session-resume-1");
+    });
+  });
 });

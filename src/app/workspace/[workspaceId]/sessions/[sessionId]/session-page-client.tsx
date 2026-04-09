@@ -40,8 +40,10 @@ import { ChevronDown, X } from "lucide-react";
 interface SessionRecord {
   sessionId: string;
   name?: string;
+  cwd?: string;
   provider?: string;
   role?: string;
+  acpStatus?: "connecting" | "ready" | "error";
   parentSessionId?: string;
 }
 
@@ -68,6 +70,8 @@ export function SessionPageClient() {
   const [selectedSpecialistId, setSelectedSpecialistId] = useState<string | null>(null);
   const [showAgentToast, setShowAgentToast] = useState(false);
   const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
+  const [activeSessionRecord, setActiveSessionRecord] = useState<SessionRecord | null>(null);
+  const [isResumingSession, setIsResumingSession] = useState(false);
 
   // ── Workspace state ───────────────────────────────────────────────────
   const workspacesHook = useWorkspaces();
@@ -100,6 +104,7 @@ export function SessionPageClient() {
     connect: acpConnect,
     selectSession: acpSelectSession,
     setProvider: acpSetProvider,
+    resumeSession: acpResumeSession,
     prompt: acpPrompt,
   } = acp;
   const notesHook = useNotes(workspaceId, sessionId);
@@ -403,6 +408,30 @@ export function SessionPageClient() {
     return (data?.session ?? null) as SessionRecord | null;
   }, []);
 
+  useEffect(() => {
+    if (!displaySessionId || displaySessionId === "__placeholder__") {
+      setActiveSessionRecord(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetchSessionRecord(displaySessionId)
+      .then((record) => {
+        if (!cancelled) {
+          setActiveSessionRecord(record);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActiveSessionRecord(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displaySessionId, fetchSessionRecord]);
+
   const resolveSessionNavigationTarget = useCallback(async (targetSessionId: string) => {
     const session = await fetchSessionRecord(targetSessionId);
     if (session?.parentSessionId) {
@@ -496,6 +525,20 @@ export function SessionPageClient() {
     },
     [acp, buildSessionHref, deleteEmptySession, ensureConnected, resolveSessionNavigationTarget, router, sessionId]
   );
+
+  const handleResumeCurrentSession = useCallback(async () => {
+    if (!displaySessionId || !activeSessionRecord?.cwd) return;
+    await ensureConnected();
+    setIsResumingSession(true);
+    try {
+      const resumed = await acpResumeSession(displaySessionId, activeSessionRecord.cwd);
+      if (resumed?.sessionId) {
+        bumpRefresh();
+      }
+    } finally {
+      setIsResumingSession(false);
+    }
+  }, [activeSessionRecord?.cwd, acpResumeSession, bumpRefresh, displaySessionId, ensureConnected]);
 
   const ensureSessionForChat = useCallback(async (cwd?: string, provider?: string, modeId?: string, model?: string): Promise<string | null> => {
     await ensureConnected();
@@ -696,6 +739,17 @@ export function SessionPageClient() {
             <a href="/traces" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-[var(--dt-bg-secondary)] text-[11px] font-medium text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)] transition-colors">
               {t.sessions.tracesLabel}
             </a>
+            {activeSessionRecord?.provider === "codex" && activeSessionRecord?.cwd && (
+              <button
+                type="button"
+                onClick={() => void handleResumeCurrentSession()}
+                disabled={isResumingSession || acp.loading}
+                className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-[var(--dt-bg-secondary)] text-[11px] font-medium text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)] transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                title={t.sessions.resumeHint}
+              >
+                {isResumingSession || acp.loading ? t.sessions.resuming : t.sessions.resume}
+              </button>
+            )}
           </>
         }
         />

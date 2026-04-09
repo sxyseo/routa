@@ -171,6 +171,54 @@ export class AcpProcessManager {
     }
 
     /**
+     * Resume a persisted ACP session using the provider's native session/load path.
+     * Currently used for process-based Codex sessions via codex-acp.
+     */
+    async loadSession(
+        sessionId: string,
+        cwd: string,
+        onNotification: NotificationHandler,
+        presetId: string = "codex",
+        workspaceId?: string,
+        toolMode?: "essential" | "full",
+        mcpProfile?: McpServerProfile,
+        sessionContext?: Omit<AcpSessionContext, "sessionId">,
+    ): Promise<string> {
+        let mcpConfigs: string[] | undefined;
+        if (providerSupportsMcp(presetId)) {
+            const mcpResult = await ensureMcpForProvider(
+                presetId,
+                getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile),
+            );
+            mcpConfigs = mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
+            logAcpDebug(`[AcpProcessManager] MCP setup for resumed ${presetId}: ${mcpResult.summary}`);
+        }
+
+        const config = await buildConfigFromPreset(presetId, cwd, undefined, undefined, mcpConfigs);
+        const proc = new AcpProcess(config, onNotification);
+
+        await proc.start();
+        await proc.initialize();
+        await proc.loadSession(sessionId, cwd);
+        proc.setSessionContext({
+            sessionId,
+            provider: sessionContext?.provider ?? presetId,
+            role: sessionContext?.role,
+            autoApprovePermissions: sessionContext?.autoApprovePermissions,
+        });
+
+        const acpSessionId = proc.sessionId ?? sessionId;
+        this.processes.set(sessionId, {
+            process: proc,
+            acpSessionId,
+            presetId,
+            createdAt: new Date(),
+        });
+
+        return acpSessionId;
+    }
+
+    /**
      * Spawn a new ACP agent process from an inline command and args (custom provider).
      * Used when the user defines a custom ACP provider not in the preset registry.
      *

@@ -16,6 +16,7 @@ const {
   loadHistorySinceEventIdFromDb,
   loadSessionFromDb,
   loadSessionFromLocalStorage,
+  persistSessionToDb,
   updateSessionExecutionBindingInDb,
 } = vi.hoisted(() => {
   const store = {
@@ -24,13 +25,19 @@ const {
     detachSse: vi.fn(),
     flushAgentBuffer: vi.fn(),
     getSession: vi.fn(),
+    getConsolidatedHistory: vi.fn(() => []),
     upsertSession: vi.fn(),
     pushNotification: vi.fn(),
+    pushUserMessage: vi.fn(),
   };
   const processManager = {
+    createSession: vi.fn(),
+    loadSession: vi.fn(),
     respondToUserInput: vi.fn(),
     getProcess: vi.fn(),
     getClaudeProcess: vi.fn(),
+    isClaudeSession: vi.fn(),
+    getAcpSessionId: vi.fn(),
     isDockerAdapterSession: vi.fn(),
     isOpencodeAdapterSession: vi.fn(),
     isClaudeCodeSdkSession: vi.fn(),
@@ -43,6 +50,7 @@ const {
   };
   const writeBuffer = {
     add: vi.fn(),
+    replace: vi.fn(),
     flush: vi.fn(),
   };
 
@@ -61,6 +69,7 @@ const {
     loadHistorySinceEventIdFromDb: vi.fn(),
     loadSessionFromDb: vi.fn(),
     loadSessionFromLocalStorage: vi.fn(),
+    persistSessionToDb: vi.fn(),
     updateSessionExecutionBindingInDb: vi.fn(),
   };
 });
@@ -94,6 +103,7 @@ vi.mock("@/core/acp/session-db-persister", async () => {
     loadHistorySinceEventIdFromDb,
     loadSessionFromDb,
     loadSessionFromLocalStorage,
+    persistSessionToDb,
     updateSessionExecutionBindingInDb,
   };
 });
@@ -131,6 +141,7 @@ describe("/api/acp GET", () => {
     loadHistorySinceEventIdFromDb.mockResolvedValue([]);
     loadSessionFromDb.mockResolvedValue(null);
     loadSessionFromLocalStorage.mockResolvedValue(null);
+    persistSessionToDb.mockResolvedValue(undefined);
     updateSessionExecutionBindingInDb.mockResolvedValue(undefined);
 
     httpSessionStore.attachSse.mockReset();
@@ -138,12 +149,19 @@ describe("/api/acp GET", () => {
     httpSessionStore.detachSse.mockReset();
     httpSessionStore.flushAgentBuffer.mockReset();
     httpSessionStore.getSession.mockReset();
+    httpSessionStore.getConsolidatedHistory.mockReset();
     httpSessionStore.upsertSession.mockReset();
     httpSessionStore.pushNotification.mockReset();
+    httpSessionStore.pushUserMessage.mockReset();
     httpSessionStore.getSession.mockReturnValue({ cwd: "/tmp/session" });
+    httpSessionStore.getConsolidatedHistory.mockReturnValue([]);
     acpProcessManager.respondToUserInput.mockReset();
+    acpProcessManager.createSession.mockReset();
+    acpProcessManager.loadSession.mockReset();
     acpProcessManager.getProcess.mockReset();
     acpProcessManager.getClaudeProcess.mockReset();
+    acpProcessManager.isClaudeSession.mockReset();
+    acpProcessManager.getAcpSessionId.mockReset();
     acpProcessManager.isDockerAdapterSession.mockReset();
     acpProcessManager.isOpencodeAdapterSession.mockReset();
     acpProcessManager.isClaudeCodeSdkSession.mockReset();
@@ -155,6 +173,8 @@ describe("/api/acp GET", () => {
     acpProcessManager.cancel.mockReset();
     acpProcessManager.getProcess.mockReturnValue(undefined);
     acpProcessManager.getClaudeProcess.mockReturnValue(undefined);
+    acpProcessManager.isClaudeSession.mockReturnValue(false);
+    acpProcessManager.getAcpSessionId.mockReturnValue(undefined);
     acpProcessManager.isDockerAdapterSession.mockReturnValue(false);
     acpProcessManager.isOpencodeAdapterSession.mockReturnValue(false);
     acpProcessManager.isClaudeCodeSdkSession.mockReturnValue(false);
@@ -162,6 +182,7 @@ describe("/api/acp GET", () => {
     acpProcessManager.isOpencodeSdkSessionAsync.mockResolvedValue(false);
     acpProcessManager.getOrRecreateClaudeCodeSdkAdapter.mockResolvedValue(undefined);
     sessionWriteBuffer.add.mockReset();
+    sessionWriteBuffer.replace.mockReset();
     sessionWriteBuffer.flush.mockReset();
     sessionWriteBuffer.flush.mockResolvedValue(undefined);
   });
@@ -338,7 +359,7 @@ describe("/api/acp POST", () => {
       result: {
         protocolVersion: 1,
         agentCapabilities: {
-          loadSession: false,
+          loadSession: true,
         },
         agentInfo: {
           name: "routa-acp",
@@ -492,6 +513,117 @@ describe("/api/acp POST", () => {
       },
     });
     expect(loadSessionFromLocalStorage).toHaveBeenCalledWith("session-1");
+  });
+
+  it("loads persisted codex sessions through the native resume path", async () => {
+    httpSessionStore.getSession.mockReturnValue(undefined);
+    loadSessionFromDb.mockResolvedValue({
+      id: "session-codex",
+      name: "Resume Codex",
+      cwd: "/tmp/codex",
+      workspaceId: "workspace-1",
+      provider: "codex",
+      role: "DEVELOPER",
+      createdAt: new Date("2026-04-08T00:00:00.000Z"),
+    });
+    acpProcessManager.loadSession.mockResolvedValue("session-codex");
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/acp", {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 8,
+          method: "session/load",
+          params: {
+            sessionId: "session-codex",
+          },
+        }),
+      }),
+    );
+
+    expect(acpProcessManager.loadSession).toHaveBeenCalledWith(
+      "session-codex",
+      "/tmp/codex",
+      expect.any(Function),
+      "codex",
+      "workspace-1",
+      undefined,
+      undefined,
+      {
+        provider: "codex",
+        role: "DEVELOPER",
+      },
+    );
+    expect(acpProcessManager.createSession).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      jsonrpc: "2.0",
+      id: 8,
+      result: {
+        sessionId: "session-codex",
+        provider: "codex",
+        role: "DEVELOPER",
+        acpStatus: "ready",
+        resumeMode: "native",
+      },
+    });
+  });
+
+  it("falls back to recreate when native codex resume fails", async () => {
+    httpSessionStore.getSession.mockReturnValue(undefined);
+    loadSessionFromDb.mockResolvedValue({
+      id: "session-codex",
+      cwd: "/tmp/codex",
+      workspaceId: "workspace-1",
+      provider: "codex",
+      role: "CRAFTER",
+      createdAt: new Date("2026-04-08T00:00:00.000Z"),
+    });
+    acpProcessManager.loadSession.mockRejectedValue(new Error("rollout missing"));
+    acpProcessManager.createSession.mockResolvedValue("session-codex");
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/acp", {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 9,
+          method: "session/load",
+          params: {
+            sessionId: "session-codex",
+          },
+        }),
+      }),
+    );
+
+    expect(acpProcessManager.createSession).toHaveBeenCalledWith(
+      "session-codex",
+      "/tmp/codex",
+      expect.any(Function),
+      "codex",
+      undefined,
+      undefined,
+      undefined,
+      "workspace-1",
+      undefined,
+      undefined,
+      {
+        provider: "codex",
+        role: "CRAFTER",
+      },
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      jsonrpc: "2.0",
+      id: 9,
+      result: {
+        sessionId: "session-codex",
+        provider: "codex",
+        role: "CRAFTER",
+        acpStatus: "ready",
+        resumeMode: "recreated",
+        nativeResumeError: "rollout missing",
+      },
+    });
   });
 
   it("rejects prompt auto-recreate when recovered embedded session belongs to another instance", async () => {

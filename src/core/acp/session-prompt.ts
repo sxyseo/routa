@@ -297,6 +297,7 @@ async function ensurePromptSessionExists(args: {
     const isClaudeCodeSdk = provider === "claude-code-sdk";
     const isOpencodeSdk = provider === "opencode-sdk";
     const isDockerOpenCode = provider === "docker-opencode";
+    const isCodex = provider === "codex";
 
     let acpSessionId: string;
 
@@ -365,6 +366,41 @@ async function ensurePromptSessionExists(args: {
         undefined,
         allowedNativeTools,
       );
+    } else if (isCodex) {
+      try {
+        acpSessionId = await manager.loadSession(
+          sessionId,
+          cwd,
+          forwardSessionUpdate,
+          "codex",
+          workspaceId,
+          toolMode,
+          mcpProfile,
+          {
+            provider,
+            role,
+          },
+        );
+        console.log(`[ACP Route] Native Codex resume succeeded for session ${sessionId}`);
+      } catch (resumeError) {
+        console.warn(`[ACP Route] Native Codex resume failed for ${sessionId}, falling back to recreate:`, resumeError);
+        acpSessionId = await manager.createSession(
+          sessionId,
+          cwd,
+          forwardSessionUpdate,
+          provider,
+          undefined,
+          undefined,
+          undefined,
+          workspaceId,
+          toolMode,
+          mcpProfile,
+          {
+            provider,
+            role,
+          },
+        );
+      }
     } else {
       acpSessionId = await manager.createSession(
         sessionId,
@@ -377,6 +413,10 @@ async function ensurePromptSessionExists(args: {
         workspaceId,
         toolMode,
         mcpProfile,
+        {
+          provider,
+          role,
+        },
       );
     }
 

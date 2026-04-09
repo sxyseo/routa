@@ -7,6 +7,7 @@ import { SessionPageClient } from "../session-page-client";
 const {
   mockPush,
   mockConnect,
+  mockResumeSession,
   mockSelectSession,
   mockSetProvider,
   mockPrompt,
@@ -14,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockConnect: vi.fn(async () => {}),
+  mockResumeSession: vi.fn(async () => ({ sessionId: "session-1", provider: "codex", acpStatus: "ready", resumeMode: "native" })),
   mockSelectSession: vi.fn(),
   mockSetProvider: vi.fn(),
   mockPrompt: vi.fn(async () => {}),
@@ -85,6 +87,7 @@ vi.mock("@/client/hooks/use-acp", () => ({
     dockerConfigError: null,
     connect: mockConnect,
     createSession: vi.fn(async () => null),
+    resumeSession: mockResumeSession,
     selectSession: mockSelectSession,
     setProvider: mockSetProvider,
     setMode: vi.fn(async () => {}),
@@ -182,6 +185,7 @@ describe("SessionPageClient", () => {
     notesState.connected = true;
     mockPush.mockReset();
     mockConnect.mockReset();
+    mockResumeSession.mockReset();
     mockSelectSession.mockReset();
     mockSetProvider.mockReset();
     mockPrompt.mockReset();
@@ -380,6 +384,38 @@ describe("SessionPageClient", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "essential" }),
       });
+    });
+  });
+
+  it("shows a Resume action for codex sessions and calls ACP resume", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/specialists") {
+        return { ok: true, json: async () => ({ specialists: [] }) } as Response;
+      }
+      if (url === "/api/sessions/session-1") {
+        return {
+          ok: true,
+          json: async () => ({ session: { sessionId: "session-1", provider: "codex", cwd: "/tmp/codex", role: "DEVELOPER" } }),
+        } as Response;
+      }
+      if (url === "/api/sessions?parentSessionId=session-1") {
+        return { ok: true, json: async () => ({ sessions: [] }) } as Response;
+      }
+      if (url === "/api/mcp/tools") {
+        return { ok: true, json: async () => ({ globalMode: "essential" }) } as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionPageClient />);
+
+    const resumeButton = await screen.findByRole("button", { name: "Resume" });
+    fireEvent.click(resumeButton);
+
+    await waitFor(() => {
+      expect(mockResumeSession).toHaveBeenCalledWith("session-1", "/tmp/codex");
     });
   });
 });

@@ -302,6 +302,35 @@ export class AcpProcess {
     }
 
     /**
+     * Load an existing ACP session.
+     * Used by providers such as codex-acp that can resume persisted threads.
+     */
+    async loadSession(sessionId: string, cwd?: string): Promise<void> {
+        try {
+            await this.sendRequest("session/load", {
+                sessionId,
+                cwd: cwd || this._config.cwd,
+                mcpServers: [],
+            });
+            this._sessionId = sessionId;
+            console.log(
+                `[AcpProcess:${this._config.displayName}] Session loaded: ${this._sessionId}`
+            );
+        } catch (error) {
+            if (error instanceof AcpError) {
+                throw new AcpError(
+                    error.message,
+                    error.code,
+                    this._initResult?.authMethods ?? error.authMethods,
+                    this._initResult?.agentInfo ?? error.agentInfo,
+                    error.data,
+                );
+            }
+            throw error;
+        }
+    }
+
+    /**
      * Send a prompt to the current session.
      * The response comes back asynchronously; content streams via session/update notifications.
      */
@@ -350,7 +379,7 @@ export class AcpProcess {
             // Determine timeout based on method and distribution type
             // npx/uvx agents may need longer timeout for first-time package download
             const isNpxOrUvx = this._config.command === "npx" || this._config.command === "uvx";
-            const isInitRequest = method === "initialize" || method === "session/new";
+            const isInitRequest = method === "initialize" || method === "session/new" || method === "session/load";
             const isPromptRequest = method === "session/prompt";
 
             let defaultTimeout: number;

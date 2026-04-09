@@ -34,6 +34,15 @@ export interface AcpNewSessionResult {
   acpStatus?: "connecting" | "ready" | "error";
 }
 
+export interface AcpLoadSessionResult {
+  sessionId: string;
+  provider?: string;
+  role?: string;
+  acpStatus?: "connecting" | "ready" | "error";
+  resumeMode?: "native" | "recreated" | "attached";
+  nativeResumeError?: string;
+}
+
 export interface AcpPromptResult {
   stopReason: string;
   /** Full response content (for serverless environments where SSE may not work) */
@@ -230,6 +239,25 @@ export class BrowserAcpClient {
     this.attachSession(result.sessionId);
 
     return result;
+  }
+
+  /**
+   * Load or resume an existing ACP session.
+   */
+  async loadSession(params: {
+    sessionId: string;
+    cwd?: string;
+  }): Promise<AcpLoadSessionResult> {
+    const result = await this.rpc<AcpLoadSessionResult>("session/load", {
+      sessionId: params.sessionId,
+      cwd: params.cwd,
+    });
+    this._sessionId = params.sessionId;
+    this.attachSession(params.sessionId);
+    return {
+      sessionId: params.sessionId,
+      ...result,
+    };
   }
 
   /**

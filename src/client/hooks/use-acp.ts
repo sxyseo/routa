@@ -13,6 +13,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   BrowserAcpClient,
+  AcpLoadSessionResult,
   AcpNewSessionResult,
   AcpProviderInfo,
   AcpClientError,
@@ -205,6 +206,10 @@ export interface UseAcpActions {
       /** Allow unattended permission approvals for automation sessions. */
       autoApprovePermissions?: boolean,
     ) => Promise<AcpNewSessionResult | null>;
+  resumeSession: (
+    sessionId: string,
+    cwd?: string,
+  ) => Promise<AcpLoadSessionResult | null>;
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
   setMode: (modeId: string) => Promise<void>;
@@ -572,6 +577,38 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     [state.selectedProvider]
   );
 
+  const resumeSession = useCallback(async (
+    targetSessionId: string,
+    cwd?: string,
+  ): Promise<AcpLoadSessionResult | null> => {
+    const client = clientRef.current;
+    if (!client || !targetSessionId) return null;
+
+    try {
+      setState((s) => ({ ...s, loading: true, error: null, authError: null, updates: [] }));
+      const result = await client.loadSession({
+        sessionId: targetSessionId,
+        cwd,
+      });
+      sessionIdRef.current = targetSessionId;
+      setState((s) => ({
+        ...s,
+        sessionId: targetSessionId,
+        selectedProvider: result.provider ?? s.selectedProvider,
+        loading: false,
+      }));
+      return result;
+    } catch (err) {
+      logRuntime("error", "useAcp.resumeSession", "Failed to resume ACP session", formatAcpErrorForLog(err));
+      setState((s) => ({
+        ...s,
+        loading: false,
+        error: toErrorMessage(err) || "Session resume failed",
+      }));
+      return null;
+    }
+  }, []);
+
   const setProvider = useCallback((provider: string) => {
     saveSelectedAcpProvider(provider);
     setState((s) => ({ ...s, selectedProvider: provider }));
@@ -757,6 +794,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     ...state,
     connect,
     createSession,
+    resumeSession,
     selectSession,
     setProvider,
     setMode,
