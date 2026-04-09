@@ -18,6 +18,65 @@ import {
 import { useTranslation } from "@/i18n";
 import { HarnessMark } from "./harness-mark";
 
+const DESKTOP_ADVANCED_EXPANDED_KEY = "routa.desktop.advanced-expanded";
+const DESKTOP_ADVANCED_CHANGE_EVENT = "routa:desktop-advanced-expanded";
+let advancedExpandedFallback = false;
+
+export function getDesktopAdvancedExpandedSnapshot(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  if (typeof window.localStorage?.getItem !== "function") {
+    return advancedExpandedFallback;
+  }
+
+  return window.localStorage.getItem(DESKTOP_ADVANCED_EXPANDED_KEY) === "true";
+}
+
+export function getDesktopAdvancedExpandedServerSnapshot(): boolean {
+  return false;
+}
+
+export function subscribeToDesktopAdvancedExpanded(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleChange = () => onStoreChange();
+  window.addEventListener(DESKTOP_ADVANCED_CHANGE_EVENT, handleChange as EventListener);
+  window.addEventListener("storage", handleChange);
+
+  return () => {
+    window.removeEventListener(DESKTOP_ADVANCED_CHANGE_EVENT, handleChange as EventListener);
+    window.removeEventListener("storage", handleChange);
+  };
+}
+
+export function setDesktopAdvancedExpanded(expanded: boolean) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (typeof window.localStorage?.setItem !== "function") {
+    advancedExpandedFallback = expanded;
+    window.dispatchEvent(
+      new CustomEvent(DESKTOP_ADVANCED_CHANGE_EVENT, {
+        detail: { expanded },
+      }),
+    );
+    return;
+  }
+
+  advancedExpandedFallback = expanded;
+  window.localStorage.setItem(DESKTOP_ADVANCED_EXPANDED_KEY, String(expanded));
+  window.dispatchEvent(
+    new CustomEvent(DESKTOP_ADVANCED_CHANGE_EVENT, {
+      detail: { expanded },
+    }),
+  );
+}
+
 interface AdvancedNavMenuProps {
   workspaceId?: string | null;
   collapsed?: boolean;
@@ -40,7 +99,12 @@ export function AdvancedNavMenu({
 }: AdvancedNavMenuProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
-  const [open, setOpen] = React.useState(false);
+  const isExpanded = React.useSyncExternalStore(
+    subscribeToDesktopAdvancedExpanded,
+    getDesktopAdvancedExpandedSnapshot,
+    getDesktopAdvancedExpandedServerSnapshot,
+  );
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
   const normalizedWorkspaceId = workspaceId?.trim() || null;
@@ -105,19 +169,25 @@ export function AdvancedNavMenu({
   ];
 
   React.useEffect(() => {
-    if (!open) {
+    if (!collapsed || !menuOpen) {
       return;
     }
 
     const handleOutsideClick = (event: MouseEvent) => {
       if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
+        setMenuOpen(false);
       }
     };
 
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [open]);
+  }, [collapsed, menuOpen]);
+
+  React.useEffect(() => {
+    if (!collapsed) {
+      setMenuOpen(false);
+    }
+  }, [collapsed]);
 
   const isActive = (href: string) => {
     const hrefPath = href.split("?")[0]?.split("#")[0] ?? href;
@@ -129,17 +199,30 @@ export function AdvancedNavMenu({
 
   const menuActive = items.some((item) => isActive(item.href));
   const menuPositionClass = collapsed ? "left-full bottom-0 ml-1 w-56" : "left-0 right-0 bottom-full mb-1";
+  const buttonActive = menuActive || isExpanded || menuOpen;
+
+  const handleToggle = () => {
+    if (collapsed) {
+      if (!isExpanded) {
+        setDesktopAdvancedExpanded(true);
+      }
+      setMenuOpen((current) => !current);
+      return;
+    }
+
+    setDesktopAdvancedExpanded(!isExpanded);
+  };
 
   return (
     <div ref={containerRef} className={`relative ${className ?? ""}`}>
       <button
         type="button"
         aria-haspopup="menu"
-        aria-expanded={open}
+        aria-expanded={collapsed ? menuOpen : isExpanded}
         aria-label={t.nav.advanced}
-        onClick={() => setOpen((current) => !current)}
+        onClick={handleToggle}
         className={`inline-flex items-center rounded-md border border-desktop-border text-xs font-medium transition-colors ${buttonClassName ?? "h-8 px-2 py-1"} ${
-          menuActive || open
+          buttonActive
             ? "bg-desktop-bg-active text-desktop-accent"
             : "text-desktop-text-secondary hover:border-desktop-accent/40 hover:bg-desktop-bg-active/60 hover:text-desktop-text-primary"
         }`}
@@ -148,12 +231,34 @@ export function AdvancedNavMenu({
         {!collapsed ? (
           <>
             <span className="ml-1.5 mr-1.5">{t.nav.advanced}</span>
-            <ChevronDown className={`h-3 w-3 opacity-70 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} />
+            <ChevronDown className={`h-3 w-3 opacity-70 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} />
           </>
         ) : null}
       </button>
 
-      {open ? (
+      {!collapsed && isExpanded ? (
+        <div className="mt-1 space-y-0.5">
+          {items.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                className={`flex items-center gap-2 rounded-md px-2 py-2 text-[11px] transition-colors ${
+                  active
+                    ? "bg-desktop-bg-active text-desktop-accent"
+                    : "text-desktop-text-secondary hover:bg-desktop-bg-active/80 hover:text-desktop-text-primary"
+                }`}
+              >
+                {item.icon}
+                <span className="truncate">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {collapsed && menuOpen ? (
         <div className={`absolute z-30 ${menuPositionClass} rounded-lg border border-desktop-border bg-desktop-bg-secondary/95 p-1 text-[11px] shadow-lg backdrop-blur`}>
           <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">
             {t.nav.advanced}
@@ -164,7 +269,7 @@ export function AdvancedNavMenu({
               <Link
                 key={item.id}
                 href={item.href}
-                onClick={() => setOpen(false)}
+                onClick={() => setMenuOpen(false)}
                 className={`mb-0.5 last:mb-0 flex items-center gap-2 rounded-md px-2 py-2 transition-colors ${
                   active
                     ? "bg-desktop-bg-active text-desktop-accent"

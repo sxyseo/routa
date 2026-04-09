@@ -127,6 +127,7 @@ const en: TranslationDictionary = {
     showAdvancedMode: "Show advanced mode",
     hideAdvancedMode: "Hide advanced mode",
     advancedModeDescription: "Open these entry points only when you need team coordination, governance tools, or the expert launcher.",
+    setupGateHint: "Finish the checklist above before unlocking Overview recovery and advanced tools. The home page now keeps only the most direct starting path.",
   },
 
   nav: {

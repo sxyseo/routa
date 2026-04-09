@@ -132,6 +132,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     showAdvancedMode: string;
     hideAdvancedMode: string;
     advancedModeDescription: string;
+    setupGateHint: string;
   };
 
   // Navigation & Header

@@ -126,6 +126,7 @@ const zh: TranslationDictionary = {
     showAdvancedMode: "显示高级模式",
     hideAdvancedMode: "收起高级模式",
     advancedModeDescription: "只有在需要团队协作、治理工具或专家级启动器时，再打开这些入口。",
+    setupGateHint: "先完成上面的引导清单，再解锁概览恢复入口和高级能力。当前首页只保留最直接的起步路径。",
   },
 
   nav: {

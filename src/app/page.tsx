@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { RepoSelection } from "@/client/components/repo-picker";
+import {
+  getDesktopAdvancedExpandedServerSnapshot,
+  getDesktopAdvancedExpandedSnapshot,
+  subscribeToDesktopAdvancedExpanded,
+} from "@/client/components/advanced-nav-menu";
 import { OnboardingCard } from "@/client/components/home-page-sections";
 import { HomeInput } from "@/client/components/home-input";
 import {
@@ -69,10 +73,14 @@ export default function HomePage() {
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [workspaceHomeData, setWorkspaceHomeData] = useState<Record<string, WorkspaceHomeData>>({});
   const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
-  const [showAdvancedLauncher, setShowAdvancedLauncher] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   const { codebases, fetchCodebases } = useCodebases(activeWorkspaceId ?? "");
+  const isAdvancedNavExpanded = useSyncExternalStore(
+    subscribeToDesktopAdvancedExpanded,
+    getDesktopAdvancedExpandedSnapshot,
+    getDesktopAdvancedExpandedServerSnapshot,
+  );
 
   useEffect(() => {
     setHydrated(true);
@@ -205,10 +213,6 @@ export default function HomePage() {
     return false;
   }, [activeWorkspaceId, fetchCodebases, workspacesHook.workspaces]);
 
-  useEffect(() => {
-    setShowAdvancedLauncher(false);
-  }, [activeWorkspaceId]);
-
   const activeWorkspace = workspacesHook.workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
   const activeData = activeWorkspaceId ? (workspaceHomeData[activeWorkspaceId] ?? EMPTY_HOME_DATA) : EMPTY_HOME_DATA;
   const recentSessions = useMemo(() => (
@@ -238,6 +242,7 @@ export default function HomePage() {
     hasWorkspace &&
     !onboardingCompleted &&
     (!hasProviderConfig || preferredMode === null);
+  const showAdvancedLauncher = !needsInlineOnboarding && isAdvancedNavExpanded;
 
   return (
     <DesktopAppShell
@@ -317,7 +322,7 @@ export default function HomePage() {
                             </p>
                           </div>
 
-                          <div className="mx-auto mt-10 grid w-full max-w-4xl gap-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                          <div className={`mx-auto mt-10 grid w-full max-w-4xl gap-4 ${needsInlineOnboarding ? "md:grid-cols-1" : "md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]"}`}>
                             <Link
                               href={activeWorkspaceId ? `/workspace/${activeWorkspaceId}/kanban` : "/"}
                               className="rounded-[28px] border border-[#9ec88e] bg-[#f6fbf2] p-5 text-left shadow-[0_22px_60px_-44px_rgba(15,23,42,0.35)] transition-colors hover:bg-white dark:border-emerald-800/40 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/25"
@@ -332,150 +337,144 @@ export default function HomePage() {
                                 {t.home.openKanbanDescription}
                               </p>
                             </Link>
-                            <Link
-                              href={activeWorkspaceId ? `/workspace/${activeWorkspaceId}/overview` : "/"}
-                              className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/8"
-                            >
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                                {t.nav.overview}
-                              </div>
-                              <div className="mt-3 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                                {t.home.workspaceOverview}
-                              </div>
-                              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                                {t.home.workspaceOverviewDescription}
-                              </p>
-                            </Link>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSettingsInitialTab(undefined);
-                                setShowSettingsPanel(true);
-                              }}
-                              className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/8"
-                            >
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                                {t.settings.title}
-                              </div>
-                              <div className="mt-3 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                                {t.home.checkEnvironment}
-                              </div>
-                              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                                {t.home.checkEnvironmentDescription}
-                              </p>
-                            </button>
+                            {!needsInlineOnboarding ? (
+                              <>
+                                <Link
+                                  href={activeWorkspaceId ? `/workspace/${activeWorkspaceId}/overview` : "/"}
+                                  className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/8"
+                                >
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                                    {t.nav.overview}
+                                  </div>
+                                  <div className="mt-3 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                                    {t.home.workspaceOverview}
+                                  </div>
+                                  <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                                    {t.home.workspaceOverviewDescription}
+                                  </p>
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSettingsInitialTab(undefined);
+                                    setShowSettingsPanel(true);
+                                  }}
+                                  className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/8"
+                                >
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                                    {t.settings.title}
+                                  </div>
+                                  <div className="mt-3 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                                    {t.home.checkEnvironment}
+                                  </div>
+                                  <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                                    {t.home.checkEnvironmentDescription}
+                                  </p>
+                                </button>
+                              </>
+                            ) : null}
                           </div>
 
-                          <section className="mx-auto mt-8 w-full max-w-4xl rounded-[28px] border border-black/6 bg-white/82 p-5 dark:border-white/8 dark:bg-white/5">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                                  {t.home.recentWorkTitle}
-                                </div>
-                                <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                                  {t.home.recentWorkDescription}
-                                </div>
-                              </div>
-                              {latestSession ? (
-                                <Link
-                                  href={`/workspace/${latestSession.workspaceId}/sessions/${latestSession.sessionId}`}
-                                  className="inline-flex rounded-full border border-black/8 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/8 dark:bg-white/6 dark:text-slate-200 dark:hover:bg-white/10"
-                                >
-                                  {t.home.resumeLatestSession}
-                                </Link>
-                              ) : null}
-                            </div>
-
-                            <div className="mt-4 space-y-3">
-                              {recentSessionsLoading && recentSessions.length === 0 ? (
-                                <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-8 text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
-                                  {t.common.loading}
-                                </div>
-                              ) : recentSessions.length > 0 ? (
-                                recentSessions.map((session) => (
-                                  <Link
-                                    key={session.sessionId}
-                                    href={`/workspace/${session.workspaceId}/sessions/${session.sessionId}`}
-                                    className="block rounded-[20px] border border-black/6 bg-[#faf9f4] p-4 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:hover:bg-white/8"
-                                  >
-                                    <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                      {getSessionLabel(session)}
-                                    </div>
-                                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                                      <span>{formatRelativeTime(session.createdAt, hydrated)}</span>
-                                      {session.branch ? (
-                                        <>
-                                          <span>·</span>
-                                          <span className="truncate">{session.branch}</span>
-                                        </>
-                                      ) : null}
-                                    </div>
-                                  </Link>
-                                ))
-                              ) : (
-                                <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-8 text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
-                                  {t.home.noRecentSessions}
-                                </div>
-                              )}
-                            </div>
-                          </section>
-
-                          <section className="mx-auto mt-6 w-full max-w-4xl">
-                            <button
-                              type="button"
-                              onClick={() => setShowAdvancedLauncher((current) => !current)}
-                              className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/8 dark:bg-white/6 dark:text-slate-200 dark:hover:bg-white/10"
-                            >
-                              {showAdvancedLauncher ? t.home.hideAdvancedMode : t.home.showAdvancedMode}
-                              {showAdvancedLauncher ? (
-                                <ChevronUp className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} />
-                              )}
-                            </button>
-
-                            {showAdvancedLauncher ? (
-                              <div className="mt-4 rounded-[28px] border border-black/6 bg-white/82 p-5 dark:border-white/8 dark:bg-white/5">
+                          {needsInlineOnboarding ? (
+                            <section className="mx-auto mt-6 w-full max-w-4xl rounded-[24px] border border-dashed border-black/10 bg-white/70 px-5 py-5 text-sm text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
+                              {t.home.setupGateHint}
+                            </section>
+                          ) : (
+                            <section className="mx-auto mt-8 w-full max-w-4xl rounded-[28px] border border-black/6 bg-white/82 p-5 dark:border-white/8 dark:bg-white/5">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
                                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                                    {t.nav.advanced}
+                                    {t.home.recentWorkTitle}
                                   </div>
-                                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-                                    {t.home.advancedModeDescription}
-                                  </p>
+                                  <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                    {t.home.recentWorkDescription}
+                                  </div>
                                 </div>
-
-                                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                                  <Link href={teamHref} className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
-                                    {t.nav.team}
+                                {latestSession ? (
+                                  <Link
+                                    href={`/workspace/${latestSession.workspaceId}/sessions/${latestSession.sessionId}`}
+                                    className="inline-flex rounded-full border border-black/8 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/8 dark:bg-white/6 dark:text-slate-200 dark:hover:bg-white/10"
+                                  >
+                                    {t.home.resumeLatestSession}
                                   </Link>
-                                  <Link href={settingsHarnessHref} className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
-                                    {t.nav.harness}
-                                  </Link>
-                                  <Link href={settingsFluencyHref} className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
-                                    {t.nav.fluency}
-                                  </Link>
-                                  <Link href="/settings/workflows" className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
-                                    {t.nav.workflows}
-                                  </Link>
-                                  <Link href="/settings/specialists" className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
-                                    {t.nav.specialists}
-                                  </Link>
-                                </div>
-
-                                <div className="mt-5 border-t border-black/6 pt-5 dark:border-white/8">
-                                  <HomeInput
-                                    workspaceId={activeWorkspaceId ?? undefined}
-                                    variant="default"
-                                    defaultAgentRole={preferredMode === "CRAFTER" ? "CRAFTER" : "ROUTA"}
-                                    buildSessionUrl={(nextWorkspaceId, sessionId) =>
-                                      `/workspace/${nextWorkspaceId ?? activeWorkspaceId}/sessions/${sessionId}`
-                                    }
-                                  />
-                                </div>
+                                ) : null}
                               </div>
-                            ) : null}
-                          </section>
+                              <div className="mt-4 space-y-3">
+                                {recentSessionsLoading && recentSessions.length === 0 ? (
+                                  <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-8 text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
+                                    {t.common.loading}
+                                  </div>
+                                ) : recentSessions.length > 0 ? (
+                                  recentSessions.map((session) => (
+                                    <Link
+                                      key={session.sessionId}
+                                      href={`/workspace/${session.workspaceId}/sessions/${session.sessionId}`}
+                                      className="block rounded-[20px] border border-black/6 bg-[#faf9f4] p-4 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:hover:bg-white/8"
+                                    >
+                                      <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                        {getSessionLabel(session)}
+                                      </div>
+                                      <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                        <span>{formatRelativeTime(session.createdAt, hydrated)}</span>
+                                        {session.branch ? (
+                                          <>
+                                            <span>·</span>
+                                            <span className="truncate">{session.branch}</span>
+                                          </>
+                                        ) : null}
+                                      </div>
+                                    </Link>
+                                  ))
+                                ) : (
+                                  <div className="rounded-[22px] border border-dashed border-black/10 px-4 py-8 text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
+                                    {t.home.noRecentSessions}
+                                  </div>
+                                )}
+                              </div>
+                            </section>
+                          )}
+
+                          {showAdvancedLauncher ? (
+                            <section className="mx-auto mt-6 w-full max-w-4xl rounded-[28px] border border-black/6 bg-white/82 p-5 dark:border-white/8 dark:bg-white/5">
+                              <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                                  {t.nav.advanced}
+                                </div>
+                                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                                  {t.home.advancedModeDescription}
+                                </p>
+                              </div>
+
+                              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                                <Link href={teamHref} className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
+                                  {t.nav.team}
+                                </Link>
+                                <Link href={settingsHarnessHref} className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
+                                  {t.nav.harness}
+                                </Link>
+                                <Link href={settingsFluencyHref} className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
+                                  {t.nav.fluency}
+                                </Link>
+                                <Link href="/settings/workflows" className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
+                                  {t.nav.workflows}
+                                </Link>
+                                <Link href="/settings/specialists" className="rounded-[20px] border border-black/6 bg-[#faf9f4] px-4 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-white dark:border-white/8 dark:bg-white/4 dark:text-slate-100 dark:hover:bg-white/8">
+                                  {t.nav.specialists}
+                                </Link>
+                              </div>
+
+                              <div className="mt-5 border-t border-black/6 pt-5 dark:border-white/8">
+                                <HomeInput
+                                  workspaceId={activeWorkspaceId ?? undefined}
+                                  variant="default"
+                                  defaultAgentRole={preferredMode === "CRAFTER" ? "CRAFTER" : "ROUTA"}
+                                  buildSessionUrl={(nextWorkspaceId, sessionId) =>
+                                    `/workspace/${nextWorkspaceId ?? activeWorkspaceId}/sessions/${sessionId}`
+                                  }
+                                />
+                              </div>
+                            </section>
+                          ) : null}
                         </section>
                       </>
                     )}
