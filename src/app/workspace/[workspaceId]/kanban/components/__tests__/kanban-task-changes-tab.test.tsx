@@ -80,7 +80,7 @@ describe("KanbanTaskChangesTab", () => {
     });
   });
 
-  it("renders committed diff as independently collapsible changed-file sections", async () => {
+  it("renders committed diff as a single scrollable list of expandable file sections", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/tasks/task-commit/changes") {
@@ -198,6 +198,7 @@ describe("KanbanTaskChangesTab", () => {
       expect((await openPackageDiffShadowRoot()).textContent).toContain('"version": "1.1.0"');
     });
     expect(screen.getByTestId("kanban-commit-files-changed").textContent).toContain("2 Files Changed");
+    expect(screen.getByTestId("kanban-commit-diff-scroll-area")).toBeTruthy();
     expect(screen.getByTestId("kanban-commit-file-section-package.json")).toBeTruthy();
     expect(screen.getByTestId("kanban-commit-file-section-src/editor.ts")).toBeTruthy();
     expect((await openPackageDiffShadowRoot()).textContent).not.toContain("context10");
@@ -210,12 +211,15 @@ describe("KanbanTaskChangesTab", () => {
       expect((await openPackageDiffShadowRoot()).textContent).toContain("context10");
     });
 
-    fireEvent.click(screen.getByTestId("kanban-commit-file-section-src/editor.ts").querySelector("summary")!);
     await waitFor(() => {
       const editorSection = container.querySelector("[data-testid='kanban-commit-file-section-src/editor.ts']");
       const editorDiffText = editorSection?.querySelector("diffs-container")?.shadowRoot?.textContent ?? "";
       expect(editorDiffText).toContain("export const editor = 'new';");
     });
+
+    const editorSection = screen.getByTestId("kanban-commit-file-section-src/editor.ts");
+    fireEvent.click(editorSection.querySelector("summary")!);
+    expect((editorSection as HTMLDetailsElement).open).toBe(false);
 
     fireEvent.click(screen.getByTestId("kanban-commit-row-abc1234567890"));
     expect(screen.queryByTestId("kanban-commit-files-changed")).toBeNull();

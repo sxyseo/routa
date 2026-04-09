@@ -653,7 +653,7 @@ function CommitFileDiffSection({
           <span className="text-rose-600 dark:text-rose-300">-{file.deletions}</span>
         </div>
       </summary>
-      <div className="max-h-[28rem] overflow-auto border-t border-slate-200/70 dark:border-[#202433]">
+      <div className="overflow-auto border-t border-slate-200/70 dark:border-[#202433]">
         {pierreDiff ? (
           <div
             className="kanban-pierre-diff min-w-full text-[11px]"
@@ -740,13 +740,15 @@ export function TaskCommitDiffPreview({
               </button>
             ) : null}
           </div>
-          {fileSections.map((file, index) => (
-            <CommitFileDiffSection
-              key={`${file.path}-${file.startLineIndex}`}
-              file={file}
-              defaultOpen={index === 0}
-            />
-          ))}
+          <div className="max-h-[70vh] overflow-auto" data-testid="kanban-commit-diff-scroll-area">
+            {fileSections.map((file) => (
+              <CommitFileDiffSection
+                key={`${file.path}-${file.startLineIndex}`}
+                file={file}
+                defaultOpen={true}
+              />
+            ))}
+          </div>
         </div>
       ) : !parsedDiff ? (
         <div className={`px-3 py-3 text-sm text-slate-500 dark:text-slate-400 ${compact ? "leading-5" : "leading-6"}`}>
