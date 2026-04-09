@@ -75,7 +75,15 @@ describe("SessionContextPanel", () => {
             createdAt: "2026-04-09T08:00:00.000Z",
           },
         ],
-        kanbanContext: null,
+        kanbanContext: {
+          taskId: "task-1",
+          taskTitle: "Review login flow",
+          columnId: "review",
+          currentLaneSession: null,
+          previousLaneSession: null,
+          previousLaneRun: null,
+          relatedHandoffs: [],
+        },
       }),
     });
   });
@@ -84,7 +92,7 @@ describe("SessionContextPanel", () => {
     vi.clearAllMocks();
   });
 
-  it("renders recent session switching for the sessions surface and links back to the sessions list", async () => {
+  it("renders recent session switching as a dropdown and keeps Show All in the kanban story context", async () => {
     const onSelectSession = vi.fn();
 
     render(
@@ -96,13 +104,15 @@ describe("SessionContextPanel", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Recent Sessions")).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Recent Sessions/i })).toBeTruthy();
     });
 
     expect(screen.getByRole("link", { name: "Show All" }).getAttribute("href")).toBe("/workspace/default/sessions");
-    expect(screen.getByText("Fix login regression")).toBeTruthy();
+    expect(screen.queryByText("Fix login regression")).toBeNull();
     expect(screen.queryByText("Team run incident triage")).toBeNull();
 
+    fireEvent.click(screen.getByRole("button", { name: /Recent Sessions/i }));
+    expect(screen.getByText("Fix login regression")).toBeTruthy();
     fireEvent.click(screen.getByText("Fix login regression"));
     expect(onSelectSession).toHaveBeenCalledWith("session-ordinary");
   });

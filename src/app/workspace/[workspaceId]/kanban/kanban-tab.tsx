@@ -61,7 +61,6 @@ import {
   KanbanTaskDetailOverlay,
 } from "./kanban-tab-panels";
 import { ArrowRight } from "lucide-react";
-import { KanbanPlanBacklogModal } from "./kanban-plan-backlog-modal";
 
 interface SpecialistOption {
   id: string;
@@ -149,7 +148,6 @@ export function KanbanTab({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view;
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
-  const [showPlanBacklogModal, setShowPlanBacklogModal] = useState(false);
 
   const [agentInput, setAgentInput] = useState("");
   const [agentLoading, setAgentLoading] = useState(false);
@@ -1478,13 +1476,6 @@ export function KanbanTab({
 
   const kanbanHeaderActions = board ? (
     <div className="flex min-w-[560px] flex-1 items-center border border-slate-200 bg-white transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-slate-700 dark:bg-[#12141c]">
-      <button
-        onClick={() => setShowPlanBacklogModal(true)}
-        className="ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-md bg-slate-900 px-2 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
-        title={t.kanban.planBacklog}
-      >
-        {t.kanban.planBacklog}
-      </button>
       {onAgentPrompt && (
         <>
           <div className="ml-1 shrink-0 border-l border-r border-slate-200 dark:border-slate-700">
@@ -1631,20 +1622,6 @@ export function KanbanTab({
         gitLogOpen={gitLogOpen}
         setGitLogOpen={setGitLogOpen}
       />
-      <KanbanPlanBacklogModal
-        show={showPlanBacklogModal}
-        workspaceId={workspaceId}
-        boardId={selectedBoardId ?? defaultBoardId ?? null}
-        repoPath={defaultCodebase?.repoPath}
-        specialistLanguage={specialistLanguage}
-        onClose={() => setShowPlanBacklogModal(false)}
-        onPlanned={(sessionId: string) => {
-          setShowPlanBacklogModal(false);
-          openAgentPanel(sessionId);
-          scheduleKanbanRefreshBurst(onRefresh);
-        }}
-      />
-
       <KanbanCreateTaskModal
         showCreateModal={showCreateModal}
         draft={draft}

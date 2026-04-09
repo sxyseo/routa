@@ -12,7 +12,7 @@ interface WorkspaceSwitcherProps {
   activeWorkspaceId: string | null;
   activeWorkspaceTitle?: string;
   onSelect: (workspaceId: string) => void;
-  onCreate: (title: string) => Promise<void>;
+  onCreate?: (title: string) => Promise<void> | void;
   loading?: boolean;
   compact?: boolean;
   /** Use desktop/VS Code style theme */
@@ -57,7 +57,7 @@ export function WorkspaceSwitcher({
 
   const handleCreate = async () => {
     const title = newTitle.trim();
-    if (!title) return;
+    if (!title || !onCreate) return;
     await onCreate(title);
     setNewTitle("");
     setCreating(false);
@@ -133,7 +133,7 @@ export function WorkspaceSwitcher({
                   {t.common.create}
                 </Button>
                 </div>
-              ) : (
+              ) : onCreate && (
                 <Button
                   type="button"
                   variant="desktop-secondary"
@@ -220,7 +220,7 @@ export function WorkspaceSwitcher({
                   {t.common.create}
                 </Button>
               </div>
-            ) : (
+            ) : onCreate && (
               <Button
                 type="button"
                 variant="ghost"

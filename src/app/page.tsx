@@ -353,10 +353,10 @@ export default function HomePage() {
                             className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
                           >
                             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                              {t.nav.sessions}
+                              {t.home.surfaceLabel}
                             </div>
                             <div className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                              {t.home.modeSessionTitle}
+                              {t.home.sessionsSurfaceTitle}
                             </div>
                             <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                               {t.home.modeSessionDescription}
@@ -367,10 +367,10 @@ export default function HomePage() {
                             className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
                           >
                             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                              {t.nav.kanban}
+                              {t.home.surfaceLabel}
                             </div>
                             <div className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                              {t.nav.kanban}
+                              {t.home.kanbanSurfaceTitle}
                             </div>
                             <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                               {t.workspace.kanbanDescription}
@@ -381,10 +381,10 @@ export default function HomePage() {
                             className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
                           >
                             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                              {t.nav.team}
+                              {t.home.surfaceLabel}
                             </div>
                             <div className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                              {t.home.modeTeamTitle}
+                              {t.home.teamSurfaceTitle}
                             </div>
                             <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                               {t.home.modeTeamDescription}

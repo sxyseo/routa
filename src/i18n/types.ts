@@ -135,6 +135,10 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     setupGateHint: string;
     whatToAdvance: string;
     homePrimaryHint: string;
+    surfaceLabel: string;
+    sessionsSurfaceTitle: string;
+    kanbanSurfaceTitle: string;
+    teamSurfaceTitle: string;
     modeSessionTitle: string;
     modeSessionDescription: string;
     modeSessionPlaceholder: string;

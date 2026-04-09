@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { v4 as uuidv4 } from "uuid";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
-import { Select } from "@/client/components/select";
+import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { ChevronLeft, X, MessageSquare, RefreshCw } from "lucide-react";
 
 
@@ -728,21 +728,18 @@ export default function AGUIPage() {
           <div className="flex items-center gap-3">
             <ProtocolToggle mode={protocolMode} onChange={setProtocolMode} />
 
-            <Select
-              value={selectedWorkspaceId}
-              onChange={(e) => setSelectedWorkspaceId(e.target.value)}
-              className="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300"
-            >
-              {workspacesHook.workspaces.length === 0 ? (
-                <option value="">No workspace</option>
-              ) : (
-                workspacesHook.workspaces.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.title}
-                  </option>
-                ))
-              )}
-            </Select>
+            <WorkspaceSwitcher
+              workspaces={workspacesHook.workspaces}
+              activeWorkspaceId={selectedWorkspaceId || null}
+              onSelect={setSelectedWorkspaceId}
+              onCreate={async (title) => {
+                const workspace = await workspacesHook.createWorkspace(title);
+                if (workspace?.id) {
+                  setSelectedWorkspaceId(workspace.id);
+                }
+              }}
+              loading={workspacesHook.loading}
+            />
 
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-50 dark:bg-[#1e2130] text-[11px] font-medium text-slate-500 dark:text-slate-400">
               <span className={`w-1.5 h-1.5 rounded-full ${sending ? "bg-amber-400 animate-pulse" : "bg-emerald-500"}`} />

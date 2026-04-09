@@ -95,6 +95,7 @@ interface ChatPanelProps {
   workspaces?: WorkspaceData[];
   activeWorkspaceId?: string | null;
   onWorkspaceChange?: (id: string) => void;
+  onWorkspaceCreate?: (title: string) => Promise<void> | void;
   codebases?: CodebaseData[];
   /** When set, pre-fills the chat input (e.g. to restore text after a session error) */
   inputPrefill?: string | null;
@@ -124,6 +125,7 @@ export function ChatPanel({
   workspaces = [],
   activeWorkspaceId,
   onWorkspaceChange,
+  onWorkspaceCreate,
   codebases: _codebases = [],
   inputPrefill,
   onInputPrefillConsumed,
@@ -570,6 +572,7 @@ export function ChatPanel({
           workspaces={workspaces}
           activeWorkspaceId={activeWorkspaceId ?? null}
           onWorkspaceChange={(id) => onWorkspaceChange?.(id)}
+          onWorkspaceCreate={onWorkspaceCreate}
           repoSelection={repoSelection}
           onRepoChange={onRepoChange}
           agentRole={agentRole}
