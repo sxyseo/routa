@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
-import { Select } from "@/client/components/select";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { ChatPanel } from "@/client/components/chat-panel";
 import type { ChatMessage } from "@/client/components/chat-panel/types";
@@ -66,7 +65,7 @@ import {
 } from "./team-run-page-sections";
 import { useRealTeamRunParams } from "./use-real-team-run-params";
 import { useTranslation } from "@/i18n";
-import { ChevronLeft, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronLeft } from "lucide-react";
 
 
 function buildFallbackLeadMessages(
@@ -193,7 +192,10 @@ export function TeamRunPageClient() {
   const [selectedSessionForModal, setSelectedSessionForModal] = useState<string | null>(null);
   const [timelineInputKey, setTimelineInputKey] = useState(0);
   const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
+  const [showTeamRunMenu, setShowTeamRunMenu] = useState(false);
+  const [isSwitchingTeamRun, setIsSwitchingTeamRun] = useState(false);
   const sessionBlockRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const teamRunSwitcherRef = useRef<HTMLDivElement | null>(null);
   const lastUpdateIndexRef = useRef(0);
   const pendingPromptSentRef = useRef<Set<string>>(new Set());
   const pendingPromptTextRef = useRef<string | null>(null);
@@ -206,8 +208,21 @@ export function TeamRunPageClient() {
   const pendingTranscriptSessionIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    setIsSwitchingTeamRun(true);
     contextKeyRef.current = `${workspaceId}:${sessionId}`;
   }, [sessionId, workspaceId]);
+
+  useEffect(() => {
+    if (!teamRunSwitcherRef.current) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!teamRunSwitcherRef.current?.contains(event.target as Node)) {
+        setShowTeamRunMenu(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!acpConnected && !acpLoading) {
@@ -216,9 +231,11 @@ export function TeamRunPageClient() {
   }, [acpConnected, acpLoading, connectAcp]);
 
   useEffect(() => {
-    if (!isResolved || !acpConnected || sessionId === "__placeholder__") return;
+    if (!isResolved || !acpConnected || !session || session.sessionId !== sessionId || sessionId === "__placeholder__") {
+      return;
+    }
     selectSession(sessionId);
-  }, [acpConnected, isResolved, selectSession, sessionId]);
+  }, [acpConnected, isResolved, selectSession, session, sessionId]);
 
   useEffect(() => {
     if (!selectedSessionForModal) return;
@@ -304,10 +321,16 @@ export function TeamRunPageClient() {
     const agentsData = await agentsRes.json().catch(() => ({}));
 
     if (contextKeyRef.current !== contextKey) return;
-
-    setSession((sessionData?.session ?? null) as SessionInfo | null);
-    setWorkspaceSessions(Array.isArray(sessionsData?.sessions) ? sessionsData.sessions : []);
-    setAgents(Array.isArray(agentsData?.agents) ? agentsData.agents : []);
+    if (sessionData?.session) {
+      setSession(sessionData.session as SessionInfo);
+    }
+    if (Array.isArray(sessionsData?.sessions)) {
+      setWorkspaceSessions(sessionsData.sessions);
+    }
+    if (Array.isArray(agentsData?.agents)) {
+      setAgents(agentsData.agents);
+    }
+    setIsSwitchingTeamRun(false);
   }, [sessionId, workspaceId]);
 
   const fetchSessionTranscripts = useCallback(async (targetSessionIds: string[]) => {
@@ -354,19 +377,18 @@ export function TeamRunPageClient() {
     try {
       await fetchRunMetadata();
     } catch {
-      if (contextKeyRef.current === `${workspaceId}:${sessionId}`) {
-        setSession(null);
-        setWorkspaceSessions([]);
-        setAgents([]);
-      }
+      // keep existing session view while attempting to refresh metadata.
+      // If this load is still for the current context, we only surface loading state naturally
+      // when no session has ever been resolved.
     } finally {
       metadataRefreshInFlightRef.current = false;
+      setIsSwitchingTeamRun(false);
       if (metadataRefreshQueuedRef.current) {
         metadataRefreshQueuedRef.current = false;
         void flushMetadataRefresh();
       }
     }
-  }, [fetchRunMetadata, sessionId, workspaceId]);
+  }, [fetchRunMetadata]);
 
   const requestMetadataRefresh = useCallback((delayMs = 250) => {
     if (metadataRefreshTimerRef.current) {
@@ -1056,15 +1078,6 @@ export function TeamRunPageClient() {
     });
   }, [agentsById, createdAgents, delegatedRosterIdsBySessionId, historiesBySessionId, latestSessionBySpecialistId, session, sessionId, sessionStreams, sessionStreamByAgentId, specialists, specialistsById]);
 
-  const memberCounts = useMemo(
-    () => ({
-      done: teamMembers.filter((member) => member.status === "done").length,
-      active: teamMembers.filter((member) => member.status === "working" || member.status === "reviewing").length,
-      blocked: teamMembers.filter((member) => member.status === "blocked").length,
-    }),
-    [teamMembers],
-  );
-
   const pendingQuestionsBySessionId = useMemo(() => {
     const result = new Map<string, PendingSessionQuestion>();
 
@@ -1332,6 +1345,11 @@ export function TeamRunPageClient() {
     return fallbackMap;
   }, [memberLaneByToolCallId, sessionLanes]);
 
+  const selectedTeamRun = useMemo(
+    () => teamRuns.find((run) => run.sessionId === sessionId) ?? teamRuns[0],
+    [teamRuns, sessionId],
+  );
+
   if (!session) {
     return (
       <div className="desktop-theme flex h-screen items-center justify-center bg-desktop-bg-primary">
@@ -1362,59 +1380,70 @@ export function TeamRunPageClient() {
       )}
     >
       <div className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary">
-        <header className="shrink-0 border-b border-desktop-border px-4 py-3" data-testid="team-run-page-header">
+        <header className="shrink-0 border-b border-desktop-border px-4 py-2.5" data-testid="team-run-page-header">
           <div className="mx-auto flex w-full max-w-440 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <Link
                 href={`/workspace/${workspaceId}/team`}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
+                className="inline-flex shrink-0 items-center rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
+                title={t.common.back}
+                aria-label={t.common.back}
               >
                 <ChevronLeft className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-                Team
+                <span className="sr-only">{t.common.back}</span>
               </Link>
-              <Sparkles className="h-4 w-4 shrink-0 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-              <div className="min-w-0">
-                <h1 className="truncate text-[13px] font-semibold text-desktop-text-primary">
-                  {session.name ?? "Team run"}
-                </h1>
-                <p className="text-[11px] text-desktop-text-secondary">
-                  Follow the lead session, spawned member sessions, and inline reports back to lead
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-1.5 rounded border border-desktop-border px-2 py-1 text-[10px] text-desktop-text-secondary">
-                <span>Session:</span>
-                <code className="font-mono text-desktop-text-primary">{sessionId.slice(0, 8)}…</code>
-              </div>
-              <div className="inline-flex items-center gap-1.5 rounded border border-desktop-border px-2 py-1 text-[10px] text-desktop-text-secondary">
-                <span>{formatRelativeTime(session.createdAt)}</span>
-                <span className="opacity-40">/</span>
-                <span>{session.provider ?? "auto"}</span>
-                <span className="opacity-40">/</span>
-                <span>{acpConnected ? "live" : "reconnecting"}</span>
+              <div
+                ref={teamRunSwitcherRef}
+                className="relative min-w-0"
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowTeamRunMenu((current) => teamRuns.length > 1 ? !current : false)}
+                  className="inline-flex min-w-0 items-center gap-1.5 rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-left text-[13px] font-semibold text-desktop-text-primary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
+                >
+                  <h1 className="max-w-72 truncate">
+                    {selectedTeamRun?.name ?? session.name}
+                  </h1>
+                  {teamRuns.length > 1 ? (
+                    <ChevronDown className={`h-3.5 w-3.5 text-desktop-text-secondary transition-transform ${showTeamRunMenu ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
+                  ) : null}
+                  {isSwitchingTeamRun ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
+                  ) : null}
+                </button>
+                {showTeamRunMenu && (
+                  <div className="absolute left-0 top-full z-20 mt-1 max-h-72 w-80 overflow-y-auto rounded-md border border-desktop-border bg-desktop-bg-primary p-1.5 shadow-xl">
+                    {teamRuns.map((run) => {
+                      const isActive = run.sessionId === sessionId;
+                      return (
+                        <button
+                          key={run.sessionId}
+                          type="button"
+                          onClick={() => {
+                            if (run.sessionId !== sessionId) {
+                              router.push(`/workspace/${workspaceId}/team/${run.sessionId}`);
+                            }
+                            setShowTeamRunMenu(false);
+                          }}
+                          className={`mb-0.5 flex w-full items-center justify-between rounded-[10px] px-2.5 py-2 text-left text-[12px] ${
+                            isActive
+                              ? "bg-desktop-bg-active text-desktop-text-primary"
+                              : "text-desktop-text-secondary hover:bg-desktop-bg-secondary"
+                          }`}
+                        >
+                          <span className="truncate">{run.name ?? `Team run ${run.sessionId.slice(0, 8)}`}</span>
+                          <span className="ml-2 shrink-0 text-[10px] uppercase tracking-[0.14em] text-desktop-text-muted">
+                            {isActive ? t.team.active : t.team.waitingForDelegation}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {teamRuns.length > 1 ? (
-                <Select
-                  value={sessionId}
-                  onChange={(event) => router.push(`/workspace/${workspaceId}/team/${event.target.value}`)}
-                  className="h-8 min-h-8 max-w-60 rounded-md border border-desktop-border bg-desktop-bg-secondary px-2 text-[11px] text-desktop-text-secondary"
-                >
-                  {teamRuns.map((run) => (
-                    <option key={run.sessionId} value={run.sessionId}>
-                      {run.name ?? `Team run ${run.sessionId.slice(0, 8)}`}
-                    </option>
-                  ))}
-                </Select>
-              ) : null}
-              <Link
-                href={`/workspace/${workspaceId}/team`}
-                className="inline-flex items-center gap-1.5 rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-                Team
-              </Link>
               <button
                 type="button"
                 onClick={() => {
@@ -1423,13 +1452,13 @@ export function TeamRunPageClient() {
                 }}
                 className="rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
               >
-                Refresh
+                {t.common.refresh || "Refresh"}
               </button>
               <Link
                 href={`/workspace/${workspaceId}/sessions/${sessionId}`}
                 className="rounded-md bg-desktop-accent px-2.5 py-1.5 text-[11px] font-medium text-desktop-accent-text transition-colors hover:opacity-90"
               >
-                Open raw session
+                {t.common.open}
               </Link>
             </div>
           </div>
@@ -1438,7 +1467,6 @@ export function TeamRunPageClient() {
         <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
           <ObjectiveSidebarSection
             objective={objective}
-            memberCounts={memberCounts}
             taskTree={taskTree}
             deliverables={deliverables}
             onFocusSession={focusSessionBlock}
@@ -1500,8 +1528,7 @@ export function TeamRunPageClient() {
           <div className="flex h-full min-h-0 bg-desktop-bg-primary">
             <div className="flex w-80 shrink-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary">
               <div className="border-b border-desktop-border px-4 py-3">
-                <div className="text-sm font-semibold text-desktop-text-primary">Run Sessions</div>
-                <div className="mt-1 text-xs text-desktop-text-secondary">Shared session viewer reused from kanban/chat.</div>
+                <div className="text-sm font-semibold text-desktop-text-primary">{t.team.teamRuns}</div>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto p-3">
                 <div className="space-y-2">
@@ -1527,8 +1554,8 @@ export function TeamRunPageClient() {
                             {stream.badge}
                           </span>
                         </div>
-                        <div className="mt-3 line-clamp-3 text-xs leading-5 text-desktop-text-secondary">
-                          {stream.preview ?? "No transcript content yet."}
+                          <div className="mt-3 line-clamp-3 text-xs leading-5 text-desktop-text-secondary">
+                          {stream.preview ?? t.team.noTranscriptYet}
                         </div>
                       </button>
                     );
@@ -1549,7 +1576,7 @@ export function TeamRunPageClient() {
                     href={`/workspace/${workspaceId}/sessions/${selectedSessionStream.session.sessionId}`}
                     className="text-cyan-600 transition hover:text-cyan-500"
                   >
-                    Open raw session
+                    {t.common.open}
                   </Link>
                 </div>
               </div>

@@ -23,37 +23,47 @@ import { Check, Eye, Info } from "lucide-react";
 
 export function ObjectiveSidebarSection({
   objective,
-  memberCounts,
   taskTree,
   deliverables,
   onFocusSession,
 }: {
   objective: string;
-  memberCounts: { done: number; active: number; blocked: number };
   taskTree: TeamTaskNode[];
   deliverables: DeliverableItem[];
   onFocusSession: (sessionId: string) => void;
 }) {
   const { t } = useTranslation();
+  const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
+  const shouldClampObjective = objective.length > 140;
+  const objectiveClassName = shouldClampObjective && !isObjectiveExpanded ? "line-clamp-4" : "";
   return (
-    <section className="min-h-0 overflow-hidden border-r border-desktop-border bg-desktop-bg-secondary">
-      <div className="border-b border-desktop-border px-4 py-2.5">
-        <div className="text-[13px] font-semibold uppercase tracking-[0.2em] text-desktop-text-muted">Objective</div>
-        <div className="mt-2 rounded-[18px] border border-desktop-border bg-desktop-bg-primary p-3">
-          <div className="text-sm leading-5 text-desktop-text-primary [overflow-wrap:anywhere]">{objective}</div>
+    <section className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary">
+      <div className="border-b border-desktop-border px-4 py-2">
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
+            {t.team.objective}
+          </h2>
         </div>
-        <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-          <MetricChip label={t.team.done} value={memberCounts.done} tone="emerald" />
-          <MetricChip label={t.common.active} value={memberCounts.active} tone="cyan" />
-          <MetricChip label={t.team.blocked} value={memberCounts.blocked} tone="rose" />
+        <div className="mt-2 rounded-md border border-desktop-border bg-desktop-bg-primary p-2.5">
+          <div className={`text-xs leading-5 text-desktop-text-primary [overflow-wrap:anywhere] ${objectiveClassName}`}>{objective || t.team.noObjective}</div>
+          {shouldClampObjective ? (
+            <button
+              type="button"
+              onClick={() => setIsObjectiveExpanded((current) => !current)}
+              className="mt-1 text-[10px] font-medium text-desktop-accent transition hover:text-desktop-text-primary"
+            >
+              {isObjectiveExpanded ? t.team.showLessThread : t.team.expandThread}
+            </button>
+          ) : null}
         </div>
       </div>
 
       <div className="border-b border-desktop-border px-4 py-2.5">
-        <h2 className="text-base font-semibold text-desktop-text-primary">Plan / Task Tree</h2>
-        <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">{t.team.leadDecomposition}</p>
+        <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
+          {t.team.planTaskTree}
+        </div>
       </div>
-      <div className="h-[calc(100%-176px)] overflow-y-auto px-2.5 py-2.5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2.5">
         <div className="space-y-3">
           {taskTree.length === 0 ? (
             <EmptyPanel message={t.team.noTaskNotesYet} />
@@ -126,13 +136,12 @@ export function SessionTimelineSection({
   const { t } = useTranslation();
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-desktop-bg-primary">
-      <div className="border-b border-desktop-border px-4 py-3">
+      <div className="border-b border-desktop-border px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div>
-            <h2 className="text-base font-semibold text-desktop-text-primary">{t.team.sessionTimeline}</h2>
-            <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">
-              {t.team.timelineDesc}
-            </p>
+            <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
+              {t.team.sessionTimeline}
+            </h2>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-desktop-text-secondary">
             <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1">
@@ -185,10 +194,9 @@ export function TeamMembersSection({
   return (
     <aside className="min-h-0 overflow-hidden border-l border-desktop-border bg-desktop-bg-secondary">
       <div className="border-b border-desktop-border px-4 py-2.5">
-        <h2 className="text-base font-semibold text-desktop-text-primary">{t.team.teamMembers}</h2>
-        <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">
-          {t.team.watchWhoIsRunning}
-        </p>
+        <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
+          {t.team.teamMembers}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1">
@@ -222,7 +230,7 @@ export function TeamMembersSection({
                       {member.sessionId ? member.roleLabel : `${member.roleLabel} · ${t.team.noSessionYet}`}
                     </div>
                     <div className="mt-0.5 flex items-center gap-1 text-[10px] text-desktop-text-muted">
-                      <span>{member.lastUpdatedLabel ?? "Waiting for delegation"}</span>
+                      <span>{member.lastUpdatedLabel ?? t.team.waitingForDelegation}</span>
                       {member.preview && (
                         <>
                           <span className="opacity-40">/</span>
@@ -240,30 +248,6 @@ export function TeamMembersSection({
     </aside >
   );
 }
-
-function MetricChip({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: "emerald" | "cyan" | "rose";
-}) {
-  const toneClass =
-    tone === "emerald"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
-      : tone === "rose"
-        ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
-        : "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300";
-  return (
-    <div className={`rounded-[16px] border px-2.5 py-2 ${toneClass}`}>
-      <div className="text-lg font-semibold tabular-nums">{value}</div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-[0.12em]">{label}</div>
-    </div>
-  );
-}
-
 function TaskTreeNode({
   node,
   level = 0,
@@ -436,13 +420,13 @@ function LeadMessageThread({
               <span className="text-[10px] text-desktop-text-muted opacity-40">/</span>
               <span className="text-[10px] text-desktop-text-muted">{lane.eventCount} {t.team.updates}</span>
             </div>
-            <button
-              type="button"
-              onClick={onOpenViewer}
-              className="text-[10px] font-medium text-desktop-text-secondary transition-colors hover:text-desktop-text-primary"
-            >
-              Open viewer
-            </button>
+                <button
+                  type="button"
+                  onClick={onOpenViewer}
+                  className="text-[10px] font-medium text-desktop-text-secondary transition-colors hover:text-desktop-text-primary"
+                >
+                  {t.team.openViewer}
+                </button>
           </div>
 
           <div className="space-y-1 py-0.5">
@@ -458,7 +442,7 @@ function LeadMessageThread({
                   onClick={() => setExpanded(true)}
                   className="text-[10px] font-medium text-desktop-text-secondary transition-colors hover:text-desktop-text-primary"
                 >
-                  Expand thread
+                  {t.team.expandThread}
                 </button>
               </>
             ) : (
@@ -474,7 +458,7 @@ function LeadMessageThread({
                     onClick={() => setExpanded(false)}
                     className="text-[10px] font-medium text-desktop-text-secondary transition-colors hover:text-desktop-text-primary"
                   >
-                    Show less
+                    {t.team.showLessThread}
                   </button>
                 )}
               </>
@@ -485,9 +469,9 @@ function LeadMessageThread({
 
       {pendingQuestionMessage && onSubmitQuestion && lane?.pendingQuestion && (
         <div className="ml-6 border-l-2 border-desktop-border/80 pl-3 pt-1.5">
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-muted">
-            Awaiting input
-          </div>
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-muted">
+              {t.team.awaitingInput}
+            </div>
           <AskUserQuestionBubble
             message={pendingQuestionMessage}
             onSubmit={(toolCallId, response) => onSubmitQuestion(lane.pendingQuestion!.sessionId, toolCallId, response)}

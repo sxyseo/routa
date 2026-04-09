@@ -104,6 +104,7 @@ export interface AcpConnectionIssue {
   status?: number;
   ownerInstanceId?: string;
   leaseExpiresAt?: string;
+  retryDelayMs?: number;
 }
 
 export type SessionConnectionIssueHandler = (issue: AcpConnectionIssue) => void;
@@ -155,6 +156,10 @@ export class BrowserAcpClient {
   private lastEventId: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private sseAttempt = 0;
+  private readonly ownershipConflictRetryLimit = 4;
+  private readonly ownershipConflictBaseDelayMs = 1200;
+  private readonly ownershipConflictBackoffMultiplier = 2;
+  private readonly ownershipConflictRetryState = new Map<string, number>();
 
   constructor(baseUrl: string = "") {
     this.baseUrl = baseUrl;
@@ -343,6 +348,9 @@ export class BrowserAcpClient {
    */
   attachSession(sessionId: string): void {
     if (this._sessionId !== sessionId) {
+      if (this._sessionId) {
+        this.ownershipConflictRetryState.delete(this._sessionId);
+      }
       this.lastEventId = null;
     }
     this._sessionId = sessionId;
@@ -614,6 +622,7 @@ export class BrowserAcpClient {
     }
     this._sessionId = null;
     this.lastEventId = null;
+    this.ownershipConflictRetryState.clear();
     this.updateHandlers = [];
     this.connectionIssueHandlers = [];
   }
@@ -646,7 +655,7 @@ export class BrowserAcpClient {
       if (issue) {
         this.emitConnectionIssue(issue);
         if (issue.retryable) {
-          this.scheduleReconnect();
+          this.scheduleReconnect(issue.retryDelayMs ?? 2000);
         }
         return;
       }
@@ -688,7 +697,7 @@ export class BrowserAcpClient {
     });
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(delayMs: number = 2000): void {
     if (this.reconnectTimer) {
       return;
     }
@@ -697,7 +706,7 @@ export class BrowserAcpClient {
       if (this._sessionId) {
         this.connectSSE(this._sessionId);
       }
-    }, 2000);
+    }, delayMs);
   }
 
   private emitConnectionIssue(issue: AcpConnectionIssue): void {
@@ -710,6 +719,21 @@ export class BrowserAcpClient {
     }
   }
 
+  private getOwnershipConflictRetryDelayMs(sessionId: string): number | null {
+    const attempts = (this.ownershipConflictRetryState.get(sessionId) ?? 0) + 1;
+    if (attempts > this.ownershipConflictRetryLimit) {
+      this.ownershipConflictRetryState.delete(sessionId);
+      return null;
+    }
+    this.ownershipConflictRetryState.set(sessionId, attempts);
+    const backoff = this.ownershipConflictBaseDelayMs * (this.ownershipConflictBackoffMultiplier ** (attempts - 1));
+    return Math.min(backoff, 10000);
+  }
+
+  private clearOwnershipConflictRetryState(sessionId: string): void {
+    this.ownershipConflictRetryState.delete(sessionId);
+  }
+
   private async probeSse(url: URL, sessionId: string): Promise<AcpConnectionIssue | null> {
     try {
       const response = await fetch(url.toString(), {
@@ -717,6 +741,7 @@ export class BrowserAcpClient {
       });
 
       if (response.ok) {
+        this.clearOwnershipConflictRetryState(sessionId);
         return null;
       }
 
@@ -731,16 +756,25 @@ export class BrowserAcpClient {
         ? payload.error
         : `SSE attach failed with status ${response.status}`;
 
+      const ownershipConflictRetryDelayMs = response.status === 409
+        ? this.getOwnershipConflictRetryDelayMs(sessionId)
+        : null;
+
       return {
         sessionId,
         message,
-        retryable: response.status !== 409,
+        retryable: response.status !== 409 || ownershipConflictRetryDelayMs !== null,
         status: response.status,
         ownerInstanceId: typeof payload?.ownerInstanceId === "string" ? payload.ownerInstanceId : undefined,
         leaseExpiresAt: typeof payload?.leaseExpiresAt === "string" ? payload.leaseExpiresAt : undefined,
+        retryDelayMs:
+          response.status === 409
+            ? ownershipConflictRetryDelayMs ?? undefined
+            : undefined,
       };
     } catch (error) {
       console.warn("[AcpClient] SSE probe failed, falling back to EventSource:", error);
+      this.clearOwnershipConflictRetryState(sessionId);
       return null;
     }
   }

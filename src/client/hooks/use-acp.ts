@@ -337,14 +337,16 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         setState((s) => ({
           ...s,
           updates: [...s.updates, update],
+          error: null,
         }));
       });
       client.onConnectionIssue((issue) => {
         if (tearingDownRef.current) return;
         logRuntime("warn", "useAcp.sse", "Session stream issue", issue);
+        const isRecoverableOwnershipConflict = issue.status === 409 && issue.retryable;
         setState((s) => ({
           ...s,
-          error: formatConnectionIssue(issue),
+          error: isRecoverableOwnershipConflict ? null : formatConnectionIssue(issue),
         }));
       });
 
