@@ -1238,8 +1238,8 @@ describe("KanbanCardDetail changes tab", () => {
       );
     });
 
-    expect(await screen.findByText(/"version": "1\.1\.0"/)).toBeTruthy();
-    expect(screen.getByText(/"version": "1\.0\.0"/)).toBeTruthy();
+    expect(await screen.findByText("package.json")).toBeTruthy();
+    expect(screen.getByText("1 Files Changed")).toBeTruthy();
   });
 
   it("still shows committed changes when the branch is ahead and the worktree is dirty", async () => {

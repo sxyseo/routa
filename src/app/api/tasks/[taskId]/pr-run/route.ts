@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
 import { enqueueKanbanTaskSession } from "@/core/kanban/workflow-orchestrator-singleton";
+import { buildTaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
+import { captureTaskDeliverySnapshot } from "@/core/kanban/task-delivery-snapshot";
 import {
   getRemoteUrl,
   isBareGitRepository,
@@ -92,6 +94,16 @@ export async function POST(
   const locale = typeof body.specialistLocale === "string" && body.specialistLocale.trim().length > 0
     ? body.specialistLocale.trim()
     : "en";
+
+  const deliveryReadiness = await buildTaskDeliveryReadiness(task, system);
+  const deliverySnapshot = captureTaskDeliverySnapshot(task, deliveryReadiness, {
+    source: "pr_run",
+  });
+  if (deliverySnapshot !== task.deliverySnapshot) {
+    task.deliverySnapshot = deliverySnapshot;
+    task.updatedAt = new Date();
+    await system.taskStore.save(task);
+  }
 
   const result = await enqueueKanbanTaskSession(system, {
     task,

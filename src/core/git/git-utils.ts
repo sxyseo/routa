@@ -94,6 +94,14 @@ function hasGitRef(repoPath: string, ref: string): boolean {
   }
 }
 
+export function getRepoRefSha(repoPath: string, ref: string): string | null {
+  try {
+    return gitExecSync(`git rev-parse ${shellQuote(ref)}`, repoPath);
+  } catch {
+    return null;
+  }
+}
+
 function resolveBaseRef(repoPath: string, baseBranch?: string | null): string | undefined {
   const normalizedBaseBranch = baseBranch?.trim();
   const candidates = Array.from(new Set([

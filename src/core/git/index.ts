@@ -20,6 +20,7 @@ export {
   getRepoCommitChanges,
   getRepoCommitDiff,
   getRepoDeliveryStatus,
+  getRepoRefSha,
   parseGitStatusPorcelain,
   getCloneBaseDir,
   repoToDirName,

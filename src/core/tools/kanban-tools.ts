@@ -55,7 +55,12 @@ import {
 import {
   buildTaskDeliveryReadiness,
   buildTaskDeliveryTransitionErrorFromRules,
+  type TaskDeliveryReadiness,
 } from "../kanban/task-delivery-readiness";
+import {
+  captureTaskDeliverySnapshot,
+  shouldCaptureTaskDeliverySnapshotForColumn,
+} from "../kanban/task-delivery-snapshot";
 import {
   buildContractGateNote,
   buildContractLoopBreakerMessage,
@@ -304,8 +309,9 @@ export class KanbanTools {
       return errorResult(contractError);
     }
 
+    let deliveryReadiness: TaskDeliveryReadiness | undefined;
     if (this.isAutomationSystemCompatible()) {
-      const deliveryReadiness = await buildTaskDeliveryReadiness(task, this.automationSystem!);
+      deliveryReadiness = await buildTaskDeliveryReadiness(task, this.automationSystem!);
       const deliveryError = buildTaskDeliveryTransitionErrorFromRules(
         deliveryReadiness,
         targetColumn.name,
@@ -315,6 +321,17 @@ export class KanbanTools {
         await this.recordTaskMoveBlockComment(task, deliveryError, task.triggerSessionId);
         return errorResult(deliveryError);
       }
+    }
+
+    if (
+      fromColumnId !== params.targetColumnId
+      && shouldCaptureTaskDeliverySnapshotForColumn(params.targetColumnId)
+      && this.isAutomationSystemCompatible()
+    ) {
+      deliveryReadiness ??= await buildTaskDeliveryReadiness(task, this.automationSystem!);
+      task.deliverySnapshot = captureTaskDeliverySnapshot(task, deliveryReadiness, {
+        source: params.targetColumnId === "done" ? "done_transition" : "review_transition",
+      });
     }
 
     // Preserve the current active session in history before clearing

@@ -167,6 +167,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       parallel_group TEXT,
       workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
       session_id TEXT,
+      delivery_snapshot TEXT,
       completion_summary TEXT,
       verification_verdict TEXT,
       verification_report TEXT,
@@ -200,6 +201,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN session_id TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN codebase_ids TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN worktree_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN delivery_snapshot TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN session_ids TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN lane_sessions TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN lane_handoffs TEXT DEFAULT '[]'`);

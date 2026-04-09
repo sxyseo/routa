@@ -171,6 +171,30 @@ export interface TaskCommentEntry {
   sessionId?: string;
 }
 
+export interface TaskDeliverySnapshotCommit {
+  sha: string;
+  shortSha: string;
+  summary: string;
+  authorName: string;
+  authoredAt: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface TaskDeliverySnapshot {
+  capturedAt: string;
+  repoPath: string;
+  worktreeId?: string;
+  worktreePath?: string;
+  branch?: string;
+  baseBranch?: string;
+  baseRef: string;
+  baseSha: string;
+  headSha: string;
+  commits: TaskDeliverySnapshotCommit[];
+  source: "review_transition" | "done_transition" | "pr_run" | "manual";
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -217,6 +241,8 @@ export interface Task {
   codebaseIds: string[];
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId?: string;
+  /** Frozen delivery evidence captured before PR / merge / base sync can erase base..HEAD */
+  deliverySnapshot?: TaskDeliverySnapshot;
   createdAt: Date;
   updatedAt: Date;
   completionSummary?: string;

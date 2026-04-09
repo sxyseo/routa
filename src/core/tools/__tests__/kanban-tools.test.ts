@@ -10,11 +10,15 @@ import { KanbanTools } from "../kanban-tools";
 const isGitRepository = vi.fn();
 const isBareGitRepository = vi.fn();
 const getRepoDeliveryStatus = vi.fn();
+const getRepoCommitChanges = vi.fn();
+const getRepoRefSha = vi.fn();
 
 vi.mock("@/core/git", () => ({
   isGitRepository: (...args: unknown[]) => isGitRepository(...args),
   isBareGitRepository: (...args: unknown[]) => isBareGitRepository(...args),
   getRepoDeliveryStatus: (...args: unknown[]) => getRepoDeliveryStatus(...args),
+  getRepoCommitChanges: (...args: unknown[]) => getRepoCommitChanges(...args),
+  getRepoRefSha: (...args: unknown[]) => getRepoRefSha(...args),
 }));
 
 describe("KanbanTools", () => {
@@ -25,6 +29,8 @@ describe("KanbanTools", () => {
     isGitRepository.mockReset();
     isBareGitRepository.mockReset();
     getRepoDeliveryStatus.mockReset();
+    getRepoCommitChanges.mockReset();
+    getRepoRefSha.mockReset();
     globalThis.fetch = originalFetch;
     resetWorkflowOrchestrator();
   });
@@ -713,6 +719,114 @@ describe("KanbanTools", () => {
     expect(savedTask?.columnId).toBe("dev");
     expect(savedTask?.comments.at(-1)?.body).toContain("Move blocked:");
     expect(savedTask?.comments.at(-1)?.body).toContain("no committed changes detected");
+  });
+
+  it("captures delivery commit evidence when move_card advances a task to review", async () => {
+    const system = createInMemorySystem();
+    const tools = new KanbanTools(system.kanbanBoardStore, system.taskStore);
+    tools.setAutomationSystem(system);
+
+    const board = createKanbanBoard({
+      id: "board-delivery-snapshot",
+      workspaceId: "default",
+      name: "Default Board",
+      isDefault: true,
+      columns: [
+        { id: "dev", name: "Dev", position: 0, stage: "dev" },
+        {
+          id: "review",
+          name: "Review",
+          position: 1,
+          stage: "review",
+          automation: {
+            enabled: true,
+            deliveryRules: {
+              requireCommittedChanges: true,
+              requireCleanWorktree: true,
+            },
+          },
+        },
+      ],
+    });
+    await system.kanbanBoardStore.save(board);
+
+    const task = createTask({
+      id: "task-delivery-snapshot",
+      title: "Capture delivered commit",
+      objective: "Keep the commit visible after PR merge",
+      workspaceId: "default",
+      boardId: board.id,
+      columnId: "dev",
+      codebaseIds: ["codebase-1"],
+    });
+    await system.taskStore.save(task);
+
+    vi.spyOn(system.codebaseStore, "get").mockResolvedValue({
+      id: "codebase-1",
+      workspaceId: "default",
+      repoPath: "/repo/project",
+      branch: "main",
+      label: "project",
+      sourceType: "github",
+      sourceUrl: "https://github.com/acme/project",
+      isDefault: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+
+    isGitRepository.mockReturnValue(true);
+    isBareGitRepository.mockReturnValue(false);
+    getRepoDeliveryStatus.mockReturnValue({
+      branch: "feature/task-delivery-snapshot",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      status: {
+        clean: true,
+        ahead: 1,
+        behind: 0,
+        modified: 0,
+        untracked: 0,
+      },
+      commitsSinceBase: 1,
+      hasCommitsSinceBase: true,
+      hasUncommittedChanges: false,
+      remoteUrl: "git@github.com:acme/project.git",
+      isGitHubRepo: true,
+      canCreatePullRequest: true,
+    });
+    getRepoRefSha.mockImplementation((_repoPath: string, ref: string) => {
+      if (ref === "origin/main") return "base-sha";
+      if (ref === "HEAD") return "head-sha";
+      return null;
+    });
+    getRepoCommitChanges.mockReturnValue([{
+      sha: "head-sha",
+      shortSha: "head123",
+      summary: "implement kanban delivery",
+      authorName: "Routa",
+      authoredAt: "2026-04-09T00:00:00.000Z",
+      additions: 4,
+      deletions: 1,
+    }]);
+
+    const result = await tools.moveCard({
+      cardId: task.id,
+      targetColumnId: "review",
+    });
+
+    expect(result.success).toBe(true);
+    const savedTask = await system.taskStore.get(task.id);
+    expect(savedTask?.deliverySnapshot).toMatchObject({
+      repoPath: "/repo/project",
+      baseRef: "origin/main",
+      baseSha: "base-sha",
+      headSha: "head-sha",
+      source: "review_transition",
+      commits: [{
+        sha: "head-sha",
+        summary: "implement kanban delivery",
+      }],
+    });
   });
 
   it("blocks review to done moves with uncommitted changes", async () => {

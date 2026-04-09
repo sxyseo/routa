@@ -105,6 +105,10 @@ const PIERRE_DIFF_OPTIONS = {
   `,
 };
 
+interface DiffSearchResult {
+  element: HTMLElement;
+}
+
 function createKanbanHunkSeparator(
   hunk: { hunkIndex: number; lines: number },
   instance: PierreFileDiffInstance,
@@ -126,6 +130,114 @@ function createKanbanHunkSeparator(
   button.addEventListener("click", () => instance.expandHunk(hunk.hunkIndex, "both"));
 
   return button;
+}
+
+function clearDiffSearchHighlights(root: HTMLElement) {
+  for (const searchRoot of getDiffSearchRoots(root)) {
+    for (const highlight of searchRoot.querySelectorAll(".kanban-diff-search-highlight")) {
+      const parent = highlight.parentNode;
+      if (!parent) {
+        continue;
+      }
+      parent.replaceChild(document.createTextNode(highlight.textContent ?? ""), highlight);
+      parent.normalize();
+    }
+  }
+}
+
+function getDiffSearchRoots(root: HTMLElement): Array<ShadowRoot | HTMLElement> {
+  const searchRoots: Array<ShadowRoot | HTMLElement> = [];
+  for (const diffContainer of root.querySelectorAll("diffs-container")) {
+    if (diffContainer.shadowRoot) {
+      searchRoots.push(diffContainer.shadowRoot);
+    }
+  }
+  return searchRoots.length > 0 ? searchRoots : [root];
+}
+
+function highlightDiffSearchMatches(root: HTMLElement, query: string): DiffSearchResult[] {
+  clearDiffSearchHighlights(root);
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const results: DiffSearchResult[] = [];
+  for (const searchRoot of getDiffSearchRoots(root)) {
+    for (const codeNode of getDiffSearchContentNodes(searchRoot)) {
+      highlightTextNodeMatches(codeNode, normalizedQuery, results);
+    }
+  }
+
+  return results;
+}
+
+function getDiffSearchContentNodes(searchRoot: ShadowRoot | HTMLElement): HTMLElement[] {
+  const nodes = Array.from(searchRoot.querySelectorAll<HTMLElement>("[data-column-content], [data-content]"));
+  return nodes.filter((node) => !nodes.some((candidate) => candidate !== node && node.contains(candidate)));
+}
+
+function highlightTextNodeMatches(root: Node, normalizedQuery: string, results: DiffSearchResult[]) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const matches: Array<{ node: Text; start: number; end: number }> = [];
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const node = currentNode as Text;
+    const text = node.textContent ?? "";
+    const normalizedText = text.toLowerCase();
+    let index = normalizedText.indexOf(normalizedQuery);
+    while (index !== -1) {
+      matches.push({ node, start: index, end: index + normalizedQuery.length });
+      index = normalizedText.indexOf(normalizedQuery, index + normalizedQuery.length);
+    }
+    currentNode = walker.nextNode();
+  }
+
+  for (let index = matches.length - 1; index >= 0; index--) {
+    addDiffSearchHighlight(matches[index], results);
+  }
+}
+
+function addDiffSearchHighlight(match: { node: Text; start: number; end: number }, results: DiffSearchResult[]) {
+  const text = match.node.textContent ?? "";
+  const before = text.slice(0, match.start);
+  const matchedText = text.slice(match.start, match.end);
+  const after = text.slice(match.end);
+  const highlight = document.createElement("span");
+  highlight.className = "kanban-diff-search-highlight";
+  highlight.style.backgroundColor = "rgba(250, 204, 21, 0.45)";
+  highlight.style.color = "inherit";
+  highlight.textContent = matchedText;
+
+  const parent = match.node.parentNode;
+  if (!parent) {
+    return;
+  }
+  if (after) {
+    parent.insertBefore(document.createTextNode(after), match.node.nextSibling);
+  }
+  parent.insertBefore(highlight, match.node.nextSibling);
+  if (before) {
+    match.node.textContent = before;
+  } else {
+    parent.removeChild(match.node);
+  }
+  results.unshift({ element: highlight });
+}
+
+function selectDiffSearchResult(results: DiffSearchResult[], index: number) {
+  results.forEach(({ element }) => {
+    element.style.backgroundColor = "rgba(250, 204, 21, 0.45)";
+  });
+
+  const result = results[index];
+  if (!result) {
+    return;
+  }
+
+  result.element.style.backgroundColor = "rgba(59, 130, 246, 0.55)";
+  result.element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
 }
 
 function KanbanPierreFileDiff({ fileDiff }: { fileDiff: FileDiffMetadata }) {
@@ -804,6 +916,70 @@ function CommitFileDiffSection({
   );
 }
 
+function CommitDiffSearchControls({
+  query,
+  currentIndex,
+  resultCount,
+  onQueryChange,
+  onNavigate,
+  onClear,
+}: {
+  query: string;
+  currentIndex: number;
+  resultCount: number;
+  onQueryChange: (query: string) => void;
+  onNavigate: (direction: -1 | 1) => void;
+  onClear: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+      <div className="flex min-w-[9rem] max-w-[16rem] flex-1 items-center rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal dark:border-slate-700 dark:bg-[#0d1018]">
+        <input
+          className="min-w-0 flex-1 bg-transparent text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
+          value={query}
+          onChange={(event) => onQueryChange(event.currentTarget.value)}
+          placeholder={t.common.search}
+          data-testid="kanban-commit-diff-search-input"
+        />
+        {query ? (
+          <span className="ml-2 shrink-0 tabular-nums text-slate-400" data-testid="kanban-commit-diff-search-count">
+            {resultCount > 0 ? `${currentIndex + 1}/${resultCount}` : "0/0"}
+          </span>
+        ) : null}
+      </div>
+      {query ? (
+        <>
+          <button
+            type="button"
+            onClick={() => onNavigate(-1)}
+            disabled={resultCount === 0}
+            className="rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-500 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-100"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate(1)}
+            disabled={resultCount === 0}
+            className="rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-500 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-100"
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            onClick={onClear}
+            className="rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-500 transition-colors hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-100"
+          >
+            {t.common.close}
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export function TaskCommitDiffPreview({
   commit,
   diff,
@@ -820,6 +996,10 @@ export function TaskCommitDiffPreview({
   onClose?: () => void;
 }) {
   const { t } = useTranslation();
+  const diffSearchRootRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<DiffSearchResult[]>([]);
+  const [searchIndex, setSearchIndex] = useState(0);
 
   // Calculate file list and diff preview from commit
   const preview = commit ? (diff ?? { ...commit, patch: "" }) : null;
@@ -837,6 +1017,41 @@ export function TaskCommitDiffPreview({
   // TypeScript guard: preview is guaranteed to be non-null here due to commit check above
   if (!preview) return null;
 
+  const runSearch = (query: string, nextIndex = 0) => {
+    const root = diffSearchRootRef.current;
+    if (!root) {
+      return;
+    }
+    const results = highlightDiffSearchMatches(root, query);
+    const boundedIndex = results.length > 0 ? Math.max(0, Math.min(nextIndex, results.length - 1)) : 0;
+    setSearchResults(results);
+    setSearchIndex(boundedIndex);
+    selectDiffSearchResult(results, boundedIndex);
+  };
+
+  const updateSearchQuery = (query: string) => {
+    setSearchQuery(query);
+    runSearch(query);
+  };
+
+  const navigateSearchResults = (direction: -1 | 1) => {
+    if (searchResults.length === 0) {
+      return;
+    }
+    const nextIndex = (searchIndex + direction + searchResults.length) % searchResults.length;
+    setSearchIndex(nextIndex);
+    selectDiffSearchResult(searchResults, nextIndex);
+  };
+
+  const clearSearch = () => {
+    if (diffSearchRootRef.current) {
+      clearDiffSearchHighlights(diffSearchRootRef.current);
+    }
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchIndex(0);
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white dark:border-[#202433] dark:bg-[#0d1018]">
       {loading ? (
@@ -849,8 +1064,16 @@ export function TaskCommitDiffPreview({
         </div>
       ) : fileSections.length > 0 ? (
         <div data-testid="kanban-commit-files-changed">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200/70 bg-slate-50/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-[#202433] dark:bg-[#0a0d14] dark:text-slate-400">
-            <span>{fileSections.length} {t.kanbanDetail.filesChanged}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/70 bg-slate-50/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-[#202433] dark:bg-[#0a0d14] dark:text-slate-400">
+            <span className="shrink-0">{fileSections.length} {t.kanbanDetail.filesChanged}</span>
+            <CommitDiffSearchControls
+              query={searchQuery}
+              currentIndex={searchIndex}
+              resultCount={searchResults.length}
+              onQueryChange={updateSearchQuery}
+              onNavigate={navigateSearchResults}
+              onClear={clearSearch}
+            />
             {onClose ? (
               <button
                 type="button"
@@ -861,7 +1084,11 @@ export function TaskCommitDiffPreview({
               </button>
             ) : null}
           </div>
-          <div className="max-h-[70vh] overflow-auto" data-testid="kanban-commit-diff-scroll-area">
+          <div
+            ref={diffSearchRootRef}
+            className="max-h-[70vh] overflow-auto"
+            data-testid="kanban-commit-diff-scroll-area"
+          >
             {fileSections.map((file) => (
               <CommitFileDiffSection
                 key={`${file.path}-${file.startLineIndex}`}

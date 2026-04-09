@@ -29,7 +29,12 @@ import {
 import {
   buildTaskDeliveryReadiness,
   buildTaskDeliveryTransitionErrorFromRules,
+  type TaskDeliveryReadiness,
 } from "@/core/kanban/task-delivery-readiness";
+import {
+  captureTaskDeliverySnapshot,
+  shouldCaptureTaskDeliverySnapshotForColumn,
+} from "@/core/kanban/task-delivery-snapshot";
 import {
   appendTaskComment,
   appendTaskCommentEntry,
@@ -205,6 +210,7 @@ export async function PATCH(
   }
 
   const nextTask: Task = { ...existing, updatedAt: new Date() };
+  let transitionDeliveryReadiness: TaskDeliveryReadiness | undefined;
 
   if (body.title !== undefined) nextTask.title = body.title;
   if (body.objective !== undefined) nextTask.objective = body.objective;
@@ -330,6 +336,7 @@ export async function PATCH(
 
         if (targetColumn?.automation?.deliveryRules) {
           const deliveryReadiness = await buildTaskDeliveryReadiness(nextTask, system);
+          transitionDeliveryReadiness = deliveryReadiness;
           const deliveryError = buildTaskDeliveryTransitionErrorFromRules(
             deliveryReadiness,
             targetColumn.name ?? body.columnId,
@@ -346,6 +353,17 @@ export async function PATCH(
           }
         }
     }
+  }
+
+  if (
+    body.columnId !== undefined
+    && body.columnId !== existing.columnId
+    && shouldCaptureTaskDeliverySnapshotForColumn(body.columnId)
+  ) {
+    transitionDeliveryReadiness ??= await buildTaskDeliveryReadiness(nextTask, system);
+    nextTask.deliverySnapshot = captureTaskDeliverySnapshot(nextTask, transitionDeliveryReadiness, {
+      source: body.columnId === "done" ? "done_transition" : "review_transition",
+    });
   }
 
   if (body.columnId !== undefined) nextTask.columnId = body.columnId;

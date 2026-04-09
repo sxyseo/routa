@@ -219,6 +219,12 @@ describe("KanbanTaskChangesTab", () => {
       expect(editorDiffText).toContain("export const editor = 'new';");
     });
 
+    fireEvent.change(screen.getByTestId("kanban-commit-diff-search-input"), { target: { value: "version" } });
+    await waitFor(async () => {
+      expect(screen.getByTestId("kanban-commit-diff-search-count").textContent).toMatch(/1\/\d+/);
+      expect((await openPackageDiffShadowRoot()).querySelector(".kanban-diff-search-highlight")).toBeTruthy();
+    });
+
     const editorSection = screen.getByTestId("kanban-commit-file-section-src/editor.ts");
     fireEvent.click(editorSection.querySelector("summary")!);
     expect((editorSection as HTMLDetailsElement).open).toBe(false);

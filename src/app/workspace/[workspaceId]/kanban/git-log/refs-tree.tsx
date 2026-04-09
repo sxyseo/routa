@@ -95,6 +95,7 @@ export function RefsTree({ refs, activeBranches, onToggleBranch }: RefsTreeProps
       </div>
     );
   }
+  const headRef = refs.head;
 
   // Group remote branches by remote name
   const remoteGroups = new Map<string, GitRef[]>();
@@ -108,16 +109,16 @@ export function RefsTree({ refs, activeBranches, onToggleBranch }: RefsTreeProps
   return (
     <div className="flex flex-col gap-0.5 overflow-y-auto py-1 text-[11px]">
       {/* HEAD */}
-      {refs.head && (
+      {headRef && (
         <TreeNode
           label="HEAD"
           icon={<MapPin className="h-3 w-3 shrink-0 text-emerald-500" />}
           defaultOpen
         >
           <RefItem
-            gitRef={refs.head}
-            active={activeBranches.includes(gitRefKey(refs.head))}
-            onClick={() => onToggleBranch(gitRefKey(refs.head))}
+            gitRef={headRef}
+            active={activeBranches.includes(gitRefKey(headRef))}
+            onClick={() => onToggleBranch(gitRefKey(headRef))}
           />
         </TreeNode>
       )}

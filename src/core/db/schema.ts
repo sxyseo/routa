@@ -17,7 +17,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { KanbanColumn } from "../models/kanban";
-import type { TaskCommentEntry, TaskLaneHandoff, TaskLaneSession } from "../models/task";
+import type { TaskCommentEntry, TaskDeliverySnapshot, TaskLaneHandoff, TaskLaneSession } from "../models/task";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
 
@@ -106,6 +106,7 @@ export const tasks = pgTable("tasks", {
   codebaseIds: jsonb("codebase_ids").$type<string[]>().default([]),
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId: text("worktree_id"),
+  deliverySnapshot: jsonb("delivery_snapshot").$type<TaskDeliverySnapshot>(),
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),

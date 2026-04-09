@@ -54,14 +54,14 @@ async function getTaskChanges(
     : null;
   const codebaseId = worktree?.codebaseId ?? task.codebaseIds?.[0] ?? "";
   const codebase = codebaseId ? await system.codebaseStore.get(codebaseId) : null;
-  const repoPath = worktree?.worktreePath ?? codebase?.repoPath ?? "";
+  const repoPath = worktree?.worktreePath ?? codebase?.repoPath ?? task.deliverySnapshot?.repoPath ?? "";
   const label = codebase?.label ?? repoLabelFromPath(repoPath || "repo");
 
   if (!repoPath) {
     return NextResponse.json({
       changes: {
         codebaseId,
-        repoPath: "",
+        repoPath: task.deliverySnapshot?.repoPath ?? "",
         label,
         branch: codebase?.branch ?? "unknown",
         status: {
@@ -72,10 +72,15 @@ async function getTaskChanges(
           untracked: 0,
         },
         files: [],
+        mode: (task.deliverySnapshot?.commits.length ?? 0) > 0 ? "commits" : "worktree",
+        baseRef: task.deliverySnapshot?.baseRef,
+        commits: task.deliverySnapshot?.commits ?? [],
         source: worktree ? "worktree" : "repo",
         worktreeId: worktree?.id,
         worktreePath: worktree?.worktreePath,
-        error: "No repository or worktree linked to this task",
+        error: task.deliverySnapshot
+          ? undefined
+          : "No repository or worktree linked to this task",
       },
     });
   }
@@ -91,7 +96,7 @@ async function getTaskChanges(
     const changes = getRepoChanges(repoPath);
     const remoteUrl = getRemoteUrl(repoPath);
     const deliveryReadiness = await buildTaskDeliveryReadiness(task, system);
-    const committedChanges = deliveryReadiness.checked
+    const liveCommittedChanges = deliveryReadiness.checked
       && deliveryReadiness.hasCommitsSinceBase
       && deliveryReadiness.baseRef
       ? getRepoCommitChanges(repoPath, {
@@ -99,6 +104,12 @@ async function getTaskChanges(
         maxCount: Math.max(deliveryReadiness.commitsSinceBase, 1),
       })
       : [];
+    const committedChanges = liveCommittedChanges.length > 0
+      ? liveCommittedChanges
+      : task.deliverySnapshot?.commits ?? [];
+    const baseRef = liveCommittedChanges.length > 0
+      ? deliveryReadiness.baseRef
+      : task.deliverySnapshot?.baseRef ?? deliveryReadiness.baseRef;
 
     return NextResponse.json({
       changes: {
@@ -109,7 +120,7 @@ async function getTaskChanges(
         status: changes.status,
         files: changes.files,
         mode: committedChanges.length > 0 ? "commits" : "worktree",
-        baseRef: deliveryReadiness.baseRef,
+        baseRef,
         remoteUrl,
         commits: committedChanges,
         source: worktree ? "worktree" : "repo",
@@ -134,6 +145,9 @@ async function getTaskChanges(
           untracked: 0,
         },
         files: [],
+        mode: (task.deliverySnapshot?.commits.length ?? 0) > 0 ? "commits" : "worktree",
+        baseRef: task.deliverySnapshot?.baseRef,
+        commits: task.deliverySnapshot?.commits ?? [],
         source: worktree ? "worktree" : "repo",
         worktreeId: worktree?.id,
         worktreePath: worktree?.worktreePath,

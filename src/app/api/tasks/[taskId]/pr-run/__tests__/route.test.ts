@@ -17,6 +17,7 @@ const codebaseStore = {
 const isGitRepository = vi.fn<(repoPath: string) => boolean>();
 const isBareGitRepository = vi.fn<(repoPath: string) => boolean>();
 const getRemoteUrl = vi.fn<(repoPath: string) => string | null>();
+const getRepoDeliveryStatus = vi.fn();
 const enqueueKanbanTaskSession = vi.fn();
 
 vi.mock("@/core/routa-system", () => ({
@@ -32,6 +33,7 @@ vi.mock("@/core/git", () => ({
   isGitRepository: (repoPath: string) => isGitRepository(repoPath),
   isBareGitRepository: (repoPath: string) => isBareGitRepository(repoPath),
   isGitHubUrl: (value: string | null | undefined) => Boolean(value && value.includes("github.com")),
+  getRepoDeliveryStatus: (...args: unknown[]) => getRepoDeliveryStatus(...args),
 }));
 
 vi.mock("@/core/kanban/workflow-orchestrator-singleton", () => ({
@@ -46,6 +48,24 @@ describe("/api/tasks/[taskId]/pr-run", () => {
     worktreeStore.get.mockResolvedValue(null);
     isGitRepository.mockReturnValue(true);
     isBareGitRepository.mockReturnValue(false);
+    getRepoDeliveryStatus.mockReturnValue({
+      branch: "feature/pr",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      status: {
+        clean: true,
+        ahead: 0,
+        behind: 0,
+        modified: 0,
+        untracked: 0,
+      },
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      remoteUrl: "git@github.com:acme/platform.git",
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    });
     enqueueKanbanTaskSession.mockResolvedValue({
       sessionId: "session-pr-1",
       queued: false,

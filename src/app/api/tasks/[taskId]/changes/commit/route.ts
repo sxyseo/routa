@@ -26,7 +26,7 @@ export async function GET(
     : null;
   const codebaseId = worktree?.codebaseId ?? task.codebaseIds?.[0] ?? "";
   const codebase = codebaseId ? await system.codebaseStore.get(codebaseId) : null;
-  const repoPath = worktree?.worktreePath ?? codebase?.repoPath ?? "";
+  const repoPath = worktree?.worktreePath ?? codebase?.repoPath ?? task.deliverySnapshot?.repoPath ?? "";
 
   if (!repoPath || !isGitRepository(repoPath)) {
     return NextResponse.json({ error: "Repository is missing or not a git repository" }, { status: 400 });

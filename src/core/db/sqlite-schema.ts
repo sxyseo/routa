@@ -19,7 +19,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { KanbanColumn } from "../models/kanban";
-import type { TaskCommentEntry, TaskLaneHandoff, TaskLaneSession } from "../models/task";
+import type { TaskCommentEntry, TaskDeliverySnapshot, TaskLaneHandoff, TaskLaneSession } from "../models/task";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
 
@@ -108,6 +108,7 @@ export const tasks = sqliteTable("tasks", {
   codebaseIds: text("codebase_ids", { mode: "json" }).$type<string[]>().default([]),
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId: text("worktree_id"),
+  deliverySnapshot: text("delivery_snapshot", { mode: "json" }).$type<TaskDeliverySnapshot>(),
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),
