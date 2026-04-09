@@ -60,7 +60,7 @@ export function DesktopShellHeader({
         </div>
       ) : null}
 
-      <ShellHeaderControls className="px-2" showProtocolBadges={false} showSettingsMenu={false} compactStatus />
+      <ShellHeaderControls className="px-2" showSettingsMenu={false} compactStatus />
     </header>
   );
 }
