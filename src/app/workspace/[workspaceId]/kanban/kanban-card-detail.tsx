@@ -26,6 +26,7 @@ import {
 } from "./kanban-card-session-utils";
 export { KanbanCardActivityBar } from "./kanban-card-activity";
 import { KanbanCardArtifacts } from "./kanban-card-artifacts";
+import { KanbanCardProviderOverrideDropdown } from "./kanban-card-provider-override-dropdown";
 // Legacy imports - removed, functionality replaced by KanbanTaskGitWorkflowPanel
 // import { TaskFileDiffPreview, TaskCommitDiffPreview, CommitRow } from "./kanban-diff-preview";
 import { StoryReadinessPanel, EvidenceBundlePanel, ReviewFeedbackPanel } from "./kanban-detail-panels";
@@ -1033,33 +1034,15 @@ function ExecutionSection({
           </div>
         )}
         <div className="mt-3 space-y-2.5">
-          <Select
-            value={overrideProviderValue}
-            onChange={async (event) => {
-              const newProvider = event.target.value || null;
-              if (newProvider) {
-                await onPatchTask(task.id, {
-                  assignedProvider: newProvider,
-                  assignedRole: hasCardOverride ? task.assignedRole ?? "DEVELOPER" : "DEVELOPER",
-                });
-                onProviderChange?.(newProvider);
-              } else {
-                await onPatchTask(task.id, {
-                  assignedProvider: undefined,
-                  assignedRole: undefined,
-                  assignedSpecialistId: undefined,
-                  assignedSpecialistName: undefined,
-                });
-                onProviderChange?.(null);
-              }
-            }}
-            className={`w-full border border-slate-200/80 bg-transparent text-sm text-slate-700 outline-none focus:border-amber-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-300 ${compact ? "px-2.5 py-2" : "px-3 py-2"}`}
-          >
-            <option value="">{t.kanban.useLaneDefault}</option>
-            {availableProviders.map((provider) => (
-              <option key={`${provider.id}-${provider.name}`} value={provider.id}>{provider.name}</option>
-            ))}
-          </Select>
+          <KanbanCardProviderOverrideDropdown
+            task={task}
+            hasCardOverride={hasCardOverride}
+            availableProviders={availableProviders}
+            overrideProviderValue={overrideProviderValue}
+            compact={compact}
+            onPatchTask={onPatchTask}
+            onProviderChange={onProviderChange}
+          />
           {hasCardOverride && (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Select
