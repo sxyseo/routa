@@ -47,7 +47,7 @@ zip = "2"
 tempfile = "3"
 
 # Home directory
-dirs = "5"
+dirs = "6"
 
 # URL encoding
 urlencoding = "2"
