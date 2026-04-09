@@ -361,6 +361,44 @@ jobs:
             entrix release-trigger --manifest "${manifest}" --fail-on-trigger
           done
 
+  generate-release-notes:
+    name: Generate desktop release notes
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: Generate release notes from git history
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version || github.event.inputs.version }}
+        run: |
+          node scripts/release/generate-changelog.mjs \
+            --version "${RELEASE_VERSION}" \
+            --to HEAD \
+            --out dist/release/release-notes.md \
+            --changelog-out dist/release/CHANGELOG.generated.md \
+            --prompt-out dist/release/changelog-summary-prompt.json
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-release-notes
+          path: |
+            dist/release/release-notes.md
+            dist/release/CHANGELOG.generated.md
+            dist/release/changelog-summary-prompt.json
+
   publish-tauri:
     name: Publish desktop release
     permissions:
@@ -368,6 +406,7 @@ jobs:
     needs:
       - build-tauri
       - verify-tauri
+      - generate-release-notes
     runs-on: ubuntu-latest
     steps:
       - name: Download bundled assets
@@ -377,17 +416,18 @@ jobs:
           path: dist/tauri-release
           merge-multiple: true
 
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: tauri-release-notes
+          path: dist/release
+
       - name: Publish draft GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version || github.event.inputs.version }}
           name: Routa Desktop v${{ inputs.version || github.event.inputs.version }}
-          body: |
-            See the assets to download and install Routa Desktop.
-
-            CLI install:
-            - `npm install -g routa-cli`
-            - `npx -p routa-cli routa --help`
+          body_path: dist/release/release-notes.md
           draft: true
           prerelease: false
           files: |

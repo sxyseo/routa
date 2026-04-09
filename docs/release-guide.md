@@ -50,9 +50,45 @@ Use the release helper script:
 
 The script will:
 1. Sync version across all packages
-2. Show you the changes
-3. Create commit and tag
-4. Push to trigger GitHub Actions
+2. Generate a release notes preview under `dist/release/release-notes.md`
+3. Show you the changes
+4. Create commit and tag
+5. Push to trigger GitHub Actions
+
+### Generate Release Notes
+
+Tauri draft releases use commit-derived release notes. Generate the same markdown locally before publishing:
+
+```bash
+npm run release:changelog -- \
+  --from v0.2.5 \
+  --to v0.2.6 \
+  --out dist/release/release-notes.md \
+  --changelog-out dist/release/CHANGELOG.generated.md
+```
+
+For the hybrid workflow, generate the AI prompt package, ask the bundled specialist for a curated `summaryMarkdown`, then re-run the changelog with that curated summary:
+
+```bash
+# deterministic technical changelog + prompt package
+npm run release:changelog -- \
+  --from v0.2.5 \
+  --to v0.2.6 \
+  --prompt-out dist/release/changelog-summary-prompt.json \
+  --changelog-out dist/release/CHANGELOG.generated.md \
+  --out dist/release/release-notes.md
+
+# optional one-step specialist run; requires a configured ACP provider
+npm run release:changelog -- \
+  --from v0.2.5 \
+  --to v0.2.6 \
+  --ai \
+  --ai-provider claude \
+  --out dist/release/release-notes.md \
+  --changelog-out dist/release/CHANGELOG.generated.md
+```
+
+The generated release notes contain a user-facing `Summary`, a technical changelog, commit links, install instructions, and range metadata. `--changelog-out` writes the same tag range as a standalone `# Changelog` entry. If you want manual curation without running a specialist, write the curated summary in Markdown and pass it with `--summary-file`.
 
 ### Method 2: Manual Process
 
@@ -118,7 +154,8 @@ Then publishes to npm as:
 
 Creates GitHub Release with:
 - Tauri desktop app installers for macOS, Linux, and Windows
-- Release notes with CLI install instructions
+- Auto-generated release notes from `scripts/release/generate-changelog.mjs`
+- CLI install instructions
 - Automatic code signing for macOS (if configured)
 
 **Platform Matrix**:
@@ -281,4 +318,3 @@ It does **not** sync:
 - [Cargo Release workflow](../../.github/workflows/cargo-release.yml)
 - [Desktop Release workflow](../../.github/workflows/tauri-release.yml)
 - [Release Checklist](./RELEASE_CHECKLIST.md)
-

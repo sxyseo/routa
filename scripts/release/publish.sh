@@ -79,6 +79,19 @@ echo -e "${GREEN}Files updated:${NC}"
 git diff --name-only
 
 echo ""
+echo -e "${GREEN}Generating release notes preview...${NC}"
+mkdir -p dist/release
+node scripts/release/generate-changelog.mjs \
+  --version "$VERSION" \
+  --to HEAD \
+  --out dist/release/release-notes.md \
+  --changelog-out dist/release/CHANGELOG.generated.md \
+  --prompt-out dist/release/changelog-summary-prompt.json
+echo "Release notes preview: dist/release/release-notes.md"
+echo "Changelog preview: dist/release/CHANGELOG.generated.md"
+echo "AI summary prompt package: dist/release/changelog-summary-prompt.json"
+
+echo ""
 echo -e "${YELLOW}Review the changes above. Continue? (y/N)${NC}"
 read -r CONFIRM
 if [[ "$CONFIRM" != "y" ]] && [[ "$CONFIRM" != "Y" ]]; then
@@ -130,4 +143,3 @@ echo "Once complete, the CLI will be available via:"
 echo "  - cargo install routa-cli@$VERSION"
 echo "  - npm install -g routa-cli@$VERSION"
 echo "  - GitHub Release: https://github.com/phodal/routa/releases/tag/v$VERSION"
-
