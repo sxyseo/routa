@@ -1076,6 +1076,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     noSessionYet: string;
     noTaskNotesYet: string;
     objective: string;
+    openSession: string;
     openThisThread: string;
     openViewer: string;
     planTaskTree: string;

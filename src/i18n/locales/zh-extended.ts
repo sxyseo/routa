@@ -1065,6 +1065,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     noSessionYet: "暂无会话",
     noTaskNotesYet: "暂无任务笔记。",
     objective: "目标",
+    openSession: "打开会话详情",
     openThisThread: "打开此线程以查看最新更新。",
     openViewer: "打开查看器",
     planTaskTree: "计划/任务树",

@@ -1065,6 +1065,7 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     noSessionYet: "no session yet",
     noTaskNotesYet: "No task notes yet.",
     objective: "Objective",
+    openSession: "Open session details",
     openThisThread: "Open this thread to inspect the latest update.",
     openViewer: "Open viewer",
     planTaskTree: "Plan / Task Tree",

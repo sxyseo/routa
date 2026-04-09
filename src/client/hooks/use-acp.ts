@@ -671,6 +671,10 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     if (!client) return;
     // Skip if sessionId is a placeholder (static export mode)
     if (sessionId === "__placeholder__") return;
+    if (sessionIdRef.current === sessionId) {
+      setState((s) => ({ ...s, sessionId, error: null }));
+      return;
+    }
 
     sessionIdRef.current = sessionId;
     client.attachSession(sessionId);

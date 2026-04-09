@@ -34,37 +34,38 @@ export function ObjectiveSidebarSection({
 }) {
   const { t } = useTranslation();
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
-  const shouldClampObjective = objective.length > 140;
-  const objectiveClassName = shouldClampObjective && !isObjectiveExpanded ? "line-clamp-4" : "";
+  const shouldClampObjective = objective.length > 96;
+  const canToggleObjective = shouldClampObjective;
+  const objectiveClassName = shouldClampObjective && !isObjectiveExpanded ? "line-clamp-3" : "";
   return (
     <section className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary">
-      <div className="border-b border-desktop-border px-4 py-2">
+      <div className="border-b border-desktop-border px-2.5 py-1.5">
         <div className="flex items-start justify-between gap-2">
           <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
             {t.team.objective}
           </h2>
-        </div>
-        <div className="mt-2 rounded-md border border-desktop-border bg-desktop-bg-primary p-2.5">
-          <div className={`text-xs leading-5 text-desktop-text-primary [overflow-wrap:anywhere] ${objectiveClassName}`}>{objective || t.team.noObjective}</div>
-          {shouldClampObjective ? (
+          {canToggleObjective ? (
             <button
               type="button"
               onClick={() => setIsObjectiveExpanded((current) => !current)}
-              className="mt-1 text-[10px] font-medium text-desktop-accent transition hover:text-desktop-text-primary"
+              className="text-[10px] font-medium text-desktop-accent transition hover:text-desktop-text-primary"
             >
               {isObjectiveExpanded ? t.team.showLessThread : t.team.expandThread}
             </button>
           ) : null}
         </div>
+        <div className={`mt-1 text-xs leading-5 text-desktop-text-primary [overflow-wrap:anywhere] ${objectiveClassName}`}>
+          {objective || t.team.noObjective}
+        </div>
       </div>
 
-      <div className="border-b border-desktop-border px-4 py-2.5">
-        <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
+      <div className="border-b border-desktop-border px-2.5 py-1.5">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
           {t.team.planTaskTree}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2.5">
-        <div className="space-y-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-1.5">
+        <div className="space-y-2">
           {taskTree.length === 0 ? (
             <EmptyPanel message={t.team.noTaskNotesYet} />
           ) : (
@@ -73,34 +74,34 @@ export function ObjectiveSidebarSection({
             </div>
           )}
 
-          <div className="border-t border-desktop-border pt-2.5">
-            <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
-              Deliverables
+          <div className="border-t border-desktop-border pt-2">
+            <div className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-muted">
+              {t.team.deliverables}
             </div>
             {deliverables.length === 0 ? (
               <EmptyPanel message={t.team.noNotesOrDeliverablesYet} />
             ) : (
-              <div className="divide-y divide-desktop-border rounded-[14px] border border-desktop-border bg-desktop-bg-primary">
+              <div className="divide-y divide-desktop-border rounded-[10px] border border-desktop-border bg-desktop-bg-primary">
                 {deliverables.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => item.sessionId && onFocusSession(item.sessionId)}
                     disabled={!item.sessionId}
-                    className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition ${item.sessionId ? "hover:bg-desktop-bg-active/70" : "cursor-default"
+                    className={`flex w-full items-start gap-2 px-2.5 py-2 text-left transition ${item.sessionId ? "hover:bg-desktop-bg-active/70" : "cursor-default"
                       }`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-xs font-semibold text-desktop-text-primary">{item.label}</div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${deliverableTone(item.status)}`}>
+                        <div className="truncate text-[11px] font-semibold text-desktop-text-primary">{item.label}</div>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium capitalize ${deliverableTone(item.status)}`}>
                           {item.status}
                         </span>
                       </div>
-                      <div className="mt-0.5 truncate text-[11px] text-desktop-text-secondary">{item.title}</div>
-                      <div className="mt-0.5 text-[10px] text-desktop-text-muted">{item.owner}</div>
+                      <div className="mt-0.5 truncate text-[10px] text-desktop-text-secondary">{item.title}</div>
+                      <div className="mt-0.5 text-[9px] text-desktop-text-muted">{item.owner}</div>
                       {item.summary && (
-                        <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-desktop-text-muted">{item.summary}</div>
+                        <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-desktop-text-muted">{item.summary}</div>
                       )}
                     </div>
                   </button>
@@ -136,25 +137,25 @@ export function SessionTimelineSection({
   const { t } = useTranslation();
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-desktop-bg-primary">
-      <div className="border-b border-desktop-border px-4 py-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
+      <div className="border-b border-desktop-border px-3 py-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
           <div>
-            <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
               {t.team.sessionTimeline}
             </h2>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-desktop-text-secondary">
-            <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1">
+          <div className="flex items-center gap-1 text-[10px] text-desktop-text-secondary">
+            <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
               {leadMessages.length} {t.team.messages}
             </span>
-            <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1">
+            <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
               {Math.max(sessionLanes.length - 1, 0)} {t.team.membersCount}
             </span>
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-1.5">
         {leadMessages.length === 0 ? (
           <EmptyPanel message={t.team.noLeadTimelineYet} />
         ) : (
@@ -193,8 +194,8 @@ export function TeamMembersSection({
   const { t } = useTranslation();
   return (
     <aside className="min-h-0 overflow-hidden border-l border-desktop-border bg-desktop-bg-secondary">
-      <div className="border-b border-desktop-border px-4 py-2.5">
-        <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
+      <div className="border-b border-desktop-border px-2.5 py-1.5">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
           {t.team.teamMembers}
         </div>
       </div>
@@ -210,7 +211,7 @@ export function TeamMembersSection({
                   type="button"
                   onClick={() => member.sessionId && onFocusSession(member.sessionId)}
                   disabled={!member.sessionId}
-                  className={`flex w-full items-start gap-2.5 px-3 py-2 text-left transition ${isSelected
+                  className={`flex w-full items-start gap-2 px-2.5 py-1.5 text-left transition ${isSelected
                     ? "bg-cyan-50/80 dark:bg-cyan-950/20"
                     : member.sessionId
                       ? "hover:bg-desktop-bg-active/70"
@@ -258,22 +259,22 @@ function TaskTreeNode({
   return (
     <div>
       <div
-        className="rounded-[16px] border border-transparent px-2.5 py-2 transition-colors hover:border-desktop-border hover:bg-desktop-bg-active/70"
-        style={{ marginLeft: level * 16 }}
+        className="rounded-[10px] border border-transparent px-2 py-1.5 transition-colors hover:border-desktop-border hover:bg-desktop-bg-active/70"
+        style={{ marginLeft: level * 12 }}
       >
         <div className="flex items-start gap-3">
           <div className="pt-0.5">
             <TaskStatusGlyph status={node.status} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-3">
-              <div className={`text-sm leading-5 ${node.status === "done" ? "text-desktop-text-muted line-through" : "text-desktop-text-primary"}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className={`text-[13px] leading-5 ${node.status === "done" ? "text-desktop-text-muted line-through" : "text-desktop-text-primary"}`}>
                 {node.title}
               </div>
               <TaskStatusPill status={node.status} />
             </div>
             {node.details && (
-              <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-desktop-text-secondary">
+              <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-desktop-text-secondary">
                 {node.details}
               </div>
             )}
@@ -290,29 +291,29 @@ function TaskTreeNode({
 function TaskStatusGlyph({ status }: { status: NormalizedTaskStatus }) {
   if (status === "done") {
     return (
-      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-        <Check className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}/>
+      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+        <Check className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}/>
       </div>
     );
   }
   if (status === "in-progress") {
-    return <div className="h-6 w-6 rounded-full border-2 border-cyan-500 border-t-transparent animate-spin" />;
+    return <div className="h-5 w-5 rounded-full border-2 border-cyan-500 border-t-transparent animate-spin" />;
   }
   if (status === "waiting-review") {
     return (
-      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-        <Eye className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
+      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+        <Eye className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </div>
     );
   }
   if (status === "blocked") {
     return (
-      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
-        <Info className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
+      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+        <Info className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </div>
     );
   }
-  return <div className="h-6 w-6 rounded-full border-2 border-slate-400" />;
+  return <div className="h-5 w-5 rounded-full border-2 border-slate-400" />;
 }
 
 function TaskStatusPill({ status }: { status: NormalizedTaskStatus }) {
@@ -327,7 +328,7 @@ function TaskStatusPill({ status }: { status: NormalizedTaskStatus }) {
             ? "bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"
             : "bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300";
   return (
-    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${tone}`}>
+    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] ${tone}`}>
       {status.replace("-", " ")}
     </span>
   );
@@ -434,7 +435,7 @@ function LeadMessageThread({
               <div className="text-[11px] text-desktop-text-secondary">{t.team.noTranscriptYet}</div>
             ) : !expanded && previewLaneMessage ? (
               <>
-                <div className="rounded-[12px] border border-desktop-border bg-desktop-bg-primary px-3 py-2 text-[11px] leading-5 text-desktop-text-secondary line-clamp-2">
+                <div className="rounded-[10px] border border-desktop-border bg-desktop-bg-primary px-2.5 py-1.5 text-[11px] leading-5 text-desktop-text-secondary line-clamp-2">
                   {previewText || t.team.openThisThread}
                 </div>
                 <button

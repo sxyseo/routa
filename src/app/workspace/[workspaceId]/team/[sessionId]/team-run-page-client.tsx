@@ -219,8 +219,9 @@ export function TeamRunPageClient() {
     if (!isResolved || !acpConnected || !session || session.sessionId !== sessionId || sessionId === "__placeholder__") {
       return;
     }
+    if (acp.sessionId === sessionId) return;
     selectSession(sessionId);
-  }, [acpConnected, isResolved, selectSession, session, sessionId]);
+  }, [acp.sessionId, acpConnected, isResolved, selectSession, session, sessionId]);
 
   useEffect(() => {
     if (!selectedSessionForModal) return;
@@ -514,7 +515,7 @@ export function TeamRunPageClient() {
       }
       pendingTranscriptSessionIds.clear();
     };
-  }, [fetchSpecialists, flushMetadataRefresh]);
+  }, [fetchSpecialists, flushMetadataRefresh, sessionId, workspaceId]);
 
   const workspace = workspacesHook.workspaces.find((item) => item.id === workspaceId);
   const teamRuns = useMemo(() => (
@@ -1334,6 +1335,9 @@ export function TeamRunPageClient() {
     () => teamRuns.find((run) => run.sessionId === sessionId) ?? teamRuns[0],
     [teamRuns, sessionId],
   );
+  const isActiveSessionReady = session?.sessionId === sessionId;
+  const selectedTeamRunName = isActiveSessionReady ? session?.name : selectedTeamRun?.name ?? sessionId;
+  const showRunLoadingState = !isActiveSessionReady;
 
   const handleSwitchTeamRun = useCallback((nextSessionId: string) => {
     if (nextSessionId === sessionId) return;
@@ -1349,14 +1353,6 @@ export function TeamRunPageClient() {
     setSelectedSessionForModal(nextSessionId);
     void selectModalSession(nextSessionId);
   }, [selectModalSession]);
-
-  if (!session) {
-    return (
-      <div className="desktop-theme flex h-screen items-center justify-center bg-desktop-bg-primary">
-        <div className="text-sm text-desktop-text-secondary">{t.team.loadingTeamRun}</div>
-      </div>
-    );
-  }
 
   return (
     <DesktopAppShell
@@ -1383,19 +1379,19 @@ export function TeamRunPageClient() {
         <TeamRunPageHeader
           workspaceId={workspaceId}
           selectedSessionId={sessionId}
-          selectedSessionName={selectedTeamRun?.name ?? session.name}
+          selectedSessionName={selectedTeamRunName}
           teamRuns={teamRuns}
           isSwitchingTeamRun={isSwitchingTeamRun}
           backLabel={t.common.back}
           refreshLabel={t.common.refresh || "Refresh"}
-          openLabel={t.common.open}
+          openLabel={t.team.openSession}
           activeLabel={t.team.active}
           waitingLabel={t.team.waitingForDelegation}
           onRefresh={handleRefreshTeamRun}
           onSwitchTeamRun={handleSwitchTeamRun}
         />
 
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[248px_minmax(0,1fr)_280px] xl:grid-cols-[260px_minmax(0,1fr)_300px]">
           <ObjectiveSidebarSection
             objective={objective}
             taskTree={taskTree}
@@ -1421,7 +1417,7 @@ export function TeamRunPageClient() {
               <TiptapInput
                 key={timelineInputKey}
                 onSend={(text) => handleTimelinePrompt(text)}
-                disabled={!acpConnected}
+                disabled={!acpConnected || showRunLoadingState}
                 loading={acpLoading}
                 skills={[]}
                 repoSkills={[]}
@@ -1429,7 +1425,7 @@ export function TeamRunPageClient() {
                 selectedProvider={acpSelectedProvider}
                 onProviderChange={acpSetProvider}
                 sessions={[]}
-                activeSessionMode={session.modeId}
+                activeSessionMode={session?.modeId}
                 repoSelection={repoSelection}
                 onRepoChange={setRepoSelection}
                 additionalRepos={codebases.map((codebase) => ({
@@ -1438,7 +1434,8 @@ export function TeamRunPageClient() {
                   branch: codebase.branch,
                 }))}
                 onFetchModels={acp.listProviderModels}
-                agentRole={session.role}
+                agentRole={session?.role}
+                placeholder={showRunLoadingState ? t.team.loadingTeamRun : undefined}
               />
             </div>
           </div>
@@ -1460,7 +1457,7 @@ export function TeamRunPageClient() {
           modalAcp={modalAcp}
           title={selectedSessionStream.actor}
           sessionStreamsLabel={t.team.teamRuns}
-          openLabel={t.common.open}
+          openLabel={t.team.openSession}
           noTranscriptLabel={t.team.noTranscriptYet}
           onClose={() => setSelectedSessionForModal(null)}
           onSelectSession={handleSelectSessionForModal}
