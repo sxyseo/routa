@@ -46,6 +46,7 @@ const STOPPED: Color = Color::Rgb(201, 96, 87);
 const IDLE: Color = Color::Rgb(122, 132, 143);
 const SESSION_BOOTSTRAP_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 const TRANSPORT_REFRESH_MS: u64 = 1200;
+const REPO_STATUS_REFRESH_MS: u64 = 5000;
 const AGENT_SCAN_REFRESH_MS: u64 = 15_000;
 const FALLBACK_SCAN_REFRESH_MS: u64 = 15_000;
 const FALLBACK_SCAN_IDLE_WINDOW_MS: i64 = 15_000;
@@ -85,6 +86,8 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     }
     let mut last_poll = Instant::now() - Duration::from_millis(poll_interval_ms);
     let mut last_transport_refresh = Instant::now() - Duration::from_millis(TRANSPORT_REFRESH_MS);
+    let mut last_repo_status_refresh =
+        Instant::now() - Duration::from_millis(REPO_STATUS_REFRESH_MS);
     let mut last_agent_refresh = Instant::now() - Duration::from_millis(AGENT_SCAN_REFRESH_MS);
 
     loop {
@@ -120,6 +123,13 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
         if last_transport_refresh.elapsed() >= Duration::from_millis(TRANSPORT_REFRESH_MS) {
             state.set_runtime_transport(read_runtime_transport(&ctx));
             last_transport_refresh = Instant::now();
+        }
+        if last_repo_status_refresh.elapsed() >= Duration::from_millis(REPO_STATUS_REFRESH_MS) {
+            if let Ok(branch) = current_branch(&ctx) {
+                state.branch = branch;
+            }
+            state.set_ahead_count(current_ahead_count(&ctx).ok());
+            last_repo_status_refresh = Instant::now();
         }
         if last_agent_refresh.elapsed() >= Duration::from_millis(AGENT_SCAN_REFRESH_MS) {
             if let Ok(agents) = crate::detect::scan_agents(&state.repo_root) {
