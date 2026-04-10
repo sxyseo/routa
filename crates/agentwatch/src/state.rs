@@ -54,6 +54,8 @@ pub enum FileListMode {
 }
 
 pub const UNKNOWN_SESSION_ID: &str = "__unknown__";
+const PAGE_STEP: usize = 10;
+const DETAIL_PAGE_STEP: u16 = 12;
 
 #[derive(Debug, Clone)]
 pub struct SessionListItem {
@@ -396,6 +398,42 @@ impl RuntimeState {
             }
             FocusPane::Detail => {
                 self.set_detail_scroll(self.detail_scroll.saturating_add(1));
+            }
+        }
+    }
+
+    pub fn page_up(&mut self) {
+        match self.focus {
+            FocusPane::Sessions => {
+                self.selected_session = self.selected_session.saturating_sub(PAGE_STEP);
+            }
+            FocusPane::Files => {
+                self.selected_file = self.selected_file.saturating_sub(PAGE_STEP);
+                self.restore_detail_scroll_for_selection();
+            }
+            FocusPane::Detail => {
+                self.set_detail_scroll(self.detail_scroll.saturating_sub(DETAIL_PAGE_STEP));
+            }
+        }
+    }
+
+    pub fn page_down(&mut self) {
+        match self.focus {
+            FocusPane::Sessions => {
+                let len = self.cached_session_items.len();
+                if len > 0 {
+                    self.selected_session = (self.selected_session + PAGE_STEP).min(len - 1);
+                }
+            }
+            FocusPane::Files => {
+                let len = self.cached_file_item_keys.len();
+                if len > 0 {
+                    self.selected_file = (self.selected_file + PAGE_STEP).min(len - 1);
+                    self.restore_detail_scroll_for_selection();
+                }
+            }
+            FocusPane::Detail => {
+                self.set_detail_scroll(self.detail_scroll.saturating_add(DETAIL_PAGE_STEP));
             }
         }
     }

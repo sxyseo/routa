@@ -167,16 +167,8 @@ fn handle_event(state: &mut RuntimeState, ctx: &RepoContext) -> Result<bool> {
                 KeyCode::Char('5') => state.set_event_log_filter(EventLogFilter::Attribution),
                 KeyCode::Char('[') => jump_diff_hunk(state, ctx, false)?,
                 KeyCode::Char(']') => jump_diff_hunk(state, ctx, true)?,
-                KeyCode::PageDown => {
-                    for _ in 0..10 {
-                        state.move_selection_down();
-                    }
-                }
-                KeyCode::PageUp => {
-                    for _ in 0..10 {
-                        state.move_selection_up();
-                    }
-                }
+                KeyCode::PageDown => state.page_down(),
+                KeyCode::PageUp => state.page_up(),
                 KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     return Ok(true);
                 }

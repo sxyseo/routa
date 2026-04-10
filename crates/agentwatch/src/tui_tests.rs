@@ -3,7 +3,7 @@ use crate::models::{
     AttributionConfidence, EventLogEntry, EventSource, FileView, RuntimeMessage,
     RuntimeServiceInfo, SessionView,
 };
-use crate::state::{FileListMode, FocusPane, UNKNOWN_SESSION_ID};
+use crate::state::{DetailMode, FileListMode, FocusPane, ThemeMode, UNKNOWN_SESSION_ID};
 use pretty_assertions::assert_eq;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
@@ -329,6 +329,38 @@ fn sync_dirty_files_rebuilds_unknown_session_and_file_views() {
     assert_eq!(state.session_items()[0].session_id, UNKNOWN_SESSION_ID);
     assert_eq!(state.file_items().len(), 1);
     assert_eq!(state.file_items()[0].rel_path, "src/app/globals.css");
+}
+
+#[test]
+fn file_preview_highlight_uses_extension_fallback_for_typescript() {
+    let text = highlight_code_text(
+        Some("tools/hook-runtime/src/review.test.ts"),
+        "const value = 1;\nfunction demo() { return value; }\n",
+        ThemeMode::Dark,
+    );
+
+    let has_colored_span = text
+        .lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .any(|span| span.style.fg.is_some() && span.content.as_ref().contains("const"));
+
+    assert!(
+        has_colored_span,
+        "expected syntax-colored span for TypeScript"
+    );
+}
+
+#[test]
+fn page_down_scrolls_file_preview_when_detail_has_focus() {
+    let mut state = sample_state();
+    state.focus = FocusPane::Detail;
+    state.detail_mode = DetailMode::File;
+    state.detail_scroll = 0;
+
+    state.page_down();
+
+    assert!(state.detail_scroll > 0);
 }
 
 #[test]

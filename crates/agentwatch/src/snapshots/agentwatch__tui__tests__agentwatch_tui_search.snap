@@ -1,5 +1,6 @@
 ---
 source: crates/agentwatch/src/tui_tests.rs
+assertion_line: 407
 expression: "render_snapshot(&state, &cache, 120, 24)"
 ---
  AgentWatch   repo:routa-js  branch:main    GLOBAL VIEW · FOLLOW ON  rpc:socket  dirty:1  unknown:1  synced 2m ago    se
@@ -25,4 +26,4 @@ expression: "render_snapshot(&state, &cache, 120, 24)"
 │<ts>  HOOK   live-hook-check Edit Write                                                                           │
 │<ts>  GIT    post-commit main                                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Tab focus  ↑↓ select  Enter inspect  / search:on  u unknown  a assign  o open  g git diff  f follow:on  T theme  Esc cle
+Tab focus  ↑↓ select  Enter inspect  / search:on  u unknown  a assign  o open  g git diff  PgUp/PgDn scroll  f follow:on

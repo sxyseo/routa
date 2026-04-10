@@ -496,6 +496,8 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
         Span::styled(" open  ", Style::default().fg(colors.muted)),
         Span::styled("g", Style::default().fg(colors.accent)),
         Span::styled(" git diff  ", Style::default().fg(colors.muted)),
+        Span::styled("PgUp/PgDn", Style::default().fg(colors.accent)),
+        Span::styled(" scroll  ", Style::default().fg(colors.muted)),
         Span::styled("f", Style::default().fg(colors.accent)),
         Span::styled(
             if state.follow_mode {

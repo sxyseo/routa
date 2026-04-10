@@ -1,6 +1,7 @@
 use super::*;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
+use std::path::Path;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::Style as SyntectStyle;
 use syntect::util::LinesWithEndings;
@@ -10,9 +11,7 @@ pub(super) fn highlight_diff_text(
     diff_text: &str,
     theme_mode: ThemeMode,
 ) -> Text<'static> {
-    let syntax = file_path
-        .and_then(|path| SYNTAX_SET.find_syntax_for_file(path).ok().flatten())
-        .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
+    let syntax = syntax_for_path(file_path);
     let mut highlighter = HighlightLines::new(syntax, syntax_theme(theme_mode));
     let mut lines = Vec::new();
     for raw in diff_text.lines() {
@@ -50,9 +49,7 @@ pub(super) fn highlight_code_text(
     code: &str,
     theme_mode: ThemeMode,
 ) -> Text<'static> {
-    let syntax = file_path
-        .and_then(|path| SYNTAX_SET.find_syntax_for_file(path).ok().flatten())
-        .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
+    let syntax = syntax_for_path(file_path);
     let mut highlighter = HighlightLines::new(syntax, syntax_theme(theme_mode));
     let mut lines = Vec::new();
     for line in LinesWithEndings::from(code) {
@@ -114,18 +111,35 @@ fn syntax_theme(theme_mode: ThemeMode) -> &'static Theme {
     }
 }
 
+fn syntax_for_path(file_path: Option<&str>) -> &syntect::parsing::SyntaxReference {
+    file_path
+        .and_then(|path| {
+            SYNTAX_SET
+                .find_syntax_for_file(path)
+                .ok()
+                .flatten()
+                .or_else(|| {
+                    Path::new(path)
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .and_then(|ext| SYNTAX_SET.find_syntax_by_extension(ext))
+                })
+        })
+        .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text())
+}
+
 fn normalize_dark_foreground(color: Color) -> Color {
     match color {
         Color::Rgb(r, g, b) => {
             let brightest = r.max(g).max(b);
-            if brightest >= 95 {
+            if brightest >= 135 {
                 Color::Rgb(r, g, b)
             } else {
-                let boost = 95u8.saturating_sub(brightest);
+                let scale = 135.0 / brightest.max(1) as f32;
                 Color::Rgb(
-                    r.saturating_add(boost),
-                    g.saturating_add(boost),
-                    b.saturating_add(boost),
+                    ((r as f32 * scale).round() as u16).min(255) as u8,
+                    ((g as f32 * scale).round() as u16).min(255) as u8,
+                    ((b as f32 * scale).round() as u16).min(255) as u8,
                 )
             }
         }
