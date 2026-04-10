@@ -113,6 +113,7 @@ pub const EVENT_LOG_LIMIT: usize = 200;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum RuntimeMessage {
     Hook(HookEvent),
     Git(GitEvent),
@@ -124,9 +125,12 @@ pub struct HookEvent {
     pub observed_at_ms: i64,
     pub client: String,
     pub session_id: String,
+    pub session_display_name: Option<String>,
     pub turn_id: Option<String>,
     pub cwd: String,
     pub model: Option<String>,
+    pub transcript_path: Option<String>,
+    pub session_source: Option<String>,
     pub event_name: String,
     pub tool_name: Option<String>,
     pub tool_command: Option<String>,
@@ -150,9 +154,12 @@ pub struct GitEvent {
 #[derive(Debug, Clone)]
 pub struct SessionView {
     pub session_id: String,
+    pub display_name: Option<String>,
     pub cwd: String,
     pub model: Option<String>,
     pub client: String,
+    pub transcript_path: Option<String>,
+    pub source: Option<String>,
     pub started_at_ms: i64,
     pub last_seen_at_ms: i64,
     pub status: String,

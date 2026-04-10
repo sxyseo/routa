@@ -51,26 +51,20 @@ pub enum FileListMode {
     UnknownConflict,
 }
 
-impl FileListMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            FileListMode::BySession => "BY SESSION",
-            FileListMode::Global => "GLOBAL",
-            FileListMode::UnknownConflict => "UNKNOWN-CONFLICT",
-        }
-    }
-}
-
 pub const UNKNOWN_SESSION_ID: &str = "__unknown__";
 
 #[derive(Debug, Clone)]
 pub struct SessionListItem {
     pub session_id: String,
+    pub display_name: String,
     pub model: Option<String>,
     pub status: String,
     pub tmux_pane: Option<String>,
     pub last_seen_at_ms: i64,
     pub touched_files_count: usize,
+    pub exact_count: usize,
+    pub inferred_count: usize,
+    pub unknown_count: usize,
     pub is_unknown_bucket: bool,
 }
 
@@ -213,14 +207,24 @@ impl RuntimeState {
             .sessions
             .values()
             .filter(|session| self.matches_session_search(session))
-            .map(|session| SessionListItem {
-                session_id: session.session_id.clone(),
-                model: session.model.clone(),
-                status: session.status.clone(),
-                tmux_pane: session.tmux_pane.clone(),
-                last_seen_at_ms: session.last_seen_at_ms,
-                touched_files_count: session.touched_files.len(),
-                is_unknown_bucket: false,
+            .map(|session| {
+                let (exact_count, inferred_count, unknown_count) =
+                    self.session_confidence_counts(&session.session_id);
+                SessionListItem {
+                    session_id: session.session_id.clone(),
+                    display_name: session_display_name(session),
+                    model: session.model.clone(),
+                    status: session.status.clone(),
+                    tmux_pane: session.tmux_pane.clone(),
+                    last_seen_at_ms: session.last_seen_at_ms,
+                    touched_files_count: session.touched_files.len().max(
+                        exact_count + inferred_count + unknown_count,
+                    ),
+                    exact_count,
+                    inferred_count,
+                    unknown_count,
+                    is_unknown_bucket: false,
+                }
             })
             .collect();
         items.sort_by(|a, b| {
@@ -242,11 +246,15 @@ impl RuntimeState {
         if unknown_count > 0 {
             items.push(SessionListItem {
                 session_id: UNKNOWN_SESSION_ID.to_string(),
+                display_name: "Unknown / review".to_string(),
                 model: None,
                 status: "unknown".to_string(),
                 tmux_pane: None,
                 last_seen_at_ms: self.last_refresh_at_ms,
                 touched_files_count: unknown_count,
+                exact_count: 0,
+                inferred_count: 0,
+                unknown_count,
                 is_unknown_bucket: true,
             });
         }
@@ -465,9 +473,12 @@ impl RuntimeState {
                 .entry(event.session_id.clone())
                 .or_insert_with(|| SessionView {
                     session_id: event.session_id.clone(),
+                    display_name: event.session_display_name.clone(),
                     cwd: event.cwd.clone(),
                     model: event.model.clone(),
                     client: event.client.clone(),
+                    transcript_path: event.transcript_path.clone(),
+                    source: event.session_source.clone(),
                     started_at_ms: event.observed_at_ms,
                     last_seen_at_ms: event.observed_at_ms,
                     status: "active".to_string(),
@@ -477,8 +488,17 @@ impl RuntimeState {
                 });
 
             session.cwd = event.cwd.clone();
+            if event.session_display_name.is_some() {
+                session.display_name = event.session_display_name.clone();
+            }
             session.model = event.model.clone().or_else(|| session.model.clone());
             session.client = event.client.clone();
+            if event.transcript_path.is_some() {
+                session.transcript_path = event.transcript_path.clone();
+            }
+            if event.session_source.is_some() {
+                session.source = event.session_source.clone();
+            }
             session.last_seen_at_ms = event.observed_at_ms;
             session.last_turn_id = event.turn_id.clone();
             session.tmux_pane = event
@@ -632,6 +652,12 @@ impl RuntimeState {
         let needle = self.search_query.to_ascii_lowercase();
         session.session_id.to_ascii_lowercase().contains(&needle)
             || session
+                .display_name
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+                .contains(&needle)
+            || session
                 .model
                 .as_deref()
                 .unwrap_or_default()
@@ -683,6 +709,38 @@ impl RuntimeState {
         }
         self.detail_scroll = 0;
     }
+
+    fn session_confidence_counts(&self, session_id: &str) -> (usize, usize, usize) {
+        let mut exact_count = 0;
+        let mut inferred_count = 0;
+        let mut unknown_count = 0;
+
+        for file in self.files.values().filter(|file| {
+            file.dirty
+                && (file.last_session_id.as_deref() == Some(session_id)
+                    || file.touched_by.contains(session_id))
+        }) {
+            if file.conflicted {
+                unknown_count += 1;
+                continue;
+            }
+            match file.confidence {
+                AttributionConfidence::Exact => exact_count += 1,
+                AttributionConfidence::Inferred => inferred_count += 1,
+                AttributionConfidence::Unknown => unknown_count += 1,
+            }
+        }
+
+        (exact_count, inferred_count, unknown_count)
+    }
+}
+
+fn session_display_name(session: &SessionView) -> String {
+    session
+        .display_name
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| short_session(&session.session_id))
 }
 
 fn short_session(session_id: &str) -> String {

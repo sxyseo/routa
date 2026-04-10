@@ -9,6 +9,13 @@ fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+if [ -n "${TMUX:-}" ]; then
+  export TMUX_SESSION="${TMUX_SESSION:-$(tmux display-message -p '#{session_name}' 2>/dev/null || true)}"
+  export TMUX_WINDOW="${TMUX_WINDOW:-$(tmux display-message -p '#{window_index}' 2>/dev/null || true)}"
+  export TMUX_PANE="${TMUX_PANE:-$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)}"
+  export TMUX_PANE_TITLE="${TMUX_PANE_TITLE:-$(tmux display-message -p '#{pane_title}' 2>/dev/null || true)}"
+fi
+
 resolve_agentwatch_bin() {
   if [ -n "${AGENTWATCH_BIN:-}" ] && [ -x "${AGENTWATCH_BIN}" ]; then
     printf '%s\n' "${AGENTWATCH_BIN}"

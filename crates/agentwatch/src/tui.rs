@@ -139,10 +139,18 @@ fn handle_event(state: &mut RuntimeState, ctx: &RepoContext) -> Result<bool> {
                 KeyCode::Enter => state.toggle_file_view(),
                 KeyCode::Char('/') => state.begin_search(),
                 KeyCode::Esc => state.clear_search(),
-                KeyCode::Char('r') => state.toggle_follow_mode(),
+                KeyCode::Char('r') | KeyCode::Char('f') => state.toggle_follow_mode(),
                 KeyCode::Char('s') => state.cycle_file_list_mode(),
+                KeyCode::Char('u') => {
+                    while !matches!(state.file_list_mode, crate::state::FileListMode::UnknownConflict)
+                    {
+                        state.cycle_file_list_mode();
+                    }
+                }
                 KeyCode::Char('d') | KeyCode::Char('D') => state.toggle_detail_mode(),
                 KeyCode::Char('t') | KeyCode::Char('T') => state.toggle_theme_mode(),
+                KeyCode::Char('o') => open_selected_file_in_editor(state, ctx)?,
+                KeyCode::Char('g') => open_selected_file_git_diff(state, ctx)?,
                 KeyCode::Char('1') => state.set_event_log_filter(EventLogFilter::All),
                 KeyCode::Char('2') => state.set_event_log_filter(EventLogFilter::Hook),
                 KeyCode::Char('3') => state.set_event_log_filter(EventLogFilter::Git),
@@ -169,6 +177,44 @@ fn handle_event(state: &mut RuntimeState, ctx: &RepoContext) -> Result<bool> {
         _ => {}
     }
     Ok(false)
+}
+
+fn open_selected_file_in_editor(state: &RuntimeState, ctx: &RepoContext) -> Result<()> {
+    let Some(file) = state.selected_file() else {
+        return Ok(());
+    };
+    let editor = env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let file_path = ctx.repo_root.join(&file.rel_path);
+    suspend_tui_command(Command::new(editor).arg(file_path))
+}
+
+fn open_selected_file_git_diff(state: &RuntimeState, ctx: &RepoContext) -> Result<()> {
+    let Some(file) = state.selected_file() else {
+        return Ok(());
+    };
+    let pager = env::var("PAGER").unwrap_or_else(|_| "less".to_string());
+    let mut command = Command::new("sh");
+    command.arg("-lc").arg(format!(
+        "git -C {} diff -- {} | {}",
+        shell_escape_path(&ctx.repo_root.to_string_lossy()),
+        shell_escape_path(&file.rel_path),
+        pager
+    ));
+    suspend_tui_command(&mut command)
+}
+
+fn suspend_tui_command(command: &mut Command) -> Result<()> {
+    let _ = execute!(stdout(), LeaveAlternateScreen);
+    let _ = disable_raw_mode();
+    let status = command.status().context("run external command from tui")?;
+    execute!(stdout(), EnterAlternateScreen).context("re-enter alternate screen")?;
+    enable_raw_mode().context("re-enable raw mode")?;
+    let _ = status;
+    Ok(())
+}
+
+fn shell_escape_path(path: &str) -> String {
+    format!("'{}'", path.replace('\'', "'\\''"))
 }
 
 fn jump_diff_hunk(state: &mut RuntimeState, ctx: &RepoContext, forward: bool) -> Result<()> {

@@ -1,29 +1,28 @@
 ---
 source: crates/agentwatch/src/tui_tests.rs
-assertion_line: 278
 expression: "render_snapshot(&state, &cache, 120, 24)"
 ---
- AgentWatch   repo:routa-js  branch:main  rpc:socket  WATCH  files:BY SESSION    refreshed 2m ago
-┌Sessions──────────────────────┐┌Files────────────────────────────────────────┐┌Details────────────────────────────────┐
-│...ook-check  ACTIVE  gpt-5.4 ││ BY SESSION    GLOBAL    UNKNOWN-CONFLICT    ││crates/agentwatch/src/tui.rs           │
-│pane %12  3m ago  1 files     ││─────────────────────────────────────────────││last by live-hook-check                │
-│idle-review  IDLE  ...4-mini  ││crates/agentwatch/src/tui.rs                 ││modified <ts> (4m)  confidence     │
-│pane %18  1h ago  1 files     ││M  +38 -5     4m  ...-hook-check             ││exact                                  │
-│Unknown  UNKNOWN  watch       ││                                             ││lines 0  size 0 B                      │
-│pane ?  2m ago  1 files       ││                                             ││created untracked  git changes 0       │
-│                              ││                                             │└───────────────────────────────────────┘
-│                              ││                                             │┌File Preview───────────────────────────┐
-│                              ││                                             ││fn render(frame: &mut Frame) {         │
-│                              ││                                             ││    // preview                         │
-│                              ││                                             ││}                                      │
-│                              ││                                             ││                                       │
-│                              ││                                             ││                                       │
-│                              ││                                             ││                                       │
-│                              ││                                             ││                                       │
-└──────────────────────────────┘└─────────────────────────────────────────────┘└───────────────────────────────────────┘
+ AgentWatch   repo:routa-js  branch:main    SESSION VIEW · FOLLOW ON  rpc:socket  dirty:1  unknown:0  synced 2m ago
+┌Sessions────────────────────────┐┌Files─────────────────────────────────────────┐┌Details─────────────────────────────┐
+│> impl-buddy  ACTIVE            ││ BY SESSION    GLOBAL    REVIEW UNKNOWN       ││tui.rs                              │
+│gpt-5.4  pane %12  3m ago       ││1 files  M:1 D:0  E:1 I:0 U:0                 ││crates/agentwatch/src               │
+│1 files  E:1 I:0 U:0            ││──────────────────────────────────────────────││Last by: impl-buddy                 │
+│  test-master  IDLE             ││> tui.rs                                      ││Modified: <ts> (4m)             │
+│gpt-5.4-mini  pane %18  1h ago  ││  crates/agentwatch/src                       ││State: dirty  Confidence: high      │
+│1 files  E:0 I:0 U:0            ││M  +38 -5     4m  EXACT                       ││Lines: 0  Size: 0 B                 │
+│  Unknown / review  UNKNOWN     ││                                              ││Created: untracked  Git changes: 0  │
+│watch-only owner  pane ?  2m ago││                                              ││Why                                 │
+│1 files  E:0 I:0 U:1            ││                                              ││- matched a hook event with concrete│
+│                                ││                                              │└────────────────────────────────────┘
+│                                ││                                              │┌File Preview────────────────────────┐
+│                                ││                                              ││fn render(frame: &mut Frame) {      │
+│                                ││                                              ││    // preview                      │
+│                                ││                                              ││}                                   │
+│                                ││                                              ││                                    │
+└────────────────────────────────┘└──────────────────────────────────────────────┘└────────────────────────────────────┘
 ┌Event Stream (all)────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│<ts> [watch] watch modify crates/agentwatch/src/tui.rs                                                            │
-│<ts> [hook] live-hook-check Edit Write                                                                            │
-│<ts> [git] git post-commit main                                                                                   │
+│<ts>  WATCH  modify   crates/agentwatch/src/tui.rs                                                                │
+│<ts>  HOOK   live-hook-check Edit Write                                                                           │
+│<ts>  GIT    post-commit main                                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Tab switch focus  ↑↓ select  Enter expand  / search  T theme  Esc clear  r follow:on  q quit
+Tab focus  ↑↓ select  Enter inspect  / search  u unknown  o open  g git diff  f follow:on  T theme  Esc clear  q quit

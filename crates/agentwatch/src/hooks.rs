@@ -10,6 +10,7 @@ use chrono::Utc;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::io::Read;
+use std::path::Path;
 
 pub fn parse_stdin_payload() -> Result<String> {
     let mut input = String::new();
@@ -47,6 +48,8 @@ pub fn handle_hook(
         .unwrap_or_else(|| "unknown".to_string());
     let turn_id = extract_field(&payload, &["turn_id", "turnId"]);
     let model = extract_field(&payload, &["model"]).filter(|value| !value.is_empty());
+    let transcript_path = extract_field(&payload, &["transcript_path", "transcriptPath"]);
+    let session_source = extract_field(&payload, &["source"]);
     let hook_event_name = extract_field(
         &payload,
         &[
@@ -65,15 +68,22 @@ pub fn handle_hook(
         .or_else(|| std::env::var("TMUX_SESSION").ok());
     let tmux_window = extract_field(&payload, &["tmux_window", "tmuxWindow"])
         .or_else(|| std::env::var("TMUX_WINDOW").ok());
-    let tmux_pane = extract_field(&payload, &["tmux_pane", "tmuxPane"]).or_else(|| {
-        std::env::var("TMUX_PANE")
-            .ok()
-            .map(|value| format!("${value}"))
-    });
+    let tmux_pane =
+        extract_field(&payload, &["tmux_pane", "tmuxPane"]).or_else(|| std::env::var("TMUX_PANE").ok());
+    let session_display_name = extract_session_display_name(
+        &payload,
+        transcript_path.as_deref(),
+        session_source.as_deref(),
+        tmux_session.as_deref(),
+        tmux_pane.as_deref(),
+    );
 
     let metadata_json = json!({
         "client_event": event_name,
         "session_started_from": client.as_str(),
+        "session_source": session_source,
+        "transcript_path": transcript_path,
+        "session_display_name": session_display_name,
     })
     .to_string();
 
@@ -192,6 +202,8 @@ pub fn build_hook_runtime_message(
         .unwrap_or_else(|| "unknown".to_string());
     let turn_id = extract_field(&payload, &["turn_id", "turnId"]);
     let model = extract_field(&payload, &["model"]).filter(|value| !value.is_empty());
+    let transcript_path = extract_field(&payload, &["transcript_path", "transcriptPath"]);
+    let session_source = extract_field(&payload, &["source"]);
     let hook_event_name = extract_field(
         &payload,
         &[
@@ -209,11 +221,15 @@ pub fn build_hook_runtime_message(
         .or_else(|| std::env::var("TMUX_SESSION").ok());
     let tmux_window = extract_field(&payload, &["tmux_window", "tmuxWindow"])
         .or_else(|| std::env::var("TMUX_WINDOW").ok());
-    let tmux_pane = extract_field(&payload, &["tmux_pane", "tmuxPane"]).or_else(|| {
-        std::env::var("TMUX_PANE")
-            .ok()
-            .map(|value| format!("${value}"))
-    });
+    let tmux_pane =
+        extract_field(&payload, &["tmux_pane", "tmuxPane"]).or_else(|| std::env::var("TMUX_PANE").ok());
+    let session_display_name = extract_session_display_name(
+        &payload,
+        transcript_path.as_deref(),
+        session_source.as_deref(),
+        tmux_session.as_deref(),
+        tmux_pane.as_deref(),
+    );
     let tool_input = payload
         .get("tool_input")
         .cloned()
@@ -233,9 +249,12 @@ pub fn build_hook_runtime_message(
             observed_at_ms: now_ms,
             client: client.as_str().to_string(),
             session_id,
+            session_display_name,
             turn_id,
             cwd,
             model,
+            transcript_path,
+            session_source,
             event_name: hook_event_name,
             tool_name,
             tool_command,
@@ -333,6 +352,55 @@ fn extract_field_from_cmd_path(payload: &Value) -> Option<String> {
         .get("command")
         .and_then(Value::as_str)
         .map(ToString::to_string)
+}
+
+fn extract_session_display_name(
+    payload: &Value,
+    transcript_path: Option<&str>,
+    session_source: Option<&str>,
+    tmux_session: Option<&str>,
+    tmux_pane: Option<&str>,
+) -> Option<String> {
+    extract_field(
+        payload,
+        &[
+            "session_name",
+            "sessionName",
+            "name",
+            "pane_title",
+            "paneTitle",
+            "title",
+        ],
+    )
+    .filter(|value| !value.trim().is_empty())
+    .or_else(|| std::env::var("TMUX_PANE_TITLE").ok())
+    .filter(|value| !value.trim().is_empty())
+    .or_else(|| {
+        transcript_path
+            .and_then(transcript_display_name)
+            .filter(|value| !value.trim().is_empty())
+    })
+    .or_else(|| {
+        tmux_session.map(|session| match tmux_pane {
+            Some(pane) if !pane.is_empty() => format!("{session} {pane}"),
+            _ => session.to_string(),
+        })
+    })
+    .or_else(|| session_source.map(|source| format!("codex {source}")))
+}
+
+fn transcript_display_name(path: &str) -> Option<String> {
+    let file_name = Path::new(path).file_stem()?.to_string_lossy().to_string();
+    let normalized = file_name
+        .trim()
+        .trim_end_matches(".json")
+        .trim_end_matches(".jsonl")
+        .trim();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.to_string())
+    }
 }
 
 fn event_is_file_mutating(event: &str, client: &HookClient, tool_name: Option<&str>) -> bool {
@@ -632,5 +700,20 @@ mod tests {
         assert!(candidate.contains("src/main.rs"));
         assert!(candidate.contains("src/lib.rs"));
         assert!(candidate.contains("src/target.rs"));
+    }
+
+    #[test]
+    fn session_display_name_prefers_transcript_file_stem() {
+        let payload = json!({});
+
+        let display = extract_session_display_name(
+            &payload,
+            Some("/tmp/transcripts/review-check.jsonl"),
+            Some("startup"),
+            None,
+            None,
+        );
+
+        assert_eq!(display.as_deref(), Some("review-check"));
     }
 }
