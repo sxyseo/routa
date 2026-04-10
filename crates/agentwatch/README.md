@@ -71,6 +71,12 @@ Event mappings expected by `agentwatch hook`:
 - `PostToolUse`
 - `UserPromptSubmit`
 - `Stop`
+- `Edit`
+- `Write`
+
+> `Edit` and `Write` are supported as both top-level event names and as `tool_name` values.
+> When your hook provider emits `PreToolUse/PostToolUse` with `tool_name=Edit` or `tool_name=Write`,
+> the same event path is still handled.
 
 ```json
 {
@@ -86,11 +92,29 @@ Event mappings expected by `agentwatch hook`:
 }
 ```
 
+### Edit|Write focused example
+
+`agentwatch` also accepts editor-style payloads with `tool_name` set to `Edit`/`Write`.
+
+```json
+{
+  "session_id": "thread-abc",
+  "turn_id": "turn-9",
+  "cwd": "/Users/me/repos/project",
+  "hook_event_name": "Edit",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "src/main.rs"
+  }
+}
+```
+
 ### Claude-style examples
 
 `agentwatch` accepts snake_case fields too:
 
 - `sessionId`, `turnId`, `hookEventName`, `toolName`, `toolInput`
+  - `toolName` is commonly `Edit` / `Write` for direct edit hooks.
 
 ```json
 {
@@ -98,7 +122,7 @@ Event mappings expected by `agentwatch hook`:
   "turnId": "turn-9",
   "cwd": "/Users/me/repos/project",
   "hookEventName": "PostToolUse",
-  "toolName": "Bash",
+  "toolName": "Edit",
   "toolInput": {
     "command": "apply_patch <<'PATCH'\n*** Begin Patch\n*** Update File: src/main.rs\n@@\n }\n"
   }
@@ -127,6 +151,14 @@ Event mappings expected by `agentwatch hook`:
     {
       "event": "Stop",
       "command": "agentwatch hook codex stop"
+    },
+    {
+      "event": "Edit",
+      "command": "agentwatch hook codex edit"
+    },
+    {
+      "event": "Write",
+      "command": "agentwatch hook codex write"
     }
   ]
 }
@@ -137,6 +169,9 @@ Git hooks (`.git/hooks/post-commit`, etc) should call:
 ```bash
 agentwatch git-hook post-commit
 ```
+
+`post-commit` and `post-checkout` are enough for the MVP boundary reset behavior
+(`post-merge` is included for safety in one-click install).
 
 ## One-click install
 
@@ -208,10 +243,10 @@ cargo run -p agentwatch -- --repo . --db "$DB" files --by-session
 
 # Simulate a dirty file in repo then refresh file state from git status.
 touch .agentwatch_smoke_tmp
-cargo run -p agentwatch -- --repo . --db "$DB" git-hook post-status --
+cargo run -p agentwatch -- --repo . --db "$DB" git-hook post-commit --
 cargo run -p agentwatch -- --repo . --db "$DB" who .agentwatch_smoke_tmp
 rm -f .agentwatch_smoke_tmp
-cargo run -p agentwatch -- --repo . --db "$DB" git-hook post-status --
+cargo run -p agentwatch -- --repo . --db "$DB" git-hook post-commit --
 ```
 
 Expected:

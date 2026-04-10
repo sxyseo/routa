@@ -61,7 +61,7 @@ enum Command {
     Hook {
         /// Hook client, e.g. codex.
         client: String,
-        /// Event name, e.g. SessionStart / PreToolUse / PostToolUse / UserPromptSubmit / Stop.
+        /// Event name, e.g. SessionStart / PreToolUse / PostToolUse / Edit / Write / UserPromptSubmit / Stop.
         event: String,
     },
     #[command(hide = true)]

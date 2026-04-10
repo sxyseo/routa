@@ -105,7 +105,7 @@ pub fn handle_hook(
         &payload_json,
     )?;
 
-    if event_is_file_mutating(&hook_event_name) {
+    if event_is_file_mutating(&hook_event_name, &client, tool_name.as_deref()) {
         let tool_input = payload
             .get("tool_input")
             .cloned()
@@ -187,11 +187,28 @@ fn extract_field_from_cmd_path(payload: &Value) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn event_is_file_mutating(event: &str) -> bool {
-    matches!(
+fn event_is_file_mutating(event: &str, client: &HookClient, tool_name: Option<&str>) -> bool {
+    if matches!(event, "Edit" | "edit" | "Write" | "write") {
+        return true;
+    }
+
+    if matches!(
         event,
-        "PostToolUse" | "post-tool-use" | "pre-tool-use" | "PreToolUse"
-    )
+        "PostToolUse" | "post-tool-use" | "PreToolUse" | "pre-tool-use"
+    ) {
+        return if matches!(client, HookClient::Claude) {
+            is_edit_like_tool(tool_name)
+        } else {
+            true
+        };
+    }
+
+    false
+}
+
+fn is_edit_like_tool(tool_name: Option<&str>) -> bool {
+    tool_name
+        .is_some_and(|name| name.eq_ignore_ascii_case("edit") || name.eq_ignore_ascii_case("write"))
 }
 
 fn normalized_is_stop(event: &str) -> bool {
@@ -201,20 +218,22 @@ fn normalized_is_stop(event: &str) -> bool {
     )
 }
 
-fn normalize_event_name(client: &str, event: &str) -> String {
-    if client.eq_ignore_ascii_case("codex") {
-        match event {
-            "session-start" | "SessionStart" => "SessionStart".to_string(),
-            "pre-tool-use" | "pretooluse" | "pre_tool_use" => "PreToolUse".to_string(),
-            "post-tool-use" | "posttooluse" | "post_tool_use" => "PostToolUse".to_string(),
-            "user-prompt-submit" | "prompt-submit" | "promptsubmit" => {
-                "UserPromptSubmit".to_string()
-            }
-            "stop" => "Stop".to_string(),
-            other => other.to_string(),
-        }
-    } else {
-        event.to_string()
+fn normalize_event_name(_client: &str, event: &str) -> String {
+    let normalized = event
+        .trim()
+        .to_ascii_lowercase()
+        .replace('_', "-")
+        .replace(' ', "-");
+
+    match normalized.as_str() {
+        "session-start" | "sessionstart" => "SessionStart".to_string(),
+        "pre-tool-use" | "pretooluse" => "PreToolUse".to_string(),
+        "post-tool-use" | "posttooluse" => "PostToolUse".to_string(),
+        "user-prompt-submit" | "prompt-submit" | "promptsubmit" => "UserPromptSubmit".to_string(),
+        "stop" => "Stop".to_string(),
+        "edit" => "Edit".to_string(),
+        "write" => "Write".to_string(),
+        _ => event.to_string(),
     }
 }
 
@@ -239,7 +258,18 @@ fn collect_file_values(value: &Value, out: &mut HashSet<String>) {
                 let key_lower = key.to_lowercase();
                 let is_path_key = matches!(
                     key_lower.as_str(),
-                    "path" | "paths" | "file" | "filepath" | "filename" | "target" | "source"
+                    "path"
+                        | "paths"
+                        | "file"
+                        | "filepath"
+                        | "file_path"
+                        | "filename"
+                        | "target"
+                        | "source"
+                        | "target_file"
+                        | "source_file"
+                        | "absolute_path"
+                        | "relative_path"
                 );
                 if is_path_key {
                     match child {
@@ -339,4 +369,64 @@ fn current_branch(repo_root: &std::path::Path) -> Result<String> {
         .unwrap_or_else(|_| "unknown".to_string())
         .trim()
         .to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn normalize_event_name_handles_edit_write_and_tool_events() {
+        assert_eq!(
+            normalize_event_name("codex", "session-start"),
+            "SessionStart"
+        );
+        assert_eq!(normalize_event_name("codex", "pre_tool_use"), "PreToolUse");
+        assert_eq!(normalize_event_name("codex", "posttooluse"), "PostToolUse");
+        assert_eq!(normalize_event_name("codex", "edit"), "Edit");
+        assert_eq!(normalize_event_name("codex", "Write"), "Write");
+    }
+
+    #[test]
+    fn file_mutating_events_detect_tool_intent_for_claude() {
+        assert!(event_is_file_mutating(
+            "PreToolUse",
+            &HookClient::Claude,
+            Some("Edit")
+        ));
+        assert!(event_is_file_mutating(
+            "PostToolUse",
+            &HookClient::Claude,
+            Some("Write")
+        ));
+        assert!(!event_is_file_mutating(
+            "PreToolUse",
+            &HookClient::Claude,
+            Some("Bash")
+        ));
+        assert!(!event_is_file_mutating(
+            "PostToolUse",
+            &HookClient::Claude,
+            Some("Read")
+        ));
+    }
+
+    #[test]
+    fn collect_file_values_supports_file_path_aliases() {
+        let mut candidate = HashSet::new();
+        let payload = json!({
+            "tool_input": {
+                "file_path": "src/main.rs",
+                "filepath": "src/lib.rs",
+                "target_file": "src/target.rs",
+            }
+        });
+
+        collect_file_values(&payload, &mut candidate);
+
+        assert!(candidate.contains("src/main.rs"));
+        assert!(candidate.contains("src/lib.rs"));
+        assert!(candidate.contains("src/target.rs"));
+    }
 }

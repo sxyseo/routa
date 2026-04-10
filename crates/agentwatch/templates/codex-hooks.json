@@ -19,6 +19,14 @@
     {
       "event": "Stop",
       "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex Stop'"
+    },
+    {
+      "event": "Edit",
+      "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex Edit'"
+    },
+    {
+      "event": "Write",
+      "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex Write'"
     }
   ]
 }
