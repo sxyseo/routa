@@ -455,10 +455,7 @@ async fn api_task_patch_explicit_null_clears_worktree() {
         .await
         .expect("clear worktree");
     assert_eq!(clear_worktree.status(), StatusCode::OK);
-    let clear_json: Value = clear_worktree
-        .json()
-        .await
-        .expect("decode clear response");
+    let clear_json: Value = clear_worktree.json().await.expect("decode clear response");
     assert_eq!(clear_json["task"]["worktreeId"], Value::Null);
 
     let get_task = fixture
@@ -909,10 +906,7 @@ async fn api_mcp_tools_include_delegate_task_tool() {
         .iter()
         .filter_map(|tool| tool.get("name").and_then(Value::as_str))
         .any(|name| name == "list_artifacts");
-    assert!(
-        has_list_artifacts,
-        "list_artifacts should be discoverable"
-    );
+    assert!(has_list_artifacts, "list_artifacts should be discoverable");
 }
 
 #[tokio::test]
@@ -1103,7 +1097,8 @@ async fn api_mcp_tools_provide_and_list_artifacts() {
     let provide_text = provide_json["content"][0]["text"]
         .as_str()
         .expect("provide_artifact text payload");
-    let provide_result: Value = serde_json::from_str(provide_text).expect("decode provide_artifact payload");
+    let provide_result: Value =
+        serde_json::from_str(provide_text).expect("decode provide_artifact payload");
     assert_eq!(provide_result["type"], json!("screenshot"));
     assert_eq!(provide_result["taskId"], json!(task_id));
     assert_eq!(provide_result["status"], json!("provided"));
@@ -1131,13 +1126,17 @@ async fn api_mcp_tools_provide_and_list_artifacts() {
     let list_text = list_json["content"][0]["text"]
         .as_str()
         .expect("list_artifacts text payload");
-    let list_result: Value = serde_json::from_str(list_text).expect("decode list_artifacts payload");
+    let list_result: Value =
+        serde_json::from_str(list_text).expect("decode list_artifacts payload");
     let artifacts = list_result["artifacts"]
         .as_array()
         .expect("artifacts array");
     assert_eq!(artifacts.len(), 1);
     assert_eq!(artifacts[0]["type"], json!("screenshot"));
     assert_eq!(artifacts[0]["taskId"], json!(task_id));
-    assert_eq!(artifacts[0]["providedByAgentId"], json!("agent-artifact-e2e"));
+    assert_eq!(
+        artifacts[0]["providedByAgentId"],
+        json!("agent-artifact-e2e")
+    );
     assert_eq!(artifacts[0]["status"], json!("provided"));
 }
