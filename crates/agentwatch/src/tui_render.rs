@@ -181,23 +181,14 @@ fn render_files(
     frame.render_widget(outer_block, area);
     let split = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(1),
-        ])
+        .constraints([Constraint::Length(1), Constraint::Min(1)])
         .split(inner);
-    let tabs = render_file_mode_tabs(state, split[0].width);
     frame.render_widget(
-        Paragraph::new(tabs).style(Style::default().bg(colors.surface).fg(colors.text)),
+        Paragraph::new(render_file_header_line(state, cache, split[0].width))
+            .style(Style::default().bg(colors.surface).fg(colors.text)),
         split[0],
     );
-    frame.render_widget(
-        Paragraph::new(render_file_summary_line(state, colors))
-            .style(Style::default().bg(colors.surface).fg(colors.muted)),
-        split[1],
-    );
-    let visible_rows = split[2].height.saturating_sub(1) as usize;
+    let visible_rows = split[1].height.saturating_sub(1) as usize;
     let rows_per_item = match density {
         FileRowDensity::SingleLine => 1,
         FileRowDensity::TwoLine => 2,
@@ -229,14 +220,14 @@ fn render_files(
                     &diff_stat,
                     colors,
                     state.focus == FocusPane::Files,
-                    split[2].width as usize,
+                    split[1].width as usize,
                 )],
                 FileRowDensity::TwoLine => {
                     let primary = Line::from(vec![Span::styled(
                         format!(
                             "{} {}",
                             if selected { ">" } else { " " },
-                            shorten_path(&file_name, split[2].width.saturating_sub(6) as usize)
+                            shorten_path(&file_name, split[1].width.saturating_sub(6) as usize)
                         ),
                         row_style(selected, state.focus == FocusPane::Files, colors)
                             .add_modifier(Modifier::BOLD),
@@ -259,7 +250,7 @@ fn render_files(
             .border_style(Style::default().fg(colors.border))
             .style(Style::default().bg(colors.surface)),
     );
-    frame.render_widget(list, split[2]);
+    frame.render_widget(list, split[1]);
 }
 
 fn render_details_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cache: &AppCache) {
@@ -400,32 +391,28 @@ fn render_log(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeSta
     frame.render_widget(list, area);
 }
 
-fn render_file_mode_tabs(state: &RuntimeState, width: u16) -> Line<'static> {
+fn render_file_header_line(state: &RuntimeState, cache: &AppCache, _width: u16) -> Line<'static> {
     let colors = palette(state.theme_mode);
-    let modes = [FileListMode::Global, FileListMode::UnknownConflict];
-    let mut spans = Vec::new();
-    let compact = width < 34;
-    for (idx, mode) in modes.iter().enumerate() {
-        if idx > 0 {
-            spans.push(Span::raw("  "));
-        }
-        let label = match (mode, compact) {
-            (FileListMode::Global, false) => " ALL FILES ",
-            (FileListMode::Global, true) => " FILES ",
-            (FileListMode::UnknownConflict, false) => " REVIEW UNKNOWN ",
-            (FileListMode::UnknownConflict, true) => " UNKNOWN ",
-        };
-        let style = if *mode == state.file_list_mode {
-            Style::default()
-                .fg(colors.text)
-                .bg(colors.border)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(colors.muted)
-        };
-        spans.push(Span::styled(label, style));
-    }
-    Line::from(spans)
+    let files = state.file_items();
+    let commit_total = files
+        .iter()
+        .map(|file| cache.file_facts(file).map(|facts| facts.git_change_count))
+        .collect::<Option<Vec<_>>>()
+        .map(|counts| counts.into_iter().sum::<usize>())
+        .map(|count| count.to_string())
+        .unwrap_or_else(|| "...".to_string());
+    let label = match state.file_list_mode {
+        FileListMode::Global => "ALL FILES",
+        FileListMode::UnknownConflict => "UNKNOWN ONLY",
+    };
+    let summary = format!("{label}  {} files  commits:{commit_total}", files.len());
+    Line::from(vec![Span::styled(
+        format!(" {summary} "),
+        Style::default()
+            .fg(colors.text)
+            .bg(colors.border)
+            .add_modifier(Modifier::BOLD),
+    )])
 }
 
 fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeState) {
@@ -618,26 +605,7 @@ fn render_title_bar(frame: &mut Frame, area: Rect, state: &RuntimeState) {
         ),
         Span::styled(
             format!(
-                "  {} · {}  ",
-                current_view_label(state),
-                if state.follow_mode {
-                    "FOLLOW ON"
-                } else {
-                    "FOLLOW OFF"
-                }
-            ),
-            Style::default()
-                .fg(colors.accent)
-                .bg(colors.surface)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            format!("rpc:{}  ", state.runtime_transport),
-            Style::default().fg(colors.accent).bg(colors.surface),
-        ),
-        Span::styled(
-            format!(
-                "ag:{} act:{}  ",
+                "agents:{} active:{}  ",
                 state.agent_stats.total, state.agent_stats.active
             ),
             Style::default().fg(colors.text).bg(colors.surface),
@@ -767,8 +735,8 @@ fn render_file_single_line(
     area_width: usize,
 ) -> Line<'static> {
     let (_, parent_dir) = split_display_path(&file.rel_path);
-    let name_width = area_width.saturating_sub(28).clamp(26, 52);
-    let dir_width = area_width.saturating_sub(name_width + 24).clamp(10, 18);
+    let name_width = area_width.saturating_sub(25).clamp(30, 56);
+    let dir_width = area_width.saturating_sub(name_width + 21).clamp(8, 12);
     let mut spans = vec![Span::styled(
         format!(
             "{} {}",
@@ -784,45 +752,6 @@ fn render_file_single_line(
     spans.push(Span::raw(" "));
     spans.extend(render_file_secondary_line(file, diff_stat, colors).spans);
     Line::from(spans)
-}
-
-fn render_file_summary_line(state: &RuntimeState, colors: UiPalette) -> Line<'static> {
-    let files = state.file_items();
-    let modified = files
-        .iter()
-        .filter(|file| short_state_code(&file.state_code) == "M")
-        .count();
-    let deleted = files
-        .iter()
-        .filter(|file| short_state_code(&file.state_code) == "D")
-        .count();
-    let exact = files
-        .iter()
-        .filter(|file| matches!(file.confidence, crate::models::AttributionConfidence::Exact))
-        .count();
-    let inferred = files
-        .iter()
-        .filter(|file| {
-            matches!(
-                file.confidence,
-                crate::models::AttributionConfidence::Inferred
-            )
-        })
-        .count();
-    let unknown = files.len().saturating_sub(exact + inferred);
-    Line::from(vec![
-        Span::styled(
-            format!("{} files", files.len()),
-            Style::default().fg(colors.text),
-        ),
-        Span::styled(
-            format!("  M:{} D:{}  ", modified, deleted),
-            Style::default().fg(colors.muted),
-        ),
-        Span::styled(format!("E:{exact} "), Style::default().fg(ACTIVE)),
-        Span::styled(format!("I:{inferred} "), Style::default().fg(INFERRED)),
-        Span::styled(format!("U:{unknown}"), Style::default().fg(IDLE)),
-    ])
 }
 
 fn render_event_line(entry: &crate::models::EventLogEntry, colors: UiPalette) -> Line<'static> {
@@ -858,13 +787,6 @@ fn split_event_message(message: &str) -> (String, String) {
             first.to_string(),
             [second, rest.as_str()].join(" ").trim().to_string(),
         )
-    }
-}
-
-fn current_view_label(state: &RuntimeState) -> &'static str {
-    match state.file_list_mode {
-        FileListMode::Global => "FILES VIEW",
-        FileListMode::UnknownConflict => "REVIEW UNKNOWN",
     }
 }
 
