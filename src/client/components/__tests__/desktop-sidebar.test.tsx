@@ -33,6 +33,15 @@ describe("DesktopSidebar", () => {
     expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
   });
 
+  it("does not mark Settings as active when a settings tool page is active", () => {
+    pathnameState.pathname = "/settings/harness";
+
+    render(<DesktopSidebar workspaceId="default" />);
+
+    expect(screen.getByRole("link", { name: "Harness" }).className).toContain("text-desktop-accent");
+    expect(screen.getByRole("link", { name: "Settings" }).className).not.toContain("text-desktop-accent");
+  });
+
   it("shows a collapse icon when expanded and an expand icon when collapsed", () => {
     const { rerender } = render(<DesktopSidebar workspaceId="default" collapsed={false} />);
 

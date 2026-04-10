@@ -23,6 +23,7 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   href: string;
+  exactMatch?: boolean;
 }
 
 interface SidebarTopAction {
@@ -110,18 +111,20 @@ export function DesktopSidebar({
       id: "settings",
       label: t.settings.title,
       href: "/settings",
+      exactMatch: true,
       icon: <Settings className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>,
     },
   ];
-  const isActive = (href: string) => {
+  const isActive = (href: string, exactMatch = false) => {
     const hrefPath = href.split("?")[0]?.split("#")[0] ?? href;
     if (hrefPath === "/") return pathname === "/";
     if (hrefPath === workspaceBaseHref) return pathname === hrefPath;
+    if (exactMatch) return pathname === hrefPath;
     return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
   };
 
   const renderNavItem = (item: NavItem) => {
-    const active = isActive(item.href);
+    const active = isActive(item.href, item.exactMatch);
     const className = `relative flex items-center rounded-xl transition-colors ${
       active
         ? "bg-desktop-bg-active text-desktop-accent"

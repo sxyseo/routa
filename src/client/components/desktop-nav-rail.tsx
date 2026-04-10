@@ -61,14 +61,16 @@ export function DesktopNavRail({
       id: "settings",
       label: t.settings.title,
       href: "/settings",
+      exactMatch: true,
       icon: (
         <Settings className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>
       ),
     },
   ];
 
-  const isActive = (href: string) => {
+  const isActive = (href: string, exactMatch = false) => {
     if (href === "/") return pathname === "/";
+    if (exactMatch) return pathname === href;
     return pathname === href || pathname.startsWith(href + "/");
   };
 
@@ -79,7 +81,7 @@ export function DesktopNavRail({
     >
       <nav className="flex-1 flex flex-col items-center py-2 gap-0.5">
         {navItems.map((item) => {
-          const active = isActive(item.href);
+          const active = isActive(item.href, "exactMatch" in item ? Boolean(item.exactMatch) : false);
           return (
             <Link
               key={item.id}
