@@ -310,7 +310,7 @@ function HomePageContent() {
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="mx-auto flex h-full w-full max-w-3xl flex-col px-6 py-8 lg:px-10 lg:py-10">
+                <div className="mx-auto flex h-full w-full max-w-6xl flex-col px-6 py-8 lg:px-10 lg:py-10">
                   {workspacesHook.loading ? (
                     <div className="flex flex-1 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
                       {t.home.loadingWorkspaces}
@@ -325,7 +325,7 @@ function HomePageContent() {
                         <h1 className="mt-3 font-['Avenir_Next_Condensed','Avenir_Next','Segoe_UI','Helvetica_Neue',sans-serif] text-4xl font-semibold tracking-[-0.04em] text-slate-900 dark:text-slate-100 sm:text-5xl">
                           {t.home.whatToAdvance}
                         </h1>
-                        <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-slate-500 dark:text-slate-400">
+                        <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
                           {t.home.homePrimaryHint}
                         </p>
                       </div>
@@ -347,10 +347,10 @@ function HomePageContent() {
                       )}
 
                       {activeWorkspaceId ? (
-                        <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="grid gap-4 sm:grid-cols-3">
                           <Link
                             href={`/workspace/${activeWorkspaceId}/sessions`}
-                            className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
+                            className="flex h-full flex-col rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
                           >
                             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
                               {t.home.surfaceLabel}
@@ -361,10 +361,18 @@ function HomePageContent() {
                             <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                               {t.home.modeSessionDescription}
                             </div>
+                            <div className="mt-4 border-t border-black/6 pt-3 dark:border-white/8">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                                {t.home.modeTechnicalLabel}
+                              </div>
+                              <div className="mt-1 text-xs leading-5 text-slate-400 dark:text-slate-500">
+                                {t.home.modeSessionTechnical}
+                              </div>
+                            </div>
                           </Link>
                           <Link
                             href={`/workspace/${activeWorkspaceId}/kanban`}
-                            className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
+                            className="flex h-full flex-col rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
                           >
                             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
                               {t.home.surfaceLabel}
@@ -373,12 +381,20 @@ function HomePageContent() {
                               {t.home.kanbanSurfaceTitle}
                             </div>
                             <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                              {t.workspace.kanbanDescription}
+                              {t.home.modeKanbanDescription}
+                            </div>
+                            <div className="mt-4 border-t border-black/6 pt-3 dark:border-white/8">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                                {t.home.modeTechnicalLabel}
+                              </div>
+                              <div className="mt-1 text-xs leading-5 text-slate-400 dark:text-slate-500">
+                                {t.home.modeKanbanTechnical}
+                              </div>
                             </div>
                           </Link>
                           <Link
                             href={`/workspace/${activeWorkspaceId}/team`}
-                            className="rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
+                            className="flex h-full flex-col rounded-3xl border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/10"
                           >
                             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
                               {t.home.surfaceLabel}
@@ -388,6 +404,14 @@ function HomePageContent() {
                             </div>
                             <div className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                               {t.home.modeTeamDescription}
+                            </div>
+                            <div className="mt-4 border-t border-black/6 pt-3 dark:border-white/8">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                                {t.home.modeTechnicalLabel}
+                              </div>
+                              <div className="mt-1 text-xs leading-5 text-slate-400 dark:text-slate-500">
+                                {t.home.modeTeamTechnical}
+                              </div>
                             </div>
                           </Link>
                         </div>
