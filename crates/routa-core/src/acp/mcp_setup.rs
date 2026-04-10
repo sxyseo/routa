@@ -4,7 +4,7 @@
 //! server with workspace/session/tool profile context for providers that read
 //! a config file (OpenCode) and providers that accept inline JSON (Claude).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 
@@ -105,12 +105,96 @@ async fn ensure_mcp_for_opencode(
     ))
 }
 
+fn codex_project_config_path(cwd: &str) -> PathBuf {
+    Path::new(cwd).join(".codex").join("config.toml")
+}
+
+fn build_codex_mcp_config_contents(
+    workspace_id: &str,
+    session_id: &str,
+    tool_mode: Option<&str>,
+    mcp_profile: Option<&str>,
+) -> String {
+    let endpoint = build_mcp_endpoint(workspace_id, session_id, tool_mode, mcp_profile);
+    format!(
+        "[mcp_servers.routa-coordination]\nurl = \"{}\"\nenabled = true\n",
+        endpoint
+    )
+}
+
+fn upsert_codex_mcp_section(existing: &str, rendered_section: &str) -> String {
+    let section_header = "[mcp_servers.routa-coordination]";
+    if let Some(start) = existing.find(section_header) {
+        let after_header = &existing[start + section_header.len()..];
+        let next_section_offset = after_header.find("\n[").map(|offset| start + section_header.len() + offset + 1);
+        let end = next_section_offset.unwrap_or(existing.len());
+        let mut updated = String::with_capacity(existing.len() + rendered_section.len());
+        updated.push_str(existing[..start].trim_end());
+        if !updated.is_empty() {
+            updated.push_str("\n\n");
+        }
+        updated.push_str(rendered_section.trim_end());
+        if end < existing.len() {
+            updated.push_str("\n\n");
+            updated.push_str(existing[end..].trim_start());
+        } else {
+            updated.push('\n');
+        }
+        return updated;
+    }
+
+    let trimmed = existing.trim_end();
+    if trimmed.is_empty() {
+        format!("{}\n", rendered_section.trim_end())
+    } else {
+        format!("{}\n\n{}\n", trimmed, rendered_section.trim_end())
+    }
+}
+
+async fn ensure_mcp_for_codex(
+    cwd: &str,
+    workspace_id: &str,
+    session_id: &str,
+    tool_mode: Option<&str>,
+    mcp_profile: Option<&str>,
+) -> Result<String, String> {
+    let config_file = codex_project_config_path(cwd);
+    let config_dir = config_file
+        .parent()
+        .ok_or_else(|| format!("Invalid Codex config path: {}", config_file.display()))?;
+
+    let existing = tokio::fs::read_to_string(&config_file)
+        .await
+        .unwrap_or_default();
+    let rendered_section =
+        build_codex_mcp_config_contents(workspace_id, session_id, tool_mode, mcp_profile);
+    let updated = upsert_codex_mcp_section(&existing, &rendered_section);
+
+    tokio::fs::create_dir_all(config_dir)
+        .await
+        .map_err(|err| format!("mkdir {}: {}", config_dir.display(), err))?;
+    tokio::fs::write(&config_file, updated)
+        .await
+        .map_err(|err| format!("write {}: {}", config_file.display(), err))?;
+
+    Ok(format!(
+        "codex-acp: wrote MCP config to {}",
+        display_path(&config_file)
+    ))
+}
+
+pub fn codex_project_trust_override(cwd: &str) -> String {
+    let escaped = cwd.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("projects.\"{}\".trust_level=\"trusted\"", escaped)
+}
+
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
 pub async fn ensure_mcp_for_provider(
     provider_id: &str,
+    cwd: &str,
     workspace_id: &str,
     session_id: &str,
     tool_mode: Option<&str>,
@@ -122,13 +206,26 @@ pub async fn ensure_mcp_for_provider(
         "opencode" => ensure_mcp_for_opencode(workspace_id, session_id, tool_mode, mcp_profile)
             .await
             .map(Some),
+        "codex" | "codex-acp" => ensure_mcp_for_codex(
+            cwd,
+            workspace_id,
+            session_id,
+            tool_mode,
+            mcp_profile,
+        )
+        .await
+        .map(Some),
         _ => Ok(None),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{build_claude_mcp_config, build_mcp_endpoint};
+    use super::{
+        build_claude_mcp_config, build_codex_mcp_config_contents, build_mcp_endpoint,
+        codex_project_config_path, codex_project_trust_override, ensure_mcp_for_provider,
+        upsert_codex_mcp_section,
+    };
 
     #[test]
     fn team_coordination_profile_is_forwarded_in_mcp_endpoint() {
@@ -155,5 +252,55 @@ mod tests {
         assert!(config.contains("\"routa-coordination\""));
         assert!(config.contains("\"type\":\"http\""));
         assert!(config.contains("mcpProfile=team-coordination"));
+    }
+
+    #[test]
+    fn codex_trust_override_marks_worktree_as_trusted() {
+        let override_arg = codex_project_trust_override("/tmp/example/project");
+        assert_eq!(
+            override_arg,
+            "projects.\"/tmp/example/project\".trust_level=\"trusted\""
+        );
+    }
+
+    #[test]
+    fn codex_config_upsert_replaces_existing_routa_section() {
+        let existing = "[mcp_servers.routa-coordination]\nurl = \"http://old\"\nenabled = true\n\n[model_providers.test]\nname = \"test\"\n";
+        let replacement = build_codex_mcp_config_contents(
+            "default",
+            "session-123",
+            Some("full"),
+            Some("kanban-planning"),
+        );
+        let updated = upsert_codex_mcp_section(existing, &replacement);
+        assert!(updated.contains("sid=session-123"));
+        assert!(!updated.contains("http://old"));
+        assert!(updated.contains("[model_providers.test]"));
+    }
+
+    #[tokio::test]
+    async fn codex_provider_writes_project_scoped_config() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let cwd = tempdir.path().to_string_lossy().to_string();
+
+        let summary = ensure_mcp_for_provider(
+            "codex-acp",
+            &cwd,
+            "default",
+            "session-123",
+            Some("full"),
+            Some("kanban-planning"),
+        )
+        .await
+        .expect("ensure codex mcp")
+        .expect("summary");
+
+        let config_path = codex_project_config_path(&cwd);
+        let written = std::fs::read_to_string(&config_path).expect("read codex config");
+        assert!(summary.contains(".codex/config.toml"));
+        assert!(written.contains("[mcp_servers.routa-coordination]"));
+        assert!(written.contains("wsId=default"));
+        assert!(written.contains("sid=session-123"));
+        assert!(written.contains("mcpProfile=kanban-planning"));
     }
 }

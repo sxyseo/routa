@@ -380,6 +380,7 @@ impl AcpManager {
 
         if let Some(summary) = mcp_setup::ensure_mcp_for_provider(
             provider_name,
+            &cwd,
             &workspace_id,
             &session_id,
             tool_mode.as_deref(),
@@ -391,6 +392,10 @@ impl AcpManager {
         }
 
         let mut extra_args: Vec<String> = preset.args.clone();
+        if matches!(provider_name, "codex" | "codex-acp") {
+            extra_args.push("-c".to_string());
+            extra_args.push(mcp_setup::codex_project_trust_override(&cwd));
+        }
         if let Some(provider_args) = options.provider_args.clone() {
             extra_args.extend(provider_args);
         }
@@ -758,6 +763,7 @@ impl AcpManager {
 
             if let Some(summary) = mcp_setup::ensure_mcp_for_provider(
                 provider_name,
+                &cwd,
                 &workspace_id,
                 &session_id,
                 tool_mode.as_deref(),
@@ -770,6 +776,10 @@ impl AcpManager {
 
             // Build args: preset args + optional model flag
             let mut extra_args: Vec<String> = preset.args.clone();
+            if matches!(provider_name, "codex" | "codex-acp") {
+                extra_args.push("-c".to_string());
+                extra_args.push(mcp_setup::codex_project_trust_override(&cwd));
+            }
             if let Some(provider_args) = options.provider_args.clone() {
                 extra_args.extend(provider_args);
             }
