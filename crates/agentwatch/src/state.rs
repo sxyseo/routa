@@ -61,6 +61,19 @@ impl FileListMode {
     }
 }
 
+pub const UNKNOWN_SESSION_ID: &str = "__unknown__";
+
+#[derive(Debug, Clone)]
+pub struct SessionListItem {
+    pub session_id: String,
+    pub model: Option<String>,
+    pub status: String,
+    pub tmux_pane: Option<String>,
+    pub last_seen_at_ms: i64,
+    pub touched_files_count: usize,
+    pub is_unknown_bucket: bool,
+}
+
 #[derive(Debug)]
 pub struct RuntimeState {
     pub repo_root: String,
@@ -116,6 +129,7 @@ impl RuntimeState {
 
     pub fn sync_dirty_files(&mut self, dirty: Vec<(String, String, Option<i64>)>) {
         let now_ms = Utc::now().timestamp_millis();
+        let inferred_session_id = self.single_active_session_id(now_ms);
         let seen: BTreeSet<String> = dirty.iter().map(|(p, _, _)| p.clone()).collect();
         let mut watch_events = Vec::new();
 
@@ -155,6 +169,30 @@ impl RuntimeState {
             let changed_on_disk = mtime_ms
                 .map(|mtime| mtime != previous_mtime)
                 .unwrap_or(false);
+            if let Some(session_id) = inferred_session_id.as_ref() {
+                if file.last_session_id.as_deref() != Some(session_id.as_str())
+                    && (matches!(
+                        file.confidence,
+                        AttributionConfidence::Unknown | AttributionConfidence::Inferred
+                    ) || file.last_session_id.is_none())
+                {
+                    file.last_session_id = Some(session_id.clone());
+                    file.confidence = AttributionConfidence::Inferred;
+                }
+                file.touched_by.insert(session_id.clone());
+            }
+            if changed_on_disk || !was_dirty || previous_state != state_code {
+                file.recent_events.insert(
+                    0,
+                    match inferred_session_id.as_ref() {
+                        Some(session_id) => {
+                            format!("watch {} {}", file.state_code, short_session(session_id))
+                        }
+                        None => format!("watch {}", file.state_code),
+                    },
+                );
+                file.recent_events.truncate(8);
+            }
             if !was_dirty || previous_state != state_code || changed_on_disk {
                 watch_events.push(format!("watch {} {}", file.state_code, rel_path));
             }
@@ -166,13 +204,46 @@ impl RuntimeState {
         }
     }
 
-    pub fn session_items(&self) -> Vec<&SessionView> {
-        let mut items: Vec<_> = self.sessions.values().collect();
+    pub fn session_items(&self) -> Vec<SessionListItem> {
+        let mut items: Vec<_> = self
+            .sessions
+            .values()
+            .map(|session| SessionListItem {
+                session_id: session.session_id.clone(),
+                model: session.model.clone(),
+                status: session.status.clone(),
+                tmux_pane: session.tmux_pane.clone(),
+                last_seen_at_ms: session.last_seen_at_ms,
+                touched_files_count: session.touched_files.len(),
+                is_unknown_bucket: false,
+            })
+            .collect();
         items.sort_by(|a, b| {
             b.last_seen_at_ms
                 .cmp(&a.last_seen_at_ms)
                 .then_with(|| a.session_id.cmp(&b.session_id))
         });
+        let unknown_count = self
+            .files
+            .values()
+            .filter(|file| {
+                file.conflicted
+                    || matches!(file.confidence, AttributionConfidence::Unknown)
+                    || file.last_session_id.is_none()
+                    || file.touched_by.is_empty()
+            })
+            .count();
+        if unknown_count > 0 {
+            items.push(SessionListItem {
+                session_id: UNKNOWN_SESSION_ID.to_string(),
+                model: None,
+                status: "unknown".to_string(),
+                tmux_pane: None,
+                last_seen_at_ms: self.last_refresh_at_ms,
+                touched_files_count: unknown_count,
+                is_unknown_bucket: true,
+            });
+        }
         items
     }
 
@@ -187,7 +258,16 @@ impl RuntimeState {
         match self.file_list_mode {
             FileListMode::BySession => {
                 if let Some(session_id) = self.selected_session_id() {
-                    items.retain(|file| file.touched_by.contains(&session_id));
+                    if session_id == UNKNOWN_SESSION_ID {
+                        items.retain(|file| {
+                            file.conflicted
+                                || matches!(file.confidence, AttributionConfidence::Unknown)
+                                || file.last_session_id.is_none()
+                                || file.touched_by.is_empty()
+                        });
+                    } else {
+                        items.retain(|file| file.touched_by.contains(&session_id));
+                    }
                 }
             }
             FileListMode::Global => {}
@@ -464,6 +544,21 @@ impl RuntimeState {
                     "idle".to_string()
                 };
             }
+        }
+    }
+
+    fn single_active_session_id(&self, now_ms: i64) -> Option<String> {
+        let cutoff = now_ms - DEFAULT_INFERENCE_WINDOW_MS;
+        let mut active = self
+            .sessions
+            .values()
+            .filter(|session| session.status != "stopped" && session.last_seen_at_ms >= cutoff)
+            .map(|session| session.session_id.clone());
+        let first = active.next()?;
+        if active.next().is_some() {
+            None
+        } else {
+            Some(first)
         }
     }
 

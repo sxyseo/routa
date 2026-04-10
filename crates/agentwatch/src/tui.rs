@@ -148,13 +148,16 @@ fn handle_event(state: &mut RuntimeState, ctx: &RepoContext) -> Result<bool> {
 }
 
 fn render(frame: &mut Frame, state: &RuntimeState, feed: &RuntimeFeed) {
-    frame.render_widget(Block::default().style(Style::default().bg(BG).fg(TEXT)), frame.area());
+    frame.render_widget(
+        Block::default().style(Style::default().bg(BG).fg(TEXT)),
+        frame.area(),
+    );
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Min(8),
-            Constraint::Length(6),
+            Constraint::Length(5),
             Constraint::Length(1),
         ])
         .split(frame.area());
@@ -162,9 +165,9 @@ fn render(frame: &mut Frame, state: &RuntimeState, feed: &RuntimeFeed) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(28),
-            Constraint::Percentage(40),
-            Constraint::Percentage(32),
+            Constraint::Percentage(27),
+            Constraint::Percentage(39),
+            Constraint::Percentage(34),
         ])
         .split(outer[1]);
 
@@ -185,17 +188,31 @@ fn render_sessions(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runti
             let model = session.model.clone().unwrap_or_else(|| "-".to_string());
             let selected = idx == state.selected_session;
             let badge = status_badge(&session.status);
-            let pane = session.tmux_pane.clone().unwrap_or_else(|| "-".to_string());
+            let pane = session
+                .tmux_pane
+                .clone()
+                .unwrap_or_else(|| if session.is_unknown_bucket { "?" } else { "-" }.to_string());
             let primary = Line::from(vec![
                 Span::styled(
-                    shorten_path(&session.session_id, 12),
+                    if session.is_unknown_bucket {
+                        "Unknown".to_string()
+                    } else {
+                        shorten_path(&session.session_id, 12)
+                    },
                     row_style(selected, state.focus == FocusPane::Sessions)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(" "),
                 badge,
                 Span::raw(" "),
-                Span::styled(shorten_path(&model, 9), Style::default().fg(ACCENT)),
+                Span::styled(
+                    if session.is_unknown_bucket {
+                        "watch".to_string()
+                    } else {
+                        shorten_path(&model, 9)
+                    },
+                    Style::default().fg(ACCENT),
+                ),
             ]);
             let secondary = Line::from(vec![
                 Span::styled(format!("pane {pane}"), Style::default().fg(MUTED)),
@@ -206,7 +223,7 @@ fn render_sessions(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runti
                 ),
                 Span::raw("  "),
                 Span::styled(
-                    format!("{} files", session.touched_files.len()),
+                    format!("{} files", session.touched_files_count),
                     Style::default().fg(TEXT),
                 ),
             ]);
@@ -219,10 +236,7 @@ fn render_sessions(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runti
         })
         .collect();
 
-    let list = List::new(items).block(panel_block(
-        "Sessions",
-        state.focus == FocusPane::Sessions,
-    ));
+    let list = List::new(items).block(panel_block("Sessions", state.focus == FocusPane::Sessions));
     frame.render_widget(list, area);
 }
 
@@ -234,10 +248,9 @@ fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeS
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(1)])
         .split(inner);
-    let tabs = render_file_mode_tabs(state);
+    let tabs = render_file_mode_tabs(state, split[0].width);
     frame.render_widget(
-        Paragraph::new(tabs)
-            .style(Style::default().bg(SURFACE).fg(TEXT)),
+        Paragraph::new(tabs).style(Style::default().bg(SURFACE).fg(TEXT)),
         split[0],
     );
     let items: Vec<ListItem> = state
@@ -304,7 +317,7 @@ fn render_detail(
         DetailMode::File => {
             let sections = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(6), Constraint::Min(12)])
+                .constraints([Constraint::Length(8), Constraint::Min(12)])
                 .split(area);
             render_detail_summary(frame, sections[0], state);
             render_detail_body(frame, sections[1], state);
@@ -312,24 +325,18 @@ fn render_detail(
         DetailMode::Diff => {
             let sections = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(6), Constraint::Length(6), Constraint::Min(10)])
+                .constraints([Constraint::Length(8), Constraint::Min(10)])
                 .split(area);
             render_detail_summary(frame, sections[0], state);
-            render_recent_events(frame, sections[1], state);
-            render_detail_body(frame, sections[2], state);
+            render_detail_body(frame, sections[1], state);
         }
         DetailMode::Summary => {
             let sections = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Length(7),
-                    Constraint::Length(9),
-                    Constraint::Min(8),
-                ])
+                .constraints([Constraint::Length(8), Constraint::Min(8)])
                 .split(area);
             render_detail_summary(frame, sections[0], state);
-            render_recent_events(frame, sections[1], state);
-            render_detail_body(frame, sections[2], state);
+            render_detail_body(frame, sections[1], state);
         }
     }
 }
@@ -337,6 +344,7 @@ fn render_detail(
 fn render_detail_summary(frame: &mut Frame, area: Rect, state: &RuntimeState) {
     let mut lines = Vec::new();
     if let Some(file) = state.selected_file() {
+        let facts = collect_file_facts(&state.repo_root, &file.rel_path);
         lines.push(Line::from(Span::styled(
             shorten_path(&file.rel_path, 32),
             Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
@@ -352,19 +360,33 @@ fn render_detail_summary(frame: &mut Frame, area: Rect, state: &RuntimeState) {
         ]));
         lines.push(Line::from(vec![
             Span::styled("modified ", Style::default().fg(MUTED)),
-            Span::styled(time_label(file.last_modified_at_ms), Style::default().fg(TEXT)),
+            Span::styled(
+                time_label(file.last_modified_at_ms),
+                Style::default().fg(TEXT),
+            ),
             Span::raw("  "),
             confidence_badge(file.confidence.as_str()),
         ]));
         lines.push(Line::from(vec![
+            Span::styled("lines ", Style::default().fg(MUTED)),
+            Span::styled(facts.line_count.to_string(), Style::default().fg(TEXT)),
+            Span::raw("  "),
+            Span::styled("size ", Style::default().fg(MUTED)),
+            Span::styled(format_bytes(facts.byte_size), Style::default().fg(TEXT)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("created ", Style::default().fg(MUTED)),
+            Span::styled(facts.created_at, Style::default().fg(TEXT)),
+            Span::raw("  "),
+            Span::styled("git changes ", Style::default().fg(MUTED)),
+            Span::styled(facts.git_change_count.to_string(), Style::default().fg(TEXT)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("owners ", Style::default().fg(MUTED)),
+            Span::styled(file.touched_by.len().to_string(), Style::default().fg(TEXT)),
+            Span::raw("  "),
             Span::styled("dirty ", Style::default().fg(MUTED)),
             dirty_badge(file.dirty),
-            Span::raw("  "),
-            if file.conflicted {
-                Span::styled("conflicted", Style::default().fg(STOPPED))
-            } else {
-                Span::styled("single-owner", Style::default().fg(ACTIVE))
-            },
         ]));
     } else {
         lines.push(Line::from(Span::styled(
@@ -383,32 +405,6 @@ fn render_detail_summary(frame: &mut Frame, area: Rect, state: &RuntimeState) {
     frame.render_widget(
         Paragraph::new(lines)
             .block(block)
-            .style(Style::default().bg(SURFACE).fg(TEXT))
-            .wrap(Wrap { trim: true }),
-        area,
-    );
-}
-
-fn render_recent_events(frame: &mut Frame, area: Rect, state: &RuntimeState) {
-    let lines: Vec<Line> = state
-        .selected_file()
-        .map(|file| {
-            let mut out = Vec::new();
-            for event in file.recent_events.iter().take(6) {
-                out.push(Line::from(vec![
-                    Span::styled("• ", Style::default().fg(MUTED)),
-                    Span::styled(event.clone(), Style::default().fg(TEXT)),
-                ]));
-            }
-            if out.is_empty() {
-                out.push(Line::from(Span::styled("no recent events", Style::default().fg(MUTED))));
-            }
-            out
-        })
-        .unwrap_or_else(|| vec![Line::from(Span::styled("select a file to inspect", Style::default().fg(MUTED)))]);
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(panel_block("Recent Events", false))
             .style(Style::default().bg(SURFACE).fg(TEXT))
             .wrap(Wrap { trim: true }),
         area,
@@ -469,7 +465,7 @@ fn render_log(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeSta
     let items: Vec<ListItem> = state
         .visible_event_log_items()
         .iter()
-        .take(4)
+        .take(3)
         .map(|entry| {
             ListItem::new(Line::from(vec![
                 Span::styled(format_ts(entry.observed_at_ms), Style::default().fg(MUTED)),
@@ -484,33 +480,42 @@ fn render_log(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeSta
         })
         .collect();
 
-    let list = List::new(items).block(
-        panel_block(
-            format!("Event Stream ({})", state.event_log_filter.label()),
-            false,
-        ),
-    );
+    let list = List::new(items).block(panel_block(
+        format!("Event Stream ({})", state.event_log_filter.label()),
+        false,
+    ));
     frame.render_widget(Clear, area);
     frame.render_widget(list, area);
 }
 
-fn render_file_mode_tabs(state: &RuntimeState) -> Line<'static> {
+fn render_file_mode_tabs(state: &RuntimeState, width: u16) -> Line<'static> {
     let modes = [
         FileListMode::BySession,
         FileListMode::Global,
         FileListMode::UnknownConflict,
     ];
     let mut spans = Vec::new();
+    let compact = width < 34;
     for (idx, mode) in modes.iter().enumerate() {
         if idx > 0 {
             spans.push(Span::raw("  "));
         }
+        let label = match (mode, compact) {
+            (FileListMode::BySession, false) => " BY SESSION ",
+            (FileListMode::BySession, true) => " SESSION ",
+            (FileListMode::Global, _) => " GLOBAL ",
+            (FileListMode::UnknownConflict, false) => " UNKNOWN-CONFLICT ",
+            (FileListMode::UnknownConflict, true) => " UNKNOWN ",
+        };
         let style = if *mode == state.file_list_mode {
-            Style::default().fg(TEXT).bg(BORDER).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(TEXT)
+                .bg(BORDER)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(MUTED)
         };
-        spans.push(Span::styled(format!(" {} ", mode.label()), style));
+        spans.push(Span::styled(label, style));
     }
     Line::from(spans)
 }
@@ -527,7 +532,11 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
         Span::styled(" search  ", Style::default().fg(MUTED)),
         Span::styled("r", Style::default().fg(ACCENT)),
         Span::styled(
-            if state.follow_mode { " follow:on  " } else { " follow:off  " },
+            if state.follow_mode {
+                " follow:on  "
+            } else {
+                " follow:off  "
+            },
             Style::default().fg(MUTED),
         ),
         Span::styled("q", Style::default().fg(ACCENT)),
@@ -541,7 +550,13 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
 
 fn render_title_bar(frame: &mut Frame, area: Rect, state: &RuntimeState) {
     let line = Line::from(vec![
-        Span::styled(" AgentWatch ", Style::default().fg(TEXT).bg(ACCENT).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " AgentWatch ",
+            Style::default()
+                .fg(TEXT)
+                .bg(ACCENT)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             format!("  repo:{}  branch:{}  ", state.repo_name, state.branch),
             Style::default().fg(TEXT).bg(SURFACE),
@@ -554,11 +569,18 @@ fn render_title_bar(frame: &mut Frame, area: Rect, state: &RuntimeState) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
+            format!("  files:{}  ", state.file_list_mode.label()),
+            Style::default().fg(ACCENT).bg(SURFACE),
+        ),
+        Span::styled(
             format!("  refreshed {} ago  ", time_ago(state.last_refresh_at_ms)),
             Style::default().fg(MUTED).bg(SURFACE),
         ),
     ]);
-    frame.render_widget(Paragraph::new(line).style(Style::default().bg(SURFACE)), area);
+    frame.render_widget(
+        Paragraph::new(line).style(Style::default().bg(SURFACE)),
+        area,
+    );
 }
 
 fn panel_block<T: Into<ratatui::text::Line<'static>>>(title: T, focused: bool) -> Block<'static> {
@@ -579,9 +601,11 @@ fn panel_border_style(active: bool) -> Style {
 
 fn row_style(selected: bool, focused: bool) -> Style {
     if selected {
-        Style::default()
-            .fg(TEXT)
-            .bg(if focused { Color::Rgb(32, 44, 56) } else { Color::Rgb(27, 38, 49) })
+        Style::default().fg(TEXT).bg(if focused {
+            Color::Rgb(32, 44, 56)
+        } else {
+            Color::Rgb(27, 38, 49)
+        })
     } else {
         Style::default().fg(TEXT).bg(SURFACE)
     }
@@ -610,14 +634,74 @@ fn time_label(timestamp_ms: i64) -> String {
     format!("{} ({})", format_ts(timestamp_ms), time_ago(timestamp_ms))
 }
 
+struct FileFacts {
+    line_count: usize,
+    byte_size: u64,
+    created_at: String,
+    git_change_count: usize,
+}
+
+fn collect_file_facts(repo_root: &str, rel_path: &str) -> FileFacts {
+    let path = Path::new(repo_root).join(rel_path);
+    let content = std::fs::read_to_string(&path).ok();
+    let line_count = content.as_ref().map(|text| text.lines().count()).unwrap_or(0);
+    let byte_size = std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
+    let (created_at, git_change_count) = git_file_history(repo_root, rel_path)
+        .unwrap_or_else(|| ("untracked".to_string(), 0));
+    FileFacts {
+        line_count,
+        byte_size,
+        created_at,
+        git_change_count,
+    }
+}
+
+fn git_file_history(repo_root: &str, rel_path: &str) -> Option<(String, usize)> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .arg("log")
+        .arg("--follow")
+        .arg("--format=%ad")
+        .arg("--date=short")
+        .arg("--")
+        .arg(rel_path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    let lines: Vec<&str> = stdout.lines().filter(|line| !line.trim().is_empty()).collect();
+    let created_at = lines.last().copied().unwrap_or("untracked").to_string();
+    Some((created_at, lines.len()))
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 fn status_badge(status: &str) -> Span<'static> {
     let (label, color) = match status {
         "active" => (" ACTIVE ", ACTIVE),
         "stopped" => (" STOP ", STOPPED),
+        "unknown" => (" UNKNOWN ", IDLE),
         "idle" => (" IDLE ", IDLE),
         _ => (" IDLE ", IDLE),
     };
-    Span::styled(label, Style::default().fg(BG).bg(color).add_modifier(Modifier::BOLD))
+    Span::styled(
+        label,
+        Style::default()
+            .fg(BG)
+            .bg(color)
+            .add_modifier(Modifier::BOLD),
+    )
 }
 
 fn confidence_badge(label: &str) -> Span<'static> {
@@ -626,12 +710,24 @@ fn confidence_badge(label: &str) -> Span<'static> {
         "inferred" => (" INFERRED ", INFERRED),
         _ => (" UNKNOWN ", IDLE),
     };
-    Span::styled(text, Style::default().fg(BG).bg(color).add_modifier(Modifier::BOLD))
+    Span::styled(
+        text,
+        Style::default()
+            .fg(BG)
+            .bg(color)
+            .add_modifier(Modifier::BOLD),
+    )
 }
 
 fn dirty_badge(dirty: bool) -> Span<'static> {
     if dirty {
-        Span::styled(" DIRTY ", Style::default().fg(BG).bg(ACTIVE).add_modifier(Modifier::BOLD))
+        Span::styled(
+            " DIRTY ",
+            Style::default()
+                .fg(BG)
+                .bg(ACTIVE)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         Span::styled(" CLEAN ", Style::default().fg(BG).bg(IDLE))
     }
@@ -710,7 +806,11 @@ fn load_file_preview(repo_root: &str, rel_path: &str) -> Result<Option<String>> 
     Ok(Some(truncated))
 }
 
-fn highlight_diff_text(file_path: Option<&str>, diff_text: &str, theme_mode: ThemeMode) -> Text<'static> {
+fn highlight_diff_text(
+    file_path: Option<&str>,
+    diff_text: &str,
+    theme_mode: ThemeMode,
+) -> Text<'static> {
     let syntax = file_path
         .and_then(|path| SYNTAX_SET.find_syntax_for_file(path).ok().flatten())
         .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
@@ -763,7 +863,11 @@ fn build_diff_code_line(
     Line::from(spans)
 }
 
-fn highlight_code_text(file_path: Option<&str>, code: &str, theme_mode: ThemeMode) -> Text<'static> {
+fn highlight_code_text(
+    file_path: Option<&str>,
+    code: &str,
+    theme_mode: ThemeMode,
+) -> Text<'static> {
     let syntax = file_path
         .and_then(|path| SYNTAX_SET.find_syntax_for_file(path).ok().flatten())
         .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
@@ -845,12 +949,14 @@ fn jump_diff_hunk(state: &mut RuntimeState, ctx: &RepoContext, forward: bool) ->
     }
     let current = state.detail_scroll as usize;
     let target = if forward {
-        hunks.iter()
+        hunks
+            .iter()
             .copied()
             .find(|offset| *offset > current)
             .unwrap_or(hunks[0])
     } else {
-        hunks.iter()
+        hunks
+            .iter()
             .copied()
             .rev()
             .find(|offset| *offset < current)
