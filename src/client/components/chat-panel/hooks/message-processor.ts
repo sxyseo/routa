@@ -35,10 +35,6 @@ function canContinueStreamingChunk(
     return [
       "agent_thought_chunk",
       "process_output",
-      "tool_call",
-      "tool_call_update",
-      "tool_call_start",
-      "tool_call_params_delta",
       "terminal_created",
       "terminal_output",
       "terminal_exited",
@@ -52,10 +48,6 @@ function canContinueStreamingChunk(
   if (expectedKind === "agent_thought_chunk") {
     return [
       "process_output",
-      "tool_call",
-      "tool_call_update",
-      "tool_call_start",
-      "tool_call_params_delta",
       "terminal_created",
       "terminal_output",
       "terminal_exited",
@@ -66,6 +58,15 @@ function canContinueStreamingChunk(
   }
 
   return false;
+}
+
+function resetStreamingStateForSession(
+  sessionId: string,
+  streamingMsgIdRef: React.MutableRefObject<Record<string, string | null>>,
+  streamingThoughtIdRef: React.MutableRefObject<Record<string, string | null>>,
+): void {
+  streamingMsgIdRef.current[sessionId] = null;
+  streamingThoughtIdRef.current[sessionId] = null;
 }
 
 function appendStreamingChunk(
@@ -314,11 +315,13 @@ export function processUpdate(
     }
 
     case "tool_call": {
+      resetStreamingStateForSession(sid, streamingMsgIdRef, streamingThoughtIdRef);
       appendToolCallMessage(arr, update);
       break;
     }
 
     case "tool_call_update": {
+      resetStreamingStateForSession(sid, streamingMsgIdRef, streamingThoughtIdRef);
       processToolCallUpdate(update, arr, setFileChangesState);
       break;
     }
@@ -452,6 +455,7 @@ export function processUpdate(
     }
 
     case "tool_call_start": {
+      resetStreamingStateForSession(sid, streamingMsgIdRef, streamingThoughtIdRef);
       const toolCallId = update.toolCallId as string | undefined;
       const toolName = getToolEventName(update);
       const toolKind = normalizeToolKind(update.kind as string | undefined);
@@ -471,6 +475,7 @@ export function processUpdate(
     }
 
     case "tool_call_params_delta": {
+      resetStreamingStateForSession(sid, streamingMsgIdRef, streamingThoughtIdRef);
       const toolCallId = update.toolCallId as string | undefined;
       const parsedInput = update.parsedInput as Record<string, unknown> | null;
       const toolName = getToolEventName(update);

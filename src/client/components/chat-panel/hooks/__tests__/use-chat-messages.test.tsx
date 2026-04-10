@@ -187,6 +187,149 @@ describe("useChatMessages", () => {
     });
   });
 
+  it("starts a fresh assistant message after a tool call", async () => {
+    const fetchMock = vi.mocked(desktopAwareFetch);
+    fetchMock.mockResolvedValue(okJson({
+      history: [],
+      messages: [],
+      latestEventKind: "turn_complete",
+    }));
+
+    const updates = [
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "before tool" },
+        },
+      },
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "tool-1",
+          title: "list_mcp_resources",
+          kind: "mcp",
+        },
+      },
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "after tool" },
+        },
+      },
+    ];
+
+    const { result, rerender } = renderHook(
+      ({ incomingUpdates }) => useChatMessages({
+        activeSessionId: "session-1",
+        updates: incomingUpdates,
+      }),
+      {
+        initialProps: {
+          incomingUpdates: [] as typeof updates,
+        },
+      },
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    rerender({ incomingUpdates: updates });
+
+    await waitFor(() => expect(result.current.visibleMessages).toHaveLength(3));
+    expect(result.current.visibleMessages[0]).toMatchObject({
+      role: "assistant",
+      content: "before tool",
+    });
+    expect(result.current.visibleMessages[1]).toMatchObject({
+      role: "tool",
+      toolCallId: "tool-1",
+    });
+    expect(result.current.visibleMessages[2]).toMatchObject({
+      role: "assistant",
+      content: "after tool",
+    });
+  });
+
+  it("does not reconnect assistant chunks across tool calls even with process output in between", async () => {
+    const fetchMock = vi.mocked(desktopAwareFetch);
+    fetchMock.mockResolvedValue(okJson({
+      history: [],
+      messages: [],
+      latestEventKind: "turn_complete",
+    }));
+
+    const updates = [
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "before tool" },
+        },
+      },
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "tool-1",
+          title: "list_mcp_resources",
+          kind: "mcp",
+        },
+      },
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "process_output",
+          source: "stderr",
+          data: "provider stderr line\n",
+          displayName: "Codex",
+        },
+      },
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "after tool" },
+        },
+      },
+    ];
+
+    const { result, rerender } = renderHook(
+      ({ incomingUpdates }) => useChatMessages({
+        activeSessionId: "session-1",
+        updates: incomingUpdates,
+      }),
+      {
+        initialProps: {
+          incomingUpdates: [] as typeof updates,
+        },
+      },
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    rerender({ incomingUpdates: updates });
+
+    await waitFor(() => expect(result.current.visibleMessages).toHaveLength(4));
+    expect(result.current.visibleMessages[0]).toMatchObject({
+      role: "assistant",
+      content: "before tool",
+    });
+    expect(result.current.visibleMessages[1]).toMatchObject({
+      role: "tool",
+      toolCallId: "tool-1",
+    });
+    expect(result.current.visibleMessages[2]).toMatchObject({
+      role: "terminal",
+      content: "provider stderr line\n",
+    });
+    expect(result.current.visibleMessages[3]).toMatchObject({
+      role: "assistant",
+      content: "after tool",
+    });
+  });
+
   it("starts a fresh assistant message after a completed turn", async () => {
     const fetchMock = vi.mocked(desktopAwareFetch);
     fetchMock.mockResolvedValue(okJson({
