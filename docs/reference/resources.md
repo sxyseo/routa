@@ -18,6 +18,7 @@ path.
 
 - [Specialists](/specialists)
 - [Execution Modes](/design-docs/execution-modes)
+- [Common Workflows](/use-routa/common-workflows)
 
 ## Release And Maintenance
 

@@ -28,10 +28,12 @@ provider is available.
 - when to use each mode
 - how specialists fit into the product
 - practical usage patterns for real work
+- common workflows that map to actual usage, not internal repo groupings
 
 ## Read Next
 
 - [Sessions](/use-routa/sessions)
 - [Kanban](/use-routa/kanban)
 - [Team](/use-routa/team)
+- [Common Workflows](/use-routa/common-workflows)
 - [Best Practices](/use-routa/best-practices)

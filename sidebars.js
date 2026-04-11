@@ -55,11 +55,6 @@ module.exports = {
           id: "design-docs/execution-modes",
           label: "Execution Modes",
         },
-        {
-          type: "doc",
-          id: "adr/README",
-          label: "Architecture Decisions",
-        },
       ],
     },
     {
@@ -87,6 +82,11 @@ module.exports = {
           type: "doc",
           id: "use-routa/team",
           label: "Team",
+        },
+        {
+          type: "doc",
+          id: "use-routa/common-workflows",
+          label: "Common Workflows",
         },
         {
           type: "doc",
@@ -184,11 +184,6 @@ module.exports = {
           type: "link",
           label: "Specialists",
           href: "/specialists",
-        },
-        {
-          type: "doc",
-          id: "release-guide",
-          label: "Release Guide",
         },
         {
           type: "doc",
