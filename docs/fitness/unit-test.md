@@ -9,10 +9,16 @@ threshold:
 
 metrics:
   - name: ts_test_pass
-    command: npm run test:run 2>&1
+    command: npm run test:run:fast 2>&1
     pattern: "Tests\\s+(\\d+)\\s+passed"
     hard_gate: true
     tier: fast
+
+  - name: ts_test_pass_full
+    command: npm run test:run 2>&1
+    pattern: "Tests\\s+(\\d+)\\s+passed"
+    hard_gate: true
+    tier: normal
 
   - name: rust_test_pass
     command: cargo test --workspace --exclude routa-desktop 2>&1

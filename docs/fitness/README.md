@@ -176,7 +176,8 @@ Fitness = Σ (Weight_i × Score_i) / 100
 
 | Gate | 命令 | 阈值 |
 |------|------|------|
-| ts_test_pass | `npm run test:run` | 100% |
+| ts_test_pass | `npm run test:run:fast` | 100% |
+| ts_test_pass_full | `npm run test:run` | 100% |
 | rust_test_pass | `cargo test --workspace` | 100% |
 | api_contract_parity | `npm run api:check` | pass |
 | lint_pass | `npm run lint` | 0 errors |
@@ -273,7 +274,7 @@ threshold:
 
 metrics:
   - name: ts_test_pass          # 指标名称
-    command: npm run test:run 2>&1   # 执行命令
+    command: npm run test:run:fast 2>&1   # 执行命令
     pattern: "Tests\\s+passed"  # 成功匹配正则（可选）
     hard_gate: true             # 是否为硬门禁
 ---
