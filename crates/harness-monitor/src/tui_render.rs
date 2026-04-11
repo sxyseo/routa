@@ -1554,9 +1554,6 @@ fn build_run_operator_model(
     let origin_label = run_origin_label(state, run);
     let workspace_path = workspace_path_for_run(state, run);
     let process_cwd = process_cwd_for_run(state, run);
-    let effect_classes = infer_effect_classes(run, &changed_files);
-    let policy_decision = infer_policy_decision(run, &effect_classes);
-    let evidence = build_evidence_requirements(cache, run, &changed_files, policy_decision.clone());
     let integrity_warning = integrity_warning_for_run(state, run, &changed_files);
     let workspace_state = infer_workspace_state(
         cache,
@@ -1565,35 +1562,56 @@ fn build_run_operator_model(
         &changed_files,
         integrity_warning.as_ref(),
     );
-    let block_reason = infer_block_reason(state, cache, run, policy_decision.clone(), &evidence);
-    let operator_state = infer_operator_state(state, cache, run, block_reason.as_deref());
-    let approval_label = approval_label_for(policy_decision.clone(), &evidence);
-    let next_action = next_action_for(run, policy_decision.clone(), block_reason.as_deref());
+    let assessment = assess_run_guardrails(&RunGuardrailsInput {
+        changed_files: &changed_files,
+        touched_files_count: run.touched_files_count,
+        unknown_files_count: run.unknown_count,
+        last_tool_name: run.last_tool_name.as_deref(),
+        status: &run.status,
+        last_event_name: run.last_event_name.as_deref(),
+        is_unknown_bucket: run.is_unknown_bucket,
+        is_synthetic_run: run.is_synthetic_agent_run,
+        is_service_run: is_auggie_mcp_service_run(state, run),
+        has_eval: cache.fitness_snapshot().is_some(),
+        hard_gate_blocked: cache
+            .fitness_snapshot()
+            .is_some_and(|snapshot| snapshot.hard_gate_blocked),
+        score_blocked: cache
+            .fitness_snapshot()
+            .is_some_and(|snapshot| snapshot.score_blocked),
+        has_coverage: cache
+            .fitness_snapshot()
+            .is_some_and(|snapshot| snapshot.coverage_summary.has_any_sampled_source()),
+        api_contract_passed: cache
+            .fitness_snapshot()
+            .is_some_and(api_contract_dimension_passed),
+        integrity_warning: integrity_warning.as_deref(),
+    });
     let handoff_summary = handoff_summary_for(
         role.clone(),
-        operator_state.as_str(),
-        block_reason.as_deref(),
+        assessment.operator_state.as_str(),
+        assessment.block_reason.as_deref(),
     );
 
     RunOperatorModel {
         role,
         origin_label,
-        operator_state,
+        operator_state: assessment.operator_state,
         workspace_path,
         process_cwd,
         workspace_state,
-        effect_classes,
-        policy_decision,
-        approval_label,
-        block_reason,
+        effect_classes: assessment.effect_classes,
+        policy_decision: assessment.policy_decision,
+        approval_label: assessment.approval_label,
+        block_reason: assessment.block_reason,
         eval_summary: if is_auggie_mcp_service_run(state, run) {
             Some("workspace-shared".to_string())
         } else {
             cache.fitness_snapshot().map(summarize_eval_snapshot)
         },
-        evidence,
+        evidence: assessment.evidence,
         integrity_warning,
-        next_action,
+        next_action: assessment.next_action,
         handoff_summary,
         changed_files,
     }
@@ -1723,135 +1741,6 @@ fn is_auggie_mcp_service_run(state: &RuntimeState, run: &crate::state::SessionLi
         })
 }
 
-fn infer_effect_classes(
-    run: &crate::state::SessionListItem,
-    changed_files: &[String],
-) -> Vec<EffectClass> {
-    let mut effects = Vec::new();
-    if !changed_files.is_empty() || run.touched_files_count > 0 || run.is_unknown_bucket {
-        effects.push(EffectClass::RepoWrite);
-    }
-    match run
-        .last_tool_name
-        .as_deref()
-        .map(|value| value.to_ascii_lowercase())
-    {
-        Some(tool) if tool == "websearch" => effects.push(EffectClass::NetworkRead),
-        Some(tool) if matches!(tool.as_str(), "write" | "edit" | "multiedit") => {
-            effects.push(EffectClass::RepoWrite)
-        }
-        Some(tool) if tool == "bash" => effects.push(EffectClass::LocalWrite),
-        Some(tool) if matches!(tool.as_str(), "read" | "search" | "grep" | "glob" | "ls") => {
-            effects.push(EffectClass::ReadOnly)
-        }
-        _ => {}
-    }
-    if effects.is_empty() {
-        effects.push(EffectClass::ReadOnly);
-    }
-    effects.sort();
-    effects.dedup();
-    effects
-}
-
-fn infer_policy_decision(
-    run: &crate::state::SessionListItem,
-    effect_classes: &[EffectClass],
-) -> PolicyDecisionKind {
-    if run.is_unknown_bucket {
-        return PolicyDecisionKind::Deny;
-    }
-    if effect_classes
-        .iter()
-        .any(EffectClass::requires_explicit_allow)
-    {
-        PolicyDecisionKind::RequireApproval
-    } else if effect_classes.iter().any(|effect| {
-        matches!(
-            effect,
-            EffectClass::RepoWrite
-                | EffectClass::GitWrite
-                | EffectClass::PrCreate
-                | EffectClass::Merge
-                | EffectClass::Deploy
-                | EffectClass::ProdWrite
-        )
-    }) {
-        PolicyDecisionKind::AllowWithEvidence
-    } else {
-        PolicyDecisionKind::Allow
-    }
-}
-
-fn build_evidence_requirements(
-    cache: &AppCache,
-    run: &crate::state::SessionListItem,
-    changed_files: &[String],
-    policy_decision: PolicyDecisionKind,
-) -> Vec<EvidenceRequirementStatus> {
-    let mut evidence = Vec::new();
-    let has_eval = cache.fitness_snapshot().is_some();
-    let has_coverage = cache
-        .fitness_snapshot()
-        .is_some_and(|snapshot| snapshot.coverage_summary.has_any_sampled_source());
-
-    if !changed_files.is_empty() || run.touched_files_count > 0 || run.is_unknown_bucket {
-        evidence.push(EvidenceRequirementStatus {
-            requirement: EvidenceRequirement {
-                kind: EvidenceType::DiffSummary,
-                description: "dirty diff recorded".to_string(),
-                required: true,
-            },
-            satisfied: !changed_files.is_empty() || run.is_unknown_bucket,
-        });
-        evidence.push(EvidenceRequirementStatus {
-            requirement: EvidenceRequirement {
-                kind: EvidenceType::TestReport,
-                description: "fitness evidence attached".to_string(),
-                required: true,
-            },
-            satisfied: has_eval,
-        });
-        evidence.push(EvidenceRequirementStatus {
-            requirement: EvidenceRequirement {
-                kind: EvidenceType::CoverageReport,
-                description: "coverage evidence attached".to_string(),
-                required: true,
-            },
-            satisfied: has_coverage,
-        });
-    }
-
-    if changed_files.iter().any(|path| path.contains("/api/")) {
-        evidence.push(EvidenceRequirementStatus {
-            requirement: EvidenceRequirement {
-                kind: EvidenceType::ContractReport,
-                description: "API contract verified".to_string(),
-                required: true,
-            },
-            satisfied: cache
-                .fitness_snapshot()
-                .is_some_and(api_contract_dimension_passed),
-        });
-    }
-
-    if matches!(
-        policy_decision,
-        PolicyDecisionKind::RequireApproval | PolicyDecisionKind::Deny
-    ) {
-        evidence.push(EvidenceRequirementStatus {
-            requirement: EvidenceRequirement {
-                kind: EvidenceType::HumanApproval,
-                description: "operator approval recorded".to_string(),
-                required: true,
-            },
-            satisfied: false,
-        });
-    }
-
-    evidence
-}
-
 fn api_contract_dimension_passed(snapshot: &fitness::FitnessSnapshot) -> bool {
     snapshot
         .dimensions
@@ -1906,94 +1795,6 @@ fn infer_workspace_state(
     }
 }
 
-fn infer_block_reason(
-    state: &RuntimeState,
-    cache: &AppCache,
-    run: &crate::state::SessionListItem,
-    policy_decision: PolicyDecisionKind,
-    evidence: &[EvidenceRequirementStatus],
-) -> Option<String> {
-    if run.is_unknown_bucket {
-        return Some("ownership ambiguity".to_string());
-    }
-    if is_auggie_mcp_service_run(state, run) {
-        return Some("background MCP service".to_string());
-    }
-    if matches!(policy_decision, PolicyDecisionKind::RequireApproval) {
-        return Some("approval required".to_string());
-    }
-    if matches!(policy_decision, PolicyDecisionKind::Deny) {
-        return Some("manual review required".to_string());
-    }
-    if let Some(snapshot) = cache.fitness_snapshot() {
-        if snapshot.hard_gate_blocked {
-            return Some("hard gate failure".to_string());
-        }
-        if snapshot.score_blocked {
-            return Some("score threshold failed".to_string());
-        }
-    }
-    evidence
-        .iter()
-        .find(|item| item.requirement.required && !item.satisfied)
-        .map(|item| format!("missing {}", item.requirement.kind.as_str()))
-}
-
-fn infer_operator_state(
-    state: &RuntimeState,
-    cache: &AppCache,
-    run: &crate::state::SessionListItem,
-    block_reason: Option<&str>,
-) -> String {
-    if is_auggie_mcp_service_run(state, run) {
-        return "service".to_string();
-    }
-    if run
-        .last_event_name
-        .as_deref()
-        .is_some_and(|event| event.to_ascii_lowercase().contains("replay"))
-    {
-        return "replayed".to_string();
-    }
-    if block_reason.is_some_and(|reason| reason.contains("approval")) {
-        return "awaiting_approval".to_string();
-    }
-    if cache
-        .fitness_snapshot()
-        .is_some_and(|snapshot| snapshot.hard_gate_blocked || snapshot.score_blocked)
-    {
-        return "failed".to_string();
-    }
-    if run.status == "active" {
-        return "executing".to_string();
-    }
-    if run.is_synthetic_agent_run {
-        return "observing".to_string();
-    }
-    if matches!(run.status.as_str(), "idle" | "stopped" | "ended") {
-        return "evaluating".to_string();
-    }
-    "ready".to_string()
-}
-
-fn approval_label_for(
-    policy_decision: PolicyDecisionKind,
-    evidence: &[EvidenceRequirementStatus],
-) -> String {
-    if matches!(policy_decision, PolicyDecisionKind::RequireApproval) {
-        "required".to_string()
-    } else if evidence
-        .iter()
-        .any(|item| item.requirement.required && !item.satisfied)
-    {
-        "waiting_on_evidence".to_string()
-    } else if matches!(policy_decision, PolicyDecisionKind::Deny) {
-        "blocked".to_string()
-    } else {
-        "not_required".to_string()
-    }
-}
-
 fn summarize_eval_snapshot(snapshot: &fitness::FitnessSnapshot) -> String {
     let status = if snapshot.hard_gate_blocked {
         "blocked(hard)"
@@ -2008,50 +1809,6 @@ fn summarize_eval_snapshot(snapshot: &fitness::FitnessSnapshot) -> String {
         status,
         snapshot.final_score
     )
-}
-
-fn evidence_inline_summary(evidence: &[EvidenceRequirementStatus]) -> String {
-    if evidence.is_empty() {
-        return "none".to_string();
-    }
-    evidence
-        .iter()
-        .map(|item| {
-            let status = if item.satisfied { "ok" } else { "missing" };
-            format!("{status}:{}", item.requirement.kind.as_str())
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-fn effect_classes_summary(effect_classes: &[EffectClass]) -> String {
-    effect_classes
-        .iter()
-        .map(EffectClass::as_str)
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
-fn next_action_for(
-    run: &crate::state::SessionListItem,
-    policy_decision: PolicyDecisionKind,
-    block_reason: Option<&str>,
-) -> String {
-    if matches!(policy_decision, PolicyDecisionKind::RequireApproval) {
-        "grant approval or reduce effect scope".to_string()
-    } else if block_reason.is_some_and(|reason| reason.contains("hard gate")) {
-        "fix failing hard gates and rerun fast eval".to_string()
-    } else if block_reason.is_some_and(|reason| reason.contains("score")) {
-        "improve fitness score before continuing".to_string()
-    } else if block_reason.is_some_and(|reason| reason.contains("coverage")) {
-        "generate coverage evidence".to_string()
-    } else if run.is_synthetic_agent_run {
-        "attach hooks or keep observing unmanaged run".to_string()
-    } else if run.is_unknown_bucket {
-        "resolve file ownership before continuing".to_string()
-    } else {
-        "handoff to reviewer or continue execution".to_string()
-    }
 }
 
 fn handoff_summary_for(
@@ -2157,7 +1914,6 @@ fn render_title_bar(frame: &mut Frame, area: Rect, state: &RuntimeState) {
     let dirty = files.len();
     let unattributed = files
         .iter()
-        .into_iter()
         .filter(|file| {
             file.conflicted
                 || matches!(

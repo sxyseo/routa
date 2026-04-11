@@ -331,6 +331,7 @@ impl RuntimeState {
         &self.cached_session_items
     }
 
+    #[cfg(test)]
     pub fn selected_workspace_scope_label(&self) -> String {
         self.selected_workspace_path()
             .map(|path| canonical_repo_identity(&path))

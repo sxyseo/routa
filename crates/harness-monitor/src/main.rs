@@ -7,6 +7,7 @@ mod hooks;
 mod ipc;
 mod models;
 mod observe;
+mod operator_guardrails;
 mod repo;
 mod state;
 mod tui;
