@@ -225,7 +225,7 @@ module.exports = {
         {
           type: "doc",
           id: "releases/v0.14.0-release-notes",
-          label: "Latest Release",
+          label: "Curated Release Notes",
         },
         {
           type: "doc",
