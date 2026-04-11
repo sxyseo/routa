@@ -1,16 +1,13 @@
 ---
-source: crates/agentwatch/src/tui_tests.rs
-expression: "render_snapshot(&state, &mut cache, 120, 28)"
+source: crates/routa-watch/src/tui_tests.rs
+expression: "render_snapshot(&state, &mut cache, 120, 24)"
 ---
- AgentWatch   repo:routa-js  branch:main  agents:2 active:1  dirty:2  unknown:1  synced 2m ago
-┌Files───────────────────────────────────────────────────────────────────────────────┐┌Diff Preview────────────────────┐
-│ ALL FILES  2 files  commits:...                                                    ││@@ -1,2 +1,3 @@                 │
-│────────────────────────────────────────────────────────────────────────────────────││-use old                        │
-│> tui.rs                                                   ...h/src  M  +38 -5     4││+use new                        │
-│  route.ts                                                 .../card  D  -12        5││+use cache                      │
-│                                                                                    ││                                │
-│                                                                                    ││                                │
-│                                                                                    ││                                │
+ RoutaWatch   repo:routa-js  branch:main  agents:2 active:1  dirty:2  unknown:1  synced 2m ago
+┌Files───────────────────────────────────────────────────────────────────────────────┐┌File Preview────────────────────┐
+│ ALL FILES  2 files  commits:...                                                    ││ 1 fn render(frame: &mut Frame) │
+│────────────────────────────────────────────────────────────────────────────────────││{                               │
+│> tui.rs                                                   ...h/src  M  +38 -5     4││ 2     // preview               │
+│  route.ts                                                 .../card  D  -12        5││ 3 }                            │
 │                                                                                    ││                                │
 │                                                                                    ││                                │
 │                                                                                    ││                                │
@@ -21,8 +18,7 @@ expression: "render_snapshot(&state, &mut cache, 120, 28)"
 │                                                                                    │└────────────────────────────────┘
 │                                                                                    │┌Details─────────────────────────┐
 │                                                                                    ││tui.rs                          │
-│                                                                                    ││crates/agentwatch/src           │
-│                                                                                    ││Last by: impl-buddy             │
+│                                                                                    ││crates/routa-watch/src          │
 │                                                                                    ││Lines: ...  Size: ...  Git      │
 │                                                                                    ││changes: ...                    │
 │                                                                                    ││                                │

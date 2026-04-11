@@ -5,6 +5,11 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const APP_SLUG: &str = "routa-watch";
+const LEGACY_APP_SLUG: &str = "agentwatch";
+const DB_FILE_NAME: &str = "routa-watch.db";
+const LEGACY_DB_FILE_NAME: &str = "agentwatch.db";
+
 #[allow(dead_code)]
 pub struct RepoContext {
     pub repo_root: PathBuf,
@@ -81,9 +86,15 @@ pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<Repo
     let db_path = if let Some(db_path) = db_path_opt {
         PathBuf::from(db_path)
     } else {
-        let git_db_dir = git_dir.join("agentwatch");
-        match ensure_writable_db_path(&git_db_dir.join("agentwatch.db")) {
-            Ok(_) => git_db_dir.join("agentwatch.db"),
+        let primary_db_path = git_dir.join(APP_SLUG).join(DB_FILE_NAME);
+        let legacy_db_path = git_dir.join(LEGACY_APP_SLUG).join(LEGACY_DB_FILE_NAME);
+        let preferred_db_path = if legacy_db_path.exists() && !primary_db_path.exists() {
+            legacy_db_path
+        } else {
+            primary_db_path
+        };
+        match ensure_writable_db_path(&preferred_db_path) {
+            Ok(_) => preferred_db_path,
             Err(err) => {
                 let fallback = fallback_db_path(&repo_root).context("resolve fallback db path")?;
                 let fallback_parent = fallback.parent().context("fallback db has no parent")?;
@@ -91,10 +102,8 @@ pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<Repo
                     format!("create fallback db directory {:?}", fallback_parent)
                 })?;
                 eprintln!(
-                    "agentwatch warning: cannot write {:?}, fallback to {:?}: {}",
-                    git_db_dir.join("agentwatch.db"),
-                    fallback,
-                    err
+                    "routa-watch warning: cannot write {:?}, fallback to {:?}: {}",
+                    preferred_db_path, fallback, err
                 );
                 fallback
             }
@@ -150,7 +159,7 @@ pub fn runtime_tcp_addr(repo_root: &Path) -> String {
 fn runtime_runtime_dir(repo_root: &Path) -> PathBuf {
     let marker = runtime_marker(repo_root);
     PathBuf::from("/tmp")
-        .join("agentwatch")
+        .join(APP_SLUG)
         .join("runtime")
         .join(marker)
 }
@@ -174,6 +183,11 @@ fn fallback_db_path(repo_root: &Path) -> Result<PathBuf> {
     let marker = format!("{:x}", hasher.finish());
 
     let mut candidate_bases = Vec::new();
+    if let Ok(custom_base) = std::env::var("ROUTA_WATCH_DB_DIR") {
+        if !custom_base.trim().is_empty() {
+            candidate_bases.push(PathBuf::from(custom_base));
+        }
+    }
     if let Ok(custom_base) = std::env::var("AGENTWATCH_DB_DIR") {
         if !custom_base.trim().is_empty() {
             candidate_bases.push(PathBuf::from(custom_base));
@@ -189,10 +203,10 @@ fn fallback_db_path(repo_root: &Path) -> Result<PathBuf> {
 
     for base in &candidate_bases {
         let candidate = base
-            .join("agentwatch")
+            .join(APP_SLUG)
             .join("repos")
             .join(&marker)
-            .join("agentwatch.db");
+            .join(DB_FILE_NAME);
         let parent = candidate
             .parent()
             .context("fallback db path has no parent")?;

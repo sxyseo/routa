@@ -22,9 +22,9 @@ use std::time::Duration;
 
 #[derive(Parser)]
 #[command(
-    name = "agentwatch",
+    name = "routa-watch",
     version,
-    about = "Local multi-agent file watch and attribution"
+    about = "Routa Watch - local multi-agent file watch and attribution"
 )]
 struct Cli {
     /// Optional repository root/path used for non-hook commands.
@@ -36,7 +36,7 @@ struct Cli {
     infer_window_ms: i64,
 
     /// SQLite database path override (fallback location used when .git is not writable)
-    #[arg(long, env = "AGENTWATCH_DB_PATH")]
+    #[arg(long, env = "ROUTA_WATCH_DB_PATH")]
     db: Option<String>,
 
     #[command(subcommand)]
@@ -45,7 +45,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Launch the realtime AgentWatch terminal UI.
+    /// Launch the realtime Routa Watch terminal UI.
     Tui {
         /// Poll interval in milliseconds for git status refresh.
         #[arg(long, default_value_t = models::DEFAULT_TUI_POLL_MS)]
@@ -91,6 +91,7 @@ enum Command {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let db_hint = resolve_db_hint(cli.db.as_deref());
     match cli.command.unwrap_or(Command::Tui {
         interval_ms: models::DEFAULT_TUI_POLL_MS,
     }) {
@@ -104,16 +105,16 @@ fn main() -> Result<()> {
                 &client,
                 &event,
                 cli.repo.as_deref(),
-                cli.db.as_deref(),
+                db_hint.as_deref(),
                 &payload,
             )?;
         }
         Command::GitHook { event, args } => {
-            let ctx = resolve(cli.repo.as_deref(), cli.db.as_deref())?;
+            let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
             hooks::handle_git_event(&ctx, &event, &args)?;
         }
         Command::Sessions => {
-            let ctx = resolve(cli.repo.as_deref(), cli.db.as_deref())?;
+            let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
             let db = Db::open(&ctx.db_path)?;
             print_sessions(&db, &ctx.repo_root.to_string_lossy())?;
         }
@@ -122,19 +123,19 @@ fn main() -> Result<()> {
             print_agents(&ctx.repo_root.to_string_lossy())?;
         }
         Command::Files { by_session } => {
-            let ctx = resolve(cli.repo.as_deref(), cli.db.as_deref())?;
+            let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
             let db = Db::open(&ctx.db_path)?;
             print_files(&db, &ctx.repo_root.to_string_lossy(), by_session)?;
         }
         Command::Who { path } => {
-            let ctx = resolve(cli.repo.as_deref(), cli.db.as_deref())?;
+            let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
             let db = Db::open(&ctx.db_path)?;
             print_file_owner(&db, &ctx.repo_root.to_string_lossy(), &ctx.repo_root, &path)?;
         }
         Command::Watch { interval_ms } => {
             run_watch(
                 cli.repo.as_deref(),
-                cli.db.as_deref(),
+                db_hint.as_deref(),
                 cli.infer_window_ms,
                 interval_ms,
             )?;
@@ -145,6 +146,13 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn resolve_db_hint(cli_db: Option<&str>) -> Option<String> {
+    cli_db
+        .map(ToString::to_string)
+        .or_else(|| std::env::var("AGENTWATCH_DB_PATH").ok())
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn run_watch(
@@ -361,7 +369,7 @@ fn print_file_owner(db: &Db, repo_root: &str, root: &Path, raw_path: &str) -> Re
 fn print_watch_once(db: &Db, repo_root: &str, snapshot: &Snapshot, since_ms: i64) -> Result<()> {
     print!("\x1b[2J\x1b[H");
     let now = chrono::Utc::now();
-    println!("agentwatch: {}", now.format("%Y-%m-%d %H:%M:%S"));
+    println!("routa-watch: {}", now.format("%Y-%m-%d %H:%M:%S"));
     println!("repo: {repo_root}");
     println!("changed: {}", snapshot.changed_paths.len());
 

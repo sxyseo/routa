@@ -28,7 +28,7 @@ fn sample_state() -> RuntimeState {
             last_seen_at_ms: now - 180_000,
             status: "active".to_string(),
             tmux_pane: Some("%12".to_string()),
-            touched_files: ["crates/agentwatch/src/tui.rs".to_string()]
+            touched_files: ["crates/routa-watch/src/tui.rs".to_string()]
                 .into_iter()
                 .collect(),
             last_turn_id: Some("turn-1".to_string()),
@@ -57,9 +57,9 @@ fn sample_state() -> RuntimeState {
 
     let mut files = BTreeMap::new();
     files.insert(
-        "crates/agentwatch/src/tui.rs".to_string(),
+        "crates/routa-watch/src/tui.rs".to_string(),
         FileView {
-            rel_path: "crates/agentwatch/src/tui.rs".to_string(),
+            rel_path: "crates/routa-watch/src/tui.rs".to_string(),
             dirty: true,
             state_code: "modify".to_string(),
             entry_kind: EntryKind::File,
@@ -91,7 +91,7 @@ fn sample_state() -> RuntimeState {
         EventLogEntry {
             observed_at_ms: now - 240_000,
             source: EventSource::Watch,
-            message: "watch modify crates/agentwatch/src/tui.rs".to_string(),
+            message: "watch modify crates/routa-watch/src/tui.rs".to_string(),
         },
         EventLogEntry {
             observed_at_ms: now - 180_000,
@@ -401,7 +401,7 @@ fn tui_snapshot_summary_mode() {
     let state = sample_state();
     let mut cache = sample_cache(&state);
     insta::assert_snapshot!(
-        "agentwatch_tui_summary",
+        "routa_watch_tui_summary",
         render_snapshot(&state, &mut cache, 120, 28)
     );
 }
@@ -416,7 +416,7 @@ fn tui_snapshot_search_mode() {
     state.refresh_views();
     let mut cache = sample_cache(&state);
     insta::assert_snapshot!(
-        "agentwatch_tui_search",
+        "routa_watch_tui_search",
         render_snapshot(&state, &mut cache, 120, 24)
     );
 }
@@ -428,7 +428,7 @@ fn tui_snapshot_file_preview_mode() {
     state.refresh_views();
     let mut cache = sample_cache(&state);
     insta::assert_snapshot!(
-        "agentwatch_tui_file_preview",
+        "routa_watch_tui_file_preview",
         render_snapshot(&state, &mut cache, 120, 24)
     );
 }
@@ -438,7 +438,7 @@ fn tui_snapshot_compact_mode() {
     let state = sample_state();
     let mut cache = sample_cache(&state);
     insta::assert_snapshot!(
-        "agentwatch_tui_compact",
+        "routa_watch_tui_compact",
         render_snapshot(&state, &mut cache, 96, 24)
     );
 }
@@ -469,7 +469,7 @@ fn transport_degrades_to_feed_when_socket_is_unreachable() {
     let ctx = RepoContext {
         repo_root,
         git_dir,
-        db_path: dir.path().join("agentwatch.db"),
+        db_path: dir.path().join("routa-watch.db"),
         runtime_event_path: event_path,
         runtime_socket_path: socket_path,
         runtime_info_path: info_path,

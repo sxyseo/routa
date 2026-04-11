@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROUTA_WATCH_BIN="${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-routa-watch}}"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+exec "$ROUTA_WATCH_BIN" --repo "$REPO_ROOT" git-hook post-checkout -- "$@"

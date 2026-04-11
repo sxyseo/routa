@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex SessionStart'"
+            "command": "sh -lc 'ROUTA_WATCH_BIN=\"${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-routa-watch}}\"; \"$ROUTA_WATCH_BIN\" hook codex SessionStart'"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex UserPromptSubmit'"
+            "command": "sh -lc 'ROUTA_WATCH_BIN=\"${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-routa-watch}}\"; \"$ROUTA_WATCH_BIN\" hook codex UserPromptSubmit'"
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex PreToolUse'"
+            "command": "sh -lc 'ROUTA_WATCH_BIN=\"${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-routa-watch}}\"; \"$ROUTA_WATCH_BIN\" hook codex PreToolUse'"
           }
         ]
       },
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex PreToolUse'"
+            "command": "sh -lc 'ROUTA_WATCH_BIN=\"${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-routa-watch}}\"; \"$ROUTA_WATCH_BIN\" hook codex PreToolUse'"
           }
         ]
       }
@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex PostToolUse'"
+            "command": "sh -lc 'ROUTA_WATCH_BIN=\"${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-routa-watch}}\"; \"$ROUTA_WATCH_BIN\" hook codex PostToolUse'"
           }
         ]
       },
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex PostToolUse'"
+            "command": "sh -lc 'ROUTA_WATCH_BIN=\"${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-routa-watch}}\"; \"$ROUTA_WATCH_BIN\" hook codex PostToolUse'"
           }
         ]
       }
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -lc 'AGENTWATCH_BIN=\"${AGENTWATCH_BIN:-agentwatch}\"; \"$AGENTWATCH_BIN\" hook codex Stop'"
+            "command": "sh -lc 'ROUTA_WATCH_BIN=\"${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-routa-watch}}\"; \"$ROUTA_WATCH_BIN\" hook codex Stop'"
           }
         ]
       }

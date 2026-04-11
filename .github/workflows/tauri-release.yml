@@ -73,6 +73,7 @@ jobs:
             "apps/desktop/src-tauri/Cargo.toml"
             "apps/desktop/src-tauri/tauri.conf.json"
             "packages/routa-cli/package.json"
+            "crates/routa-watch/Cargo.toml"
           )
 
           for file in "${changed_files[@]}"; do

@@ -159,7 +159,7 @@ pub fn try_forward_hook_to_runtime(
         build_hook_runtime_message(client_name, event_name, repo_hint, db_hint, payload_raw)?;
     if let Err(err) = send_runtime_message(&ctx, &message) {
         eprintln!(
-            "agentwatch warning: runtime transport unavailable, fallback to local store: {err}"
+            "routa-watch warning: runtime transport unavailable, fallback to local store: {err}"
         );
         return Ok(false);
     }
@@ -311,7 +311,7 @@ pub fn try_forward_git_event(ctx: &RepoContext, event_name: &str, args: &[String
         Ok(_) => Ok(true),
         Err(err) => {
             eprintln!(
-                "agentwatch warning: runtime transport unavailable, fallback to local store: {err}"
+                "routa-watch warning: runtime transport unavailable, fallback to local store: {err}"
             );
             Ok(false)
         }

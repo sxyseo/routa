@@ -1,12 +1,12 @@
-# Routa CLI Release Guide
+# Routa Release Guide
 
-This guide covers the process for releasing new versions of Routa CLI to multiple distribution channels: **crates.io** (Cargo), **npm**, and **GitHub Releases**.
+This guide covers the process for releasing new Routa artifacts to multiple distribution channels: **crates.io** (Cargo), **npm**, and **GitHub Releases**.
 
 ## Overview
 
 The release process publishes to three channels simultaneously:
 
-1. **crates.io** - Rust users can `cargo install routa-cli`
+1. **crates.io** - Rust users can `cargo install routa-cli` and `cargo install routa-watch`
 2. **npm** - Node.js users can `npm install -g routa-cli`
 3. **GitHub Releases** - Desktop binaries and release notes
 
@@ -132,6 +132,7 @@ Publishes these crates in order:
 3. `routa-scanner` - Repository scanner
 4. `routa-server` - HTTP server
 5. `routa-cli` - CLI binary
+6. `routa-watch` - terminal watch and attribution tool
 
 **Note**: Each crate waits for the previous one to be indexed on crates.io before publishing.
 
@@ -179,6 +180,10 @@ After the release completes (~15-30 minutes), verify:
 cargo search routa-cli
 cargo install routa-cli@0.2.5
 routa --version
+
+cargo search routa-watch
+cargo install routa-watch@0.2.5
+routa-watch --version
 ```
 
 ### NPM
@@ -225,9 +230,9 @@ Common issues:
 
 **Known Issue**: Cargo crates may not be published automatically. If this happens:
 
-1. Manually update all `crates/*/Cargo.toml` versions:
+1. Manually update all release crate versions:
    ```bash
-   for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli; do
+   for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli crates/routa-watch; do
      sed -i '' 's/version = "OLD_VERSION"/version = "NEW_VERSION"/g' "$crate/Cargo.toml"
    done
    ```
@@ -240,6 +245,7 @@ Common issues:
    cd ../routa-scanner && cargo publish --no-verify
    cd ../routa-server && cargo publish --no-verify
    cd ../routa-cli && cargo publish --no-verify
+   cd ../routa-watch && cargo publish --no-verify
    ```
 
 **Root Cause**: The `sync-release-version.mjs` script doesn't sync Rust crate versions (only Desktop Tauri and npm packages).

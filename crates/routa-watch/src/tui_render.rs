@@ -278,18 +278,6 @@ fn render_details_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
             shorten_path(&parent_dir, area.width.saturating_sub(4) as usize),
             Style::default().fg(colors.muted),
         )));
-        let owner = file
-            .last_session_id
-            .as_deref()
-            .and_then(|session_id| state.sessions.get(session_id))
-            .map(session_display_label)
-            .unwrap_or_else(|| "unknown".to_string());
-        if owner != "unknown" {
-            lines.push(Line::from(vec![
-                Span::styled("Last by: ", Style::default().fg(colors.muted)),
-                Span::styled(owner, Style::default().fg(colors.accent)),
-            ]));
-        }
         if let Some(facts) = cache.file_facts(file) {
             lines.push(Line::from(vec![
                 Span::styled("Type: ", Style::default().fg(colors.muted)),
@@ -626,7 +614,7 @@ fn render_title_bar(frame: &mut Frame, area: Rect, state: &RuntimeState) {
         .count();
     let line = Line::from(vec![
         Span::styled(
-            " AgentWatch ",
+            " RoutaWatch ",
             Style::default()
                 .fg(colors.text)
                 .bg(colors.accent)
@@ -717,13 +705,6 @@ pub(super) fn time_ago(timestamp_ms: i64) -> String {
     } else {
         format!("{}d", delta / 86_400)
     }
-}
-
-fn session_display_label(session: &crate::models::SessionView) -> String {
-    session
-        .display_name
-        .clone()
-        .unwrap_or_else(|| shorten_path(&session.session_id, 14))
 }
 
 fn render_file_secondary_line(

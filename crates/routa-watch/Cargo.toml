@@ -1,13 +1,15 @@
 [package]
-name = "agentwatch"
+name = "routa-watch"
 version = "0.1.0"
 edition = "2021"
 license.workspace = true
 authors.workspace = true
-description = "Local agent file attribution tool for multi-agent coding sessions"
+description = "Routa Watch - local agent file attribution tool for multi-agent coding sessions"
+repository = "https://github.com/phodal/routa-js"
+homepage = "https://github.com/phodal/routa-js"
 
 [[bin]]
-name = "agentwatch"
+name = "routa-watch"
 path = "src/main.rs"
 
 [dependencies]

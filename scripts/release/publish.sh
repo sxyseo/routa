@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Routa CLI Release Helper
+# Routa Release Helper
 # Usage: ./scripts/release/publish.sh [version] [--dry-run]
 #
 # Examples:
@@ -43,7 +43,7 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-echo -e "${GREEN}=== Routa CLI Release Script ===${NC}"
+echo -e "${GREEN}=== Routa Release Script ===${NC}"
 echo "Version: v$VERSION"
 if [[ "$DRY_RUN" == true ]]; then
   echo -e "${YELLOW}Mode: DRY RUN (no publishing)${NC}"
@@ -139,7 +139,8 @@ echo -e "${GREEN}=== Release started! ===${NC}"
 echo "Monitor the release at:"
 echo "  https://github.com/phodal/routa/actions"
 echo ""
-echo "Once complete, the CLI will be available via:"
+echo "Once complete, the release artifacts will be available via:"
 echo "  - cargo install routa-cli@$VERSION"
+echo "  - cargo install routa-watch@$VERSION"
 echo "  - npm install -g routa-cli@$VERSION"
 echo "  - GitHub Release: https://github.com/phodal/routa/releases/tag/v$VERSION"

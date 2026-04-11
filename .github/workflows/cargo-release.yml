@@ -46,7 +46,7 @@ jobs:
           version="${version#v}"
 
           echo "Checking crate versions..."
-          for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli; do
+          for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli crates/routa-watch; do
             crate_version=$(grep '^version = ' "$crate/Cargo.toml" | head -n1 | sed 's/version = "\(.*\)"/\1/')
             echo "$crate: $crate_version"
             if [[ "$crate_version" != "$version" ]]; then
@@ -115,6 +115,15 @@ jobs:
             cargo publish --no-verify || echo "routa-cli may already be published"
           fi
 
+      - name: Publish routa-watch
+        run: |
+          cd crates/routa-watch
+          if [[ "$DRY_RUN" == "true" ]]; then
+            cargo publish --dry-run
+          else
+            cargo publish --no-verify || echo "routa-watch may already be published"
+          fi
+
       - name: Summary
         run: |
           version="${RELEASE_VERSION}"
@@ -126,4 +135,5 @@ jobs:
           echo "Install via cargo:" >> "$GITHUB_STEP_SUMMARY"
           echo '```bash' >> "$GITHUB_STEP_SUMMARY"
           echo "cargo install routa-cli@$version" >> "$GITHUB_STEP_SUMMARY"
+          echo "cargo install routa-watch@$version" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

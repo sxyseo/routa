@@ -2,10 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AGENTWATCH_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(git -C "$AGENTWATCH_DIR" rev-parse --show-toplevel)"
+ROUTA_WATCH_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(git -C "$ROUTA_WATCH_DIR" rev-parse --show-toplevel)"
 
-TEMPLATE_DIR="$AGENTWATCH_DIR/templates"
+TEMPLATE_DIR="$ROUTA_WATCH_DIR/templates"
 CODEx_TEMPLATE="$TEMPLATE_DIR/codex-hooks.json"
 GIT_TEMPLATE_DIR="$TEMPLATE_DIR/git-hooks"
 
@@ -21,4 +21,4 @@ for hook in post-commit post-merge post-checkout; do
   echo "Installed .git/hooks/$hook"
 done
 
-echo "AgentWatch hook scripts installed."
+echo "Routa Watch hook scripts installed."
