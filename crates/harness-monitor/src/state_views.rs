@@ -145,7 +145,6 @@ impl RuntimeState {
             .files
             .values()
             .filter(|file| file.dirty || file.conflicted)
-            .filter(|file| self.matches_selected_workspace_file_scope(file))
             .filter(|file| self.matches_file_search(file))
             .collect();
         match self.file_list_mode {
@@ -228,14 +227,6 @@ impl RuntimeState {
             .get(&run.session_id)
             .map(|session| session.cwd.clone())
             .or_else(|| Some(self.repo_root.clone()))
-    }
-
-    fn matches_selected_workspace_file_scope(&self, _file: &FileView) -> bool {
-        let workspace_id = self
-            .selected_workspace_path()
-            .map(|path| canonical_repo_identity(&path))
-            .unwrap_or_else(|| canonical_repo_identity(&self.repo_root));
-        workspace_id == canonical_repo_identity(&self.repo_root)
     }
 
     fn matches_session_search(&self, session: &SessionView) -> bool {

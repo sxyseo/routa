@@ -876,7 +876,7 @@ fn agents_from_recovered_repo_alias_still_count_as_repo_local_runs() {
 }
 
 #[test]
-fn file_list_follows_selected_workspace_scope() {
+fn file_list_remains_repo_scoped_when_run_selection_changes() {
     let mut state = sample_state();
     state.focus = FocusPane::Runs;
 
