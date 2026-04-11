@@ -240,7 +240,7 @@ def find_suspects(issues):
 
 def print_table(issues, errors, suspects):
     status_emoji = {"open": "🔴", "investigating": "🔍", "resolved": "✅", "wontfix": "⏭️", "duplicate": "🔗"}
-    severity_emoji = {"critical": "🔥", "high": "🟠", "medium": "🟡", "low": "🟢"}
+    severity_emoji = {"critical": "🔥", "high": "🟠", "medium": "🟡", "low": "🟢", "info": "🔹"}
     kind_emoji = {
         "issue": "🧩",
         "analysis": "📐",
