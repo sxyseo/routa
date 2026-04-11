@@ -874,10 +874,7 @@ fn render_files(
                         format!(
                             "{} {}",
                             if selected { ">" } else { " " },
-                            shorten_path(
-                                &display_name,
-                                split[1].width.saturating_sub(6) as usize
-                            )
+                            shorten_path(&display_name, split[1].width.saturating_sub(6) as usize)
                         ),
                         row_style(selected, state.focus == FocusPane::Files, colors)
                             .add_modifier(Modifier::BOLD),

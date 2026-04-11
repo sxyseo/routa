@@ -102,13 +102,14 @@ pub fn poll_repo(
                     })
                     .unwrap_or((mtime_ms, None));
 
-                let should_update =
-                    match db.get_file_state(&ctx.repo_root.to_string_lossy(), &expanded_rel_path)? {
-                        Some((prev_mtime, prev_size, was_dirty)) => {
-                            prev_mtime != mtime_ms || prev_size != size_bytes || !was_dirty
-                        }
-                        None => true,
-                    };
+                let should_update = match db
+                    .get_file_state(&ctx.repo_root.to_string_lossy(), &expanded_rel_path)?
+                {
+                    Some((prev_mtime, prev_size, was_dirty)) => {
+                        prev_mtime != mtime_ms || prev_size != size_bytes || !was_dirty
+                    }
+                    None => true,
+                };
 
                 if should_update {
                     let _ = db.insert_file_event(&FileEventRecord {
@@ -242,7 +243,12 @@ fn collect_dirty_entries_for_path(
         .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|dur| dur.as_millis() as i64);
-    let mut entries = vec![(rel_path.to_string(), state_code.to_string(), mtime_ms, entry_kind)];
+    let mut entries = vec![(
+        rel_path.to_string(),
+        state_code.to_string(),
+        mtime_ms,
+        entry_kind,
+    )];
 
     if entry_kind.is_submodule() {
         entries.extend(collect_submodule_dirty_entries(repo_root, rel_path));
@@ -376,7 +382,10 @@ mod tests {
             .output()
             .expect("init submodule repo");
         std::fs::write(
-            submodule_root.join("entrix").join("reporters").join("visual.py"),
+            submodule_root
+                .join("entrix")
+                .join("reporters")
+                .join("visual.py"),
             "print('dirty')\n",
         )
         .expect("write dirty file");
@@ -393,7 +402,10 @@ mod tests {
             .expect("register gitlink");
 
         let entries = collect_dirty_entries_for_path(dir.path(), "tools/entrix", "modify");
-        let paths = entries.into_iter().map(|(path, _, _, _)| path).collect::<Vec<_>>();
+        let paths = entries
+            .into_iter()
+            .map(|(path, _, _, _)| path)
+            .collect::<Vec<_>>();
 
         assert!(paths.contains(&"tools/entrix".to_string()));
         assert!(paths.contains(&"tools/entrix/entrix/reporters/visual.py".to_string()));

@@ -414,12 +414,11 @@ impl AppCache {
     }
 
     pub(super) fn file_facts(&self, file: &crate::models::FileView) -> Option<&FileFactsEntry> {
-        self.facts_cache
-            .get(&facts_cache_key(
-                &file.rel_path,
-                file.last_modified_at_ms,
-                file.entry_kind,
-            ))
+        self.facts_cache.get(&facts_cache_key(
+            &file.rel_path,
+            file.last_modified_at_ms,
+            file.entry_kind,
+        ))
     }
 
     pub(super) fn request_fitness_refresh(
