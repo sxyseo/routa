@@ -202,9 +202,9 @@ Fitness = Σ (Weight_i × Score_i) / 100
 
 - `fast` = 增量 lint / typecheck / TS test / clippy / contract
 - `normal` = 在 `fast` 之上补全量 TS 测试、Rust 测试、API 测试和更重的质量门禁
-- hook runtime 的 `pre-push` 与 `local-validate` 会同时包含 `ts_test_pass` 和 `ts_test_pass_full`
-  - 前者负责尽快暴露本次改动的直接测试影响
-  - 后者负责在 push 前保留整仓回归把关
+- hook runtime 的 `pre-push` 与 `local-validate` 默认只保留 `ts_test_pass_full`
+  - hook 关注 push 前的整仓回归把关，避免在同一轮里重复执行增量与全量 TS 测试
+  - `ts_test_pass` 仍然保留给 `entrix run --tier fast`、`routa-watch` 和手工本地快速检查
 
 ## CI Fan-out
 
