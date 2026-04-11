@@ -40,7 +40,7 @@ pub(super) struct FileFactsEntry {
 enum BackgroundCommand {
     RefreshStats {
         repo_root: String,
-        files: Vec<(String, String, i64)>,
+        files: Vec<(String, String, i64, crate::models::EntryKind)>,
     },
     LoadDetail {
         repo_root: String,
@@ -53,6 +53,7 @@ enum BackgroundCommand {
         repo_root: String,
         rel_path: String,
         version: i64,
+        entry_kind: crate::models::EntryKind,
     },
     RefreshFitness {
         repo_root: String,
@@ -86,9 +87,9 @@ struct PendingCommands {
     fitness: Option<(String, String, fitness::FitnessRunMode)>,
 }
 
-type PendingStats = (String, Vec<(String, String, i64)>);
+type PendingStats = (String, Vec<(String, String, i64, crate::models::EntryKind)>);
 type PendingDetail = (String, String, String, i64, DetailMode);
-type PendingFacts = (String, String, i64);
+type PendingFacts = (String, String, i64, crate::models::EntryKind);
 
 pub(super) struct AppCache {
     pub(super) diff_stats: BTreeMap<String, DiffStatSummary>,
@@ -294,7 +295,7 @@ impl AppCache {
     }
 
     pub(super) fn warm_visible_files(&mut self, state: &RuntimeState) {
-        let files: Vec<(String, String, i64)> = state
+        let files: Vec<(String, String, i64, crate::models::EntryKind)> = state
             .file_items()
             .iter()
             .take(24)
@@ -303,6 +304,7 @@ impl AppCache {
                     file.rel_path.clone(),
                     file.state_code.clone(),
                     file.last_modified_at_ms,
+                    file.entry_kind,
                 )
             })
             .collect();
@@ -312,7 +314,12 @@ impl AppCache {
         }
         let signature = files
             .iter()
-            .map(|(path, code, version)| format!("{path}:{code}:{version}"))
+            .map(|(path, code, version, entry_kind)| {
+                format!(
+                    "{path}:{code}:{version}:{}",
+                    entry_kind_cache_token(*entry_kind)
+                )
+            })
             .collect::<Vec<_>>()
             .join("|");
         if self.pending_stats_signature.as_deref() == Some(signature.as_str()) {
@@ -360,7 +367,7 @@ impl AppCache {
             }
         }
 
-        let facts_key = facts_cache_key(&file.rel_path, file.last_modified_at_ms);
+        let facts_key = facts_cache_key(&file.rel_path, file.last_modified_at_ms, file.entry_kind);
         if !self.facts_cache.contains_key(&facts_key)
             && self.pending_facts_key.as_deref() != Some(facts_key.as_str())
         {
@@ -368,6 +375,7 @@ impl AppCache {
                 repo_root: state.repo_root.clone(),
                 rel_path: file.rel_path.clone(),
                 version: file.last_modified_at_ms,
+                entry_kind: file.entry_kind,
             });
             self.pending_facts_key = Some(facts_key);
         }
@@ -381,6 +389,7 @@ impl AppCache {
             &file.rel_path,
             &file.state_code,
             file.last_modified_at_ms,
+            file.entry_kind,
         ))
     }
 
@@ -406,7 +415,11 @@ impl AppCache {
 
     pub(super) fn file_facts(&self, file: &crate::models::FileView) -> Option<&FileFactsEntry> {
         self.facts_cache
-            .get(&facts_cache_key(&file.rel_path, file.last_modified_at_ms))
+            .get(&facts_cache_key(
+                &file.rel_path,
+                file.last_modified_at_ms,
+                file.entry_kind,
+            ))
     }
 
     pub(super) fn request_fitness_refresh(
@@ -559,8 +572,16 @@ fn parse_numstat(stdout: &str) -> BTreeMap<String, (Option<usize>, Option<usize>
     stats
 }
 
-pub(super) fn diff_stat_key(rel_path: &str, state_code: &str, version: i64) -> String {
-    format!("{rel_path}:{state_code}:{version}")
+pub(super) fn diff_stat_key(
+    rel_path: &str,
+    state_code: &str,
+    version: i64,
+    entry_kind: crate::models::EntryKind,
+) -> String {
+    format!(
+        "{rel_path}:{state_code}:{version}:{}",
+        entry_kind_cache_token(entry_kind)
+    )
 }
 
 pub(super) fn detail_cache_key(
@@ -572,8 +593,23 @@ pub(super) fn detail_cache_key(
     format!("{rel_path}:{state_code}:{version}:{mode:?}")
 }
 
-pub(super) fn facts_cache_key(rel_path: &str, version: i64) -> String {
-    format!("{rel_path}:{version}:facts")
+pub(super) fn facts_cache_key(
+    rel_path: &str,
+    version: i64,
+    entry_kind: crate::models::EntryKind,
+) -> String {
+    format!(
+        "{rel_path}:{version}:{}:facts",
+        entry_kind_cache_token(entry_kind)
+    )
+}
+
+fn entry_kind_cache_token(entry_kind: crate::models::EntryKind) -> &'static str {
+    match entry_kind {
+        crate::models::EntryKind::File => "file",
+        crate::models::EntryKind::Directory => "dir",
+        crate::models::EntryKind::Submodule => "sub",
+    }
 }
 
 pub(super) fn short_state_code(state_code: &str) -> &'static str {
@@ -688,25 +724,24 @@ fn compute_diff_stat(repo_root: &str, rel_path: &str, state_code: &str) -> DiffS
 
 fn compute_diff_stats_batch(
     repo_root: &str,
-    files: &[(String, String, i64)],
+    files: &[(String, String, i64, crate::models::EntryKind)],
 ) -> Vec<(String, DiffStatSummary)> {
     let mut results = Vec::new();
     let mut git_paths = Vec::new();
     let mut git_entries = Vec::new();
 
-    for (rel_path, state_code, version) in files {
-        let key = diff_stat_key(rel_path, state_code, *version);
+    for (rel_path, state_code, version, entry_kind) in files {
+        let key = diff_stat_key(rel_path, state_code, *version, *entry_kind);
         let path = Path::new(repo_root).join(rel_path);
-        let status = if std::fs::metadata(&path)
-            .map(|metadata| metadata.is_dir())
-            .unwrap_or(false)
-        {
+        let status = if entry_kind.is_submodule() {
+            "SUB".to_string()
+        } else if entry_kind.is_directory() {
             "DIR".to_string()
         } else {
             short_state_code(state_code).to_string()
         };
 
-        if status == "DIR" {
+        if entry_kind.is_container() {
             results.push((
                 key,
                 DiffStatSummary {
@@ -787,8 +822,8 @@ fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResul
             let mut seen = BTreeSet::new();
             let deduped_files = files
                 .into_iter()
-                .filter(|(rel_path, state_code, version)| {
-                    let key = diff_stat_key(rel_path, state_code, *version);
+                .filter(|(rel_path, state_code, version, entry_kind)| {
+                    let key = diff_stat_key(rel_path, state_code, *version, *entry_kind);
                     if !seen.insert(key.clone()) {
                         return false;
                     }
@@ -819,9 +854,9 @@ fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResul
                 mode,
             });
         }
-        if let Some((repo_root, rel_path, version)) = pending.facts.take() {
+        if let Some((repo_root, rel_path, version, entry_kind)) = pending.facts.take() {
             let _ = tx.send(BackgroundResult::Facts {
-                entry: load_file_facts(&repo_root, &rel_path, version),
+                entry: load_file_facts(&repo_root, &rel_path, version, entry_kind),
             });
         }
         if let Some((repo_root, cache_key, mode)) = pending.fitness.take() {
@@ -852,8 +887,9 @@ fn queue_command(pending: &mut PendingCommands, command: BackgroundCommand) {
             repo_root,
             rel_path,
             version,
+            entry_kind,
         } => {
-            pending.facts = Some((repo_root, rel_path, version));
+            pending.facts = Some((repo_root, rel_path, version, entry_kind));
         }
         BackgroundCommand::RefreshFitness {
             repo_root,
@@ -865,9 +901,13 @@ fn queue_command(pending: &mut PendingCommands, command: BackgroundCommand) {
     }
 }
 
-fn load_file_facts(repo_root: &str, rel_path: &str, version: i64) -> FileFactsEntry {
+fn load_file_facts(
+    repo_root: &str,
+    rel_path: &str,
+    version: i64,
+    entry_kind: crate::models::EntryKind,
+) -> FileFactsEntry {
     let path = Path::new(repo_root).join(rel_path);
-    let entry_kind = crate::observe::entry_kind_for_repo_path(Path::new(repo_root), rel_path);
     let content = std::fs::read_to_string(&path).ok();
     let line_count = if entry_kind.is_container() {
         0
@@ -884,7 +924,7 @@ fn load_file_facts(repo_root: &str, rel_path: &str, version: i64) -> FileFactsEn
         None
     };
     FileFactsEntry {
-        key: facts_cache_key(rel_path, version),
+        key: facts_cache_key(rel_path, version, entry_kind),
         entry_kind,
         line_count,
         byte_size,

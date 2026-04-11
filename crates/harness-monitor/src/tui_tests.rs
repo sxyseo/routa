@@ -166,7 +166,12 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
     let mut cache = AppCache::new(&state.repo_root);
     let file = state.selected_file().expect("selected file");
     cache.diff_stats.insert(
-        diff_stat_key(&file.rel_path, &file.state_code, file.last_modified_at_ms),
+        diff_stat_key(
+            &file.rel_path,
+            &file.state_code,
+            file.last_modified_at_ms,
+            file.entry_kind,
+        ),
         DiffStatSummary {
             status: "M".to_string(),
             additions: Some(38),
@@ -179,6 +184,7 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
                 "src/app/api/a2a/card/route.ts",
                 "delete",
                 route_file.last_modified_at_ms,
+                route_file.entry_kind,
             ),
             DiffStatSummary {
                 status: "D".to_string(),
