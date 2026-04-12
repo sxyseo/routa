@@ -470,7 +470,8 @@ fn build_cli_run_summaries(
             workspace_branch: workspace_branch.as_deref(),
             workspace_type,
             workspace_detached,
-            workspace_missing: Path::new(repo_root).exists() && !Path::new(&workspace_path).exists(),
+            workspace_missing: Path::new(repo_root).exists()
+                && !Path::new(&workspace_path).exists(),
             has_eval: false,
             hard_gate_blocked: false,
             score_blocked: false,
@@ -822,7 +823,13 @@ fn workspace_identity_for(
 ) -> (String, String, bool, Option<String>, WorkspaceType) {
     let normalized_repo_root = normalize_match_path(repo_root);
     let Some(cwd) = cwd else {
-        return ("main".to_string(), repo_root.to_string(), false, None, WorkspaceType::Main);
+        return (
+            "main".to_string(),
+            repo_root.to_string(),
+            false,
+            None,
+            WorkspaceType::Main,
+        );
     };
     let normalized_cwd = normalize_match_path(cwd);
     let matching = worktrees.iter().find(|record| {
@@ -848,7 +855,13 @@ fn workspace_identity_for(
     if normalized_cwd == normalized_repo_root
         || path_contains(&normalized_repo_root, &normalized_cwd)
     {
-        ("main".to_string(), repo_root.to_string(), false, None, WorkspaceType::Main)
+        (
+            "main".to_string(),
+            repo_root.to_string(),
+            false,
+            None,
+            WorkspaceType::Main,
+        )
     } else {
         (
             Path::new(cwd)

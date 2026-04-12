@@ -79,6 +79,31 @@ target/debug/harness-monitor --repo .
 
 If local socket/port binding is unavailable, hooks automatically fall back to the JSONL feed. The title bar shows the current runtime mode as `rpc:socket`, `rpc:tcp`, or `rpc:feed`.
 
+## Four-Layer Model
+
+Harness Monitor is now documented with one primary story:
+
+- `Context`: repo rules and task context decide what the agent should know
+- `Run`: `Task / Run / Workspace / Policy` semantics decide what the agent may do
+- `Observe`: hooks, process scan, git dirtiness, and attribution decide what the agent actually did
+- `Govern`: Entrix, evidence, and readiness checks decide whether the result may move forward
+
+For overview slides, the shorthand is `Observe -> Attribute -> Evaluate + Expand`.
+
+## Package Structure
+
+The current code map follows that model:
+
+```text
+Context  templates/, scripts/, AGENTS.md, docs/ARCHITECTURE.md
+Run      src/domain/, src/application/run_assessment.rs, src/operator_guardrails.rs, src/repo.rs
+Observe  src/observe.rs, src/detect.rs, src/hooks.rs, src/ipc.rs, src/state_events.rs
+Govern   src/domain/evaluator.rs, src/state_fitness.rs, src/tui_fitness.rs
+Surfaces src/main.rs, src/cli_operator.rs, src/state*.rs, src/tui*.rs
+```
+
+`Surfaces` are entrypoints over the same four-layer loop, not a separate semantic layer.
+
 ## TUI Layout
 
 Example layout:
@@ -154,3 +179,4 @@ In this repository, the repo-local [`.codex/hooks.json`](/Users/phodal/ai/routa-
 - `harness-monitor sessions`, `files`, `who`, and `watch` still exist as legacy/debug commands.
 - The SQLite store is still present for fallback/debug paths, but the primary direction is realtime transport plus TUI.
 - When multiple sessions touch the same worktree and attribution is ambiguous, Harness Monitor intentionally shows `unknown/conflict` instead of faking certainty.
+- The detailed architectural rationale lives in [../../docs/harness/harness-monitor-run-centric-operator-model.md](../../docs/harness/harness-monitor-run-centric-operator-model.md).

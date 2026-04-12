@@ -48,7 +48,10 @@ fn review_trigger_rules_surface_high_risk_hint_for_matching_file() {
     let dir = tempdir().expect("tempdir");
     std::fs::create_dir_all(dir.path().join("docs").join("fitness")).expect("fitness dir");
     std::fs::write(
-        dir.path().join("docs").join("fitness").join("review-triggers.yaml"),
+        dir.path()
+            .join("docs")
+            .join("fitness")
+            .join("review-triggers.yaml"),
         r#"
 review_triggers:
   - name: high_risk_directory_change
@@ -85,7 +88,10 @@ fn repo_review_hints_include_diff_size_trigger() {
     let dir = tempdir().expect("tempdir");
     std::fs::create_dir_all(dir.path().join("docs").join("fitness")).expect("fitness dir");
     std::fs::write(
-        dir.path().join("docs").join("fitness").join("review-triggers.yaml"),
+        dir.path()
+            .join("docs")
+            .join("fitness")
+            .join("review-triggers.yaml"),
         r#"
 review_triggers:
   - name: oversized_change
@@ -127,7 +133,9 @@ review_triggers:
     let refs = files.iter().collect::<Vec<_>>();
 
     let hints = cache.repo_review_hints(&refs);
-    assert!(hints.iter().any(|hint| hint.rule_name == "oversized_change"));
+    assert!(hints
+        .iter()
+        .any(|hint| hint.rule_name == "oversized_change"));
 }
 
 #[test]
@@ -135,7 +143,10 @@ fn repo_review_context_for_file_matches_cross_boundary_trigger() {
     let dir = tempdir().expect("tempdir");
     std::fs::create_dir_all(dir.path().join("docs").join("fitness")).expect("fitness dir");
     std::fs::write(
-        dir.path().join("docs").join("fitness").join("review-triggers.yaml"),
+        dir.path()
+            .join("docs")
+            .join("fitness")
+            .join("review-triggers.yaml"),
         r#"
 review_triggers:
   - name: cross_boundary_change_web_rust
@@ -243,8 +254,7 @@ fn nested_submodule_file_diff_uses_submodule_repo() {
         .expect("init repo");
 
     let submodule_root = repo_root.join("tools").join("entrix");
-    std::fs::create_dir_all(submodule_root.join("entrix"))
-        .expect("create submodule dirs");
+    std::fs::create_dir_all(submodule_root.join("entrix")).expect("create submodule dirs");
     std::process::Command::new("git")
         .arg("init")
         .arg(&submodule_root)

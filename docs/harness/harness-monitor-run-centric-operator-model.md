@@ -1,15 +1,39 @@
 ---
 status: active
-purpose: Run-centric operator semantics for harness-monitor, including the shared application-layer assessment between domain records and CLI/TUI surfaces.
+purpose: Four-layer harness model for harness-monitor, keeping run-centric domain records while collapsing operator concepts into a clearer architecture and package map.
 ---
 
-# Harness Monitor Run-Centric Operator Model
+# Harness Monitor Four-Layer Model
 
 ## Review Judgment
 
-The original refactor note is directionally correct, but the key architectural move is not "promote ten planes into ten peer runtime entities".
+The current semantics are directionally correct, but the concept count is too high when presented as a flat list of peer planes.
 
-The stable first-class objects should remain:
+The most readable model is a four-layer loop:
+
+```mermaid
+flowchart LR
+    C[Context<br/>Rules and context<br/>AGENTS.md / architecture / task]
+    R[Run<br/>Execution and constraints<br/>Task / Run / Workspace / Policy]
+    O[Observe<br/>Observation and attribution<br/>hooks / process / git / attribution]
+    G[Govern<br/>Evaluation and delivery<br/>Entrix / gate / evidence / operate]
+
+    C --> R
+    R --> O
+    O --> G
+    G --> C
+```
+
+In plain words:
+
+- `Context`: decides what the agent should know
+- `Run`: decides what the agent may do
+- `Observe`: records what the agent actually did
+- `Govern`: decides whether the result may move forward
+
+## Stable Domain Records
+
+This simplification does not change the stable first-class objects. Those remain:
 
 - `Task`
 - `Run`
@@ -19,100 +43,108 @@ The stable first-class objects should remain:
 - `Evidence`
 - related domain events
 
-The plane taxonomy is still valuable, but as an application-layer semantic view over those records.
+The loop is about how to explain behavior around those records, not about replacing them with more runtime entities.
 
-## Layered Shape
+## 3+1 Overview
 
-`harness-monitor` should read from left to right like this:
+For slides and overview pages, the most compact version is the implementation-biased `3+1` loop:
 
-```text
-Adapters / Raw Signals
-  observe.rs, detect.rs, hooks.rs, ipc.rs, state_events.rs
+```mermaid
+flowchart LR
+    O[Observe<br/>hook events / process scan / dirty git / session matching]
+    A[Attribute<br/>file ownership / session-agent link / exact-inferred-unknown]
+    E[Evaluate<br/>Entrix fast-full / hard gate / coverage / gate visibility]
+    X[Expand<br/>Task-Run-Workspace / policy / evidence / operate / reflect]
 
-Domain Records
-  domain/run.rs, domain/task.rs, domain/workspace.rs,
-  domain/eval.rs, domain/policy.rs, domain/evidence.rs
-
-Application Semantics
-  application/run_assessment.rs
-
-Presentation
-  cli_operator.rs
-  tui_render.rs + tui_panels.rs
+    O --> A --> E --> X
+    X --> O
 ```
 
-The application layer is where run meaning is derived. CLI and TUI should consume that layer instead of independently reconstructing operator state.
+This is the shortest accurate story for the current codebase: `Observe -> Attribute -> Evaluate`, then expand that loop back into the full harness surface.
 
-## Plane Model
+## Package Structure
 
-The current shared run assessment keeps the following planes explicit:
+The current package structure already fits the four-layer model without forcing a crate split per concept.
 
-### Implemented / Emerging
+```text
+Context
+  AGENTS.md
+  docs/ARCHITECTURE.md
+  docs/fitness/README.md
+  crates/harness-monitor/templates/
+  crates/harness-monitor/scripts/
 
-- `Observe`: hook-backed sessions, process-scan fallbacks, attribution-review bucket
-- `Attribute`: exact / inferred / unknown file ownership and ambiguity visibility
-- `Evaluate`: fast/full evaluation status, hard-gate and score-gate outcomes
-- `Orchestrate`: workspace attachment, unmanaged fallback visibility, run handoff hints
-- `Constrain`: effect classes, policy decision, approval requirements
-- `Validate`: whether verification is blocked or waiting on evidence
-- `Evidence`: required artifacts and missing evidence summaries
+Run
+  crates/harness-monitor/src/domain/
+  crates/harness-monitor/src/application/run_assessment.rs
+  crates/harness-monitor/src/operator_guardrails.rs
+  crates/harness-monitor/src/repo.rs
 
-### Explicit Roadmap Planes
+Observe
+  crates/harness-monitor/src/observe.rs
+  crates/harness-monitor/src/detect.rs
+  crates/harness-monitor/src/hooks.rs
+  crates/harness-monitor/src/ipc.rs
+  crates/harness-monitor/src/state_events.rs
 
-- `Contextualize`: context-pack assembly from `AGENTS.md`, architecture rules, product/task intent
-- `Operate`: PR / merge / deploy / rollback controls
-- `Reflect`: runtime learning loop, drift detection, follow-up feedback
+Govern
+  crates/harness-monitor/src/domain/evaluator.rs
+  crates/harness-monitor/src/state_fitness.rs
+  crates/harness-monitor/src/tui_fitness.rs
+  entrix-driven gate, evidence, and readiness status consumed through run assessment
 
-These roadmap planes are represented as `roadmap` status in the assessment model so they stay explicit without forcing premature implementation.
+Surfaces
+  crates/harness-monitor/src/main.rs
+  crates/harness-monitor/src/cli_operator.rs
+  crates/harness-monitor/src/state*.rs
+  crates/harness-monitor/src/tui*.rs
+  packages/harness-monitor/bin/harness-monitor.js
+```
 
-## Phase 1 Code Boundary
+`Surfaces` are not a fifth semantic layer. They are entrypoints and renderers over the same four-layer loop.
 
-Phase 1 introduces a single shared semantic path:
+## Plane Mapping
 
-- `RunAssessmentInput` collects raw run/workspace/eval facts
-- `assess_run(...)` derives:
-  - role
-  - mode / origin
-  - operator state
-  - workspace state
-  - policy / evidence / next action
-  - semantic plane statuses
-- CLI and TUI both render from that result
+The older plane vocabulary is still useful, but it now maps into the four-layer model instead of competing with it:
+
+- `Context` owns `Contextualize`
+- `Run` owns `Orchestrate` and `Constrain`
+- `Observe` owns `Observe` and `Attribute`
+- `Govern` owns `Evaluate`, `Validate`, `Evidence`, and `Operate`
+- `Reflect` is the feedback edge from `Govern` back into `Context`
+
+## Code Boundary
+
+The current shared semantic path remains:
+
+- `RunAssessmentInput` collects raw run, workspace, and evaluation facts
+- `assess_run(...)` derives operator meaning, policy and evidence state, next action, and summarized plane status
+- CLI and TUI render from that shared assessment instead of reconstructing semantics independently
 
 In concrete code:
 
 - `crates/harness-monitor/src/application/run_assessment.rs` is the semantic aggregation layer
-- `crates/harness-monitor/src/operator_guardrails.rs` remains the lower-level constrain/evidence engine
-- `crates/harness-monitor/src/cli_operator.rs` no longer owns a parallel run-state heuristic
-- `crates/harness-monitor/src/tui_panels.rs` and `crates/harness-monitor/src/tui_render.rs` no longer derive role/origin/state independently
-
-## Naming Guidance
-
-The naming rule for this slice is:
-
-- domain layer uses nouns: `run`, `task`, `workspace`, `policy`, `evidence`, `eval`
-- application layer uses semantic capability names: `run_assessment`
-- presentation keeps surface names: `cli`, `tui`, `render`, `panels`
-
-This is why the first extraction is `application/run_assessment.rs`, not a new top-level crate for every plane.
+- `crates/harness-monitor/src/operator_guardrails.rs` remains the lower-level run/govern constraint engine
+- `crates/harness-monitor/src/cli_operator.rs` and the TUI modules stay as surfaces over the same assessment path
 
 ## Scope Boundaries
 
-This refactor deliberately does not implement:
+This model deliberately does not claim that all four layers are equally mature.
 
-- managed run launch / stop orchestration
-- full context-pack assembly
-- PR / deploy / rollback control surfaces
-- reflective learning loops over historical runs
+Today the strongest implemented loop is:
 
-Those remain valid next steps, but they should build on the shared run assessment instead of bypassing it.
+- observe signals
+- attribute ownership
+- evaluate readiness
+
+The remaining context, operate, and reflection capabilities should grow from that loop instead of becoming separate top-level architectures too early.
 
 ## Verification Criteria
 
-The refactor is considered successful when:
+This model is successful when:
 
-- CLI and TUI share one run assessment path
-- unmanaged fallback runs remain visible
-- unknown/conflict attribution remains explicit
-- workspace and handoff meaning are attached to runs
-- roadmap planes stay visible without being over-implemented
+- public docs explain `harness-monitor` with one four-layer story
+- the slide-friendly `3+1` view stays consistent with the implementation
+- stable domain records remain `Task / Run / Workspace / EvalSnapshot / PolicyDecision / Evidence`
+- CLI and TUI still share one run assessment path
+- attribution ambiguity and gate blocking remain explicit rather than hidden

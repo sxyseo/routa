@@ -68,7 +68,9 @@ impl ReviewTriggerCache {
             };
             if best
                 .as_ref()
-                .map(|current| review_level_rank(&candidate.level) > review_level_rank(&current.level))
+                .map(|current| {
+                    review_level_rank(&candidate.level) > review_level_rank(&current.level)
+                })
                 .unwrap_or(true)
             {
                 best = Some(candidate);
@@ -82,20 +84,25 @@ impl ReviewTriggerCache {
         files: &[&'a FileView],
         diff_stat_for: impl Fn(&'a FileView) -> Option<&'a DiffStatSummary>,
     ) -> Vec<RepoReviewHint> {
-        let file_paths = files.iter().map(|file| file.rel_path.clone()).collect::<Vec<_>>();
+        let file_paths = files
+            .iter()
+            .map(|file| file.rel_path.clone())
+            .collect::<Vec<_>>();
         let added_lines = repo_added_lines(files, &diff_stat_for);
         let deleted_lines = repo_deleted_lines(files, &diff_stat_for);
         let mut hints = Vec::new();
 
         for rule in &self.rules {
             let matched = match rule.trigger_type.as_str() {
-                "diff_size" => rule.max_files.is_some_and(|max| file_paths.len() > max)
-                    || rule
-                        .max_added_lines
-                        .is_some_and(|max| added_lines.is_some_and(|value| value > max))
-                    || rule
-                        .max_deleted_lines
-                        .is_some_and(|max| deleted_lines.is_some_and(|value| value > max)),
+                "diff_size" => {
+                    rule.max_files.is_some_and(|max| file_paths.len() > max)
+                        || rule
+                            .max_added_lines
+                            .is_some_and(|max| added_lines.is_some_and(|value| value > max))
+                        || rule
+                            .max_deleted_lines
+                            .is_some_and(|max| deleted_lines.is_some_and(|value| value > max))
+                }
                 "cross_boundary_change" => {
                     let matched_boundaries = rule
                         .boundaries
@@ -129,7 +136,10 @@ impl ReviewTriggerCache {
         files: &[&'a FileView],
         diff_stat_for: impl Fn(&'a FileView) -> Option<&'a DiffStatSummary>,
     ) -> Vec<RepoReviewHint> {
-        let file_paths = files.iter().map(|entry| entry.rel_path.clone()).collect::<Vec<_>>();
+        let file_paths = files
+            .iter()
+            .map(|entry| entry.rel_path.clone())
+            .collect::<Vec<_>>();
         let added_lines = repo_added_lines(files, &diff_stat_for);
         let deleted_lines = repo_deleted_lines(files, &diff_stat_for);
         let mut hints = Vec::new();
@@ -147,7 +157,9 @@ impl ReviewTriggerCache {
                 }
                 "cross_boundary_change" => {
                     let file_matches_boundary = rule.boundaries.iter().any(|boundary| {
-                        boundary.iter().any(|pattern| match_file(&file.rel_path, pattern))
+                        boundary
+                            .iter()
+                            .any(|pattern| match_file(&file.rel_path, pattern))
                     });
                     let matched_boundaries = rule
                         .boundaries
@@ -345,11 +357,12 @@ fn pattern_starts_with_path(pattern: &str, prefix: &str) -> bool {
 }
 
 fn matches_review_trigger_rule(rule: &ReviewTriggerRule, rel_path: &str) -> bool {
-    rule.paths.iter().any(|pattern| match_file(rel_path, pattern))
-        || rule
-            .directories
-            .iter()
-            .any(|directory| rel_path == directory || rel_path.starts_with(&format!("{directory}/")))
+    rule.paths
+        .iter()
+        .any(|pattern| match_file(rel_path, pattern))
+        || rule.directories.iter().any(|directory| {
+            rel_path == directory || rel_path.starts_with(&format!("{directory}/"))
+        })
 }
 
 fn normalize_pattern(pattern: &str) -> (String, bool) {

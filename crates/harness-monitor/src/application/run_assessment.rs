@@ -173,7 +173,8 @@ pub(crate) fn assess_run(input: &RunAssessmentInput<'_>) -> RunAssessment {
         api_contract_passed: input.api_contract_passed,
         integrity_warning: integrity_warning.as_deref(),
     });
-    let recovery_hints = infer_recovery_hints(input, &workspace_state, integrity_warning.as_deref());
+    let recovery_hints =
+        infer_recovery_hints(input, &workspace_state, integrity_warning.as_deref());
     let handoff_summary = infer_handoff_summary(
         &role,
         guardrails.operator_state.as_str(),
@@ -256,10 +257,7 @@ fn infer_origin(input: &RunAssessmentInput<'_>) -> RunOrigin {
     }
 }
 
-fn infer_integrity_warning(
-    input: &RunAssessmentInput<'_>,
-    origin: RunOrigin,
-) -> Option<String> {
+fn infer_integrity_warning(input: &RunAssessmentInput<'_>, origin: RunOrigin) -> Option<String> {
     if input.workspace_missing {
         Some("workspace path missing".to_string())
     } else if input.is_unknown_bucket {
@@ -324,7 +322,11 @@ fn infer_handoff_summary(
         return None;
     }
 
-    let mut parts = vec![format!("handoff {} -> {}", role.as_str(), next_role.as_str())];
+    let mut parts = vec![format!(
+        "handoff {} -> {}",
+        role.as_str(),
+        next_role.as_str()
+    )];
     if input.workspace_detached {
         parts.push("(detached HEAD)".to_string());
     } else if let Some(branch) = input.workspace_branch {
@@ -362,7 +364,10 @@ fn infer_recovery_hints(
             input.unknown_files_count
         ));
     }
-    if matches!(workspace_state, WorkspaceState::Dirty) && integrity_warning.is_none() && !input.has_eval {
+    if matches!(workspace_state, WorkspaceState::Dirty)
+        && integrity_warning.is_none()
+        && !input.has_eval
+    {
         hints.push("run evaluation before handoff".to_string());
     }
     hints
@@ -412,11 +417,17 @@ fn build_planes(
                 PlaneStatus::Ready
             },
             summary: if input.is_unknown_bucket || input.unknown_files_count > 0 {
-                format!("{} file(s) need attribution review", input.unknown_files_count)
+                format!(
+                    "{} file(s) need attribution review",
+                    input.unknown_files_count
+                )
             } else if input.exact_files_count > 0 {
                 format!("{} exact file attribution(s)", input.exact_files_count)
             } else if input.inferred_files_count > 0 {
-                format!("{} inferred file attribution(s)", input.inferred_files_count)
+                format!(
+                    "{} inferred file attribution(s)",
+                    input.inferred_files_count
+                )
             } else {
                 "no repo-local file attribution yet".to_string()
             },
@@ -629,9 +640,15 @@ mod tests {
         });
 
         assert_eq!(assessment.origin.as_str(), "attribution-review");
-        assert_eq!(assessment.block_reason.as_deref(), Some("ownership ambiguity"));
+        assert_eq!(
+            assessment.block_reason.as_deref(),
+            Some("ownership ambiguity")
+        );
         assert_eq!(assessment.operator_state, "attention");
-        assert_eq!(assessment.recovery_hints, vec!["assign ownership for unattributed files"]);
+        assert_eq!(
+            assessment.recovery_hints,
+            vec!["assign ownership for unattributed files"]
+        );
         assert!(assessment
             .planes
             .iter()

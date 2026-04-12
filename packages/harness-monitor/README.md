@@ -64,4 +64,15 @@ harness-monitor (NPM package)
   └── harness-monitor binary
 ```
 
-The run-centric operator semantics used by the binary are documented in [../../docs/harness/harness-monitor-run-centric-operator-model.md](../../docs/harness/harness-monitor-run-centric-operator-model.md).
+The binary it launches is documented as a four-layer harness loop:
+
+```text
+Context  repo rules, templates, architecture docs
+Run      task / run / workspace / policy semantics
+Observe  hooks, process scan, git dirty attribution
+Govern   Entrix gates, evidence, delivery readiness
+```
+
+For overview slides, the shorthand is `Observe -> Attribute -> Evaluate + Expand`.
+
+The detailed model used by the binary is documented in [../../docs/harness/harness-monitor-run-centric-operator-model.md](../../docs/harness/harness-monitor-run-centric-operator-model.md).

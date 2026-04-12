@@ -60,7 +60,7 @@ Read the canonical architecture contract in [docs/ARCHITECTURE.md](docs/ARCHITEC
 - Provider families: ACP-backed CLI/container agents and BYOK SDK/API integrations
 - Execution substrates: local CLI runner, SDK/API mode, and Docker-backed execution
 
-For the `harness-monitor` control surface specifically, the current run-centric semantic boundary is documented in [docs/harness/harness-monitor-run-centric-operator-model.md](docs/harness/harness-monitor-run-centric-operator-model.md). That document captures the subsystem-level rule that `Task / Run / Workspace / EvalSnapshot / PolicyDecision / Evidence` stay as the stable domain objects, while operator planes such as `Observe / Attribute / Evaluate / Orchestrate / Constrain / Validate / Evidence` are derived in an application-layer run assessment shared by CLI and TUI.
+For the `harness-monitor` control surface specifically, the current subsystem story is a four-layer loop of `Context -> Run -> Observe -> Govern`, documented in [docs/harness/harness-monitor-run-centric-operator-model.md](docs/harness/harness-monitor-run-centric-operator-model.md). Stable domain objects remain `Task / Run / Workspace / EvalSnapshot / PolicyDecision / Evidence`, and the slide-friendly shorthand is `Observe -> Attribute -> Evaluate + Expand`.
 
 ## How It Works
 
@@ -231,7 +231,7 @@ npm run lint
 | `crates/routa-server/` | Axum backend used by desktop/local server mode |
 | `crates/routa-cli/` | CLI commands and ACP-serving entrypoints |
 | `docs/ARCHITECTURE.md` | Canonical architecture and invariants |
-| `docs/harness/harness-monitor-run-centric-operator-model.md` | Harness Monitor run-centric operator semantics |
+| `docs/harness/harness-monitor-run-centric-operator-model.md` | Harness Monitor four-layer run-centric model |
 | `docs/adr/` | Architecture decision records |
 | `docs/product-specs/FEATURE_TREE.md` | Generated route and endpoint index |
 | `docs/fitness/` | Validation and quality gates |
@@ -247,10 +247,10 @@ npm run lint
 
 Routa is also a working example of harness-oriented engineering for agentic software systems:
 
-- **Readable for agents** through explicit repo guidance, role definitions, and protocol surfaces
-- **Constrained by guardrails** through fitness functions, API checks, lint, and hook runtime validation
-- **Improved by feedback loops** through traces, review, issue hygiene, and execution evidence
-- **Run-centric in harness-monitor** through a shared run assessment that maps operator planes onto `Run` instead of letting CLI and TUI derive separate meanings
+- **Context-first** through explicit repo guidance, architecture rules, and task inputs
+- **Run-scoped** through `Task / Run / Workspace / Policy` semantics and shared run assessment
+- **Observed explicitly** through hooks, process scan, git dirtiness, and attribution visibility
+- **Governed by gates** through Entrix, evidence, review loops, and delivery checks
 
 Related references:
 

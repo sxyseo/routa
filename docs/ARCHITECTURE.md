@@ -139,7 +139,7 @@ Important invariant:
 ### Harness And Worker
 
 - Harness detects repository signals, script entrypoints, and spec sources to power governance and quality analysis (`src/core/harness/`).
-- `crates/harness-monitor` now uses a run-centric application semantic layer so CLI and TUI consume one shared operator assessment path instead of duplicating run heuristics. See [docs/harness/harness-monitor-run-centric-operator-model.md](./harness/harness-monitor-run-centric-operator-model.md).
+- `crates/harness-monitor` is documented as a four-layer harness loop of `Context -> Run -> Observe -> Govern`; stable records remain `Task / Run / Workspace / EvalSnapshot / PolicyDecision / Evidence`, and CLI/TUI still consume one shared run assessment path. See [docs/harness/harness-monitor-run-centric-operator-model.md](./harness/harness-monitor-run-centric-operator-model.md).
 - Workers abstract local and Docker-based execution environments (`src/core/worker/`).
 - Sandbox policy resolution in Rust enforces workspace-aware Docker constraints (`crates/routa-core/src/sandbox/`).
 
