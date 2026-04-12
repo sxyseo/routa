@@ -472,6 +472,9 @@ mod highlight;
 #[path = "tui_fitness.rs"]
 pub(crate) mod fitness;
 
+#[path = "tui_review.rs"]
+mod review;
+
 #[path = "tui_panels.rs"]
 mod panels;
 use panels::*;

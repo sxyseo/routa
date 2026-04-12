@@ -118,8 +118,8 @@ pub(super) fn render_details_panel(
             ]));
             if let Some(review_hint) = cache.review_hint(file) {
                 let review_color = match review_hint.level {
-                    crate::tui::cache::ReviewRiskLevel::High => STOPPED,
-                    crate::tui::cache::ReviewRiskLevel::Medium => INFERRED,
+                    crate::tui::review::ReviewRiskLevel::High => STOPPED,
+                    crate::tui::review::ReviewRiskLevel::Medium => INFERRED,
                 };
                 lines.push(Line::from(vec![
                     Span::styled("Review: ", Style::default().fg(colors.muted)),
@@ -136,8 +136,8 @@ pub(super) fn render_details_panel(
                         row.push(Span::raw("  "));
                     }
                     let color = match hint.level {
-                        crate::tui::cache::ReviewRiskLevel::High => STOPPED,
-                        crate::tui::cache::ReviewRiskLevel::Medium => INFERRED,
+                        crate::tui::review::ReviewRiskLevel::High => STOPPED,
+                        crate::tui::review::ReviewRiskLevel::Medium => INFERRED,
                     };
                     row.push(Span::styled(hint.label, Style::default().fg(color)));
                     row.push(Span::raw(" "));
@@ -277,8 +277,8 @@ pub(super) fn render_file_header_line(
     )];
     for hint in cache.repo_review_hints(&files).into_iter().take(2) {
         let color = match hint.level {
-            crate::tui::cache::ReviewRiskLevel::High => STOPPED,
-            crate::tui::cache::ReviewRiskLevel::Medium => INFERRED,
+            crate::tui::review::ReviewRiskLevel::High => STOPPED,
+            crate::tui::review::ReviewRiskLevel::Medium => INFERRED,
         };
         spans.push(Span::raw(" "));
         spans.push(Span::styled(

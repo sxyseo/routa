@@ -1013,7 +1013,7 @@ pub(super) fn time_ago(timestamp_ms: i64) -> String {
 fn render_file_secondary_line(
     file: &crate::models::FileView,
     diff_stat: &DiffStatSummary,
-    review_hint: Option<&crate::tui::cache::ReviewHint>,
+    review_hint: Option<&crate::tui::review::ReviewHint>,
     colors: UiPalette,
 ) -> Line<'static> {
     let age = pad_left(&time_ago(file.last_modified_at_ms), 5);
@@ -1038,7 +1038,7 @@ fn render_file_meta_line(
     file: &crate::models::FileView,
     parent_dir: &str,
     diff_stat: &DiffStatSummary,
-    review_hint: Option<&crate::tui::cache::ReviewHint>,
+    review_hint: Option<&crate::tui::review::ReviewHint>,
     colors: UiPalette,
 ) -> Line<'static> {
     let mut spans = Vec::new();
@@ -1056,7 +1056,7 @@ fn render_file_single_line(
     file_name: &str,
     file: &crate::models::FileView,
     diff_stat: &DiffStatSummary,
-    review_hint: Option<&crate::tui::cache::ReviewHint>,
+    review_hint: Option<&crate::tui::review::ReviewHint>,
     colors: UiPalette,
     focused: bool,
     area_width: usize,
@@ -1091,10 +1091,10 @@ fn render_file_single_line(
     Line::from(spans)
 }
 
-fn review_hint_color(hint: &crate::tui::cache::ReviewHint, _colors: UiPalette) -> Color {
+fn review_hint_color(hint: &crate::tui::review::ReviewHint, _colors: UiPalette) -> Color {
     match hint.level {
-        crate::tui::cache::ReviewRiskLevel::High => STOPPED,
-        crate::tui::cache::ReviewRiskLevel::Medium => INFERRED,
+        crate::tui::review::ReviewRiskLevel::High => STOPPED,
+        crate::tui::review::ReviewRiskLevel::Medium => INFERRED,
     }
 }
 
