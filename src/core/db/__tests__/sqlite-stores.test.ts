@@ -248,13 +248,13 @@ describe("sqlite stores", () => {
       workspaceId: "workspace-1",
       name: "Planning",
       isDefault: true,
-      columns: [{ id: "backlog", title: "Backlog", color: "#999" }],
+      columns: [{ id: "backlog", name: "Backlog", color: "#999", position: 0, stage: "backlog" }],
     });
     const delivery = createKanbanBoard({
       id: "board-delivery",
       workspaceId: "workspace-1",
       name: "Delivery",
-      columns: [{ id: "done", title: "Done", color: "#0a0" }],
+      columns: [{ id: "done", name: "Done", color: "#0a0", position: 4, stage: "done" }],
     });
 
     await kanbanStore.save(planning);
@@ -264,7 +264,7 @@ describe("sqlite stores", () => {
       ...delivery,
       name: "Delivery Updated",
       isDefault: true,
-      columns: [{ id: "review", title: "Review", color: "#fa0" }],
+      columns: [{ id: "review", name: "Review", color: "#fa0", position: 3, stage: "review" }],
       updatedAt: new Date(Date.now() + 2_000),
     });
 
@@ -346,7 +346,7 @@ describe("sqlite stores", () => {
       sessionId: "session-1",
       metadata: {
         type: "task",
-        taskStatus: "IN_PROGRESS",
+        taskStatus: "IN_PROGRESS" as import("@/core/models/task").TaskStatus,
         assignedAgentIds: ["agent-parent", "agent-child"],
         parentNoteId: "spec",
         linkedTaskId: "task-1",

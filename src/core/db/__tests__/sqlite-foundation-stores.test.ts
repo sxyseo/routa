@@ -198,7 +198,7 @@ describe("sqlite foundation stores", () => {
       objective: "Set up project",
       workspaceId: "workspace-1",
       status: TaskStatus.COMPLETED,
-      assignedTo: "agent-1",
+      assignee: "agent-1",
       labels: ["infra"],
     });
     const readyTask = createTask({
@@ -208,7 +208,7 @@ describe("sqlite foundation stores", () => {
       workspaceId: "workspace-1",
       comment: "Carry legacy note",
       dependencies: ["task-done"],
-      assignedTo: "agent-2",
+      assignee: "agent-2",
       sessionId: "session-1",
       labels: ["core"],
       codebaseIds: ["codebase-github"],
@@ -219,7 +219,7 @@ describe("sqlite foundation stores", () => {
       objective: "Wait on missing dependency",
       workspaceId: "workspace-1",
       dependencies: ["task-missing"],
-      assignedTo: "agent-2",
+      assignee: "agent-2",
     });
 
     await taskStore.save(doneTask);

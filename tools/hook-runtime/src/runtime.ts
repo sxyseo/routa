@@ -461,6 +461,7 @@ async function runFitnessPhase(
       async (metric) =>
         runMetric(metric, {
           env: {
+            NODE_ENV: process.env.NODE_ENV ?? "test",
             ROUTA_FITNESS_CHANGED_BASE: fitnessChangedBase,
           },
           onOutput: (event) => reporter?.onMetricOutput(metric.name, event),

@@ -63,6 +63,7 @@ describe("runMetric", () => {
 
     await runMetric(buildMetric(), {
       env: {
+        NODE_ENV: process.env.NODE_ENV ?? "test",
         ROUTA_FITNESS_CHANGED_BASE: "origin/main",
       },
     });
