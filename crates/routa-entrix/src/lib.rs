@@ -9,3 +9,4 @@ pub mod model;
 pub mod reporting;
 pub mod runner;
 pub mod scoring;
+pub mod test_mapping;
