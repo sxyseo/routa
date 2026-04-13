@@ -3,9 +3,11 @@ use sha2::{Digest, Sha256};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 const APP_SLUG: &str = "harness-monitor";
 const DB_FILE_NAME: &str = "harness-monitor.db";
+static GIT_CAPABILITY: OnceLock<Result<(), String>> = OnceLock::new();
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -17,6 +19,31 @@ pub struct RepoContext {
     pub runtime_socket_path: PathBuf,
     pub runtime_info_path: PathBuf,
     pub runtime_tcp_addr: String,
+}
+
+pub fn git_capability() -> Result<()> {
+    GIT_CAPABILITY
+        .get_or_init(|| {
+            let output = Command::new("git")
+                .arg("--version")
+                .output()
+                .map_err(|err| err.to_string())?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let detail = if !stderr.is_empty() {
+                    stderr
+                } else if !stdout.is_empty() {
+                    stdout
+                } else {
+                    "git probe failed".to_string()
+                };
+                return Err(detail);
+            }
+            Ok(())
+        })
+        .clone()
+        .map_err(|err| anyhow::anyhow!("git unavailable: {err}"))
 }
 
 pub fn detect_repo_root(start_dir: &Path) -> Result<PathBuf> {
@@ -74,6 +101,7 @@ pub fn detect_git_dir(start_dir: &Path) -> Result<PathBuf> {
 }
 
 pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<RepoContext> {
+    git_capability()?;
     let start_dir = path_opt
         .map(PathBuf::from)
         .or_else(|| std::env::current_dir().ok())
@@ -99,6 +127,7 @@ pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<Repo
 }
 
 pub fn resolve_runtime(path_opt: Option<&str>) -> Result<RepoContext> {
+    git_capability()?;
     let start_dir = path_opt
         .map(PathBuf::from)
         .or_else(|| std::env::current_dir().ok())

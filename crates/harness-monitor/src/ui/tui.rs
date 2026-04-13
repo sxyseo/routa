@@ -1,7 +1,7 @@
 use crate::observe;
 use crate::observe::ipc::RuntimeFeed;
 use crate::observe::repo::RepoContext;
-use crate::shared::models::{FitnessEvent, RuntimeMessage, DEFAULT_TUI_POLL_MS};
+use crate::shared::models::{DirtyRepoEntry, FitnessEvent, RuntimeMessage, DEFAULT_TUI_POLL_MS};
 use crate::ui::state::{DetailMode, EventLogFilter, RuntimeState, ThemeMode};
 use anyhow::{Context, Result};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
@@ -68,10 +68,11 @@ enum UiLoopAction {
     RefreshAll,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct BranchResolution {
-    branch: Option<String>,
-    upstream: Option<String>,
+#[derive(Debug, Default)]
+struct InitialRepoSnapshot {
+    dirty: Option<Vec<DirtyRepoEntry>>,
+    repo_status: Option<RepoStatusSummary>,
+    warning: Option<String>,
 }
 
 pub fn run(ctx: RepoContext, poll_interval_ms: u64) -> Result<()> {
@@ -93,12 +94,9 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     let mut feed = RuntimeFeed::open(&ctx.runtime_event_path)?;
     ensure_runtime_service(&ctx)?;
     let repo_root = ctx.repo_root.to_string_lossy().to_string();
-    let repo_status = read_repo_status(&ctx).unwrap_or_default();
-    let branch = repo_status.branch.unwrap_or_else(|| "-".to_string());
-    let mut state = RuntimeState::new(repo_root.clone(), branch);
+    let mut state = RuntimeState::new(repo_root.clone(), "-".to_string());
     state.sync_focus_for_width(terminal.size()?.width);
     state.set_runtime_transport(read_runtime_transport(&ctx));
-    state.set_ahead_count(repo_status.ahead_count);
     state.set_worktree_count(current_worktree_count(&ctx).ok());
     let mut cache = AppCache::new(&repo_root);
     cache.set_fitness_mode(state.fitness_view_mode);
@@ -120,14 +118,18 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
         result.sort_by_key(RuntimeMessage::observed_at_ms);
         let _ = transcript_tx.send(result);
     });
+    let (initial_repo_tx, initial_repo_rx) = mpsc::channel();
+    let initial_repo_ctx = ctx.clone();
+    thread::spawn(move || {
+        let _ = initial_repo_tx.send(load_initial_repo_snapshot(&initial_repo_ctx));
+    });
     for message in feed.read_recent_since(bootstrap_cutoff)? {
         state.apply_message(message);
     }
     state.prune_stale_sessions();
-    let mut last_poll = Instant::now() - Duration::from_millis(poll_interval_ms);
+    let mut last_poll = Instant::now();
     let mut last_transport_refresh = Instant::now() - Duration::from_millis(TRANSPORT_REFRESH_MS);
-    let mut last_repo_status_refresh =
-        Instant::now() - Duration::from_millis(REPO_STATUS_REFRESH_MS);
+    let mut last_repo_status_refresh = Instant::now();
     let mut last_agent_refresh = Instant::now() - Duration::from_millis(AGENT_SCAN_REFRESH_MS);
     let mut last_fitness_refresh = Instant::now();
     let mut last_fitness_cache_check =
@@ -141,8 +143,21 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
             fitness_run_mode_for(&state),
         );
     }
+    cache.sync_results();
+    cache.warm_visible_files(&state);
+    cache.warm_selected_detail(&state);
+    cache.warm_test_mappings(&state);
+    state.sync_focus_for_width(terminal.size()?.width);
+    terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
 
     loop {
+        if let Ok(snapshot) = initial_repo_rx.try_recv() {
+            apply_initial_repo_snapshot(&mut state, snapshot);
+            let now = Instant::now();
+            last_poll = now;
+            last_repo_status_refresh = now;
+        }
+
         while event::poll(Duration::from_millis(0)).context("poll terminal events")? {
             match handle_event(&mut state, &mut cache)? {
                 UiLoopAction::Quit => return Ok(()),
@@ -407,61 +422,38 @@ fn refresh_repo_snapshot(ctx: &RepoContext, state: &mut RuntimeState) -> Result<
 }
 
 fn read_repo_status(ctx: &RepoContext) -> Result<RepoStatusSummary> {
-    let branch_resolution = read_branch_resolution(ctx)?;
-    let ahead_count = match branch_resolution.upstream.as_deref() {
-        Some(upstream) => read_ahead_count(ctx, upstream).ok(),
-        None => None,
-    };
-
-    Ok(RepoStatusSummary {
-        branch: branch_resolution.branch,
-        ahead_count,
-    })
-}
-
-fn read_branch_resolution(ctx: &RepoContext) -> Result<BranchResolution> {
     let output = Command::new("git")
         .arg("-C")
         .arg(&ctx.repo_root)
-        .arg("rev-parse")
-        .arg("--abbrev-ref")
-        .arg("HEAD")
-        .arg("@{upstream}")
+        .arg("status")
+        .arg("--porcelain=v2")
+        .arg("--branch")
+        .arg("--untracked-files=no")
         .output()
-        .context("run git rev-parse branch and upstream")?;
-    if output.status.success() {
-        let status = String::from_utf8(output.stdout).context("decode rev-parse output")?;
-        return Ok(parse_branch_resolution(&status));
-    }
-
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(&ctx.repo_root)
-        .arg("rev-parse")
-        .arg("--abbrev-ref")
-        .arg("HEAD")
-        .output()
-        .context("run git rev-parse branch")?;
+        .context("run git status --porcelain=v2 --branch")?;
     if !output.status.success() {
-        anyhow::bail!("git rev-parse branch failed");
+        anyhow::bail!("git status --porcelain=v2 --branch failed");
     }
 
-    let branch = String::from_utf8(output.stdout).context("decode branch output")?;
-    Ok(BranchResolution {
-        branch: normalize_branch_name(branch.trim()),
-        upstream: None,
-    })
+    let status = String::from_utf8(output.stdout).context("decode branch status output")?;
+    Ok(parse_repo_status(&status))
 }
 
-fn parse_branch_resolution(output: &str) -> BranchResolution {
-    let mut lines = output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty());
+fn parse_repo_status(output: &str) -> RepoStatusSummary {
+    let mut branch = None;
+    let mut ahead_count = None;
 
-    BranchResolution {
-        branch: lines.next().and_then(normalize_branch_name),
-        upstream: lines.next().map(str::to_string),
+    for line in output.lines().map(str::trim) {
+        if let Some(value) = line.strip_prefix("# branch.head ") {
+            branch = normalize_branch_name(value.trim());
+        } else if let Some(value) = line.strip_prefix("# branch.ab ") {
+            ahead_count = parse_branch_ab(value);
+        }
+    }
+
+    RepoStatusSummary {
+        branch,
+        ahead_count,
     }
 }
 
@@ -472,28 +464,11 @@ fn normalize_branch_name(branch: &str) -> Option<String> {
     }
 }
 
-fn read_ahead_count(ctx: &RepoContext, upstream: &str) -> Result<usize> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(&ctx.repo_root)
-        .arg("rev-list")
-        .arg("--left-right")
-        .arg("--count")
-        .arg(format!("HEAD...{upstream}"))
-        .output()
-        .context("run git rev-list --left-right --count HEAD...upstream")?;
-    if !output.status.success() {
-        anyhow::bail!("git rev-list --left-right --count failed");
-    }
-
-    let counts = String::from_utf8(output.stdout).context("decode rev-list output")?;
-    Ok(parse_ahead_count(&counts).unwrap_or(0))
-}
-
-fn parse_ahead_count(counts: &str) -> Option<usize> {
-    counts
+fn parse_branch_ab(value: &str) -> Option<usize> {
+    value
         .split_whitespace()
         .next()
+        .and_then(|count| count.strip_prefix('+'))
         .and_then(|count| count.parse::<usize>().ok())
 }
 
@@ -584,6 +559,31 @@ fn fallback_runtime_transport(ctx: &RepoContext) -> String {
 
 fn bootstrap_history_cutoff(now_ms: i64) -> i64 {
     now_ms - SESSION_BOOTSTRAP_WINDOW_MS
+}
+
+fn load_initial_repo_snapshot(ctx: &RepoContext) -> InitialRepoSnapshot {
+    let repo_status = read_repo_status(ctx).ok();
+    let dirty = observe::scan_repo(ctx).ok();
+    let warning = if repo_status.is_none() && dirty.is_none() {
+        Some("initial git scan unavailable".to_string())
+    } else {
+        None
+    };
+    InitialRepoSnapshot {
+        dirty,
+        repo_status,
+        warning,
+    }
+}
+
+fn apply_initial_repo_snapshot(state: &mut RuntimeState, snapshot: InitialRepoSnapshot) {
+    if let Some(dirty) = snapshot.dirty {
+        state.sync_dirty_files(dirty);
+    }
+    apply_repo_status(state, snapshot.repo_status);
+    if let Some(warning) = snapshot.warning {
+        state.push_hook_status_event(chrono::Utc::now().timestamp_millis(), warning);
+    }
 }
 
 #[allow(dead_code)]

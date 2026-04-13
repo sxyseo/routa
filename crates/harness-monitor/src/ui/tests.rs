@@ -1198,21 +1198,13 @@ fn bootstrap_history_cutoff_uses_day_scale_window() {
 }
 
 #[test]
-fn parse_branch_resolution_reads_branch_and_upstream() {
-    let status = parse_branch_resolution("main\norigin/main\n");
-
-    assert_eq!(
-        status,
-        BranchResolution {
-            branch: Some("main".to_string()),
-            upstream: Some("origin/main".to_string()),
-        }
+fn parse_repo_status_reads_branch_and_ahead_count() {
+    let status = parse_repo_status(
+        "# branch.oid abcdef\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +7 -2\n",
     );
-}
 
-#[test]
-fn parse_ahead_count_reads_left_side_count() {
-    assert_eq!(parse_ahead_count("7\t2\n"), Some(7));
+    assert_eq!(status.branch.as_deref(), Some("main"));
+    assert_eq!(status.ahead_count, Some(7));
 }
 
 #[test]
