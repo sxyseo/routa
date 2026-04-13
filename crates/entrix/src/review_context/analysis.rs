@@ -573,12 +573,7 @@ fn git_recent_commits(
     git_ref: &str,
 ) -> Vec<(String, String, String)> {
     let output = Command::new("git")
-        .args([
-            "log",
-            "--format=%H%x09%s",
-            &format!("-n{count}"),
-            git_ref,
-        ])
+        .args(["log", "--format=%H%x09%s", &format!("-n{count}"), git_ref])
         .current_dir(repo_root)
         .output();
     let Ok(output) = output else {
@@ -635,8 +630,7 @@ fn filter_code_files(repo_root: &Path, files: &[String]) -> Vec<String> {
                 .unwrap_or_default()
                 .to_ascii_lowercase();
             let extension = format!(".{extension}");
-            CODE_EXTENSIONS.contains(&extension.as_str())
-                && repo_root.join(file).exists()
+            CODE_EXTENSIONS.contains(&extension.as_str()) && repo_root.join(file).exists()
         })
         .map(ToString::to_string)
         .collect()

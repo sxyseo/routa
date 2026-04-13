@@ -3,9 +3,7 @@ use super::{
     collect_repo_files, file_name, file_node_payload, language_config_for_path,
     parse_file_import_record, parse_repo_graph, resolve_graph_target, symbol_to_payload,
 };
-use crate::review_context::model::{
-    FileGraphNode, GraphEdge, GraphNodePayload, ParsedReviewGraph,
-};
+use crate::review_context::model::{FileGraphNode, GraphEdge, GraphNodePayload, ParsedReviewGraph};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -278,7 +276,11 @@ fn query_importers(repo_root: &Path, target_file: &str) -> QueryResult {
         let Some(record) = parse_file_import_record(repo_root, &relative_path) else {
             continue;
         };
-        if !record.imports.iter().any(|imported| imported == target_file) {
+        if !record
+            .imports
+            .iter()
+            .any(|imported| imported == target_file)
+        {
             continue;
         }
         if seen.insert(record.file_path.clone()) {
@@ -319,7 +321,11 @@ fn resolve_query_target_file_by_symbol(repo_root: &Path, target: &str) -> Option
     }
 
     let mut matches = BTreeSet::new();
-    for node in graph.changed_nodes.iter().chain(graph.related_test_nodes.iter()) {
+    for node in graph
+        .changed_nodes
+        .iter()
+        .chain(graph.related_test_nodes.iter())
+    {
         if node.kind == "File" {
             continue;
         }

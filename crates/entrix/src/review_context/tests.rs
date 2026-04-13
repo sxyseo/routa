@@ -712,7 +712,12 @@ fn query_current_graph_returns_go_imports_for_file() {
     )
     .unwrap();
 
-    let result = query_current_graph(root, "pkg/demo/service.go", "imports_of", ReviewBuildMode::Auto);
+    let result = query_current_graph(
+        root,
+        "pkg/demo/service.go",
+        "imports_of",
+        ReviewBuildMode::Auto,
+    );
 
     assert_eq!(result.status, "ok");
     assert_eq!(result.results.len(), 1);
@@ -755,7 +760,10 @@ fn query_current_graph_returns_java_imports_for_file() {
         GraphNodePayload::File(file) if file.qualified_name == "src/main/java/com/example/util/Helper.java"
     ));
     assert_eq!(result.edges[0].kind, "IMPORTS_FROM");
-    assert_eq!(result.edges[0].source_qualified, "src/main/java/com/example/Service.java");
+    assert_eq!(
+        result.edges[0].source_qualified,
+        "src/main/java/com/example/Service.java"
+    );
     assert_eq!(
         result.edges[0].target_qualified,
         "src/main/java/com/example/util/Helper.java"
@@ -1045,7 +1053,8 @@ fn parity_with_python_entrix_for_analyze_impact_core_fields() {
     )
     .unwrap();
 
-    let Some(python) = python_entrix_runner_json(root, "analyze_impact", &["src/service.ts"]) else {
+    let Some(python) = python_entrix_runner_json(root, "analyze_impact", &["src/service.ts"])
+    else {
         return;
     };
     let rust = serde_json::to_value(analyze_impact(
@@ -1087,15 +1096,9 @@ fn parity_with_python_entrix_for_analyze_impact_core_fields() {
         sorted_strings(python["impacted_test_files"].as_array().map_or(&[], |v| v))
     );
     assert_eq!(rust["wide_blast_radius"], python["wide_blast_radius"]);
-    assert_eq!(
-        rust["build"]["status"], python["build"]["status"],
-    );
-    assert_eq!(
-        rust["build"]["backend"], python["build"]["backend"],
-    );
-    assert_eq!(
-        rust["build"]["build_type"], python["build"]["build_type"],
-    );
+    assert_eq!(rust["build"]["status"], python["build"]["status"],);
+    assert_eq!(rust["build"]["backend"], python["build"]["backend"],);
+    assert_eq!(rust["build"]["build_type"], python["build"]["build_type"],);
 }
 
 #[test]
@@ -1129,7 +1132,11 @@ fn parity_with_python_entrix_for_graph_stats_core_fields() {
     let root = temp.path();
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(root.join("src/service.ts"), "export function run() {}\n").unwrap();
-    fs::write(root.join("src/service.test.ts"), "export function test_run() {}\n").unwrap();
+    fs::write(
+        root.join("src/service.test.ts"),
+        "export function test_run() {}\n",
+    )
+    .unwrap();
     fs::write(root.join("README.md"), "note\n").unwrap();
 
     let _ = python_entrix_runner_json(root, "build_graph", &[]);
@@ -1213,9 +1220,7 @@ fn parity_with_python_entrix_for_history_core_fields() {
     assert_eq!(rust["analysis_mode"], python["analysis_mode"]);
     assert_eq!(rust["summary"], python["summary"]);
     assert_eq!(rust["ref"], python["ref"]);
-    assert_eq!(
-        rust["build"]["backend"], python["build"]["backend"],
-    );
+    assert_eq!(rust["build"]["backend"], python["build"]["backend"],);
     assert_eq!(
         rust["commits"].as_array().map_or(0, |v| v.len()),
         python["commits"].as_array().map_or(0, |v| v.len()),
@@ -1229,8 +1234,16 @@ fn parity_with_python_entrix_for_history_core_fields() {
         assert_eq!(rust_commit["short_commit"], python_commit["short_commit"]);
         assert_eq!(rust_commit["subject"], python_commit["subject"]);
         assert_eq!(
-            sorted_strings(rust_commit["raw_changed_files"].as_array().map_or(&[], |v| v)),
-            sorted_strings(python_commit["raw_changed_files"].as_array().map_or(&[], |v| v)),
+            sorted_strings(
+                rust_commit["raw_changed_files"]
+                    .as_array()
+                    .map_or(&[], |v| v)
+            ),
+            sorted_strings(
+                python_commit["raw_changed_files"]
+                    .as_array()
+                    .map_or(&[], |v| v)
+            ),
         );
         assert_eq!(
             sorted_strings(rust_commit["changed_files"].as_array().map_or(&[], |v| v)),
@@ -1240,10 +1253,7 @@ fn parity_with_python_entrix_for_history_core_fields() {
             rust_commit["changed_file_count"],
             python_commit["changed_file_count"]
         );
-        assert_eq!(
-            rust_commit["target_count"],
-            python_commit["target_count"]
-        );
+        assert_eq!(rust_commit["target_count"], python_commit["target_count"]);
         assert_eq!(
             rust_commit["test_file_count"],
             python_commit["test_file_count"]

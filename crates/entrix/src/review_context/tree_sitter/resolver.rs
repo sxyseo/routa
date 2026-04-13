@@ -86,7 +86,10 @@ pub(super) fn resolve_go_import(
     relative_path: &str,
     import_path: &str,
 ) -> Option<String> {
-    let import_path = import_path.trim().trim_matches(&['"', '\'', '`'][..]).to_string();
+    let import_path = import_path
+        .trim()
+        .trim_matches(&['"', '\'', '`'][..])
+        .to_string();
     if import_path.is_empty() {
         return None;
     }
@@ -152,9 +155,17 @@ pub(super) fn resolve_java_import(
     let class_file = repo_root.join(format!("{package_path}.java"));
     let package_dir = repo_root.join(&package_path);
     let mut candidates = vec![class_file.to_path_buf(), package_dir.to_path_buf()];
-    candidates.push(repo_root.join("src/main/java").join(format!("{package_path}.java")));
+    candidates.push(
+        repo_root
+            .join("src/main/java")
+            .join(format!("{package_path}.java")),
+    );
     candidates.push(repo_root.join("src/main/java").join(&package_path));
-    candidates.push(repo_root.join("src/test/java").join(format!("{package_path}.java")));
+    candidates.push(
+        repo_root
+            .join("src/test/java")
+            .join(format!("{package_path}.java")),
+    );
     candidates.push(repo_root.join("src/test/java").join(&package_path));
 
     for candidate in candidates {
@@ -287,7 +298,9 @@ fn first_source_file_in_directory(
         return Some(path.to_string_lossy().to_string());
     }
     skipped.sort();
-    skipped.first().map(|path| path.to_string_lossy().to_string())
+    skipped
+        .first()
+        .map(|path| path.to_string_lossy().to_string())
 }
 
 fn rust_crate_root(repo_root: &Path, relative_path: &str) -> Option<std::path::PathBuf> {
