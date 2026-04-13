@@ -796,16 +796,7 @@ fn render_runs_panel(
         format!("{}-{}/{}", start + 1, end, sessions.len())
     };
     let controls_line = Line::from(vec![
-        Span::styled(" filter:", Style::default().fg(colors.muted)),
-        Span::styled(
-            state.run_filter_mode.label(),
-            Style::default().fg(colors.accent),
-        ),
-        Span::styled("  sort:", Style::default().fg(colors.muted)),
-        Span::styled(
-            state.run_sort_mode.label(),
-            Style::default().fg(colors.accent),
-        ),
+        Span::styled(" recent first", Style::default().fg(colors.muted)),
         Span::styled("  view:", Style::default().fg(colors.muted)),
         Span::styled(progress_text, Style::default().fg(colors.text)),
     ]);

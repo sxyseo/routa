@@ -78,48 +78,6 @@ impl EventLogFilter {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileListMode {
-    Global,
-    UnknownConflict,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunSortMode {
-    Recent,
-    Started,
-    Files,
-    Name,
-}
-
-impl RunSortMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            RunSortMode::Recent => "recent",
-            RunSortMode::Started => "started",
-            RunSortMode::Files => "files",
-            RunSortMode::Name => "name",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunFilterMode {
-    All,
-    Active,
-    Attention,
-}
-
-impl RunFilterMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            RunFilterMode::All => "all",
-            RunFilterMode::Active => "active",
-            RunFilterMode::Attention => "review",
-        }
-    }
-}
-
 pub const UNKNOWN_SESSION_ID: &str = "__unknown__";
 pub const ALL_RUNS_SESSION_ID: &str = "__all__";
 pub const ALL_PROMPT_SESSIONS_ID: &str = "__all_prompt_sessions__";
@@ -228,9 +186,6 @@ pub struct RuntimeState {
     pub files: BTreeMap<String, FileView>,
     pub event_log: VecDeque<EventLogEntry>,
     pub follow_mode: bool,
-    pub file_list_mode: FileListMode,
-    pub run_sort_mode: RunSortMode,
-    pub run_filter_mode: RunFilterMode,
     pub focus: FocusPane,
     pub detail_mode: DetailMode,
     pub theme_mode: ThemeMode,
@@ -270,9 +225,6 @@ impl RuntimeState {
             files: BTreeMap::new(),
             event_log: VecDeque::new(),
             follow_mode: true,
-            file_list_mode: FileListMode::Global,
-            run_sort_mode: RunSortMode::Recent,
-            run_filter_mode: RunFilterMode::All,
             focus: FocusPane::Runs,
             detail_mode: DetailMode::Diff,
             theme_mode: ThemeMode::Dark,

@@ -1,6 +1,5 @@
 ---
 source: crates/harness-monitor/src/ui/tests.rs
-assertion_line: 1151
 expression: "render_snapshot(&state, &mut cache, 96, 24)"
 ---
 routa.js  2 dirty  1 unassigned  lines: --  loc: --  transport: socket
@@ -26,4 +25,4 @@ routa.js  2 dirty  1 unassigned  lines: --  loc: --  transport: socket
 │                                                                 ││Test mapping: changed  rust│
 │                                                                 ││Resolver: hybrid_heuristic │
 └─────────────────────────────────────────────────────────────────┘└───────────────────────────┘
-Tab panes  ↑↓ select  S run sort  v run filter  u unassigned  d preview  Pg scroll  g refresh al
+Tab panes  ↑↓ select  d preview  Pg scroll  g refresh all  m fast/full  q quit

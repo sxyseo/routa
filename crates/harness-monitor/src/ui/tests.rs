@@ -1,11 +1,10 @@
 use super::*;
+use crate::observe::ipc::RuntimeFeed;
 use crate::shared::models::{
     AttributionConfidence, DetectedAgent, EntryKind, EventLogEntry, EventSource, FileView,
     FitnessEvent, RuntimeMessage, RuntimeServiceInfo, SessionView, TaskView,
 };
-use crate::ui::state::{
-    DetailMode, FileListMode, FocusPane, ThemeMode, ALL_RUNS_SESSION_ID, UNKNOWN_SESSION_ID,
-};
+use crate::ui::state::{DetailMode, FocusPane, ThemeMode, ALL_RUNS_SESSION_ID, UNKNOWN_SESSION_ID};
 use crate::ui::tui::highlight::highlight_code_text;
 use pretty_assertions::assert_eq;
 use ratatui::backend::TestBackend;
@@ -474,7 +473,6 @@ fn search_filters_sessions_and_files() {
 #[test]
 fn assign_selected_file_to_selected_session_updates_owner() {
     let mut state = sample_state();
-    state.file_list_mode = FileListMode::Global;
     state.refresh_views();
     state.selected_run = state
         .runs()
@@ -643,7 +641,6 @@ fn fitness_cache_key_changes_when_coverage_artifact_changes() {
 #[test]
 fn selected_file_assignment_message_is_attribution_event() {
     let mut state = sample_state();
-    state.file_list_mode = FileListMode::Global;
     state.refresh_views();
     state.selected_run = state
         .runs()
@@ -1148,7 +1145,6 @@ fn tui_snapshot_search_mode() {
     let mut state = sample_state();
     state.search_query = "route.ts".to_string();
     state.search_active = true;
-    state.file_list_mode = FileListMode::Global;
     state.selected_file = 0;
     state.refresh_views();
     let mut cache = sample_cache(&state);
@@ -1358,46 +1354,6 @@ fn detected_agents_attach_to_session_when_match_is_unique() {
     assert_eq!(session.agent_summary.as_deref(), Some("agent codex#4211"));
     assert_eq!(state.unmatched_agents().len(), 1);
     assert_eq!(state.unmatched_agents()[0].name, "Claude");
-}
-
-#[test]
-fn run_filter_attention_keeps_unknown_review_bucket() {
-    let mut state = sample_state();
-    state.run_filter_mode = crate::ui::state::RunFilterMode::Attention;
-    state.refresh_views();
-
-    let runs = state.runs();
-    assert!(runs.iter().any(|run| run.session_id == UNKNOWN_SESSION_ID));
-    assert!(runs.iter().all(|run| {
-        run.is_unknown_bucket
-            || run.is_synthetic_agent_run
-            || run.unknown_count > 0
-            || matches!(
-                run.status.as_str(),
-                "idle" | "unknown" | "stopped" | "ended"
-            )
-    }));
-}
-
-#[test]
-fn run_sort_by_name_orders_named_runs_alphabetically() {
-    let mut state = sample_state();
-    state.run_sort_mode = crate::ui::state::RunSortMode::Name;
-    state.refresh_views();
-
-    let runs = state.runs();
-    assert_eq!(
-        runs.first().map(|run| run.display_name.as_str()),
-        Some("All")
-    );
-    assert_eq!(
-        runs.get(1).map(|run| run.display_name.as_str()),
-        Some("Fix harness monitor task journey")
-    );
-    assert_eq!(
-        runs.get(2).map(|run| run.display_name.as_str()),
-        Some("Unknown / review")
-    );
 }
 
 #[test]

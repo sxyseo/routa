@@ -168,37 +168,6 @@ impl RuntimeState {
         self.clamp_selection();
     }
 
-    pub fn cycle_file_list_mode(&mut self) {
-        self.file_list_mode = match self.file_list_mode {
-            FileListMode::Global => FileListMode::UnknownConflict,
-            FileListMode::UnknownConflict => FileListMode::Global,
-        };
-        self.rebuild_views();
-        self.selected_file = 0;
-        self.restore_detail_scroll_for_selection();
-    }
-
-    pub fn cycle_run_sort_mode(&mut self) {
-        self.run_sort_mode = match self.run_sort_mode {
-            RunSortMode::Recent => RunSortMode::Started,
-            RunSortMode::Started => RunSortMode::Files,
-            RunSortMode::Files => RunSortMode::Name,
-            RunSortMode::Name => RunSortMode::Recent,
-        };
-        self.rebuild_views();
-        self.set_selected_run(0);
-    }
-
-    pub fn cycle_run_filter_mode(&mut self) {
-        self.run_filter_mode = match self.run_filter_mode {
-            RunFilterMode::All => RunFilterMode::Active,
-            RunFilterMode::Active => RunFilterMode::Attention,
-            RunFilterMode::Attention => RunFilterMode::All,
-        };
-        self.rebuild_views();
-        self.set_selected_run(0);
-    }
-
     pub fn toggle_detail_mode(&mut self) {
         self.detail_mode = match self.detail_mode {
             DetailMode::Diff => DetailMode::File,

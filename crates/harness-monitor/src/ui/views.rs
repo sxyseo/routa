@@ -34,10 +34,7 @@ impl RuntimeState {
             .sessions
             .values()
             .filter(|session| self.matches_session_search(session))
-            .filter(|session| {
-                self.run_filter_mode == crate::ui::state::RunFilterMode::Attention
-                    || self.session_is_current_run_context(session, now_ms)
-            })
+            .filter(|session| self.session_is_current_run_context(session, now_ms))
             .map(|session| {
                 let (exact_count, inferred_count, unknown_count) =
                     self.session_confidence_counts(session);
@@ -74,10 +71,7 @@ impl RuntimeState {
         items.extend(
             self.unmatched_agents_for_runs(&agent_matches)
                 .into_iter()
-                .filter(|_| {
-                    self.run_filter_mode == crate::ui::state::RunFilterMode::Attention
-                        || hook_backed_session_count == 0
-                })
+                .filter(|_| hook_backed_session_count == 0)
                 .filter(|agent| self.matches_detected_agent_search(agent))
                 .map(|agent| SessionListItem {
                     session_id: format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
@@ -197,8 +191,7 @@ impl RuntimeState {
                 is_all_runs_bucket: true,
             });
         }
-        items.retain(|item| self.matches_run_filter(item));
-        items.sort_by(|a, b| compare_run_items(a, b, self.run_sort_mode));
+        items.sort_by(compare_run_items);
         if let Some(index) = items.iter().position(|item| item.is_all_runs_bucket) {
             let all_item = items.remove(index);
             items.insert(0, all_item);
@@ -327,17 +320,6 @@ impl RuntimeState {
             .filter(|file| file.dirty || file.conflicted)
             .filter(|file| self.matches_file_search(file))
             .collect();
-        match self.file_list_mode {
-            FileListMode::Global => {}
-            FileListMode::UnknownConflict => {
-                items.retain(|file| {
-                    file.conflicted
-                        || matches!(file.confidence, AttributionConfidence::Unknown)
-                        || file.touched_by.len() > 1
-                        || file.last_session_id.is_none()
-                });
-            }
-        }
         items.sort_by(|a, b| {
             file_group_sort_key(a, &self.files)
                 .cmp(&file_group_sort_key(b, &self.files))
@@ -369,22 +351,6 @@ impl RuntimeState {
         }
         self.cached_unmatched_agent_keys = self.compute_unmatched_agent_keys();
         self.cached_file_item_keys = self.compute_file_item_keys();
-    }
-
-    fn matches_run_filter(&self, item: &SessionListItem) -> bool {
-        match self.run_filter_mode {
-            RunFilterMode::All => true,
-            RunFilterMode::Active => item.status == "active",
-            RunFilterMode::Attention => {
-                item.is_unknown_bucket
-                    || item.is_synthetic_agent_run
-                    || item.unknown_count > 0
-                    || matches!(
-                        item.status.as_str(),
-                        "idle" | "unknown" | "stopped" | "ended"
-                    )
-            }
-        }
     }
 
     fn unmatched_agents_for_runs<'a>(
@@ -702,28 +668,10 @@ impl AgentMatchState {
     }
 }
 
-fn compare_run_items(
-    a: &SessionListItem,
-    b: &SessionListItem,
-    sort_mode: RunSortMode,
-) -> std::cmp::Ordering {
-    let primary = match sort_mode {
-        RunSortMode::Recent => b.last_seen_at_ms.cmp(&a.last_seen_at_ms),
-        RunSortMode::Started => b.started_at_ms.cmp(&a.started_at_ms),
-        RunSortMode::Files => b
-            .touched_files_count
-            .cmp(&a.touched_files_count)
-            .then_with(|| b.unknown_count.cmp(&a.unknown_count)),
-        RunSortMode::Name => a
-            .primary_label()
-            .to_ascii_lowercase()
-            .cmp(&b.primary_label().to_ascii_lowercase()),
-    };
-
+fn compare_run_items(a: &SessionListItem, b: &SessionListItem) -> std::cmp::Ordering {
     a.is_unknown_bucket
         .cmp(&b.is_unknown_bucket)
         .then_with(|| a.is_synthetic_agent_run.cmp(&b.is_synthetic_agent_run))
-        .then(primary)
         .then_with(|| b.last_seen_at_ms.cmp(&a.last_seen_at_ms))
         .then_with(|| a.session_id.cmp(&b.session_id))
 }
