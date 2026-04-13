@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { monitorApiRoute } from "@/core/http/api-route-observability";
 import { getRoutaSystem } from "@/core/routa-system";
-import { hydrateTaskComments, TaskPriority, TaskStatus, type Task } from "@/core/models/task";
+import { hydrateTaskComments, TaskPriority, TaskStatus, VerificationVerdict, type Task } from "@/core/models/task";
 import { columnIdToTaskStatus, taskStatusToColumnId } from "@/core/models/kanban";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { ensureTaskBoardContext } from "@/core/kanban/task-board-context";
@@ -49,6 +49,7 @@ import {
   countContractGateFailures,
   resolveCurrentOrNextContractGate,
 } from "@/core/kanban/task-contract-readiness";
+import { resolveTaskWorktreeTruth } from "@/core/kanban/task-worktree-truth";
 
 export const dynamic = "force-dynamic";
 
@@ -212,6 +213,16 @@ export async function PATCH(
   const nextTask: Task = { ...existing, updatedAt: new Date() };
   let transitionDeliveryReadiness: TaskDeliveryReadiness | undefined;
 
+  if (
+    existing.columnId === "review"
+    && body.columnId === undefined
+    && body.status === undefined
+    && body.verificationVerdict === VerificationVerdict.NOT_APPROVED
+  ) {
+    body.columnId = "dev";
+    body.status = TaskStatus.IN_PROGRESS;
+  }
+
   if (body.title !== undefined) nextTask.title = body.title;
   if (body.objective !== undefined) nextTask.objective = body.objective;
   if (body.comment !== undefined) nextTask.comment = body.comment;
@@ -261,8 +272,11 @@ export async function PATCH(
 
   // Check required artifacts before allowing column transition
   if (body.columnId !== undefined && body.columnId !== existing.columnId) {
+    const allowReviewFallbackToDev = existing.columnId === "review"
+      && body.columnId === "dev"
+      && nextTask.verificationVerdict === VerificationVerdict.NOT_APPROVED;
     if (boardId && board) {
-        if (existing.triggerSessionId) {
+        if (existing.triggerSessionId && !allowReviewFallbackToDev) {
           const laneAutomationState = resolveCurrentLaneAutomationState(existing, board.columns, {
             currentSessionId: existing.triggerSessionId,
           });
@@ -473,16 +487,10 @@ export async function PATCH(
     : undefined;
 
   if ((enteringDev || assignedWhileInDev || retryingTrigger) && !nextTask.triggerSessionId) {
-    // Determine which codebase to use: first from task's codebaseIds, else repo path, else default
-    let preferredCodebase = body.repoPath
-      ? await system.codebaseStore.findByRepoPath(nextTask.workspaceId, body.repoPath)
-      : undefined;
-    if (!preferredCodebase && (nextTask.codebaseIds?.length ?? 0) > 0) {
-      preferredCodebase = await system.codebaseStore.get(nextTask.codebaseIds![0]);
-    }
-    if (!preferredCodebase) {
-      preferredCodebase = await system.codebaseStore.getDefault(nextTask.workspaceId);
-    }
+    const worktreeTruth = await resolveTaskWorktreeTruth(nextTask, system, {
+      preferredRepoPath: body.repoPath,
+    });
+    const preferredCodebase = worktreeTruth?.codebase;
 
     // Auto-create worktree when entering dev column (if no worktree yet and codebase exists)
     if (enteringDev && preferredCodebase && !nextTask.worktreeId) {

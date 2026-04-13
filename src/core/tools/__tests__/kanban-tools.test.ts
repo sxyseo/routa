@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createKanbanBoard } from "../../models/kanban";
-import { createTask } from "../../models/task";
+import { EventBus, AgentEventType } from "../../events/event-bus";
+import { createTask, VerificationVerdict } from "../../models/task";
 import { createInMemorySystem } from "../../routa-system";
 import { resetWorkflowOrchestrator } from "../../kanban/workflow-orchestrator-singleton";
 import { InMemoryKanbanBoardStore } from "../../store/kanban-board-store";
@@ -269,6 +270,102 @@ describe("KanbanTools", () => {
       requestType: "environment_preparation",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns review to dev on a not-approved handoff and persists worktree context", async () => {
+    const boardStore = new InMemoryKanbanBoardStore();
+    const taskStore = new InMemoryTaskStore();
+    const tools = new KanbanTools(boardStore, taskStore);
+    const eventBus = new EventBus();
+    tools.setEventBus(eventBus);
+
+    const transitionEvents: Array<{ fromColumnId: string; toColumnId: string }> = [];
+    eventBus.on("test-review-return", (event) => {
+      if (event.type === AgentEventType.COLUMN_TRANSITION) {
+        transitionEvents.push(event.data as { fromColumnId: string; toColumnId: string });
+      }
+    });
+
+    const board = createKanbanBoard({
+      id: "board-1",
+      workspaceId: "default",
+      name: "Default Board",
+      isDefault: true,
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        { id: "dev", name: "Dev", position: 1, stage: "dev" },
+        { id: "review", name: "Review", position: 2, stage: "review" },
+      ],
+    });
+    await boardStore.save(board);
+
+    const task = createTask({
+      id: "task-review-return",
+      title: "Review returns to dev",
+      objective: "Keep the original worktree on re-entry",
+      workspaceId: "default",
+      boardId: board.id,
+      columnId: "review",
+      worktreeId: "wt-1",
+    });
+    task.verificationVerdict = VerificationVerdict.NOT_APPROVED;
+    task.triggerSessionId = "session-review-1";
+    task.laneSessions = [
+      {
+        sessionId: "session-dev-1",
+        worktreeId: "wt-1",
+        cwd: "/tmp/worktrees/task-review-return",
+        columnId: "dev",
+        columnName: "Dev",
+        provider: "opencode",
+        role: "DEVELOPER",
+        status: "completed",
+        startedAt: "2026-03-17T00:00:00.000Z",
+      },
+      {
+        sessionId: "session-review-1",
+        columnId: "review",
+        columnName: "Review",
+        provider: "opencode",
+        role: "GATE",
+        status: "running",
+        startedAt: "2026-03-17T00:10:00.000Z",
+      },
+    ];
+    await taskStore.save(task);
+
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ result: {} }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch;
+
+    const result = await tools.requestPreviousLaneHandoff({
+      taskId: task.id,
+      requestType: "runtime_context",
+      request: "Reuse the existing app process and share the URL.",
+      sessionId: "session-review-1",
+    });
+
+    expect(result.success).toBe(true);
+    const savedTask = await taskStore.get(task.id);
+    expect(savedTask).toMatchObject({
+      columnId: "dev",
+      status: "IN_PROGRESS",
+      worktreeId: "wt-1",
+      triggerSessionId: undefined,
+    });
+    expect(savedTask?.laneHandoffs[0]).toMatchObject({
+      status: "delivered",
+      worktreeId: "wt-1",
+      cwd: "/tmp/worktrees/task-review-return",
+      toColumnId: "dev",
+    });
+    expect(transitionEvents).toEqual([
+      expect.objectContaining({
+        fromColumnId: "review",
+        toColumnId: "dev",
+      }),
+    ]);
   });
 
   it("submits a lane handoff response back to the requesting session", async () => {

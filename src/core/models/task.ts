@@ -121,6 +121,7 @@ export type TaskLaneHandoffStatus =
 export interface TaskLaneSession {
   sessionId: string;
   routaAgentId?: string;
+  worktreeId?: string;
   cwd?: string;
   columnId?: string;
   columnName?: string;
@@ -155,6 +156,8 @@ export interface TaskLaneHandoff {
   toSessionId: string;
   fromColumnId?: string;
   toColumnId?: string;
+  worktreeId?: string;
+  cwd?: string;
   requestType: TaskLaneHandoffRequestType;
   request: string;
   status: TaskLaneHandoffStatus;

@@ -29,7 +29,7 @@ const system = {
   taskStore,
   kanbanBoardStore: { get: vi.fn() },
   workspaceStore: { get: vi.fn() },
-  worktreeStore: { assignSession: vi.fn() },
+  worktreeStore: { assignSession: vi.fn(), get: vi.fn() },
   codebaseStore: { findByRepoPath: vi.fn(), get: vi.fn(), getDefault: vi.fn() },
   eventBus: {},
   artifactStore: undefined as InMemoryArtifactStore | undefined,
@@ -112,6 +112,10 @@ describe("/api/tasks/[taskId]", () => {
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(null);
     taskStore.save.mockResolvedValue();
     system.kanbanBoardStore.get = vi.fn().mockResolvedValue(null);
+    system.worktreeStore.get = vi.fn().mockResolvedValue(undefined);
+    system.codebaseStore.findByRepoPath = vi.fn().mockResolvedValue(undefined);
+    system.codebaseStore.get = vi.fn().mockResolvedValue(undefined);
+    system.codebaseStore.getDefault = vi.fn().mockResolvedValue(undefined);
     system.artifactStore = undefined;
     await artifactStore.deleteByTask("task-1");
     taskStore.get.mockResolvedValue(createTask({
@@ -492,6 +496,57 @@ describe("/api/tasks/[taskId]", () => {
       triggerSessionId: "session-new",
     }));
     expect(data.task.triggerSessionId).toBe("session-new");
+  });
+
+  it("reuses the existing task worktree when retrying a dev trigger", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Retry dev on the same worktree",
+      objective: "Keep using the existing dev worktree",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+      triggerSessionId: "session-dev-old",
+      worktreeId: "wt-1",
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.worktreeStore.get = vi.fn().mockResolvedValue({
+      id: "wt-1",
+      codebaseId: "repo-1",
+      workspaceId: "workspace-1",
+      worktreePath: "/tmp/worktrees/task-1",
+      branch: "issue/task-1",
+      baseBranch: "main",
+      status: "active",
+    });
+    system.codebaseStore.get = vi.fn().mockResolvedValue({
+      id: "repo-1",
+      workspaceId: "workspace-1",
+      repoPath: "/tmp/repos/main",
+      branch: "main",
+    });
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ retryTrigger: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(createWorktree).not.toHaveBeenCalled();
+    expect(capturedEnqueueTask).toMatchObject({
+      id: "task-1",
+      columnId: "dev",
+      worktreeId: "wt-1",
+      triggerSessionId: undefined,
+    });
+    expect(data.task.worktreeId).toBe("wt-1");
   });
 
   it("passes a retry provider override without persisting a card provider override", async () => {
@@ -924,5 +979,82 @@ describe("/api/tasks/[taskId]", () => {
       label: "cf7f1e28",
       baseBranch: "main",
     }));
+    expect(capturedEnqueueTask).toMatchObject({
+      id: taskId,
+      columnId: "dev",
+      worktreeId: "wt-1",
+    });
+  });
+
+  it("returns a review card to dev and reuses the original worktree when review is not approved", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Return review feedback to dev",
+      objective: "Send the fix back to dev on the same worktree",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+      triggerSessionId: "session-review-1",
+      worktreeId: "wt-1",
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    prepareTaskForColumnChange.mockImplementationOnce((_fromColumnId, task) => {
+      if (task) {
+        task.triggerSessionId = undefined;
+        task.lastSyncError = undefined;
+      }
+      return true;
+    });
+    system.worktreeStore.get = vi.fn().mockResolvedValue({
+      id: "wt-1",
+      codebaseId: "repo-1",
+      workspaceId: "workspace-1",
+      worktreePath: "/tmp/worktrees/task-1",
+      branch: "issue/task-1",
+      baseBranch: "main",
+      status: "active",
+    });
+    system.codebaseStore.get = vi.fn().mockResolvedValue({
+      id: "repo-1",
+      workspaceId: "workspace-1",
+      repoPath: "/tmp/repos/main",
+      branch: "main",
+    });
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "dev", name: "Dev", position: 1, stage: "dev" },
+        { id: "review", name: "Review", position: 2, stage: "review" },
+      ],
+    });
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        verificationVerdict: VerificationVerdict.NOT_APPROVED,
+        verificationReport: "Please address the failing review checks.",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(createWorktree).not.toHaveBeenCalled();
+    expect(capturedEnqueueTask).toMatchObject({
+      id: "task-1",
+      columnId: "dev",
+      worktreeId: "wt-1",
+    });
+    expect(data.task).toMatchObject({
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+      verificationVerdict: VerificationVerdict.NOT_APPROVED,
+      worktreeId: "wt-1",
+    });
   });
 });

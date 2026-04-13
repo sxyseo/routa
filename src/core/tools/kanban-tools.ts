@@ -71,6 +71,7 @@ import {
   countContractGateFailures,
   resolveCurrentOrNextContractGate,
 } from "../kanban/task-contract-readiness";
+import { resolveTaskWorktreeTruth } from "../kanban/task-worktree-truth";
 
 const DESCRIPTION_FROZEN_STAGES = new Set<KanbanColumnStage>(["dev", "review", "blocked", "done"]);
 
@@ -249,7 +250,10 @@ export class KanbanTools {
 
     const fromColumnId = task.columnId ?? "backlog";
     const fromColumn = board.columns.find((c) => c.id === fromColumnId);
-    if (fromColumnId !== params.targetColumnId && task.triggerSessionId) {
+    const allowReviewFallbackToDev = fromColumnId === "review"
+      && params.targetColumnId === "dev"
+      && task.verificationVerdict === "NOT_APPROVED";
+    if (fromColumnId !== params.targetColumnId && task.triggerSessionId && !allowReviewFallbackToDev) {
       const laneAutomationState = resolveCurrentLaneAutomationState(task, board.columns, {
         currentSessionId: task.triggerSessionId,
       });
@@ -464,6 +468,10 @@ export class KanbanTools {
     if (!previousLaneSession?.sessionId) {
       return errorResult(`No previous lane session found for card ${params.taskId}`);
     }
+    const taskWorktreeTruth = this.automationSystem
+      ? await resolveTaskWorktreeTruth(task, this.automationSystem)
+      : null;
+    const targetCwd = previousLaneSession.cwd ?? taskWorktreeTruth?.cwd ?? currentLaneSession?.cwd;
 
     const handoff = createTaskLaneHandoff({
       id: uuidv4(),
@@ -471,11 +479,47 @@ export class KanbanTools {
       toSessionId: previousLaneSession.sessionId,
       fromColumnId: currentLaneSession?.columnId ?? task.columnId,
       toColumnId: previousLaneSession.columnId,
+      worktreeId: task.worktreeId,
+      cwd: targetCwd,
       requestType: params.requestType,
       request: params.request,
     });
     upsertTaskLaneHandoff(task, handoff);
+    const shouldReturnToPreviousLane = task.columnId === "review"
+      && task.verificationVerdict === "NOT_APPROVED"
+      && previousLaneSession.columnId
+      && previousLaneSession.columnId !== task.columnId;
+    const previousColumn = shouldReturnToPreviousLane
+      ? board.columns.find((column) => column.id === previousLaneSession.columnId)
+      : undefined;
+    if (shouldReturnToPreviousLane && previousLaneSession.columnId) {
+      if (task.triggerSessionId) {
+        if (!task.sessionIds.includes(task.triggerSessionId)) {
+          task.sessionIds.push(task.triggerSessionId);
+        }
+        markTaskLaneSessionStatus(task, task.triggerSessionId, "transitioned");
+        task.triggerSessionId = undefined;
+      }
+      task.columnId = previousLaneSession.columnId;
+      task.status = columnIdToTaskStatus(previousLaneSession.columnId);
+      task.updatedAt = new Date();
+    }
     await this.taskStore.save(task);
+    if (shouldReturnToPreviousLane && previousLaneSession.columnId) {
+      this.notifyWorkspaceChanged(task.workspaceId, "task", "moved", task.id);
+      if (this.eventBus) {
+        emitColumnTransition(this.eventBus, {
+          cardId: task.id,
+          cardTitle: task.title,
+          boardId: task.boardId,
+          workspaceId: task.workspaceId,
+          fromColumnId: "review",
+          toColumnId: previousLaneSession.columnId,
+          fromColumnName: board.columns.find((column) => column.id === "review")?.name,
+          toColumnName: previousColumn?.name,
+        });
+      }
+    }
 
     try {
       await this.promptSession(
@@ -488,6 +532,8 @@ export class KanbanTools {
           request: params.request,
           requestingColumnId: handoff.fromColumnId,
           requestingSessionId: params.sessionId,
+          worktreeId: handoff.worktreeId,
+          cwd: handoff.cwd,
         }),
       );
       handoff.status = "delivered";
@@ -863,6 +909,8 @@ export class KanbanTools {
     request: string;
     requestingColumnId?: string;
     requestingSessionId: string;
+    worktreeId?: string;
+    cwd?: string;
   }): string {
     return [
       `You have received a lane handoff request for card ${params.task.id}: ${params.task.title}.`,
@@ -870,6 +918,8 @@ export class KanbanTools {
       `Requesting lane: ${params.requestingColumnId ?? "unknown"}`,
       `Request type: ${this.formatHandoffRequestType(params.requestType)}`,
       `Request: ${params.request}`,
+      params.worktreeId ? `Task worktreeId: ${params.worktreeId}` : undefined,
+      params.cwd ? `Task cwd: ${params.cwd}` : undefined,
       "",
       "Complete only the requested support work for this card.",
       "If runtime setup or environment preparation is needed, perform it in this session.",
@@ -889,6 +939,8 @@ export class KanbanTools {
       `Request type: ${this.formatHandoffRequestType(handoff.requestType)}`,
       `Status: ${handoff.status}`,
       `Original request: ${handoff.request}`,
+      handoff.worktreeId ? `Task worktreeId: ${handoff.worktreeId}` : undefined,
+      handoff.cwd ? `Task cwd: ${handoff.cwd}` : undefined,
       handoff.responseSummary ? `Response: ${handoff.responseSummary}` : "Response: no summary provided",
       "",
       "Continue your current lane work using this updated runtime context.",

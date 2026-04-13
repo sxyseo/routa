@@ -8,6 +8,7 @@ import type { KanbanDeliveryRules } from "@/core/models/kanban";
 import type { Codebase } from "@/core/models/codebase";
 import type { Task } from "@/core/models/task";
 import type { Worktree } from "@/core/models/worktree";
+import { resolveTaskWorktreeTruth } from "./task-worktree-truth";
 
 interface DeliverySystemLike {
   codebaseStore: {
@@ -48,31 +49,16 @@ async function resolveTaskRepoContext(
   task: Task,
   system: DeliverySystemLike,
 ): Promise<TaskRepoContext | null> {
-  if (task.worktreeId) {
-    const worktree = await system.worktreeStore.get(task.worktreeId);
-    if (worktree?.worktreePath) {
-      const codebase = await system.codebaseStore.get(worktree.codebaseId);
-      return {
-        repoPath: worktree.worktreePath,
-        baseBranch: worktree.baseBranch || codebase?.branch,
-        codebase,
-      };
-    }
-  }
-
-  const primaryCodebaseId = task.codebaseIds[0];
-  const codebase = primaryCodebaseId
-    ? await system.codebaseStore.get(primaryCodebaseId)
-    : await system.codebaseStore.getDefault(task.workspaceId);
-  if (!codebase?.repoPath) {
+  const truth = await resolveTaskWorktreeTruth(task, system);
+  if (!truth) {
     return null;
   }
 
   return {
-    repoPath: codebase.repoPath,
-    baseBranch: codebase.branch,
-    codebase,
-    requiresWorktree: true,
+    repoPath: truth.repoPath,
+    baseBranch: truth.baseBranch,
+    codebase: truth.codebase,
+    requiresWorktree: truth.source !== "task.worktreeId",
   };
 }
 
