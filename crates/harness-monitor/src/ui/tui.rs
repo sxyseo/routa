@@ -1,7 +1,9 @@
 use crate::observe;
 use crate::observe::ipc::RuntimeFeed;
 use crate::observe::repo::RepoContext;
-use crate::shared::models::{DirtyRepoEntry, FitnessEvent, RuntimeMessage, DEFAULT_TUI_POLL_MS};
+use crate::shared::models::{
+    DetectedAgent, DirtyRepoEntry, FitnessEvent, RuntimeMessage, DEFAULT_TUI_POLL_MS,
+};
 use crate::ui::state::{DetailMode, EventLogFilter, RuntimeState, ThemeMode};
 use anyhow::{Context, Result};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
@@ -17,7 +19,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::sync::LazyLock;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
@@ -48,7 +50,6 @@ const STOPPED: Color = Color::Rgb(201, 96, 87);
 const IDLE: Color = Color::Rgb(122, 132, 143);
 const SESSION_BOOTSTRAP_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 const TRANSPORT_REFRESH_MS: u64 = 1200;
-const REPO_STATUS_REFRESH_MS: u64 = 5000;
 const AGENT_SCAN_REFRESH_MS: u64 = 15_000;
 const FITNESS_AUTO_REFRESH_MS: u64 = 10 * 60 * 1000;
 const FITNESS_CACHE_CHECK_MS: u64 = 1500;
@@ -60,7 +61,9 @@ const RUNTIME_FEED_SIGNAL_MS: u64 = 120;
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct RepoStatusSummary {
     branch: Option<String>,
+    upstream: Option<String>,
     ahead_count: Option<usize>,
+    committed_change_summary: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,14 +78,27 @@ enum UiSignal {
     Terminal(Event),
     Feed(Vec<RuntimeMessage>),
     TranscriptBootstrap(Vec<RuntimeMessage>),
-    InitialRepo(InitialRepoSnapshot),
+    RepoSnapshot(RepoSnapshot),
+    DetectedAgents(Vec<DetectedAgent>),
+    RuntimeTransport(String),
+    FitnessAutoRefresh,
+    FitnessMailboxSync,
+    SccRefresh,
+    CacheResultsReady,
+    Tick,
 }
 
 #[derive(Debug, Default)]
-struct InitialRepoSnapshot {
+struct RepoSnapshot {
     dirty: Option<Vec<DirtyRepoEntry>>,
     repo_status: Option<RepoStatusSummary>,
+    worktree_count: Option<usize>,
     warning: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RefreshCommand {
+    RefreshNow,
 }
 
 pub fn run(ctx: RepoContext, poll_interval_ms: u64) -> Result<()> {
@@ -543,6 +559,7 @@ fn apply_repo_status(state: &mut RuntimeState, repo_status: Option<RepoStatusSum
     let repo_status = repo_status.unwrap_or_default();
     state.branch = repo_status.branch.unwrap_or_else(|| "-".to_string());
     state.set_ahead_count(repo_status.ahead_count);
+    state.set_committed_change_summary(repo_status.committed_change_summary);
 }
 
 fn refresh_repo_snapshot(ctx: &RepoContext, state: &mut RuntimeState) -> Result<()> {
@@ -568,16 +585,24 @@ fn read_repo_status(ctx: &RepoContext) -> Result<RepoStatusSummary> {
     }
 
     let status = String::from_utf8(output.stdout).context("decode branch status output")?;
-    Ok(parse_repo_status(&status))
+    let mut summary = parse_repo_status(&status);
+    summary.committed_change_summary = summary
+        .upstream
+        .as_deref()
+        .and_then(|upstream| read_committed_change_summary(ctx, upstream).ok().flatten());
+    Ok(summary)
 }
 
 fn parse_repo_status(output: &str) -> RepoStatusSummary {
     let mut branch = None;
+    let mut upstream = None;
     let mut ahead_count = None;
 
     for line in output.lines().map(str::trim) {
         if let Some(value) = line.strip_prefix("# branch.head ") {
             branch = normalize_branch_name(value.trim());
+        } else if let Some(value) = line.strip_prefix("# branch.upstream ") {
+            upstream = Some(value.trim().to_string());
         } else if let Some(value) = line.strip_prefix("# branch.ab ") {
             ahead_count = parse_branch_ab(value);
         }
@@ -585,8 +610,56 @@ fn parse_repo_status(output: &str) -> RepoStatusSummary {
 
     RepoStatusSummary {
         branch,
+        upstream,
         ahead_count,
+        committed_change_summary: None,
     }
+}
+
+fn read_committed_change_summary(
+    ctx: &RepoContext,
+    upstream_ref: &str,
+) -> Result<Option<(usize, usize)>> {
+    let range = format!("{upstream_ref}...HEAD");
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&ctx.repo_root)
+        .arg("diff")
+        .arg("--shortstat")
+        .arg(&range)
+        .output()
+        .with_context(|| format!("run git diff --shortstat {range}"))?;
+    if !output.status.success() {
+        anyhow::bail!("git diff --shortstat failed for {range}");
+    }
+
+    let stdout = String::from_utf8(output.stdout).context("decode git diff --shortstat output")?;
+    Ok(parse_shortstat(&stdout))
+}
+
+fn parse_shortstat(output: &str) -> Option<(usize, usize)> {
+    let mut additions = 0usize;
+    let mut deletions = 0usize;
+    let mut saw_metric = false;
+
+    for segment in output.trim().split(',').map(str::trim) {
+        let Some(value) = segment
+            .split_whitespace()
+            .next()
+            .and_then(|value| value.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        if segment.contains("insertion") {
+            additions = value;
+            saw_metric = true;
+        } else if segment.contains("deletion") {
+            deletions = value;
+            saw_metric = true;
+        }
+    }
+
+    saw_metric.then_some((additions, deletions))
 }
 
 fn normalize_branch_name(branch: &str) -> Option<String> {

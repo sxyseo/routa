@@ -205,6 +205,7 @@ fn sample_state() -> RuntimeState {
     state.last_refresh_at_ms = now - 120_000;
     state.runtime_transport = "socket".to_string();
     state.set_ahead_count(Some(5));
+    state.set_committed_change_summary(Some((38, 17)));
     state.set_worktree_count(Some(2));
     state.set_detected_agents(vec![
         DetectedAgent {
@@ -1228,7 +1229,26 @@ fn parse_repo_status_reads_branch_and_ahead_count() {
     );
 
     assert_eq!(status.branch.as_deref(), Some("main"));
+    assert_eq!(status.upstream.as_deref(), Some("origin/main"));
     assert_eq!(status.ahead_count, Some(7));
+    assert_eq!(status.committed_change_summary, None);
+}
+
+#[test]
+fn parse_shortstat_reads_insertions_and_deletions() {
+    assert_eq!(
+        parse_shortstat(" 12 files changed, 211 insertions(+), 311 deletions(-)\n"),
+        Some((211, 311))
+    );
+    assert_eq!(
+        parse_shortstat(" 1 file changed, 7 insertions(+)\n"),
+        Some((7, 0))
+    );
+    assert_eq!(
+        parse_shortstat(" 1 file changed, 4 deletions(-)\n"),
+        Some((0, 4))
+    );
+    assert_eq!(parse_shortstat(""), None);
 }
 
 #[test]

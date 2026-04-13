@@ -295,20 +295,26 @@ pub(super) fn render_file_header_line(
         .iter()
         .filter(|file| file.state_code == "untracked")
         .count();
-    let commit_total = state
-        .ahead_count
-        .map(|count| count.to_string())
-        .unwrap_or_else(|| "...".to_string());
     let workspace_agents = state.selected_workspace_agent_count();
     let worktree_total = state
         .worktree_count
         .map(|count| count.to_string())
         .unwrap_or_else(|| "...".to_string());
+    let change_summary = state
+        .committed_change_summary
+        .map(|(additions, deletions)| format!("Total changes +{additions} -{deletions}"))
+        .unwrap_or_else(|| {
+            let commit_total = state
+                .ahead_count
+                .map(|count| count.to_string())
+                .unwrap_or_else(|| "...".to_string());
+            pluralize_count_text(&commit_total, "commit")
+        });
     let summary = format!(
         "{}, {}, {}, {} agent{}, branch: {}, {}",
         pluralize(files.len(), "file"),
         count_label(untracked, "untracked"),
-        pluralize_count_text(&commit_total, "commit"),
+        change_summary,
         workspace_agents,
         if workspace_agents == 1 { "" } else { "s" },
         state.branch,

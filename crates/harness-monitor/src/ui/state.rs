@@ -178,6 +178,7 @@ pub struct RuntimeState {
     pub repo_root: String,
     pub branch: String,
     pub ahead_count: Option<usize>,
+    pub committed_change_summary: Option<(usize, usize)>,
     pub worktree_count: Option<usize>,
     pub tasks: BTreeMap<String, TaskView>,
     pub task_change_paths: BTreeMap<String, BTreeSet<String>>,
@@ -217,6 +218,7 @@ impl RuntimeState {
             repo_root,
             branch,
             ahead_count: None,
+            committed_change_summary: None,
             worktree_count: None,
             tasks: BTreeMap::new(),
             task_change_paths: BTreeMap::new(),
@@ -440,6 +442,10 @@ impl RuntimeState {
 
     pub fn set_ahead_count(&mut self, count: Option<usize>) {
         self.ahead_count = count;
+    }
+
+    pub fn set_committed_change_summary(&mut self, summary: Option<(usize, usize)>) {
+        self.committed_change_summary = summary;
     }
 
     pub fn set_worktree_count(&mut self, count: Option<usize>) {
