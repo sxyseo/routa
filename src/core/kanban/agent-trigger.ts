@@ -259,6 +259,8 @@ export function buildTaskPrompt(
               "",
               `Pending handoff ${index + 1}: ${formatHandoffRequestType(handoff.requestType)}`,
               handoff.request,
+              ...(handoff.worktreeId ? [`Task worktreeId: ${handoff.worktreeId}`] : []),
+              ...(handoff.cwd ? [`Task cwd: ${handoff.cwd}`] : []),
               `Respond with \`submit_lane_handoff\` using handoffId: "${handoff.id}".`,
             ]))
           : []),

@@ -223,7 +223,7 @@ jobs:
             --out dist/release/baseline-manifest.json
 
       - name: Install Entrix
-        run: python -m pip install -e tools/entrix
+        run: python -m pip install entrix
 
       - name: Guard release surface
         run: |
@@ -279,7 +279,7 @@ jobs:
           node-version: 22
 
       - name: Install Entrix
-        run: python -m pip install -e tools/entrix
+        run: python -m pip install entrix
 
       - name: Re-check release surface
         run: |
@@ -335,7 +335,7 @@ jobs:
           path: dist/release
 
       - name: Install Entrix
-        run: python -m pip install -e tools/entrix
+        run: python -m pip install entrix
 
       - name: Re-check release surface before publish
         run: |

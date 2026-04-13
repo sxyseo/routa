@@ -434,7 +434,7 @@ fn truncate(content: &str, max_chars: usize) -> String {
 }
 
 fn load_graph_review_context(repo_root: &Path, base: &str) -> Option<serde_json::Value> {
-    let output = Command::new("entrix")
+    let output = entrix_command(repo_root)
         .args(["graph", "review-context", "--base", base, "--json"])
         .current_dir(repo_root)
         .output()
@@ -444,6 +444,24 @@ fn load_graph_review_context(repo_root: &Path, base: &str) -> Option<serde_json:
     }
 
     serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim()).ok()
+}
+
+fn entrix_command(repo_root: &Path) -> Command {
+    let debug_binary = repo_root
+        .join("target")
+        .join("debug")
+        .join(if cfg!(windows) {
+            "entrix.exe"
+        } else {
+            "entrix"
+        });
+    if debug_binary.exists() {
+        Command::new(debug_binary)
+    } else {
+        let mut command = Command::new("cargo");
+        command.args(["run", "-q", "-p", "entrix", "--"]);
+        command
+    }
 }
 
 fn load_dotenv() {

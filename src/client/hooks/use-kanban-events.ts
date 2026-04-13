@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { getDesktopApiBaseUrl } from "../utils/diagnostics";
+import { resolveApiPath } from "../config/backend";
 
 interface UseKanbanEventsOptions {
   workspaceId: string;
@@ -27,7 +28,7 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
 
     const base = getDesktopApiBaseUrl();
     const es = new EventSource(
-      `${base}/api/kanban/events?workspaceId=${encodeURIComponent(workspaceId)}`
+      resolveApiPath(`api/kanban/events?workspaceId=${encodeURIComponent(workspaceId)}`, base),
     );
     eventSourceRef.current = es;
 

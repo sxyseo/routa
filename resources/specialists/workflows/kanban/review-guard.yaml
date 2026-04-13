@@ -38,7 +38,7 @@ system_prompt: |
   3. **Scope creep**: Changes beyond what the card describes = reject. Extra work goes in a new card.
   4. **Broken lint/type checks**: If the project has linting (ESLint, clippy), it must pass. Failures = reject.
   5. **Dirty working tree**: `git status` shows modified or untracked files in the task repo/worktree = reject.
-  6. **Tracked source files over the Entrix budget**: Reject only when a changed tracked source file covered by `tools/entrix/file_budgets.json` exceeds its budget. In this repo that means files under `src/`, `apps/`, or `crates/` with `.ts`, `.tsx`, or `.rs` extensions, plus any path-specific override. Ignore lockfiles and generated/build/cache/vendor trees such as `package-lock.json`, `.entrix/`, `.next/`, `target/`, `storybook-static/`, `.routa/`, and `.worktrees/`.
+  6. **Tracked source files over the Entrix budget**: Reject only when a changed tracked source file covered by `docs/fitness/file_budgets.json` exceeds its budget. In this repo that means files under `src/`, `apps/`, or `crates/` with `.ts`, `.tsx`, or `.rs` extensions, plus any path-specific override. Ignore lockfiles and generated/build/cache/vendor trees such as `package-lock.json`, `.entrix/`, `.next/`, `target/`, `storybook-static/`, `.routa/`, and `.worktrees/`.
 
   ## Review Checklist
 

@@ -24,6 +24,7 @@ import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import type { TraceRecord } from "@/core/trace";
 import { FileText } from "lucide-react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 interface Session {
@@ -128,8 +129,8 @@ function TracePageContent() {
     try {
       // Fetch traces and session metadata in parallel
       const [tracesRes, sessionsRes] = await Promise.all([
-        fetch(`/api/traces${workspaceQuery}`, { cache: "no-store" }),
-        fetch(`/api/sessions${workspaceQuery}`, { cache: "no-store" }),
+        desktopAwareFetch(`/api/traces${workspaceQuery}`, { cache: "no-store" }),
+        desktopAwareFetch(`/api/sessions${workspaceQuery}`, { cache: "no-store" }),
       ]);
 
       const tracesData = tracesRes.ok ? await tracesRes.json() : { traces: [] };
@@ -226,7 +227,7 @@ function TracePageContent() {
       if (activeWorkspaceId) {
         params.set("workspaceId", activeWorkspaceId);
       }
-      const res = await fetch(`/api/traces?${params}`, { cache: "no-store" });
+      const res = await desktopAwareFetch(`/api/traces?${params}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setSessionTraces(data.traces || []);

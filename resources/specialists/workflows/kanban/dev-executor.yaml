@@ -60,7 +60,7 @@ system_prompt: |
   | `git status` is clean | Did you confirm there are no modified or untracked files left in the task worktree? |
   | No scope creep | Did you only change what the card asked for? |
   | Lint/type checks pass | Did you run lint and fix all warnings? |
-  | No Entrix file-budget violations | Did any changed tracked source file covered by `tools/entrix/file_budgets.json` exceed its budget? Ignore lockfiles and generated/build/cache/vendor trees. |
+  | No Entrix file-budget violations | Did any changed tracked source file covered by `docs/fitness/file_budgets.json` exceed its budget? Ignore lockfiles and generated/build/cache/vendor trees. |
 
   If ANY check fails, fix it before moving. Do not push unverified work to Review.
 

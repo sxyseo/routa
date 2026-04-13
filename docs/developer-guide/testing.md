@@ -23,7 +23,7 @@ orchestration changed.
 ## Install
 
 ```bash
-pip install -e tools/entrix
+cargo build -p entrix
 ```
 
 ## What The Tiers Mean

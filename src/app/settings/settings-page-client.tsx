@@ -7,6 +7,7 @@ import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { SettingsPanel } from "@/client/components/settings-panel";
 import type { SettingsTab } from "@/client/components/settings-panel-shared";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { Settings } from "lucide-react";
 
 
@@ -27,7 +28,7 @@ export function SettingsPageClient() {
   useEffect(() => {
     const fetchProviders = async () => {
       try {
-        const res = await fetch("/api/providers");
+        const res = await desktopAwareFetch("/api/providers");
         if (res.ok) {
           const data = await res.json();
           setProviders(data.providers ?? []);

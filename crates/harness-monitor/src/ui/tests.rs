@@ -1,22 +1,24 @@
 use super::*;
+use crate::observe::ipc::RuntimeFeed;
 use crate::shared::models::{
     AttributionConfidence, DetectedAgent, EntryKind, EventLogEntry, EventSource, FileView,
-    FitnessEvent, RuntimeMessage, RuntimeServiceInfo, SessionView,
+    FitnessEvent, RuntimeMessage, RuntimeServiceInfo, SessionView, TaskView,
 };
-use crate::ui::state::{
-    DetailMode, FileListMode, FocusPane, ThemeMode, ALL_RUNS_SESSION_ID, UNKNOWN_SESSION_ID,
-};
+use crate::ui::state::{DetailMode, FocusPane, ThemeMode, ALL_RUNS_SESSION_ID, UNKNOWN_SESSION_ID};
 use crate::ui::tui::highlight::highlight_code_text;
 use pretty_assertions::assert_eq;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::process::Command;
 use std::time::Duration;
 use tempfile::tempdir;
 
 fn sample_state() -> RuntimeState {
     let now = chrono::Utc::now().timestamp_millis();
     let mut sessions = BTreeMap::new();
+    let live_task_id = "task:live-hook-check:turn-1".to_string();
+    let idle_task_id = "task:idle-review:turn-2".to_string();
     sessions.insert(
         "live-hook-check".to_string(),
         SessionView {
@@ -37,7 +39,7 @@ fn sample_state() -> RuntimeState {
             last_turn_id: Some("turn-1".to_string()),
             last_event_name: Some("PostToolUse".to_string()),
             last_tool_name: Some("Write".to_string()),
-            active_task_id: Some("task:live-hook-check:turn-1".to_string()),
+            active_task_id: Some(live_task_id.clone()),
             active_task_title: Some("Fix harness monitor task journey".to_string()),
             last_prompt_preview: Some("Fix harness monitor task journey".to_string()),
             active_task_recovered_from_transcript: false,
@@ -64,11 +66,45 @@ fn sample_state() -> RuntimeState {
             last_turn_id: Some("turn-2".to_string()),
             last_event_name: Some("UserPromptSubmit".to_string()),
             last_tool_name: None,
-            active_task_id: Some("task:idle-review:turn-2".to_string()),
+            active_task_id: Some(idle_task_id.clone()),
             active_task_title: Some("Review harness monitor UI".to_string()),
             last_prompt_preview: Some("Review harness monitor UI".to_string()),
             active_task_recovered_from_transcript: false,
             recent_git_activity: Vec::new(),
+        },
+    );
+
+    let mut tasks = BTreeMap::new();
+    tasks.insert(
+        live_task_id.clone(),
+        TaskView {
+            task_id: live_task_id.clone(),
+            session_id: "live-hook-check".to_string(),
+            turn_id: Some("turn-1".to_string()),
+            title: "Fix harness monitor task journey".to_string(),
+            objective: "Fix harness monitor task journey".to_string(),
+            prompt_preview: Some("Fix harness monitor task journey".to_string()),
+            transcript_path: Some("/tmp/transcripts/impl-buddy.jsonl".to_string()),
+            recovered_from_transcript: false,
+            status: "active".to_string(),
+            created_at_ms: now - 580_000,
+            updated_at_ms: now - 180_000,
+        },
+    );
+    tasks.insert(
+        idle_task_id.clone(),
+        TaskView {
+            task_id: idle_task_id.clone(),
+            session_id: "idle-review".to_string(),
+            turn_id: Some("turn-2".to_string()),
+            title: "Review harness monitor UI".to_string(),
+            objective: "Review harness monitor UI".to_string(),
+            prompt_preview: Some("Review harness monitor UI".to_string()),
+            transcript_path: Some("/tmp/transcripts/test-master.jsonl".to_string()),
+            recovered_from_transcript: false,
+            status: "idle".to_string(),
+            created_at_ms: now - 1_180_000,
+            updated_at_ms: now - 3_600_000,
         },
     );
 
@@ -82,7 +118,7 @@ fn sample_state() -> RuntimeState {
             entry_kind: EntryKind::File,
             last_modified_at_ms: now - 240_000,
             last_session_id: Some("live-hook-check".to_string()),
-            last_task_id: Some("task:live-hook-check:turn-1".to_string()),
+            last_task_id: Some(live_task_id.clone()),
             confidence: AttributionConfidence::Exact,
             conflicted: false,
             touched_by: ["live-hook-check".to_string()].into_iter().collect(),
@@ -105,6 +141,22 @@ fn sample_state() -> RuntimeState {
             recent_events: vec!["watch delete".to_string()],
         },
     );
+    files.insert(
+        "docs/design-docs/agentwatch-tui.md".to_string(),
+        FileView {
+            rel_path: "docs/design-docs/agentwatch-tui.md".to_string(),
+            dirty: false,
+            state_code: "clean".to_string(),
+            entry_kind: EntryKind::File,
+            last_modified_at_ms: now - 3_500_000,
+            last_session_id: Some("idle-review".to_string()),
+            last_task_id: Some(idle_task_id.clone()),
+            confidence: AttributionConfidence::Exact,
+            conflicted: false,
+            touched_by: ["idle-review".to_string()].into_iter().collect(),
+            recent_events: vec!["Read idle-review".to_string()],
+        },
+    );
 
     let event_log = VecDeque::from(vec![
         EventLogEntry {
@@ -125,6 +177,23 @@ fn sample_state() -> RuntimeState {
     ]);
 
     let mut state = RuntimeState::new("/tmp/project".to_string(), "main".to_string());
+    state.tasks = tasks;
+    state.task_change_paths.insert(
+        live_task_id,
+        ["crates/harness-monitor/src/tui.rs".to_string()]
+            .into_iter()
+            .collect(),
+    );
+    state.task_change_paths.insert(
+        idle_task_id,
+        ["docs/design-docs/agentwatch-tui.md".to_string()]
+            .into_iter()
+            .collect(),
+    );
+    state.task_git_activity.insert(
+        "task:live-hook-check:turn-1".to_string(),
+        vec!["commit: stabilize monitor journey".to_string()],
+    );
     state.sessions = sessions;
     state.files = files;
     state.event_log = event_log;
@@ -136,6 +205,7 @@ fn sample_state() -> RuntimeState {
     state.last_refresh_at_ms = now - 120_000;
     state.runtime_transport = "socket".to_string();
     state.set_ahead_count(Some(5));
+    state.set_committed_change_summary(Some((38, 17)));
     state.set_worktree_count(Some(2));
     state.set_detected_agents(vec![
         DetectedAgent {
@@ -219,6 +289,7 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
                 DetailMode::File,
             ),
             text: "fn render(frame: &mut Frame) {\n    // preview\n}".to_string(),
+            truncated: false,
         },
     );
     cache.diff_cache.insert(
@@ -236,6 +307,7 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
                 DetailMode::Diff,
             ),
             text: "@@ -1,2 +1,3 @@\n-use old\n+use new\n+use cache".to_string(),
+            truncated: false,
         },
     );
     cache.set_fitness_snapshot_for_tests(
@@ -270,6 +342,16 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
                 },
             ],
             slowest_metrics: Vec::new(),
+            artifact_path: None,
+            producer: Some("harness-monitor".to_string()),
+            generated_at_ms: Some(state.last_refresh_at_ms),
+            base_ref: Some("origin/main".to_string()),
+            changed_file_count: 2,
+            changed_files_preview: vec![
+                "crates/harness-monitor/src/tui.rs".to_string(),
+                "src/app/api/a2a/card/route.ts".to_string(),
+            ],
+            failing_metrics: Vec::new(),
         },
     );
     cache.set_test_mapping_snapshot_for_tests(
@@ -353,6 +435,16 @@ fn scrub_clock_tokens(text: String) -> String {
     out
 }
 
+fn select_live_run(state: &mut RuntimeState) {
+    state.focus = FocusPane::Runs;
+    state.selected_run = state
+        .runs()
+        .iter()
+        .position(|run| run.session_id == "live-hook-check")
+        .expect("live run");
+    state.refresh_views();
+}
+
 #[test]
 fn diff_stat_spans_use_green_for_add_and_red_for_delete() {
     let spans = render_diff_stat_spans(&DiffStatSummary {
@@ -382,7 +474,6 @@ fn search_filters_sessions_and_files() {
 #[test]
 fn assign_selected_file_to_selected_session_updates_owner() {
     let mut state = sample_state();
-    state.file_list_mode = FileListMode::Global;
     state.refresh_views();
     state.selected_run = state
         .runs()
@@ -551,7 +642,6 @@ fn fitness_cache_key_changes_when_coverage_artifact_changes() {
 #[test]
 fn selected_file_assignment_message_is_attribution_event() {
     let mut state = sample_state();
-    state.file_list_mode = FileListMode::Global;
     state.refresh_views();
     state.selected_run = state
         .runs()
@@ -598,6 +688,7 @@ fn fitness_event_is_logged_in_event_stream() {
         duration_ms: Some(10_200.0),
         dimension_count: Some(2),
         metric_count: Some(8),
+        artifact_path: None,
     }));
 
     assert!(state
@@ -631,22 +722,31 @@ fn tui_snapshot_full_runs_mode() {
 #[test]
 fn run_details_surface_run_centric_operator_context() {
     let mut state = sample_state();
-    state.focus = FocusPane::Runs;
-    state.selected_run = state
-        .runs()
-        .iter()
-        .position(|run| run.session_id == "live-hook-check")
-        .expect("live run");
+    select_live_run(&mut state);
     let mut cache = sample_cache(&state);
 
-    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 52);
 
     assert!(snapshot.contains("Fix harness monitor task journey"));
-    assert!(snapshot.contains("fixer  hook"));
-    assert!(snapshot.contains("Model: gpt-5.4"));
-    assert!(snapshot.contains("Last: PostToolUse"));
-    assert!(snapshot.contains("Files: "));
-    assert!(snapshot.contains("Commits: "));
+    assert!(snapshot.contains("State: active"));
+    assert!(snapshot.contains("Approval: waiting_on_evidence"));
+    assert!(snapshot.contains("Block: missing coverage_report"));
+    assert!(snapshot.contains("Next: generate coverage evidence"));
+    assert!(snapshot.contains("Evidence:"));
+    assert!(snapshot.contains("Trace:"));
+    assert!(snapshot.contains("commit: stabilize monitor journey"));
+}
+
+#[test]
+fn tui_snapshot_run_details_decision_first() {
+    let mut state = sample_state();
+    select_live_run(&mut state);
+    let mut cache = sample_cache(&state);
+
+    insta::assert_snapshot!(
+        "routa_watch_tui_run_details_decision_first",
+        render_snapshot(&state, &mut cache, 180, 44)
+    );
 }
 
 #[test]
@@ -657,19 +757,47 @@ fn file_detail_surfaces_test_mapping_context() {
     let snapshot = render_snapshot(&state, &mut cache, 180, 32);
 
     assert!(snapshot.contains("Test mapping:"));
-    assert!(snapshot.contains("Resolver:"));
+    assert!(snapshot.contains("changed") || snapshot.contains("missing"));
     assert!(snapshot.contains("TM "));
 }
 
 #[test]
-fn hard_gate_failure_blocks_selected_run() {
+fn selecting_prompt_session_scopes_files_to_prompt_changes() {
     let mut state = sample_state();
-    state.focus = FocusPane::Runs;
     state.selected_run = state
         .runs()
         .iter()
         .position(|run| run.session_id == "live-hook-check")
         .expect("live run");
+    state.refresh_views();
+
+    assert_eq!(state.prompt_sessions().len(), 2);
+    assert_eq!(state.prompt_sessions()[0].primary_label(), "All prompts");
+    assert_eq!(
+        state.prompt_sessions()[1].primary_label(),
+        "Fix harness monitor task journey"
+    );
+
+    state.selected_prompt_session = 1;
+    state.refresh_views();
+
+    let files = state.file_items();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].rel_path, "crates/harness-monitor/src/tui.rs");
+
+    let mut cache = sample_cache(&state);
+    let header = render_file_header_line(&state, &cache, 120).to_string();
+    assert!(header.contains("committed") || header.contains("dirty"));
+    assert!(header.contains("Fix harness monitor task journey"));
+
+    let snapshot = render_snapshot(&state, &mut cache, 180, 28);
+    assert!(snapshot.contains("Change Status"));
+}
+
+#[test]
+fn hard_gate_failure_blocks_selected_run() {
+    let mut state = sample_state();
+    select_live_run(&mut state);
     let mut cache = sample_cache(&state);
     cache.set_fitness_snapshot_for_tests(
         fitness::FitnessRunMode::Fast,
@@ -689,18 +817,62 @@ fn hard_gate_failure_blocks_selected_run() {
                 passed: 1,
                 total: 3,
                 hard_gate_failures: vec!["lint_pass".to_string()],
-                metrics: Vec::new(),
+                metrics: vec![
+                    fitness::FitnessMetricSummary {
+                        name: "lint_pass".to_string(),
+                        passed: false,
+                        state: "fail".to_string(),
+                        hard_gate: true,
+                        duration_ms: 450.0,
+                        output_excerpt: Some("src/ui/tui.rs: unexpected warning".to_string()),
+                    },
+                    fitness::FitnessMetricSummary {
+                        name: "file_line_limit".to_string(),
+                        passed: false,
+                        state: "fail".to_string(),
+                        hard_gate: false,
+                        duration_ms: 380.0,
+                        output_excerpt: Some(
+                            "src/ui/render.rs exceeds file size budget".to_string(),
+                        ),
+                    },
+                    fitness::FitnessMetricSummary {
+                        name: "ts_typecheck_pass".to_string(),
+                        passed: true,
+                        state: "pass".to_string(),
+                        hard_gate: false,
+                        duration_ms: 240.0,
+                        output_excerpt: None,
+                    },
+                ],
             }],
             slowest_metrics: Vec::new(),
+            artifact_path: None,
+            producer: Some("harness-monitor".to_string()),
+            generated_at_ms: Some(chrono::Utc::now().timestamp_millis()),
+            base_ref: Some("origin/main".to_string()),
+            changed_file_count: 1,
+            changed_files_preview: vec!["crates/harness-monitor/src/tui.rs".to_string()],
+            failing_metrics: vec![fitness::FitnessMetricSummary {
+                name: "lint_pass".to_string(),
+                passed: false,
+                state: "fail".to_string(),
+                hard_gate: true,
+                duration_ms: 450.0,
+                output_excerpt: Some("src/ui/tui.rs: unexpected warning".to_string()),
+            }],
         },
     );
 
-    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 52);
 
-    assert!(!snapshot.contains("State: "));
-    assert!(!snapshot.contains("Status: failed"));
-    assert!(!snapshot.contains("Next: "));
-    assert!(snapshot.contains("Last: PostToolUse"));
+    assert!(snapshot.contains("State: blocked"));
+    assert!(snapshot.contains("Block: hard gate failure"));
+    assert!(snapshot.contains("Next: fix failing hard gates and rerun fast eval"));
+    assert!(snapshot.contains("Eval: fast blocked(hard) 62.0%"));
+    assert!(snapshot.contains("2 failures"));
+    assert!(snapshot.contains("lint_pass"));
+    assert!(snapshot.contains("src/ui/tui.rs: unexpected warning"));
 }
 
 #[test]
@@ -751,13 +923,222 @@ fn synthetic_run_details_surface_process_scan_origin() {
             coverage_summary: fitness::CoverageSummary::default(),
             dimensions: Vec::new(),
             slowest_metrics: Vec::new(),
+            artifact_path: None,
+            producer: Some("harness-monitor".to_string()),
+            generated_at_ms: Some(now),
+            base_ref: None,
+            changed_file_count: 0,
+            changed_files_preview: Vec::new(),
+            failing_metrics: Vec::new(),
         },
     );
     let snapshot = render_snapshot(&state, &mut cache, 180, 40);
 
     assert!(snapshot.contains("process-scan"));
-    assert!(snapshot.contains("State: idle"));
+    assert!(snapshot.contains("State: observing"));
     assert!(!snapshot.contains("failed"));
+}
+
+#[test]
+fn semantic_run_status_prefers_recovered_and_attention_labels() {
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut state = sample_state();
+    state.sessions.insert(
+        "recovered-run".to_string(),
+        SessionView {
+            session_id: "recovered-run".to_string(),
+            display_name: Some("transcript-recovered".to_string()),
+            cwd: "/tmp/project".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            client: "codex".to_string(),
+            transcript_path: Some("/tmp/transcripts/recovered-run.jsonl".to_string()),
+            source: Some("transcript".to_string()),
+            started_at_ms: now - 300_000,
+            last_seen_at_ms: now - 30_000,
+            status: "active".to_string(),
+            tmux_pane: None,
+            touched_files: BTreeSet::new(),
+            last_turn_id: Some("turn-r".to_string()),
+            last_event_name: Some("PostToolUse".to_string()),
+            last_tool_name: Some("Write".to_string()),
+            active_task_id: Some("task:recovered-run:turn-r".to_string()),
+            active_task_title: Some("Recovered task".to_string()),
+            last_prompt_preview: Some("Recovered task".to_string()),
+            active_task_recovered_from_transcript: true,
+            recent_git_activity: Vec::new(),
+        },
+    );
+    state.refresh_views();
+    let cache = sample_cache(&state);
+
+    let recovered = state
+        .runs()
+        .iter()
+        .find(|run| run.session_id == "recovered-run")
+        .expect("recovered run");
+    let recovered_model = build_run_operator_model(&state, &cache, recovered);
+    assert_eq!(
+        semantic_run_status(recovered, &recovered_model),
+        "recovered"
+    );
+
+    let review = state
+        .runs()
+        .iter()
+        .find(|run| run.session_id == UNKNOWN_SESSION_ID)
+        .expect("review bucket");
+    let review_model = build_run_operator_model(&state, &cache, review);
+    assert_eq!(semantic_run_status(review, &review_model), "attention");
+}
+
+#[test]
+fn run_details_surface_recent_transcript_prompts_and_compact_meta() {
+    let dir = tempdir().expect("tempdir");
+    let transcript = dir.path().join("session.jsonl");
+    std::fs::write(
+        &transcript,
+        concat!(
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-1\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"first prompt\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-1\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-2\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"second prompt\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-2\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-3\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"third prompt\"}}\n"
+        ),
+    )
+    .expect("write transcript");
+
+    let mut state = sample_state();
+    let session = state
+        .sessions
+        .get_mut("live-hook-check")
+        .expect("live session");
+    session.transcript_path = Some(transcript.to_string_lossy().to_string());
+    session.active_task_title = Some("third prompt".to_string());
+    session.last_prompt_preview = Some("third prompt".to_string());
+    session.active_task_recovered_from_transcript = true;
+    select_live_run(&mut state);
+    state.refresh_views();
+
+    let mut cache = sample_cache(&state);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 52);
+
+    assert!(snapshot.contains("Context: codex"));
+    assert!(snapshot.contains("transcript"));
+    assert!(snapshot.contains("Journey: first prompt  ->  second prompt  ->  third prompt"));
+    assert!(snapshot.contains("Recent: second prompt  |  first prompt"));
+}
+
+#[test]
+fn run_details_surface_auggie_session_prompts_and_session_label() {
+    let dir = tempdir().expect("tempdir");
+    let session_path = dir.path().join("session.json");
+    std::fs::write(
+        &session_path,
+        r#"{
+  "sessionId":"sess-1",
+  "chatHistory":[
+    {"sequenceId":1,"exchange":{"request_message":"first session prompt"}},
+    {"sequenceId":2,"exchange":{"request_message":"second session prompt"}},
+    {"sequenceId":3,"exchange":{"request_message":"third session prompt"}}
+  ]
+}"#,
+    )
+    .expect("write session");
+
+    let mut state = sample_state();
+    let session = state
+        .sessions
+        .get_mut("live-hook-check")
+        .expect("live session");
+    session.client = "auggie".to_string();
+    session.model = Some("claude-sonnet-4".to_string());
+    session.source = Some("auggie-session".to_string());
+    session.transcript_path = Some(session_path.to_string_lossy().to_string());
+    session.active_task_title = Some("third session prompt".to_string());
+    session.last_prompt_preview = Some("third session prompt".to_string());
+    session.active_task_recovered_from_transcript = true;
+    select_live_run(&mut state);
+    state.refresh_views();
+
+    let mut cache = sample_cache(&state);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 52);
+
+    assert!(snapshot.contains("Context: auggie"));
+    assert!(snapshot.contains("session"));
+    assert!(snapshot.contains(
+        "Journey: first session prompt  ->  second session prompt  ->  third session prompt"
+    ));
+    assert!(snapshot.contains("Recent: second session prompt  |  first session prompt"));
+}
+
+#[test]
+fn summary_mode_compacts_long_git_status_paths_without_wrapping() {
+    let mut state = sample_state();
+    let now = chrono::Utc::now().timestamp_millis();
+    state.files.insert(
+        "crates/harness-monitor/src/ui/snapshots/harness_monitor__ui__tui__tests__routa_watch_tui_full_runs.snap".to_string(),
+        FileView {
+            rel_path: "crates/harness-monitor/src/ui/snapshots/harness_monitor__ui__tui__tests__routa_watch_tui_full_runs.snap".to_string(),
+            dirty: true,
+            state_code: "modify".to_string(),
+            entry_kind: EntryKind::File,
+            last_modified_at_ms: now - 60_000,
+            last_session_id: None,
+            last_task_id: None,
+            confidence: AttributionConfidence::Unknown,
+            conflicted: false,
+            touched_by: BTreeSet::new(),
+            recent_events: vec!["watch modify".to_string()],
+        },
+    );
+    state.selected_file = 2;
+    state.refresh_views();
+    let mut cache = sample_cache(&state);
+
+    let snapshot = render_snapshot(&state, &mut cache, 120, 28);
+
+    assert!(snapshot.contains("routa_watch_tui_full_runs.snap"));
+    assert!(snapshot.contains(".snap"));
+    assert!(!snapshot
+        .contains("crates/harness-monitor/src/ui/snapshots/harness_monitor__ui__tui__tests__"));
+}
+
+#[test]
+fn snapshot_files_are_treated_as_changed_test_files() {
+    let mut state = sample_state();
+    let now = chrono::Utc::now().timestamp_millis();
+    state.files.insert(
+        "crates/harness-monitor/src/ui/snapshots/example.snap".to_string(),
+        FileView {
+            rel_path: "crates/harness-monitor/src/ui/snapshots/example.snap".to_string(),
+            dirty: true,
+            state_code: "modify".to_string(),
+            entry_kind: EntryKind::File,
+            last_modified_at_ms: now - 60_000,
+            last_session_id: None,
+            last_task_id: None,
+            confidence: AttributionConfidence::Unknown,
+            conflicted: false,
+            touched_by: BTreeSet::new(),
+            recent_events: vec!["watch modify".to_string()],
+        },
+    );
+    state.selected_file = state
+        .files
+        .keys()
+        .position(|path| path == "crates/harness-monitor/src/ui/snapshots/example.snap")
+        .expect("snapshot file index");
+    state.refresh_views();
+    let mut cache = sample_cache(&state);
+
+    let file = state.selected_file().expect("selected file");
+    assert!(cache.is_changed_test_file(file));
+
+    let snapshot = render_snapshot(&state, &mut cache, 180, 32);
+    assert!(snapshot.contains("Test mapping: changed test file"));
 }
 
 #[test]
@@ -765,7 +1146,6 @@ fn tui_snapshot_search_mode() {
     let mut state = sample_state();
     state.search_query = "route.ts".to_string();
     state.search_active = true;
-    state.file_list_mode = FileListMode::Global;
     state.selected_file = 0;
     state.refresh_views();
     let mut cache = sample_cache(&state);
@@ -785,6 +1165,24 @@ fn tui_snapshot_file_preview_mode() {
         "routa_watch_tui_file_preview",
         render_snapshot(&state, &mut cache, 120, 24)
     );
+}
+
+#[test]
+fn git_status_title_keeps_total_summary_without_dirty_diff() {
+    let mut state = sample_state();
+    state.files.clear();
+    state.set_committed_change_summary(Some((7432, 1461)));
+    state.refresh_views();
+    let cache = AppCache::new(&state.repo_root);
+    let line = render_file_panel_title(&state, &cache, "Git Status", 120, palette(ThemeMode::Dark));
+    let text = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(text.contains("Git Status"));
+    assert!(text.contains("Total: +7432 -1461"));
 }
 
 #[test]
@@ -843,21 +1241,32 @@ fn bootstrap_history_cutoff_uses_day_scale_window() {
 }
 
 #[test]
-fn parse_branch_resolution_reads_branch_and_upstream() {
-    let status = parse_branch_resolution("main\norigin/main\n");
-
-    assert_eq!(
-        status,
-        BranchResolution {
-            branch: Some("main".to_string()),
-            upstream: Some("origin/main".to_string()),
-        }
+fn parse_repo_status_reads_branch_and_ahead_count() {
+    let status = parse_repo_status(
+        "# branch.oid abcdef\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +7 -2\n",
     );
+
+    assert_eq!(status.branch.as_deref(), Some("main"));
+    assert_eq!(status.upstream.as_deref(), Some("origin/main"));
+    assert_eq!(status.ahead_count, Some(7));
+    assert_eq!(status.committed_change_summary, None);
 }
 
 #[test]
-fn parse_ahead_count_reads_left_side_count() {
-    assert_eq!(parse_ahead_count("7\t2\n"), Some(7));
+fn parse_shortstat_reads_insertions_and_deletions() {
+    assert_eq!(
+        parse_shortstat(" 12 files changed, 211 insertions(+), 311 deletions(-)\n"),
+        Some((211, 311))
+    );
+    assert_eq!(
+        parse_shortstat(" 1 file changed, 7 insertions(+)\n"),
+        Some((7, 0))
+    );
+    assert_eq!(
+        parse_shortstat(" 1 file changed, 4 deletions(-)\n"),
+        Some((0, 4))
+    );
+    assert_eq!(parse_shortstat(""), None);
 }
 
 #[test]
@@ -882,6 +1291,91 @@ fn current_worktree_count_reads_git_worktrees_directory() {
 }
 
 #[test]
+fn refresh_repo_snapshot_clears_committed_files_from_git_status() {
+    let dir = tempdir().expect("tempdir");
+    let repo_root = dir.path().join("repo");
+    std::fs::create_dir_all(&repo_root).expect("repo root");
+    assert!(Command::new("git")
+        .arg("init")
+        .arg(&repo_root)
+        .status()
+        .expect("git init")
+        .success());
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&repo_root)
+        .args(["config", "user.email", "test@example.com"])
+        .status()
+        .expect("git config email")
+        .success());
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&repo_root)
+        .args(["config", "user.name", "Harness Monitor"])
+        .status()
+        .expect("git config name")
+        .success());
+
+    let rel_path = "crates/harness-monitor/src/ui/render.rs";
+    let file_path = repo_root.join(rel_path);
+    std::fs::create_dir_all(file_path.parent().expect("file parent")).expect("mkdirs");
+    std::fs::write(&file_path, "fn render() {}\n").expect("seed file");
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&repo_root)
+        .args(["add", "."])
+        .status()
+        .expect("git add")
+        .success());
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&repo_root)
+        .args(["commit", "-m", "initial"])
+        .status()
+        .expect("git commit initial")
+        .success());
+
+    let ctx = RepoContext {
+        repo_root: repo_root.clone(),
+        git_dir: repo_root.join(".git"),
+        db_path: dir.path().join("harness-monitor.db"),
+        runtime_event_path: dir.path().join("runtime").join("events.jsonl"),
+        runtime_socket_path: dir.path().join("runtime").join("events.sock"),
+        runtime_info_path: dir.path().join("runtime").join("service.json"),
+        runtime_tcp_addr: "127.0.0.1:49123".to_string(),
+    };
+    let mut state = RuntimeState::new(repo_root.to_string_lossy().to_string(), "-".to_string());
+
+    std::fs::write(&file_path, "fn render() {}\nfn repaint() {}\n").expect("dirty file");
+    apply_repo_snapshot(&mut state, load_repo_snapshot(&ctx, false));
+    let selected = state.selected_file().expect("dirty file should be visible");
+    assert_eq!(selected.rel_path, rel_path);
+    assert!(selected.dirty);
+
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&repo_root)
+        .args(["add", rel_path])
+        .status()
+        .expect("git add rel path")
+        .success());
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(&repo_root)
+        .args(["commit", "-m", "refresh clears stale git status"])
+        .status()
+        .expect("git commit clean")
+        .success());
+
+    apply_repo_snapshot(&mut state, load_repo_snapshot(&ctx, false));
+    assert!(state.selected_file().is_none());
+    assert!(
+        state.files.get(rel_path).is_some_and(|file| !file.dirty),
+        "tracked file should remain in state but no longer be marked dirty"
+    );
+}
+
+#[test]
 fn detected_agents_attach_to_session_when_match_is_unique() {
     let mut state = sample_state();
     if let Some(session) = state.sessions.get_mut("idle-review") {
@@ -898,46 +1392,6 @@ fn detected_agents_attach_to_session_when_match_is_unique() {
     assert_eq!(session.agent_summary.as_deref(), Some("agent codex#4211"));
     assert_eq!(state.unmatched_agents().len(), 1);
     assert_eq!(state.unmatched_agents()[0].name, "Claude");
-}
-
-#[test]
-fn run_filter_attention_keeps_unknown_review_bucket() {
-    let mut state = sample_state();
-    state.run_filter_mode = crate::ui::state::RunFilterMode::Attention;
-    state.refresh_views();
-
-    let runs = state.runs();
-    assert!(runs.iter().any(|run| run.session_id == UNKNOWN_SESSION_ID));
-    assert!(runs.iter().all(|run| {
-        run.is_unknown_bucket
-            || run.is_synthetic_agent_run
-            || run.unknown_count > 0
-            || matches!(
-                run.status.as_str(),
-                "idle" | "unknown" | "stopped" | "ended"
-            )
-    }));
-}
-
-#[test]
-fn run_sort_by_name_orders_named_runs_alphabetically() {
-    let mut state = sample_state();
-    state.run_sort_mode = crate::ui::state::RunSortMode::Name;
-    state.refresh_views();
-
-    let runs = state.runs();
-    assert_eq!(
-        runs.first().map(|run| run.display_name.as_str()),
-        Some("All")
-    );
-    assert_eq!(
-        runs.get(1).map(|run| run.display_name.as_str()),
-        Some("Fix harness monitor task journey")
-    );
-    assert_eq!(
-        runs.get(2).map(|run| run.display_name.as_str()),
-        Some("Unknown / review")
-    );
 }
 
 #[test]

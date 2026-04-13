@@ -14,6 +14,7 @@ pub struct Snapshot {
 }
 
 pub fn scan_repo(ctx: &RepoContext) -> Result<Vec<DirtyRepoEntry>> {
+    let submodule_paths = git_submodule_paths(&ctx.repo_root).unwrap_or_default();
     let output = Command::new("git")
         .arg("-C")
         .arg(&ctx.repo_root)
@@ -45,6 +46,7 @@ pub fn scan_repo(ctx: &RepoContext) -> Result<Vec<DirtyRepoEntry>> {
                 &ctx.repo_root,
                 &rel_path,
                 state_code,
+                &submodule_paths,
             ));
         }
     }
@@ -57,6 +59,7 @@ pub fn poll_repo(
     source: &str,
     inference_window_ms: i64,
 ) -> Result<Snapshot> {
+    let submodule_paths = git_submodule_paths(&ctx.repo_root).unwrap_or_default();
     let output = Command::new("git")
         .arg("-C")
         .arg(&ctx.repo_root)
@@ -89,7 +92,12 @@ pub fn poll_repo(
             }
             let rel_path = normalize_rel_path(&ctx.repo_root, &ctx.repo_root.join(&rel), &rel)?;
             for (expanded_rel_path, expanded_state_code, mtime_ms, _entry_kind) in
-                collect_dirty_entries_for_path(&ctx.repo_root, &rel_path, state_code)
+                collect_dirty_entries_for_path(
+                    &ctx.repo_root,
+                    &rel_path,
+                    state_code,
+                    &submodule_paths,
+                )
             {
                 let abs_path = ctx.repo_root.join(&expanded_rel_path);
                 let metadata = std::fs::metadata(&abs_path).ok();
@@ -226,18 +234,17 @@ pub fn entry_kind_for_path(path: &Path) -> EntryKind {
 }
 
 pub fn entry_kind_for_repo_path(repo_root: &Path, rel_path: &str) -> EntryKind {
-    if is_git_submodule_path(repo_root, rel_path) {
-        return EntryKind::Submodule;
-    }
-    entry_kind_for_path(&repo_root.join(rel_path))
+    let submodule_paths = git_submodule_paths(repo_root).unwrap_or_default();
+    entry_kind_for_repo_path_with_submodules(repo_root, rel_path, &submodule_paths)
 }
 
 fn collect_dirty_entries_for_path(
     repo_root: &Path,
     rel_path: &str,
     state_code: &str,
+    submodule_paths: &HashSet<String>,
 ) -> Vec<DirtyRepoEntry> {
-    let entry_kind = entry_kind_for_repo_path(repo_root, rel_path);
+    let entry_kind = entry_kind_for_repo_path_with_submodules(repo_root, rel_path, submodule_paths);
     let abs_path = repo_root.join(rel_path);
     let mtime_ms = std::fs::metadata(&abs_path)
         .ok()
@@ -256,6 +263,47 @@ fn collect_dirty_entries_for_path(
     }
 
     entries
+}
+
+fn entry_kind_for_repo_path_with_submodules(
+    repo_root: &Path,
+    rel_path: &str,
+    submodule_paths: &HashSet<String>,
+) -> EntryKind {
+    if submodule_paths.contains(rel_path) {
+        return EntryKind::Submodule;
+    }
+    entry_kind_for_path(&repo_root.join(rel_path))
+}
+
+fn git_submodule_paths(repo_root: &Path) -> Result<HashSet<String>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .arg("ls-files")
+        .arg("--stage")
+        .output()
+        .context("run git ls-files --stage")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("git ls-files --stage failed"));
+    }
+
+    let stdout = String::from_utf8(output.stdout).context("decode git ls-files output")?;
+    Ok(parse_git_submodule_paths(&stdout))
+}
+
+fn parse_git_submodule_paths(output: &str) -> HashSet<String> {
+    output
+        .lines()
+        .filter_map(|line| {
+            if !line.starts_with("160000 ") {
+                return None;
+            }
+            line.split_once('\t')
+                .map(|(_, path)| path.replace('\\', "/"))
+        })
+        .collect()
 }
 
 fn collect_submodule_dirty_entries(repo_root: &Path, rel_path: &str) -> Vec<DirtyRepoEntry> {
@@ -302,25 +350,6 @@ fn collect_submodule_dirty_entries(repo_root: &Path, rel_path: &str) -> Vec<Dirt
     }
 
     entries
-}
-
-fn is_git_submodule_path(repo_root: &Path, rel_path: &str) -> bool {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_root)
-        .arg("ls-files")
-        .arg("--stage")
-        .arg("--")
-        .arg(rel_path)
-        .output();
-
-    match output {
-        Ok(output) if output.status.success() => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            stdout.lines().any(|line| line.starts_with("160000 "))
-        }
-        _ => false,
-    }
 }
 
 #[cfg(test)]
@@ -402,7 +431,9 @@ mod tests {
             .output()
             .expect("register gitlink");
 
-        let entries = collect_dirty_entries_for_path(dir.path(), "tools/entrix", "modify");
+        let submodule_paths = git_submodule_paths(dir.path()).expect("submodule paths");
+        let entries =
+            collect_dirty_entries_for_path(dir.path(), "tools/entrix", "modify", &submodule_paths);
         let paths = entries
             .into_iter()
             .map(|(path, _, _, _)| path)
@@ -410,6 +441,16 @@ mod tests {
 
         assert!(paths.contains(&"tools/entrix".to_string()));
         assert!(paths.contains(&"tools/entrix/entrix/reporters/visual.py".to_string()));
+    }
+
+    #[test]
+    fn parse_git_submodule_paths_reads_gitlinks() {
+        let parsed = parse_git_submodule_paths(
+            "100644 abcdef 0\tREADME.md\n160000 a745c6f9664e4525be45e02582e7dc970158ec74 0\ttools/entrix\n",
+        );
+
+        assert!(parsed.contains("tools/entrix"));
+        assert!(!parsed.contains("README.md"));
     }
 
     #[cfg(unix)]

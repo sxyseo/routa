@@ -131,7 +131,7 @@ Publishes these crates in order:
 2. `routa-rpc` - RPC layer
 3. `routa-scanner` - Repository scanner
 4. `routa-server` - HTTP server
-5. `routa-entrix` - Entrix fitness engine shared by Harness Monitor
+5. `entrix` - Entrix fitness engine shared by Harness Monitor
 6. `routa-cli` - CLI binary
 7. `harness-monitor` - terminal watch and attribution tool
 
@@ -233,7 +233,7 @@ Common issues:
 
 1. Manually update all release crate versions:
    ```bash
-   for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-entrix crates/routa-cli crates/harness-monitor; do
+   for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/entrix crates/routa-cli crates/harness-monitor; do
      sed -i '' 's/version = "OLD_VERSION"/version = "NEW_VERSION"/g' "$crate/Cargo.toml"
    done
    ```
@@ -245,7 +245,7 @@ Common issues:
    cd ../routa-rpc && cargo publish --no-verify
    cd ../routa-scanner && cargo publish --no-verify
    cd ../routa-server && cargo publish --no-verify
-   cd ../routa-entrix && cargo publish --no-verify
+   cd ../entrix && cargo publish --no-verify
    cd ../routa-cli && cargo publish --no-verify
    cd ../harness-monitor && cargo publish --no-verify
    ```

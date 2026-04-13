@@ -43,6 +43,7 @@ export function upsertTaskLaneSession(
   const created: TaskLaneSession = {
     sessionId: session.sessionId,
     routaAgentId: session.routaAgentId,
+    worktreeId: session.worktreeId,
     cwd: session.cwd,
     columnId: session.columnId,
     columnName: session.columnName,
@@ -181,6 +182,8 @@ export function createTaskLaneHandoff(params: {
   toSessionId: string;
   fromColumnId?: string;
   toColumnId?: string;
+  worktreeId?: string;
+  cwd?: string;
   requestType: TaskLaneHandoffRequestType;
   request: string;
   status?: TaskLaneHandoffStatus;
@@ -191,6 +194,8 @@ export function createTaskLaneHandoff(params: {
     toSessionId: params.toSessionId,
     fromColumnId: params.fromColumnId,
     toColumnId: params.toColumnId,
+    worktreeId: params.worktreeId,
+    cwd: params.cwd,
     requestType: params.requestType,
     request: params.request,
     status: params.status ?? "requested",

@@ -6,7 +6,7 @@ use crate::models::schedule::Schedule;
 use serde::{Deserialize, Serialize};
 
 const AUTOMATION_CONFIG_RELATIVE_PATH: &str = "docs/harness/automations.yml";
-const FILE_BUDGETS_RELATIVE_PATH: &str = "tools/entrix/file_budgets.json";
+const FILE_BUDGETS_RELATIVE_PATH: &str = "docs/fitness/file_budgets.json";
 const ISSUE_SCANNER_RELATIVE_PATH: &str = ".github/scripts/issue-scanner.py";
 
 #[derive(Debug, Clone, Serialize)]
@@ -906,7 +906,7 @@ mod tests {
         let repo_root = temp_dir.path();
 
         fs::create_dir_all(repo_root.join("docs/harness")).expect("docs/harness");
-        fs::create_dir_all(repo_root.join("tools/entrix")).expect("tools/entrix");
+        fs::create_dir_all(repo_root.join("docs/fitness")).expect("docs/fitness");
         fs::create_dir_all(repo_root.join("src")).expect("src");
         fs::write(
             repo_root.join("docs/harness/automations.yml"),
@@ -939,7 +939,7 @@ mod tests {
         )
         .expect("automations config");
         fs::write(
-            repo_root.join("tools/entrix/file_budgets.json"),
+            repo_root.join("docs/fitness/file_budgets.json"),
             r#"{
   "default_max_lines": 20,
   "include_roots": ["src"],

@@ -5,6 +5,7 @@ import { useTranslation } from "@/i18n";
 import { formatRelativeTime } from "./ui-components";
 import type { SessionInfo } from "./types";
 import { ChevronDown, ChevronRight, PieChart, RefreshCw, SquareArrowOutUpRight, MessageCircleMore, SquarePen, Trash2 } from "lucide-react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 interface SessionsOverviewProps {
@@ -30,7 +31,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh,
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, { cache: "no-store" })
+    desktopAwareFetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, { cache: "no-store" })
       .then(res => res.json())
       .then(data => {
         const allSessions = Array.isArray(data?.sessions)
@@ -70,7 +71,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh,
   const handleDeleteSession = async (sessionId: string) => {
     if (!confirm(t.sessions.deleteConfirm)) return;
     try {
-      await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+      await desktopAwareFetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
       onRefresh();
     } catch (error) {
       console.error(t.sessions.deleteFailed, error);
@@ -87,7 +88,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh,
   const handleSaveRename = async (sessionId: string) => {
     if (!renameValue.trim()) return;
     try {
-      await fetch(`/api/sessions/${sessionId}`, {
+      await desktopAwareFetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameValue.trim() }),

@@ -10,6 +10,7 @@
  */
 
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
+import { resolveApiPath } from "@/client/config/backend";
 
 export interface AcpSessionNotification {
   sessionId: string;
@@ -292,7 +293,7 @@ export class BrowserAcpClient {
     name?: string;
   }): Promise<AcpForkSessionResult> {
     const response = await fetch(
-      `${this.baseUrl}/api/sessions/${params.sessionId}/fork`,
+      resolveApiPath(`api/sessions/${params.sessionId}/fork`, this.baseUrl),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -312,7 +313,7 @@ export class BrowserAcpClient {
    * List available models for a provider (e.g. opencode).
    */
   async listProviderModels(provider: string): Promise<string[]> {
-    const response = await fetch(`${this.baseUrl}/api/providers/models?provider=${encodeURIComponent(provider)}`);
+    const response = await fetch(resolveApiPath(`api/providers/models?provider=${encodeURIComponent(provider)}`, this.baseUrl));
     const data = await response.json();
     return Array.isArray(data.models) ? data.models : [];
   }
@@ -327,7 +328,7 @@ export class BrowserAcpClient {
     if (check) params.set("check", "true");
     if (includeRegistry) params.set("registry", "true");
 
-    const response = await fetch(`${this.baseUrl}/api/providers?${params}`);
+    const response = await fetch(resolveApiPath(`api/providers?${params}`, this.baseUrl));
     const data = await response.json();
 
     return Array.isArray(data.providers) ? data.providers : [];
@@ -338,7 +339,7 @@ export class BrowserAcpClient {
    * This is useful for showing local providers first, then loading registry in background.
    */
   async loadRegistryProviders(): Promise<AcpProviderInfo[]> {
-    const response = await fetch(`${this.baseUrl}/api/providers?registry=true`);
+    const response = await fetch(resolveApiPath("api/providers?registry=true", this.baseUrl));
     const data = await response.json();
     return Array.isArray(data.providers) ? data.providers : [];
   }
@@ -385,7 +386,7 @@ export class BrowserAcpClient {
       params.skillContent = skillContext.skillContent;
     }
 
-    const response = await fetch(`${this.baseUrl}/api/acp`, {
+    const response = await fetch(resolveApiPath("api/acp", this.baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -640,7 +641,7 @@ export class BrowserAcpClient {
       this.eventSource = null;
     }
 
-    const url = new URL(`${this.baseUrl || window.location.origin}/api/acp`);
+    const url = new URL(resolveApiPath("api/acp", this.baseUrl || window.location.origin));
     url.searchParams.set("sessionId", sessionId);
     if (this.lastEventId) {
       url.searchParams.set("lastEventId", this.lastEventId);
@@ -785,7 +786,7 @@ export class BrowserAcpClient {
   ): Promise<T> {
     const id = ++this.requestId;
 
-    const response = await fetch(`${this.baseUrl}/api/acp`, {
+    const response = await fetch(resolveApiPath("api/acp", this.baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

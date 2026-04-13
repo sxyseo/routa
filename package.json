@@ -1,7 +1,10 @@
 {
   "name": "routa-js",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "private": true,
+  "workspaces": [
+    "apps/desktop"
+  ],
   "description": "Routa.js - Multi-Agent Coordination Platform for AI Development",
   "license": "MIT",
   "homepage": "https://github.com/phodal/routa#readme",
@@ -24,7 +27,7 @@
     "acp"
   ],
   "scripts": {
-    "postinstall": "patch-package",
+    "postinstall": "node scripts/install/run-patch-package.mjs",
     "dev": "cross-env NODE_OPTIONS='--max-old-space-size=4096' next dev",
     "acp:runner": "node --import tsx scripts/fitness/start-acp-runner.ts",
     "build": "cross-env NODE_OPTIONS='--max-old-space-size=8192' next build",
@@ -113,7 +116,7 @@
     "rust:cov": "node --import tsx scripts/fitness/rust-coverage.ts routa-core summary",
     "rust:cov:lcov": "node --import tsx scripts/fitness/rust-coverage.ts routa-core lcov",
     "rust:cov:html": "node --import tsx scripts/fitness/rust-coverage.ts routa-core html",
-    "prepare": "npm run hooks:sync"
+    "prepare": "node scripts/install/run-hooks-sync.mjs"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.10",

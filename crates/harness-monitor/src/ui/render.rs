@@ -1,5 +1,7 @@
 use super::fitness;
-use super::panels::{display_run_origin_label, display_run_status_label};
+use super::run_details::{
+    display_run_origin_label, display_run_status_label, run_status_color, semantic_run_status,
+};
 use super::*;
 use crate::ui::state::FocusPane;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -165,15 +167,14 @@ fn render_main_area(
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(columns[2]);
-    // Left column: Runs pane (Phase 0: list sessions as unmanaged runs).
-    // Agents widget is embedded as the bottom sub-panel inside Runs for space efficiency.
+    // Left column: Runs pane plus prompt-bounded Sessions for the selected run.
     let left_split = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(columns[0]);
     render_runs_panel(frame, left_split[0], state, cache);
-    render_agents_panel(frame, left_split[1], state);
-    render_files(frame, center[0], state, cache, FileRowDensity::TwoLine);
+    render_sessions_panel(frame, left_split[1], state);
+    render_files(frame, center[0], state, cache, FileRowDensity::SingleLine);
     render_details_panel(frame, center[1], state, cache);
     render_preview_panel(frame, right[0], state, cache);
     render_fitness_panel(frame, right[1], state, cache);
@@ -263,32 +264,49 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
 
             lines.push(Line::from(line_spans));
         }
-        let trend = cache.fitness_trend();
-        if trend.len() >= 2 && !compact_height {
-            let latest = trend.last().copied().unwrap_or(0.0);
-            let prev = trend
-                .get(trend.len().saturating_sub(2))
-                .copied()
-                .unwrap_or(0.0);
-            let delta = latest - prev;
-            let delta_text = if delta >= 0.0 {
-                format!("+{delta:.1}")
-            } else {
-                format!("{delta:.1}")
-            };
-            let delta_color = if delta >= 0.0 { ACTIVE } else { STOPPED };
+        if !snapshot.changed_files_preview.is_empty() && !compact_height {
             lines.push(Line::from(vec![
-                Span::styled("Trend:", Style::default().fg(colors.text)),
-                Span::raw(" "),
-                render_score_sparkline(trend),
-                Span::raw(" "),
-                Span::styled(format!("({delta_text})"), Style::default().fg(delta_color)),
-                Span::raw(" "),
+                Span::styled("Files: ", Style::default().fg(colors.muted)),
                 Span::styled(
-                    format!("n={}", trend.len()),
-                    Style::default().fg(colors.muted),
+                    snapshot.changed_files_preview.join(", "),
+                    Style::default().fg(colors.text),
                 ),
             ]));
+        }
+        if !compact_height && !snapshot.failing_metrics.is_empty() {
+            lines.push(Line::from(vec![Span::styled(
+                "Failures:",
+                Style::default()
+                    .fg(colors.text)
+                    .add_modifier(Modifier::BOLD),
+            )]));
+            let failing_limit = if medium_height { 2 } else { 3 };
+            for metric in snapshot.failing_metrics.iter().take(failing_limit) {
+                let mut row = vec![
+                    Span::styled(
+                        format!("[{}]", metric.state),
+                        Style::default().fg(metric_color(metric)),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(metric.name.clone(), Style::default().fg(colors.text)),
+                ];
+                if metric.hard_gate {
+                    row.push(Span::raw(" "));
+                    row.push(Span::styled("hard-gate", Style::default().fg(STOPPED)));
+                }
+                row.push(Span::raw(" "));
+                row.push(Span::styled(
+                    format!("{:.1}ms", metric.duration_ms),
+                    Style::default().fg(colors.muted),
+                ));
+                lines.push(Line::from(row));
+                if let Some(excerpt) = &metric.output_excerpt {
+                    lines.push(Line::from(vec![
+                        Span::styled("  > ", Style::default().fg(colors.muted)),
+                        Span::styled(excerpt.clone(), Style::default().fg(colors.muted)),
+                    ]));
+                }
+            }
         }
 
         lines.push(Line::from(vec![Span::styled(
@@ -312,10 +330,23 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
                 .width
                 .saturating_sub(dim_name_width as u16 + 16)
                 .clamp(8, 28) as usize;
-            let warning = if dim.hard_gate_failures.is_empty() {
+            let failure_count = dimension_failure_count(dim);
+            let warning = if failure_count == 0 {
                 String::new()
-            } else {
+            } else if dim.name.eq_ignore_ascii_case("code_quality") {
+                format!(
+                    "  !{} failure{}",
+                    failure_count,
+                    if failure_count == 1 { "" } else { "s" }
+                )
+            } else if !dim.hard_gate_failures.is_empty() {
                 format!("  !{}", dim.hard_gate_failures.join(","))
+            } else {
+                format!(
+                    "  !{} metric{} failed",
+                    failure_count,
+                    if failure_count == 1 { "" } else { "s" }
+                )
             };
             let mut row = vec![Span::styled(
                 format!("{:>3}%", dim.score.round() as u8),
@@ -348,6 +379,33 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
         }
 
         if !compact_height {
+            let trend = cache.fitness_trend();
+            if !snapshot.hard_gate_blocked && !snapshot.score_blocked && trend.len() >= 2 {
+                let latest = trend.last().copied().unwrap_or(0.0);
+                let prev = trend
+                    .get(trend.len().saturating_sub(2))
+                    .copied()
+                    .unwrap_or(0.0);
+                let delta = latest - prev;
+                let delta_text = if delta >= 0.0 {
+                    format!("+{delta:.1}")
+                } else {
+                    format!("{delta:.1}")
+                };
+                let delta_color = if delta >= 0.0 { ACTIVE } else { STOPPED };
+                lines.push(Line::from(vec![
+                    Span::styled("Trend:", Style::default().fg(colors.text)),
+                    Span::raw(" "),
+                    render_score_sparkline(trend),
+                    Span::raw(" "),
+                    Span::styled(format!("({delta_text})"), Style::default().fg(delta_color)),
+                    Span::raw(" "),
+                    Span::styled(
+                        format!("n={}", trend.len()),
+                        Style::default().fg(colors.muted),
+                    ),
+                ]));
+            }
             lines.push(Line::from(vec![
                 Span::styled("Slowest:", Style::default().fg(colors.text)),
                 Span::raw(" "),
@@ -526,6 +584,14 @@ fn metric_color(metric: &fitness::FitnessMetricSummary) -> Color {
     }
 }
 
+fn dimension_failure_count(dimension: &fitness::FitnessDimensionSummary) -> usize {
+    dimension
+        .metrics
+        .iter()
+        .filter(|metric| !metric.passed)
+        .count()
+}
+
 fn truncate_short(value: &str, max_len: usize) -> String {
     if value.chars().count() <= max_len {
         value.to_string()
@@ -536,25 +602,129 @@ fn truncate_short(value: &str, max_len: usize) -> String {
     }
 }
 
-fn render_agents_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeState) {
+fn render_sessions_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeState) {
     let colors = palette(state.theme_mode);
-    let outer_block = panel_block("Agents", false, colors);
+    let focused = state.focus == FocusPane::Sessions;
+    let title = if focused {
+        "Sessions [Tab]"
+    } else {
+        "Sessions"
+    };
+    let outer_block = panel_block(title, focused, colors);
     let inner = outer_block.inner(area);
     frame.render_widget(outer_block, area);
     let split = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(2), Constraint::Min(6)])
         .split(inner);
+    let items = state.prompt_sessions();
+    let prompt_count = items
+        .iter()
+        .filter(|item| !item.is_all_prompt_bucket)
+        .count();
+    let source_label = state
+        .selected_run_item()
+        .map(|run| run.client.as_str())
+        .unwrap_or("unknown");
     frame.render_widget(
-        Paragraph::new(render_agent_stats_line(state, colors))
-            .style(Style::default().bg(colors.surface).fg(colors.text)),
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(
+                    " {} prompt{}",
+                    prompt_count,
+                    if prompt_count == 1 { "" } else { "s" }
+                ),
+                Style::default().fg(if prompt_count > 0 {
+                    ACTIVE
+                } else {
+                    colors.muted
+                }),
+            ),
+            Span::styled("  source:", Style::default().fg(colors.muted)),
+            Span::styled(source_label, Style::default().fg(colors.accent)),
+        ]))
+        .style(Style::default().bg(colors.surface).fg(colors.text)),
         split[0],
     );
-    let agent_lines = render_agent_rows(state, colors);
-    frame.render_widget(
-        Paragraph::new(agent_lines)
+    if items.is_empty() {
+        frame.render_widget(
+            Paragraph::new(vec![Line::from(Span::styled(
+                "no prompt sessions for selected run",
+                Style::default().fg(colors.muted),
+            ))])
             .style(Style::default().bg(colors.surface).fg(colors.text))
             .wrap(Wrap { trim: true }),
+            split[1],
+        );
+        return;
+    }
+
+    let visible_items = (split[1].height as usize / 2).max(1);
+    let start = file_window_start(items.len(), state.selected_prompt_session, visible_items);
+    let end = (start + visible_items).min(items.len());
+    let list_items: Vec<ListItem> = items[start..end]
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            let absolute_idx = start + idx;
+            let selected = absolute_idx == state.selected_prompt_session;
+            let bg = if selected {
+                if focused {
+                    colors.selection_focus
+                } else {
+                    colors.selection_blur
+                }
+            } else {
+                colors.surface
+            };
+            let primary = Line::from(vec![
+                Span::styled(
+                    if selected { "▶ " } else { "  " },
+                    Style::default().fg(colors.accent).bg(bg),
+                ),
+                Span::styled(
+                    pad_right(
+                        &shorten_path(
+                            item.primary_label(),
+                            split[1].width.saturating_sub(10) as usize,
+                        ),
+                        split[1].width.saturating_sub(10) as usize,
+                    ),
+                    Style::default()
+                        .fg(colors.text)
+                        .bg(bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("  {}", pad_left(&time_ago(item.updated_at_ms), 4)),
+                    Style::default().fg(colors.muted).bg(bg),
+                ),
+            ]);
+            let mut secondary_text = format!(
+                "  {}  {}  files:{}",
+                item.client, item.status, item.changed_files_count
+            );
+            if item.recovered_from_transcript {
+                secondary_text.push_str("  recovered");
+            }
+            if let Some(summary) = item.recent_git_summary.as_deref() {
+                secondary_text.push_str("  ");
+                secondary_text.push_str(summary);
+            }
+            let secondary = Line::from(Span::styled(
+                shorten_path(&secondary_text, split[1].width.saturating_sub(2) as usize),
+                Style::default().fg(colors.muted).bg(bg),
+            ));
+            ListItem::new(vec![primary, secondary]).style(row_style(selected, focused, colors))
+        })
+        .collect();
+    frame.render_widget(
+        List::new(list_items).block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(colors.border))
+                .style(Style::default().bg(colors.surface)),
+        ),
         split[1],
     );
 }
@@ -586,7 +756,17 @@ fn render_runs_panel(
         .constraints([Constraint::Length(2), Constraint::Min(1)])
         .split(inner);
 
-    let active_runs = sessions.iter().filter(|s| s.status == "active").count();
+    let visible_runs = sessions
+        .iter()
+        .filter(|session| !session.is_all_runs_bucket)
+        .collect::<Vec<_>>();
+    let active_runs = visible_runs
+        .iter()
+        .filter(|session| {
+            let model = build_run_operator_model(state, cache, session);
+            semantic_run_status(session, &model) == "active"
+        })
+        .count();
     let summary_line = Line::from(vec![
         Span::styled(
             format!(" {} active", active_runs),
@@ -597,7 +777,7 @@ fn render_runs_panel(
             }),
         ),
         Span::styled(
-            format!("  {} total", sessions.len()),
+            format!("  {} total", visible_runs.len()),
             Style::default().fg(colors.text),
         ),
         Span::styled(
@@ -616,16 +796,7 @@ fn render_runs_panel(
         format!("{}-{}/{}", start + 1, end, sessions.len())
     };
     let controls_line = Line::from(vec![
-        Span::styled(" filter:", Style::default().fg(colors.muted)),
-        Span::styled(
-            state.run_filter_mode.label(),
-            Style::default().fg(colors.accent),
-        ),
-        Span::styled("  sort:", Style::default().fg(colors.muted)),
-        Span::styled(
-            state.run_sort_mode.label(),
-            Style::default().fg(colors.accent),
-        ),
+        Span::styled(" recent first", Style::default().fg(colors.muted)),
         Span::styled("  view:", Style::default().fg(colors.muted)),
         Span::styled(progress_text, Style::default().fg(colors.text)),
     ]);
@@ -649,6 +820,8 @@ fn render_runs_panel(
             };
 
             let model = build_run_operator_model(state, cache, session);
+            let semantic_status = semantic_run_status(session, &model);
+            let status_label = display_run_status_label(semantic_status);
             let origin_label = display_run_origin_label(model.origin);
             let client_label = if session.is_unknown_bucket {
                 "unassigned"
@@ -666,7 +839,10 @@ fn render_runs_panel(
             } else {
                 String::new()
             };
-            let run_label_width = split[1].width.saturating_sub(10) as usize;
+            let status_width = status_label.chars().count().max(8);
+            let reserved_width = 10usize + status_width + 3;
+            let run_label_width =
+                split[1].width.saturating_sub(reserved_width as u16).max(12) as usize;
             let event_label = match (&session.last_event_name, &session.last_tool_name) {
                 (Some(event), Some(tool)) if !tool.is_empty() => format!("{event}/{tool}"),
                 (Some(event), _) => event.clone(),
@@ -697,6 +873,13 @@ fn render_runs_panel(
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
+                    format!("  {}", pad_left(&status_label, status_width)),
+                    Style::default()
+                        .fg(run_status_color(semantic_status))
+                        .bg(bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
                     format!("  {}", pad_left(&time_ago(session.last_seen_at_ms), 4)),
                     Style::default().fg(colors.muted).bg(bg),
                 ),
@@ -712,7 +895,7 @@ fn render_runs_panel(
                         session.exact_count,
                         session.inferred_count,
                         session.unknown_count,
-                        if session.recovered_from_transcript {
+                        if session.recovered_from_transcript && semantic_status != "recovered" {
                             "  recovered"
                         } else {
                             ""
@@ -794,7 +977,16 @@ fn render_files(
     density: FileRowDensity,
 ) {
     let colors = palette(state.theme_mode);
-    let outer_block = panel_block("Git Status", state.focus == FocusPane::Files, colors);
+    let panel_title = if state.has_selected_prompt_scope() {
+        "Change Status"
+    } else {
+        "Git Status"
+    };
+    let outer_block = panel_block(
+        render_file_panel_title(state, cache, panel_title, area.width, colors),
+        state.focus == FocusPane::Files,
+        colors,
+    );
     let inner = outer_block.inner(area);
     frame.render_widget(outer_block, area);
     let split = Layout::default()
@@ -832,12 +1024,11 @@ fn render_files(
             let review_hint = cache.review_hint(file);
             let test_mapping = cache.test_mapping(file);
             let changed_test_file = cache.is_changed_test_file(file);
-            let (file_name, parent_dir) = split_display_path(file);
-            let display_name = display_file_name(state, file, &file_name);
+            let display_path = display_file_path(state, file);
             let rows = match density {
                 FileRowDensity::SingleLine => vec![render_file_single_line(
                     selected,
-                    &display_name,
+                    &display_path,
                     file,
                     &diff_stat,
                     review_hint.as_ref(),
@@ -851,7 +1042,7 @@ fn render_files(
                     if file.entry_kind.is_submodule() {
                         vec![render_file_single_line(
                             selected,
-                            &display_name,
+                            &display_path,
                             file,
                             &diff_stat,
                             review_hint.as_ref(),
@@ -866,8 +1057,8 @@ fn render_files(
                             format!(
                                 "{} {}",
                                 if selected { ">" } else { " " },
-                                shorten_path(
-                                    &display_name,
+                                compact_rel_path(
+                                    &display_path,
                                     split[1].width.saturating_sub(6) as usize
                                 )
                             ),
@@ -876,12 +1067,10 @@ fn render_files(
                         )]);
                         let secondary = render_file_meta_line(
                             file,
-                            &parent_dir,
                             &diff_stat,
                             review_hint.as_ref(),
                             test_mapping,
                             changed_test_file,
-                            split[1].width as usize,
                             colors,
                         );
                         vec![primary, secondary]
@@ -905,76 +1094,77 @@ fn render_files(
     frame.render_widget(list, split[1]);
 }
 
-fn render_agent_rows(state: &RuntimeState, colors: UiPalette) -> Vec<Line<'static>> {
-    if state.detected_agents.is_empty() {
-        return vec![Line::from(Span::styled(
-            "no repo-local agents detected",
-            Style::default().fg(colors.muted),
-        ))];
+pub(super) fn render_file_panel_title(
+    state: &RuntimeState,
+    cache: &AppCache,
+    label: &str,
+    area_width: u16,
+    colors: UiPalette,
+) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        label.to_string(),
+        Style::default().fg(colors.muted),
+    )];
+    if area_width < 28 {
+        return Line::from(spans);
     }
 
-    state
-        .detected_agents
-        .iter()
-        .flat_map(|agent| {
-            let status_color = if agent.status == "ACTIVE" {
-                ACTIVE
-            } else {
-                IDLE
-            };
-            [
-                Line::from(vec![
-                    Span::styled(
-                        pad_left(&agent.pid.to_string(), 5),
-                        Style::default().fg(colors.muted),
-                    ),
-                    Span::raw(" "),
-                    Span::styled(
-                        format!("{} {}", agent.icon, agent.name),
-                        Style::default()
-                            .fg(colors.accent)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::raw("  "),
-                    Span::styled(agent.status.clone(), Style::default().fg(status_color)),
-                ]),
-                Line::from(vec![
-                    Span::styled("cpu ", Style::default().fg(colors.muted)),
-                    Span::styled(
-                        format!("{:>4.1}%", agent.cpu_percent),
-                        Style::default().fg(status_color),
-                    ),
-                    Span::raw("  "),
-                    Span::styled("mem ", Style::default().fg(colors.muted)),
-                    Span::styled(
-                        format!("{:.0}MB", agent.mem_mb),
-                        Style::default().fg(colors.text),
-                    ),
-                    Span::raw("  "),
-                    Span::styled("up ", Style::default().fg(colors.muted)),
-                    Span::styled(
-                        crate::observe::detect::format_uptime(agent.uptime_seconds),
-                        Style::default().fg(colors.text),
-                    ),
-                ]),
-                Line::from(vec![
-                    Span::styled("proj ", Style::default().fg(colors.muted)),
-                    Span::styled(
-                        shorten_path(&agent.project, 10),
-                        Style::default().fg(colors.text),
-                    ),
-                    Span::raw("  "),
-                    Span::styled("conf ", Style::default().fg(colors.muted)),
-                    Span::styled(
-                        format!("{}%", agent.confidence),
-                        Style::default().fg(INFERRED),
-                    ),
-                ]),
-                Line::from(""),
-            ]
-        })
-        .collect()
+    let (additions, deletions, has_diff_data) = aggregate_visible_diff_stats(state, cache);
+    if !has_diff_data && state.committed_change_summary.is_none() {
+        return Line::from(spans);
+    }
+
+    if has_diff_data {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            format!("+{additions}"),
+            Style::default().fg(ACTIVE).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            format!("-{deletions}"),
+            Style::default().fg(STOPPED).add_modifier(Modifier::BOLD),
+        ));
+    }
+    if let Some((total_additions, total_deletions)) = state.committed_change_summary {
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled("(Total:", Style::default().fg(colors.muted)));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            format!("+{total_additions}"),
+            Style::default().fg(ACTIVE).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            format!("-{total_deletions}"),
+            Style::default().fg(STOPPED).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(")", Style::default().fg(colors.muted)));
+    }
+    Line::from(spans)
 }
+
+fn aggregate_visible_diff_stats(state: &RuntimeState, cache: &AppCache) -> (usize, usize, bool) {
+    let mut additions = 0usize;
+    let mut deletions = 0usize;
+    let mut has_diff_data = false;
+
+    for file in state.file_items() {
+        if let Some(diff_stat) = cache.diff_stat(file) {
+            if let Some(add) = diff_stat.additions {
+                additions += add;
+                has_diff_data = true;
+            }
+            if let Some(del) = diff_stat.deletions {
+                deletions += del;
+                has_diff_data = true;
+            }
+        }
+    }
+
+    (additions, deletions, has_diff_data)
+}
+
 pub(super) fn panel_block<T: Into<ratatui::text::Line<'static>>>(
     title: T,
     focused: bool,
@@ -1036,69 +1226,10 @@ pub(super) fn time_ago(timestamp_ms: i64) -> String {
     }
 }
 
-fn render_file_secondary_line(
-    file: &crate::shared::models::FileView,
-    diff_stat: &DiffStatSummary,
-    review_hint: Option<&crate::ui::tui::review::ReviewHint>,
-    test_mapping: Option<&TestMappingEntry>,
-    changed_test_file: bool,
-    colors: UiPalette,
-) -> Line<'static> {
-    let age = pad_left(&time_ago(file.last_modified_at_ms), 5);
-    let mut spans = render_diff_stat_spans(diff_stat);
-    if let Some(hint) = review_hint {
-        spans.push(Span::raw("  "));
-        spans.push(Span::styled(
-            hint.label,
-            Style::default().fg(review_hint_color(hint, colors)),
-        ));
-    }
-    if let Some((label, color)) = render_test_mapping_badge(test_mapping, changed_test_file, colors)
-    {
-        spans.push(Span::raw("  "));
-        spans.push(Span::styled(label, Style::default().fg(color)));
-    }
-    spans.push(Span::raw(" "));
-    spans.push(Span::styled(age, Style::default().fg(colors.muted)));
-    Line::from(spans)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn render_file_meta_line(
-    file: &crate::shared::models::FileView,
-    parent_dir: &str,
-    diff_stat: &DiffStatSummary,
-    review_hint: Option<&crate::ui::tui::review::ReviewHint>,
-    test_mapping: Option<&TestMappingEntry>,
-    changed_test_file: bool,
-    area_width: usize,
-    colors: UiPalette,
-) -> Line<'static> {
-    let parent_width = area_width.saturating_sub(28).clamp(16, 30);
-    let mut spans = Vec::new();
-    spans.push(Span::styled(
-        format!("  {}", shorten_path(parent_dir, parent_width)),
-        Style::default().fg(colors.muted),
-    ));
-    spans.push(Span::styled("  ", Style::default().fg(colors.muted)));
-    spans.extend(
-        render_file_secondary_line(
-            file,
-            diff_stat,
-            review_hint,
-            test_mapping,
-            changed_test_file,
-            colors,
-        )
-        .spans,
-    );
-    Line::from(spans)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn render_file_single_line(
     selected: bool,
-    file_name: &str,
+    display_path: &str,
     file: &crate::shared::models::FileView,
     diff_stat: &DiffStatSummary,
     review_hint: Option<&crate::ui::tui::review::ReviewHint>,
@@ -1108,72 +1239,36 @@ fn render_file_single_line(
     focused: bool,
     area_width: usize,
 ) -> Line<'static> {
-    let (_, parent_dir) = split_display_path(file);
-    let folder_label = compact_folder_label(&parent_dir);
-    let folder_width = if folder_label == "/" {
-        0
+    let meta = build_file_meta_segments(
+        file,
+        diff_stat,
+        review_hint,
+        test_mapping,
+        changed_test_file,
+        colors,
+        area_width,
+    );
+    let prefix_width = 2usize;
+    let gap_width = usize::from(!meta.is_empty());
+    let available_for_path = area_width
+        .saturating_sub(prefix_width + gap_width + meta.display_width)
+        .max(1);
+    let path_text = compact_rel_path(display_path, available_for_path);
+    let selector = if selected { ">" } else { " " };
+    let path_span = if meta.is_empty() {
+        format!("{selector} {path_text}")
     } else {
-        area_width.saturating_sub(40).clamp(8, 14)
-    };
-    let name_width = area_width.saturating_sub(25 + folder_width).clamp(20, 52);
-    let mut spans = vec![Span::styled(
         format!(
-            "{} {}",
-            if selected { ">" } else { " " },
-            pad_right(&shorten_path(file_name, name_width), name_width + 1)
-        ),
+            "{selector} {}",
+            pad_right(&path_text, available_for_path + 1)
+        )
+    };
+    let mut spans = vec![Span::styled(
+        path_span,
         row_style(selected, focused, colors).add_modifier(Modifier::BOLD),
     )];
-    if folder_width > 0 {
-        spans.push(Span::styled(
-            pad_right(
-                &format!("{}/", shorten_path(&folder_label, folder_width)),
-                folder_width + 2,
-            ),
-            Style::default().fg(colors.muted),
-        ));
-        spans.push(Span::raw(" "));
-    }
-    spans.extend(
-        render_file_secondary_line(
-            file,
-            diff_stat,
-            review_hint,
-            test_mapping,
-            changed_test_file,
-            colors,
-        )
-        .spans,
-    );
+    spans.extend(meta.spans);
     Line::from(spans)
-}
-
-fn review_hint_color(hint: &crate::ui::tui::review::ReviewHint, _colors: UiPalette) -> Color {
-    match hint.level {
-        crate::ui::tui::review::ReviewRiskLevel::High => STOPPED,
-        crate::ui::tui::review::ReviewRiskLevel::Medium => INFERRED,
-    }
-}
-
-fn render_test_mapping_badge(
-    test_mapping: Option<&TestMappingEntry>,
-    changed_test_file: bool,
-    colors: UiPalette,
-) -> Option<(String, Color)> {
-    if changed_test_file {
-        return Some(("TEST".to_string(), ACTIVE));
-    }
-
-    let mapping = test_mapping?;
-    let (label, color) = match mapping.status.as_str() {
-        "changed" => ("TM changed", ACTIVE),
-        "exists" => ("TM ok", ACTIVE),
-        "inline" => ("TM inline", ACTIVE),
-        "missing" => ("TM miss", STOPPED),
-        "unknown" => ("TM ?", INFERRED),
-        _ => ("TM ...", colors.muted),
-    };
-    Some((label.to_string(), color))
 }
 
 pub(super) fn render_event_line(
@@ -1223,52 +1318,18 @@ fn file_window_start(total: usize, selected: usize, page_size: usize) -> usize {
     centered.min(total.saturating_sub(page_size))
 }
 
-pub(super) fn split_display_path(file: &crate::shared::models::FileView) -> (String, String) {
-    let path = Path::new(&file.rel_path);
-    let mut file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.to_string_lossy().to_string());
-    if file.entry_kind.is_container() && !file_name.ends_with('/') {
-        file_name.push('/');
+fn display_file_path(state: &RuntimeState, file: &crate::shared::models::FileView) -> String {
+    let mut rel_path = file.rel_path.clone();
+    if file.entry_kind.is_container() && !rel_path.ends_with('/') {
+        rel_path.push('/');
     }
-    let parent = path
-        .parent()
-        .map(|parent| {
-            let value = parent.to_string_lossy().to_string();
-            if value == "." || value.is_empty() {
-                "/".to_string()
-            } else {
-                value
-            }
-        })
-        .unwrap_or_else(|| "/".to_string());
-    (file_name, parent)
-}
-
-fn compact_folder_label(parent_dir: &str) -> String {
-    if parent_dir == "/" {
-        return "/".to_string();
-    }
-    Path::new(parent_dir)
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| parent_dir.to_string())
-}
-
-fn display_file_name(
-    state: &RuntimeState,
-    file: &crate::shared::models::FileView,
-    file_name: &str,
-) -> String {
     if file.entry_kind.is_submodule() {
-        return file_name.to_string();
+        return rel_path;
     }
     if nearest_submodule_parent_path(state, file).is_some() {
-        return format!("  {file_name}");
+        return format!("  {rel_path}");
     }
-    file_name.to_string()
+    rel_path
 }
 
 fn nearest_submodule_parent_path(
@@ -1310,55 +1371,6 @@ pub(super) fn format_bytes(bytes: u64) -> String {
     }
 }
 
-pub(super) fn render_diff_stat_spans(diff_stat: &DiffStatSummary) -> Vec<Span<'static>> {
-    let mut spans = vec![Span::styled(
-        pad_right(&diff_stat.status, 2),
-        Style::default()
-            .fg(change_color_from_status(diff_stat.status.as_str()))
-            .add_modifier(Modifier::BOLD),
-    )];
-    if let Some(add) = diff_stat.additions {
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(format!("+{add}"), Style::default().fg(ACTIVE)));
-    }
-    if let Some(del) = diff_stat.deletions {
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(
-            format!("-{del}"),
-            Style::default().fg(STOPPED),
-        ));
-    }
-    spans.push(Span::styled(
-        pad_right(
-            "",
-            9usize.saturating_sub(diff_stat_display_width(diff_stat)),
-        ),
-        Style::default(),
-    ));
-    spans
-}
-
-fn diff_stat_display_width(diff_stat: &DiffStatSummary) -> usize {
-    let mut width = diff_stat.status.len();
-    if let Some(add) = diff_stat.additions {
-        width += 1 + format!("+{add}").len();
-    }
-    if let Some(del) = diff_stat.deletions {
-        width += 1 + format!("-{del}").len();
-    }
-    width
-}
-
-fn change_color_from_status(status: &str) -> Color {
-    match status {
-        "D" => STOPPED,
-        "A" => ACTIVE,
-        "SUB" => Color::Rgb(111, 170, 189),
-        "DIR" => Color::Rgb(126, 156, 181),
-        _ => INFERRED,
-    }
-}
-
 fn source_color(source: crate::shared::models::EventSource) -> Color {
     match source {
         crate::shared::models::EventSource::Hook => Color::Rgb(126, 156, 181),
@@ -1368,23 +1380,3 @@ fn source_color(source: crate::shared::models::EventSource) -> Color {
         crate::shared::models::EventSource::Fitness => Color::Rgb(91, 192, 190),
     }
 }
-
-pub(super) fn shorten_path(path: &str, max_len: usize) -> String {
-    if path.chars().count() <= max_len {
-        return path.to_string();
-    }
-    let keep = max_len.saturating_sub(3);
-    let tail = path
-        .chars()
-        .rev()
-        .take(keep)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<String>();
-    format!("...{tail}")
-}
-
-#[cfg(test)]
-#[path = "render_tests.rs"]
-mod tests;

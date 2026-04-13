@@ -125,5 +125,5 @@ grep -rn "TODO\|FIXME\|XXX\|HACK" --include="*.ts" --include="*.tsx" --include="
 |------|------|
 | `docs/fitness/code-quality.md` | 代码本体质量与静态门禁 |
 | `docs/fitness/review-triggers.yaml` | review 触发规则与目录治理信号 |
-| `tools/entrix/file_budgets.json` | 文件预算与历史热点冻结配置 |
+| `docs/fitness/file_budgets.json` | 文件预算与历史热点冻结配置 |
 | `docs/fitness/README.md` | Fitness 规则手册 |

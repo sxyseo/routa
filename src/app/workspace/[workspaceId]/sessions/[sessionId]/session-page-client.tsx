@@ -35,6 +35,7 @@ import { RepoSlideSessionPanel } from "./repo-slide-session-panel";
 import { Select } from "@/client/components/select";
 import { useTranslation } from "@/i18n";
 import { ChevronDown, Columns2, ScrollText, X } from "lucide-react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 interface SessionRecord {
@@ -401,7 +402,7 @@ export function SessionPageClient() {
   // Check if a session is empty (only has session_start event or no messages)
   const isSessionEmpty = useCallback(async (sid: string): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/sessions/${sid}/history`);
+      const res = await desktopAwareFetch(`/api/sessions/${sid}/history`);
       const data = await res.json();
       const history = data?.history ?? [];
 
@@ -427,7 +428,7 @@ export function SessionPageClient() {
     // Never delete child sessions (they belong to a parent orchestration)
     // Also never delete ROUTA-role sessions (they are long-running orchestrators)
     try {
-      const resp = await fetch(`/api/sessions/${sid}`);
+      const resp = await desktopAwareFetch(`/api/sessions/${sid}`);
       if (resp.ok) {
         const sessionData = await resp.json();
         if (sessionData?.session?.parentSessionId) {
@@ -447,7 +448,7 @@ export function SessionPageClient() {
     if (isEmpty) {
       console.log(`[deleteEmptySession] Deleting empty session: ${sid}`);
       try {
-        await fetch(`/api/sessions/${sid}`, { method: "DELETE" });
+        await desktopAwareFetch(`/api/sessions/${sid}`, { method: "DELETE" });
       } catch (e) {
         console.error("Failed to delete empty session", e);
       }
@@ -492,14 +493,14 @@ export function SessionPageClient() {
   }, [searchParams, workspaceId]);
 
   const fetchSessionRecord = useCallback(async (targetSessionId: string): Promise<SessionRecord | null> => {
-    const response = await fetch(`/api/sessions/${targetSessionId}`, { cache: "no-store" });
+    const response = await desktopAwareFetch(`/api/sessions/${targetSessionId}`, { cache: "no-store" });
     if (!response.ok) return null;
     const data = await response.json();
     return (data?.session ?? null) as SessionRecord | null;
   }, []);
 
   const fetchSessionTranscript = useCallback(async (targetSessionId: string): Promise<TranscriptMessage[]> => {
-    const response = await fetch(`/api/sessions/${targetSessionId}/transcript`, { cache: "no-store" });
+    const response = await desktopAwareFetch(`/api/sessions/${targetSessionId}/transcript`, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Failed to load transcript for session ${targetSessionId}`);
     }

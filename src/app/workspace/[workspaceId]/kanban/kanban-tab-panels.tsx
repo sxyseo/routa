@@ -25,6 +25,7 @@ import type { KanbanTaskAgentCopy } from "./i18n/kanban-task-agent";
 import { KanbanCreateModal, type TaskDraft } from "../kanban-create-modal";
 import { KanbanCardActivityPanel, KanbanEmptySessionPane } from "./kanban-card-activity";
 import { formatSessionTimestamp } from "./kanban-card-session-utils";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
 import {
@@ -147,7 +148,7 @@ export function buildKanbanSessionRestorePrompt(
 }
 
 async function fetchSessionTranscriptForRestore(sessionId: string): Promise<SessionRestoreTranscriptMessage[]> {
-  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/transcript`, { cache: "no-store" });
+  const response = await desktopAwareFetch(`/api/sessions/${encodeURIComponent(sessionId)}/transcript`, { cache: "no-store" });
   if (!response.ok) return [];
   const data = await response.json().catch(() => null) as { messages?: unknown } | null;
   return Array.isArray(data?.messages) ? data.messages as SessionRestoreTranscriptMessage[] : [];

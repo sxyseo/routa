@@ -9,23 +9,28 @@ import { AgentRole, AgentStatus, ModelTier, createAgent } from "../../models/age
 import { MessageRole, createMessage } from "../../models/message";
 import { TaskStatus, createTask } from "../../models/task";
 import { InMemoryAgentStore } from "../../store/agent-store";
+import { InMemoryKanbanBoardStore } from "../../store/kanban-board-store";
 import { InMemoryConversationStore } from "../../store/conversation-store";
 import { InMemoryTaskStore } from "../../store/task-store";
 import { AgentTools } from "../agent-tools";
+import { createKanbanBoard } from "../../models/kanban";
 
 describe("AgentTools extended coverage", () => {
   let tools: AgentTools;
   let agentStore: InMemoryAgentStore;
   let conversationStore: InMemoryConversationStore;
   let taskStore: InMemoryTaskStore;
+  let kanbanBoardStore: InMemoryKanbanBoardStore;
   let eventBus: EventBus;
 
   beforeEach(() => {
     agentStore = new InMemoryAgentStore();
     conversationStore = new InMemoryConversationStore();
     taskStore = new InMemoryTaskStore();
+    kanbanBoardStore = new InMemoryKanbanBoardStore();
     eventBus = new EventBus();
     tools = new AgentTools(agentStore, conversationStore, taskStore, eventBus);
+    tools.setKanbanBoardStore(kanbanBoardStore);
   });
 
   it("creates agents, lists them, and rejects invalid roles", async () => {
@@ -193,5 +198,68 @@ describe("AgentTools extended coverage", () => {
         activeTasks: [],
       }),
     );
+  });
+
+  it("converges final review verdicts into the matching board column", async () => {
+    await kanbanBoardStore.save(createKanbanBoard({
+      id: "board-1",
+      workspaceId: "ws-1",
+      name: "Main",
+      columns: [
+        { id: "backlog", name: "Backlog", stage: "backlog", position: 0 },
+        { id: "todo", name: "Todo", stage: "todo", position: 1 },
+        { id: "dev", name: "Dev", stage: "dev", position: 2 },
+        {
+          id: "review",
+          name: "Review",
+          stage: "review",
+          position: 3,
+          automation: {
+            enabled: true,
+            steps: [
+              {
+                id: "qa-frontend",
+                role: "GATE",
+                specialistId: "kanban-qa-frontend",
+                specialistName: "QA Frontend",
+              },
+              {
+                id: "review-guard",
+                role: "GATE",
+                specialistId: "kanban-review-guard",
+                specialistName: "Review Guard",
+              },
+            ],
+          },
+        },
+        { id: "done", name: "Done", stage: "done", position: 4 },
+      ],
+    }));
+
+    const task = createTask({
+      id: "task-review-1",
+      title: "Converge review",
+      objective: "Move approved review work to done",
+      workspaceId: "ws-1",
+      boardId: "board-1",
+      columnId: "review",
+    });
+    task.assignedSpecialistId = "kanban-review-guard";
+    task.assignedSpecialistName = "Review Guard";
+    await taskStore.save(task);
+
+    const result = await tools.updateTask({
+      taskId: "task-review-1",
+      updates: {
+        verificationVerdict: "APPROVED",
+        verificationReport: "Checks passed",
+      },
+      agentId: "agent-1",
+    });
+
+    expect(result.success).toBe(true);
+    const updated = await taskStore.get("task-review-1");
+    expect(updated?.columnId).toBe("done");
+    expect(updated?.status).toBe(TaskStatus.COMPLETED);
   });
 });

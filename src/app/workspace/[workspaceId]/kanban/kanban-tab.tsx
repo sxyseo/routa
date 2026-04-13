@@ -327,7 +327,7 @@ export function KanbanTab({
 
   const persistBoardAutoProvider = useCallback(async (providerId: string | null | undefined) => {
     if (!board?.id) return;
-    await fetch(`/api/kanban/boards/${encodeURIComponent(board.id)}`, {
+    await desktopAwareFetch(`/api/kanban/boards/${encodeURIComponent(board.id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ autoProviderId: providerId ?? "" }),
@@ -428,7 +428,7 @@ export function KanbanTab({
   }, [defaultBoardId]);
 
   const patchTask = useCallback(async (taskId: string, payload: Record<string, unknown>) => {
-    const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+    const response = await desktopAwareFetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -604,7 +604,7 @@ export function KanbanTab({
 
     void (async () => {
       try {
-        const response = await fetch(`/api/sessions/${encodeURIComponent(targetSessionId)}`, {
+        const response = await desktopAwareFetch(`/api/sessions/${encodeURIComponent(targetSessionId)}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -848,8 +848,7 @@ export function KanbanTab({
 
       const updates = await Promise.all(activeLiveSessionIds.map(async (sessionId) => {
         try {
-          const response = await fetch(
-            `/api/sessions/${encodeURIComponent(sessionId)}/history?consolidated=true`,
+          const response = await desktopAwareFetch(`/api/sessions/${encodeURIComponent(sessionId)}/history?consolidated=true`,
             { cache: "no-store" },
           );
           if (!response.ok) return [sessionId, null] as const;
@@ -916,7 +915,7 @@ export function KanbanTab({
     setEditSaving(true);
     setEditError(null);
     try {
-      const res = await fetch(`/api/codebases/${encodeURIComponent(selectedCodebase.id)}`, {
+      const res = await desktopAwareFetch(`/api/codebases/${encodeURIComponent(selectedCodebase.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: selection.name, repoPath: selection.path, branch: selection.branch }),
@@ -947,7 +946,7 @@ export function KanbanTab({
     setRecloneError(null);
     setRecloneSuccess(null);
     try {
-      const res = await fetch("/api/clone", {
+      const res = await desktopAwareFetch("/api/clone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: selectedCodebase.sourceUrl, force: true }),
@@ -957,7 +956,7 @@ export function KanbanTab({
 
       // Update the codebase with the new path if it changed
       if (data.path && data.path !== selectedCodebase.repoPath) {
-        await fetch(`/api/codebases/${encodeURIComponent(selectedCodebase.id)}`, {
+        await desktopAwareFetch(`/api/codebases/${encodeURIComponent(selectedCodebase.id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ repoPath: data.path, branch: data.branch }),
@@ -980,7 +979,7 @@ export function KanbanTab({
     try {
       // Update all codebases in the workspace to use the new repo path
       const updatePromises = codebases.map(async (cb) => {
-        const res = await fetch(`/api/codebases/${encodeURIComponent(cb.id)}`, {
+        const res = await desktopAwareFetch(`/api/codebases/${encodeURIComponent(cb.id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1013,8 +1012,7 @@ export function KanbanTab({
     setDeletingCodebase(true);
     setEditError(null);
     try {
-      const res = await fetch(
-        `/api/workspaces/${encodeURIComponent(workspaceId)}/codebases/${encodeURIComponent(selectedCodebase.id)}`,
+      const res = await desktopAwareFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases/${encodeURIComponent(selectedCodebase.id)}`,
         { method: "DELETE" }
       );
       if (!res.ok) {
@@ -1063,7 +1061,7 @@ export function KanbanTab({
       await Promise.allSettled(
         missing.map(async (id) => {
           try {
-            const res = await fetch(`/api/worktrees/${encodeURIComponent(id)}`, { cache: "no-store" });
+            const res = await desktopAwareFetch(`/api/worktrees/${encodeURIComponent(id)}`, { cache: "no-store" });
             if (res.ok) {
               const data = await res.json();
               if (data.worktree) results[id] = data.worktree as WorktreeInfo;
@@ -1111,8 +1109,7 @@ export function KanbanTab({
     setBranchActionError(null);
 
     try {
-      const res = await fetch(
-        `/api/workspaces/${encodeURIComponent(workspaceId)}/codebases/${encodeURIComponent(codebase.id)}/worktrees`,
+      const res = await desktopAwareFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases/${encodeURIComponent(codebase.id)}/worktrees`,
         { cache: "no-store" }
       );
       if (res.ok) {
@@ -1123,7 +1120,7 @@ export function KanbanTab({
 
     // Fetch live branch info from the repo
     try {
-      const branchRes = await fetch(`/api/clone/branches?repoPath=${encodeURIComponent(codebase.repoPath)}`, { cache: "no-store" });
+      const branchRes = await desktopAwareFetch(`/api/clone/branches?repoPath=${encodeURIComponent(codebase.repoPath)}`, { cache: "no-store" });
       if (branchRes.ok) {
         const branchData = await branchRes.json();
         setLiveBranchInfo({ current: branchData.current, branches: branchData.local || [] });
@@ -1142,7 +1139,7 @@ export function KanbanTab({
     const failures: string[] = [];
     try {
       for (const branch of uniqueBranches) {
-        const response = await fetch("/api/clone/branches", {
+        const response = await desktopAwareFetch("/api/clone/branches", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1217,7 +1214,7 @@ export function KanbanTab({
         const linkedTasks = localTasks.filter((task) => task.worktreeId === worktree.id);
         await Promise.all(linkedTasks.map((task) => patchTask(task.id, { worktreeId: null })));
 
-        const response = await fetch(`/api/worktrees/${encodeURIComponent(worktree.id)}`, {
+        const response = await desktopAwareFetch(`/api/worktrees/${encodeURIComponent(worktree.id)}`, {
           method: "DELETE",
         });
         const data = await response.json().catch(() => ({}));
@@ -1249,7 +1246,7 @@ export function KanbanTab({
   async function createTaskCard() {
     await ensureBoardAutoProviderPersisted();
     const effectiveCodebaseIds = draft.codebaseIds.length > 0 ? draft.codebaseIds : allCodebaseIds;
-    const response = await fetch("/api/tasks", {
+    const response = await desktopAwareFetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1407,7 +1404,7 @@ export function KanbanTab({
 
   async function runTaskPullRequest(taskId: string): Promise<string | null> {
     await ensureBoardAutoProviderPersisted();
-    const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/pr-run`, {
+    const response = await desktopAwareFetch(`/api/tasks/${encodeURIComponent(taskId)}/pr-run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ specialistLocale: specialistLanguage }),
@@ -1435,7 +1432,7 @@ export function KanbanTab({
 
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(deleteConfirmTask.id)}`, {
+      const response = await desktopAwareFetch(`/api/tasks/${encodeURIComponent(deleteConfirmTask.id)}`, {
         method: "DELETE",
       });
       const data = await response.json();
@@ -1493,7 +1490,7 @@ export function KanbanTab({
     try {
       let updated = await patchTask(taskId, { columnId: targetColumnId, position: nextPosition });
       if (shouldCleanupWorktree && movingTask.worktreeId) {
-        const response = await fetch(`/api/worktrees/${encodeURIComponent(movingTask.worktreeId)}`, {
+        const response = await desktopAwareFetch(`/api/worktrees/${encodeURIComponent(movingTask.worktreeId)}`, {
           method: "DELETE",
         });
         const data = await response.json().catch(() => ({}));
@@ -1534,7 +1531,7 @@ export function KanbanTab({
   async function _createBoard() {
     const name = window.prompt(t.kanban.boardName);
     if (!name?.trim()) return;
-    const response = await fetch("/api/kanban/boards", {
+    const response = await desktopAwareFetch("/api/kanban/boards", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ workspaceId, name: name.trim() }),
@@ -1586,7 +1583,7 @@ export function KanbanTab({
     githubAccessSource,
     onClose: () => setShowSettings(false),
     onClearAll: async () => {
-      const response = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      const response = await desktopAwareFetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
         method: "DELETE",
       });
       const data = await response.json().catch(() => ({}));
@@ -1612,7 +1609,7 @@ export function KanbanTab({
           : undefined,
       }));
 
-      const response = await fetch(`/api/kanban/boards/${encodeURIComponent(board.id)}`, {
+      const response = await desktopAwareFetch(`/api/kanban/boards/${encodeURIComponent(board.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ columns: updatedColumns, sessionConcurrencyLimit, devSessionSupervision }),

@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 pub enum FocusPane {
     /// Unmanaged-run / session list (new harness vocabulary layered on top of sessions)
     Runs,
+    Sessions,
     Files,
     Detail,
     Fitness,
@@ -17,8 +18,9 @@ pub enum FocusPane {
 
 const RESPONSIVE_FOCUS_COMPACT: [FocusPane; 3] =
     [FocusPane::Files, FocusPane::Detail, FocusPane::Fitness];
-const RESPONSIVE_FOCUS_FULL: [FocusPane; 4] = [
+const RESPONSIVE_FOCUS_FULL: [FocusPane; 5] = [
     FocusPane::Runs,
+    FocusPane::Sessions,
     FocusPane::Files,
     FocusPane::Detail,
     FocusPane::Fitness,
@@ -29,6 +31,7 @@ impl FocusPane {
     pub fn label(self) -> &'static str {
         match self {
             FocusPane::Runs => "Runs",
+            FocusPane::Sessions => "Sessions",
             FocusPane::Files => "Files",
             FocusPane::Detail => "Detail",
             FocusPane::Fitness => "Fitness",
@@ -75,50 +78,9 @@ impl EventLogFilter {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileListMode {
-    Global,
-    UnknownConflict,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunSortMode {
-    Recent,
-    Started,
-    Files,
-    Name,
-}
-
-impl RunSortMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            RunSortMode::Recent => "recent",
-            RunSortMode::Started => "started",
-            RunSortMode::Files => "files",
-            RunSortMode::Name => "name",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunFilterMode {
-    All,
-    Active,
-    Attention,
-}
-
-impl RunFilterMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            RunFilterMode::All => "all",
-            RunFilterMode::Active => "active",
-            RunFilterMode::Attention => "review",
-        }
-    }
-}
-
 pub const UNKNOWN_SESSION_ID: &str = "__unknown__";
 pub const ALL_RUNS_SESSION_ID: &str = "__all__";
+pub const ALL_PROMPT_SESSIONS_ID: &str = "__all_prompt_sessions__";
 const PAGE_STEP: usize = 10;
 const DETAIL_PAGE_STEP: u16 = 12;
 
@@ -182,20 +144,49 @@ impl SessionListItem {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PromptSessionListItem {
+    pub task_id: Option<String>,
+    pub session_id: Option<String>,
+    pub display_name: String,
+    pub prompt_preview: Option<String>,
+    pub recovered_from_transcript: bool,
+    pub client: String,
+    pub source: Option<String>,
+    pub model: Option<String>,
+    pub status: String,
+    pub updated_at_ms: i64,
+    pub changed_files_count: usize,
+    pub recent_git_summary: Option<String>,
+    pub is_all_prompt_bucket: bool,
+}
+
+impl PromptSessionListItem {
+    pub fn primary_label(&self) -> &str {
+        if self.is_all_prompt_bucket {
+            return "All prompts";
+        }
+        self.prompt_preview
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(&self.display_name)
+    }
+}
+
 #[derive(Debug)]
 pub struct RuntimeState {
     pub repo_root: String,
     pub branch: String,
     pub ahead_count: Option<usize>,
+    pub committed_change_summary: Option<(usize, usize)>,
     pub worktree_count: Option<usize>,
     pub tasks: BTreeMap<String, TaskView>,
+    pub task_change_paths: BTreeMap<String, BTreeSet<String>>,
+    pub task_git_activity: BTreeMap<String, Vec<String>>,
     pub sessions: BTreeMap<String, SessionView>,
     pub files: BTreeMap<String, FileView>,
     pub event_log: VecDeque<EventLogEntry>,
     pub follow_mode: bool,
-    pub file_list_mode: FileListMode,
-    pub run_sort_mode: RunSortMode,
-    pub run_filter_mode: RunFilterMode,
     pub focus: FocusPane,
     pub detail_mode: DetailMode,
     pub theme_mode: ThemeMode,
@@ -206,6 +197,7 @@ pub struct RuntimeState {
     pub fitness_scroll: u16,
     pub selected_run: usize,
     pub selected_session: usize,
+    pub selected_prompt_session: usize,
     pub selected_file: usize,
     pub last_refresh_at_ms: i64,
     pub last_file_hook_at_ms: Option<i64>,
@@ -215,6 +207,7 @@ pub struct RuntimeState {
     pub detected_agents: Vec<DetectedAgent>,
     pub agent_stats: AgentStats,
     cached_session_items: Vec<SessionListItem>,
+    cached_prompt_session_items: Vec<PromptSessionListItem>,
     cached_file_item_keys: Vec<String>,
     cached_unmatched_agent_keys: Vec<String>,
 }
@@ -225,15 +218,15 @@ impl RuntimeState {
             repo_root,
             branch,
             ahead_count: None,
+            committed_change_summary: None,
             worktree_count: None,
             tasks: BTreeMap::new(),
+            task_change_paths: BTreeMap::new(),
+            task_git_activity: BTreeMap::new(),
             sessions: BTreeMap::new(),
             files: BTreeMap::new(),
             event_log: VecDeque::new(),
             follow_mode: true,
-            file_list_mode: FileListMode::Global,
-            run_sort_mode: RunSortMode::Recent,
-            run_filter_mode: RunFilterMode::All,
             focus: FocusPane::Runs,
             detail_mode: DetailMode::Diff,
             theme_mode: ThemeMode::Dark,
@@ -244,6 +237,7 @@ impl RuntimeState {
             fitness_scroll: 0,
             selected_run: 0,
             selected_session: 0,
+            selected_prompt_session: 0,
             selected_file: 0,
             last_refresh_at_ms: Utc::now().timestamp_millis(),
             last_file_hook_at_ms: None,
@@ -253,6 +247,7 @@ impl RuntimeState {
             detected_agents: Vec::new(),
             agent_stats: AgentStats::default(),
             cached_session_items: Vec::new(),
+            cached_prompt_session_items: Vec::new(),
             cached_file_item_keys: Vec::new(),
             cached_unmatched_agent_keys: Vec::new(),
         };
@@ -369,6 +364,10 @@ impl RuntimeState {
         &self.cached_session_items
     }
 
+    pub fn prompt_sessions(&self) -> &[PromptSessionListItem] {
+        &self.cached_prompt_session_items
+    }
+
     #[cfg(test)]
     pub fn selected_session_id(&self) -> Option<String> {
         self.cached_session_items
@@ -380,6 +379,21 @@ impl RuntimeState {
     #[allow(dead_code)]
     pub fn selected_run_item(&self) -> Option<&SessionListItem> {
         self.cached_session_items.get(self.selected_run)
+    }
+
+    pub fn selected_prompt_session_item(&self) -> Option<&PromptSessionListItem> {
+        self.cached_prompt_session_items
+            .get(self.selected_prompt_session)
+    }
+
+    pub fn selected_prompt_task_id(&self) -> Option<&str> {
+        self.selected_prompt_session_item()
+            .filter(|item| !item.is_all_prompt_bucket)
+            .and_then(|item| item.task_id.as_deref())
+    }
+
+    pub fn has_selected_prompt_scope(&self) -> bool {
+        self.selected_prompt_task_id().is_some()
     }
 
     pub fn file_items(&self) -> Vec<&FileView> {
@@ -396,6 +410,17 @@ impl RuntimeState {
     }
 
     pub fn task_for_file(&self, file: &FileView) -> Option<&TaskView> {
+        if let Some(task_id) = self.selected_prompt_task_id() {
+            if self
+                .task_change_paths
+                .get(task_id)
+                .is_some_and(|paths| paths.contains(&file.rel_path))
+            {
+                if let Some(task) = self.tasks.get(task_id) {
+                    return Some(task);
+                }
+            }
+        }
         file.last_task_id
             .as_deref()
             .and_then(|task_id| self.tasks.get(task_id))
@@ -417,6 +442,10 @@ impl RuntimeState {
 
     pub fn set_ahead_count(&mut self, count: Option<usize>) {
         self.ahead_count = count;
+    }
+
+    pub fn set_committed_change_summary(&mut self, summary: Option<(usize, usize)>) {
+        self.committed_change_summary = summary;
     }
 
     pub fn set_worktree_count(&mut self, count: Option<usize>) {

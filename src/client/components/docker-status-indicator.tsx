@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 interface DockerStatusResponse {
   available: boolean;
@@ -26,7 +27,7 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/acp/docker/status", { cache: "no-store" });
+      const res = await desktopAwareFetch("/api/acp/docker/status", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setStatus((await res.json()) as DockerStatusResponse);
     } catch {

@@ -89,7 +89,7 @@ jobs:
         run: npm ci
 
       - name: Install entrix
-        run: pip install -e tools/entrix
+        run: pip install entrix
 
       - name: Configure Git
         run: |

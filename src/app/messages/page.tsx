@@ -14,6 +14,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 interface BackgroundTask {
@@ -57,8 +58,8 @@ export default function MessagesPage() {
       setLoading(true);
       try {
         const [tasksRes, logsRes] = await Promise.all([
-          fetch(`/api/background-tasks?workspaceId=${encodeURIComponent(effectiveWorkspaceId)}&limit=50`),
-          fetch("/api/webhooks/logs?limit=50"),
+          desktopAwareFetch(`/api/background-tasks?workspaceId=${encodeURIComponent(effectiveWorkspaceId)}&limit=50`),
+          desktopAwareFetch("/api/webhooks/logs?limit=50"),
         ]);
         if (tasksRes.ok) setTasks((await tasksRes.json()).tasks ?? []);
         if (logsRes.ok) setLogs((await logsRes.json()).logs ?? []);

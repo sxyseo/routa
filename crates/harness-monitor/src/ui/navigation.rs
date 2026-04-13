@@ -31,6 +31,9 @@ impl RuntimeState {
             FocusPane::Runs => {
                 self.set_selected_run(self.selected_run.saturating_sub(1));
             }
+            FocusPane::Sessions => {
+                self.set_selected_prompt_session(self.selected_prompt_session.saturating_sub(1));
+            }
             FocusPane::Files => {
                 self.selected_file = self.selected_file.saturating_sub(1);
             }
@@ -49,6 +52,14 @@ impl RuntimeState {
                 let len = self.cached_session_items.len();
                 if len > 0 {
                     self.set_selected_run((self.selected_run + 1).min(len - 1));
+                }
+            }
+            FocusPane::Sessions => {
+                let len = self.cached_prompt_session_items.len();
+                if len > 0 {
+                    self.set_selected_prompt_session(
+                        (self.selected_prompt_session + 1).min(len - 1),
+                    );
                 }
             }
             FocusPane::Files => {
@@ -71,6 +82,11 @@ impl RuntimeState {
             FocusPane::Runs => {
                 self.set_selected_run(self.selected_run.saturating_sub(PAGE_STEP));
             }
+            FocusPane::Sessions => {
+                self.set_selected_prompt_session(
+                    self.selected_prompt_session.saturating_sub(PAGE_STEP),
+                );
+            }
             FocusPane::Files => {
                 self.selected_file = self.selected_file.saturating_sub(PAGE_STEP);
                 self.restore_detail_scroll_for_selection();
@@ -90,6 +106,14 @@ impl RuntimeState {
                 let len = self.cached_session_items.len();
                 if len > 0 {
                     self.set_selected_run((self.selected_run + PAGE_STEP).min(len - 1));
+                }
+            }
+            FocusPane::Sessions => {
+                let len = self.cached_prompt_session_items.len();
+                if len > 0 {
+                    self.set_selected_prompt_session(
+                        (self.selected_prompt_session + PAGE_STEP).min(len - 1),
+                    );
                 }
             }
             FocusPane::Files => {
@@ -144,37 +168,6 @@ impl RuntimeState {
         self.clamp_selection();
     }
 
-    pub fn cycle_file_list_mode(&mut self) {
-        self.file_list_mode = match self.file_list_mode {
-            FileListMode::Global => FileListMode::UnknownConflict,
-            FileListMode::UnknownConflict => FileListMode::Global,
-        };
-        self.rebuild_views();
-        self.selected_file = 0;
-        self.restore_detail_scroll_for_selection();
-    }
-
-    pub fn cycle_run_sort_mode(&mut self) {
-        self.run_sort_mode = match self.run_sort_mode {
-            RunSortMode::Recent => RunSortMode::Started,
-            RunSortMode::Started => RunSortMode::Files,
-            RunSortMode::Files => RunSortMode::Name,
-            RunSortMode::Name => RunSortMode::Recent,
-        };
-        self.rebuild_views();
-        self.set_selected_run(0);
-    }
-
-    pub fn cycle_run_filter_mode(&mut self) {
-        self.run_filter_mode = match self.run_filter_mode {
-            RunFilterMode::All => RunFilterMode::Active,
-            RunFilterMode::Active => RunFilterMode::Attention,
-            RunFilterMode::Attention => RunFilterMode::All,
-        };
-        self.rebuild_views();
-        self.set_selected_run(0);
-    }
-
     pub fn toggle_detail_mode(&mut self) {
         self.detail_mode = match self.detail_mode {
             DetailMode::Diff => DetailMode::File,
@@ -211,6 +204,12 @@ impl RuntimeState {
             self.selected_run = self.selected_run.min(session_len - 1);
             self.selected_session = self.selected_session.min(session_len - 1);
         }
+        let prompt_len = self.cached_prompt_session_items.len();
+        if prompt_len == 0 {
+            self.selected_prompt_session = 0;
+        } else {
+            self.selected_prompt_session = self.selected_prompt_session.min(prompt_len - 1);
+        }
 
         self.cached_file_item_keys = self.compute_file_item_keys();
         let file_len = self.cached_file_item_keys.len();
@@ -225,6 +224,20 @@ impl RuntimeState {
     fn set_selected_run(&mut self, index: usize) {
         self.selected_run = index;
         self.selected_session = index;
+        self.cached_prompt_session_items = self.compute_prompt_session_items();
+        self.selected_prompt_session = 0;
+        self.cached_file_item_keys = self.compute_file_item_keys();
+        let file_len = self.cached_file_item_keys.len();
+        if file_len == 0 {
+            self.selected_file = 0;
+        } else {
+            self.selected_file = self.selected_file.min(file_len - 1);
+        }
+        self.restore_detail_scroll_for_selection();
+    }
+
+    fn set_selected_prompt_session(&mut self, index: usize) {
+        self.selected_prompt_session = index;
         self.cached_file_item_keys = self.compute_file_item_keys();
         let file_len = self.cached_file_item_keys.len();
         if file_len == 0 {

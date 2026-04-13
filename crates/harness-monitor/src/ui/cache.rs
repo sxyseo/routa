@@ -1,10 +1,14 @@
 use super::fitness;
 use super::review::{RepoReviewHint, ReviewHint, ReviewTriggerCache};
 use super::*;
-use crate::ui::state::FitnessViewMode;
+use crate::observe::auggie_session::recent_prompt_previews_from_auggie_session;
+use crate::observe::codex_transcript::recent_prompt_previews_from_transcript;
+use crate::ui::state::{FitnessViewMode, FocusPane};
 use ratatui::text::Text;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -13,6 +17,8 @@ use std::thread;
 const FITNESS_HISTORY_SCHEMA_VERSION: u32 = 1;
 const FITNESS_HISTORY_FILE: &str = "fitness-history.json";
 const FITNESS_TREND_CAPACITY: usize = 12;
+const INITIAL_FILE_PREVIEW_LINE_LIMIT: usize = 100;
+const DIRECTORY_PREVIEW_ENTRY_LIMIT: usize = 200;
 const TEST_MAPPING_STARTUP_DELAY_MS: i64 = 2_000;
 const TEST_MAPPING_FAILURE_BACKOFF_MS: i64 = 30_000;
 
@@ -41,6 +47,19 @@ pub struct DiffStatSummary {
 pub(super) struct DetailCacheEntry {
     pub(super) key: String,
     pub(super) text: String,
+    pub(super) truncated: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FilePreviewScope {
+    Head,
+    Full,
+}
+
+impl FilePreviewScope {
+    fn satisfies(self, requested: Self) -> bool {
+        matches!(self, Self::Full) || self == requested
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -50,21 +69,26 @@ pub(super) struct FileFactsEntry {
     pub(super) line_count: usize,
     pub(super) byte_size: u64,
     pub(super) child_count: Option<usize>,
-    pub(super) git_change_count: usize,
+    pub(super) git_change_count: Option<usize>,
 }
 
 #[derive(Debug)]
-enum BackgroundCommand {
-    RefreshStats {
-        repo_root: String,
-        files: Vec<(String, String, i64, crate::shared::models::EntryKind)>,
-    },
+enum PreviewCommand {
     LoadDetail {
         repo_root: String,
         rel_path: String,
         state_code: String,
         version: i64,
         mode: DetailMode,
+        file_preview_scope: FilePreviewScope,
+    },
+}
+
+#[derive(Debug)]
+enum FactsCommand {
+    RefreshStats {
+        repo_root: String,
+        files: Vec<(String, String, i64, crate::shared::models::EntryKind)>,
     },
     LoadFacts {
         repo_root: String,
@@ -72,17 +96,27 @@ enum BackgroundCommand {
         version: i64,
         entry_kind: crate::shared::models::EntryKind,
     },
-    RefreshFitness {
+    LoadGitHistoryCount {
+        repo_root: String,
+        rel_path: String,
+        version: i64,
+        entry_kind: crate::shared::models::EntryKind,
+    },
+}
+
+#[derive(Debug)]
+enum EvalCommand {
+    Fitness {
         repo_root: String,
         cache_key: String,
         mode: fitness::FitnessRunMode,
     },
-    RefreshTestMapping {
+    TestMapping {
         repo_root: String,
         files: Vec<String>,
         cache_key: String,
     },
-    RefreshScc {
+    Scc {
         repo_root: String,
     },
 }
@@ -99,6 +133,10 @@ enum BackgroundResult {
     Facts {
         entry: FileFactsEntry,
     },
+    GitHistoryCount {
+        key: String,
+        count: Option<usize>,
+    },
     Fitness {
         result: Box<Result<fitness::FitnessSnapshot, String>>,
     },
@@ -111,10 +149,19 @@ enum BackgroundResult {
 }
 
 #[derive(Debug, Default)]
-struct PendingCommands {
-    stats: Option<PendingStats>,
+struct PendingPreviewCommands {
     detail: Option<PendingDetail>,
+}
+
+#[derive(Debug, Default)]
+struct PendingFactsCommands {
+    stats: Option<PendingStats>,
     facts: Option<PendingFacts>,
+    git_history: Option<PendingFacts>,
+}
+
+#[derive(Debug, Default)]
+struct PendingEvalCommands {
     fitness: Option<(String, String, fitness::FitnessRunMode)>,
     test_mapping: Option<(String, Vec<String>, String)>,
     scc: Option<String>,
@@ -124,7 +171,7 @@ type PendingStats = (
     String,
     Vec<(String, String, i64, crate::shared::models::EntryKind)>,
 );
-type PendingDetail = (String, String, String, i64, DetailMode);
+type PendingDetail = (String, String, String, i64, DetailMode, FilePreviewScope);
 type PendingFacts = (String, String, i64, crate::shared::models::EntryKind);
 
 pub(super) struct AppCache {
@@ -132,11 +179,13 @@ pub(super) struct AppCache {
     pub(super) preview_cache: BTreeMap<String, DetailCacheEntry>,
     pub(super) diff_cache: BTreeMap<String, DetailCacheEntry>,
     pub(super) facts_cache: BTreeMap<String, FileFactsEntry>,
+    prompt_history_cache: BTreeMap<String, Vec<String>>,
     highlighted_detail_cache: BTreeMap<String, Text<'static>>,
     pending_stats_signature: Option<String>,
-    pending_preview_key: Option<String>,
+    pending_preview_request: Option<(String, FilePreviewScope)>,
     pending_diff_key: Option<String>,
     pending_facts_key: Option<String>,
+    pending_git_history_key: Option<String>,
     pending_fitness: bool,
     pending_test_mapping_key: Option<String>,
     test_mapping_not_before_ms: Option<i64>,
@@ -150,8 +199,11 @@ pub(super) struct AppCache {
     test_mapping_snapshot: Option<TestMappingSnapshot>,
     scc_summary: Option<SccSummary>,
     review_triggers: ReviewTriggerCache,
-    worker_tx: Sender<BackgroundCommand>,
+    preview_worker_tx: Sender<PreviewCommand>,
+    facts_worker_tx: Sender<FactsCommand>,
+    eval_worker_tx: Sender<EvalCommand>,
     worker_rx: Receiver<BackgroundResult>,
+    result_signal_rx: Option<Receiver<()>>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -188,19 +240,38 @@ struct FitnessHistoryRecord {
 
 impl AppCache {
     pub(super) fn new(repo_root: &str) -> Self {
-        let (worker_tx, worker_rx_cmd) = mpsc::channel();
+        let (preview_worker_tx, preview_worker_rx_cmd) = mpsc::channel();
+        let (facts_worker_tx, facts_worker_rx_cmd) = mpsc::channel();
+        let (eval_worker_tx, eval_worker_rx_cmd) = mpsc::channel();
         let (result_tx, worker_rx) = mpsc::channel();
-        thread::spawn(move || background_worker(worker_rx_cmd, result_tx));
+        let (result_signal_tx, result_signal_rx) = mpsc::channel();
+        let preview_result_tx = result_tx.clone();
+        let facts_result_tx = result_tx.clone();
+        let preview_result_signal_tx = result_signal_tx.clone();
+        let facts_result_signal_tx = result_signal_tx.clone();
+        thread::spawn(move || {
+            preview_worker(
+                preview_worker_rx_cmd,
+                preview_result_tx,
+                preview_result_signal_tx,
+            )
+        });
+        thread::spawn(move || {
+            facts_worker(facts_worker_rx_cmd, facts_result_tx, facts_result_signal_tx)
+        });
+        thread::spawn(move || eval_worker(eval_worker_rx_cmd, result_tx, result_signal_tx));
         let mut cache = Self {
             diff_stats: BTreeMap::new(),
             preview_cache: BTreeMap::new(),
             diff_cache: BTreeMap::new(),
             facts_cache: BTreeMap::new(),
+            prompt_history_cache: BTreeMap::new(),
             highlighted_detail_cache: BTreeMap::new(),
             pending_stats_signature: None,
-            pending_preview_key: None,
+            pending_preview_request: None,
             pending_diff_key: None,
             pending_facts_key: None,
+            pending_git_history_key: None,
             pending_fitness: false,
             pending_test_mapping_key: None,
             test_mapping_not_before_ms: Some(
@@ -216,11 +287,18 @@ impl AppCache {
             test_mapping_snapshot: None,
             scc_summary: None,
             review_triggers: ReviewTriggerCache::load(repo_root),
-            worker_tx,
+            preview_worker_tx,
+            facts_worker_tx,
+            eval_worker_tx,
             worker_rx,
+            result_signal_rx: Some(result_signal_rx),
         };
         cache.load_fitness_history();
         cache
+    }
+
+    pub(super) fn take_result_signal_rx(&mut self) -> Option<Receiver<()>> {
+        self.result_signal_rx.take()
     }
 
     pub(super) fn has_fitness_data(&self) -> bool {
@@ -286,8 +364,10 @@ impl AppCache {
         self.sync_cache_key_from_active_mode();
     }
 
-    pub(super) fn sync_results(&mut self) {
+    pub(super) fn sync_results(&mut self) -> bool {
+        let mut changed = false;
         while let Ok(result) = self.worker_rx.try_recv() {
+            changed = true;
             match result {
                 BackgroundResult::Stats { entries } => {
                     self.diff_stats.extend(entries);
@@ -295,15 +375,28 @@ impl AppCache {
                 }
                 BackgroundResult::Detail { entry, mode } => match mode {
                     DetailMode::File => {
+                        let entry_key = entry.key.clone();
+                        let result_scope = if entry.truncated {
+                            FilePreviewScope::Head
+                        } else {
+                            FilePreviewScope::Full
+                        };
                         self.highlighted_detail_cache
-                            .retain(|key, _| !key.starts_with(&entry.key));
-                        self.preview_cache.insert(entry.key.clone(), entry);
-                        self.pending_preview_key = None;
+                            .retain(|key, _| !key.starts_with(&entry_key));
+                        self.preview_cache.insert(entry_key.clone(), entry);
+                        if self.pending_preview_request.as_ref().is_some_and(
+                            |(key, pending_scope)| {
+                                key == &entry_key && result_scope.satisfies(*pending_scope)
+                            },
+                        ) {
+                            self.pending_preview_request = None;
+                        }
                     }
                     DetailMode::Diff => {
+                        let entry_key = entry.key.clone();
                         self.highlighted_detail_cache
-                            .retain(|key, _| !key.starts_with(&entry.key));
-                        self.diff_cache.insert(entry.key.clone(), entry);
+                            .retain(|key, _| !key.starts_with(&entry_key));
+                        self.diff_cache.insert(entry_key, entry);
                         self.pending_diff_key = None;
                     }
                 },
@@ -311,29 +404,37 @@ impl AppCache {
                     self.facts_cache.insert(entry.key.clone(), entry);
                     self.pending_facts_key = None;
                 }
+                BackgroundResult::GitHistoryCount { key, count } => {
+                    if let Some(entry) = self.facts_cache.get_mut(&key) {
+                        entry.git_change_count = count;
+                    }
+                    if self.pending_git_history_key.as_deref() == Some(key.as_str()) {
+                        self.pending_git_history_key = None;
+                    }
+                }
                 BackgroundResult::Fitness { result } => {
                     let result = *result;
                     self.fitness_is_running = false;
-                    let entry = self.active_fitness_history_mut();
-                    entry.last_run_ms = Some(chrono::Utc::now().timestamp_millis());
                     match result {
                         Ok(snapshot) => {
-                            entry.last_error = None;
-                            entry.snapshot = Some(snapshot);
-                            if let Some(snapshot) = entry.snapshot.as_ref() {
-                                entry.trend.push(snapshot.final_score);
-                            }
-                            if entry.trend.len() > FITNESS_TREND_CAPACITY {
-                                let overflow = entry.trend.len() - FITNESS_TREND_CAPACITY;
-                                entry.trend.drain(0..overflow);
-                            }
+                            let cache_key = self
+                                .fitness_cache_key
+                                .clone()
+                                .unwrap_or_else(|| self.fitness_mode.as_str().to_string());
+                            self.store_fitness_snapshot(
+                                cache_key,
+                                chrono::Utc::now().timestamp_millis(),
+                                snapshot,
+                            );
                         }
                         Err(message) => {
+                            let entry = self.active_fitness_history_mut();
+                            entry.last_run_ms = Some(chrono::Utc::now().timestamp_millis());
                             entry.last_error = Some(message);
+                            self.pending_fitness = false;
+                            self.persist_fitness_history();
                         }
                     }
-                    self.persist_fitness_history();
-                    self.pending_fitness = false;
                     if let Some((repo_root, cache_key, force, mode)) =
                         self.queued_fitness_refresh.take()
                     {
@@ -362,13 +463,13 @@ impl AppCache {
                 }
             }
         }
+        changed
     }
 
     pub(super) fn warm_visible_files(&mut self, state: &RuntimeState) {
         let files: Vec<(String, String, i64, crate::shared::models::EntryKind)> = state
             .file_items()
             .iter()
-            .take(24)
             .map(|file| {
                 (
                     file.rel_path.clone(),
@@ -395,7 +496,7 @@ impl AppCache {
         if self.pending_stats_signature.as_deref() == Some(signature.as_str()) {
             return;
         }
-        let _ = self.worker_tx.send(BackgroundCommand::RefreshStats {
+        let _ = self.facts_worker_tx.send(FactsCommand::RefreshStats {
             repo_root: state.repo_root.clone(),
             files,
         });
@@ -404,9 +505,10 @@ impl AppCache {
 
     pub(super) fn warm_selected_detail(&mut self, state: &RuntimeState) {
         let Some(file) = state.selected_file() else {
-            self.pending_preview_key = None;
+            self.pending_preview_request = None;
             self.pending_diff_key = None;
             self.pending_facts_key = None;
+            self.pending_git_history_key = None;
             return;
         };
         let active_key = detail_cache_key(
@@ -415,24 +517,36 @@ impl AppCache {
             file.last_modified_at_ms,
             state.detail_mode,
         );
+        let requested_preview_scope = file_preview_scope_for(state);
         let active_loaded = match state.detail_mode {
-            DetailMode::File => self.preview_cache.contains_key(&active_key),
+            DetailMode::File => self.preview_cache.get(&active_key).is_some_and(|entry| {
+                cached_file_preview_scope(entry).satisfies(requested_preview_scope)
+            }),
             DetailMode::Diff => self.diff_cache.contains_key(&active_key),
         };
         let active_pending = match state.detail_mode {
-            DetailMode::File => self.pending_preview_key.as_deref() == Some(active_key.as_str()),
+            DetailMode::File => {
+                self.pending_preview_request
+                    .as_ref()
+                    .is_some_and(|(key, pending_scope)| {
+                        key == &active_key && pending_scope.satisfies(requested_preview_scope)
+                    })
+            }
             DetailMode::Diff => self.pending_diff_key.as_deref() == Some(active_key.as_str()),
         };
         if !active_loaded && !active_pending {
-            let _ = self.worker_tx.send(BackgroundCommand::LoadDetail {
+            let _ = self.preview_worker_tx.send(PreviewCommand::LoadDetail {
                 repo_root: state.repo_root.clone(),
                 rel_path: file.rel_path.clone(),
                 state_code: file.state_code.clone(),
                 version: file.last_modified_at_ms,
                 mode: state.detail_mode,
+                file_preview_scope: requested_preview_scope,
             });
             match state.detail_mode {
-                DetailMode::File => self.pending_preview_key = Some(active_key),
+                DetailMode::File => {
+                    self.pending_preview_request = Some((active_key, requested_preview_scope))
+                }
                 DetailMode::Diff => self.pending_diff_key = Some(active_key),
             }
         }
@@ -441,13 +555,31 @@ impl AppCache {
         if !self.facts_cache.contains_key(&facts_key)
             && self.pending_facts_key.as_deref() != Some(facts_key.as_str())
         {
-            let _ = self.worker_tx.send(BackgroundCommand::LoadFacts {
+            let _ = self.facts_worker_tx.send(FactsCommand::LoadFacts {
                 repo_root: state.repo_root.clone(),
                 rel_path: file.rel_path.clone(),
                 version: file.last_modified_at_ms,
                 entry_kind: file.entry_kind,
             });
-            self.pending_facts_key = Some(facts_key);
+            self.pending_facts_key = Some(facts_key.clone());
+        }
+
+        if state.focus == FocusPane::Detail
+            && self
+                .facts_cache
+                .get(&facts_key)
+                .is_some_and(|facts| facts.git_change_count.is_none())
+            && self.pending_git_history_key.as_deref() != Some(facts_key.as_str())
+        {
+            let _ = self
+                .facts_worker_tx
+                .send(FactsCommand::LoadGitHistoryCount {
+                    repo_root: state.repo_root.clone(),
+                    rel_path: file.rel_path.clone(),
+                    version: file.last_modified_at_ms,
+                    entry_kind: file.entry_kind,
+                });
+            self.pending_git_history_key = Some(facts_key);
         }
     }
 
@@ -481,7 +613,7 @@ impl AppCache {
             return;
         }
 
-        let _ = self.worker_tx.send(BackgroundCommand::RefreshTestMapping {
+        let _ = self.eval_worker_tx.send(EvalCommand::TestMapping {
             repo_root: state.repo_root.clone(),
             files,
             cache_key: cache_key.clone(),
@@ -541,11 +673,8 @@ impl AppCache {
     ) {
         self.fitness_mode = mode;
         self.sync_cache_key_from_active_mode();
-        if !force
-            && !self.fitness_is_running
-            && self.fitness_snapshot().is_some()
-            && self.fitness_cache_key.as_deref() == Some(cache_key.as_str())
-        {
+        if !force {
+            let _ = self.try_load_latest_mailbox_snapshot(&repo_root, &cache_key, mode);
             return;
         }
         if self.fitness_is_running || self.pending_fitness {
@@ -554,7 +683,7 @@ impl AppCache {
         }
         self.fitness_cache_key = Some(cache_key.clone());
         self.active_fitness_history_mut().cache_key = Some(cache_key.clone());
-        let _ = self.worker_tx.send(BackgroundCommand::RefreshFitness {
+        let _ = self.eval_worker_tx.send(EvalCommand::Fitness {
             repo_root,
             cache_key,
             mode,
@@ -562,6 +691,36 @@ impl AppCache {
         self.fitness_is_running = true;
         self.active_fitness_history_mut().last_error = None;
         self.pending_fitness = true;
+    }
+
+    pub(super) fn sync_fitness_from_runtime(
+        &mut self,
+        repo_root: String,
+        cache_key: String,
+        mode: fitness::FitnessRunMode,
+    ) {
+        self.fitness_mode = mode;
+        self.sync_cache_key_from_active_mode();
+        let _ = self.try_load_latest_mailbox_snapshot(&repo_root, &cache_key, mode);
+    }
+
+    pub(super) fn ingest_fitness_event(
+        &mut self,
+        cache_key: String,
+        event: &crate::shared::models::FitnessEvent,
+    ) -> bool {
+        if event.mode != self.fitness_mode.as_str() {
+            return false;
+        }
+        let Some(artifact_path) = event.artifact_path.as_deref() else {
+            return false;
+        };
+        let snapshot = fitness::load_fitness_snapshot_artifact(Path::new(artifact_path));
+        let Ok(snapshot) = snapshot else {
+            return false;
+        };
+        self.store_fitness_snapshot(cache_key, event.observed_at_ms, snapshot);
+        true
     }
 
     pub(super) fn is_fitness_running(&self) -> bool {
@@ -602,15 +761,11 @@ impl AppCache {
             return;
         }
         if !force && self.scc_summary.is_none() {
-            let _ = self
-                .worker_tx
-                .send(BackgroundCommand::RefreshScc { repo_root });
+            let _ = self.eval_worker_tx.send(EvalCommand::Scc { repo_root });
             self.pending_scc = true;
             return;
         }
-        let _ = self
-            .worker_tx
-            .send(BackgroundCommand::RefreshScc { repo_root });
+        let _ = self.eval_worker_tx.send(EvalCommand::Scc { repo_root });
         self.pending_scc = true;
     }
 
@@ -655,6 +810,50 @@ impl AppCache {
             .or_default()
     }
 
+    fn try_load_latest_mailbox_snapshot(
+        &mut self,
+        repo_root: &str,
+        cache_key: &str,
+        mode: fitness::FitnessRunMode,
+    ) -> bool {
+        let Some(event) = latest_fitness_mailbox_event(repo_root, mode.as_str()) else {
+            return false;
+        };
+        self.ingest_fitness_event(cache_key.to_string(), &event)
+    }
+
+    fn store_fitness_snapshot(
+        &mut self,
+        cache_key: String,
+        observed_at_ms: i64,
+        snapshot: fitness::FitnessSnapshot,
+    ) {
+        let current_artifact = self
+            .active_fitness_history()
+            .and_then(|entry| entry.snapshot.as_ref())
+            .and_then(|snapshot| snapshot.artifact_path.as_deref());
+        let same_artifact =
+            current_artifact.is_some() && current_artifact == snapshot.artifact_path.as_deref();
+
+        let snapshot_score = snapshot.final_score;
+        let entry = self.active_fitness_history_mut();
+        entry.last_run_ms = Some(observed_at_ms);
+        entry.last_error = None;
+        entry.cache_key = Some(cache_key.clone());
+        entry.snapshot = Some(snapshot);
+        if !same_artifact {
+            entry.trend.push(snapshot_score);
+            if entry.trend.len() > FITNESS_TREND_CAPACITY {
+                let overflow = entry.trend.len() - FITNESS_TREND_CAPACITY;
+                entry.trend.drain(0..overflow);
+            }
+        }
+        self.fitness_cache_key = Some(cache_key);
+        self.fitness_is_running = false;
+        self.pending_fitness = false;
+        self.persist_fitness_history();
+    }
+
     fn sync_cache_key_from_active_mode(&mut self) {
         self.fitness_cache_key = self
             .active_fitness_history()
@@ -667,10 +866,7 @@ impl AppCache {
         mode: DetailMode,
         theme_mode: ThemeMode,
     ) -> Option<&Text<'static>> {
-        let render_key = format!(
-            "{}:{}:{:?}:{:?}",
-            file.rel_path, file.last_modified_at_ms, mode, theme_mode
-        );
+        let render_key = detail_render_cache_key(file, mode, theme_mode);
         if !self.highlighted_detail_cache.contains_key(&render_key) {
             let raw = self.detail_text(file, mode)?;
             let rendered = match mode {
@@ -691,6 +887,37 @@ impl AppCache {
         self.review_triggers.review_hint(file)
     }
 
+    pub(super) fn transcript_prompt_history(
+        &mut self,
+        transcript_path: &str,
+        limit: usize,
+    ) -> Vec<String> {
+        if limit == 0 {
+            return Vec::new();
+        }
+
+        let modified_ms = std::fs::metadata(transcript_path)
+            .ok()
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|dur| dur.as_millis() as i64)
+            .unwrap_or_default();
+        let cache_key = format!("{transcript_path}:{modified_ms}:{limit}");
+
+        if !self.prompt_history_cache.contains_key(&cache_key) {
+            let mut prompts = recent_prompt_previews_from_transcript(transcript_path, limit);
+            if prompts.is_empty() {
+                prompts = recent_prompt_previews_from_auggie_session(transcript_path, limit);
+            }
+            self.prompt_history_cache.insert(cache_key.clone(), prompts);
+        }
+
+        self.prompt_history_cache
+            .get(&cache_key)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     pub(super) fn test_mapping(
         &self,
         file: &crate::shared::models::FileView,
@@ -701,6 +928,9 @@ impl AppCache {
     }
 
     pub(super) fn is_changed_test_file(&self, file: &crate::shared::models::FileView) -> bool {
+        if self::test_mapping::is_test_like_path(&file.rel_path) {
+            return true;
+        }
         self.test_mapping_snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.skipped_test_files.contains(&file.rel_path))
@@ -777,6 +1007,38 @@ pub(super) fn detail_cache_key(
     mode: DetailMode,
 ) -> String {
     format!("{rel_path}:{state_code}:{version}:{mode:?}")
+}
+
+fn detail_render_cache_key(
+    file: &crate::shared::models::FileView,
+    mode: DetailMode,
+    theme_mode: ThemeMode,
+) -> String {
+    format!(
+        "{}:{theme_mode:?}",
+        detail_cache_key(
+            &file.rel_path,
+            &file.state_code,
+            file.last_modified_at_ms,
+            mode
+        )
+    )
+}
+
+fn file_preview_scope_for(state: &RuntimeState) -> FilePreviewScope {
+    if matches!(state.detail_mode, DetailMode::File) && state.detail_scroll > 0 {
+        FilePreviewScope::Full
+    } else {
+        FilePreviewScope::Head
+    }
+}
+
+fn cached_file_preview_scope(entry: &DetailCacheEntry) -> FilePreviewScope {
+    if entry.truncated {
+        FilePreviewScope::Head
+    } else {
+        FilePreviewScope::Full
+    }
 }
 
 pub(super) fn facts_cache_key(
@@ -997,12 +1259,71 @@ fn compute_diff_stats_batch(
     results
 }
 
-fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResult>) {
+fn send_background_result(
+    tx: &Sender<BackgroundResult>,
+    result_signal_tx: &Sender<()>,
+    result: BackgroundResult,
+) {
+    if tx.send(result).is_ok() {
+        let _ = result_signal_tx.send(());
+    }
+}
+
+fn preview_worker(
+    rx: Receiver<PreviewCommand>,
+    tx: Sender<BackgroundResult>,
+    result_signal_tx: Sender<()>,
+) {
     while let Ok(command) = rx.recv() {
-        let mut pending = PendingCommands::default();
-        queue_command(&mut pending, command);
+        let mut pending = PendingPreviewCommands::default();
+        queue_preview_command(&mut pending, command);
         while let Ok(next) = rx.try_recv() {
-            queue_command(&mut pending, next);
+            queue_preview_command(&mut pending, next);
+        }
+        if let Some((repo_root, rel_path, state_code, version, mode, file_preview_scope)) =
+            pending.detail.take()
+        {
+            let (text, truncated) = match mode {
+                DetailMode::File => {
+                    load_file_preview(&repo_root, rel_path.as_str(), file_preview_scope)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| ("<no file content available>".to_string(), false))
+                }
+                DetailMode::Diff => {
+                    let text = load_diff_text(&repo_root, rel_path.as_str(), state_code.as_str())
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| "<no diff available>".to_string());
+                    (text, false)
+                }
+            };
+            send_background_result(
+                &tx,
+                &result_signal_tx,
+                BackgroundResult::Detail {
+                    entry: DetailCacheEntry {
+                        key: detail_cache_key(&rel_path, &state_code, version, mode),
+                        text,
+                        truncated,
+                    },
+                    mode,
+                },
+            );
+        }
+    }
+}
+
+fn facts_worker(
+    rx: Receiver<FactsCommand>,
+    tx: Sender<BackgroundResult>,
+    result_signal_tx: Sender<()>,
+) {
+    while let Ok(command) = rx.recv() {
+        let mut pending = PendingFactsCommands::default();
+        queue_facts_command(&mut pending, command);
+        while let Ok(next) = rx.try_recv() {
+            queue_facts_command(&mut pending, next);
         }
         if let Some((repo_root, files)) = pending.stats.take() {
             let mut seen = BTreeSet::new();
@@ -1017,68 +1338,100 @@ fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResul
                 })
                 .collect::<Vec<_>>();
             let entries = compute_diff_stats_batch(&repo_root, &deduped_files);
-            let _ = tx.send(BackgroundResult::Stats { entries });
-        }
-        if let Some((repo_root, rel_path, state_code, version, mode)) = pending.detail.take() {
-            let text = match mode {
-                DetailMode::File => load_file_preview(&repo_root, rel_path.as_str())
-                    .ok()
-                    .flatten()
-                    .unwrap_or_else(|| "<no file content available>".to_string()),
-                DetailMode::Diff => {
-                    load_diff_text(&repo_root, rel_path.as_str(), state_code.as_str())
-                        .ok()
-                        .flatten()
-                        .unwrap_or_else(|| "<no diff available>".to_string())
-                }
-            };
-            let _ = tx.send(BackgroundResult::Detail {
-                entry: DetailCacheEntry {
-                    key: detail_cache_key(&rel_path, &state_code, version, mode),
-                    text,
-                },
-                mode,
-            });
+            send_background_result(&tx, &result_signal_tx, BackgroundResult::Stats { entries });
         }
         if let Some((repo_root, rel_path, version, entry_kind)) = pending.facts.take() {
-            let _ = tx.send(BackgroundResult::Facts {
-                entry: load_file_facts(&repo_root, &rel_path, version, entry_kind),
-            });
+            send_background_result(
+                &tx,
+                &result_signal_tx,
+                BackgroundResult::Facts {
+                    entry: load_file_facts(&repo_root, &rel_path, version, entry_kind),
+                },
+            );
         }
-        if let Some((repo_root, cache_key, mode)) = pending.fitness.take() {
-            let result = fitness::run_fitness(&repo_root, mode).map_err(|error| error.to_string());
-            let _ = cache_key;
-            let _ = tx.send(BackgroundResult::Fitness {
-                result: Box::new(result),
-            });
-        }
-        if let Some((repo_root, files, cache_key)) = pending.test_mapping.take() {
-            let result = load_test_mapping_snapshot(&repo_root, &files, cache_key);
-            let _ = tx.send(BackgroundResult::TestMapping { result });
-        }
-        if let Some(repo_root) = pending.scc.take() {
-            let _ = tx.send(BackgroundResult::Scc {
-                result: run_scc_summary(&repo_root),
-            });
+        if let Some((repo_root, rel_path, version, entry_kind)) = pending.git_history.take() {
+            send_background_result(
+                &tx,
+                &result_signal_tx,
+                BackgroundResult::GitHistoryCount {
+                    key: facts_cache_key(&rel_path, version, entry_kind),
+                    count: git_file_change_count(&repo_root, &rel_path),
+                },
+            );
         }
     }
 }
 
-fn queue_command(pending: &mut PendingCommands, command: BackgroundCommand) {
-    match command {
-        BackgroundCommand::RefreshStats { repo_root, files } => {
-            pending.stats = Some((repo_root, files));
+fn eval_worker(
+    rx: Receiver<EvalCommand>,
+    tx: Sender<BackgroundResult>,
+    result_signal_tx: Sender<()>,
+) {
+    while let Ok(command) = rx.recv() {
+        let mut pending = PendingEvalCommands::default();
+        queue_eval_command(&mut pending, command);
+        while let Ok(next) = rx.try_recv() {
+            queue_eval_command(&mut pending, next);
         }
-        BackgroundCommand::LoadDetail {
+        if let Some((repo_root, cache_key, mode)) = pending.fitness.take() {
+            let result = fitness::run_fitness(&repo_root, mode).map_err(|error| error.to_string());
+            let _ = cache_key;
+            send_background_result(
+                &tx,
+                &result_signal_tx,
+                BackgroundResult::Fitness {
+                    result: Box::new(result),
+                },
+            );
+        }
+        if let Some((repo_root, files, cache_key)) = pending.test_mapping.take() {
+            let result = load_test_mapping_snapshot(&repo_root, &files, cache_key);
+            send_background_result(
+                &tx,
+                &result_signal_tx,
+                BackgroundResult::TestMapping { result },
+            );
+        }
+        if let Some(repo_root) = pending.scc.take() {
+            send_background_result(
+                &tx,
+                &result_signal_tx,
+                BackgroundResult::Scc {
+                    result: run_scc_summary(&repo_root),
+                },
+            );
+        }
+    }
+}
+
+fn queue_preview_command(pending: &mut PendingPreviewCommands, command: PreviewCommand) {
+    match command {
+        PreviewCommand::LoadDetail {
             repo_root,
             rel_path,
             state_code,
             version,
             mode,
+            file_preview_scope,
         } => {
-            pending.detail = Some((repo_root, rel_path, state_code, version, mode));
+            pending.detail = Some((
+                repo_root,
+                rel_path,
+                state_code,
+                version,
+                mode,
+                file_preview_scope,
+            ));
         }
-        BackgroundCommand::LoadFacts {
+    }
+}
+
+fn queue_facts_command(pending: &mut PendingFactsCommands, command: FactsCommand) {
+    match command {
+        FactsCommand::RefreshStats { repo_root, files } => {
+            pending.stats = Some((repo_root, files));
+        }
+        FactsCommand::LoadFacts {
             repo_root,
             rel_path,
             version,
@@ -1086,21 +1439,34 @@ fn queue_command(pending: &mut PendingCommands, command: BackgroundCommand) {
         } => {
             pending.facts = Some((repo_root, rel_path, version, entry_kind));
         }
-        BackgroundCommand::RefreshFitness {
+        FactsCommand::LoadGitHistoryCount {
+            repo_root,
+            rel_path,
+            version,
+            entry_kind,
+        } => {
+            pending.git_history = Some((repo_root, rel_path, version, entry_kind));
+        }
+    }
+}
+
+fn queue_eval_command(pending: &mut PendingEvalCommands, command: EvalCommand) {
+    match command {
+        EvalCommand::Fitness {
             repo_root,
             cache_key,
             mode,
         } => {
             pending.fitness = Some((repo_root, cache_key, mode));
         }
-        BackgroundCommand::RefreshTestMapping {
+        EvalCommand::TestMapping {
             repo_root,
             files,
             cache_key,
         } => {
             pending.test_mapping = Some((repo_root, files, cache_key));
         }
-        BackgroundCommand::RefreshScc { repo_root } => {
+        EvalCommand::Scc { repo_root } => {
             pending.scc = Some(repo_root);
         }
     }
@@ -1200,7 +1566,7 @@ fn load_file_facts(
         line_count,
         byte_size,
         child_count,
-        git_change_count: git_file_change_count(repo_root, rel_path).unwrap_or(0),
+        git_change_count: None,
     }
 }
 
@@ -1281,7 +1647,7 @@ pub(super) use self::test_mapping::{TestMappingEntry, TestMappingSnapshot};
 
 #[path = "cache_history.rs"]
 mod history;
-use history::{fitness_history_path, read_fitness_history_record};
+use history::{fitness_history_path, latest_fitness_mailbox_event, read_fitness_history_record};
 
 pub(super) fn load_diff_text(
     repo_root: &str,
@@ -1458,7 +1824,11 @@ fn load_submodule_nested_diff_text(
     }
 }
 
-fn load_file_preview(repo_root: &str, rel_path: &str) -> Result<Option<String>> {
+fn load_file_preview(
+    repo_root: &str,
+    rel_path: &str,
+    scope: FilePreviewScope,
+) -> Result<Option<(String, bool)>> {
     let path = Path::new(repo_root).join(rel_path);
     if !path.exists() {
         return Ok(None);
@@ -1482,11 +1852,49 @@ fn load_file_preview(repo_root: &str, rel_path: &str) -> Result<Option<String>> 
         let preview = if entries.is_empty() {
             "<directory is empty>".to_string()
         } else {
-            entries.into_iter().take(200).collect::<Vec<_>>().join("\n")
+            entries
+                .into_iter()
+                .take(DIRECTORY_PREVIEW_ENTRY_LIMIT)
+                .collect::<Vec<_>>()
+                .join("\n")
         };
-        return Ok(Some(preview));
+        return Ok(Some((preview, false)));
     }
-    let content = std::fs::read_to_string(path).context("read file preview")?;
-    let truncated = content.lines().take(400).collect::<Vec<_>>().join("\n");
-    Ok(Some(truncated))
+    match scope {
+        FilePreviewScope::Full => {
+            let content = std::fs::read_to_string(path).context("read file preview")?;
+            Ok(Some((content, false)))
+        }
+        FilePreviewScope::Head => {
+            let file = File::open(path).context("open file preview")?;
+            let mut reader = BufReader::new(file);
+            let mut lines = Vec::new();
+            let mut buffer = String::new();
+            let mut truncated = false;
+
+            while lines.len() < INITIAL_FILE_PREVIEW_LINE_LIMIT + 1 {
+                buffer.clear();
+                let bytes = reader
+                    .read_line(&mut buffer)
+                    .context("read file preview line")?;
+                if bytes == 0 {
+                    break;
+                }
+                if buffer.ends_with('\n') {
+                    buffer.pop();
+                    if buffer.ends_with('\r') {
+                        buffer.pop();
+                    }
+                }
+                lines.push(buffer.clone());
+            }
+
+            if lines.len() > INITIAL_FILE_PREVIEW_LINE_LIMIT {
+                lines.truncate(INITIAL_FILE_PREVIEW_LINE_LIMIT);
+                truncated = true;
+            }
+
+            Ok(Some((lines.join("\n"), truncated)))
+        }
+    }
 }

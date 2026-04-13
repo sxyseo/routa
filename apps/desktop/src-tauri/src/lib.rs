@@ -399,18 +399,42 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn desktop_workspace_navigation_js(port: u16, route_suffix: &str) -> String {
+fn desktop_workspace_navigation_js(_port: u16, route_suffix: &str) -> String {
     format!(
         r#"
             (function() {{
                 const match = window.location.pathname.match(/\/workspace\/([^\/]+)/);
                 const workspaceId = match ? match[1] : '{default_workspace_id}';
-                window.location.href = `http://127.0.0.1:{port}/workspace/${{workspaceId}}{route_suffix}`;
+                window.location.href = `${{window.location.origin}}/workspace/${{workspaceId}}{route_suffix}`;
             }})();
         "#,
         default_workspace_id = DEFAULT_WORKSPACE_ID,
-        port = port,
         route_suffix = route_suffix,
+    )
+}
+
+fn resolve_dual_origin_navigation_js(api_url: &str) -> String {
+    format!(
+        r#"
+            (function() {{
+                try {{
+                    const params = new URLSearchParams(window.location.search);
+                    const hasBackendHint = !!(
+                        params.get("backend") ||
+                        localStorage.getItem("routa.backendBaseUrl")
+                    );
+
+                    if (params.get("runtime") === "tauri" && hasBackendHint) {{
+                        return;
+                    }}
+                }} catch {{
+                    // If URL/search API is unavailable, fall back to existing navigation.
+                }}
+
+                window.location.replace("{}");
+            }})();
+        "#,
+        api_url
     )
 }
 
@@ -534,7 +558,7 @@ fn show_startup_error(window: &tauri::WebviewWindow, api_url: &str, db_path: &st
     let serialized_html = serde_json::to_string(&html)
         .unwrap_or_else(|_| "\"<h1>Routa Desktop startup failed</h1>\"".to_string());
     let js = format!("document.open(); document.write({serialized_html}); document.close();");
-    let _ = window.eval(&js);
+    let _ = window.eval(js);
 }
 
 fn start_local_next_server(host: &str, port: u16) -> Result<Child, String> {
@@ -919,21 +943,17 @@ pub fn run() {
                     "install_agents" => {
                         // Navigate to the agent installation page
                         if let Some(window) = app_handle.get_webview_window("main") {
-                            let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/settings/agents", port);
-                            let js = format!("window.location.href = '{}';", url);
-                            let _ = window.eval(&js);
-                            println!("[menu] Navigating to Install Agents: {}", url);
+                            let js = "window.location.href = `${window.location.origin}/settings/agents`;";
+                            let _ = window.eval(js);
+                            println!("[menu] Navigating to Install Agents");
                         }
                     }
                     "mcp_tools" => {
                         // Navigate to MCP tools page
                         if let Some(window) = app_handle.get_webview_window("main") {
-                            let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/mcp-tools", port);
-                            let js = format!("window.location.href = '{}';", url);
-                            let _ = window.eval(&js);
-                            println!("[menu] Navigating to MCP Tools: {}", url);
+                            let js = "window.location.href = `${window.location.origin}/mcp-tools`;";
+                            let _ = window.eval(js);
+                            println!("[menu] Navigating to MCP Tools");
                         }
                     }
                     "reload" => {
@@ -958,15 +978,28 @@ pub fn run() {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let js = r#"
                                 (async () => {
+                                    const resolveApiBase = () => {
+                                        try {
+                                            const params = new URLSearchParams(window.location.search);
+                                            const backend = (params.get("backend") || localStorage.getItem("routa.backendBaseUrl") || "").trim();
+                                            if (backend) return backend;
+                                            if (window.location.protocol === "tauri:") return "http://127.0.0.1:3210";
+                                        } catch {}
+                                        return "";
+                                    };
+
+                                    const apiBase = resolveApiBase();
+                                    const apiPath = (path) => `${apiBase || ""}${path}`;
+
                                     try {
                                         // Get current mode
-                                        const res = await fetch('/api/mcp/tools');
+                                        const res = await fetch(apiPath('/api/mcp/tools'));
                                         const data = await res.json();
                                         const currentMode = data?.globalMode || 'essential';
                                         const newMode = currentMode === 'essential' ? 'full' : 'essential';
 
                                         // Update mode
-                                        await fetch('/api/mcp/tools', {
+                                        await fetch(apiPath('/api/mcp/tools'), {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ mode: newMode })
@@ -990,7 +1023,7 @@ pub fn run() {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let port = api_port();
                             let js = desktop_workspace_navigation_js(port, "");
-                            let _ = window.eval(&js);
+                            let _ = window.eval(js);
                             println!("[menu] Navigating to Dashboard");
                         }
                     }
@@ -999,28 +1032,24 @@ pub fn run() {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let port = api_port();
                             let js = desktop_workspace_navigation_js(port, "/kanban");
-                            let _ = window.eval(&js);
+                            let _ = window.eval(js);
                             println!("[menu] Navigating to Kanban");
                         }
                     }
                     "nav_traces" => {
                         // Navigate to Agent Traces
                         if let Some(window) = app_handle.get_webview_window("main") {
-                            let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/traces", port);
-                            let js = format!("window.location.href = '{}';", url);
-                            let _ = window.eval(&js);
-                            println!("[menu] Navigating to Traces: {}", url);
+                            let js = "window.location.href = `${window.location.origin}/traces`;";
+                            let _ = window.eval(js);
+                            println!("[menu] Navigating to Traces");
                         }
                     }
                     "nav_settings" => {
                         // Navigate to Settings
                         if let Some(window) = app_handle.get_webview_window("main") {
-                            let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/settings", port);
-                            let js = format!("window.location.href = '{}';", url);
-                            let _ = window.eval(&js);
-                            println!("[menu] Navigating to Settings: {}", url);
+                            let js = "window.location.href = `${window.location.origin}/settings`;";
+                            let _ = window.eval(js);
+                            println!("[menu] Navigating to Settings");
                         }
                     }
                     _ => {}
@@ -1066,8 +1095,8 @@ pub fn run() {
                     match start_rust_server(app.handle(), &api_host, port) {
                         Ok(_) => {
                             if let Some(window) = app.get_webview_window("main") {
-                                let js = format!("window.location.replace('{}');", api_url);
-                                let _ = window.eval(&js);
+                                let js = resolve_dual_origin_navigation_js(&api_url);
+                                let _ = window.eval(js);
                                 println!("[rust-server] Webview navigated to {}", api_url);
                             }
                         }
@@ -1106,8 +1135,8 @@ pub fn run() {
 
                     if ready {
                         if let Some(window) = app.get_webview_window("main") {
-                            let js = format!("window.location.replace('{}');", api_url);
-                            let _ = window.eval(&js);
+                            let js = resolve_dual_origin_navigation_js(&api_url);
+                            let _ = window.eval(js);
                             println!("[desktop-server] Webview navigated to {}", api_url);
                         }
                     } else {
@@ -1120,8 +1149,8 @@ pub fn run() {
                 "external" => {
                     if wait_for_port(&api_host, port, 5) {
                         if let Some(window) = app.get_webview_window("main") {
-                            let js = format!("window.location.replace('{}');", api_url);
-                            let _ = window.eval(&js);
+                            let js = resolve_dual_origin_navigation_js(&api_url);
+                            let _ = window.eval(js);
                             println!(
                                 "[desktop-server] Webview navigated to external {}",
                                 api_url

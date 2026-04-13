@@ -1,4 +1,4 @@
-import { runCommand } from "./process.js";
+import { resolveEntrixShellCommand, runCommand } from "./process.js";
 import path from "node:path";
 import {
   runReviewTriggerSpecialist,
@@ -709,11 +709,18 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
     }
     return buildResultBase(reviewBase, report, "passed", true, false, null, message);
   }
-  const reviewFilesArg = scopeFiles.committedFiles.map(shellQuote).join(" ");
   const entrixBase = `${reviewBase}...HEAD`;
-  const reviewCommand =
-    `entrix review-trigger --base ${shellQuote(entrixBase)} --json --fail-on-trigger`
-    + (reviewFilesArg ? ` ${reviewFilesArg}` : "");
+  const reviewCommand = resolveEntrixShellCommand(
+    [
+      "review-trigger",
+      "--base",
+      entrixBase,
+      "--json",
+      "--fail-on-trigger",
+      ...scopeFiles.committedFiles,
+    ],
+    reviewRoot,
+  );
 
   const review = await runCommand(reviewCommand, { stream: false, cwd: reviewRoot });
 

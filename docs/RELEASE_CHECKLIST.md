@@ -52,7 +52,7 @@ git push origin main --tags
   - [ ] [routa-scanner](https://crates.io/crates/routa-scanner)
   - [ ] [routa-server](https://crates.io/crates/routa-server)
   - [ ] [routa-cli](https://crates.io/crates/routa-cli)
-  - [ ] [routa-entrix](https://crates.io/crates/routa-entrix)
+  - [ ] [entrix](https://crates.io/crates/entrix)
   - [ ] [harness-monitor](https://crates.io/crates/harness-monitor)
 - [ ] Verify npm publish (all 5 packages):
   - [ ] [routa-cli](https://www.npmjs.com/package/routa-cli) (main package)

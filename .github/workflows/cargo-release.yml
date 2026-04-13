@@ -47,7 +47,7 @@ jobs:
           workspace_version=$(grep '^\s*version = ' Cargo.toml | head -n1 | sed 's/.*"\(.*\)".*/\1/')
 
           echo "Checking crate versions..."
-          for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli crates/routa-entrix crates/harness-monitor; do
+          for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli crates/entrix crates/harness-monitor; do
             if grep -q '^version\.workspace = true$' "$crate/Cargo.toml"; then
               crate_version="${workspace_version}"
             else
@@ -111,16 +111,16 @@ jobs:
         if: ${{ !inputs.dry_run && github.event.inputs.dry_run != 'true' && github.event.inputs.dry_run != true }}
         run: sleep 30
 
-      - name: Publish routa-entrix
+      - name: Publish entrix
         run: |
-          cd crates/routa-entrix
+          cd crates/entrix
           if [[ "$DRY_RUN" == "true" ]]; then
             cargo publish --dry-run
           else
-            cargo publish --no-verify || echo "routa-entrix may already be published"
+            cargo publish --no-verify || echo "entrix may already be published"
           fi
 
-      - name: Wait for crates.io index update after routa-entrix
+      - name: Wait for crates.io index update after entrix
         if: ${{ !inputs.dry_run && github.event.inputs.dry_run != 'true' && github.event.inputs.dry_run != true }}
         run: sleep 30
 
@@ -153,5 +153,6 @@ jobs:
           echo "Install via cargo:" >> "$GITHUB_STEP_SUMMARY"
           echo '```bash' >> "$GITHUB_STEP_SUMMARY"
           echo "cargo install routa-cli@$version" >> "$GITHUB_STEP_SUMMARY"
+          echo "cargo install entrix@$version" >> "$GITHUB_STEP_SUMMARY"
           echo "cargo install harness-monitor@$version" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

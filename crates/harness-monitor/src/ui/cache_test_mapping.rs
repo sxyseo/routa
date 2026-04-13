@@ -1,6 +1,7 @@
 use crate::ui::state::RuntimeState;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::process::Command;
 
 #[derive(Clone, Debug, Default)]
@@ -85,12 +86,9 @@ pub(super) fn load_test_mapping_snapshot(
     files: &[String],
     cache_key: String,
 ) -> Result<TestMappingSnapshot, String> {
-    let mut command = Command::new("python3");
+    let mut command = entrix_command(Path::new(repo_root));
     command
         .current_dir(repo_root)
-        .env("PYTHONPATH", "tools/entrix")
-        .arg("-m")
-        .arg("entrix")
         .arg("graph")
         .arg("test-mapping")
         .arg("--json")
@@ -125,4 +123,30 @@ pub(super) fn load_test_mapping_snapshot(
         skipped_test_files: payload.skipped_test_files.into_iter().collect(),
         status_counts: payload.status_counts,
     })
+}
+
+fn entrix_command(repo_root: &Path) -> Command {
+    let debug_binary = repo_root
+        .join("target")
+        .join("debug")
+        .join(if cfg!(windows) {
+            "entrix.exe"
+        } else {
+            "entrix"
+        });
+    if debug_binary.exists() {
+        Command::new(debug_binary)
+    } else {
+        let mut command = Command::new("cargo");
+        command.args(["run", "-q", "-p", "entrix", "--"]);
+        command
+    }
+}
+
+pub(super) fn is_test_like_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".snap")
+        || lower.ends_with(".snapshot")
+        || lower.contains("/__snapshots__/")
+        || lower.contains("/snapshots/")
 }

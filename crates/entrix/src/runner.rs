@@ -287,6 +287,7 @@ fn run_command_with_timeout(
     } else {
         collect_output(stdout_collector, stderr_collector)
     };
+
     let timeout_duration = Duration::from_secs(timeout);
     let timed_out = wait_for_child_with_timeout(&mut child, timeout_duration)?;
 
@@ -334,7 +335,7 @@ fn collect_output_with_streaming(
     metric: Metric,
 ) -> thread::JoinHandle<(Vec<u8>, Vec<u8>)> {
     thread::spawn(move || {
-        let (tx, rx) = mpsc::channel::<(String, Vec<u8>)>();
+        let (tx, rx) = mpsc::channel::<(String, Vec<u8>, bool)>();
 
         let stdout_handle = stdout.map(|pipe| {
             let tx = tx.clone();
@@ -358,7 +359,7 @@ fn collect_output_with_streaming(
                         Err(_) => break,
                     }
                 }
-                let _ = tx.send(("stdout".to_string(), raw));
+                let _ = tx.send(("stdout".to_string(), raw, true));
             })
         });
 
@@ -384,7 +385,7 @@ fn collect_output_with_streaming(
                         Err(_) => break,
                     }
                 }
-                let _ = tx.send(("stderr".to_string(), raw));
+                let _ = tx.send(("stderr".to_string(), raw, true));
             })
         });
 
@@ -392,7 +393,7 @@ fn collect_output_with_streaming(
 
         let mut stdout_bytes = Vec::new();
         let mut stderr_bytes = Vec::new();
-        while let Ok((source, raw)) = rx.recv() {
+        while let Ok((source, raw, _done)) = rx.recv() {
             if source == "stdout" {
                 stdout_bytes = raw;
             } else {
@@ -611,7 +612,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn test_run_timeout_kills_background_processes() {
-        let leak_path = format!("/tmp/routa-entrix-timeout-{}.txt", std::process::id());
+        let leak_path = format!("/tmp/entrix-timeout-{}.txt", std::process::id());
         let _ = std::fs::remove_file(&leak_path);
 
         let runner = ShellRunner::new(Path::new("/tmp")).with_timeout(1);

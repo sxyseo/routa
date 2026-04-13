@@ -5,9 +5,10 @@ use crate::models::kanban::{column_id_to_task_status, task_status_to_column_id};
 use crate::models::task::{Task, TaskCreationSource, TaskPriority, TaskStatus};
 use crate::state::AppState;
 use routa_core::kanban::{
-    ensure_task_board_context, set_task_column, sync_task_column_from_status,
-    sync_task_status_from_column,
+    ensure_task_board_context, resolve_review_lane_convergence_column, set_task_column,
+    sync_task_column_from_status, sync_task_status_from_column,
 };
+use routa_core::models::task::VerificationVerdict;
 
 #[derive(Clone)]
 pub struct TaskApplicationService {
@@ -261,6 +262,11 @@ impl TaskApplicationService {
         if command.completion_summary.is_some() {
             task.completion_summary = command.completion_summary;
         }
+        if let Some(value) = command.verification_verdict {
+            task.verification_verdict = Some(VerificationVerdict::from_str(&value).ok_or_else(
+                || ServerError::BadRequest(format!("Invalid verification verdict: {}", value)),
+            )?);
+        }
         if command.verification_report.is_some() {
             task.verification_report = command.verification_report;
         }
@@ -295,6 +301,19 @@ impl TaskApplicationService {
             sync_task_column_from_status(&mut task);
         }
         ensure_task_board_context(&self.state, &mut task).await?;
+        let board = if let Some(board_id) = &task.board_id {
+            self.state.kanban_store.get(board_id).await?
+        } else {
+            None
+        };
+        if !has_status_update && !has_column_update {
+            if let Some(column_id) = resolve_review_lane_convergence_column(&task, board.as_ref()) {
+                if task.column_id.as_deref() != Some(column_id.as_str()) {
+                    task.column_id = Some(column_id);
+                    sync_task_status_from_column(&mut task);
+                }
+            }
+        }
 
         let entering_dev = task.column_id.as_deref() == Some("dev")
             && existing_column_id.as_deref() != Some("dev");
@@ -437,6 +456,7 @@ pub struct UpdateTaskCommand {
     pub dependencies: Option<Vec<String>>,
     pub parallel_group: Option<String>,
     pub completion_summary: Option<String>,
+    pub verification_verdict: Option<String>,
     pub verification_report: Option<String>,
     pub sync_to_github: Option<bool>,
     pub retry_trigger: Option<bool>,
@@ -490,7 +510,7 @@ mod tests {
 
     use super::{CreateTaskCommand, TaskApplicationService, UpdateTaskCommand};
     use crate::create_app_state;
-    use crate::models::task::{Task, TaskCreationSource, TaskStatus};
+    use crate::models::task::{Task, TaskCreationSource, TaskStatus, VerificationVerdict};
 
     fn random_db_path() -> PathBuf {
         std::env::temp_dir().join(format!("routa-task-service-{}.db", uuid::Uuid::new_v4()))
@@ -907,6 +927,74 @@ mod tests {
         );
         assert_eq!(plan.task.column_id.as_deref(), Some("todo"));
         assert!(plan.should_trigger_agent);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn update_task_converges_final_review_verdict_into_done() {
+        let (service, db_path) = setup_service().await;
+        let mut task = seed_task(&service, Some("review")).await;
+        task.status = TaskStatus::ReviewRequired;
+        task.assigned_specialist_id = Some("kanban-review-guard".to_string());
+        task.assigned_specialist_name = Some("Review Guard".to_string());
+        service
+            .state
+            .task_store
+            .save(&task)
+            .await
+            .expect("persist review task");
+
+        let plan = service
+            .update_task(
+                &task.id,
+                UpdateTaskCommand {
+                    verification_verdict: Some("APPROVED".to_string()),
+                    verification_report: Some("Checks passed".to_string()),
+                    ..UpdateTaskCommand::default()
+                },
+            )
+            .await
+            .expect("update task plan");
+
+        assert_eq!(plan.task.column_id.as_deref(), Some("done"));
+        assert_eq!(plan.task.status, TaskStatus::Completed);
+        assert_eq!(
+            plan.task.verification_verdict,
+            Some(VerificationVerdict::Approved)
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn update_task_keeps_review_lane_when_follow_up_step_is_pending() {
+        let (service, db_path) = setup_service().await;
+        let mut task = seed_task(&service, Some("review")).await;
+        task.status = TaskStatus::ReviewRequired;
+        task.assigned_specialist_id = Some("kanban-qa-frontend".to_string());
+        task.assigned_specialist_name = Some("QA Frontend".to_string());
+        service
+            .state
+            .task_store
+            .save(&task)
+            .await
+            .expect("persist review task");
+
+        let plan = service
+            .update_task(
+                &task.id,
+                UpdateTaskCommand {
+                    verification_verdict: Some("NOT_APPROVED".to_string()),
+                    verification_report: Some("Needs fixes".to_string()),
+                    ..UpdateTaskCommand::default()
+                },
+            )
+            .await
+            .expect("update task plan");
+
+        assert_eq!(plan.task.column_id.as_deref(), Some("review"));
+        assert_eq!(plan.task.status, TaskStatus::ReviewRequired);
 
         let _ = fs::remove_file(db_path);
     }

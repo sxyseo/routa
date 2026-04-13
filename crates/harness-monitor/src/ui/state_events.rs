@@ -130,6 +130,12 @@ impl RuntimeState {
         );
 
         for rel_path in event.file_paths {
+            if let Some(task_id) = active_task_id.as_ref() {
+                self.task_change_paths
+                    .entry(task_id.clone())
+                    .or_default()
+                    .insert(rel_path.clone());
+            }
             if let Some(session) = self.sessions.get_mut(&event.session_id) {
                 session.touched_files.insert(rel_path.clone());
             }
@@ -186,6 +192,11 @@ impl RuntimeState {
                 });
                 session.recent_git_activity.insert(0, label);
                 session.recent_git_activity.truncate(3);
+                if let Some(task_id) = session.active_task_id.clone() {
+                    let activity = self.task_git_activity.entry(task_id).or_default();
+                    activity.insert(0, session.recent_git_activity[0].clone());
+                    activity.truncate(3);
+                }
             }
         }
         self.push_event(
@@ -244,6 +255,12 @@ impl RuntimeState {
         if let Some(session) = self.sessions.get_mut(&event.session_id) {
             session.touched_files.insert(event.rel_path.clone());
             session.last_seen_at_ms = event.observed_at_ms;
+            if let Some(task_id) = session.active_task_id.clone() {
+                self.task_change_paths
+                    .entry(task_id)
+                    .or_default()
+                    .insert(event.rel_path.clone());
+            }
         }
 
         self.push_attribution_event(

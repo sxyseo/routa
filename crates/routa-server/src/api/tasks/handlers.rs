@@ -431,6 +431,7 @@ fn update_task_command(body: UpdateTaskRequest) -> UpdateTaskCommand {
         dependencies: body.dependencies,
         parallel_group: body.parallel_group,
         completion_summary: body.completion_summary,
+        verification_verdict: body.verification_verdict,
         verification_report: body.verification_report,
         sync_to_github: body.sync_to_github,
         retry_trigger: body.retry_trigger,

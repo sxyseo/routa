@@ -11,18 +11,14 @@ The project is intentionally not "two separate products". Web and desktop differ
 - `docs/adr/`: Durable architectural decisions. Start here for "why".
 - `docs/design-docs/`: Human-reviewed design intent and normalized decisions migrated from `.kiro/specs/`.
 
-## Documentation Rules
-
-- Keep this file as a routing layer, not a knowledge dump.
-- Put durable guidance in `docs/`, not in duplicated entry-file prose.
-- Keep one canonical home per knowledge type; avoid parallel copies across `AGENTS.md`, `CLAUDE.md`, `.kiro/specs/`, and `docs/`.
-- For long-lived doc additions, place them in the most specific `docs/` area and update repository-map pointers if that area becomes a standard entry point.
-- Unless explicitly asked, do not write extra documentation.
-
 ## Coding Standards
 
 - General coding style guidance lives in `docs/coding-style.md`; keep this file focused on routing and repo-level guardrails.
 - Source of truth for executable gates is `docs/fitness/` + `entrix`; do not restate tool-level checks here.
+- Frontend and desktop API calls in `src/app` and `src/client` should use `resolveApiPath` + `desktopAwareFetch` for统一的后端路径组装：
+  - `resolveApiPath`（`src/client/config/backend.ts`）：统一补全 `/api` 前缀并在需要时拼接后端 base URL。
+  - `desktopAwareFetch`（`src/client/utils/diagnostics.ts`）：在 Tauri 桌面静态运行时自动落到 `http://127.0.0.1:3210` 或配置的后端地址。
+  - 避免在前端/桌面再次直接写 `fetch('/api/...')`。
 - For long behavior-heavy files, prefer **orchestration shell + domain hooks** over UI-only slicing.
 - Apply the same pattern to oversized API routes: thin top-level route, extract workflow branches (session creation, streaming, provider dispatch, etc.).
 - Split route refactors by workflow branch before shared helpers; avoid premature generic `utils`.
@@ -50,7 +46,7 @@ entrix run --tier normal   # when behavior/shared modules/APIs/workflow orchestr
 
 - If a check fails, fix and re-run; do not skip.
 - Skip source-code validation only when changes are strictly non-code (`*.md`, `*.yml`, `*.yaml`, `.github/`, `docs/`, etc.).
-- Install if needed: `pip install -e tools/entrix`.
+- Build if needed: `cargo build -p entrix`.
 
 ## Git Discipline
 
@@ -64,9 +60,10 @@ entrix run --tier normal   # when behavior/shared modules/APIs/workflow orchestr
 ### Co-Author Format
 
 - If closing an issue in commit text, verify against `main` first: `gh issue view <issue-id>`.
+- Always add co-author information.
 - Only ONE co-author line is allowed. If multiple agents contributed, aggregate into ONE entry
 
-Format (MANDATORY):
+Format example:
 
 Co-authored-by: <AgentName> (<Model>) <Email>
 
@@ -108,7 +105,7 @@ Co-authored-by: gemini-cli (...) <218195315+gemini-cli@users.noreply.github.com>
 - `docs/references/`: Distilled external references for frequent dependencies.
 - `docs/release-guide.md`: Full release guide for CLI/Desktop/distribution.
 - `docs/RELEASE_CHECKLIST.md`: Quick release checklist.
-- `tools/entrix/docs/adr/README.md`: Entrix-specific ADRs and long-file heuristics.
+- `crates/entrix/`: Entrix runtime and CLI implementation.
 
 ## Reading Order
 

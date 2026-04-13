@@ -393,7 +393,7 @@ describe("SessionPageClient", () => {
     render(<SessionPageClient />);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/mcp/tools");
+      expect(fetchMock).toHaveBeenCalledWith("/api/mcp/tools", { cache: "no-store" });
     });
   });
 

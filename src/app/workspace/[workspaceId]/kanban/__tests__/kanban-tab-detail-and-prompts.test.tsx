@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { KanbanTab } from "../kanban-tab";
 import { KanbanCardDetail } from "../kanban-card-detail";
 import { KanbanCardActivityPanel } from "../kanban-card-activity";
@@ -7,6 +7,7 @@ import { KanbanMoveBlockedModal } from "../kanban-tab-modals";
 import { buildKanbanSessionRestorePrompt } from "../kanban-tab-panels";
 import type { KanbanBoardInfo, TaskInfo } from "../../types";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
+import { resetDesktopAwareFetchToGlobalFetch } from "./test-utils";
 
 const { desktopAwareFetch } = vi.hoisted(() => ({
   desktopAwareFetch: vi.fn(),
@@ -59,8 +60,11 @@ function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}
   };
 }
 
+beforeEach(() => {
+  resetDesktopAwareFetchToGlobalFetch(desktopAwareFetch);
+});
+
 afterEach(() => {
-  desktopAwareFetch.mockReset();
 });
 
 describe("kanban session restore prompt", () => {

@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { ChevronLeft, X, MessageSquare, RefreshCw } from "lucide-react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -291,7 +292,7 @@ export default function AGUIPage() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      const response = await fetch("/api/ag-ui", {
+      const response = await desktopAwareFetch("/api/ag-ui", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -499,7 +500,7 @@ export default function AGUIPage() {
       abortControllerRef.current = controller;
 
       // 1. Initialize
-      await fetch("/api/acp", {
+      await desktopAwareFetch("/api/acp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -512,7 +513,7 @@ export default function AGUIPage() {
       });
 
       // 2. Create session
-      const sessionRes = await fetch("/api/acp", {
+      const sessionRes = await desktopAwareFetch("/api/acp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -528,7 +529,7 @@ export default function AGUIPage() {
       if (!sessionId) throw new Error("Failed to create ACP session");
 
       // 3. Send prompt (streaming SSE response)
-      const promptRes = await fetch("/api/acp", {
+      const promptRes = await desktopAwareFetch("/api/acp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

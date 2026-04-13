@@ -6,13 +6,13 @@ members = [
     "crates/routa-cli",
     "crates/routa-rpc",
     "crates/routa-scanner",
-    "crates/routa-entrix",
+    "crates/entrix",
     "apps/desktop/src-tauri",
     "crates/harness-monitor",
 ]
 
 [workspace.package]
-version = "0.14.2"
+version = "0.14.3"
 edition = "2021"
 license = "MIT"
 authors = ["phodal"]

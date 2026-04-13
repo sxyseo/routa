@@ -98,6 +98,7 @@ export function createInMemorySystem(): RoutaSystem {
 
   // Wire artifact store for artifact-related tools
   tools.setArtifactStore(artifactStore);
+  tools.setKanbanBoardStore(kanbanBoardStore);
   tools.setPermissionStore(permissionStore);
 
   return {
@@ -174,6 +175,7 @@ export function createPgSystem(): RoutaSystem {
 
   // Wire artifact store for artifact-related tools
   tools.setArtifactStore(artifactStore);
+  tools.setKanbanBoardStore(kanbanBoardStore);
   tools.setPermissionStore(permissionStore);
 
   return {
@@ -296,6 +298,7 @@ export function createSqliteSystem(): RoutaSystem {
 
   // Wire artifact store for artifact-related tools
   tools.setArtifactStore(artifactStore);
+  tools.setKanbanBoardStore(kanbanBoardStore);
   tools.setPermissionStore(permissionStore);
 
   return {

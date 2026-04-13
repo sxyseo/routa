@@ -483,6 +483,95 @@ pub(crate) fn recover_prompt_from_transcript(
     latest_user_prompt
 }
 
+pub fn recent_prompt_previews_from_transcript(transcript_path: &str, limit: usize) -> Vec<String> {
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    let Ok(file) = std::fs::File::open(transcript_path) else {
+        return Vec::new();
+    };
+    let reader = BufReader::new(file);
+    let mut current_turn_id: Option<String> = None;
+    let mut current_prompt: Option<String> = None;
+    let mut prompts = Vec::new();
+
+    for line in reader.lines() {
+        let Ok(line) = line else {
+            continue;
+        };
+        let Ok(entry) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        match entry.get("type").and_then(Value::as_str) {
+            Some("event_msg") => match entry.pointer("/payload/type").and_then(Value::as_str) {
+                Some("task_started") => {
+                    if let Some(prompt) = current_prompt.take() {
+                        let preview = summarize_prompt_preview(&prompt);
+                        if !preview.is_empty() {
+                            prompts.push(preview);
+                        }
+                    }
+                    current_turn_id = entry
+                        .pointer("/payload/turn_id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                }
+                Some("user_message") if current_turn_id.is_some() => {
+                    current_prompt = entry
+                        .pointer("/payload/message")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                }
+                Some("task_complete")
+                    if entry.pointer("/payload/turn_id").and_then(Value::as_str)
+                        == current_turn_id.as_deref() =>
+                {
+                    if let Some(prompt) = current_prompt.take() {
+                        let preview = summarize_prompt_preview(&prompt);
+                        if !preview.is_empty() {
+                            prompts.push(preview);
+                        }
+                    }
+                    current_turn_id = None;
+                }
+                _ => {}
+            },
+            Some("response_item")
+                if entry.pointer("/payload/type").and_then(Value::as_str) == Some("message")
+                    && entry.pointer("/payload/role").and_then(Value::as_str) == Some("user")
+                    && current_turn_id.is_some() =>
+            {
+                if let Some(message) = extract_user_prompt_from_response_item(&entry) {
+                    current_prompt = Some(message);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(prompt) = current_prompt.take() {
+        let preview = summarize_prompt_preview(&prompt);
+        if !preview.is_empty() {
+            prompts.push(preview);
+        }
+    }
+
+    let mut deduped = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for prompt in prompts.into_iter().rev() {
+        let normalized = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+        if normalized.is_empty() || !seen.insert(normalized) {
+            continue;
+        }
+        deduped.push(prompt);
+        if deduped.len() >= limit {
+            break;
+        }
+    }
+    deduped
+}
+
 fn extract_user_prompt_from_response_item(entry: &Value) -> Option<String> {
     let items = entry.pointer("/payload/content")?.as_array()?;
     let mut parts = Vec::new();
@@ -910,6 +999,37 @@ mod tests {
         let prompt = recover_prompt_from_transcript(Some("turn-3"), transcript.to_str());
 
         assert_eq!(prompt.as_deref(), Some("recover from response item"));
+    }
+
+    #[test]
+    fn recent_prompt_previews_from_transcript_returns_latest_first() {
+        let dir = tempdir().expect("tempdir");
+        let transcript = dir.path().join("session.jsonl");
+        std::fs::write(
+            &transcript,
+            concat!(
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-1\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"first task\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-1\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-2\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"second task\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-2\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-3\"}}\n",
+                "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"third task\"}]}}\n"
+            ),
+        )
+        .expect("write transcript");
+
+        let prompts = recent_prompt_previews_from_transcript(transcript.to_str().expect("path"), 3);
+
+        assert_eq!(
+            prompts,
+            vec![
+                "third task".to_string(),
+                "second task".to_string(),
+                "first task".to_string()
+            ]
+        );
     }
 
     #[test]

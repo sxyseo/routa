@@ -9,6 +9,7 @@ const loadReviewTriggerRulesMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../process.js", () => ({
   runCommand: runCommandMock,
+  resolveEntrixShellCommand: (args: string[]) => args.join(" "),
 }));
 
 vi.mock("../specialist-review.js", () => ({
