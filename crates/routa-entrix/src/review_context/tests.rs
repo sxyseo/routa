@@ -625,6 +625,72 @@ fn query_current_graph_returns_importers_for_file() {
 }
 
 #[test]
+fn query_current_graph_returns_go_imports_for_file() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("pkg/demo/util")).unwrap();
+    fs::write(
+        root.join("pkg/demo/util/util.go"),
+        "package util\n\nfunc Version() int { return 1 }\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("pkg/demo/service.go"),
+        "package demo\n\nimport \"./util\"\n\nfunc Run() int { return util.Version() }\n",
+    )
+    .unwrap();
+
+    let result = query_current_graph(root, "pkg/demo/service.go", "imports_of", ReviewBuildMode::Auto);
+
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.results.len(), 1);
+    assert!(matches!(
+        &result.results[0],
+        GraphNodePayload::File(file) if file.qualified_name == "pkg/demo/util/util.go"
+    ));
+    assert_eq!(result.edges[0].kind, "IMPORTS_FROM");
+    assert_eq!(result.edges[0].source_qualified, "pkg/demo/service.go");
+    assert_eq!(result.edges[0].target_qualified, "pkg/demo/util/util.go");
+}
+
+#[test]
+fn query_current_graph_returns_java_imports_for_file() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src/main/java/com/example/util")).unwrap();
+    fs::write(
+        root.join("src/main/java/com/example/util/Helper.java"),
+        "package com.example.util;\n\npublic class Helper { public static String name() { return \"ok\"; } }\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/main/java/com/example/Service.java"),
+        "package com.example;\n\nimport com.example.util.Helper;\n\npublic class Service {\n  public String run() { return Helper.name(); }\n}\n",
+    )
+    .unwrap();
+
+    let result = query_current_graph(
+        root,
+        "src/main/java/com/example/Service.java",
+        "imports_of",
+        ReviewBuildMode::Auto,
+    );
+
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.results.len(), 1);
+    assert!(matches!(
+        &result.results[0],
+        GraphNodePayload::File(file) if file.qualified_name == "src/main/java/com/example/util/Helper.java"
+    ));
+    assert_eq!(result.edges[0].kind, "IMPORTS_FROM");
+    assert_eq!(result.edges[0].source_qualified, "src/main/java/com/example/Service.java");
+    assert_eq!(
+        result.edges[0].target_qualified,
+        "src/main/java/com/example/util/Helper.java"
+    );
+}
+
+#[test]
 fn query_current_graph_resolves_unique_symbol_name() {
     let temp = tempdir().unwrap();
     let root = temp.path();

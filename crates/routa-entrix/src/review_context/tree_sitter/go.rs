@@ -1,4 +1,4 @@
-use super::{collect_identifier_mentions, sanitize_test_name};
+use super::{collect_identifier_mentions, resolve_go_import, sanitize_test_name};
 use crate::review_context::model::ChangedNode;
 use std::path::Path;
 use tree_sitter::Node;
@@ -10,12 +10,50 @@ pub(super) fn parse_nodes(relative_path: &str, source: &str, root: Node<'_>) -> 
 }
 
 pub(super) fn parse_imports(
-    _repo_root: &Path,
-    _relative_path: &str,
-    _source: &str,
-    _root: Node<'_>,
+    repo_root: &Path,
+    relative_path: &str,
+    source: &str,
+    root: Node<'_>,
 ) -> Vec<String> {
-    Vec::new()
+    let mut imports = Vec::new();
+    collect_imports(
+        repo_root,
+        relative_path,
+        source.as_bytes(),
+        root,
+        false,
+        &mut imports,
+    );
+    imports.sort();
+    imports.dedup();
+    imports
+}
+
+fn collect_imports(
+    repo_root: &Path,
+    relative_path: &str,
+    source: &[u8],
+    node: Node<'_>,
+    in_import: bool,
+    out: &mut Vec<String>,
+) {
+    let in_import = in_import || node.kind() == "import_declaration";
+    if in_import
+        && matches!(
+            node.kind(),
+            "interpreted_string_literal" | "raw_string_literal"
+        )
+    {
+        if let Ok(raw) = node.utf8_text(source) {
+            if let Some(resolved) = resolve_go_import(repo_root, relative_path, raw.trim()) {
+                out.push(resolved);
+            }
+        }
+    }
+
+    for child in node.children(&mut node.walk()) {
+        collect_imports(repo_root, relative_path, source, child, in_import, out);
+    }
 }
 
 fn collect_nodes(

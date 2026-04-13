@@ -1,4 +1,4 @@
-use super::collect_identifier_mentions;
+use super::{collect_identifier_mentions, resolve_java_import};
 use crate::review_context::model::ChangedNode;
 use std::path::Path;
 use tree_sitter::Node;
@@ -18,12 +18,65 @@ pub(super) fn parse_nodes(relative_path: &str, source: &str, root: Node<'_>) -> 
 }
 
 pub(super) fn parse_imports(
-    _repo_root: &Path,
-    _relative_path: &str,
-    _source: &str,
-    _root: Node<'_>,
+    repo_root: &Path,
+    relative_path: &str,
+    source: &str,
+    root: Node<'_>,
 ) -> Vec<String> {
-    Vec::new()
+    let mut imports = Vec::new();
+    collect_imports(
+        repo_root,
+        relative_path,
+        source.as_bytes(),
+        root,
+        &mut imports,
+    );
+    imports.sort();
+    imports.dedup();
+    imports
+}
+
+fn collect_imports(
+    repo_root: &Path,
+    relative_path: &str,
+    source: &[u8],
+    node: Node<'_>,
+    out: &mut Vec<String>,
+) {
+    if node.kind() == "import_declaration" {
+        if let Some((is_static, import_path)) = extract_import_text(node, source) {
+            if let Some(resolved) =
+                resolve_java_import(repo_root, relative_path, &import_path, is_static)
+            {
+                out.push(resolved);
+            }
+        }
+        return;
+    }
+
+    for child in node.children(&mut node.walk()) {
+        collect_imports(repo_root, relative_path, source, child, out);
+    }
+}
+
+fn extract_import_text(node: Node<'_>, source: &[u8]) -> Option<(bool, String)> {
+    let raw = node.utf8_text(source).ok()?.trim().to_string();
+    if !raw.starts_with("import") {
+        return None;
+    }
+    let mut body = raw
+        .trim_start_matches("import")
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .to_string();
+    let mut is_static = false;
+    if let Some(rest) = body.strip_prefix("static") {
+        is_static = true;
+        body = rest.trim().to_string();
+    }
+    let import_path = body.split_whitespace().next()?.to_string();
+    Some((is_static, import_path))
 }
 
 fn collect_nodes(

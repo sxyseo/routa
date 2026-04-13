@@ -876,6 +876,162 @@ pub(super) fn resolve_python_import(
     None
 }
 
+pub(super) fn resolve_go_import(
+    repo_root: &Path,
+    relative_path: &str,
+    import_path: &str,
+) -> Option<String> {
+    let import_path = import_path.trim().trim_matches(&['"', '\'', '`'][..]).to_string();
+    if import_path.is_empty() {
+        return None;
+    }
+
+    let relative_anchor = repo_root.join(relative_path).parent()?.to_path_buf();
+    let candidates = if import_path.starts_with('.')
+        || import_path.starts_with("./")
+        || import_path.starts_with("../")
+        || import_path == "."
+        || import_path == ".."
+    {
+        vec![relative_anchor.join(import_path)]
+    } else if import_path.contains('/') || import_path.contains('.') {
+        vec![repo_root.join(import_path.replace('.', "/"))]
+    } else {
+        Vec::new()
+    };
+
+    for candidate in candidates {
+        if let Some(resolved) = resolve_import_file_reference(repo_root, &candidate, "go", Some("_test.go"))
+        {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
+pub(super) fn resolve_java_import(
+    repo_root: &Path,
+    _relative_path: &str,
+    import_path: &str,
+    is_static_import: bool,
+) -> Option<String> {
+    let mut import_path = import_path.trim().trim_end_matches(';').trim().to_string();
+    if import_path.is_empty() {
+        return None;
+    }
+    if import_path.starts_with("java.")
+        || import_path.starts_with("javax.")
+        || import_path.starts_with("kotlin.")
+        || import_path.starts_with("scala.")
+    {
+        return None;
+    }
+
+    if is_static_import {
+        let mut parts = import_path.split('.').collect::<Vec<_>>();
+        if parts.len() > 1 {
+            parts.pop();
+            import_path = parts.join(".");
+        }
+    }
+
+    if import_path.ends_with(".*") {
+        import_path = import_path.trim_end_matches(".*").to_string();
+    }
+    if import_path.is_empty() {
+        return None;
+    }
+
+    let package_path = import_path.replace('.', "/");
+    let class_file = repo_root.join(format!("{package_path}.java"));
+    let package_dir = repo_root.join(&package_path);
+    let mut candidates = vec![class_file.to_path_buf(), package_dir.to_path_buf()];
+    candidates.push(repo_root.join("src/main/java").join(format!("{package_path}.java")));
+    candidates.push(repo_root.join("src/main/java").join(&package_path));
+    candidates.push(repo_root.join("src/test/java").join(format!("{package_path}.java")));
+    candidates.push(repo_root.join("src/test/java").join(package_path));
+
+    for candidate in candidates {
+        if let Some(found) = resolve_import_file_reference(repo_root, &candidate, "java", Some("_test.java"))
+        {
+            return Some(found);
+        }
+    }
+
+    let target_suffix = format!("{package_path}.java");
+    for repo_file in collect_repo_files(repo_root) {
+        if repo_file.ends_with(&target_suffix) {
+            return Some(repo_file);
+        }
+    }
+    None
+}
+
+fn resolve_import_file_reference(
+    repo_root: &Path,
+    candidate: &Path,
+    extension: &str,
+    skip_test_suffix: Option<&str>,
+) -> Option<String> {
+    let candidate = if candidate.extension().is_none() {
+        if candidate.is_dir() {
+            let file = first_source_file_in_directory(candidate, extension, skip_test_suffix)?;
+            return resolve_repo_relative_path(repo_root, &file);
+        }
+        let as_file = candidate.with_extension(extension);
+        if as_file.is_file() {
+            return resolve_repo_relative_path(repo_root, &as_file.to_string_lossy());
+        }
+        return None;
+    } else if candidate.extension().and_then(|ext| ext.to_str()) == Some(extension) {
+        if candidate.is_file() {
+            return resolve_repo_relative_path(repo_root, &candidate.to_string_lossy());
+        }
+    }
+    None
+}
+
+fn first_source_file_in_directory(
+    dir: &Path,
+    extension: &str,
+    skip_test_suffix: Option<&str>,
+) -> Option<String> {
+    let mut preferred = Vec::new();
+    let mut skipped = Vec::new();
+    for entry in fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_none_or(|ext| ext != extension)
+        {
+            continue;
+        }
+
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if skip_test_suffix
+            .is_some_and(|suffix| file_name.ends_with(suffix))
+        {
+            skipped.push(path);
+            continue;
+        }
+        preferred.push(path);
+    }
+    preferred.sort();
+    if let Some(path) = preferred.first() {
+        return Some(path.to_string_lossy().to_string());
+    }
+    skipped.sort();
+    skipped.first().map(|path| path.to_string_lossy().to_string())
+}
+
 pub fn analyze_single_file(repo_root: &Path, target: &str) -> Option<SingleFileAnalysis> {
     let relative_path = resolve_repo_relative_path(repo_root, target)?;
     let language = language_config_for_path(&relative_path)?;
