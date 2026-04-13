@@ -2,8 +2,11 @@
 
 use std::collections::HashMap;
 use std::io;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::Arc;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -16,12 +19,14 @@ use crate::model::{Gate, Metric, MetricResult, ResultState};
 
 /// Callback type for progress events.
 pub type ProgressCallback = Box<dyn Fn(&str, &Metric, Option<&MetricResult>) + Send + Sync>;
+pub type OutputCallback = Arc<dyn Fn(&Metric, &str, &str) + Send + Sync>;
 
 /// Executes Metric commands as shell subprocesses.
 pub struct ShellRunner {
     project_root: PathBuf,
     timeout: u64,
     env_overrides: HashMap<String, String>,
+    output_callback: Option<OutputCallback>,
 }
 
 impl ShellRunner {
@@ -30,6 +35,7 @@ impl ShellRunner {
             project_root: project_root.to_path_buf(),
             timeout: 300,
             env_overrides: HashMap::new(),
+            output_callback: None,
         }
     }
 
@@ -40,6 +46,11 @@ impl ShellRunner {
 
     pub fn with_env_overrides(mut self, env_overrides: HashMap<String, String>) -> Self {
         self.env_overrides = env_overrides;
+        self
+    }
+
+    pub fn with_output_callback(mut self, output_callback: OutputCallback) -> Self {
+        self.output_callback = Some(output_callback);
         self
     }
 
@@ -87,14 +98,20 @@ impl ShellRunner {
         let project_root = self.project_root.clone();
         let env_clone = env;
 
-        let result =
-            match run_command_with_timeout(&command_str, &project_root, &env_clone, timeout) {
+        let result = match run_command_with_timeout(
+            &command_str,
+            &project_root,
+            &env_clone,
+            timeout,
+            self.output_callback.as_ref(),
+            metric,
+        ) {
                 Ok(command_result) => {
                     let CommandRunOutput { output, timed_out } = command_result;
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let combined = format!("{}{}", stdout, stderr);
-                    let output_truncated = truncate_utf8(&combined, 2000);
+                    let output_truncated = smart_truncate(&combined, 4000, 4000);
                     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
                     if timed_out {
@@ -200,16 +217,29 @@ impl ShellRunner {
 }
 
 /// Safely truncate a string to a maximum number of bytes at a valid UTF-8 boundary.
-fn truncate_utf8(s: &str, max_bytes: usize) -> String {
+fn smart_truncate(s: &str, head_bytes: usize, tail_bytes: usize) -> String {
+    let max_bytes = head_bytes + tail_bytes + 200;
     if s.len() <= max_bytes {
-        return s.to_string();
+        return s.to_owned();
     }
-    // Find a valid UTF-8 char boundary
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
+
+    let mut head_end = head_bytes.min(s.len());
+    while head_end > 0 && !s.is_char_boundary(head_end) {
+        head_end -= 1;
     }
-    s[..end].to_string()
+
+    let mut tail_start = s.len().saturating_sub(tail_bytes);
+    while tail_start < s.len() && !s.is_char_boundary(tail_start) {
+        tail_start += 1;
+    }
+
+    let omitted = s.len().saturating_sub(head_end + (s.len() - tail_start));
+    format!(
+        "{}\n\n... [{} characters omitted] ...\n\n{}",
+        &s[..head_end],
+        omitted,
+        &s[tail_start..]
+    )
 }
 
 struct CommandRunOutput {
@@ -222,6 +252,8 @@ fn run_command_with_timeout(
     project_root: &Path,
     env: &HashMap<String, String>,
     timeout: u64,
+    output_callback: Option<&OutputCallback>,
+    metric: &Metric,
 ) -> io::Result<CommandRunOutput> {
     let mut cmd;
     #[cfg(unix)]
@@ -243,6 +275,18 @@ fn run_command_with_timeout(
     cmd.process_group(0);
 
     let mut child = cmd.spawn()?;
+    let stdout_collector = child.stdout.take();
+    let stderr_collector = child.stderr.take();
+    let output = if let Some(callback) = output_callback {
+        collect_output_with_streaming(
+            stdout_collector,
+            stderr_collector,
+            callback.clone(),
+            metric.clone(),
+        )
+    } else {
+        collect_output(stdout_collector, stderr_collector)
+    };
     let timeout_duration = Duration::from_secs(timeout);
     let timed_out = wait_for_child_with_timeout(&mut child, timeout_duration)?;
 
@@ -250,8 +294,121 @@ fn run_command_with_timeout(
         terminate_child(&mut child)?;
     }
 
-    let output = child.wait_with_output()?;
+    let status = child.wait()?;
+    let output = output.join().map_err(|_| io::Error::other("output collector panicked"))?;
+    let output = Output {
+        status,
+        stdout: output.0,
+        stderr: output.1,
+    };
     Ok(CommandRunOutput { output, timed_out })
+}
+
+fn collect_output(
+    stdout: Option<std::process::ChildStdout>,
+    stderr: Option<std::process::ChildStderr>,
+) -> thread::JoinHandle<(Vec<u8>, Vec<u8>)> {
+    thread::spawn(move || {
+        let stdout_bytes = stdout
+            .map(|mut pipe| {
+                let mut buffer = Vec::new();
+                let _ = io::Read::read_to_end(&mut pipe, &mut buffer);
+                buffer
+            })
+            .unwrap_or_default();
+        let stderr_bytes = stderr
+            .map(|mut pipe| {
+                let mut buffer = Vec::new();
+                let _ = io::Read::read_to_end(&mut pipe, &mut buffer);
+                buffer
+            })
+            .unwrap_or_default();
+        (stdout_bytes, stderr_bytes)
+    })
+}
+
+fn collect_output_with_streaming(
+    stdout: Option<std::process::ChildStdout>,
+    stderr: Option<std::process::ChildStderr>,
+    callback: OutputCallback,
+    metric: Metric,
+) -> thread::JoinHandle<(Vec<u8>, Vec<u8>)> {
+    thread::spawn(move || {
+        let (tx, rx) = mpsc::channel::<(String, Vec<u8>)>();
+
+        let stdout_handle = stdout.map(|pipe| {
+            let tx = tx.clone();
+            let metric = metric.clone();
+            let callback = callback.clone();
+            thread::spawn(move || {
+                let mut reader = BufReader::new(pipe);
+                let mut raw = Vec::new();
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            raw.extend_from_slice(line.as_bytes());
+                            let text = line.trim_end_matches('\n').trim_end_matches('\r');
+                            if !text.is_empty() {
+                                callback(&metric, "stdout", text);
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                let _ = tx.send(("stdout".to_string(), raw));
+            })
+        });
+
+        let stderr_handle = stderr.map(|pipe| {
+            let tx = tx.clone();
+            let metric = metric.clone();
+            let callback = callback.clone();
+            thread::spawn(move || {
+                let mut reader = BufReader::new(pipe);
+                let mut raw = Vec::new();
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            raw.extend_from_slice(line.as_bytes());
+                            let text = line.trim_end_matches('\n').trim_end_matches('\r');
+                            if !text.is_empty() {
+                                callback(&metric, "stderr", text);
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                let _ = tx.send(("stderr".to_string(), raw));
+            })
+        });
+
+        drop(tx);
+
+        let mut stdout_bytes = Vec::new();
+        let mut stderr_bytes = Vec::new();
+        while let Ok((source, raw)) = rx.recv() {
+            if source == "stdout" {
+                stdout_bytes = raw;
+            } else {
+                stderr_bytes = raw;
+            }
+        }
+
+        if let Some(handle) = stdout_handle {
+            let _ = handle.join();
+        }
+        if let Some(handle) = stderr_handle {
+            let _ = handle.join();
+        }
+
+        (stdout_bytes, stderr_bytes)
+    })
 }
 
 fn wait_for_child_with_timeout(
@@ -585,5 +742,41 @@ mod tests {
         assert!(result.passed);
         assert_eq!(result.state, ResultState::Waived);
         assert!(result.output.contains("temporary waiver"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_run_streaming_emits_output_callback() {
+        let lines: Arc<Mutex<Vec<(String, String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&lines);
+        let callback: OutputCallback = Arc::new(move |metric, source, line| {
+            captured.lock().unwrap().push((
+                metric.name.clone(),
+                source.to_string(),
+                line.to_string(),
+            ));
+        });
+
+        let runner = ShellRunner::new(Path::new("/tmp")).with_output_callback(callback);
+        let metric = Metric::new("streamed", "printf 'hello\\n' && printf 'oops\\n' >&2");
+        let result = runner.run(&metric, false);
+
+        assert!(result.passed);
+        let captured = lines.lock().unwrap();
+        assert!(captured.iter().any(|entry| entry.0 == "streamed"
+            && entry.1 == "stdout"
+            && entry.2 == "hello"));
+        assert!(captured.iter().any(|entry| entry.0 == "streamed"
+            && entry.1 == "stderr"
+            && entry.2 == "oops"));
+    }
+
+    #[test]
+    fn test_smart_truncate_keeps_head_and_tail() {
+        let source = format!("{}\n{}", "a".repeat(4500), "z".repeat(4500));
+        let truncated = smart_truncate(&source, 4000, 4000);
+        assert!(truncated.contains("... ["));
+        assert!(truncated.starts_with(&"a".repeat(4000)));
+        assert!(truncated.ends_with(&"z".repeat(4000)));
     }
 }
