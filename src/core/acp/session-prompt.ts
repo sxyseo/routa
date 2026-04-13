@@ -130,6 +130,13 @@ function markSessionPromptError(
   return message;
 }
 
+export function isSessionPromptTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("Timeout waiting for session/prompt");
+}
+
 function getPromptErrorData(error: unknown): Record<string, unknown> | undefined {
   if (isAcpErrorLike(error)) {
     return {
@@ -667,6 +674,17 @@ export async function handleSessionPrompt({
           await persistSessionHistorySnapshot(sessionId, store);
           controller.close();
         } catch (err) {
+          if (isSessionPromptTimeoutError(err)) {
+            console.warn(
+              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+              err,
+            );
+            store.flushAgentBuffer(sessionId);
+            store.exitStreamingMode(sessionId);
+            await persistSessionHistorySnapshot(sessionId, store);
+            controller.close();
+            return;
+          }
           const message = markSessionPromptError(store, sessionId, err, "OpenCode SDK prompt failed");
           store.flushAgentBuffer(sessionId);
           store.exitStreamingMode(sessionId);
@@ -720,6 +738,17 @@ export async function handleSessionPrompt({
           await persistSessionHistorySnapshot(sessionId, store);
           controller.close();
         } catch (err) {
+          if (isSessionPromptTimeoutError(err)) {
+            console.warn(
+              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+              err,
+            );
+            store.flushAgentBuffer(sessionId);
+            store.exitStreamingMode(sessionId);
+            await persistSessionHistorySnapshot(sessionId, store);
+            controller.close();
+            return;
+          }
           const message = markSessionPromptError(store, sessionId, err, "Docker OpenCode prompt failed");
           store.flushAgentBuffer(sessionId);
           store.exitStreamingMode(sessionId);
@@ -772,6 +801,17 @@ export async function handleSessionPrompt({
           await persistSessionHistorySnapshot(sessionId, store);
           controller.close();
         } catch (err) {
+          if (isSessionPromptTimeoutError(err)) {
+            console.warn(
+              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+              err,
+            );
+            store.flushAgentBuffer(sessionId);
+            store.exitStreamingMode(sessionId);
+            await persistSessionHistorySnapshot(sessionId, store);
+            controller.close();
+            return;
+          }
           const message = markSessionPromptError(store, sessionId, err, "Claude Code SDK prompt failed");
           store.flushAgentBuffer(sessionId);
           store.exitStreamingMode(sessionId);
@@ -859,6 +899,15 @@ export async function handleSessionPrompt({
         void persistSessionHistorySnapshot(sessionId, store);
         return jsonrpcResponse(id ?? null, result);
       } catch (err) {
+        if (isSessionPromptTimeoutError(err)) {
+          console.warn(
+            `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+            err,
+          );
+          store.flushAgentBuffer(sessionId);
+          void persistSessionHistorySnapshot(sessionId, store);
+          return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+        }
         const message = markSessionPromptError(store, sessionId, err, "Claude Code prompt failed after restart");
         store.flushAgentBuffer(sessionId);
         void persistSessionHistorySnapshot(sessionId, store);
@@ -876,6 +925,15 @@ export async function handleSessionPrompt({
       void persistSessionHistorySnapshot(sessionId, store);
       return jsonrpcResponse(id ?? null, result);
     } catch (err) {
+      if (isSessionPromptTimeoutError(err)) {
+        console.warn(
+          `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+          err,
+        );
+        store.flushAgentBuffer(sessionId);
+        void persistSessionHistorySnapshot(sessionId, store);
+        return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+      }
       const message = markSessionPromptError(store, sessionId, err, "Claude Code prompt failed");
       store.flushAgentBuffer(sessionId);
       void persistSessionHistorySnapshot(sessionId, store);
@@ -911,6 +969,15 @@ export async function handleSessionPrompt({
     void persistSessionHistorySnapshot(sessionId, store);
     return jsonrpcResponse(id ?? null, result);
   } catch (err) {
+    if (isSessionPromptTimeoutError(err)) {
+      console.warn(
+        `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+        err,
+      );
+      store.flushAgentBuffer(sessionId);
+      void persistSessionHistorySnapshot(sessionId, store);
+      return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+    }
     const message = markSessionPromptError(store, sessionId, err, "Prompt failed");
     store.flushAgentBuffer(sessionId);
     void persistSessionHistorySnapshot(sessionId, store);

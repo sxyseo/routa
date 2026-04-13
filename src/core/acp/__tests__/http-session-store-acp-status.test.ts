@@ -227,6 +227,31 @@ describe("HttpSessionStore — ACP status", () => {
     expect((statusNotification?.update as Record<string, unknown>)?.status).toBe("error");
   });
 
+  it("recovers a timeout-marked ACP session when later activity arrives", () => {
+    const store = getHttpSessionStore();
+    store.upsertSession({
+      sessionId: "test-timeout-recovery",
+      cwd: "/tmp",
+      workspaceId: "ws-1",
+      provider: "codex",
+      acpStatus: "error",
+      acpError: "Timeout waiting for session/prompt (id=3)",
+      createdAt: new Date().toISOString(),
+    });
+
+    store.pushNotification({
+      sessionId: "test-timeout-recovery",
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: "still working" },
+      },
+    });
+
+    const session = store.getSession("test-timeout-recovery");
+    expect(session?.acpStatus).toBe("ready");
+    expect(session?.acpError).toBeUndefined();
+  });
+
   it("appends pushed notifications to the local event log", async () => {
     const store = getHttpSessionStore();
     const projectPath = path.join(process.env.HOME!, "project");
