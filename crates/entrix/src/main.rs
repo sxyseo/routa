@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use entrix::evidence::{load_dimensions, validate_weights};
 use entrix::file_budgets::{evaluate_paths, is_tracked_source_file, load_config, resolve_paths};
 use entrix::governance::{enforce, filter_dimensions, GovernancePolicy};
@@ -111,7 +111,7 @@ struct InstallArgs {
 #[derive(Args, Debug)]
 struct AnalyzeArgs {
     #[command(subcommand)]
-    command: AnalyzeCommand,
+    command: Option<AnalyzeCommand>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -175,13 +175,13 @@ struct ReleaseTriggerArgs {
 #[derive(Args, Debug)]
 struct GraphArgs {
     #[command(subcommand)]
-    command: GraphCommand,
+    command: Option<GraphCommand>,
 }
 
 #[derive(Args, Debug)]
 struct HookArgs {
     #[command(subcommand)]
-    command: HookCommand,
+    command: Option<HookCommand>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -366,26 +366,46 @@ fn main() {
         Command::Install(args) | Command::Init(args) => cmd_install(args),
         Command::Serve => cmd_serve(),
         Command::Analyze(args) => match args.command {
-            AnalyzeCommand::LongFile(args) => cmd_analyze_long_file(args),
+            Some(AnalyzeCommand::LongFile(args)) => cmd_analyze_long_file(args),
+            None => {
+                print_subcommand_help("analyze");
+                0
+            }
         },
         Command::ReleaseTrigger(args) => cmd_release_trigger(args),
         Command::ReviewTrigger(args) => cmd_review_trigger(args),
         Command::Hook(args) => match args.command {
-            HookCommand::FileLength(args) => cmd_hook_file_length(args),
+            Some(HookCommand::FileLength(args)) => cmd_hook_file_length(args),
+            None => {
+                print_subcommand_help("hook");
+                0
+            }
         },
         Command::Graph(args) => match args.command {
-            GraphCommand::Build(args) => cmd_graph_build(args),
-            GraphCommand::AnalyzeFile(args) => cmd_graph_analyze_file(args),
-            GraphCommand::Stats(args) => cmd_graph_stats(args),
-            GraphCommand::Impact(args) => cmd_graph_impact(args),
-            GraphCommand::TestRadius(args) => cmd_graph_test_radius(args),
-            GraphCommand::Query(args) => cmd_graph_query(args),
-            GraphCommand::History(args) => cmd_graph_history(args),
-            GraphCommand::TestMapping(args) => cmd_graph_test_mapping(args),
-            GraphCommand::ReviewContext(args) => cmd_graph_review_context(args),
+            Some(GraphCommand::Build(args)) => cmd_graph_build(args),
+            Some(GraphCommand::AnalyzeFile(args)) => cmd_graph_analyze_file(args),
+            Some(GraphCommand::Stats(args)) => cmd_graph_stats(args),
+            Some(GraphCommand::Impact(args)) => cmd_graph_impact(args),
+            Some(GraphCommand::TestRadius(args)) => cmd_graph_test_radius(args),
+            Some(GraphCommand::Query(args)) => cmd_graph_query(args),
+            Some(GraphCommand::History(args)) => cmd_graph_history(args),
+            Some(GraphCommand::TestMapping(args)) => cmd_graph_test_mapping(args),
+            Some(GraphCommand::ReviewContext(args)) => cmd_graph_review_context(args),
+            None => {
+                print_subcommand_help("graph");
+                0
+            }
         },
     };
     std::process::exit(exit_code);
+}
+
+fn print_subcommand_help(name: &str) {
+    let mut cmd = Cli::command();
+    if let Some(subcommand) = cmd.find_subcommand_mut(name) {
+        let _ = subcommand.print_help();
+        println!();
+    }
 }
 
 fn cmd_run(args: RunArgs) -> i32 {
@@ -1648,7 +1668,7 @@ mod cli_parse_tests {
         let cli = Cli::parse_from(["entrix", "graph", "stats", "--json"]);
         match cli.command {
             Command::Graph(GraphArgs {
-                command: GraphCommand::Stats(GraphStatsArgs { json }),
+                command: Some(GraphCommand::Stats(GraphStatsArgs { json })),
             }) => assert!(json),
             _ => panic!("expected graph stats command"),
         }
@@ -1658,6 +1678,15 @@ mod cli_parse_tests {
     fn unavailable_status_maps_to_exit_code_one() {
         assert_eq!(status_exit_code("unavailable"), 1);
         assert_eq!(status_exit_code("ok"), 0);
+    }
+
+    #[test]
+    fn graph_parent_command_parses_without_subcommand() {
+        let cli = Cli::parse_from(["entrix", "graph"]);
+        match cli.command {
+            Command::Graph(GraphArgs { command: None }) => {}
+            _ => panic!("expected graph command without subcommand"),
+        }
     }
 }
 
