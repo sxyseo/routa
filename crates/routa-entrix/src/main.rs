@@ -2,7 +2,10 @@ use clap::{Args, Parser, Subcommand};
 use routa_entrix::file_budgets::{
     evaluate_paths, is_tracked_source_file, load_config, resolve_paths,
 };
-use routa_entrix::review_context::{build_review_context, ReviewBuildMode, ReviewContextOptions};
+use routa_entrix::review_context::{
+    analyze_impact, analyze_test_radius, build_review_context, query_current_graph, ImpactOptions,
+    ReviewBuildMode, ReviewContextOptions, TestRadiusOptions,
+};
 use routa_entrix::review_trigger::{
     collect_changed_files, collect_diff_stats, evaluate_review_triggers, load_review_triggers,
 };
@@ -78,10 +81,60 @@ struct HookFileLengthArgs {
 
 #[derive(Subcommand, Debug)]
 enum GraphCommand {
+    #[command(name = "impact")]
+    Impact(GraphImpactArgs),
+    #[command(name = "test-radius")]
+    TestRadius(GraphTestRadiusArgs),
+    #[command(name = "query")]
+    Query(GraphQueryArgs),
     #[command(name = "test-mapping")]
     TestMapping(GraphTestMappingArgs),
     #[command(name = "review-context")]
     ReviewContext(GraphReviewContextArgs),
+}
+
+#[derive(Args, Debug)]
+struct GraphImpactArgs {
+    #[arg()]
+    files: Vec<String>,
+    #[arg(long, default_value = "HEAD")]
+    base: String,
+    #[arg(long, default_value_t = 2)]
+    depth: usize,
+    #[arg(long, default_value = "auto")]
+    build_mode: String,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Args, Debug)]
+struct GraphTestRadiusArgs {
+    #[arg()]
+    files: Vec<String>,
+    #[arg(long, default_value = "HEAD")]
+    base: String,
+    #[arg(long, default_value_t = 2)]
+    depth: usize,
+    #[arg(long, default_value_t = 25)]
+    max_targets: usize,
+    #[arg(long, default_value = "auto")]
+    build_mode: String,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Args, Debug)]
+struct GraphQueryArgs {
+    #[arg()]
+    pattern: String,
+    #[arg()]
+    target: String,
+    #[arg(long, default_value = "HEAD")]
+    base: String,
+    #[arg(long, default_value = "auto")]
+    build_mode: String,
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Args, Debug)]
@@ -90,6 +143,8 @@ struct GraphTestMappingArgs {
     files: Vec<String>,
     #[arg(long, default_value = "HEAD")]
     base: String,
+    #[arg(long, default_value = "auto")]
+    build_mode: String,
     #[arg(long)]
     no_graph: bool,
     #[arg(long)]
@@ -134,6 +189,9 @@ fn main() {
             HookCommand::FileLength(args) => cmd_hook_file_length(args),
         },
         Command::Graph(args) => match args.command {
+            GraphCommand::Impact(args) => cmd_graph_impact(args),
+            GraphCommand::TestRadius(args) => cmd_graph_test_radius(args),
+            GraphCommand::Query(args) => cmd_graph_query(args),
             GraphCommand::TestMapping(args) => cmd_graph_test_mapping(args),
             GraphCommand::ReviewContext(args) => cmd_graph_review_context(args),
         },
@@ -188,6 +246,33 @@ fn cmd_graph_test_mapping(args: GraphTestMappingArgs) -> i32 {
         args.files
     };
     let report = test_mapping::analyze_changed_files(&repo_root, &changed_files);
+    let graph_payload = if args.no_graph {
+        json!({
+            "available": false,
+            "status": "disabled",
+            "reason": "graph enrichment disabled by --no-graph"
+        })
+    } else {
+        let radius = analyze_test_radius(
+            &repo_root,
+            &changed_files,
+            TestRadiusOptions {
+                base: &args.base,
+                build_mode: parse_build_mode(&args.build_mode),
+                max_depth: 2,
+                max_targets: 25,
+                max_impacted_files: 200,
+            },
+        );
+        json!({
+            "available": true,
+            "status": radius.status,
+            "test_files": radius.test_files,
+            "untested_targets": radius.untested_targets,
+            "query_failures": radius.query_failures,
+            "wide_blast_radius": radius.wide_blast_radius,
+        })
+    };
 
     if args.json {
         let payload = json!({
@@ -196,11 +281,7 @@ fn cmd_graph_test_mapping(args: GraphTestMappingArgs) -> i32 {
             "mappings": report.mappings,
             "status_counts": report.status_counts,
             "resolver_counts": report.resolver_counts,
-            "graph": {
-                "available": false,
-                "status": if args.no_graph { "disabled" } else { "unavailable" },
-                "reason": "graph enrichment is not implemented in routa-entrix yet"
-            }
+            "graph": graph_payload
         });
         print_json(&payload);
     } else {
@@ -213,6 +294,76 @@ fn cmd_graph_test_mapping(args: GraphTestMappingArgs) -> i32 {
 
     if args.fail_on_missing && report.status_counts.get("missing").copied().unwrap_or(0) > 0 {
         return 2;
+    }
+    0
+}
+
+fn cmd_graph_impact(args: GraphImpactArgs) -> i32 {
+    let repo_root = find_project_root();
+    let files = if args.files.is_empty() {
+        collect_git_diff_files(&repo_root, &args.base)
+    } else {
+        args.files
+    };
+    let result = analyze_impact(
+        &repo_root,
+        &files,
+        ImpactOptions {
+            base: &args.base,
+            build_mode: parse_build_mode(&args.build_mode),
+            max_depth: args.depth,
+            max_impacted_files: 200,
+        },
+    );
+
+    if args.json {
+        print_json(&result);
+    } else {
+        println!("{}", result.summary);
+    }
+    0
+}
+
+fn cmd_graph_test_radius(args: GraphTestRadiusArgs) -> i32 {
+    let repo_root = find_project_root();
+    let files = if args.files.is_empty() {
+        collect_git_diff_files(&repo_root, &args.base)
+    } else {
+        args.files
+    };
+    let result = analyze_test_radius(
+        &repo_root,
+        &files,
+        TestRadiusOptions {
+            base: &args.base,
+            build_mode: parse_build_mode(&args.build_mode),
+            max_depth: args.depth,
+            max_targets: args.max_targets,
+            max_impacted_files: 200,
+        },
+    );
+
+    if args.json {
+        print_json(&result);
+    } else {
+        println!("{}", result.summary);
+    }
+    0
+}
+
+fn cmd_graph_query(args: GraphQueryArgs) -> i32 {
+    let repo_root = find_project_root();
+    let result = query_current_graph(
+        &repo_root,
+        &args.target,
+        &args.pattern,
+        parse_build_mode(&args.build_mode),
+    );
+
+    if args.json {
+        print_json(&result);
+    } else {
+        println!("{}", result.summary);
     }
     0
 }

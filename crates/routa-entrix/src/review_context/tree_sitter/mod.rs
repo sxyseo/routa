@@ -8,7 +8,7 @@ mod typescript;
 use super::model::{
     ChangedNode, FileGraphNode, GraphEdge, GraphNodePayload, ParsedReviewGraph, SymbolGraphNode,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 use tree_sitter::{Language, Parser};
@@ -95,7 +95,6 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
         changed_nodes,
         related_test_nodes,
         impacted_nodes,
-        target_tests,
         graph_edges,
         files_updated,
         total_edges,
@@ -130,6 +129,30 @@ pub fn node_to_payload(node: &ChangedNode) -> GraphNodePayload {
     })
 }
 
+pub enum QueryResult {
+    Ok {
+        results: Vec<SymbolGraphNode>,
+        edges: Vec<GraphEdge>,
+    },
+    Err {
+        status: String,
+        summary: String,
+    },
+}
+
+pub fn query_graph(graph: &ParsedReviewGraph, query_type: &str, target: &str) -> QueryResult {
+    match query_type {
+        "tests_for" => query_tests_for(graph, target),
+        "callers_of" => query_neighbors(graph, target, true),
+        "callees_of" => query_neighbors(graph, target, false),
+        "file_summary" => query_file_summary(graph, target),
+        _ => QueryResult::Err {
+            status: "error".to_string(),
+            summary: format!("Unknown query type '{query_type}'."),
+        },
+    }
+}
+
 fn derive_target_tests(
     changed_nodes: &[ChangedNode],
     related_test_nodes: &[ChangedNode],
@@ -161,20 +184,58 @@ fn derive_graph_edges(
 ) -> Vec<GraphEdge> {
     let mut edges = Vec::new();
     let mut seen = BTreeSet::new();
+    let file_nodes = changed_nodes
+        .iter()
+        .filter(|node| node.kind == "File")
+        .chain(related_test_nodes.iter().filter(|node| node.kind == "File"))
+        .collect::<Vec<_>>();
     let symbol_nodes = changed_nodes
         .iter()
         .chain(related_test_nodes.iter())
         .filter(|node| node.kind != "File")
         .collect::<Vec<_>>();
 
+    for file in file_nodes {
+        for symbol in symbol_nodes
+            .iter()
+            .filter(|symbol| symbol.file_path == file.file_path)
+        {
+            push_edge(
+                &mut edges,
+                &mut seen,
+                GraphEdge {
+                    kind: "CONTAINS",
+                    source_qualified: file.qualified_name.clone(),
+                    target_qualified: symbol.qualified_name.clone(),
+                    file_path: file.file_path.clone(),
+                    source_file: file.file_path.clone(),
+                    target_file: symbol.file_path.clone(),
+                },
+            );
+        }
+    }
+
     for (target, test) in target_tests {
+        let source_file = symbol_nodes
+            .iter()
+            .find(|node| node.qualified_name == *test)
+            .map(|node| node.file_path.clone())
+            .unwrap_or_default();
+        let target_file = symbol_nodes
+            .iter()
+            .find(|node| node.qualified_name == *target)
+            .map(|node| node.file_path.clone())
+            .unwrap_or_default();
         push_edge(
             &mut edges,
             &mut seen,
             GraphEdge {
-                source: target.clone(),
-                target: test.clone(),
-                relation: "TESTED_BY",
+                kind: "TESTED_BY",
+                source_qualified: test.clone(),
+                target_qualified: target.clone(),
+                file_path: source_file.clone(),
+                source_file,
+                target_file,
             },
         );
     }
@@ -184,22 +245,30 @@ fn derive_graph_edges(
             if source.qualified_name == target.qualified_name {
                 continue;
             }
-            if source
+            let matches = source
                 .mentions
                 .iter()
                 .any(|mention| mention == &target.name)
                 || source
                     .references
                     .iter()
-                    .any(|reference| reference == &target.name)
-            {
+                    .any(|reference| reference == &target.name);
+            if matches {
+                let kind = if !source.is_test && !target.is_test {
+                    "CALLS"
+                } else {
+                    "REFERENCES"
+                };
                 push_edge(
                     &mut edges,
                     &mut seen,
                     GraphEdge {
-                        source: source.qualified_name.clone(),
-                        target: target.qualified_name.clone(),
-                        relation: "REFERENCES",
+                        kind,
+                        source_qualified: source.qualified_name.clone(),
+                        target_qualified: target.qualified_name.clone(),
+                        file_path: source.file_path.clone(),
+                        source_file: source.file_path.clone(),
+                        target_file: target.file_path.clone(),
                     },
                 );
             }
@@ -214,9 +283,146 @@ fn push_edge(
     seen: &mut BTreeSet<(String, String, &'static str)>,
     edge: GraphEdge,
 ) {
-    let key = (edge.source.clone(), edge.target.clone(), edge.relation);
+    let key = (
+        edge.source_qualified.clone(),
+        edge.target_qualified.clone(),
+        edge.kind,
+    );
     if seen.insert(key) {
         out.push(edge);
+    }
+}
+
+fn query_tests_for(graph: &ParsedReviewGraph, target: &str) -> QueryResult {
+    let mut results = BTreeMap::<String, SymbolGraphNode>::new();
+    let symbol_nodes = graph
+        .changed_nodes
+        .iter()
+        .chain(graph.related_test_nodes.iter())
+        .filter(|node| node.kind != "File")
+        .map(|node| (node.qualified_name.clone(), node))
+        .collect::<BTreeMap<_, _>>();
+    let targets = if graph
+        .changed_nodes
+        .iter()
+        .any(|node| node.qualified_name == target && node.kind == "File")
+    {
+        graph
+            .changed_nodes
+            .iter()
+            .filter(|node| node.file_path == target && node.kind != "File")
+            .map(|node| node.qualified_name.clone())
+            .collect::<Vec<_>>()
+    } else {
+        vec![target.to_string()]
+    };
+    for edge in graph
+        .graph_edges
+        .iter()
+        .filter(|edge| edge.kind == "TESTED_BY")
+    {
+        if targets
+            .iter()
+            .any(|candidate| candidate == &edge.target_qualified)
+        {
+            if let Some(node) = symbol_nodes.get(&edge.source_qualified) {
+                results.insert(edge.source_qualified.clone(), symbol_to_payload(node));
+            }
+        }
+    }
+    QueryResult::Ok {
+        results: results.into_values().collect(),
+        edges: graph
+            .graph_edges
+            .iter()
+            .filter(|edge| {
+                edge.kind == "TESTED_BY"
+                    && targets
+                        .iter()
+                        .any(|candidate| candidate == &edge.target_qualified)
+            })
+            .cloned()
+            .collect(),
+    }
+}
+
+fn query_neighbors(graph: &ParsedReviewGraph, target: &str, reverse: bool) -> QueryResult {
+    let symbol_nodes = graph
+        .changed_nodes
+        .iter()
+        .chain(graph.related_test_nodes.iter())
+        .filter(|node| node.kind != "File")
+        .map(|node| (node.qualified_name.clone(), node))
+        .collect::<BTreeMap<_, _>>();
+    let mut results = BTreeMap::<String, SymbolGraphNode>::new();
+    for edge in graph.graph_edges.iter().filter(|edge| edge.kind == "CALLS") {
+        let matches = if reverse {
+            edge.target_qualified == target
+        } else {
+            edge.source_qualified == target
+        };
+        if !matches {
+            continue;
+        }
+        let qn = if reverse {
+            &edge.source_qualified
+        } else {
+            &edge.target_qualified
+        };
+        if let Some(node) = symbol_nodes.get(qn) {
+            results.insert(qn.clone(), symbol_to_payload(node));
+        }
+    }
+    QueryResult::Ok {
+        results: results.into_values().collect(),
+        edges: graph
+            .graph_edges
+            .iter()
+            .filter(|edge| {
+                edge.kind == "CALLS"
+                    && if reverse {
+                        edge.target_qualified == target
+                    } else {
+                        edge.source_qualified == target
+                    }
+            })
+            .cloned()
+            .collect(),
+    }
+}
+
+fn query_file_summary(graph: &ParsedReviewGraph, target: &str) -> QueryResult {
+    let results = graph
+        .changed_nodes
+        .iter()
+        .chain(graph.related_test_nodes.iter())
+        .filter(|node| node.file_path == target && node.kind != "File")
+        .map(symbol_to_payload)
+        .collect::<Vec<_>>();
+    QueryResult::Ok {
+        results,
+        edges: graph
+            .graph_edges
+            .iter()
+            .filter(|edge| edge.kind == "CONTAINS" && edge.source_qualified == target)
+            .cloned()
+            .collect(),
+    }
+}
+
+fn symbol_to_payload(node: &ChangedNode) -> SymbolGraphNode {
+    SymbolGraphNode {
+        qualified_name: node.qualified_name.clone(),
+        name: node.name.clone(),
+        kind: node.kind.clone(),
+        file_path: node.file_path.clone(),
+        line_start: node.line_start.unwrap_or(1),
+        line_end: node.line_end.unwrap_or(1),
+        language: node.language.clone(),
+        parent_name: node.parent_name.clone(),
+        is_test: node.is_test,
+        references: node.references.clone(),
+        extends: node.extends.clone(),
     }
 }
 

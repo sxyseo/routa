@@ -5,7 +5,6 @@ pub struct ParsedReviewGraph {
     pub changed_nodes: Vec<ChangedNode>,
     pub related_test_nodes: Vec<ChangedNode>,
     pub impacted_nodes: Vec<ChangedNode>,
-    pub target_tests: Vec<(String, String)>,
     pub graph_edges: Vec<GraphEdge>,
     pub files_updated: usize,
     pub total_edges: usize,
@@ -28,11 +27,14 @@ pub struct ChangedNode {
     pub mentions: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct GraphEdge {
-    pub source: String,
-    pub target: String,
-    pub relation: &'static str,
+    pub kind: &'static str,
+    pub source_qualified: String,
+    pub target_qualified: String,
+    pub file_path: String,
+    pub source_file: String,
+    pub target_file: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -43,6 +45,61 @@ pub struct ReviewContextReport {
     pub base: String,
     pub context: ReviewContextPayload,
     pub build: ReviewBuildInfo,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImpactAnalysisReport {
+    pub status: String,
+    pub summary: String,
+    pub base: String,
+    pub changed_files: Vec<String>,
+    pub skipped_files: Vec<String>,
+    pub changed_nodes: Vec<GraphNodePayload>,
+    pub impacted_nodes: Vec<GraphNodePayload>,
+    pub impacted_files: Vec<String>,
+    pub impacted_test_files: Vec<String>,
+    pub edges: Vec<GraphEdge>,
+    pub wide_blast_radius: bool,
+    pub build: ReviewBuildInfo,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TestRadiusReport {
+    pub status: String,
+    pub analysis_mode: String,
+    pub summary: String,
+    pub base: String,
+    pub changed_files: Vec<String>,
+    pub skipped_files: Vec<String>,
+    pub changed_nodes: Vec<GraphNodePayload>,
+    pub impacted_nodes: Vec<GraphNodePayload>,
+    pub impacted_files: Vec<String>,
+    pub impacted_test_files: Vec<String>,
+    pub target_nodes: Vec<ReviewTarget>,
+    pub query_failures: Vec<QueryFailure>,
+    pub tests: Vec<SymbolGraphNode>,
+    pub test_files: Vec<String>,
+    pub untested_targets: Vec<UntestedTarget>,
+    pub wide_blast_radius: bool,
+    pub build: ReviewBuildInfo,
+    pub edges: Vec<GraphEdge>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QueryFailure {
+    pub qualified_name: String,
+    pub status: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GraphQueryReport {
+    pub status: String,
+    pub pattern: String,
+    pub target: String,
+    pub summary: String,
+    pub results: Vec<SymbolGraphNode>,
+    pub edges: Vec<GraphEdge>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -128,6 +185,23 @@ pub struct ReviewContextOptions<'a> {
     pub max_lines_per_file: usize,
     pub build_mode: ReviewBuildMode,
     pub max_targets: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImpactOptions<'a> {
+    pub base: &'a str,
+    pub build_mode: ReviewBuildMode,
+    pub max_depth: usize,
+    pub max_impacted_files: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TestRadiusOptions<'a> {
+    pub base: &'a str,
+    pub build_mode: ReviewBuildMode,
+    pub max_depth: usize,
+    pub max_targets: usize,
+    pub max_impacted_files: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

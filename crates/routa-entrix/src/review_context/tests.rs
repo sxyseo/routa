@@ -1,4 +1,7 @@
-use super::{build_review_context, ReviewBuildMode, ReviewContextOptions};
+use super::{
+    analyze_impact, analyze_test_radius, build_review_context, query_current_graph, ImpactOptions,
+    ReviewBuildMode, ReviewContextOptions, TestRadiusOptions,
+};
 use std::fs;
 use tempfile::tempdir;
 
@@ -134,9 +137,9 @@ fn review_context_matches_python_auto_rust_inline_test_fixture() {
         "- Changes appear locally test-covered and reasonably contained."
     );
     assert!(result.context.graph.edges.iter().any(|edge| {
-        edge["relation"] == "TESTED_BY"
-            && edge["source"] == "src/lib.rs:run"
-            && edge["target"] == "src/lib.rs:test_run"
+        edge["kind"] == "TESTED_BY"
+            && edge["source_qualified"] == "src/lib.rs:test_run"
+            && edge["target_qualified"] == "src/lib.rs:run"
     }));
     assert_eq!(result.build.backend.as_deref(), Some("builtin-tree-sitter"));
     assert_eq!(result.build.total_nodes, Some(3));
@@ -218,8 +221,8 @@ fn review_context_links_java_companion_test_file() {
     );
     assert!(!result.context.graph.impacted_nodes.is_empty());
     assert!(result.context.graph.edges.iter().any(|edge| {
-        edge["relation"] == "TESTED_BY"
-            && edge["target"]
+        edge["kind"] == "TESTED_BY"
+            && edge["source_qualified"]
                 == "src/test/java/com/example/ServiceTest.java:com.example.ServiceTest.testRun"
     }));
     assert!(result
@@ -376,8 +379,128 @@ fn review_context_emits_impacted_graph_edges_for_companion_tests() {
     );
     assert!(result.summary.contains("1 impacted nodes in 1 files"));
     assert!(result.context.graph.edges.iter().any(|edge| {
-        edge["source"] == "src/service.ts:run"
-            && edge["target"] == "src/service.test.ts:run"
-            && edge["relation"] == "TESTED_BY"
+        edge["source_qualified"] == "src/service.test.ts:run"
+            && edge["target_qualified"] == "src/service.ts:run"
+            && edge["kind"] == "TESTED_BY"
     }));
+}
+
+#[test]
+fn analyze_impact_reports_impacted_test_files() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/service.ts"),
+        "export function run() {\n  return 1;\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/service.test.ts"),
+        "import { run } from './service';\n\ntest('run', () => {\n  expect(run()).toBe(1);\n});\n",
+    )
+    .unwrap();
+
+    let result = analyze_impact(
+        root,
+        &["src/service.ts".to_string()],
+        ImpactOptions {
+            base: "HEAD",
+            build_mode: ReviewBuildMode::Auto,
+            max_depth: 2,
+            max_impacted_files: 200,
+        },
+    );
+
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.changed_files, vec!["src/service.ts".to_string()]);
+    assert_eq!(
+        result.impacted_files,
+        vec!["src/service.test.ts".to_string()]
+    );
+    assert_eq!(
+        result.impacted_test_files,
+        vec!["src/service.test.ts".to_string()]
+    );
+    assert!(!result.edges.is_empty());
+}
+
+#[test]
+fn analyze_test_radius_queries_targets_and_collects_tests() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/service.ts"),
+        "export function run() { return helper(); }\nfunction helper() { return 1; }\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/service.test.ts"),
+        "import { run } from './service';\n\ntest('run', () => {\n  expect(run()).toBe(1);\n});\n",
+    )
+    .unwrap();
+
+    let result = analyze_test_radius(
+        root,
+        &["src/service.ts".to_string()],
+        TestRadiusOptions {
+            base: "HEAD",
+            build_mode: ReviewBuildMode::Auto,
+            max_depth: 2,
+            max_targets: 25,
+            max_impacted_files: 200,
+        },
+    );
+
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.target_nodes.len(), 2);
+    let run_target = result
+        .target_nodes
+        .iter()
+        .find(|target| target.qualified_name == "src/service.ts:run")
+        .unwrap();
+    assert_eq!(run_target.tests_count, 1);
+    let helper_target = result
+        .target_nodes
+        .iter()
+        .find(|target| target.qualified_name == "src/service.ts:helper")
+        .unwrap();
+    assert_eq!(helper_target.tests_count, 0);
+    assert_eq!(helper_target.inherited_tests_count, 1);
+    assert_eq!(result.test_files, vec!["src/service.test.ts".to_string()]);
+    assert!(result
+        .edges
+        .iter()
+        .any(|edge| edge.kind == "CALLS" && edge.source_qualified == "src/service.ts:run"));
+}
+
+#[test]
+fn query_current_graph_returns_tests_for_target() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/service.ts"),
+        "export function run() {\n  return 1;\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/service.test.ts"),
+        "import { run } from './service';\n\ntest('run', () => {\n  expect(run()).toBe(1);\n});\n",
+    )
+    .unwrap();
+
+    let result = query_current_graph(
+        root,
+        "src/service.ts:run",
+        "tests_for",
+        ReviewBuildMode::Auto,
+    );
+
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.results.len(), 1);
+    assert_eq!(result.results[0].qualified_name, "src/service.test.ts:run");
+    assert_eq!(result.edges.len(), 1);
+    assert_eq!(result.edges[0].kind, "TESTED_BY");
 }

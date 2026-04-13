@@ -1,9 +1,9 @@
+use super::analysis::analyze_test_radius;
 use super::model::{
-    GraphContext, GraphEdge, ParsedReviewGraph, ReviewBuildInfo, ReviewBuildMode,
-    ReviewContextOptions, ReviewContextPayload, ReviewContextReport, ReviewTarget, ReviewTests,
-    SourceSnippet, SymbolGraphNode, UntestedTarget,
+    GraphContext, GraphEdge, ReviewBuildInfo, ReviewBuildMode, ReviewContextOptions,
+    ReviewContextPayload, ReviewContextReport, ReviewTests, SourceSnippet, TestRadiusOptions,
+    UntestedTarget,
 };
-use super::tree_sitter::{node_to_payload, parse_changed_files};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
@@ -17,34 +17,30 @@ pub fn build_review_context(
         return build_skip_review_context(repo_root, changed_files, options);
     }
 
-    let graph = parse_changed_files(repo_root, changed_files);
-    let changed_nodes = graph
-        .changed_nodes
-        .iter()
-        .map(node_to_payload)
-        .collect::<Vec<_>>();
-    let impacted_nodes = graph
-        .impacted_nodes
-        .iter()
-        .map(node_to_payload)
-        .collect::<Vec<_>>();
-    let impacted_files = collect_impacted_files(&graph);
-    let targets = build_targets(&graph, options.max_targets);
-    let untested_targets = build_untested_targets(&targets);
-    let test_files = collect_test_files(&targets);
+    let radius = analyze_test_radius(
+        repo_root,
+        changed_files,
+        TestRadiusOptions {
+            base: options.base,
+            build_mode: options.build_mode,
+            max_depth: 2,
+            max_targets: options.max_targets,
+            max_impacted_files: 200,
+        },
+    );
     let review_guidance = generate_review_guidance(
-        &untested_targets,
-        impacted_files.len() > 3,
-        impacted_files.len(),
-        impacted_files.len(),
-        !targets.is_empty(),
+        &radius.untested_targets,
+        radius.wide_blast_radius,
+        radius.impacted_test_files.len(),
+        radius.impacted_files.len(),
+        !radius.target_nodes.is_empty(),
     );
     let source_snippets = options.include_source.then(|| {
         collect_source_snippets(
             repo_root,
-            changed_files,
-            &test_files,
-            &impacted_files,
+            &radius.changed_files,
+            &radius.test_files,
+            &radius.impacted_files,
             options.max_files,
             options.max_lines_per_file,
         )
@@ -55,47 +51,41 @@ pub fn build_review_context(
         analysis_mode: "current_graph".to_string(),
         summary: format!(
             "Review context for {} changed file(s):\n  - {} directly changed nodes\n  - {} impacted nodes in {} files\n\nReview guidance:\n{}",
-            changed_files.len(),
-            graph.changed_nodes.len(),
-            graph.impacted_nodes.len(),
-            impacted_files.len(),
+            radius.changed_files.len(),
+            radius.changed_nodes.len(),
+            radius.impacted_nodes.len(),
+            radius.impacted_files.len(),
             review_guidance
         ),
         base: options.base.to_string(),
         context: ReviewContextPayload {
-            changed_files: changed_files.to_vec(),
-            impacted_files: impacted_files.clone(),
+            changed_files: radius.changed_files.clone(),
+            impacted_files: radius.impacted_files.clone(),
             graph: GraphContext {
-                changed_nodes,
-                impacted_nodes,
-                edges: graph.graph_edges.iter().map(edge_to_payload).collect(),
+                changed_nodes: radius.changed_nodes.clone(),
+                impacted_nodes: radius.impacted_nodes.clone(),
+                edges: radius.edges.iter().map(edge_to_payload).collect(),
             },
-            targets,
+            targets: radius.target_nodes.clone(),
             tests: ReviewTests {
-                test_files,
-                untested_targets,
-                query_failures: Vec::new(),
+                test_files: radius.test_files.clone(),
+                untested_targets: radius.untested_targets.clone(),
+                query_failures: radius
+                    .query_failures
+                    .iter()
+                    .map(|failure| {
+                        serde_json::json!({
+                            "qualified_name": failure.qualified_name,
+                            "status": failure.status,
+                            "summary": failure.summary,
+                        })
+                    })
+                    .collect(),
             },
             review_guidance,
             source_snippets,
         },
-        build: ReviewBuildInfo {
-            status: "ok".to_string(),
-            backend: Some("builtin-tree-sitter".to_string()),
-            build_type: Some("full".to_string()),
-            summary: format!(
-                "Full build: parsed {} file(s), {} nodes, {} edges.",
-                graph.files_updated,
-                graph.changed_nodes.len() + graph.impacted_nodes.len(),
-                graph.total_edges
-            ),
-            files_updated: Some(graph.files_updated),
-            changed_files: Some(changed_files.to_vec()),
-            stale_files: Some(Vec::new()),
-            total_nodes: Some(graph.changed_nodes.len() + graph.impacted_nodes.len()),
-            total_edges: Some(graph.total_edges),
-            languages: Some(graph.languages.clone()),
-        },
+        build: radius.build,
     }
 }
 
@@ -155,94 +145,6 @@ fn build_skip_review_context(
             languages: None,
         },
     }
-}
-
-fn build_targets(graph: &ParsedReviewGraph, max_targets: usize) -> Vec<ReviewTarget> {
-    let test_nodes = graph
-        .changed_nodes
-        .iter()
-        .chain(graph.related_test_nodes.iter())
-        .filter(|node| node.is_test)
-        .map(|node| (node.qualified_name.clone(), node))
-        .collect::<std::collections::BTreeMap<_, _>>();
-
-    graph
-        .changed_nodes
-        .iter()
-        .filter(|node| node.kind != "File" && !node.is_test)
-        .take(max_targets)
-        .map(|node| {
-            let mut tests = graph
-                .target_tests
-                .iter()
-                .filter(|(target, _)| target == &node.qualified_name)
-                .filter_map(|(_, test)| test_nodes.get(test))
-                .map(|test| SymbolGraphNode {
-                    qualified_name: test.qualified_name.clone(),
-                    name: test.name.clone(),
-                    kind: test.kind.clone(),
-                    file_path: test.file_path.clone(),
-                    line_start: test.line_start.unwrap_or(1),
-                    line_end: test.line_end.unwrap_or(1),
-                    language: test.language.clone(),
-                    parent_name: test.parent_name.clone(),
-                    is_test: test.is_test,
-                    references: test.references.clone(),
-                    extends: test.extends.clone(),
-                })
-                .collect::<Vec<_>>();
-            tests.sort_by(|a, b| a.qualified_name.cmp(&b.qualified_name));
-            ReviewTarget {
-                qualified_name: node.qualified_name.clone(),
-                name: node.name.clone(),
-                kind: node.kind.clone(),
-                file_path: node.file_path.clone(),
-                tests_count: tests.len(),
-                tests,
-                inherited_tests: Vec::new(),
-                inherited_tests_count: 0,
-            }
-        })
-        .collect()
-}
-
-fn build_untested_targets(targets: &[ReviewTarget]) -> Vec<UntestedTarget> {
-    targets
-        .iter()
-        .filter(|target| target.tests.is_empty() && target.inherited_tests.is_empty())
-        .map(|target| UntestedTarget {
-            qualified_name: target.qualified_name.clone(),
-            kind: target.kind.clone(),
-            file_path: target.file_path.clone(),
-        })
-        .collect()
-}
-
-fn collect_test_files(targets: &[ReviewTarget]) -> Vec<String> {
-    let mut test_files = BTreeSet::new();
-    for target in targets {
-        for test in &target.tests {
-            test_files.insert(test.file_path.clone());
-        }
-    }
-    test_files.into_iter().collect()
-}
-
-fn collect_impacted_files(graph: &ParsedReviewGraph) -> Vec<String> {
-    let changed_files = graph
-        .changed_nodes
-        .iter()
-        .filter(|node| node.kind == "File")
-        .map(|node| node.file_path.as_str())
-        .collect::<BTreeSet<_>>();
-    graph
-        .impacted_nodes
-        .iter()
-        .map(|node| node.file_path.clone())
-        .filter(|path| !changed_files.contains(path.as_str()))
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
 }
 
 fn generate_review_guidance(
@@ -349,8 +251,11 @@ fn read_source_snippet(
 
 fn edge_to_payload(edge: &GraphEdge) -> serde_json::Value {
     serde_json::json!({
-        "source": edge.source,
-        "target": edge.target,
-        "relation": edge.relation,
+        "kind": edge.kind,
+        "source_qualified": edge.source_qualified,
+        "target_qualified": edge.target_qualified,
+        "file_path": edge.file_path,
+        "source_file": edge.source_file,
+        "target_file": edge.target_file,
     })
 }

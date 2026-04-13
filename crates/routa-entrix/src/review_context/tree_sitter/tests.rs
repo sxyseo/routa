@@ -35,8 +35,8 @@ fn parses_java_class_and_test_method_nodes() {
             && node.is_test
     }));
     assert!(graph.graph_edges.iter().any(|edge| {
-        edge.relation == "TESTED_BY"
-            && edge.target
+        edge.kind == "TESTED_BY"
+            && edge.source_qualified
                 == "src/test/java/com/example/ServiceTest.java:com.example.ServiceTest.testRun"
     }));
 }
