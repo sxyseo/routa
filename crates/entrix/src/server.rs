@@ -272,6 +272,7 @@ fn parse_execution_scope(value: &str) -> Option<ExecutionScope> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn parse_execution_scope_accepts_python_values() {
@@ -282,5 +283,68 @@ mod tests {
             Some(ExecutionScope::ProdObservation)
         );
         assert_eq!(parse_execution_scope("unknown"), None);
+    }
+
+    #[test]
+    fn run_fitness_report_json_matches_expected_shape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fitness_dir = tmp.path().join("docs/fitness");
+        fs::create_dir_all(&fitness_dir).unwrap();
+        fs::write(
+            fitness_dir.join("code-quality.md"),
+            r#"---
+dimension: code_quality
+weight: 100
+metrics:
+  - name: lint_pass
+    command: echo ok
+    pattern: ok
+    hard_gate: true
+    tier: fast
+---
+"#,
+        )
+        .unwrap();
+
+        let payload =
+            run_fitness_report_json(tmp.path(), Some("fast"), None, false, true, 80.0).unwrap();
+        assert_eq!(payload["final_score"], 100.0);
+        assert_eq!(payload["dimensions"][0]["name"], "code_quality");
+        assert_eq!(payload["dimensions"][0]["results"][0]["name"], "lint_pass");
+        assert_eq!(payload["dimensions"][0]["results"][0]["state"], "pass");
+        assert_eq!(payload["dimensions"][0]["results"][0]["tier"], "fast");
+        assert_eq!(payload["dimensions"][0]["results"][0]["hard_gate"], true);
+    }
+
+    #[test]
+    fn dimension_status_json_returns_error_for_missing_dimension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let payload = dimension_status_json(tmp.path(), "missing").unwrap();
+        assert_eq!(payload["error"], "Dimension 'missing' not found");
+    }
+
+    #[test]
+    fn analyze_change_impact_json_returns_probe_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_dir = tmp.path().join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(
+            src_dir.join("service.ts"),
+            "export function run() { return helper(); }\nfunction helper() { return 1; }\n",
+        )
+        .unwrap();
+
+        let payload = analyze_change_impact_json(
+            tmp.path(),
+            Some(vec!["src/service.ts".to_string()]),
+            2,
+            "HEAD",
+        );
+        assert_eq!(payload["status"], "ok");
+        assert!(payload["passed"].is_boolean());
+        let output = payload["output"].as_str().unwrap();
+        assert!(output.contains("graph_probe_status: ok"));
+        assert!(output.contains("graph_changed_files: 1"));
+        assert!(output.contains("graph_summary:"));
     }
 }
