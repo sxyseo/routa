@@ -266,6 +266,8 @@ pub struct FitnessEvent {
     pub duration_ms: Option<f64>,
     pub dimension_count: Option<usize>,
     pub metric_count: Option<usize>,
+    #[serde(default)]
+    pub artifact_path: Option<String>,
 }
 
 #[allow(dead_code)]

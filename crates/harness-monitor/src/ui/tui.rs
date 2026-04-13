@@ -381,9 +381,13 @@ fn refresh_fitness_from_event(
     if !matches_current_mode {
         return;
     }
+    let cache_key = state.fitness_cache_key();
+    if cache.ingest_fitness_event(cache_key.clone(), event) {
+        return;
+    }
     cache.request_fitness_refresh(
         state.repo_root.clone(),
-        state.fitness_cache_key(),
+        cache_key,
         true,
         fitness_run_mode_for(state),
     );

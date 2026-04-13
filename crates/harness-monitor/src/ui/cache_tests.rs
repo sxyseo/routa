@@ -3,7 +3,9 @@ use super::{
     FitnessHistoryRecord, FITNESS_HISTORY_FILE, FITNESS_HISTORY_SCHEMA_VERSION,
 };
 use crate::observe as repo;
-use crate::shared::models::{AttributionConfidence, EntryKind, FileView};
+use crate::shared::models::{
+    AttributionConfidence, EntryKind, FileView, FitnessEvent, RuntimeMessage,
+};
 use crate::ui::state::RuntimeState;
 use std::collections::BTreeSet;
 use tempfile::tempdir;
@@ -380,6 +382,7 @@ fn app_cache_restores_fitness_history_on_startup() {
                     coverage_summary: fitness::CoverageSummary::default(),
                     dimensions: vec![],
                     slowest_metrics: vec![],
+                    artifact_path: None,
                 }),
                 trend: vec![88.5, 89.0],
                 last_run_ms: Some(12_345),
@@ -404,6 +407,71 @@ fn app_cache_restores_fitness_history_on_startup() {
         88.5
     );
     assert_eq!(cache.fitness_trend(), &[88.5, 89.0]);
+}
+
+#[test]
+fn app_cache_prefers_mailbox_artifact_before_local_rerun() {
+    let dir = tempdir().expect("tempdir");
+    let repo_root = dir.path().to_string_lossy().to_string();
+    let artifact_dir = repo::runtime_fitness_artifact_dir(std::path::Path::new(&repo_root));
+    let mailbox_dir = repo::runtime_fitness_mailbox_dir(std::path::Path::new(&repo_root));
+    std::fs::create_dir_all(&artifact_dir).expect("create artifact dir");
+    std::fs::create_dir_all(&mailbox_dir).expect("create mailbox dir");
+
+    let artifact_path = artifact_dir.join("123-fast.json");
+    std::fs::write(
+        &artifact_path,
+        serde_json::to_vec_pretty(&fitness::FitnessSnapshot {
+            mode: fitness::FitnessRunMode::Fast,
+            final_score: 93.0,
+            hard_gate_blocked: false,
+            score_blocked: false,
+            duration_ms: 2100.0,
+            metric_count: 7,
+            coverage_metric_available: false,
+            coverage_summary: fitness::CoverageSummary::default(),
+            dimensions: vec![],
+            slowest_metrics: vec![],
+            artifact_path: Some(artifact_path.to_string_lossy().to_string()),
+        })
+        .expect("serialize artifact"),
+    )
+    .expect("write artifact");
+    let mailbox_message = RuntimeMessage::Fitness(FitnessEvent {
+        repo_root: repo_root.clone(),
+        observed_at_ms: 123,
+        mode: "fast".to_string(),
+        status: "passed".to_string(),
+        final_score: Some(93.0),
+        hard_gate_blocked: Some(false),
+        score_blocked: Some(false),
+        duration_ms: Some(2100.0),
+        dimension_count: Some(0),
+        metric_count: Some(7),
+        artifact_path: Some(artifact_path.to_string_lossy().to_string()),
+    });
+    std::fs::write(
+        mailbox_dir.join("123-fast.json"),
+        serde_json::to_vec_pretty(&mailbox_message).expect("serialize mailbox message"),
+    )
+    .expect("write mailbox message");
+
+    let mut cache = AppCache::new(&repo_root);
+    cache.request_fitness_refresh(
+        repo_root.clone(),
+        "mode=fast;branch=main;ahead=0;files=".to_string(),
+        false,
+        fitness::FitnessRunMode::Fast,
+    );
+
+    let snapshot = cache.fitness_snapshot().expect("mailbox snapshot");
+    assert_eq!(snapshot.final_score, 93.0);
+    assert_eq!(
+        snapshot.artifact_path.as_deref(),
+        Some(artifact_path.to_string_lossy().as_ref())
+    );
+    assert_eq!(cache.fitness_trend(), &[93.0]);
+    assert!(!cache.is_fitness_running());
 }
 
 #[test]

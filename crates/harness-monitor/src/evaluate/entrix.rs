@@ -61,6 +61,8 @@ pub struct FitnessSnapshot {
     pub coverage_summary: CoverageSummary,
     pub dimensions: Vec<FitnessDimensionSummary>,
     pub slowest_metrics: Vec<FitnessMetricSummary>,
+    #[serde(default)]
+    pub artifact_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -223,7 +225,19 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
         coverage_summary,
         dimensions: dim_summaries,
         slowest_metrics: slowest_metrics.into_iter().take(5).collect(),
+        artifact_path: None,
     })
+}
+
+pub fn load_fitness_snapshot_artifact(path: &Path) -> Result<FitnessSnapshot> {
+    let payload = fs::read_to_string(path)
+        .with_context(|| format!("read fitness snapshot artifact {}", path.display()))?;
+    let mut snapshot: FitnessSnapshot = serde_json::from_str(&payload)
+        .with_context(|| format!("decode fitness snapshot artifact {}", path.display()))?;
+    if snapshot.artifact_path.is_none() {
+        snapshot.artifact_path = Some(path.to_string_lossy().to_string());
+    }
+    Ok(snapshot)
 }
 
 fn load_coverage_summary(repo_root: &Path) -> CoverageSummary {

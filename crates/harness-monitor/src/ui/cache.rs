@@ -318,26 +318,26 @@ impl AppCache {
                 BackgroundResult::Fitness { result } => {
                     let result = *result;
                     self.fitness_is_running = false;
-                    let entry = self.active_fitness_history_mut();
-                    entry.last_run_ms = Some(chrono::Utc::now().timestamp_millis());
                     match result {
                         Ok(snapshot) => {
-                            entry.last_error = None;
-                            entry.snapshot = Some(snapshot);
-                            if let Some(snapshot) = entry.snapshot.as_ref() {
-                                entry.trend.push(snapshot.final_score);
-                            }
-                            if entry.trend.len() > FITNESS_TREND_CAPACITY {
-                                let overflow = entry.trend.len() - FITNESS_TREND_CAPACITY;
-                                entry.trend.drain(0..overflow);
-                            }
+                            let cache_key = self
+                                .fitness_cache_key
+                                .clone()
+                                .unwrap_or_else(|| self.fitness_mode.as_str().to_string());
+                            self.store_fitness_snapshot(
+                                cache_key,
+                                chrono::Utc::now().timestamp_millis(),
+                                snapshot,
+                            );
                         }
                         Err(message) => {
+                            let entry = self.active_fitness_history_mut();
+                            entry.last_run_ms = Some(chrono::Utc::now().timestamp_millis());
                             entry.last_error = Some(message);
+                            self.pending_fitness = false;
+                            self.persist_fitness_history();
                         }
                     }
-                    self.persist_fitness_history();
-                    self.pending_fitness = false;
                     if let Some((repo_root, cache_key, force, mode)) =
                         self.queued_fitness_refresh.take()
                     {
@@ -545,6 +545,9 @@ impl AppCache {
     ) {
         self.fitness_mode = mode;
         self.sync_cache_key_from_active_mode();
+        if !force && self.try_load_latest_mailbox_snapshot(&repo_root, &cache_key, mode) {
+            return;
+        }
         if !force
             && !self.fitness_is_running
             && self.fitness_snapshot().is_some()
@@ -566,6 +569,25 @@ impl AppCache {
         self.fitness_is_running = true;
         self.active_fitness_history_mut().last_error = None;
         self.pending_fitness = true;
+    }
+
+    pub(super) fn ingest_fitness_event(
+        &mut self,
+        cache_key: String,
+        event: &crate::shared::models::FitnessEvent,
+    ) -> bool {
+        if event.mode != self.fitness_mode.as_str() {
+            return false;
+        }
+        let Some(artifact_path) = event.artifact_path.as_deref() else {
+            return false;
+        };
+        let snapshot = fitness::load_fitness_snapshot_artifact(Path::new(artifact_path));
+        let Ok(snapshot) = snapshot else {
+            return false;
+        };
+        self.store_fitness_snapshot(cache_key, event.observed_at_ms, snapshot);
+        true
     }
 
     pub(super) fn is_fitness_running(&self) -> bool {
@@ -657,6 +679,50 @@ impl AppCache {
         self.fitness_history_by_mode
             .entry(self.fitness_mode.as_str().to_string())
             .or_default()
+    }
+
+    fn try_load_latest_mailbox_snapshot(
+        &mut self,
+        repo_root: &str,
+        cache_key: &str,
+        mode: fitness::FitnessRunMode,
+    ) -> bool {
+        let Some(event) = latest_fitness_mailbox_event(repo_root, mode.as_str()) else {
+            return false;
+        };
+        self.ingest_fitness_event(cache_key.to_string(), &event)
+    }
+
+    fn store_fitness_snapshot(
+        &mut self,
+        cache_key: String,
+        observed_at_ms: i64,
+        snapshot: fitness::FitnessSnapshot,
+    ) {
+        let current_artifact = self
+            .active_fitness_history()
+            .and_then(|entry| entry.snapshot.as_ref())
+            .and_then(|snapshot| snapshot.artifact_path.as_deref());
+        let same_artifact =
+            current_artifact.is_some() && current_artifact == snapshot.artifact_path.as_deref();
+
+        let snapshot_score = snapshot.final_score;
+        let entry = self.active_fitness_history_mut();
+        entry.last_run_ms = Some(observed_at_ms);
+        entry.last_error = None;
+        entry.cache_key = Some(cache_key.clone());
+        entry.snapshot = Some(snapshot);
+        if !same_artifact {
+            entry.trend.push(snapshot_score);
+            if entry.trend.len() > FITNESS_TREND_CAPACITY {
+                let overflow = entry.trend.len() - FITNESS_TREND_CAPACITY;
+                entry.trend.drain(0..overflow);
+            }
+        }
+        self.fitness_cache_key = Some(cache_key);
+        self.fitness_is_running = false;
+        self.pending_fitness = false;
+        self.persist_fitness_history();
     }
 
     fn sync_cache_key_from_active_mode(&mut self) {
@@ -1319,7 +1385,7 @@ pub(super) use self::test_mapping::{TestMappingEntry, TestMappingSnapshot};
 
 #[path = "cache_history.rs"]
 mod history;
-use history::{fitness_history_path, read_fitness_history_record};
+use history::{fitness_history_path, latest_fitness_mailbox_event, read_fitness_history_record};
 
 pub(super) fn load_diff_text(
     repo_root: &str,

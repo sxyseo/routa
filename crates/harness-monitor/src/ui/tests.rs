@@ -271,6 +271,7 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
                 },
             ],
             slowest_metrics: Vec::new(),
+            artifact_path: None,
         },
     );
     cache.set_test_mapping_snapshot_for_tests(
@@ -608,6 +609,7 @@ fn fitness_event_is_logged_in_event_stream() {
         duration_ms: Some(10_200.0),
         dimension_count: Some(2),
         metric_count: Some(8),
+        artifact_path: None,
     }));
 
     assert!(state
@@ -706,6 +708,7 @@ fn hard_gate_failure_blocks_selected_run() {
                 metrics: Vec::new(),
             }],
             slowest_metrics: Vec::new(),
+            artifact_path: None,
         },
     );
 
@@ -765,6 +768,7 @@ fn synthetic_run_details_surface_process_scan_origin() {
             coverage_summary: fitness::CoverageSummary::default(),
             dimensions: Vec::new(),
             slowest_metrics: Vec::new(),
+            artifact_path: None,
         },
     );
     let snapshot = render_snapshot(&state, &mut cache, 180, 40);

@@ -120,6 +120,19 @@ pub fn runtime_event_path(repo_root: &Path) -> PathBuf {
     runtime_runtime_dir(repo_root).join("events.jsonl")
 }
 
+pub fn runtime_fitness_artifact_dir(repo_root: &Path) -> PathBuf {
+    runtime_runtime_dir(repo_root)
+        .join("artifacts")
+        .join("fitness")
+}
+
+pub fn runtime_fitness_mailbox_dir(repo_root: &Path) -> PathBuf {
+    runtime_runtime_dir(repo_root)
+        .join("mailbox")
+        .join("fitness")
+        .join("new")
+}
+
 pub fn runtime_socket_path(repo_root: &Path) -> PathBuf {
     runtime_runtime_dir(repo_root).join("events.sock")
 }
