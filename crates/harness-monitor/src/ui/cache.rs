@@ -736,6 +736,9 @@ impl AppCache {
     }
 
     pub(super) fn is_changed_test_file(&self, file: &crate::shared::models::FileView) -> bool {
+        if self::test_mapping::is_test_like_path(&file.rel_path) {
+            return true;
+        }
         self.test_mapping_snapshot
             .as_ref()
             .is_some_and(|snapshot| snapshot.skipped_test_files.contains(&file.rel_path))

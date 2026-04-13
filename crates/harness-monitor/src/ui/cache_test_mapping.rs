@@ -126,3 +126,11 @@ pub(super) fn load_test_mapping_snapshot(
         status_counts: payload.status_counts,
     })
 }
+
+pub(super) fn is_test_like_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".snap")
+        || lower.ends_with(".snapshot")
+        || lower.contains("/__snapshots__/")
+        || lower.contains("/snapshots/")
+}

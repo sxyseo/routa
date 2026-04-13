@@ -899,6 +899,73 @@ fn run_details_surface_auggie_session_prompts_and_session_label() {
 }
 
 #[test]
+fn summary_mode_compacts_long_git_status_paths_without_wrapping() {
+    let mut state = sample_state();
+    let now = chrono::Utc::now().timestamp_millis();
+    state.files.insert(
+        "crates/harness-monitor/src/ui/snapshots/harness_monitor__ui__tui__tests__routa_watch_tui_full_runs.snap".to_string(),
+        FileView {
+            rel_path: "crates/harness-monitor/src/ui/snapshots/harness_monitor__ui__tui__tests__routa_watch_tui_full_runs.snap".to_string(),
+            dirty: true,
+            state_code: "modify".to_string(),
+            entry_kind: EntryKind::File,
+            last_modified_at_ms: now - 60_000,
+            last_session_id: None,
+            last_task_id: None,
+            confidence: AttributionConfidence::Unknown,
+            conflicted: false,
+            touched_by: BTreeSet::new(),
+            recent_events: vec!["watch modify".to_string()],
+        },
+    );
+    state.selected_file = 2;
+    state.refresh_views();
+    let mut cache = sample_cache(&state);
+
+    let snapshot = render_snapshot(&state, &mut cache, 120, 28);
+
+    assert!(snapshot.contains("routa_watch_tui_full_runs.snap"));
+    assert!(snapshot.contains(".snap"));
+    assert!(!snapshot
+        .contains("crates/harness-monitor/src/ui/snapshots/harness_monitor__ui__tui__tests__"));
+}
+
+#[test]
+fn snapshot_files_are_treated_as_changed_test_files() {
+    let mut state = sample_state();
+    let now = chrono::Utc::now().timestamp_millis();
+    state.files.insert(
+        "crates/harness-monitor/src/ui/snapshots/example.snap".to_string(),
+        FileView {
+            rel_path: "crates/harness-monitor/src/ui/snapshots/example.snap".to_string(),
+            dirty: true,
+            state_code: "modify".to_string(),
+            entry_kind: EntryKind::File,
+            last_modified_at_ms: now - 60_000,
+            last_session_id: None,
+            last_task_id: None,
+            confidence: AttributionConfidence::Unknown,
+            conflicted: false,
+            touched_by: BTreeSet::new(),
+            recent_events: vec!["watch modify".to_string()],
+        },
+    );
+    state.selected_file = state
+        .files
+        .keys()
+        .position(|path| path == "crates/harness-monitor/src/ui/snapshots/example.snap")
+        .expect("snapshot file index");
+    state.refresh_views();
+    let mut cache = sample_cache(&state);
+
+    let file = state.selected_file().expect("selected file");
+    assert!(cache.is_changed_test_file(file));
+
+    let snapshot = render_snapshot(&state, &mut cache, 180, 32);
+    assert!(snapshot.contains("Test mapping: changed test file"));
+}
+
+#[test]
 fn tui_snapshot_search_mode() {
     let mut state = sample_state();
     state.search_query = "route.ts".to_string();

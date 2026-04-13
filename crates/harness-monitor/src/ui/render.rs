@@ -175,7 +175,7 @@ fn render_main_area(
         .split(columns[0]);
     render_runs_panel(frame, left_split[0], state, cache);
     render_agents_panel(frame, left_split[1], state);
-    render_files(frame, center[0], state, cache, FileRowDensity::TwoLine);
+    render_files(frame, center[0], state, cache, FileRowDensity::SingleLine);
     render_details_panel(frame, center[1], state, cache);
     render_preview_panel(frame, right[0], state, cache);
     render_fitness_panel(frame, right[1], state, cache);
@@ -1121,27 +1121,241 @@ fn render_file_single_line(
     focused: bool,
     area_width: usize,
 ) -> Line<'static> {
-    let path_width = area_width.saturating_sub(25).clamp(20, 64);
-    let mut spans = vec![Span::styled(
+    let meta = file_single_line_meta_segments(
+        file,
+        diff_stat,
+        review_hint,
+        test_mapping,
+        changed_test_file,
+        colors,
+        area_width,
+    );
+    let prefix_width = 2usize;
+    let gap_width = usize::from(!meta.is_empty());
+    let available_for_path = area_width
+        .saturating_sub(prefix_width + gap_width + meta.display_width)
+        .max(1);
+    let path_text = compact_rel_path(display_path, available_for_path);
+    let selector = if selected { ">" } else { " " };
+    let path_span = if meta.is_empty() {
+        format!("{selector} {path_text}")
+    } else {
         format!(
-            "{} {}",
-            if selected { ">" } else { " " },
-            pad_right(&compact_rel_path(display_path, path_width), path_width + 1)
-        ),
+            "{selector} {}",
+            pad_right(&path_text, available_for_path + 1)
+        )
+    };
+    let mut spans = vec![Span::styled(
+        path_span,
         row_style(selected, focused, colors).add_modifier(Modifier::BOLD),
     )];
-    spans.extend(
-        render_file_secondary_line(
-            file,
-            diff_stat,
-            review_hint,
-            test_mapping,
-            changed_test_file,
-            colors,
-        )
-        .spans,
-    );
+    spans.extend(meta.spans);
     Line::from(spans)
+}
+
+struct FileMetaSegments {
+    spans: Vec<Span<'static>>,
+    display_width: usize,
+}
+
+impl FileMetaSegments {
+    fn empty() -> Self {
+        Self {
+            spans: Vec::new(),
+            display_width: 0,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.spans.is_empty()
+    }
+}
+
+fn file_single_line_meta_segments(
+    file: &crate::shared::models::FileView,
+    diff_stat: &DiffStatSummary,
+    review_hint: Option<&crate::ui::tui::review::ReviewHint>,
+    test_mapping: Option<&TestMappingEntry>,
+    changed_test_file: bool,
+    colors: UiPalette,
+    area_width: usize,
+) -> FileMetaSegments {
+    let columns = file_meta_columns(
+        file,
+        diff_stat,
+        review_hint,
+        test_mapping,
+        changed_test_file,
+    );
+    let columns_width = columns.display_width();
+    if columns_width == 0 || columns_width > area_width.saturating_sub(3) {
+        return FileMetaSegments::empty();
+    }
+    let hide_age = area_width < columns_width + 20;
+    let mut spans = Vec::new();
+    let mut display_width = 0usize;
+
+    spans.push(Span::raw(" "));
+    display_width += 1;
+
+    spans.push(Span::styled(
+        pad_left(&diff_stat.status, columns.status_width),
+        Style::default().fg(change_color_from_status(&diff_stat.status)),
+    ));
+    display_width += columns.status_width;
+
+    spans.push(Span::raw(" "));
+    display_width += 1;
+    spans.extend(render_diff_delta_column(diff_stat, columns.diff_width));
+    display_width += columns.diff_width;
+
+    if let Some((label, color)) = render_test_mapping_badge(test_mapping, changed_test_file, colors)
+    {
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            pad_right(&label, columns.badge_width),
+            Style::default().fg(color),
+        ));
+        display_width += 1 + columns.badge_width;
+    } else if let Some(hint) = review_hint {
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            pad_right(hint.label, columns.badge_width),
+            Style::default().fg(review_hint_color(hint, colors)),
+        ));
+        display_width += 1 + columns.badge_width;
+    } else if columns.badge_width > 0 {
+        spans.push(Span::raw(" "));
+        spans.push(Span::raw(" ".repeat(columns.badge_width)));
+        display_width += 1 + columns.badge_width;
+    }
+
+    if !hide_age {
+        let age = time_ago(file.last_modified_at_ms);
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            pad_left(&age, columns.age_width),
+            Style::default().fg(colors.muted),
+        ));
+        display_width += 1 + columns.age_width;
+    }
+
+    FileMetaSegments {
+        spans,
+        display_width,
+    }
+}
+
+struct FileMetaColumns {
+    status_width: usize,
+    diff_width: usize,
+    badge_width: usize,
+    age_width: usize,
+}
+
+impl FileMetaColumns {
+    fn display_width(&self) -> usize {
+        let mut width = 1 + self.status_width + 1 + self.diff_width;
+        if self.badge_width > 0 {
+            width += 1 + self.badge_width;
+        }
+        if self.age_width > 0 {
+            width += 1 + self.age_width;
+        }
+        width
+    }
+}
+
+fn file_meta_columns(
+    _file: &crate::shared::models::FileView,
+    diff_stat: &DiffStatSummary,
+    review_hint: Option<&crate::ui::tui::review::ReviewHint>,
+    test_mapping: Option<&TestMappingEntry>,
+    changed_test_file: bool,
+) -> FileMetaColumns {
+    let badge_width = test_mapping_badge_label(test_mapping, changed_test_file)
+        .map(|label| label.chars().count())
+        .or_else(|| review_hint.map(|hint| hint.label.chars().count()))
+        .unwrap_or(0)
+        .max(4);
+    FileMetaColumns {
+        status_width: diff_stat.status.chars().count().max(1),
+        diff_width: diff_delta_display_width(diff_stat).max(7),
+        badge_width,
+        age_width: 4,
+    }
+}
+
+fn test_mapping_badge_label(
+    test_mapping: Option<&TestMappingEntry>,
+    changed_test_file: bool,
+) -> Option<&'static str> {
+    if changed_test_file {
+        return Some("TEST");
+    }
+
+    let mapping = test_mapping?;
+    Some(match mapping.status.as_str() {
+        "changed" => "TM changed",
+        "exists" => "TM ok",
+        "inline" => "TM inline",
+        "missing" => "TM miss",
+        "unknown" => "TM ?",
+        _ => "TM ...",
+    })
+}
+
+fn diff_delta_display_width(diff_stat: &DiffStatSummary) -> usize {
+    let mut width = 0usize;
+    if let Some(add) = diff_stat.additions {
+        width += format!("+{add}").len();
+    }
+    if diff_stat.additions.is_some() && diff_stat.deletions.is_some() {
+        width += 1;
+    }
+    if let Some(del) = diff_stat.deletions {
+        width += format!("-{del}").len();
+    }
+    if width == 0 {
+        diff_stat.status.len()
+    } else {
+        width
+    }
+}
+
+fn render_diff_delta_column(diff_stat: &DiffStatSummary, width: usize) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let add_text = diff_stat
+        .additions
+        .map(|add| format!("+{add}"))
+        .unwrap_or_default();
+    let del_text = diff_stat
+        .deletions
+        .map(|del| format!("-{del}"))
+        .unwrap_or_default();
+    if add_text.is_empty() && del_text.is_empty() {
+        spans.push(Span::raw(" ".repeat(width)));
+        return spans;
+    }
+
+    let gap = if !add_text.is_empty() && !del_text.is_empty() {
+        " "
+    } else {
+        ""
+    };
+    let visible_width = add_text.len() + gap.len() + del_text.len();
+    let padding = width.saturating_sub(visible_width);
+    spans.push(Span::raw(" ".repeat(padding)));
+    if !add_text.is_empty() {
+        spans.push(Span::styled(add_text, Style::default().fg(ACTIVE)));
+    }
+    if !gap.is_empty() {
+        spans.push(Span::raw(gap));
+    }
+    if !del_text.is_empty() {
+        spans.push(Span::styled(del_text, Style::default().fg(STOPPED)));
+    }
+    spans
 }
 
 fn review_hint_color(hint: &crate::ui::tui::review::ReviewHint, _colors: UiPalette) -> Color {
