@@ -1,4 +1,7 @@
 use clap::{Args, Parser, Subcommand};
+use routa_entrix::file_budgets::{
+    evaluate_paths, is_tracked_source_file, load_config, resolve_paths,
+};
 use routa_entrix::review_trigger::{
     collect_changed_files, collect_diff_stats, evaluate_review_triggers, load_review_triggers,
 };
@@ -18,6 +21,7 @@ struct Cli {
 enum Command {
     #[command(name = "review-trigger")]
     ReviewTrigger(ReviewTriggerArgs),
+    Hook(HookArgs),
     Graph(GraphArgs),
 }
 
@@ -39,6 +43,36 @@ struct ReviewTriggerArgs {
 struct GraphArgs {
     #[command(subcommand)]
     command: GraphCommand,
+}
+
+#[derive(Args, Debug)]
+struct HookArgs {
+    #[command(subcommand)]
+    command: HookCommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum HookCommand {
+    #[command(name = "file-length")]
+    FileLength(HookFileLengthArgs),
+}
+
+#[derive(Args, Debug)]
+struct HookFileLengthArgs {
+    #[arg(long)]
+    config: String,
+    #[arg(long)]
+    staged_only: bool,
+    #[arg(long, default_value = "HEAD")]
+    base: String,
+    #[arg(long)]
+    strict_limit: bool,
+    #[arg(long)]
+    changed_only: bool,
+    #[arg(long)]
+    overrides_only: bool,
+    #[arg()]
+    files: Vec<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -93,6 +127,9 @@ fn main() {
     let cli = Cli::parse();
     let exit_code = match cli.command {
         Command::ReviewTrigger(args) => cmd_review_trigger(args),
+        Command::Hook(args) => match args.command {
+            HookCommand::FileLength(args) => cmd_hook_file_length(args),
+        },
         Command::Graph(args) => match args.command {
             GraphCommand::TestMapping(args) => cmd_graph_test_mapping(args),
             GraphCommand::ReviewContext(args) => cmd_graph_review_context(args),
@@ -222,6 +259,55 @@ fn cmd_graph_review_context(args: GraphReviewContextArgs) -> i32 {
     }
 
     0
+}
+
+fn cmd_hook_file_length(args: HookFileLengthArgs) -> i32 {
+    let repo_root = find_project_root();
+    let config = match load_config(Path::new(&args.config)) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("{error}");
+            return 1;
+        }
+    };
+    let relative_paths = match resolve_paths(
+        &repo_root,
+        &config,
+        &args.files,
+        args.changed_only,
+        args.staged_only,
+        &args.base,
+        args.overrides_only,
+    ) {
+        Ok(paths) => paths,
+        Err(error) => {
+            eprintln!("{error}");
+            return 1;
+        }
+    };
+    let violations = evaluate_paths(&repo_root, &relative_paths, &config, !args.strict_limit);
+    let checked_count = relative_paths
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter(|path| is_tracked_source_file(path, &config))
+        .count();
+
+    println!("file_budget_checked: {checked_count}");
+    println!("file_budget_violations: {}", violations.len());
+    for violation in &violations {
+        let reason = if violation.reason.is_empty() {
+            String::new()
+        } else {
+            format!(" | {}", violation.reason)
+        };
+        println!(
+            "current file length {} exceeds limit {}: {}{}",
+            violation.line_count, violation.max_lines, violation.path, reason
+        );
+    }
+
+    if violations.is_empty() { 0 } else { 1 }
 }
 
 fn find_project_root() -> PathBuf {

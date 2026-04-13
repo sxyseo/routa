@@ -12,14 +12,14 @@ metrics:
   # ══════════════════════════════════════════════════════════════
   
   - name: legacy_hotspot_budget_guard
-    command: PYTHONPATH=tools/entrix python3 -m entrix.file_budgets --config tools/entrix/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
+    command: entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
     pattern: "file_budget_violations: 0"
     hard_gate: true
     tier: fast
     description: "已登记的历史热点文件必须满足冻结预算，只允许缩小不允许继续膨胀"
 
   - name: file_line_limit
-    command: PYTHONPATH=tools/entrix python3 -m entrix.file_budgets --config tools/entrix/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
+    command: entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
     pattern: "file_budget_violations: 0"
     hard_gate: false
     tier: fast

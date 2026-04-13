@@ -4,6 +4,7 @@
 //! functions, matching the behavior of `tools/entrix` (Python).
 
 pub mod evidence;
+pub mod file_budgets;
 pub mod governance;
 pub mod model;
 pub mod reporting;

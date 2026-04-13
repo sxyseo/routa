@@ -81,7 +81,7 @@ type DetectHarnessAutomationsOptions = {
 };
 
 const AUTOMATION_CONFIG_RELATIVE_PATH = path.join("docs", "harness", "automations.yml");
-const FILE_BUDGETS_RELATIVE_PATH = path.join("tools", "entrix", "file_budgets.json");
+const FILE_BUDGETS_RELATIVE_PATH = path.join("docs", "fitness", "file_budgets.json");
 const ISSUE_SCANNER_RELATIVE_PATH = path.join(".github", "scripts", "issue-scanner.py");
 const DEFAULT_FILE_BUDGETS: FileBudgetConfig = {
   default_max_lines: 1000,
