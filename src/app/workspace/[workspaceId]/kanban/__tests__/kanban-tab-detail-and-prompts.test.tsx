@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { KanbanTab } from "../kanban-tab";
 import { KanbanCardDetail } from "../kanban-card-detail";
 import { KanbanCardActivityPanel } from "../kanban-card-activity";
@@ -59,8 +59,12 @@ function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}
   };
 }
 
-afterEach(() => {
+beforeEach(() => {
   desktopAwareFetch.mockReset();
+  desktopAwareFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
+});
+
+afterEach(() => {
 });
 
 describe("kanban session restore prompt", () => {

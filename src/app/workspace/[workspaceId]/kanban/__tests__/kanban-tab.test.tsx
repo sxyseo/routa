@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { KanbanTab } from "../kanban-tab";
 import { KanbanCardDetail } from "../kanban-card-detail";
 import type { KanbanBoardInfo, TaskInfo } from "../../types";
@@ -114,8 +114,9 @@ function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}
   };
 }
 
-afterEach(() => {
+beforeEach(() => {
   desktopAwareFetch.mockReset();
+  desktopAwareFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   dndKitHarness.reset();
 });
 
@@ -375,7 +376,7 @@ describe("KanbanTab GitHub import", () => {
   });
 
   it("imports backlog issues without creating a task-level provider override", async () => {
-    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/github/access") {
         return {
@@ -406,7 +407,7 @@ describe("KanbanTab GitHub import", () => {
           }),
         } as Response;
       }
-      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+      return fetch(input, init);
     });
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1114,7 +1115,7 @@ describe("KanbanCardDetail changes tab", () => {
   });
 
   it("loads and renders a file diff preview when a change row is selected", async () => {
-    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/tasks/task-1/changes") {
         return {
@@ -1164,7 +1165,7 @@ describe("KanbanCardDetail changes tab", () => {
           }),
         } as Response;
       }
-      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+      return fetch(input, init);
     });
 
     render(
@@ -1232,7 +1233,7 @@ describe("KanbanCardDetail changes tab", () => {
   });
 
   it("falls back to committed changes when the worktree is clean but the branch is ahead", async () => {
-    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/tasks/task-1/changes") {
         return {
@@ -1320,7 +1321,7 @@ describe("KanbanCardDetail changes tab", () => {
           }),
         } as Response;
       }
-      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+      return fetch(input, init);
     });
 
     render(

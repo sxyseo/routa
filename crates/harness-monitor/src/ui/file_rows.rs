@@ -449,6 +449,7 @@ fn time_ago(timestamp_ms: i64) -> String {
     }
 }
 
+#[cfg(test)]
 fn truncate_short(value: &str, max_len: usize) -> String {
     if value.chars().count() <= max_len {
         value.to_string()

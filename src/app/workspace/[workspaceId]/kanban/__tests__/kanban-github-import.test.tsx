@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 import { KanbanTab } from "../kanban-tab";
 import type { KanbanBoardInfo, TaskInfo } from "../../types";
@@ -55,14 +55,18 @@ function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}
   };
 }
 
-afterEach(() => {
+beforeEach(() => {
   desktopAwareFetch.mockReset();
+  desktopAwareFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
+});
+
+afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("KanbanTab GitHub import merge mode", () => {
   it("merges selected GitHub issues into a single backlog card", async () => {
-    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/github/access") {
         return {
@@ -106,7 +110,7 @@ describe("KanbanTab GitHub import merge mode", () => {
           }),
         } as Response;
       }
-      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+      return fetch(input, init);
     });
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
