@@ -13,8 +13,8 @@
 ## Quick Start
 
 ```bash
-# 安装（首次）
-pip install -e tools/entrix
+# 构建（首次）
+cargo build -p routa-entrix
 
 # 快速检查（仅 fast tier，<30s）
 entrix run --tier fast
@@ -137,7 +137,7 @@ Harness Fluency 默认跑通用 `generic` 模型；如果要评估编排型 agen
 2. README.md                        → 规则手册（本文件）
 3. unit-test.md                     → 单元测试证据（含 frontmatter）
 4. rust-api-test.md                 → API 契约证据（含 frontmatter）
-5. tools/entrix/                    → 解析 frontmatter，执行检查（Python 模块）
+5. crates/routa-entrix/             → 解析 frontmatter，执行检查（Rust crate + CLI）
 ```
 
 ## Score Model
@@ -270,7 +270,7 @@ Fitness = Σ (Weight_i × Score_i) / 100
 - `README.md`：规则手册（本文件）。
 - `unit-test.md`：单元测试证据，frontmatter 定义 metrics。
 - `rust-api-test.md`：API 契约证据，frontmatter 定义 metrics。
-- `tools/entrix/`：解析 frontmatter，执行命令，输出结果（`entrix` CLI）。
+- `crates/routa-entrix/`：解析 frontmatter，执行命令，输出结果（`entrix` CLI）。
 - 所有测试改动必须同步更新证据文件。
 
 ## Core principle
@@ -355,15 +355,15 @@ claude -p "请执行 fitness 检查的 dry-run"
 
 ## 模块架构
 
-执行引擎位于 `tools/entrix/`，按《Building Evolutionary Architectures》概念分层：
+执行引擎位于 `crates/routa-entrix/`，按《Building Evolutionary Architectures》概念分层：
 
 ```
-entrix/
-  model.py          → 领域模型 (Tier, Metric, Dimension, FitnessReport)
-  evidence.py       → 从本目录 *.md 加载 frontmatter → Dimension
-  runners/shell.py  → Shell 命令执行
-  runners/graph.py  → 代码图探针 (可选, 需 code-review-graph)
-  scoring.py        → 加权评分
+crates/routa-entrix/
+  model.rs          → 领域模型 (Tier, Metric, Dimension, FitnessReport)
+  evidence.rs       → 从 docs/fitness/*.md 加载 frontmatter → Dimension
+  runner.rs         → Shell 命令执行
+  review_trigger.rs → review-trigger 规则执行
+  scoring.rs        → 加权评分
   governance.py     → 策略过滤 (tier, hard gate)
   reporters/        → 终端 / JSON 输出
   structure/        → 代码图集成层 (Protocol + Adapter)

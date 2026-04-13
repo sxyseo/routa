@@ -46,7 +46,7 @@ entrix run --tier normal   # when behavior/shared modules/APIs/workflow orchestr
 
 - If a check fails, fix and re-run; do not skip.
 - Skip source-code validation only when changes are strictly non-code (`*.md`, `*.yml`, `*.yaml`, `.github/`, `docs/`, etc.).
-- Install if needed: `pip install -e tools/entrix`.
+- Build if needed: `cargo build -p routa-entrix`.
 
 ## Git Discipline
 
@@ -105,7 +105,7 @@ Co-authored-by: gemini-cli (...) <218195315+gemini-cli@users.noreply.github.com>
 - `docs/references/`: Distilled external references for frequent dependencies.
 - `docs/release-guide.md`: Full release guide for CLI/Desktop/distribution.
 - `docs/RELEASE_CHECKLIST.md`: Quick release checklist.
-- `tools/entrix/docs/adr/README.md`: Entrix-specific ADRs and long-file heuristics.
+- `crates/routa-entrix/`: Entrix runtime and CLI implementation.
 
 ## Reading Order
 
