@@ -712,7 +712,7 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
   const reviewFilesArg = scopeFiles.committedFiles.map(shellQuote).join(" ");
   const entrixBase = `${reviewBase}...HEAD`;
   const reviewCommand =
-    `PYTHONPATH=tools/entrix python3 -m entrix.cli review-trigger --base ${shellQuote(entrixBase)} --json --fail-on-trigger`
+    `entrix review-trigger --base ${shellQuote(entrixBase)} --json --fail-on-trigger`
     + (reviewFilesArg ? ` ${reviewFilesArg}` : "");
 
   const review = await runCommand(reviewCommand, { stream: false, cwd: reviewRoot });
