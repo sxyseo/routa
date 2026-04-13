@@ -17,7 +17,7 @@ ENTRIX_BIN="./target/debug/entrix"
 if [ -x "$ENTRIX_BIN" ]; then
   ENTRIX_CMD="$ENTRIX_BIN"
 else
-  ENTRIX_CMD="cargo run -q -p routa-entrix --"
+  ENTRIX_CMD="cargo run -q -p entrix --"
 fi
 
 if ! sh -c "$ENTRIX_CMD hook file-length \
