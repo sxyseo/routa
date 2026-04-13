@@ -85,7 +85,7 @@ enum PreviewCommand {
 }
 
 #[derive(Debug)]
-enum MetadataCommand {
+enum FactsCommand {
     RefreshStats {
         repo_root: String,
         files: Vec<(String, String, i64, crate::shared::models::EntryKind)>,
@@ -102,6 +102,10 @@ enum MetadataCommand {
         version: i64,
         entry_kind: crate::shared::models::EntryKind,
     },
+}
+
+#[derive(Debug)]
+enum EvalCommand {
     RefreshFitness {
         repo_root: String,
         cache_key: String,
@@ -150,10 +154,14 @@ struct PendingPreviewCommands {
 }
 
 #[derive(Debug, Default)]
-struct PendingMetadataCommands {
+struct PendingFactsCommands {
     stats: Option<PendingStats>,
     facts: Option<PendingFacts>,
     git_history: Option<PendingFacts>,
+}
+
+#[derive(Debug, Default)]
+struct PendingEvalCommands {
     fitness: Option<(String, String, fitness::FitnessRunMode)>,
     test_mapping: Option<(String, Vec<String>, String)>,
     scc: Option<String>,
@@ -192,7 +200,8 @@ pub(super) struct AppCache {
     scc_summary: Option<SccSummary>,
     review_triggers: ReviewTriggerCache,
     preview_worker_tx: Sender<PreviewCommand>,
-    metadata_worker_tx: Sender<MetadataCommand>,
+    facts_worker_tx: Sender<FactsCommand>,
+    eval_worker_tx: Sender<EvalCommand>,
     worker_rx: Receiver<BackgroundResult>,
 }
 
@@ -231,11 +240,14 @@ struct FitnessHistoryRecord {
 impl AppCache {
     pub(super) fn new(repo_root: &str) -> Self {
         let (preview_worker_tx, preview_worker_rx_cmd) = mpsc::channel();
-        let (metadata_worker_tx, metadata_worker_rx_cmd) = mpsc::channel();
+        let (facts_worker_tx, facts_worker_rx_cmd) = mpsc::channel();
+        let (eval_worker_tx, eval_worker_rx_cmd) = mpsc::channel();
         let (result_tx, worker_rx) = mpsc::channel();
         let preview_result_tx = result_tx.clone();
+        let facts_result_tx = result_tx.clone();
         thread::spawn(move || preview_worker(preview_worker_rx_cmd, preview_result_tx));
-        thread::spawn(move || metadata_worker(metadata_worker_rx_cmd, result_tx));
+        thread::spawn(move || facts_worker(facts_worker_rx_cmd, facts_result_tx));
+        thread::spawn(move || eval_worker(eval_worker_rx_cmd, result_tx));
         let mut cache = Self {
             diff_stats: BTreeMap::new(),
             preview_cache: BTreeMap::new(),
@@ -264,7 +276,8 @@ impl AppCache {
             scc_summary: None,
             review_triggers: ReviewTriggerCache::load(repo_root),
             preview_worker_tx,
-            metadata_worker_tx,
+            facts_worker_tx,
+            eval_worker_tx,
             worker_rx,
         };
         cache.load_fitness_history();
@@ -334,8 +347,10 @@ impl AppCache {
         self.sync_cache_key_from_active_mode();
     }
 
-    pub(super) fn sync_results(&mut self) {
+    pub(super) fn sync_results(&mut self) -> bool {
+        let mut changed = false;
         while let Ok(result) = self.worker_rx.try_recv() {
+            changed = true;
             match result {
                 BackgroundResult::Stats { entries } => {
                     self.diff_stats.extend(entries);
@@ -431,6 +446,7 @@ impl AppCache {
                 }
             }
         }
+        changed
     }
 
     pub(super) fn warm_visible_files(&mut self, state: &RuntimeState) {
@@ -463,7 +479,7 @@ impl AppCache {
         if self.pending_stats_signature.as_deref() == Some(signature.as_str()) {
             return;
         }
-        let _ = self.metadata_worker_tx.send(MetadataCommand::RefreshStats {
+        let _ = self.facts_worker_tx.send(FactsCommand::RefreshStats {
             repo_root: state.repo_root.clone(),
             files,
         });
@@ -522,7 +538,7 @@ impl AppCache {
         if !self.facts_cache.contains_key(&facts_key)
             && self.pending_facts_key.as_deref() != Some(facts_key.as_str())
         {
-            let _ = self.metadata_worker_tx.send(MetadataCommand::LoadFacts {
+            let _ = self.facts_worker_tx.send(FactsCommand::LoadFacts {
                 repo_root: state.repo_root.clone(),
                 rel_path: file.rel_path.clone(),
                 version: file.last_modified_at_ms,
@@ -539,8 +555,8 @@ impl AppCache {
             && self.pending_git_history_key.as_deref() != Some(facts_key.as_str())
         {
             let _ = self
-                .metadata_worker_tx
-                .send(MetadataCommand::LoadGitHistoryCount {
+                .facts_worker_tx
+                .send(FactsCommand::LoadGitHistoryCount {
                     repo_root: state.repo_root.clone(),
                     rel_path: file.rel_path.clone(),
                     version: file.last_modified_at_ms,
@@ -580,13 +596,11 @@ impl AppCache {
             return;
         }
 
-        let _ = self
-            .metadata_worker_tx
-            .send(MetadataCommand::RefreshTestMapping {
-                repo_root: state.repo_root.clone(),
-                files,
-                cache_key: cache_key.clone(),
-            });
+        let _ = self.eval_worker_tx.send(EvalCommand::RefreshTestMapping {
+            repo_root: state.repo_root.clone(),
+            files,
+            cache_key: cache_key.clone(),
+        });
         self.pending_test_mapping_key = Some(cache_key);
     }
 
@@ -652,13 +666,11 @@ impl AppCache {
         }
         self.fitness_cache_key = Some(cache_key.clone());
         self.active_fitness_history_mut().cache_key = Some(cache_key.clone());
-        let _ = self
-            .metadata_worker_tx
-            .send(MetadataCommand::RefreshFitness {
-                repo_root,
-                cache_key,
-                mode,
-            });
+        let _ = self.eval_worker_tx.send(EvalCommand::RefreshFitness {
+            repo_root,
+            cache_key,
+            mode,
+        });
         self.fitness_is_running = true;
         self.active_fitness_history_mut().last_error = None;
         self.pending_fitness = true;
@@ -733,14 +745,14 @@ impl AppCache {
         }
         if !force && self.scc_summary.is_none() {
             let _ = self
-                .metadata_worker_tx
-                .send(MetadataCommand::RefreshScc { repo_root });
+                .eval_worker_tx
+                .send(EvalCommand::RefreshScc { repo_root });
             self.pending_scc = true;
             return;
         }
         let _ = self
-            .metadata_worker_tx
-            .send(MetadataCommand::RefreshScc { repo_root });
+            .eval_worker_tx
+            .send(EvalCommand::RefreshScc { repo_root });
         self.pending_scc = true;
     }
 
@@ -1271,12 +1283,12 @@ fn preview_worker(rx: Receiver<PreviewCommand>, tx: Sender<BackgroundResult>) {
     }
 }
 
-fn metadata_worker(rx: Receiver<MetadataCommand>, tx: Sender<BackgroundResult>) {
+fn facts_worker(rx: Receiver<FactsCommand>, tx: Sender<BackgroundResult>) {
     while let Ok(command) = rx.recv() {
-        let mut pending = PendingMetadataCommands::default();
-        queue_metadata_command(&mut pending, command);
+        let mut pending = PendingFactsCommands::default();
+        queue_facts_command(&mut pending, command);
         while let Ok(next) = rx.try_recv() {
-            queue_metadata_command(&mut pending, next);
+            queue_facts_command(&mut pending, next);
         }
         if let Some((repo_root, files)) = pending.stats.take() {
             let mut seen = BTreeSet::new();
@@ -1303,6 +1315,16 @@ fn metadata_worker(rx: Receiver<MetadataCommand>, tx: Sender<BackgroundResult>) 
                 key: facts_cache_key(&rel_path, version, entry_kind),
                 count: git_file_change_count(&repo_root, &rel_path),
             });
+        }
+    }
+}
+
+fn eval_worker(rx: Receiver<EvalCommand>, tx: Sender<BackgroundResult>) {
+    while let Ok(command) = rx.recv() {
+        let mut pending = PendingEvalCommands::default();
+        queue_eval_command(&mut pending, command);
+        while let Ok(next) = rx.try_recv() {
+            queue_eval_command(&mut pending, next);
         }
         if let Some((repo_root, cache_key, mode)) = pending.fitness.take() {
             let result = fitness::run_fitness(&repo_root, mode).map_err(|error| error.to_string());
@@ -1345,12 +1367,12 @@ fn queue_preview_command(pending: &mut PendingPreviewCommands, command: PreviewC
     }
 }
 
-fn queue_metadata_command(pending: &mut PendingMetadataCommands, command: MetadataCommand) {
+fn queue_facts_command(pending: &mut PendingFactsCommands, command: FactsCommand) {
     match command {
-        MetadataCommand::RefreshStats { repo_root, files } => {
+        FactsCommand::RefreshStats { repo_root, files } => {
             pending.stats = Some((repo_root, files));
         }
-        MetadataCommand::LoadFacts {
+        FactsCommand::LoadFacts {
             repo_root,
             rel_path,
             version,
@@ -1358,7 +1380,7 @@ fn queue_metadata_command(pending: &mut PendingMetadataCommands, command: Metada
         } => {
             pending.facts = Some((repo_root, rel_path, version, entry_kind));
         }
-        MetadataCommand::LoadGitHistoryCount {
+        FactsCommand::LoadGitHistoryCount {
             repo_root,
             rel_path,
             version,
@@ -1366,21 +1388,26 @@ fn queue_metadata_command(pending: &mut PendingMetadataCommands, command: Metada
         } => {
             pending.git_history = Some((repo_root, rel_path, version, entry_kind));
         }
-        MetadataCommand::RefreshFitness {
+    }
+}
+
+fn queue_eval_command(pending: &mut PendingEvalCommands, command: EvalCommand) {
+    match command {
+        EvalCommand::RefreshFitness {
             repo_root,
             cache_key,
             mode,
         } => {
             pending.fitness = Some((repo_root, cache_key, mode));
         }
-        MetadataCommand::RefreshTestMapping {
+        EvalCommand::RefreshTestMapping {
             repo_root,
             files,
             cache_key,
         } => {
             pending.test_mapping = Some((repo_root, files, cache_key));
         }
-        MetadataCommand::RefreshScc { repo_root } => {
+        EvalCommand::RefreshScc { repo_root } => {
             pending.scc = Some(repo_root);
         }
     }

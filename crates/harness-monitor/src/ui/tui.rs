@@ -54,6 +54,7 @@ const FITNESS_AUTO_REFRESH_MS: u64 = 10 * 60 * 1000;
 const FITNESS_CACHE_CHECK_MS: u64 = 1500;
 const SCC_REFRESH_MS: u64 = 60 * 1000;
 const RECONCILE_SCAN_REFRESH_MS: u64 = 5_000;
+const IDLE_REDRAW_MS: u64 = 1_000;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct RepoStatusSummary {
@@ -149,13 +150,16 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     cache.warm_test_mappings(&state);
     state.sync_focus_for_width(terminal.size()?.width);
     terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
+    let mut last_draw = Instant::now();
 
     loop {
+        let mut needs_redraw = false;
         if let Ok(snapshot) = initial_repo_rx.try_recv() {
             apply_initial_repo_snapshot(&mut state, snapshot);
             let now = Instant::now();
             last_poll = now;
             last_repo_status_refresh = now;
+            needs_redraw = true;
         }
 
         while event::poll(Duration::from_millis(0)).context("poll terminal events")? {
@@ -170,8 +174,9 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
                     last_poll = now;
                     last_repo_status_refresh = now;
                     last_agent_refresh = now;
+                    needs_redraw = true;
                 }
-                UiLoopAction::Continue => {}
+                UiLoopAction::Continue => needs_redraw = true,
             }
         }
 
@@ -181,9 +186,14 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
             let now = Instant::now();
             last_poll = now;
             last_repo_status_refresh = now;
+            needs_redraw = true;
         }
 
-        for message in feed.read_new()? {
+        let new_feed_messages = feed.read_new()?;
+        if !new_feed_messages.is_empty() {
+            needs_redraw = true;
+        }
+        for message in new_feed_messages {
             if matches!(message, RuntimeMessage::Git(_)) {
                 force_scan = true;
             }
@@ -218,29 +228,34 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
                 format!("transcript backfill complete ({recovered_session_count} sessions)"),
             );
             state.prune_stale_sessions();
+            needs_redraw = true;
         }
         if force_scan {
             refresh_repo_snapshot(&ctx, &mut state)?;
             let now = Instant::now();
             last_poll = now;
             last_repo_status_refresh = now;
+            needs_redraw = true;
         }
         state.prune_stale_sessions();
 
         if last_transport_refresh.elapsed() >= Duration::from_millis(TRANSPORT_REFRESH_MS) {
             state.set_runtime_transport(read_runtime_transport(&ctx));
             last_transport_refresh = Instant::now();
+            needs_redraw = true;
         }
         if last_repo_status_refresh.elapsed() >= Duration::from_millis(REPO_STATUS_REFRESH_MS) {
             apply_repo_status(&mut state, read_repo_status(&ctx).ok());
             state.set_worktree_count(current_worktree_count(&ctx).ok());
             last_repo_status_refresh = Instant::now();
+            needs_redraw = true;
         }
         if last_agent_refresh.elapsed() >= Duration::from_millis(AGENT_SCAN_REFRESH_MS) {
             if let Ok(agents) = crate::observe::detect::scan_agents(&state.repo_root) {
                 state.set_detected_agents(agents);
             }
             last_agent_refresh = Instant::now();
+            needs_redraw = true;
         }
         if last_fitness_refresh.elapsed() >= Duration::from_millis(FITNESS_AUTO_REFRESH_MS) {
             cache.request_fitness_refresh(
@@ -250,6 +265,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
                 fitness_run_mode_for(&state),
             );
             last_fitness_refresh = Instant::now();
+            needs_redraw = true;
         }
         if last_fitness_cache_check.elapsed() >= Duration::from_millis(FITNESS_CACHE_CHECK_MS) {
             cache.request_fitness_refresh(
@@ -259,18 +275,29 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
                 fitness_run_mode_for(&state),
             );
             last_fitness_cache_check = Instant::now();
+            needs_redraw = true;
         }
         if last_scc_refresh.elapsed() >= Duration::from_millis(SCC_REFRESH_MS) {
             cache.request_scc_refresh(state.repo_root.clone(), false);
             last_scc_refresh = Instant::now();
+            needs_redraw = true;
         }
-        cache.sync_results();
+        if cache.sync_results() {
+            needs_redraw = true;
+        }
         cache.warm_visible_files(&state);
         cache.warm_selected_detail(&state);
         cache.warm_test_mappings(&state);
 
-        state.sync_focus_for_width(terminal.size()?.width);
-        terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
+        let width = terminal.size()?.width;
+        state.sync_focus_for_width(width);
+        if last_draw.elapsed() >= Duration::from_millis(IDLE_REDRAW_MS) {
+            needs_redraw = true;
+        }
+        if needs_redraw {
+            terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
+            last_draw = Instant::now();
+        }
 
         if event::poll(Duration::from_millis(100)).context("poll terminal events")? {
             match handle_event(&mut state, &mut cache)? {
@@ -284,8 +311,13 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
                     last_poll = now;
                     last_repo_status_refresh = now;
                     last_agent_refresh = now;
+                    terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
+                    last_draw = Instant::now();
                 }
-                UiLoopAction::Continue => {}
+                UiLoopAction::Continue => {
+                    terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
+                    last_draw = Instant::now();
+                }
             }
         }
     }
