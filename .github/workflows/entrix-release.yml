@@ -107,22 +107,19 @@ jobs:
       - name: Prepare artifact
         shell: bash
         run: |
-          # Create nested directory structure expected by stage script
-          artifact_dir="dist/entrix-artifacts"
-          platform_dir="${artifact_dir}/entrix-${{ matrix.key }}"
-          mkdir -p "${platform_dir}"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "target/${{ matrix.target }}/release/entrix.exe" "${platform_dir}/"
+          mkdir -p dist/${{ matrix.key }}
+          if [[ "${{ matrix.key }}" == "win32-x64" ]]; then
+            cp target/${{ matrix.target }}/release/entrix.exe dist/${{ matrix.key }}/entrix.exe
           else
-            cp "target/${{ matrix.target }}/release/entrix" "${platform_dir}/"
+            cp target/${{ matrix.target }}/release/entrix dist/${{ matrix.key }}/entrix
+            chmod +x dist/${{ matrix.key }}/entrix
           fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: entrix-${{ matrix.key }}
-          # Upload the entire entrix-artifacts directory to preserve structure
-          path: dist/entrix-artifacts
+          path: dist/${{ matrix.key }}
 
   stage:
     name: Stage Entrix npm packages
@@ -143,12 +140,10 @@ jobs:
           version="${INPUT_VERSION#v}"
           echo "value=${version}" >> "$GITHUB_OUTPUT"
 
-      - name: Download all artifacts
+      - name: Download Entrix artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: entrix-*
           path: dist/entrix-artifacts
-          merge-multiple: true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
