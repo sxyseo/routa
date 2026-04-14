@@ -119,7 +119,7 @@ function isPlanBacklogBoard(board: KanbanBoardInfo): boolean {
   return board.name.trim().replace(/\s+/g, " ").toLowerCase() === "plan backlog";
 }
 
-function getKanbanUrlState(): { boardId: string | null; taskId: string | null } {
+function getKanbanUrlState(): { boardId: string | null; taskId: string | null } | null {
   if (typeof window === "undefined") return null;
   const searchParams = new URLSearchParams(window.location.search);
   return {
