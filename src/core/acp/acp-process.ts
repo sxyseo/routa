@@ -151,6 +151,7 @@ export class AcpProcess {
             stdio: ["pipe", "pipe", "pipe"],
             cwd,
             env: {
+                ...process.env,
                 ...env,
                 NODE_NO_READLINE: "1",
             },

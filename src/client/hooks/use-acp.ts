@@ -259,8 +259,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     sessionId: null,
     updates: [],
     providers: getInitialProviderFallbacks(),
-    // SSR-safe default; useEffect hydrates from localStorage after mount
-    // Using lazy initializer to avoid reading localStorage during SSR (returns "opencode")
+    // Always use SSR-safe default; useEffect below hydrates from localStorage
     selectedProvider: "opencode",
     loading: false,
     error: null,
@@ -268,21 +267,12 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     dockerConfigError: null,
   }));
 
-  // Hydrate selectedProvider from localStorage after mount
-  // This ensures SSR (server="opencode") matches client initial render
+  // Hydrate selectedProvider from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
     const persisted = loadSelectedAcpProvider();
-    setState((s) => {
-      // If persisted provider is unavailable, auto-select first available
-      const persistedProvider = s.providers.find((p) => p.id === persisted);
-      if (persistedProvider?.status === "unavailable") {
-        const firstAvailable = s.providers.find((p) => p.status === "available");
-        const nextProvider = firstAvailable?.id ?? "opencode";
-        saveSelectedAcpProvider(nextProvider);
-        return { ...s, selectedProvider: nextProvider };
-      }
-      return { ...s, selectedProvider: persisted };
-    });
+    if (persisted !== "opencode") {
+      setState((s) => ({ ...s, selectedProvider: persisted }));
+    }
   }, []);
   // Clean up on unmount
   useEffect(() => {
