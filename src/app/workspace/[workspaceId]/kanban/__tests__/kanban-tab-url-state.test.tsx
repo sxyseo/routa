@@ -116,4 +116,43 @@ describe("KanbanTab URL state", () => {
     await screen.findByText("Card Detail");
     expect(screen.getByDisplayValue("Story One")).toBeTruthy();
   });
+
+  it("syncs board selection with boardId and restores a deep-linked board/task combination", async () => {
+    const secondBoard: KanbanBoardInfo = {
+      ...board,
+      id: "board-2",
+      name: "Review Board",
+      isDefault: false,
+    };
+
+    window.history.replaceState({}, "", "/workspace/workspace-1/kanban?boardId=board-2&taskId=task-2");
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board, secondBoard]}
+        tasks={[
+          createTask("task-1", "Story One", { boardId: board.id }),
+          createTask("task-2", "Story Two", { boardId: secondBoard.id }),
+        ]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await screen.findByDisplayValue("Story Two");
+    const boardSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+    expect(boardSelect.value).toBe("board-2");
+
+    fireEvent.change(boardSelect, { target: { value: "board-1" } });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Card Detail")).toBeNull();
+    });
+    expect(window.location.search).toContain("boardId=board-1");
+    expect(window.location.search).not.toContain("taskId=");
+  });
 });

@@ -83,6 +83,7 @@ function isLikelyGitHubCodebase(codebase: CodebaseData | null | undefined): bool
 }
 
 const KANBAN_DETAIL_SPLIT_RATIO_KEY = "routa:kanban-detail-split-ratio";
+const KANBAN_BOARD_QUERY_KEY = "boardId";
 const KANBAN_DETAIL_TASK_QUERY_KEY = "taskId";
 const MIN_DETAIL_SPLIT_RATIO = 0.32;
 const MAX_DETAIL_SPLIT_RATIO = 0.72;
@@ -118,17 +119,30 @@ function isPlanBacklogBoard(board: KanbanBoardInfo): boolean {
   return board.name.trim().replace(/\s+/g, " ").toLowerCase() === "plan backlog";
 }
 
-function getTaskIdFromKanbanUrl(): string | null {
+function getKanbanUrlState(): { boardId: string | null; taskId: string | null } {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get(KANBAN_DETAIL_TASK_QUERY_KEY);
+  const searchParams = new URLSearchParams(window.location.search);
+  return {
+    boardId: searchParams.get(KANBAN_BOARD_QUERY_KEY),
+    taskId: searchParams.get(KANBAN_DETAIL_TASK_QUERY_KEY),
+  };
 }
 
-function updateKanbanTaskIdInUrl(taskId: string | null, mode: "push" | "replace" = "push"): void {
+function updateKanbanUrlState(
+  state: { boardId?: string | null; taskId?: string | null },
+  mode: "push" | "replace" = "push",
+): void {
   if (typeof window === "undefined") return;
 
   const url = new URL(window.location.href);
-  if (taskId) {
-    url.searchParams.set(KANBAN_DETAIL_TASK_QUERY_KEY, taskId);
+  if (state.boardId) {
+    url.searchParams.set(KANBAN_BOARD_QUERY_KEY, state.boardId);
+  } else {
+    url.searchParams.delete(KANBAN_BOARD_QUERY_KEY);
+  }
+
+  if (state.taskId) {
+    url.searchParams.set(KANBAN_DETAIL_TASK_QUERY_KEY, state.taskId);
   } else {
     url.searchParams.delete(KANBAN_DETAIL_TASK_QUERY_KEY);
   }
@@ -190,7 +204,10 @@ export function KanbanTab({
   );
   const githubAvailable = isLikelyGitHubCodebase(defaultCodebase);
 
-  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(defaultBoardId);
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(() => {
+    const initialUrlState = getKanbanUrlState();
+    return initialUrlState?.boardId ?? defaultBoardId;
+  });
   const [localTasks, setLocalTasks] = useState<TaskInfo[]>(tasks);
   const autoPatchedTasksRef = useRef(new Set<string>());
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -463,8 +480,21 @@ export function KanbanTab({
   }, [boards]);
 
   useEffect(() => {
+    const urlState = getKanbanUrlState();
+    const candidateBoardId = urlState?.boardId;
+    if (candidateBoardId && localBoards.some((board) => board.id === candidateBoardId)) {
+      setSelectedBoardId(candidateBoardId);
+      return;
+    }
+
     setSelectedBoardId(defaultBoardId);
-  }, [defaultBoardId]);
+    if (defaultBoardId) {
+      updateKanbanUrlState({
+        boardId: defaultBoardId,
+        taskId: urlState?.taskId ?? null,
+      }, "replace");
+    }
+  }, [defaultBoardId, localBoards]);
 
   const patchTask = useCallback(async (taskId: string, payload: Record<string, unknown>) => {
     const response = await desktopAwareFetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
@@ -812,7 +842,13 @@ export function KanbanTab({
   }, [board?.autoProviderId, board?.id, boardAutoProviderId, persistBoardAutoProvider]);
 
   const syncTaskDetailFromUrl = useCallback(() => {
-    const requestedTaskId = getTaskIdFromKanbanUrl();
+    const urlState = getKanbanUrlState();
+    const requestedBoardId = urlState?.boardId;
+    const requestedTaskId = urlState?.taskId;
+    if (requestedBoardId && localBoards.some((board) => board.id === requestedBoardId)) {
+      setSelectedBoardId(requestedBoardId);
+    }
+
     if (!requestedTaskId) {
       setActiveTaskId(null);
       setActiveSessionId(null);
@@ -823,15 +859,28 @@ export function KanbanTab({
     const requestedTask = localTasks.find((task) => task.id === requestedTaskId) ?? null;
     if (!requestedTask) {
       if (localTasks.length > 0) {
-        updateKanbanTaskIdInUrl(null, "replace");
+        updateKanbanUrlState({
+          boardId: requestedBoardId ?? selectedBoardId ?? defaultBoardId ?? null,
+          taskId: null,
+        }, "replace");
       }
       return;
     }
 
+    if (requestedBoardId !== requestedTask.boardId) {
+      updateKanbanUrlState({
+        boardId: requestedTask.boardId ?? selectedBoardId ?? defaultBoardId ?? null,
+        taskId: requestedTask.id,
+      }, "replace");
+    }
+
+    if (requestedTask.boardId) {
+      setSelectedBoardId(requestedTask.boardId);
+    }
     setActiveTaskId(requestedTask.id);
     setActiveSessionId(getPreferredTaskSessionId(requestedTask) ?? null);
     setIsTaskDetailFullscreen(false);
-  }, [localTasks]);
+  }, [defaultBoardId, localBoards, localTasks, selectedBoardId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -842,11 +891,17 @@ export function KanbanTab({
   }, [syncTaskDetailFromUrl]);
 
   const openTaskDetail = useCallback(async (task: TaskInfo) => {
+    if (task.boardId) {
+      setSelectedBoardId(task.boardId);
+    }
     setActiveTaskId(task.id);
     const latestSession = getPreferredTaskSessionId(task);
     setActiveSessionId(latestSession ?? null);
     setIsTaskDetailFullscreen(false);
-    updateKanbanTaskIdInUrl(task.id, "push");
+    updateKanbanUrlState({
+      boardId: task.boardId ?? selectedBoardId ?? defaultBoardId ?? null,
+      taskId: task.id,
+    }, "push");
 
     if (task.codebaseIds?.length === 0 && defaultCodebase) {
       try {
@@ -860,7 +915,7 @@ export function KanbanTab({
     if (latestSession && acp && canSelectTaskSessionInAcp(task, latestSession, sessionMap)) {
       acp.selectSession(latestSession);
     }
-  }, [acp, defaultCodebase, patchTask, sessionMap]);
+  }, [acp, defaultBoardId, defaultCodebase, patchTask, selectedBoardId, sessionMap]);
 
   const openSession = useCallback((sessionId: string | null, task?: TaskInfo | null) => {
     setActiveTaskId(null);
@@ -878,8 +933,27 @@ export function KanbanTab({
     setActiveTaskId(null);
     setActiveSessionId(null);
     setIsTaskDetailFullscreen(false);
-    updateKanbanTaskIdInUrl(null, "replace");
-  }, []);
+    updateKanbanUrlState({
+      boardId: selectedBoardId ?? defaultBoardId ?? null,
+      taskId: null,
+    }, "replace");
+  }, [defaultBoardId, selectedBoardId]);
+
+  const handleSelectBoard = useCallback((boardId: string) => {
+    setSelectedBoardId(boardId);
+
+    const nextActiveTaskId = activeTask?.boardId === boardId ? activeTask.id : null;
+    if (!nextActiveTaskId) {
+      setActiveTaskId(null);
+      setActiveSessionId(null);
+      setIsTaskDetailFullscreen(false);
+    }
+
+    updateKanbanUrlState({
+      boardId,
+      taskId: nextActiveTaskId,
+    }, "push");
+  }, [activeTask]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1618,7 +1692,7 @@ export function KanbanTab({
     boardQueue,
     boards: visibleBoards,
     selectedBoardId,
-    onSelectBoard: setSelectedBoardId,
+    onSelectBoard: handleSelectBoard,
     githubImportVisible: hasGitHubCodebase && githubAccessAvailable,
     onOpenGitHubImport: () => setShowGitHubImportModal(true),
     onRefresh,
