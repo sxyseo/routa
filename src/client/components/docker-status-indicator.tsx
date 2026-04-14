@@ -52,7 +52,7 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const label = isChecking
     ? t.dockerStatus.checking
     : available
-      ? t.dockerStatus.ready.replace("{{version}}", status?.version ?? "ready")
+      ? t.dockerStatus.ready.replace("{version}", status?.version ?? "ready")
       : loading
         ? t.dockerStatus.retrying
         : t.dockerStatus.unavailable;
