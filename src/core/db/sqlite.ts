@@ -17,6 +17,55 @@ export type SqliteDatabase = BetterSQLite3Database<typeof schema>;
 
 const GLOBAL_KEY = "__routa_sqlite_db__";
 const GLOBAL_RAW_KEY = "__routa_sqlite_raw__";
+const WORKTREES_DDL_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS worktrees (
+    id TEXT PRIMARY KEY,
+    codebase_id TEXT NOT NULL REFERENCES codebases(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    worktree_path TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    base_branch TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'creating',
+    session_id TEXT,
+    label TEXT,
+    error_message TEXT,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_codebase_branch
+  ON worktrees (codebase_id, branch)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
+  ON worktrees (worktree_path)`,
+  `CREATE INDEX IF NOT EXISTS idx_worktrees_workspace_id
+  ON worktrees (workspace_id)`,
+] as const;
+
+function applyWorktreesTableDdl(execute: (statement: string) => void): void {
+  for (const statement of WORKTREES_DDL_STATEMENTS) {
+    execute(statement);
+  }
+}
+
+function hasSqliteTable(sqlite: BetterSqlite3.Database, tableName: string): boolean {
+  return Boolean(
+    sqlite.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
+    ).get(tableName),
+  );
+}
+
+function ensureWorktreesTable(sqlite: BetterSqlite3.Database): void {
+  if (hasSqliteTable(sqlite, "worktrees")) {
+    return;
+  }
+
+  console.warn("[SQLite] worktrees table missing, creating it now");
+  applyWorktreesTableDdl((statement) => sqlite.exec(statement));
+
+  if (!hasSqliteTable(sqlite, "worktrees")) {
+    throw new Error("[SQLite] Failed to create missing worktrees table");
+  }
+}
 
 /**
  * Get or create a SQLite database instance.
@@ -42,47 +91,11 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
     // Run migrations / create tables on first use
     initializeSqliteTables(db);
 
-    // Ensure worktrees table exists (fix for #414)
-    // This is a defensive check to handle cases where the table wasn't created
-    // due to database initialization issues or version mismatches
     try {
-      const tableCheck = sqlite.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='worktrees'"
-      ).get();
-      if (!tableCheck) {
-        console.warn("[SQLite] worktrees table missing, creating it now");
-        sqlite.run(`
-          CREATE TABLE worktrees (
-            id TEXT PRIMARY KEY,
-            codebase_id TEXT NOT NULL REFERENCES codebases(id) ON DELETE CASCADE,
-            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-            worktree_path TEXT NOT NULL,
-            branch TEXT NOT NULL,
-            base_branch TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'creating',
-            session_id TEXT,
-            label TEXT,
-            error_message TEXT,
-            created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
-            updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
-          )
-        `);
-        sqlite.run(`
-          CREATE UNIQUE INDEX uq_worktrees_codebase_branch
-          ON worktrees (codebase_id, branch)
-        `);
-        sqlite.run(`
-          CREATE UNIQUE INDEX uq_worktrees_path
-          ON worktrees (worktree_path)
-        `);
-        sqlite.run(`
-          CREATE INDEX idx_worktrees_workspace_id
-          ON worktrees (workspace_id)
-        `);
-        console.log("[SQLite] worktrees table created successfully");
-      }
+      ensureWorktreesTable(sqlite);
     } catch (error) {
       console.error("[SQLite] Failed to ensure worktrees table exists:", error);
+      throw error;
     }
 
     // Store both the drizzle wrapper and the raw connection
@@ -392,34 +405,9 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   try { db.run(sql`ALTER TABLE codebases ADD COLUMN source_type TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE codebases ADD COLUMN source_url TEXT`); } catch { /* column already exists */ }
 
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS worktrees (
-      id TEXT PRIMARY KEY,
-      codebase_id TEXT NOT NULL REFERENCES codebases(id) ON DELETE CASCADE,
-      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-      worktree_path TEXT NOT NULL,
-      branch TEXT NOT NULL,
-      base_branch TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'creating',
-      session_id TEXT,
-      label TEXT,
-      error_message TEXT,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
-    )
-  `);
-  db.run(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_codebase_branch
-    ON worktrees (codebase_id, branch)
-  `);
-  db.run(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
-    ON worktrees (worktree_path)
-  `);
-  db.run(sql`
-    CREATE INDEX IF NOT EXISTS idx_worktrees_workspace_id
-    ON worktrees (workspace_id)
-  `);
+  applyWorktreesTableDdl((statement) => {
+    db.run(sql.raw(statement));
+  });
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS kanban_boards (
