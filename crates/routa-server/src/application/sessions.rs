@@ -698,7 +698,7 @@ fn synthetic_agent_update(
 }
 
 fn decode_log_escaped_text(raw: &str) -> String {
-    let quoted = format!("\"{}\"", raw);
+    let quoted = format!("\"{raw}\"");
     serde_json::from_str::<String>(&quoted).unwrap_or_else(|_| {
         raw.replace("\\n", "\n")
             .replace("\\r", "\r")

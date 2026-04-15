@@ -30,12 +30,8 @@ pub async fn run(
     role: &str,
     requested_session_id: Option<&str>,
 ) -> Result<(), String> {
-    let _agent_role = AgentRole::from_str(role).ok_or_else(|| {
-        format!(
-            "Invalid role: {}. Use ROUTA, CRAFTER, GATE, or DEVELOPER",
-            role
-        )
-    })?;
+    let _agent_role = AgentRole::from_str(role)
+        .ok_or_else(|| format!("Invalid role: {role}. Use ROUTA, CRAFTER, GATE, or DEVELOPER"))?;
 
     let router = RpcRouter::new(state.clone());
 
@@ -67,8 +63,8 @@ pub async fn run(
                 .acp_session_store
                 .get(session_id)
                 .await
-                .map_err(|e| format!("Failed to load session {}: {}", session_id, e))?
-                .ok_or_else(|| format!("Session not found: {}", session_id))?,
+                .map_err(|e| format!("Failed to load session {session_id}: {e}"))?
+                .ok_or_else(|| format!("Session not found: {session_id}"))?,
         )
     } else {
         None
@@ -105,8 +101,8 @@ pub async fn run(
         "║  Agent : {:<48} ║",
         format!("{} ({})", &agent_id[..8], effective_role)
     );
-    println!("║  Workspace : {:<44} ║", effective_workspace_id);
-    println!("║  Provider  : {:<44} ║", effective_provider);
+    println!("║  Workspace : {effective_workspace_id:<44} ║");
+    println!("║  Provider  : {effective_provider:<44} ║");
     println!("╚══════════════════════════════════════════════════════════╝");
 
     let session_exists = state.acp_manager.get_session(&session_id).await.is_some();
@@ -134,7 +130,7 @@ pub async fn run(
             Ok((sid, _)) => {
                 println!("  {} Session: {}", style("●").green(), sid);
                 if let Err(err) = update_agent_status(&router, &agent_id, "ACTIVE").await {
-                    eprintln!("Failed to mark agent {} ACTIVE: {}", agent_id, err);
+                    eprintln!("Failed to mark agent {agent_id} ACTIVE: {err}");
                 }
                 if resumed_session.is_none() {
                     state
@@ -151,13 +147,13 @@ pub async fn run(
                             parent_session_id: None,
                         })
                         .await
-                        .map_err(|e| format!("Failed to persist session {}: {}", session_id, e))?;
+                        .map_err(|e| format!("Failed to persist session {session_id}: {e}"))?;
                 }
             }
             Err(e) => {
                 final_status = "ERROR";
                 if let Err(err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                    eprintln!("Failed to mark agent {} ERROR: {}", agent_id, err);
+                    eprintln!("Failed to mark agent {agent_id} ERROR: {err}");
                 }
                 println!(
                     "  {} Could not create ACP session: {}. Running in offline mode.",
@@ -203,7 +199,7 @@ pub async fn run(
     let reader = stdin.lock();
 
     for line in reader.lines() {
-        let line = line.map_err(|e| format!("Failed to read input: {}", e))?;
+        let line = line.map_err(|e| format!("Failed to read input: {e}"))?;
         let trimmed = line.trim();
 
         if trimmed.is_empty() {
@@ -216,7 +212,7 @@ pub async fn run(
         match trimmed {
             "/quit" | "/exit" | "/q" => {
                 if let Err(err) = update_agent_status(&router, &agent_id, final_status).await {
-                    eprintln!("Failed to mark agent {} COMPLETED: {}", agent_id, err);
+                    eprintln!("Failed to mark agent {agent_id} COMPLETED: {err}");
                 }
                 println!("{}", style("Goodbye!").dim());
                 state.acp_manager.kill_session(&session_id).await;
@@ -355,7 +351,7 @@ pub async fn run(
                     .set_first_prompt_sent(&session_id)
                     .await
                 {
-                    eprintln!("Failed to mark first prompt sent: {}", e);
+                    eprintln!("Failed to mark first prompt sent: {e}");
                 }
                 if let Some(history) = state.acp_manager.get_session_history(&session_id).await {
                     if let Err(e) = state
@@ -363,14 +359,14 @@ pub async fn run(
                         .save_history(&session_id, &history)
                         .await
                     {
-                        eprintln!("Failed to persist session history: {}", e);
+                        eprintln!("Failed to persist session history: {e}");
                     }
                 }
             }
             Err(e) => {
                 final_status = "ERROR";
                 if let Err(status_err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                    eprintln!("Failed to mark agent {} ERROR: {}", agent_id, status_err);
+                    eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
                 }
                 println!("{} Failed to send prompt: {}", style("✘").red(), e);
             }
@@ -381,10 +377,7 @@ pub async fn run(
     }
 
     if let Err(err) = update_agent_status(&router, &agent_id, final_status).await {
-        eprintln!(
-            "Failed to mark agent {} {}: {}",
-            agent_id, final_status, err
-        );
+        eprintln!("Failed to mark agent {agent_id} {final_status}: {err}");
     }
 
     Ok(())
@@ -514,7 +507,7 @@ fn pick_specialist_interactive(
                 s.role.as_str(),
                 s.description
                     .as_ref()
-                    .map(|d| format!(" — {}", d))
+                    .map(|d| format!(" — {d}"))
                     .unwrap_or_default()
             )
         })

@@ -92,7 +92,7 @@ pub async fn evaluate_harness_engineering(
     let playbooks = learning::load_playbooks_for_task(repo_root, "harness_evolution")
         .unwrap_or_else(|e| {
             if !options.json_output {
-                eprintln!("Warning: Failed to load playbooks: {}", e);
+                eprintln!("Warning: Failed to load playbooks: {e}");
             }
             Vec::new()
         });
@@ -1177,8 +1177,7 @@ fn resolve_harness_engineering_specialist_path(repo_root: &Path) -> Result<PathB
     .find(|path| path.is_file())
     .ok_or_else(|| {
         format!(
-            "failed to locate harness engineering specialist definition: {}",
-            HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH
+            "failed to locate harness engineering specialist definition: {HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH}"
         )
     })
 }

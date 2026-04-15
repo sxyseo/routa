@@ -107,7 +107,7 @@ impl KanbanStore {
             .await
             .map_err(|error| match error {
                 ServerError::Database(message) if message.contains("Query returned no rows") => {
-                    ServerError::NotFound(format!("Board {} not found in workspace {}", board_label, workspace_label))
+                    ServerError::NotFound(format!("Board {board_label} not found in workspace {workspace_label}"))
                 }
                 other => other,
             })
@@ -196,8 +196,7 @@ impl KanbanStore {
 
                 let query = format!(
                     "SELECT id, workspace_id, name, is_default, columns, created_at, updated_at \
-                     FROM kanban_boards WHERE id IN ({})",
-                    placeholders
+                     FROM kanban_boards WHERE id IN ({placeholders})"
                 );
 
                 let mut stmt = conn.prepare(&query)?;

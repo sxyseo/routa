@@ -769,7 +769,7 @@ fn render_runs_panel(
         .count();
     let summary_line = Line::from(vec![
         Span::styled(
-            format!(" {} active", active_runs),
+            format!(" {active_runs} active"),
             Style::default().fg(if active_runs > 0 {
                 ACTIVE
             } else {
@@ -781,7 +781,7 @@ fn render_runs_panel(
             Style::default().fg(colors.text),
         ),
         Span::styled(
-            format!("  {} worktree(s)", worktrees),
+            format!("  {worktrees} worktree(s)"),
             Style::default().fg(colors.muted),
         ),
         Span::styled("  mode:", Style::default().fg(colors.muted)),
@@ -913,7 +913,7 @@ fn render_runs_panel(
                 },
                 if !session_label.is_empty() {
                     Span::styled(
-                        format!("  {}", session_label),
+                        format!("  {session_label}"),
                         Style::default().fg(colors.muted).bg(bg),
                     )
                 } else {

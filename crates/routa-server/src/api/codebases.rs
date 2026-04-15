@@ -151,8 +151,7 @@ async fn add_codebase(
         .await?
     {
         return Err(ServerError::Conflict(format!(
-            "Codebase with repo_path '{}' already exists in workspace {}",
-            repo_path, workspace_id
+            "Codebase with repo_path '{repo_path}' already exists in workspace {workspace_id}"
         )));
     }
 
@@ -190,7 +189,7 @@ async fn update_codebase(
         .codebase_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {id} not found")))?;
     let requested_source_type = body
         .source_type
         .clone()
@@ -239,7 +238,7 @@ async fn update_codebase(
         .codebase_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {id} not found")))?;
 
     Ok(Json(serde_json::json!({ "codebase": codebase })))
 }
@@ -266,7 +265,7 @@ async fn delete_codebase(
             .worktree_store
             .list_by_codebase(&id)
             .await
-            .map_err(|e| ServerError::Internal(format!("Failed to list worktrees: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Failed to list worktrees: {e}")))?;
         for wt in &worktrees {
             if let Err(e) = crate::git::worktree_remove(repo_path, &wt.worktree_path, true) {
                 tracing::warn!(
@@ -293,7 +292,7 @@ async fn set_default_codebase(
         .codebase_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {id} not found")))?;
 
     state
         .codebase_store
@@ -304,7 +303,7 @@ async fn set_default_codebase(
         .codebase_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {id} not found")))?;
 
     Ok(Json(serde_json::json!({ "codebase": updated })))
 }
@@ -481,9 +480,9 @@ fn scan_dir(abs_path: &str, name: &str, rel_path: &str, depth: usize) -> RepoTre
         let child_rel = if rel_path == "." {
             entry_name.clone()
         } else {
-            format!("{}/{}", rel_path, entry_name)
+            format!("{rel_path}/{entry_name}")
         };
-        let child_abs = format!("{}/{}", abs_path, entry_name);
+        let child_abs = format!("{abs_path}/{entry_name}");
 
         if ft.is_dir() {
             let child = scan_dir(&child_abs, &entry_name, &child_rel, depth + 1);
@@ -987,7 +986,7 @@ fn build_reposlide_prompt(
                 .get("reason")
                 .and_then(|value| value.as_str())
                 .unwrap_or("(no reason)");
-            lines.push(format!("- {}: {}", path, reason));
+            lines.push(format!("- {path}: {reason}"));
         }
     }
 
@@ -999,7 +998,7 @@ fn build_reposlide_prompt(
                 .get("path")
                 .and_then(|value| value.as_str())
                 .unwrap_or("(unknown)");
-            lines.push(format!("- {}", path));
+            lines.push(format!("- {path}"));
         }
     }
 
@@ -1036,7 +1035,7 @@ fn build_reposlide_prompt(
                                     .get("fileCount")
                                     .and_then(|value| value.as_u64())
                                     .unwrap_or(0);
-                                format!("{}/ ({} files)", name, nested_count)
+                                format!("{name}/ ({nested_count} files)")
                             } else {
                                 name.to_string()
                             }
@@ -1099,12 +1098,11 @@ async fn get_reposlide(
         .codebase_store
         .get(&codebase_id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", codebase_id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {codebase_id} not found")))?;
 
     if codebase.workspace_id != workspace_id {
         return Err(ServerError::NotFound(format!(
-            "Codebase {} not found in workspace {}",
-            codebase_id, workspace_id
+            "Codebase {codebase_id} not found in workspace {workspace_id}"
         )));
     }
 
@@ -1181,12 +1179,11 @@ async fn get_wiki(
         .codebase_store
         .get(&codebase_id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", codebase_id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {codebase_id} not found")))?;
 
     if codebase.workspace_id != workspace_id {
         return Err(ServerError::NotFound(format!(
-            "Codebase {} not found in workspace {}",
-            codebase_id, workspace_id
+            "Codebase {codebase_id} not found in workspace {workspace_id}"
         )));
     }
 

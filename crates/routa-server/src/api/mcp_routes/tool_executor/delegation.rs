@@ -56,8 +56,7 @@ pub(super) async fn execute(
                 Ok(task_opt) => task_opt.and_then(|task| task.session_id),
                 Err(error) => {
                     return Some(tool_result_error(&format!(
-                        "Failed to load task for delegation fallback session: {}",
-                        error
+                        "Failed to load task for delegation fallback session: {error}"
                     )));
                 }
             };
@@ -134,8 +133,7 @@ pub(super) async fn execute(
                 Ok(tool_result) => tool_result,
                 Err(error) => {
                     return Some(tool_result_error(&format!(
-                        "Failed to delegate task: {}",
-                        error
+                        "Failed to delegate task: {error}"
                     )))
                 }
             };
@@ -159,8 +157,7 @@ pub(super) async fn execute(
 
             if let Err(e) = state.task_store.update_status(task_id, &new_status).await {
                 return Some(tool_result_error(&format!(
-                    "Failed to update task status: {}",
-                    e
+                    "Failed to update task status: {e}"
                 )));
             }
 
@@ -203,7 +200,7 @@ pub(super) async fn execute(
             );
 
             if let Err(e) = state.conversation_store.append(&msg).await {
-                return Some(tool_result_error(&format!("Failed to send message: {}", e)));
+                return Some(tool_result_error(&format!("Failed to send message: {e}")));
             }
 
             let event = crate::events::AgentEvent {

@@ -161,7 +161,7 @@ impl TaskApplicationService {
         command: UpdateTaskCommand,
     ) -> Result<UpdateTaskPlan, ServerError> {
         let Some(mut task) = self.state.task_store.get(task_id).await? else {
-            return Err(ServerError::NotFound(format!("Task {} not found", task_id)));
+            return Err(ServerError::NotFound(format!("Task {task_id} not found")));
         };
 
         let existing_column_id = task.column_id.clone();
@@ -197,7 +197,7 @@ impl TaskApplicationService {
         }
         if let Some(value) = command.status {
             task.status = TaskStatus::from_str(&value)
-                .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {}", value)))?;
+                .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {value}")))?;
         }
         if command.board_id.is_some() {
             task.board_id = command.board_id;
@@ -211,7 +211,7 @@ impl TaskApplicationService {
         if let Some(value) = command.priority {
             task.priority =
                 Some(TaskPriority::from_str(&value).ok_or_else(|| {
-                    ServerError::BadRequest(format!("Invalid priority: {}", value))
+                    ServerError::BadRequest(format!("Invalid priority: {value}"))
                 })?);
         }
         if let Some(value) = command.labels {
@@ -265,7 +265,7 @@ impl TaskApplicationService {
         if let Some(value) = command.verification_verdict {
             task.verification_verdict =
                 Some(VerificationVerdict::from_str(&value).ok_or_else(|| {
-                    ServerError::BadRequest(format!("Invalid verification verdict: {}", value))
+                    ServerError::BadRequest(format!("Invalid verification verdict: {value}"))
                 })?);
         }
         if command.verification_report.is_some() {
@@ -487,7 +487,7 @@ pub struct UpdateTaskPlan {
 fn parse_priority(priority: Option<String>) -> Result<Option<TaskPriority>, ServerError> {
     match priority {
         Some(value) => Ok(Some(TaskPriority::from_str(&value).ok_or_else(|| {
-            ServerError::BadRequest(format!("Invalid priority: {}", value))
+            ServerError::BadRequest(format!("Invalid priority: {value}"))
         })?)),
         None => Ok(None),
     }

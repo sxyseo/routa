@@ -38,7 +38,7 @@ pub(super) fn create_snapshot(
             let content = if existed {
                 Some(
                     fs::read_to_string(&path)
-                        .map_err(|e| format!("Failed to read {}: {}", target, e))?,
+                        .map_err(|e| format!("Failed to read {target}: {e}"))?,
                 )
             } else {
                 None
@@ -65,15 +65,14 @@ pub(super) fn rollback_snapshot(repo_root: &Path, snapshot: &Snapshot) -> Result
                     format!("Failed to create directory {}: {}", parent.display(), e)
                 })?;
             }
-            fs::write(&path, content)
-                .map_err(|e| format!("Failed to rollback {}: {}", path_str, e))?;
+            fs::write(&path, content).map_err(|e| format!("Failed to rollback {path_str}: {e}"))?;
         } else if path.exists() {
             if path.is_dir() {
                 fs::remove_dir_all(&path)
-                    .map_err(|e| format!("Failed to remove {} during rollback: {}", path_str, e))?;
+                    .map_err(|e| format!("Failed to remove {path_str} during rollback: {e}"))?;
             } else {
                 fs::remove_file(&path)
-                    .map_err(|e| format!("Failed to remove {} during rollback: {}", path_str, e))?;
+                    .map_err(|e| format!("Failed to remove {path_str} during rollback: {e}"))?;
             }
             remove_empty_parent_dirs(repo_root, path.parent())?;
         }
@@ -294,34 +293,28 @@ pub(super) fn apply_patches(
             ),
         );
         if let Err(error) = apply_patch_batch(repo_root, &low_risk, options) {
-            eprintln!("  ✗ Failed to apply low-risk patches: {}", error);
+            eprintln!("  ✗ Failed to apply low-risk patches: {error}");
             eprintln!("  ↻ Rolling back changes...");
             rollback_snapshot(repo_root, &snapshot)?;
             if let Err(history_error) =
                 record_evolution_outcome(repo_root, &[], &selected_for_apply, evolution_context)
             {
-                eprintln!(
-                    "  ⚠️  Warning: Failed to record evolution history: {}",
-                    history_error
-                );
+                eprintln!("  ⚠️  Warning: Failed to record evolution history: {history_error}");
             }
-            return Err(format!("Low-risk patch application failed: {}", error));
+            return Err(format!("Low-risk patch application failed: {error}"));
         }
         emit_apply_progress(options, "  ✓ Low-risk patches applied successfully");
     }
 
     if options.force && !risky_patches_refs.is_empty() {
         if let Err(error) = apply_patch_batch(repo_root, &risky_patches_refs, options) {
-            eprintln!("  ✗ Failed: {}", error);
+            eprintln!("  ✗ Failed: {error}");
             eprintln!("  ↻ Rolling back...");
             rollback_snapshot(repo_root, &snapshot)?;
             if let Err(history_error) =
                 record_evolution_outcome(repo_root, &[], &selected_for_apply, evolution_context)
             {
-                eprintln!(
-                    "  ⚠️  Warning: Failed to record evolution history: {}",
-                    history_error
-                );
+                eprintln!("  ⚠️  Warning: Failed to record evolution history: {history_error}");
             }
             return Err(error);
         }
@@ -331,16 +324,13 @@ pub(super) fn apply_patches(
     let verification_results = match run_verification_plan(repo_root, verification_plan, options) {
         Ok(results) => results,
         Err(error) => {
-            eprintln!("  ✗ Verification failed: {}", error);
+            eprintln!("  ✗ Verification failed: {error}");
             eprintln!("  ↻ Rolling back verified changes...");
             rollback_snapshot(repo_root, &snapshot)?;
             if let Err(history_error) =
                 record_evolution_outcome(repo_root, &[], &selected_for_apply, evolution_context)
             {
-                eprintln!(
-                    "  ⚠️  Warning: Failed to record evolution history: {}",
-                    history_error
-                );
+                eprintln!("  ⚠️  Warning: Failed to record evolution history: {history_error}");
             }
             return Err(error);
         }
@@ -349,16 +339,13 @@ pub(super) fn apply_patches(
     let ratchet = match run_ratchet_loop(repo_root, options) {
         Ok(result) => result,
         Err(error) => {
-            eprintln!("  ✗ Ratchet failed: {}", error);
+            eprintln!("  ✗ Ratchet failed: {error}");
             eprintln!("  ↻ Rolling back verified changes...");
             rollback_snapshot(repo_root, &snapshot)?;
             if let Err(history_error) =
                 record_evolution_outcome(repo_root, &[], &selected_for_apply, evolution_context)
             {
-                eprintln!(
-                    "  ⚠️  Warning: Failed to record evolution history: {}",
-                    history_error
-                );
+                eprintln!("  ⚠️  Warning: Failed to record evolution history: {history_error}");
             }
             return Err(error);
         }
@@ -367,10 +354,7 @@ pub(super) fn apply_patches(
     if let Err(error) =
         record_evolution_outcome(repo_root, &selected_for_apply, &[], evolution_context)
     {
-        eprintln!(
-            "  ⚠️  Warning: Failed to record evolution history: {}",
-            error
-        );
+        eprintln!("  ⚠️  Warning: Failed to record evolution history: {error}");
     }
 
     Ok(ApplyOutcome {
@@ -416,8 +400,7 @@ fn synthesize_build_yml(
     options: &HarnessEngineeringOptions,
 ) -> Result<(), String> {
     let harness_dir = repo_root.join("docs/harness");
-    fs::create_dir_all(&harness_dir)
-        .map_err(|e| format!("Failed to create docs/harness: {}", e))?;
+    fs::create_dir_all(&harness_dir).map_err(|e| format!("Failed to create docs/harness: {e}"))?;
 
     let build_yml = harness_dir.join("build.yml");
     let build_script_name = patch.script_name.as_deref().unwrap_or("build");
@@ -432,7 +415,7 @@ fn synthesize_build_yml(
         r#"schema: harness-surface-v1
 surface: build
 title: Build feedback
-summary: Auto-generated bootstrap surface anchored to the detected `{}` script.
+summary: Auto-generated bootstrap surface anchored to the detected `{build_script_name}` script.
 overview:
   - id: repository-shape
     label: Repository shape
@@ -458,13 +441,12 @@ entrypointGroups:
     label: Build flow
     category: build
     scriptNamePatterns:
-      - "^{}$"
-# detectedCommand: {}
-"#,
-        build_script_name, build_pattern, build_command
+      - "^{build_pattern}$"
+# detectedCommand: {build_command}
+"#
     );
 
-    fs::write(&build_yml, content).map_err(|e| format!("Failed to write build.yml: {}", e))?;
+    fs::write(&build_yml, content).map_err(|e| format!("Failed to write build.yml: {e}"))?;
     emit_apply_progress(options, "  ✓ Created docs/harness/build.yml");
     Ok(())
 }
@@ -475,8 +457,7 @@ fn synthesize_test_yml(
     options: &HarnessEngineeringOptions,
 ) -> Result<(), String> {
     let harness_dir = repo_root.join("docs/harness");
-    fs::create_dir_all(&harness_dir)
-        .map_err(|e| format!("Failed to create docs/harness: {}", e))?;
+    fs::create_dir_all(&harness_dir).map_err(|e| format!("Failed to create docs/harness: {e}"))?;
 
     let test_yml = harness_dir.join("test.yml");
     let test_script_name = patch.script_name.as_deref().unwrap_or("test");
@@ -488,7 +469,7 @@ fn synthesize_test_yml(
         r#"schema: harness-surface-v1
 surface: test
 title: Test feedback
-summary: Auto-generated bootstrap surface anchored to the detected `{}` script.
+summary: Auto-generated bootstrap surface anchored to the detected `{test_script_name}` script.
 overview:
   - id: repository-shape
     label: Repository shape
@@ -513,13 +494,12 @@ entrypointGroups:
     label: Test flow
     category: unit
     scriptNamePatterns:
-      - "^{}$"
-# detectedCommand: {}
-"#,
-        test_script_name, test_pattern, test_command
+      - "^{test_pattern}$"
+# detectedCommand: {test_command}
+"#
     );
 
-    fs::write(&test_yml, content).map_err(|e| format!("Failed to write test.yml: {}", e))?;
+    fs::write(&test_yml, content).map_err(|e| format!("Failed to write test.yml: {e}"))?;
     emit_apply_progress(options, "  ✓ Created docs/harness/test.yml");
     Ok(())
 }
@@ -536,7 +516,7 @@ fn normalize_automation_target(
     }
 
     let content = fs::read_to_string(&automations_path)
-        .map_err(|e| format!("Failed to read automations.yml: {}", e))?;
+        .map_err(|e| format!("Failed to read automations.yml: {e}"))?;
 
     let fixed_content = content.replace(
         "    target:\n      type: specialist\n      ref: harness-test",
@@ -549,7 +529,7 @@ fn normalize_automation_target(
     }
 
     fs::write(&automations_path, fixed_content)
-        .map_err(|e| format!("Failed to write automations.yml: {}", e))?;
+        .map_err(|e| format!("Failed to write automations.yml: {e}"))?;
 
     emit_apply_progress(
         options,
@@ -566,7 +546,7 @@ fn create_codeowners(
 ) -> Result<(), String> {
     let github_dir = repo_root.join(".github");
     fs::create_dir_all(&github_dir)
-        .map_err(|e| format!("Failed to create .github directory: {}", e))?;
+        .map_err(|e| format!("Failed to create .github directory: {e}"))?;
 
     let codeowners_path = github_dir.join("CODEOWNERS");
 
@@ -576,8 +556,7 @@ fn create_codeowners(
     }
 
     let content = generate_codeowners_content(repo_root)?;
-    fs::write(&codeowners_path, content)
-        .map_err(|e| format!("Failed to write CODEOWNERS: {}", e))?;
+    fs::write(&codeowners_path, content).map_err(|e| format!("Failed to write CODEOWNERS: {e}"))?;
 
     emit_apply_progress(
         options,
@@ -613,18 +592,17 @@ fn generate_codeowners_content(repo_root: &Path) -> Result<String, String> {
 # Auto-generated by routa harness evolve --apply
 
 # Global owner
-* {}
+* {primary_owner}
 
 # Critical paths require review
-/docs/fitness/ {}
-/docs/harness/ {}
-/resources/specialists/ {}
+/docs/fitness/ {primary_owner}
+/docs/harness/ {primary_owner}
+/resources/specialists/ {primary_owner}
 
 # Infrastructure
-/.github/ {}
-/crates/routa-core/ {}
-"#,
-        primary_owner, primary_owner, primary_owner, primary_owner, primary_owner, primary_owner
+/.github/ {primary_owner}
+/crates/routa-core/ {primary_owner}
+"#
     ))
 }
 
@@ -635,7 +613,7 @@ fn create_dependabot(
 ) -> Result<(), String> {
     let github_dir = repo_root.join(".github");
     fs::create_dir_all(&github_dir)
-        .map_err(|e| format!("Failed to create .github directory: {}", e))?;
+        .map_err(|e| format!("Failed to create .github directory: {e}"))?;
 
     let dependabot_path = github_dir.join("dependabot.yml");
 
@@ -691,7 +669,7 @@ updates:
     );
 
     fs::write(&dependabot_path, content)
-        .map_err(|e| format!("Failed to write dependabot.yml: {}", e))?;
+        .map_err(|e| format!("Failed to write dependabot.yml: {e}"))?;
 
     let message = format!(
         "  ✓ Created .github/dependabot.yml with {} ecosystem(s)",
@@ -713,8 +691,8 @@ fn update_coverage_threshold(
         return Err("docs/harness/test.yml not found".to_string());
     }
 
-    let content = fs::read_to_string(&test_yml_path)
-        .map_err(|e| format!("Failed to read test.yml: {}", e))?;
+    let content =
+        fs::read_to_string(&test_yml_path).map_err(|e| format!("Failed to read test.yml: {e}"))?;
 
     if content.contains("coverage:") {
         emit_apply_progress(options, "  ℹ️  Coverage tracking already configured");
@@ -736,7 +714,7 @@ coverage:
     let updated_content = format!("{}{}", content.trim_end(), coverage_section);
 
     fs::write(&test_yml_path, updated_content)
-        .map_err(|e| format!("Failed to write test.yml: {}", e))?;
+        .map_err(|e| format!("Failed to write test.yml: {e}"))?;
 
     emit_apply_progress(
         options,
@@ -755,7 +733,7 @@ fn create_operational_docs(
 
     if !operational_dir.exists() {
         fs::create_dir_all(&operational_dir)
-            .map_err(|e| format!("Failed to create operational dir: {}", e))?;
+            .map_err(|e| format!("Failed to create operational dir: {e}"))?;
 
         let placeholder_content = r#"# Operational History
 
@@ -792,16 +770,16 @@ Add operational documentation as the system evolves. Start with:
 "#;
 
         fs::write(operational_dir.join("README.md"), placeholder_content)
-            .map_err(|e| format!("Failed to write operational README: {}", e))?;
+            .map_err(|e| format!("Failed to write operational README: {e}"))?;
 
         for subdir in &["decisions", "incidents", "runbooks", "changes"] {
             let dir = operational_dir.join(subdir);
-            fs::create_dir_all(&dir).map_err(|e| format!("Failed to create {}: {}", subdir, e))?;
+            fs::create_dir_all(&dir).map_err(|e| format!("Failed to create {subdir}: {e}"))?;
             fs::write(
                 dir.join(".gitkeep"),
                 "# Placeholder for operational documentation\n",
             )
-            .map_err(|e| format!("Failed to write .gitkeep: {}", e))?;
+            .map_err(|e| format!("Failed to write .gitkeep: {e}"))?;
         }
 
         emit_apply_progress(

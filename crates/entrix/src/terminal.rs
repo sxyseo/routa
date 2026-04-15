@@ -588,8 +588,7 @@ fn render_live_snapshot(width: usize, state: &RichLiveProgressState) -> String {
         "Fitness Live Progress".chars().take(74).collect::<String>()
     ));
     out.push_str(&format!(
-        "passed={} failed={} hard_failures={} running={} queued={}\n",
-        passed, failed, hard_failures, running, queued
+        "passed={passed} failed={failed} hard_failures={hard_failures} running={running} queued={queued}\n"
     ));
     out.push_str(&format!(
         "┏{0:━<4}┳{0:━<28}┳{0:━<10}┳{0:━<8}┳{0:━<6}┳{0:━<8}┓\n",

@@ -748,7 +748,7 @@ fn cmd_validate(args: ValidateArgs) -> i32 {
             if weights_valid { "PASS" } else { "FAIL" }
         );
         println!("Dimensions: {}", dimensions.len());
-        println!("Total weight: {}", total_weight);
+        println!("Total weight: {total_weight}");
     }
 
     if weights_valid {

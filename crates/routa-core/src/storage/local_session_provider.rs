@@ -130,7 +130,7 @@ impl LocalSessionProvider {
     }
 
     fn session_file_path(&self, session_id: &str) -> PathBuf {
-        self.sessions_dir().join(format!("{}.jsonl", session_id))
+        self.sessions_dir().join(format!("{session_id}.jsonl"))
     }
 
     /// Save or update a session (writes metadata to JSONL file).

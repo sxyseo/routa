@@ -686,7 +686,7 @@ fn render_prompt_session_details(
             ),
             Span::raw("  "),
             Span::styled(
-                format!("{} dirty", dirty),
+                format!("{dirty} dirty"),
                 Style::default().fg(if dirty > 0 { INFERRED } else { ACTIVE }),
             ),
         ]),

@@ -23,13 +23,13 @@ fn build_mcp_endpoint(
     ];
 
     if let Some(mode) = tool_mode.filter(|value| *value == "essential" || *value == "full") {
-        params.push(format!("toolMode={}", mode));
+        params.push(format!("toolMode={mode}"));
     }
 
     if let Some(profile) =
         mcp_profile.filter(|value| *value == "kanban-planning" || *value == "team-coordination")
     {
-        params.push(format!("mcpProfile={}", profile));
+        params.push(format!("mcpProfile={profile}"));
     }
 
     format!("{}/api/mcp?{}", base_url, params.join("&"))
@@ -108,7 +108,7 @@ async fn ensure_mcp_for_opencode(
         .await
         .map_err(|err| format!("mkdir {}: {}", config_dir.display(), err))?;
     let encoded = serde_json::to_vec_pretty(&Value::Object(existing))
-        .map_err(|err| format!("encode OpenCode MCP config: {}", err))?;
+        .map_err(|err| format!("encode OpenCode MCP config: {err}"))?;
     tokio::fs::write(&config_file, encoded)
         .await
         .map_err(|err| format!("write {}: {}", config_file.display(), err))?;
@@ -136,10 +136,7 @@ fn build_codex_mcp_config_contents(
     mcp_profile: Option<&str>,
 ) -> String {
     let endpoint = build_mcp_endpoint(workspace_id, session_id, tool_mode, mcp_profile);
-    format!(
-        "[mcp_servers.routa-coordination]\nurl = \"{}\"\nenabled = true\n",
-        endpoint
-    )
+    format!("[mcp_servers.routa-coordination]\nurl = \"{endpoint}\"\nenabled = true\n")
 }
 
 fn upsert_codex_mcp_section(existing: &str, rendered_section: &str) -> String {
@@ -211,12 +208,19 @@ async fn ensure_mcp_for_codex(
     mcp_profile: Option<&str>,
 ) -> Result<String, String> {
     let config_file = codex_private_config_path()?;
-    ensure_mcp_for_codex_at(&config_file, workspace_id, session_id, tool_mode, mcp_profile).await
+    ensure_mcp_for_codex_at(
+        &config_file,
+        workspace_id,
+        session_id,
+        tool_mode,
+        mcp_profile,
+    )
+    .await
 }
 
 pub fn codex_project_trust_override(cwd: &str) -> String {
     let escaped = cwd.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("projects.\"{}\".trust_level=\"trusted\"", escaped)
+    format!("projects.\"{escaped}\".trust_level=\"trusted\"")
 }
 
 fn codex_extract_routa_section_value(contents: &str, key: &str) -> Option<String> {
@@ -368,8 +372,7 @@ mod tests {
             Some("kanban-planning"),
         )
         .await
-        .expect("ensure codex mcp")
-        ;
+        .expect("ensure codex mcp");
         let overrides = codex_cli_overrides_from_config(&config_path, "/tmp/example/project")
             .expect("cli overrides");
 

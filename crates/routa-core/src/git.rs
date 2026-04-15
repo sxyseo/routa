@@ -61,7 +61,7 @@ pub fn get_clone_base_dir() -> PathBuf {
 }
 
 pub fn repo_to_dir_name(owner: &str, repo: &str) -> String {
-    format!("{}--{}", owner, repo)
+    format!("{owner}--{repo}")
 }
 
 pub fn dir_name_to_repo(dir_name: &str) -> String {
@@ -169,14 +169,14 @@ pub fn checkout_branch(repo_path: &str, branch: &str) -> bool {
 pub fn delete_branch(repo_path: &str, branch: &str) -> Result<(), String> {
     let current_branch = get_current_branch(repo_path).unwrap_or_default();
     if current_branch == branch {
-        return Err(format!("Cannot delete the current branch '{}'", branch));
+        return Err(format!("Cannot delete the current branch '{branch}'"));
     }
 
     if !list_local_branches(repo_path)
         .iter()
         .any(|candidate| candidate == branch)
     {
-        return Err(format!("Branch '{}' not found", branch));
+        return Err(format!("Branch '{branch}' not found"));
     }
 
     let output = Command::new("git")
@@ -230,7 +230,7 @@ pub fn get_branch_status(repo_path: &str, branch: &str) -> BranchStatus {
     };
 
     // Build the range string separately to ensure proper handling of branch names with slashes
-    let range = format!("{}...origin/{}", branch, branch);
+    let range = format!("{branch}...origin/{branch}");
 
     if let Ok(o) = Command::new("git")
         .args(["rev-list", "--left-right", "--count", &range])
@@ -295,7 +295,7 @@ fn validate_git_paths(files: &[String]) -> Result<(), String> {
 
         let path = Path::new(file);
         if path.is_absolute() {
-            return Err(format!("Absolute file paths are not allowed: {}", file));
+            return Err(format!("Absolute file paths are not allowed: {file}"));
         }
 
         if path.components().any(|component| {
@@ -305,8 +305,7 @@ fn validate_git_paths(files: &[String]) -> Result<(), String> {
             )
         }) {
             return Err(format!(
-                "File paths must stay within the repository root: {}",
-                file
+                "File paths must stay within the repository root: {file}"
             ));
         }
     }
@@ -534,8 +533,7 @@ pub fn reset_branch(
         "soft" => "--soft",
         other => {
             return Err(format!(
-                "Invalid reset mode '{}'. Expected 'soft' or 'hard'",
-                other
+                "Invalid reset mode '{other}'. Expected 'soft' or 'hard'"
             ))
         }
     };
@@ -1200,7 +1198,7 @@ pub fn get_commit_list(
 
     let since_str;
     if let Some(since_value) = since {
-        since_str = format!("--since={}", since_value);
+        since_str = format!("--since={since_value}");
         args.push(&since_str);
     }
 
@@ -1249,7 +1247,7 @@ pub fn get_commit_list(
         let message = if body.is_empty() {
             subject.clone()
         } else {
-            format!("{}\n\n{}", subject, body)
+            format!("{subject}\n\n{body}")
         };
 
         let mut additions = 0;
@@ -1538,7 +1536,7 @@ fn build_synthetic_added_diff(repo_path: &str, file: &GitFileChange) -> String {
     let content = std::fs::read_to_string(&file_path).unwrap_or_default();
     let additions = content
         .lines()
-        .map(|line| format!("+{}", line))
+        .map(|line| format!("+{line}"))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -1775,7 +1773,7 @@ pub fn compute_historical_related_files(
 
 fn file_exists_at_revision(repo_root: &Path, revision: &str, file_path: &str) -> bool {
     Command::new("git")
-        .args(["cat-file", "-e", &format!("{}:{}", revision, file_path)])
+        .args(["cat-file", "-e", &format!("{revision}:{file_path}")])
         .current_dir(repo_root)
         .output()
         .map(|output| output.status.success())
@@ -1796,7 +1794,7 @@ fn collect_interesting_lines(
     }
 
     let hunk_pattern = Regex::new(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
-        .map_err(|err| format!("Failed to compile diff hunk regex: {}", err))?;
+        .map_err(|err| format!("Failed to compile diff hunk regex: {err}"))?;
     let mut interesting_lines = BTreeSet::new();
 
     for line in raw_diff.lines() {
@@ -1831,7 +1829,7 @@ fn load_blame_chunks(
     file_path: &str,
     cache: &mut HashMap<String, Vec<BlameChunk>>,
 ) -> Result<Vec<BlameChunk>, String> {
-    let cache_key = format!("{}:{}", revision, file_path);
+    let cache_key = format!("{revision}:{file_path}");
     if let Some(chunks) = cache.get(&cache_key) {
         return Ok(chunks.clone());
     }
@@ -1848,7 +1846,7 @@ fn load_blame_chunks(
     };
 
     let header_pattern = Regex::new(r"^([0-9a-f]{40}) \d+ (\d+) (\d+)$")
-        .map_err(|err| format!("Failed to compile blame regex: {}", err))?;
+        .map_err(|err| format!("Failed to compile blame regex: {err}"))?;
     let mut chunks = Vec::new();
     let mut current_chunk: Option<BlameChunk> = None;
 

@@ -648,7 +648,7 @@ fn handle_eval_command(action: EvalCommand, db: &Db, repo_root: &str) -> Result<
                 },
             )?;
             db.insert_eval_snapshot(repo_root, &snapshot)?;
-            println!("repo:        {}", repo_root);
+            println!("repo:        {repo_root}");
             println!(
                 "eval:        {}",
                 run::orchestrator::summarize_eval(&snapshot)

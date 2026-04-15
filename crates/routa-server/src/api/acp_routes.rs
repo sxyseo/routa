@@ -142,8 +142,7 @@ fn build_coordinator_context_prompt(
     user_request: &str,
 ) -> String {
     format!(
-        "**Your Agent ID:** {}\n**Workspace ID:** {}\n\n## User Request\n\n{}\n",
-        agent_id, workspace_id, user_request
+        "**Your Agent ID:** {agent_id}\n**Workspace ID:** {workspace_id}\n\n## User Request\n\n{user_request}\n"
     )
 }
 
@@ -326,14 +325,14 @@ async fn acp_rpc(
                                         .and_then(|v| v.get("package"))
                                         .and_then(|v| v.as_str())
                                         .unwrap_or(agent_id);
-                                    (format!("npx {}", pkg), "available")
+                                    (format!("npx {pkg}"), "available")
                                 } else if dist.get("uvx").is_some() && uvx_available {
                                     let pkg = dist
                                         .get("uvx")
                                         .and_then(|v| v.get("package"))
                                         .and_then(|v| v.as_str())
                                         .unwrap_or(agent_id);
-                                    (format!("uvx {}", pkg), "available")
+                                    (format!("uvx {pkg}"), "available")
                                 } else if dist.get("binary").is_some() {
                                     (agent_id.to_string(), "unavailable")
                                 } else if dist.get("npx").is_some() {
@@ -342,7 +341,7 @@ async fn acp_rpc(
                                         .and_then(|v| v.get("package"))
                                         .and_then(|v| v.as_str())
                                         .unwrap_or(agent_id);
-                                    (format!("npx {}", pkg), "unavailable")
+                                    (format!("npx {pkg}"), "unavailable")
                                 } else {
                                     (agent_id.to_string(), "unavailable")
                                 }
@@ -353,10 +352,7 @@ async fn acp_rpc(
                             // If this agent ID conflicts with a built-in preset, use a suffixed ID
                             // to allow both versions to coexist in the UI
                             let (provider_id, provider_name) = if static_ids.contains(agent_id) {
-                                (
-                                    format!("{}-registry", agent_id),
-                                    format!("{} (Registry)", name),
-                                )
+                                (format!("{agent_id}-registry"), format!("{name} (Registry)"))
                             } else {
                                 (agent_id.to_string(), name.to_string())
                             };
@@ -1068,8 +1064,7 @@ async fn acp_rpc(
                 if !first_prompt_sent {
                     if let Some(specialist_prompt) = &session.specialist_system_prompt {
                         if session.provider.as_deref() != Some("claude") {
-                            prompt_text =
-                                format!("{}\n\n---\n\n{}", specialist_prompt, prompt_text);
+                            prompt_text = format!("{specialist_prompt}\n\n---\n\n{prompt_text}");
                         }
                     }
                 }

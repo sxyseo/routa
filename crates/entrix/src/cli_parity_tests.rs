@@ -571,8 +571,8 @@ fn analyze_long_file_positional_paths() {
 
 #[test]
 fn analyze_long_file_dedup_merges_files_and_paths() {
-    let files = vec!["src/b.py".to_string(), "src/a.ts".to_string()];
-    let paths = vec!["src/a.ts".to_string(), "src/c.rs".to_string()];
+    let files = ["src/b.py".to_string(), "src/a.ts".to_string()];
+    let paths = ["src/a.ts".to_string(), "src/c.rs".to_string()];
     let mut seen = std::collections::HashSet::new();
     let merged: Vec<String> = files
         .iter()

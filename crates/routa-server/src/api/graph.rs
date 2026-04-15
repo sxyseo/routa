@@ -119,12 +119,7 @@ async fn run_graph_command(repo_root: &Path, lang: &str, depth: &str) -> Result<
         command.output(),
     )
     .await
-    .map_err(|_| {
-        format!(
-            "graph analysis command timed out after {}ms",
-            GRAPH_ANALYZE_TIMEOUT_MS
-        )
-    })?
+    .map_err(|_| format!("graph analysis command timed out after {GRAPH_ANALYZE_TIMEOUT_MS}ms"))?
     .map_err(|error| format!("graph analysis command failed to execute: {error}"))?;
 
     if !output.status.success() {

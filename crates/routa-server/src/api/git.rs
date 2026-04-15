@@ -96,7 +96,7 @@ fn validate_git_file_path(path: &str) -> Result<(), String> {
 
     let candidate = FilePath::new(trimmed);
     if candidate.is_absolute() {
-        return Err(format!("Absolute file paths are not allowed: {}", trimmed));
+        return Err(format!("Absolute file paths are not allowed: {trimmed}"));
     }
 
     if candidate.components().any(|component| {
@@ -106,8 +106,7 @@ fn validate_git_file_path(path: &str) -> Result<(), String> {
         )
     }) {
         return Err(format!(
-            "File paths must stay within the repository root: {}",
-            trimmed
+            "File paths must stay within the repository root: {trimmed}"
         ));
     }
 

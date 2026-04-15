@@ -139,8 +139,7 @@ impl ArtifactStore {
                 let query = format!(
                     "SELECT id, type, task_id, workspace_id, provided_by_agent_id, requested_by_agent_id,
                      request_id, content, context, status, expires_at, metadata, created_at, updated_at
-                     FROM artifacts WHERE task_id IN ({}) ORDER BY task_id, created_at DESC",
-                    placeholders
+                     FROM artifacts WHERE task_id IN ({placeholders}) ORDER BY task_id, created_at DESC"
                 );
 
                 let mut stmt = conn.prepare(&query)?;

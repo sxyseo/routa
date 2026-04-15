@@ -74,14 +74,12 @@ impl AcpProcess {
         let cwd_path = Path::new(cwd);
         if !cwd_path.exists() {
             return Err(format!(
-                "Invalid session cwd '{}': directory does not exist",
-                cwd
+                "Invalid session cwd '{cwd}': directory does not exist"
             ));
         }
         if !cwd_path.is_dir() {
             return Err(format!(
-                "Invalid session cwd '{}': path is not a directory",
-                cwd
+                "Invalid session cwd '{cwd}': path is not a directory"
             ));
         }
 
@@ -120,19 +118,16 @@ impl AcpProcess {
                 let resolved_exists = Path::new(&resolved_command).exists();
                 if resolved_exists {
                     format!(
-                        "Failed to execute '{}' (resolved: '{}'): {}. The binary exists, but a required interpreter or wrapper target may be missing.",
-                        command, resolved_command, e
+                        "Failed to execute '{command}' (resolved: '{resolved_command}'): {e}. The binary exists, but a required interpreter or wrapper target may be missing."
                     )
                 } else {
                     format!(
-                        "Failed to spawn '{}' (resolved: '{}'): {}. Is it installed and in PATH?",
-                        command, resolved_command, e
+                        "Failed to spawn '{command}' (resolved: '{resolved_command}'): {e}. Is it installed and in PATH?"
                     )
                 }
             }
             _ => format!(
-                "Failed to spawn '{}' (resolved: '{}') from cwd '{}': {}",
-                command, resolved_command, cwd, e
+                "Failed to spawn '{command}' (resolved: '{resolved_command}') from cwd '{cwd}': {e}"
             ),
         })?;
 
@@ -249,7 +244,7 @@ impl AcpProcess {
                             let err_msg =
                                 msg["error"]["message"].as_str().unwrap_or("unknown error");
                             let err_code = msg["error"]["code"].as_i64().unwrap_or(0);
-                            let _ = tx.send(Err(format!("ACP Error [{}]: {}", err_code, err_msg)));
+                            let _ = tx.send(Err(format!("ACP Error [{err_code}]: {err_msg}")));
                         } else {
                             let _ = tx.send(Ok(msg["result"].clone()));
                         }
@@ -553,7 +548,7 @@ impl AcpProcess {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         if !alive.load(Ordering::SeqCst) {
-            return Err(format!("{} process died during startup", display_name));
+            return Err(format!("{display_name} process died during startup"));
         }
 
         tracing::info!("[AcpProcess:{}] Process started", display_name);
@@ -605,11 +600,11 @@ impl AcpProcess {
             stdin
                 .write_all(data.as_bytes())
                 .await
-                .map_err(|e| format!("Write {}: {}", method, e))?;
+                .map_err(|e| format!("Write {method}: {e}"))?;
             stdin
                 .flush()
                 .await
-                .map_err(|e| format!("Flush {}: {}", method, e))?;
+                .map_err(|e| format!("Flush {method}: {e}"))?;
         }
 
         // Determine timeout based on method and command type
@@ -630,7 +625,7 @@ impl AcpProcess {
 
         match tokio::time::timeout(timeout_dur, rx).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(format!("Channel closed for {} (id={})", method, id)),
+            Ok(Err(_)) => Err(format!("Channel closed for {method} (id={id})")),
             Err(_) => {
                 self.pending.lock().await.remove(&id);
                 Err(format!(

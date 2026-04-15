@@ -17,13 +17,13 @@ impl RuntimeFeed {
     pub fn open(event_path: &Path) -> Result<Self> {
         if let Some(parent) = event_path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("create runtime event dir {:?}", parent))?;
+                .with_context(|| format!("create runtime event dir {parent:?}"))?;
         }
         let _ = OpenOptions::new()
             .create(true)
             .append(true)
             .open(event_path)
-            .with_context(|| format!("create runtime feed {:?}", event_path))?;
+            .with_context(|| format!("create runtime feed {event_path:?}"))?;
 
         let offset = std::fs::metadata(event_path).map(|m| m.len()).unwrap_or(0);
 
@@ -96,14 +96,14 @@ impl RuntimeSocket {
     pub fn bind(socket_path: &Path) -> Result<Self> {
         if let Some(parent) = socket_path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("create runtime socket dir {:?}", parent))?;
+                .with_context(|| format!("create runtime socket dir {parent:?}"))?;
         }
         if socket_path.exists() {
             std::fs::remove_file(socket_path)
-                .with_context(|| format!("remove stale runtime socket {:?}", socket_path))?;
+                .with_context(|| format!("remove stale runtime socket {socket_path:?}"))?;
         }
         let listener = UnixListener::bind(socket_path)
-            .with_context(|| format!("bind runtime socket {:?}", socket_path))?;
+            .with_context(|| format!("bind runtime socket {socket_path:?}"))?;
         listener
             .set_nonblocking(true)
             .context("set runtime socket nonblocking")?;
@@ -161,13 +161,13 @@ impl RuntimeTcp {
 pub fn send_message(event_path: &Path, message: &RuntimeMessage) -> Result<()> {
     if let Some(parent) = event_path.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("create runtime event dir {:?}", parent))?;
+            .with_context(|| format!("create runtime event dir {parent:?}"))?;
     }
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(event_path)
-        .with_context(|| format!("open runtime event file {:?}", event_path))?;
+        .with_context(|| format!("open runtime event file {event_path:?}"))?;
     serde_json::to_writer(&mut file, message).context("write runtime event json")?;
     file.write_all(b"\n")
         .context("write runtime event newline")?;
@@ -178,7 +178,7 @@ pub fn send_message(event_path: &Path, message: &RuntimeMessage) -> Result<()> {
 #[cfg(unix)]
 pub fn send_socket_message(socket_path: &Path, message: &RuntimeMessage) -> Result<()> {
     let mut stream = UnixStream::connect(socket_path)
-        .with_context(|| format!("connect runtime socket {:?}", socket_path))?;
+        .with_context(|| format!("connect runtime socket {socket_path:?}"))?;
     serde_json::to_writer(&mut stream, message).context("write runtime socket json")?;
     stream
         .write_all(b"\n")
@@ -225,11 +225,10 @@ pub fn tcp_reachable(addr: &str) -> bool {
 pub fn write_service_info(info_path: &Path, info: &RuntimeServiceInfo) -> Result<()> {
     if let Some(parent) = info_path.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("create runtime info dir {:?}", parent))?;
+            .with_context(|| format!("create runtime info dir {parent:?}"))?;
     }
     let payload = serde_json::to_vec_pretty(info).context("encode runtime info json")?;
-    std::fs::write(info_path, payload)
-        .with_context(|| format!("write runtime info {:?}", info_path))
+    std::fs::write(info_path, payload).with_context(|| format!("write runtime info {info_path:?}"))
 }
 
 pub fn read_service_info(info_path: &Path) -> Result<Option<RuntimeServiceInfo>> {
@@ -237,7 +236,7 @@ pub fn read_service_info(info_path: &Path) -> Result<Option<RuntimeServiceInfo>>
         return Ok(None);
     }
     let payload = std::fs::read_to_string(info_path)
-        .with_context(|| format!("read runtime info {:?}", info_path))?;
+        .with_context(|| format!("read runtime info {info_path:?}"))?;
     let info = serde_json::from_str(&payload).context("decode runtime info json")?;
     Ok(Some(info))
 }

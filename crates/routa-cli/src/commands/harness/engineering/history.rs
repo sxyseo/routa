@@ -117,7 +117,7 @@ pub(super) fn generate_playbooks_from_history(
             .iter()
             .enumerate()
             .map(|(idx, p)| HarnessEngineeringAction {
-                gap_id: format!("playbook-{}", idx),
+                gap_id: format!("playbook-{idx}"),
                 priority: 1,
                 action: format!("Review playbook: {}", p.id),
                 rationale: format!(
@@ -173,7 +173,7 @@ pub(super) fn record_evolution_outcome(
 ) -> Result<(), String> {
     let history_dir = repo_root.join("docs/fitness/evolution");
     fs::create_dir_all(&history_dir)
-        .map_err(|e| format!("Failed to create evolution history dir: {}", e))?;
+        .map_err(|e| format!("Failed to create evolution history dir: {e}"))?;
 
     let history_file = history_dir.join("history.jsonl");
 
@@ -217,16 +217,16 @@ pub(super) fn record_evolution_outcome(
         error_messages: context.and_then(|ctx| ctx.error_messages.clone()),
     };
 
-    let json_line = serde_json::to_string(&record)
-        .map_err(|e| format!("Failed to serialize history: {}", e))?;
+    let json_line =
+        serde_json::to_string(&record).map_err(|e| format!("Failed to serialize history: {e}"))?;
 
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&history_file)
-        .map_err(|e| format!("Failed to open history file: {}", e))?;
+        .map_err(|e| format!("Failed to open history file: {e}"))?;
 
-    writeln!(file, "{}", json_line).map_err(|e| format!("Failed to write history: {}", e))?;
+    writeln!(file, "{json_line}").map_err(|e| format!("Failed to write history: {e}"))?;
 
     Ok(())
 }

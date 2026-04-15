@@ -74,7 +74,7 @@ fn run_git(repo_path: &Path, args: &[&str]) -> String {
         .args(args)
         .current_dir(repo_path)
         .output()
-        .unwrap_or_else(|error| panic!("git {:?} failed to start: {}", args, error));
+        .unwrap_or_else(|error| panic!("git {args:?} failed to start: {error}"));
 
     if !output.status.success() {
         panic!(

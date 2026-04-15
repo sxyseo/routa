@@ -67,7 +67,7 @@ async fn load_task_and_repo_path(
         .task_store
         .get(task_id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", task_id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {task_id} not found")))?;
     let repo_path = resolve_task_repo_path(state, &task).await?;
     Ok((task, repo_path))
 }
@@ -81,7 +81,7 @@ pub async fn get_task_changes(
         .task_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))?;
 
     let worktree = match task.worktree_id.as_ref() {
         Some(worktree_id) => state.worktree_store.get(worktree_id).await?,

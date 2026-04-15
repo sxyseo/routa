@@ -119,7 +119,7 @@ async fn start_mock_a2a_server() -> String {
         .await
         .expect("bind mock a2a server");
     let addr = listener.local_addr().expect("mock a2a local addr");
-    let base_url = format!("http://{}", addr);
+    let base_url = format!("http://{addr}");
     let state = MockA2AState {
         base_url: base_url.clone(),
         get_task_calls: Arc::new(AtomicUsize::new(0)),
@@ -239,7 +239,7 @@ async fn start_mock_a2a_server_with_headers(
         .await
         .expect("bind mock a2a server");
     let addr = listener.local_addr().expect("mock a2a local addr");
-    let base_url = format!("http://{}", addr);
+    let base_url = format!("http://{addr}");
     let state = MockA2AState {
         base_url: base_url.clone(),
         required_headers: Some(required_headers),

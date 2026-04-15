@@ -56,14 +56,12 @@ fn validate_session_cwd(cwd: &str) -> Result<(), String> {
     let path = Path::new(cwd);
     if !path.exists() {
         return Err(format!(
-            "Invalid session cwd '{}': directory does not exist",
-            cwd
+            "Invalid session cwd '{cwd}': directory does not exist"
         ));
     }
     if !path.is_dir() {
         return Err(format!(
-            "Invalid session cwd '{}': path is not a directory",
-            cwd
+            "Invalid session cwd '{cwd}': path is not a directory"
         ));
     }
     Ok(())
@@ -881,7 +879,7 @@ impl AcpManager {
             let processes = self.processes.read().await;
             let managed = processes
                 .get(session_id)
-                .ok_or_else(|| format!("No agent process for session: {}", session_id))?;
+                .ok_or_else(|| format!("No agent process for session: {session_id}"))?;
             (
                 managed.process.clone(),
                 managed.acp_session_id.clone(),
@@ -896,7 +894,7 @@ impl AcpManager {
         };
 
         if !is_alive {
-            return Err(format!("Agent ({}) process is not running", preset_id));
+            return Err(format!("Agent ({preset_id}) process is not running"));
         }
 
         // Record UserMessage trace
@@ -1036,7 +1034,7 @@ impl AcpManager {
         let processes = self.processes.read().await;
         let managed = processes
             .get(session_id)
-            .ok_or_else(|| format!("No agent process for session: {}", session_id))?;
+            .ok_or_else(|| format!("No agent process for session: {session_id}"))?;
 
         // Record trace
         let trace = TraceRecord::new(
@@ -1276,7 +1274,7 @@ async fn get_registry_preset(id: &str) -> Result<AcpPreset, String> {
         .agents
         .into_iter()
         .find(|a| a.id == id)
-        .ok_or_else(|| format!("Agent '{}' not found in registry", id))?;
+        .ok_or_else(|| format!("Agent '{id}' not found in registry"))?;
 
     // Build command from distribution
     let (command, args) = if let Some(ref npx) = agent.distribution.npx {
@@ -1289,8 +1287,7 @@ async fn get_registry_preset(id: &str) -> Result<AcpPreset, String> {
         ("uvx".to_string(), args)
     } else {
         return Err(format!(
-            "Agent '{}' has no supported distribution (npx/uvx)",
-            id
+            "Agent '{id}' has no supported distribution (npx/uvx)"
         ));
     };
 

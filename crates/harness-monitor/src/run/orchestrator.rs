@@ -155,11 +155,11 @@ pub(crate) fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -
                     println!("evidence:    {}", evidence_inline_summary(&run.evidence));
                     println!("planes:      {}", summarize_planes(&run.planes));
                     if let Some(warning) = &run.integrity_warning {
-                        println!("integrity:   {}", warning);
+                        println!("integrity:   {warning}");
                     }
                     println!("next:        {}", run.next_action);
                     if let Some(handoff) = &run.handoff_summary {
-                        println!("handoff:     {}", handoff);
+                        println!("handoff:     {handoff}");
                     }
                     if !run.recovery_hints.is_empty() {
                         println!("recovery:    {}", run.recovery_hints.join("; "));
@@ -169,7 +169,7 @@ pub(crate) fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -
                     } else {
                         println!("changed:");
                         for path in &run.changed_files {
-                            println!("  - {}", path);
+                            println!("  - {path}");
                         }
                     }
                 }
@@ -251,7 +251,7 @@ pub(crate) fn handle_workspace_command(
                             .unwrap_or_else(|| "<detached>".to_string())
                     );
                     if let Some(head) = &workspace.head {
-                        println!("head:        {}", head);
+                        println!("head:        {head}");
                     }
                     println!("state:       {}", workspace.state);
                     println!("dirty_files: {}", workspace.dirty_files);
@@ -278,7 +278,7 @@ pub(crate) fn handle_workspace_command(
                         println!("integrity:   {}", workspace.integrity_warnings.join("; "));
                     }
                     if let Some(hint) = &workspace.recovery_hint {
-                        println!("recovery:    {}", hint);
+                        println!("recovery:    {hint}");
                     }
                     println!("detached:    {}", workspace.detached);
                 }

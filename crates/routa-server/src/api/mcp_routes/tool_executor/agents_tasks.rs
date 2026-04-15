@@ -50,7 +50,7 @@ pub(super) async fn execute(
                         Err(e) => tool_result_error(&e.to_string()),
                     }
                 }
-                None => tool_result_error(&format!("Invalid role: {}", role_str)),
+                None => tool_result_error(&format!("Invalid role: {role_str}")),
             }
         }
         "read_agent_conversation" => {
@@ -91,7 +91,7 @@ pub(super) async fn execute(
                         })).collect::<Vec<_>>()
                     }))
                 }
-                Ok(None) => tool_result_error(&format!("Agent not found: {}", agent_id)),
+                Ok(None) => tool_result_error(&format!("Agent not found: {agent_id}")),
                 Err(e) => tool_result_error(&e.to_string()),
             }
         }
@@ -123,7 +123,7 @@ pub(super) async fn execute(
                         "lastActivity": agent.updated_at
                     }))
                 }
-                Ok(None) => tool_result_error(&format!("Agent not found: {}", agent_id)),
+                Ok(None) => tool_result_error(&format!("Agent not found: {agent_id}")),
                 Err(e) => tool_result_error(&e.to_string()),
             }
         }
@@ -204,7 +204,7 @@ pub(super) async fn execute(
                     }
                     Err(e) => tool_result_error(&e.to_string()),
                 },
-                None => tool_result_error(&format!("Invalid status: {}", status_str)),
+                None => tool_result_error(&format!("Invalid status: {status_str}")),
             }
         }
         "update_task" => {
@@ -214,7 +214,7 @@ pub(super) async fn execute(
                 .and_then(|v| v.as_str())
                 .unwrap_or("system");
             let Some(mut task) = state.task_store.get(task_id).await.ok().flatten() else {
-                return Some(tool_result_error(&format!("Task not found: {}", task_id)));
+                return Some(tool_result_error(&format!("Task not found: {task_id}")));
             };
 
             let old_status = task.status.clone();
@@ -241,10 +241,7 @@ pub(super) async fn execute(
                 match crate::models::task::TaskStatus::from_str(status_str) {
                     Some(status) => task.status = status,
                     None => {
-                        return Some(tool_result_error(&format!(
-                            "Invalid status: {}",
-                            status_str
-                        )))
+                        return Some(tool_result_error(&format!("Invalid status: {status_str}")))
                     }
                 }
             }

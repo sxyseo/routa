@@ -112,15 +112,15 @@ impl ShellRunner {
                 let CommandRunOutput { output, timed_out } = command_result;
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                let combined = format!("{}{}", stdout, stderr);
+                let combined = format!("{stdout}{stderr}");
                 let output_truncated = smart_truncate(&combined, 4000, 4000);
                 let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
                 if timed_out {
                     let timed_out_output = if output_truncated.trim().is_empty() {
-                        format!("TIMEOUT ({}s)", timeout)
+                        format!("TIMEOUT ({timeout}s)")
                     } else {
-                        format!("TIMEOUT ({}s)\n{}", timeout, output_truncated)
+                        format!("TIMEOUT ({timeout}s)\n{output_truncated}")
                     };
 
                     MetricResult::new(metric.name.clone(), false, timed_out_output, metric.tier)

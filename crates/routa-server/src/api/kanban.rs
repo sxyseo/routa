@@ -63,7 +63,7 @@ fn imported_board_id(
             }
         })
         .collect::<String>();
-    let scoped_id = format!("{}--{}", workspace_prefix, board_id);
+    let scoped_id = format!("{workspace_prefix}--{board_id}");
     if !conflicting_ids.contains(&scoped_id) {
         return scoped_id;
     }
@@ -145,7 +145,7 @@ fn translate_agent_event_to_kanban_payload(event: &AgentEvent) -> Option<serde_j
 }
 
 fn get_session_concurrency_limit(metadata: &HashMap<String, String>, board_id: &str) -> u32 {
-    let key = format!("kanbanSessionConcurrencyLimit:{}", board_id);
+    let key = format!("kanbanSessionConcurrencyLimit:{board_id}");
     metadata
         .get(&key)
         .and_then(|value| value.parse::<u32>().ok())
@@ -154,7 +154,7 @@ fn get_session_concurrency_limit(metadata: &HashMap<String, String>, board_id: &
 }
 
 fn get_auto_provider(metadata: &HashMap<String, String>, board_id: &str) -> Option<String> {
-    let key = format!("kanbanAutoProvider:{}", board_id);
+    let key = format!("kanbanAutoProvider:{board_id}");
     metadata
         .get(&key)
         .map(|value| value.trim())
@@ -200,7 +200,7 @@ fn default_dev_session_supervision() -> KanbanDevSessionSupervision {
 }
 
 fn dev_supervision_metadata_key(board_id: &str) -> String {
-    format!("kanbanDevSessionSupervision:{}", board_id)
+    format!("kanbanDevSessionSupervision:{board_id}")
 }
 
 fn normalize_dev_session_supervision(
@@ -1046,7 +1046,7 @@ async fn persist_session_concurrency_limit(
     let limit = limit.max(1);
     let workspace = state.workspace_store.get(workspace_id).await.ok().flatten();
     if let Some(mut workspace) = workspace {
-        let key = format!("kanbanSessionConcurrencyLimit:{}", board_id);
+        let key = format!("kanbanSessionConcurrencyLimit:{board_id}");
         workspace.metadata.insert(key, limit.to_string());
         state.workspace_store.save(&workspace).await?;
     }
@@ -1061,7 +1061,7 @@ async fn persist_auto_provider(
 ) -> Result<(), ServerError> {
     let workspace = state.workspace_store.get(workspace_id).await.ok().flatten();
     if let Some(mut workspace) = workspace {
-        let key = format!("kanbanAutoProvider:{}", board_id);
+        let key = format!("kanbanAutoProvider:{board_id}");
         if let Some(provider_id) = provider_id
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
@@ -1108,9 +1108,9 @@ async fn rpc_result(
         return Ok(result.clone());
     }
 
-    let error = response.get("error").ok_or_else(|| {
-        ServerError::Internal(format!("Missing RPC result for method {}", method))
-    })?;
+    let error = response
+        .get("error")
+        .ok_or_else(|| ServerError::Internal(format!("Missing RPC result for method {method}")))?;
     let code = error
         .get("code")
         .and_then(|value| value.as_i64())

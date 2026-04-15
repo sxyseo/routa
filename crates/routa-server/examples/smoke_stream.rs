@@ -25,16 +25,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let addr = routa_server::start_server(config).await?;
-    println!("Server started on {}", addr);
+    println!("Server started on {addr}");
 
-    let base = format!("http://{}", addr);
+    let base = format!("http://{addr}");
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(STREAM_TIMEOUT_SECS))
         .build()?;
 
-    let url = format!("{}/api/kanban/default/events", base);
-    println!("Connecting to SSE stream: {}", url);
+    let url = format!("{base}/api/kanban/default/events");
+    println!("Connecting to SSE stream: {url}");
 
     let response = client.get(&url).send().await?;
     if !response.status().is_success() {
@@ -52,14 +52,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match chunk {
                 Ok(bytes) => {
                     let text = String::from_utf8_lossy(&bytes);
-                    println!("Received chunk: {:?}", text);
+                    println!("Received chunk: {text:?}");
                     if text.contains("data:") && !text.contains("comment") {
                         has_data_frame = true;
                         event_count += 1;
                     }
                 }
                 Err(e) => {
-                    eprintln!("Stream error: {}", e);
+                    eprintln!("Stream error: {e}");
                     break;
                 }
             }
@@ -79,6 +79,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    println!("Smoke test PASSED: Received {} data frame(s)", event_count);
+    println!("Smoke test PASSED: Received {event_count} data frame(s)");
     Ok(())
 }

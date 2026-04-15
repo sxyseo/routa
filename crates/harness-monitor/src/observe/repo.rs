@@ -204,7 +204,7 @@ fn resolve_default_db_path(repo_root: &Path) -> Result<PathBuf> {
         }
     }
 
-    anyhow::bail!("could not create a writable database path: {:?}", attempted);
+    anyhow::bail!("could not create a writable database path: {attempted:?}");
 }
 
 fn db_path_candidates(repo_root: &Path) -> Vec<PathBuf> {
@@ -261,7 +261,7 @@ fn ensure_writable_db_path(path: &Path) -> Result<()> {
     }
 
     let parent = path.parent().context("db path has no parent")?;
-    std::fs::create_dir_all(parent).with_context(|| format!("create db directory {:?}", parent))?;
+    std::fs::create_dir_all(parent).with_context(|| format!("create db directory {parent:?}"))?;
 
     match std::fs::OpenOptions::new()
         .read(true)

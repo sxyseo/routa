@@ -303,7 +303,7 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path();
         std::fs::create_dir_all(repo_root.join("src")).expect("src");
-        std::fs::write(repo_root.join("src/app.ts"), vec!["x"; 11].join("\n")).expect("write");
+        std::fs::write(repo_root.join("src/app.ts"), ["x"; 11].join("\n")).expect("write");
 
         let violations = evaluate_paths(
             repo_root,

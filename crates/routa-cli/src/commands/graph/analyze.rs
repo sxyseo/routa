@@ -138,7 +138,7 @@ pub fn run_analyze(args: &AnalyzeArgs) -> Result<(), String> {
 
     if let Some(path) = &args.output {
         fs::write(path, &output)
-            .map_err(|error| format!("failed to write graph output {}: {error}", path))?;
+            .map_err(|error| format!("failed to write graph output {path}: {error}"))?;
         println!("Graph written to: {path}");
     } else {
         println!("{output}");
@@ -374,8 +374,7 @@ pub fn render_dot(graph: &DependencyGraph) -> String {
         };
 
         out.push_str(&format!(
-            "  \"{}\" [label=\"{}\", fillcolor={}, shape={}];\n",
-            escaped_id, escaped_label, color, shape
+            "  \"{escaped_id}\" [label=\"{escaped_label}\", fillcolor={color}, shape={shape}];\n"
         ));
     }
 
@@ -394,8 +393,7 @@ pub fn render_dot(graph: &DependencyGraph) -> String {
         };
 
         out.push_str(&format!(
-            "  \"{}\" -> \"{}\" [label=\"{}\", style={}];\n",
-            from, to, label, style
+            "  \"{from}\" -> \"{to}\" [label=\"{label}\", style={style}];\n"
         ));
     }
 
@@ -923,7 +921,7 @@ fn resolve_java_dependency(root: &Path, _importer: &Path, specifier: &str) -> Re
             for part in dir_parts {
                 candidate = candidate.join(part);
             }
-            candidate = candidate.join(format!("{}.java", class_name));
+            candidate = candidate.join(format!("{class_name}.java"));
 
             if candidate.exists() && candidate.is_file() {
                 return ResolvedDependency::LocalFile(repo_relative_path(root, &candidate));
@@ -1123,7 +1121,7 @@ fn extract_java_import_dependencies(
                                 || imported_package.starts_with("org.")
                                 || imported_package.starts_with("com.")
                             {
-                                let target_package_id = format!("package:{}", imported_package);
+                                let target_package_id = format!("package:{imported_package}");
 
                                 // Add external package node
                                 nodes.entry(target_package_id.clone()).or_insert_with(|| {
@@ -1142,7 +1140,7 @@ fn extract_java_import_dependencies(
 
                                 // Add DEPENDS_ON edge from current package to imported package
                                 if let Some(current_pkg) = package_name {
-                                    let source_package_id = format!("package:{}", current_pkg);
+                                    let source_package_id = format!("package:{current_pkg}");
 
                                     // Only add edge if it's a different package
                                     if current_pkg != imported_package {
@@ -1176,7 +1174,7 @@ fn extract_java_ast_nodes(
     match node.kind() {
         "package_declaration" => {
             if let Some(pkg_name) = package_name {
-                let pkg_id = format!("package:{}", pkg_name);
+                let pkg_id = format!("package:{pkg_name}");
                 nodes.entry(pkg_id.clone()).or_insert_with(|| GraphNode {
                     id: pkg_id.clone(),
                     path: file_id.to_string(),
@@ -1221,12 +1219,12 @@ fn extract_java_class(
     }
 
     let full_name = if let Some(pkg) = package_name {
-        format!("{}.{}", pkg, class_name)
+        format!("{pkg}.{class_name}")
     } else {
         class_name.clone()
     };
 
-    let class_id = format!("class:{}", full_name);
+    let class_id = format!("class:{full_name}");
     nodes.entry(class_id.clone()).or_insert_with(|| GraphNode {
         id: class_id.clone(),
         path: file_id.to_string(),
@@ -1234,7 +1232,7 @@ fn extract_java_class(
         kind: NodeKind::Class,
         name: Some(class_name.clone()),
         package_name: package_name.clone(),
-        parent_id: package_name.as_ref().map(|pkg| format!("package:{}", pkg)),
+        parent_id: package_name.as_ref().map(|pkg| format!("package:{pkg}")),
         start_line: Some(node.start_position().row + 1),
         end_line: Some(node.end_position().row + 1),
     });
@@ -1242,7 +1240,7 @@ fn extract_java_class(
     // MADE_OF: Package → Class
     if let Some(pkg) = package_name {
         edges.insert((
-            format!("package:{}", pkg),
+            format!("package:{pkg}"),
             class_id.clone(),
             EdgeKind::MadeOf,
             full_name.clone(),
@@ -1302,12 +1300,12 @@ fn extract_java_interface(
     }
 
     let full_name = if let Some(pkg) = package_name {
-        format!("{}.{}", pkg, interface_name)
+        format!("{pkg}.{interface_name}")
     } else {
         interface_name.clone()
     };
 
-    let interface_id = format!("interface:{}", full_name);
+    let interface_id = format!("interface:{full_name}");
     nodes
         .entry(interface_id.clone())
         .or_insert_with(|| GraphNode {
@@ -1317,7 +1315,7 @@ fn extract_java_interface(
             kind: NodeKind::Interface,
             name: Some(interface_name.clone()),
             package_name: package_name.clone(),
-            parent_id: package_name.as_ref().map(|pkg| format!("package:{}", pkg)),
+            parent_id: package_name.as_ref().map(|pkg| format!("package:{pkg}")),
             start_line: Some(node.start_position().row + 1),
             end_line: Some(node.end_position().row + 1),
         });
@@ -1325,7 +1323,7 @@ fn extract_java_interface(
     // MADE_OF: Package → Interface
     if let Some(pkg) = package_name {
         edges.insert((
-            format!("package:{}", pkg),
+            format!("package:{pkg}"),
             interface_id.clone(),
             EdgeKind::MadeOf,
             full_name.clone(),
@@ -1367,12 +1365,12 @@ fn extract_java_enum(
     }
 
     let full_name = if let Some(pkg) = package_name {
-        format!("{}.{}", pkg, enum_name)
+        format!("{pkg}.{enum_name}")
     } else {
         enum_name.clone()
     };
 
-    let enum_id = format!("enum:{}", full_name);
+    let enum_id = format!("enum:{full_name}");
     nodes.entry(enum_id.clone()).or_insert_with(|| GraphNode {
         id: enum_id.clone(),
         path: file_id.to_string(),
@@ -1380,7 +1378,7 @@ fn extract_java_enum(
         kind: NodeKind::Enum,
         name: Some(enum_name.clone()),
         package_name: package_name.clone(),
-        parent_id: package_name.as_ref().map(|pkg| format!("package:{}", pkg)),
+        parent_id: package_name.as_ref().map(|pkg| format!("package:{pkg}")),
         start_line: Some(node.start_position().row + 1),
         end_line: Some(node.end_position().row + 1),
     });
@@ -1388,7 +1386,7 @@ fn extract_java_enum(
     // MADE_OF: Package → Enum
     if let Some(pkg) = package_name {
         edges.insert((
-            format!("package:{}", pkg),
+            format!("package:{pkg}"),
             enum_id,
             EdgeKind::MadeOf,
             full_name,
@@ -1411,7 +1409,7 @@ fn extract_java_method(
         return;
     }
 
-    let method_id = format!("{}::{}", parent_id, method_name);
+    let method_id = format!("{parent_id}::{method_name}");
     let kind = if node.kind() == "constructor_declaration" {
         NodeKind::Constructor
     } else {
@@ -1456,7 +1454,7 @@ fn extract_java_field(
                 continue;
             }
 
-            let field_id = format!("{}::{}", parent_id, field_name);
+            let field_id = format!("{parent_id}::{field_name}");
             nodes.entry(field_id.clone()).or_insert_with(|| GraphNode {
                 id: field_id.clone(),
                 path: file_id.to_string(),
@@ -1496,11 +1494,11 @@ fn extract_java_inheritance(
                     let super_class = type_id.utf8_text(source).unwrap_or("").trim();
                     if !super_class.is_empty() {
                         let target_id = if super_class.contains('.') {
-                            format!("class:{}", super_class)
+                            format!("class:{super_class}")
                         } else if let Some(pkg) = package_name {
-                            format!("class:{}.{}", pkg, super_class)
+                            format!("class:{pkg}.{super_class}")
                         } else {
-                            format!("class:{}", super_class)
+                            format!("class:{super_class}")
                         };
 
                         edges.insert((
@@ -1532,11 +1530,11 @@ fn extract_java_inheritance(
                                 let name = type_node.utf8_text(source).unwrap_or("").trim();
                                 if !name.is_empty() {
                                     let target_id = if name.contains('.') {
-                                        format!("interface:{}", name)
+                                        format!("interface:{name}")
                                     } else if let Some(pkg) = package_name {
-                                        format!("interface:{}.{}", pkg, name)
+                                        format!("interface:{pkg}.{name}")
                                     } else {
-                                        format!("interface:{}", name)
+                                        format!("interface:{name}")
                                     };
 
                                     edges.insert((
@@ -1556,11 +1554,11 @@ fn extract_java_inheritance(
 
                     if !interface_name.is_empty() {
                         let target_id = if interface_name.contains('.') {
-                            format!("interface:{}", interface_name)
+                            format!("interface:{interface_name}")
                         } else if let Some(pkg) = package_name {
-                            format!("interface:{}.{}", pkg, interface_name)
+                            format!("interface:{pkg}.{interface_name}")
                         } else {
-                            format!("interface:{}", interface_name)
+                            format!("interface:{interface_name}")
                         };
 
                         edges.insert((
@@ -1704,8 +1702,8 @@ fn extract_rust_struct(
         return;
     }
 
-    let full_name = format!("{}::{}", module_path, struct_name);
-    let struct_id = format!("struct:{}", full_name);
+    let full_name = format!("{module_path}::{struct_name}");
+    let struct_id = format!("struct:{full_name}");
 
     nodes.entry(struct_id.clone()).or_insert_with(|| GraphNode {
         id: struct_id.clone(),
@@ -1733,8 +1731,8 @@ fn extract_rust_trait(
         return;
     }
 
-    let full_name = format!("{}::{}", module_path, trait_name);
-    let trait_id = format!("trait:{}", full_name);
+    let full_name = format!("{module_path}::{trait_name}");
+    let trait_id = format!("trait:{full_name}");
 
     nodes.entry(trait_id.clone()).or_insert_with(|| GraphNode {
         id: trait_id,
@@ -1774,8 +1772,8 @@ fn extract_rust_impl(
         let trait_name = &type_identifiers[0];
         let type_name = &type_identifiers[1];
 
-        let struct_id = format!("struct:{}::{}", module_path, type_name);
-        let trait_id = format!("trait:{}::{}", module_path, trait_name);
+        let struct_id = format!("struct:{module_path}::{type_name}");
+        let trait_id = format!("trait:{module_path}::{trait_name}");
 
         edges.insert((
             struct_id,
@@ -1800,11 +1798,11 @@ fn extract_rust_function(
         return;
     }
 
-    let full_name = format!("{}::{}", module_path, fn_name);
-    let fn_id = format!("fn:{}", full_name);
+    let full_name = format!("{module_path}::{fn_name}");
+    let fn_id = format!("fn:{full_name}");
 
     nodes.entry(fn_id).or_insert_with(|| GraphNode {
-        id: format!("fn:{}", full_name),
+        id: format!("fn:{full_name}"),
         path: file_id.to_string(),
         language: "rust".to_string(),
         kind: NodeKind::Method,
@@ -1829,11 +1827,11 @@ fn extract_rust_enum(
         return;
     }
 
-    let full_name = format!("{}::{}", module_path, enum_name);
-    let enum_id = format!("enum:{}", full_name);
+    let full_name = format!("{module_path}::{enum_name}");
+    let enum_id = format!("enum:{full_name}");
 
     nodes.entry(enum_id).or_insert_with(|| GraphNode {
-        id: format!("enum:{}", full_name),
+        id: format!("enum:{full_name}"),
         path: file_id.to_string(),
         language: "rust".to_string(),
         kind: NodeKind::Enum,
@@ -1937,8 +1935,8 @@ fn extract_typescript_class(
         return;
     }
 
-    let full_name = format!("{}.{}", module_path, class_name);
-    let class_id = format!("class:{}", full_name);
+    let full_name = format!("{module_path}.{class_name}");
+    let class_id = format!("class:{full_name}");
 
     nodes.entry(class_id.clone()).or_insert_with(|| GraphNode {
         id: class_id.clone(),
@@ -1973,7 +1971,7 @@ fn extract_typescript_inheritance(
                         if !super_class.is_empty() {
                             edges.insert((
                                 class_id.to_string(),
-                                format!("class:{}.{}", module_path, super_class),
+                                format!("class:{module_path}.{super_class}"),
                                 EdgeKind::Extends,
                                 super_class.to_string(),
                                 false,
@@ -1990,7 +1988,7 @@ fn extract_typescript_inheritance(
                         if !interface_name.is_empty() {
                             edges.insert((
                                 class_id.to_string(),
-                                format!("interface:{}.{}", module_path, interface_name),
+                                format!("interface:{module_path}.{interface_name}"),
                                 EdgeKind::Implements,
                                 interface_name.to_string(),
                                 false,
@@ -2020,11 +2018,11 @@ fn extract_typescript_interface(
         return;
     }
 
-    let full_name = format!("{}.{}", module_path, interface_name);
-    let interface_id = format!("interface:{}", full_name);
+    let full_name = format!("{module_path}.{interface_name}");
+    let interface_id = format!("interface:{full_name}");
 
     nodes.entry(interface_id).or_insert_with(|| GraphNode {
-        id: format!("interface:{}", full_name),
+        id: format!("interface:{full_name}"),
         path: file_id.to_string(),
         language: "typescript".to_string(),
         kind: NodeKind::Interface,
@@ -2049,11 +2047,11 @@ fn extract_typescript_function(
         return;
     }
 
-    let full_name = format!("{}.{}", module_path, fn_name);
-    let fn_id = format!("function:{}", full_name);
+    let full_name = format!("{module_path}.{fn_name}");
+    let fn_id = format!("function:{full_name}");
 
     nodes.entry(fn_id).or_insert_with(|| GraphNode {
-        id: format!("function:{}", full_name),
+        id: format!("function:{full_name}"),
         path: file_id.to_string(),
         language: "typescript".to_string(),
         kind: NodeKind::Method,
@@ -2078,11 +2076,11 @@ fn extract_typescript_enum(
         return;
     }
 
-    let full_name = format!("{}.{}", module_path, enum_name);
-    let enum_id = format!("enum:{}", full_name);
+    let full_name = format!("{module_path}.{enum_name}");
+    let enum_id = format!("enum:{full_name}");
 
     nodes.entry(enum_id).or_insert_with(|| GraphNode {
-        id: format!("enum:{}", full_name),
+        id: format!("enum:{full_name}"),
         path: file_id.to_string(),
         language: "typescript".to_string(),
         kind: NodeKind::Enum,

@@ -340,7 +340,7 @@ impl RuntimeState {
                     && (file.last_session_id.is_none()
                         || matches!(file.confidence, AttributionConfidence::Unknown))
                 {
-                    attrib_events.push(format!("miss {}", rel_path));
+                    attrib_events.push(format!("miss {rel_path}"));
                 }
             }
         }

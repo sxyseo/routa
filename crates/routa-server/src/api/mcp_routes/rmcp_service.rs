@@ -134,7 +134,7 @@ impl ServerHandler for RoutaMcpHttpServer {
             scope.mcp_profile.as_deref(),
         ) {
             return Err(McpError::invalid_params(
-                format!("Tool not allowed for MCP profile: {}", requested_tool_name),
+                format!("Tool not allowed for MCP profile: {requested_tool_name}"),
                 None,
             ));
         }
@@ -148,10 +148,7 @@ impl ServerHandler for RoutaMcpHttpServer {
         let result = execute_tool_public(&self.state, &normalized_tool_name, &arguments).await;
         serde_json::from_value(result).map_err(|err| {
             McpError::internal_error(
-                format!(
-                    "Failed to encode MCP tool result for '{}': {}",
-                    normalized_tool_name, err
-                ),
+                format!("Failed to encode MCP tool result for '{normalized_tool_name}': {err}"),
                 None,
             )
         })
@@ -190,6 +187,6 @@ fn server_name(profile: Option<&str>) -> &'static str {
 
 fn tool_from_value(value: serde_json::Value) -> Result<Tool, McpError> {
     serde_json::from_value(value).map_err(|err| {
-        McpError::internal_error(format!("Invalid MCP tool definition: {}", err), None)
+        McpError::internal_error(format!("Invalid MCP tool definition: {err}"), None)
     })
 }

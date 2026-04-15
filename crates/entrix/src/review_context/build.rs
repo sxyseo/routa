@@ -174,22 +174,19 @@ fn generate_review_guidance(
 
     if wide_blast_radius {
         guidance_parts.push(format!(
-            "- Wide blast radius: {} impacted files. Review callers, API routes, and downstream workflows carefully.",
-            impacted_files
+            "- Wide blast radius: {impacted_files} impacted files. Review callers, API routes, and downstream workflows carefully."
         ));
     }
 
     if impacted_test_files > 0 {
         guidance_parts.push(format!(
-            "- {} impacted test file(s) were identified. Prioritize those before broader regression sweeps.",
-            impacted_test_files
+            "- {impacted_test_files} impacted test file(s) were identified. Prioritize those before broader regression sweeps."
         ));
     }
 
     if query_failures > 0 {
         guidance_parts.push(format!(
-            "- {} graph query failure(s) occurred. Treat the result as partial and verify critical paths manually.",
-            query_failures
+            "- {query_failures} graph query failure(s) occurred. Treat the result as partial and verify critical paths manually."
         ));
     }
 

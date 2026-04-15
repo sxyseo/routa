@@ -348,16 +348,15 @@ fn send_signal_to_group(pid: i32, signal: i32) -> io::Result<()> {
     };
 
     let status = Command::new("kill")
-        .arg(format!("-{}", signal_name))
-        .arg(format!("-{}", pid))
+        .arg(format!("-{signal_name}"))
+        .arg(format!("-{pid}"))
         .status()?;
 
     if status.success() {
         Ok(())
     } else {
         let err = io::Error::other(format!(
-            "failed to send {} to process group {}",
-            signal_name, pid
+            "failed to send {signal_name} to process group {pid}"
         ));
         if child_process_group_missing(pid) {
             Ok(())
@@ -371,7 +370,7 @@ fn send_signal_to_group(pid: i32, signal: i32) -> io::Result<()> {
 fn child_process_group_missing(pid: i32) -> bool {
     Command::new("kill")
         .arg("-0")
-        .arg(format!("-{}", pid))
+        .arg(format!("-{pid}"))
         .status()
         .map(|status| !status.success())
         .unwrap_or(false)

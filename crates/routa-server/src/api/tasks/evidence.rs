@@ -291,7 +291,7 @@ pub async fn ensure_transition_artifacts(
         .task_store
         .get(task_id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", task_id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {task_id} not found")))?;
     if existing.column_id.as_deref() == Some(target_column_id) {
         return Ok(());
     }

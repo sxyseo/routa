@@ -1607,7 +1607,7 @@ mod scc_tests {
             .arg(dir.path())
             .output()
             .expect("init repo");
-        assert!(init.status.success(), "git init failed: {:?}", init);
+        assert!(init.status.success(), "git init failed: {init:?}");
 
         let update_index = Command::new("git")
             .arg("-C")
@@ -1623,8 +1623,7 @@ mod scc_tests {
             .expect("register gitlink");
         assert!(
             update_index.status.success(),
-            "git update-index failed: {:?}",
-            update_index
+            "git update-index failed: {update_index:?}"
         );
 
         assert_eq!(
@@ -1676,8 +1675,7 @@ pub(super) fn load_diff_text(
             .map(|entries| entries.count())
             .unwrap_or(0);
         return Ok(Some(format!(
-            "<directory: {} entries>\n{}",
-            child_count, rel_path
+            "<directory: {child_count} entries>\n{rel_path}"
         )));
     }
     if state_code == "untracked" {
@@ -1686,7 +1684,7 @@ pub(super) fn load_diff_text(
         }
         let content = std::fs::read_to_string(&path).context("read untracked file")?;
         let mut out = Vec::new();
-        out.push(format!("+++ {}", rel_path));
+        out.push(format!("+++ {rel_path}"));
         for line in content.lines().take(200) {
             out.push(format!("+{line}"));
         }

@@ -213,7 +213,7 @@ async fn api_workspace_and_note_flow() {
         .expect("decode deleted workspace response");
     assert!(json_has_error(
         &deleted_workspace_json,
-        &format!("Workspace {} not found", workspace_id),
+        &format!("Workspace {workspace_id} not found"),
     ));
 }
 
@@ -906,8 +906,7 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
             error.contains("Failed to delegate task")
                 || error.contains("Task not found")
                 || error.contains("Failed to spawn agent process"),
-            "unexpected delegate error: {}",
-            error
+            "unexpected delegate error: {error}"
         );
         return;
     } else {
@@ -938,8 +937,7 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
             error.contains("Failed to delegate task")
                 || error.contains("Task not found")
                 || error.contains("Failed to spawn agent process"),
-            "unexpected delegate error: {}",
-            error
+            "unexpected delegate error: {error}"
         );
     }
 }

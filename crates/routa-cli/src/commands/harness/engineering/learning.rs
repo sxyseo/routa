@@ -51,7 +51,7 @@ pub fn load_evolution_history(repo_root: &Path) -> Result<Vec<EvolutionHistory>,
     }
 
     let content = fs::read_to_string(&history_file)
-        .map_err(|e| format!("Failed to read evolution history: {}", e))?;
+        .map_err(|e| format!("Failed to read evolution history: {e}"))?;
 
     let mut entries = Vec::new();
     for (line_num, line) in content.lines().enumerate() {
@@ -243,14 +243,14 @@ fn extract_anti_patterns(failed_runs: &[&EvolutionHistory]) -> Vec<AntiPattern> 
 pub fn save_playbook(repo_root: &Path, playbook: &PlaybookCandidate) -> Result<(), String> {
     let playbook_dir = repo_root.join("docs/fitness/playbooks");
     fs::create_dir_all(&playbook_dir)
-        .map_err(|e| format!("Failed to create playbooks dir: {}", e))?;
+        .map_err(|e| format!("Failed to create playbooks dir: {e}"))?;
 
     let playbook_file = playbook_dir.join(format!("{}.json", playbook.id));
 
     let json = serde_json::to_string_pretty(playbook)
-        .map_err(|e| format!("Failed to serialize playbook: {}", e))?;
+        .map_err(|e| format!("Failed to serialize playbook: {e}"))?;
 
-    fs::write(&playbook_file, json).map_err(|e| format!("Failed to write playbook: {}", e))?;
+    fs::write(&playbook_file, json).map_err(|e| format!("Failed to write playbook: {e}"))?;
 
     Ok(())
 }
@@ -267,12 +267,12 @@ pub fn load_playbooks_for_task(
     }
 
     let entries =
-        fs::read_dir(&playbook_dir).map_err(|e| format!("Failed to read playbooks dir: {}", e))?;
+        fs::read_dir(&playbook_dir).map_err(|e| format!("Failed to read playbooks dir: {e}"))?;
 
     let mut playbooks = Vec::new();
 
     for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
         let path = entry.path();
 
         if path.extension().and_then(|s| s.to_str()) != Some("json") {
@@ -280,7 +280,7 @@ pub fn load_playbooks_for_task(
         }
 
         let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read playbook file {:?}: {}", path, e))?;
+            .map_err(|e| format!("Failed to read playbook file {path:?}: {e}"))?;
 
         match serde_json::from_str::<PlaybookCandidate>(&content) {
             Ok(playbook) if playbook.task_type == task_type => {
@@ -290,7 +290,7 @@ pub fn load_playbooks_for_task(
                 // Skip playbooks for other task types
             }
             Err(e) => {
-                eprintln!("Warning: Failed to parse playbook {:?}: {}", path, e);
+                eprintln!("Warning: Failed to parse playbook {path:?}: {e}");
             }
         }
     }

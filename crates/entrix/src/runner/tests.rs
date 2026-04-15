@@ -141,7 +141,7 @@ fn test_run_timeout_kills_background_processes() {
     let _ = std::fs::remove_file(&leak_path);
 
     let runner = ShellRunner::new(Path::new("/tmp")).with_timeout(1);
-    let command = format!("sh -c 'sleep 2; echo leaked > {}' & wait", leak_path);
+    let command = format!("sh -c 'sleep 2; echo leaked > {leak_path}' & wait");
     let result = runner.run(&Metric::new("slow", command), false);
 
     assert!(!result.passed);
