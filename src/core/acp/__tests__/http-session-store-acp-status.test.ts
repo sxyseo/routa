@@ -325,7 +325,7 @@ describe("HttpSessionStore — ACP status", () => {
 
     store.attachSse("test-streaming", {
       enqueue,
-    } as ReadableStreamDefaultController<Uint8Array>);
+    } as unknown as ReadableStreamDefaultController<Uint8Array>);
     store.enterStreamingMode("test-streaming");
 
     store.pushNotification({
