@@ -47,6 +47,7 @@ import {
 } from "./kanban-github-import";
 import { getKanbanFileChangesSummary } from "./kanban-file-changes-panel";
 import { KanbanTabContent } from "./kanban-tab-content";
+import { useRuntimeFitnessStatus } from "./use-runtime-fitness-status";
 
 interface SpecialistOption {
   id: string;
@@ -613,6 +614,14 @@ export function KanbanTab({
   const selectedProviderInfo = useMemo(() => {
     return acp?.providers?.find((p) => p.id === acp.selectedProvider) ?? null;
   }, [acp]);
+  const runtimeFitness = useRuntimeFitnessStatus({
+    workspaceId,
+    codebaseId: defaultCodebase?.id ?? null,
+    repoPath: defaultCodebase?.repoPath ?? null,
+    enabled: !!defaultCodebase,
+    refreshSignal,
+    isPageVisible,
+  });
 
   // Sync task's assignedProvider to ACP state when activeTaskId changes
   useEffect(() => {
@@ -1990,9 +1999,21 @@ export function KanbanTab({
     onProviderClick: () => {
       // Could open provider settings or do nothing
     },
+    onFitnessClick: defaultCodebase ? () => {
+      const query = new URLSearchParams({ workspaceId });
+      if (defaultCodebase.id) {
+        query.set("codebaseId", defaultCodebase.id);
+      } else {
+        query.set("repoPath", defaultCodebase.repoPath);
+      }
+      window.location.assign(`/settings/fluency?${query.toString()}`);
+    } : undefined,
     fileChangesOpen,
     gitLogOpen,
     repoSync,
+    runtimeFitness: runtimeFitness.data,
+    runtimeFitnessLoading: runtimeFitness.loading,
+    runtimeFitnessError: runtimeFitness.error,
   };
 
   return (

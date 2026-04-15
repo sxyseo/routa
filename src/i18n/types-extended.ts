@@ -423,6 +423,16 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     runningLabel: string;
     queuedLabel: string;
     kanbanHealth: string;
+    fitnessLabel: string;
+    fitnessModeFast: string;
+    fitnessModeFull: string;
+    fitnessLoading: string;
+    fitnessNoData: string;
+    fitnessIssue: string;
+    fitnessBlocked: string;
+    fitnessSkipped: string;
+    fitnessLast: string;
+    fitnessOpenDetails: string;
     missing: string;
     sessionMismatch: string;
     backendAgents: string;
