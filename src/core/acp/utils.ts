@@ -8,6 +8,159 @@ import { getServerBridge } from "@/core/platform";
 
 const WINDOWS_SPAWNABLE_EXTENSIONS = [".cmd", ".bat", ".exe", ".com"];
 
+/**
+ * Search standard Windows install directories for a command binary.
+ *
+ * npm-installed global CLIs go to %LOCALAPPDATA%\npm on Windows, which is
+ * NOT in the default PATH — so `where <cmd>` returns nothing even when the
+ * tool is installed and works fine from the terminal.
+ *
+ * Checks the most common npm global prefix, Claude Code's own install dir,
+ * and a few other well-known locations.
+ */
+function findCommandOnWindows(command: string): string | null {
+  const bridge = getServerBridge();
+  if (bridge.env.osPlatform() !== "win32") return null;
+
+  const path = require("path");
+
+  const bases: string[] = [];
+
+  // npm global install (most common for CLI tools)
+  const localAppData = bridge.env.getEnv("LOCALAPPDATA");
+  const appData = bridge.env.getEnv("APPDATA");
+  const userProfile = bridge.env.getEnv("USERPROFILE") ?? bridge.env.getEnv("HOME");
+  const programFiles = bridge.env.getEnv("ProgramFiles") ?? "C:\\Program Files";
+
+  if (localAppData) bases.push(path.join(localAppData, "npm"));
+  if (appData) bases.push(path.join(appData, "npm"));
+  if (userProfile) {
+    bases.push(path.join(userProfile, "AppData", "Local", "npm"));
+    bases.push(path.join(userProfile, "AppData", "Roaming", "npm"));
+  }
+  // Claude Code own install dir
+  if (localAppData) bases.push(path.join(localAppData, "claude", "code"));
+  if (userProfile) bases.push(path.join(userProfile, ".claude"));
+  // GitHub CLI (comes with copilot sometimes)
+  if (programFiles) bases.push(path.join(programFiles, "GitHub CLI"));
+
+  const extensions = [".cmd", ".bat", ".exe", ""];
+
+  for (const base of bases) {
+    for (const ext of extensions) {
+      const candidate = path.join(base, ext ? `${command}${ext}` : command);
+      try {
+        const stat = bridge.fs.statSync(candidate);
+        if (stat.isFile) return candidate;
+      } catch {
+        // Not found, try next
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Search standard Unix (macOS/Linux) install directories for a command binary.
+ *
+ * Node version managers and custom npm prefixes install tools to non-standard
+ * paths that may not be in the inherited PATH of service-managed processes
+ * (systemd, PM2, etc.).  Checking these directories avoids false "unavailable"
+ * reports for tools that work fine from an interactive terminal.
+ *
+ * Checks in this order:
+ * - nvm:        ~/.nvm/versions/node/<version>/bin/
+ * - fnm:        ~/.fnm/node-versions/<version>/bin/
+ * - volta:      ~/.volta/bin/
+ * - npm prefix: $(npm config get prefix)/bin  (falls back to /usr/local/bin)
+ * - pipx:       ~/.local/bin/
+ * - cargo:      ~/.cargo/bin/
+ * - homebrew:   /opt/homebrew/bin  (Apple Silicon macOS)
+ */
+function findCommandOnUnix(command: string): string | null {
+  const bridge = getServerBridge();
+  const platform = bridge.env.osPlatform();
+  if (platform === "win32") return null;
+
+  const path = require("path");
+
+  const bases: string[] = [];
+
+  // ── Node version managers ──────────────────────────────────────────────
+  const home = bridge.env.getEnv("HOME") ?? "";
+  const npmConfigPrefix = (() => {
+    try {
+      // Synchronous exec for config is fine here — called once per tool check
+      const { execSync } = require("child_process");
+      return execSync("npm config get prefix", { encoding: "utf-8", timeout: 3000 }).trim();
+    } catch {
+      return platform === "darwin" ? "/usr/local" : "/usr";
+    }
+  })();
+
+  if (home) {
+    // nvm — scan all installed node versions
+    const nvmBase = path.join(home, ".nvm", "versions", "node");
+    try {
+      const versions = bridge.fs.readDirSync(nvmBase);
+      for (const ver of versions) {
+        bases.push(path.join(nvmBase, ver.name, "bin"));
+      }
+    } catch {
+      // nvm not installed
+    }
+
+    // fnm
+    const fnmBase = path.join(home, ".fnm", "node-versions");
+    try {
+      const versions = bridge.fs.readDirSync(fnmBase);
+      for (const ver of versions) {
+        bases.push(path.join(fnmBase, ver.name, "installation", "bin"));
+      }
+    } catch {
+      // fnm not installed
+    }
+
+    // volta shims
+    bases.push(path.join(home, ".volta", "bin"));
+
+    // pipx / pip user install
+    bases.push(path.join(home, ".local", "bin"));
+
+    // Rust cargo
+    bases.push(path.join(home, ".cargo", "bin"));
+
+    // npm prefix (covers custom global installs)
+    if (npmConfigPrefix && npmConfigPrefix !== "/usr") {
+      bases.push(path.join(npmConfigPrefix, "bin"));
+    }
+  }
+
+  // npm default (covers cases where npm prefix is /usr/local or /usr)
+  if (npmConfigPrefix) {
+    bases.push(path.join(npmConfigPrefix, "bin"));
+  }
+
+  // Homebrew on Apple Silicon macOS
+  if (platform === "darwin") {
+    bases.push("/opt/homebrew/bin");
+    bases.push("/usr/local/bin"); // Intel macOS
+  }
+
+  for (const base of bases) {
+    const candidate = path.join(base, command);
+    try {
+      const stat = bridge.fs.statSync(candidate);
+      if (stat.isFile) return candidate;
+    } catch {
+      // Not found, try next
+    }
+  }
+
+  return null;
+}
+
 function getCandidateDirectory(candidate: string): string {
   const normalized = candidate.trim().replace(/[\\/]+$/, "");
   const lastSeparator = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
@@ -99,7 +252,9 @@ function preferSpawnableWindowsPath(candidates: string[]): string | null {
  * Checks in this order:
  * 1. Absolute path (if provided)
  * 2. node_modules/.bin (for locally installed packages)
- * 3. System PATH (using bridge.process.which)
+ * 3. Standard platform install directories (Windows: npm global / Claude Code dirs;
+ *    Unix: nvm / volta / fnm / npm prefix dirs)
+ * 4. System PATH (using bridge.process.which)
  *
  * On Windows, npm creates a bash wrapper (no extension) alongside a `.cmd`
  * batch file in node_modules/.bin. We prefer the `.cmd` version because
@@ -141,7 +296,19 @@ export async function which(command: string): Promise<string | null> {
     // Ignore errors, continue to PATH check
   }
 
-  // 3. Check system PATH using bridge.process.which
+  // 3. Search standard Windows install directories (npm global, Claude Code, etc.)
+  if (isWindows) {
+    const windowsFound = findCommandOnWindows(command);
+    if (windowsFound) return windowsFound;
+  }
+
+  // 4. Search standard Unix install directories (nvm, volta, fnm, etc.)
+  if (!isWindows) {
+    const unixFound = findCommandOnUnix(command);
+    if (unixFound) return unixFound;
+  }
+
+  // 5. Check system PATH using bridge.process.which
   const resolved = await bridge.process.which(command);
   if (!resolved) return null;
 
