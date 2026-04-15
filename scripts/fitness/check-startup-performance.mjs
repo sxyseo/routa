@@ -66,6 +66,32 @@ function finalizeChild(child) {
   }
 }
 
+function isSkippableFailure(result) {
+  if (!result || result.status !== "failed") {
+    return false;
+  }
+
+  const errorText = [result.error, ...(result.stderr ?? []), ...(result.stdout ?? [])]
+    .filter(Boolean)
+    .join("\n");
+
+  return errorText.includes("Authentication required")
+    || errorText.includes("Command not found")
+    || errorText.includes("spawn ./target/debug/routa ENOENT");
+}
+
+function normalizeAdvisoryResult(result) {
+  if (!isSkippableFailure(result)) {
+    return result;
+  }
+
+  return {
+    ...result,
+    status: "skipped",
+    reason: result.error,
+  };
+}
+
 async function measureServiceStartup() {
   const port = await findFreePort();
   const stdout = [];
@@ -446,14 +472,17 @@ async function measureClaude() {
 }
 
 function buildSummary(service, providers) {
-  const failed = [service, ...providers].filter((item) => item.status === "failed");
-  const measured = [service, ...providers].filter((item) => item.status === "measured");
+  const normalizedService = normalizeAdvisoryResult(service);
+  const normalizedProviders = providers.map(normalizeAdvisoryResult);
+  const allResults = [normalizedService, ...normalizedProviders];
+  const failed = allResults.filter((item) => item.status === "failed");
+  const measured = allResults.filter((item) => item.status === "measured");
 
   return {
     summaryStatus: failed.length > 0 ? "fail" : measured.length > 0 ? "pass" : "skipped",
     measuredAt: new Date().toISOString(),
-    service,
-    providers,
+    service: normalizedService,
+    providers: normalizedProviders,
     notes: [
       "This probe is advisory and local-first. It records startup latency evidence rather than asserting production SLOs.",
       "Claude startup currently uses a different readiness definition from ACP-native providers.",
