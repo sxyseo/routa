@@ -328,15 +328,16 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
       await client.initialize();
 
-      // Fast path: Load only local providers (instant, < 10ms)
-      const localProviders = await client.listProviders(false, false);
+      // Check local providers immediately for accurate status display
+      // This ensures status indicators show correct colors on first render
+      const localProviders = await client.listProviders(true, false);
 
       // Merge in user-defined custom ACP providers
       const customProviders = loadCustomAcpProviders().map(toAcpProviderInfo);
 
       // Filter out disabled providers
       const disabledProviders = loadHiddenProviders();
-      const allLocalProviders = sortProvidersByPreference(
+      const providers = sortProvidersByPreference(
         [...localProviders, ...customProviders].filter(
           (p) => !disabledProviders.includes(p.id)
         )
@@ -361,11 +362,11 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
       clientRef.current = client;
 
-      const firstAvailable = allLocalProviders.find((p) => p.status === "available");
+      const firstAvailable = providers.find((p) => p.status === "available");
       setState((s) => ({
         ...(function () {
           const persistedProvider = loadSelectedAcpProvider();
-          const preferredProvider = allLocalProviders.find((provider) =>
+          const preferredProvider = providers.find((provider) =>
             provider.id === persistedProvider && provider.status !== "unavailable"
           )?.id;
           const nextSelectedProvider = preferredProvider ?? firstAvailable?.id ?? s.selectedProvider;
@@ -373,45 +374,15 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           return {
             ...s,
             connected: true,
-            providers: allLocalProviders,
+            providers,
             selectedProvider: nextSelectedProvider,
             loading: false,
           };
         })(),
       }));
 
-      // Background task 1: Check local provider status
-      client.listProviders(true, false).then((checkedLocalProviders) => {
-        if (tearingDownRef.current) return;
-        // Only update local providers (source === 'static'), keep existing registry providers
-        // Re-merge custom providers (they are always "available")
-        const customProvs = loadCustomAcpProviders().map(toAcpProviderInfo);
-
-        // Filter out disabled providers
-        const disabledProvs = loadHiddenProviders();
-        const filteredLocalProviders = sortProvidersByPreference(
-          [...checkedLocalProviders, ...customProvs].filter(
-            (p) => !disabledProvs.includes(p.id)
-          )
-        );
-
-        setState((s) => {
-          const existingRegistry = s.providers.filter((p) => p.source === "registry");
-          return {
-            ...s,
-            providers: sortProvidersByPreference([...filteredLocalProviders, ...existingRegistry]),
-          };
-        });
-      }).catch((err) => {
-        if (tearingDownRef.current || shouldSuppressTeardownError(err)) {
-          return;
-        }
-        logRuntime("warn", "useAcp.connect", "Failed to check local provider status", err);
-      });
-
-      // Background task 2: Load registry providers (with timeout protection)
+      // Background task: Load registry providers (with timeout protection)
       // This runs in parallel and adds registry providers when ready
-      // First, quickly load registry providers (without checking status)
       client.loadRegistryProviders().then((allProviders) => {
         if (tearingDownRef.current) return;
         // loadRegistryProviders returns ALL providers (local + registry)
