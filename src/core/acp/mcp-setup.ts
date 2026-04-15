@@ -272,7 +272,73 @@ async function ensureMcpForAuggie(
 // escaping issues on Windows (cmd.exe mangles {}, :, & in inline JSON
 // when shell:true is used for .cmd/.bat binaries).
 
-const CLAUDE_MCP_CONFIG_DIR = path.join(os.homedir(), ".claude", "mcp-tmp");
+const CLAUDE_MCP_CONFIG_PREFIX = "routa-mcp-";
+const CLAUDE_MCP_CONFIG_DIRNAME = path.join(".claude", "mcp-tmp");
+const CLAUDE_MCP_CONFIG_MAX_FILES = 64;
+const CLAUDE_MCP_CONFIG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function getClaudeMcpConfigDir(): string {
+  return path.join(os.homedir(), CLAUDE_MCP_CONFIG_DIRNAME);
+}
+
+function pruneClaudeMcpConfigDir(configDir: string, currentConfigPath: string): void {
+  const now = Date.now();
+
+  type ClaudeConfigFile = {
+    path: string;
+    mtimeMs: number;
+  };
+
+  const files: ClaudeConfigFile[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(configDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isFile()) {
+      continue;
+    }
+    if (!entry.name.startsWith(CLAUDE_MCP_CONFIG_PREFIX) || !entry.name.endsWith(".json")) {
+      continue;
+    }
+
+    const filePath = path.join(configDir, entry.name);
+    try {
+      const stats = fs.statSync(filePath);
+      files.push({ path: filePath, mtimeMs: stats.mtimeMs });
+    } catch {
+      // Ignore files that disappear mid-prune.
+    }
+  }
+
+  files.sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+  let keptStaleConfigs = 0;
+  for (const file of files) {
+    if (file.path === currentConfigPath) {
+      continue;
+    }
+
+    const ageMs = Math.max(0, now - file.mtimeMs);
+    const shouldKeep =
+      ageMs <= CLAUDE_MCP_CONFIG_MAX_AGE_MS &&
+      keptStaleConfigs < CLAUDE_MCP_CONFIG_MAX_FILES;
+
+    if (shouldKeep) {
+      keptStaleConfigs += 1;
+      continue;
+    }
+
+    try {
+      fs.unlinkSync(file.path);
+    } catch {
+      // Best-effort cleanup only.
+    }
+  }
+}
 
 function ensureMcpForClaude(
   mcpEndpoint: string,
@@ -308,14 +374,22 @@ function ensureMcpForClaude(
     .update(mcpEndpoint)
     .digest("base64url")
     .slice(0, 12);
-  const configPath = path.join(CLAUDE_MCP_CONFIG_DIR, `routa-mcp-${hash}-${endpointDigest}.json`);
+  const configDir = getClaudeMcpConfigDir();
+  const configPath = path.join(configDir, `${CLAUDE_MCP_CONFIG_PREFIX}${hash}-${endpointDigest}.json`);
 
   try {
-    fs.mkdirSync(CLAUDE_MCP_CONFIG_DIR, { recursive: true });
-    fs.writeFileSync(configPath, json, "utf-8");
+    fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(configPath, json, { encoding: "utf-8", mode: 0o600 });
+    pruneClaudeMcpConfigDir(configDir, configPath);
   } catch (err) {
-    // Fallback to inline JSON if file write fails (non-Windows usually fine)
     const msg = err instanceof Error ? err.message : String(err);
+    if (process.platform === "win32") {
+      throw new Error(`Failed to write Claude MCP config file: ${msg}`, {
+        cause: err,
+      });
+    }
+
+    // Fallback to inline JSON if file write fails on non-Windows.
     console.warn(`[MCP:Claude] Failed to write config file: ${msg}, falling back to inline JSON`);
     return {
       mcpConfigs: [json],

@@ -357,9 +357,15 @@ export class ClaudeCodeProcess {
         const PROMPT_TIMEOUT_MS = 300_000; // 5 min — matches ACP process
 
         return new Promise<{ stopReason: string }>((resolve, reject) => {
+            if (this.promptResolve || this.promptReject) {
+                reject(new Error("Claude Code already has a prompt in flight"));
+                return;
+            }
+
             // Clear any previous timeout
             if (this.promptTimeout) {
                 clearTimeout(this.promptTimeout);
+                this.promptTimeout = null;
             }
 
             this.promptResolve = resolve;
@@ -378,6 +384,8 @@ export class ClaudeCodeProcess {
             if (!this.process?.stdin?.writable) {
                 if (this.promptTimeout) clearTimeout(this.promptTimeout);
                 this.promptTimeout = null;
+                this.promptResolve = null;
+                this.promptReject = null;
                 reject(new Error("Claude Code stdin not writable"));
                 return;
             }

@@ -166,6 +166,33 @@ describe("ClaudeCodeProcess", () => {
     vi.useRealTimers();
   });
 
+  it("rejects a second prompt while one is already in flight", async () => {
+    vi.useFakeTimers();
+    const fakeProcess = new FakeProcess();
+    spawnMock.mockReturnValue(fakeProcess);
+
+    const process = createProcess();
+    const startPromise = process.start();
+    await vi.advanceTimersByTimeAsync(500);
+    await startPromise;
+
+    const firstPrompt = process.prompt("session-1", "Continue");
+    const secondPrompt = process.prompt("session-1", "Interrupt");
+
+    await expect(secondPrompt).rejects.toThrow("Claude Code already has a prompt in flight");
+
+    fakeProcess.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({ type: "result", result: "done", stop_reason: "end_turn" })}\n`,
+        "utf-8",
+      ),
+    );
+
+    await expect(firstPrompt).resolves.toEqual({ stopReason: "end_turn" });
+    vi.useRealTimers();
+  });
+
   it("translates streaming thinking and tool parameter deltas into session updates", async () => {
     vi.useFakeTimers();
     const onNotification = vi.fn();
