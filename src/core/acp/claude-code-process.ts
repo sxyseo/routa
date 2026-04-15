@@ -311,7 +311,6 @@ export class ClaudeCodeProcess {
 
         this._alive = true;
 
-
         // Wait for process to stabilize
         await new Promise((resolve) => setTimeout(resolve, 500));
 

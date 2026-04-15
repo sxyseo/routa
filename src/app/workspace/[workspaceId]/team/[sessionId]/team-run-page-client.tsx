@@ -285,7 +285,11 @@ export function TeamRunPageClient() {
 
       return nextSelection;
     });
-  }, [codebases, repoSelection, session?.branch, session?.cwd]);
+  // NOTE: `repoSelection` is intentionally excluded from deps.
+  // This effect syncs repoSelection FROM session/codebases data on mount or
+  // when session metadata changes — it must NOT re-fire when the user switches
+  // branches locally, or it would overwrite the new branch with session.branch.
+  }, [codebases, session?.branch, session?.cwd]);
 
   const fetchSpecialists = useCallback(async () => {
     const response = await desktopAwareFetch("/api/specialists", { cache: "no-store" });
