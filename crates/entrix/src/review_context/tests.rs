@@ -1541,7 +1541,11 @@ print(json.dumps(payload, ensure_ascii=False))
     if !output.status.success() {
         return None;
     }
-    serde_json::from_slice(&output.stdout).ok()
+    let payload: Value = serde_json::from_slice(&output.stdout).ok()?;
+    if payload.get("status").and_then(Value::as_str) == Some("unavailable") {
+        return None;
+    }
+    Some(payload)
 }
 
 fn qualified_names(items: &[Value]) -> Vec<String> {
