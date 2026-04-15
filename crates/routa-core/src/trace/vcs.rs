@@ -3,8 +3,8 @@
 //! Populates TraceVcs with Git information (revision, branch, repo_root).
 
 use super::types::TraceVcs;
+use crate::git::git_command;
 use std::path::Path;
-use std::process::Command;
 
 /// Get VCS context for a workspace directory.
 /// Returns Git information if the directory is a git repository.
@@ -52,7 +52,7 @@ pub fn get_vcs_context_light(cwd: &str) -> Option<TraceVcs> {
 
 /// Check if a directory is a git repository.
 fn is_git_repo(cwd: &Path) -> bool {
-    Command::new("git")
+    git_command()
         .args(["rev-parse", "--git-dir"])
         .current_dir(cwd)
         .output()
@@ -62,7 +62,7 @@ fn is_git_repo(cwd: &Path) -> bool {
 
 /// Get the current git revision (commit SHA).
 fn get_git_revision(cwd: &Path) -> Option<String> {
-    Command::new("git")
+    git_command()
         .args(["rev-parse", "HEAD"])
         .current_dir(cwd)
         .output()
@@ -74,7 +74,7 @@ fn get_git_revision(cwd: &Path) -> Option<String> {
 
 /// Get the current git branch name.
 fn get_git_branch(cwd: &Path) -> Option<String> {
-    let output = Command::new("git")
+    let output = git_command()
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(cwd)
         .output()
@@ -94,7 +94,7 @@ fn get_git_branch(cwd: &Path) -> Option<String> {
 
 /// Get the git repository root directory.
 fn get_git_repo_root(cwd: &Path) -> Option<String> {
-    Command::new("git")
+    git_command()
         .args(["rev-parse", "--show-toplevel"])
         .current_dir(cwd)
         .output()

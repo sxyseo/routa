@@ -339,7 +339,7 @@ fn resolve_repo_root(repo_path: Option<&str>) -> Result<PathBuf, ServerError> {
     let cwd = repo_path
         .map(PathBuf::from)
         .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let output = Command::new("git")
+    let output = crate::git::git_command()
         .args(["rev-parse", "--show-toplevel"])
         .current_dir(&cwd)
         .output()
@@ -393,7 +393,7 @@ fn load_review_rules(
 }
 
 fn git_exec<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<String, ServerError> {
-    let output = Command::new("git")
+    let output = crate::git::git_command()
         .args(args)
         .current_dir(cwd)
         .output()

@@ -49,7 +49,7 @@ pub struct GitHubPullListItem {
 
 pub fn resolve_github_repo(repo_path: Option<&str>) -> Option<String> {
     let repo_path = repo_path?;
-    let output = Command::new("git")
+    let output = crate::git::git_command()
         .args(["config", "--get", "remote.origin.url"])
         .current_dir(repo_path)
         .output()

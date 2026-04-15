@@ -7,7 +7,6 @@ use axum::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path as FilePath};
-use std::process::Command;
 
 use crate::api::repo_context::{normalize_local_repo_path, validate_local_git_repo_path};
 use crate::error::ServerError;
@@ -122,7 +121,7 @@ fn validate_git_file_paths(files: &[String]) -> Result<(), String> {
 }
 
 fn git_command_output(repo_path: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = crate::git::git_command()
         .args(args)
         .current_dir(repo_path)
         .output()
