@@ -1277,7 +1277,7 @@ export class RoutaOrchestrator {
         record.parentSessionId === sessionId ||
         record.sessionId === sessionId
       ) {
-        this.processManager.killSession(record.sessionId);
+        void this.processManager.killSession(record.sessionId);
         this.childAgents.delete(agentId);
         this.agentSessionMap.delete(agentId);
       }

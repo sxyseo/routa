@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ensureMcpForProviderMock = vi.hoisted(() => vi.fn());
+const cleanupMcpForProviderMock = vi.hoisted(() => vi.fn());
 const providerSupportsMcpMock = vi.hoisted(() => vi.fn());
 const shouldUseOpencodeAdapterMock = vi.hoisted(() => vi.fn());
 const getOpencodeServerUrlMock = vi.hoisted(() => vi.fn());
@@ -84,6 +85,7 @@ vi.mock("@/core/acp/claude-code-process", () => ({
 }));
 
 vi.mock("@/core/acp/mcp-setup", () => ({
+  cleanupMcpForProvider: cleanupMcpForProviderMock,
   ensureMcpForProvider: ensureMcpForProviderMock,
   parseMcpServersFromConfigs: vi.fn(() => ({ routa: { type: "http", url: "http://localhost" } })),
   providerSupportsMcp: providerSupportsMcpMock,
@@ -225,6 +227,7 @@ describe("AcpProcessManager", () => {
       mcpConfigs: ["mcp-config"],
       summary: "ok",
     });
+    cleanupMcpForProviderMock.mockResolvedValue("cleanup-ok");
     shouldUseOpencodeAdapterMock.mockReturnValue(false);
     shouldUseClaudeCodeSdkAdapterMock.mockReturnValue(false);
     buildConfigFromPresetMock.mockResolvedValue({ bin: "opencode" });
@@ -360,12 +363,47 @@ describe("AcpProcessManager", () => {
       expect.objectContaining({ sessionId: "workspace-1", presetId: "workspace" }),
     ]);
 
-    manager.killSession("sdk-1");
+    await manager.killSession("sdk-1");
     expect(manager.getOpencodeAdapter("sdk-1")).toBeUndefined();
 
-    manager.killAll();
+    await manager.killAll();
     expect(manager.listSessions()).toEqual([]);
     expect(dockerStopAllMock).toHaveBeenCalledOnce();
+  });
+
+  it("tracks qoder MCP setup and removes it on session shutdown", async () => {
+    const manager = new AcpProcessManager();
+    const cleanup = {
+      action: "qoder-remove",
+      providerId: "qoder",
+      serverName: "routa-coordination",
+      scope: "local",
+      cwd: "/repo",
+    };
+    ensureMcpForProviderMock.mockResolvedValueOnce({
+      mcpConfigs: [],
+      summary: "qoder: added routa-coordination via local config",
+      cleanup,
+    });
+
+    const acpSessionId = await manager.createSession(
+      "session-qoder",
+      "/repo",
+      vi.fn(),
+      "qoder",
+      undefined,
+      undefined,
+      undefined,
+      "ws-qoder",
+      "full",
+    );
+
+    expect(acpSessionId).toBe("acp-session-1");
+    expect(getDefaultRoutaMcpConfigMock).toHaveBeenCalledWith("ws-qoder", "session-qoder", "full", undefined);
+    expect(ensureMcpForProviderMock).toHaveBeenCalledWith("qoder", { type: "http", cwd: "/repo" });
+
+    await manager.killSession("session-qoder");
+    expect(cleanupMcpForProviderMock).toHaveBeenCalledWith(cleanup);
   });
 
   it("routes explicit opencode-sdk sessions to the direct api adapter when no server url is set", async () => {

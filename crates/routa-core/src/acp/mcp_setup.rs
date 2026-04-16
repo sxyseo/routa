@@ -8,6 +8,24 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 
+const QODER_MCP_SERVER_NAME: &str = "routa-coordination";
+const QODER_MCP_SCOPE: &str = "local";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpCleanupAction {
+    QoderRemove {
+        cwd: String,
+        server_name: String,
+        scope: String,
+    },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct McpSetupResult {
+    pub summary: Option<String>,
+    pub cleanup: Option<McpCleanupAction>,
+}
+
 fn build_mcp_endpoint(
     workspace_id: &str,
     session_id: &str,
@@ -218,6 +236,77 @@ async fn ensure_mcp_for_codex(
     .await
 }
 
+fn qoder_command() -> String {
+    std::env::var("QODER_BIN").unwrap_or_else(|_| "qodercli".to_string())
+}
+
+async fn run_qoder_mcp_command(cwd: &str, args: &[String]) -> Result<(), String> {
+    let output = tokio::process::Command::new(qoder_command())
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .await
+        .map_err(|err| format!("spawn qodercli: {err}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let combined = [stderr, stdout]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Err(if combined.is_empty() {
+        format!("qodercli exited with status {}", output.status)
+    } else {
+        format!(
+            "qodercli exited with status {}: {}",
+            output.status, combined
+        )
+    })
+}
+
+async fn ensure_mcp_for_qoder(
+    cwd: &str,
+    workspace_id: &str,
+    session_id: &str,
+    tool_mode: Option<&str>,
+    mcp_profile: Option<&str>,
+) -> McpSetupResult {
+    let endpoint = build_mcp_endpoint(workspace_id, session_id, tool_mode, mcp_profile);
+    let args = vec![
+        "mcp".to_string(),
+        "add".to_string(),
+        QODER_MCP_SERVER_NAME.to_string(),
+        endpoint,
+        "-t".to_string(),
+        "streamable-http".to_string(),
+        "-s".to_string(),
+        QODER_MCP_SCOPE.to_string(),
+    ];
+
+    match run_qoder_mcp_command(cwd, &args).await {
+        Ok(()) => McpSetupResult {
+            summary: Some(format!(
+                "qoder: added {QODER_MCP_SERVER_NAME} via {QODER_MCP_SCOPE} config"
+            )),
+            cleanup: Some(McpCleanupAction::QoderRemove {
+                cwd: cwd.to_string(),
+                server_name: QODER_MCP_SERVER_NAME.to_string(),
+                scope: QODER_MCP_SCOPE.to_string(),
+            }),
+        },
+        Err(err) => McpSetupResult {
+            summary: Some(format!("qoder: mcp add failed – {err}")),
+            cleanup: None,
+        },
+    }
+}
+
 pub fn codex_project_trust_override(cwd: &str) -> String {
     let escaped = cwd.replace('\\', "\\\\").replace('"', "\\\"");
     format!("projects.\"{escaped}\".trust_level=\"trusted\"")
@@ -281,20 +370,52 @@ pub async fn ensure_mcp_for_provider(
     session_id: &str,
     tool_mode: Option<&str>,
     mcp_profile: Option<&str>,
-) -> Result<Option<String>, String> {
+) -> Result<McpSetupResult, String> {
     let base_id = provider_id.strip_suffix("-registry").unwrap_or(provider_id);
 
     match base_id {
         "opencode" => ensure_mcp_for_opencode(workspace_id, session_id, tool_mode, mcp_profile)
             .await
-            .map(Some),
+            .map(|summary| McpSetupResult {
+                summary: Some(summary),
+                cleanup: None,
+            }),
         "codex" | "codex-acp" => {
             let _ = cwd;
             ensure_mcp_for_codex(workspace_id, session_id, tool_mode, mcp_profile)
                 .await
-                .map(Some)
+                .map(|summary| McpSetupResult {
+                    summary: Some(summary),
+                    cleanup: None,
+                })
         }
-        _ => Ok(None),
+        "qoder" => {
+            Ok(ensure_mcp_for_qoder(cwd, workspace_id, session_id, tool_mode, mcp_profile).await)
+        }
+        _ => Ok(McpSetupResult::default()),
+    }
+}
+
+pub async fn cleanup_mcp_for_provider(cleanup: &McpCleanupAction) -> String {
+    match cleanup {
+        McpCleanupAction::QoderRemove {
+            cwd,
+            server_name,
+            scope,
+        } => {
+            let args = vec![
+                "mcp".to_string(),
+                "remove".to_string(),
+                server_name.clone(),
+                "-s".to_string(),
+                scope.clone(),
+            ];
+
+            match run_qoder_mcp_command(cwd, &args).await {
+                Ok(()) => format!("qoder: removed {server_name} from {scope} config"),
+                Err(err) => format!("qoder: mcp remove failed – {err}"),
+            }
+        }
     }
 }
 
@@ -302,8 +423,9 @@ pub async fn ensure_mcp_for_provider(
 mod tests {
     use super::{
         build_acp_http_mcp_servers, build_claude_mcp_config, build_codex_mcp_config_contents,
-        build_mcp_endpoint, codex_cli_overrides_from_config, codex_config_path_for_home,
-        codex_project_trust_override, ensure_mcp_for_codex_at, upsert_codex_mcp_section,
+        build_mcp_endpoint, cleanup_mcp_for_provider, codex_cli_overrides_from_config,
+        codex_config_path_for_home, codex_project_trust_override, ensure_mcp_for_codex_at,
+        ensure_mcp_for_provider, upsert_codex_mcp_section,
     };
 
     #[test]
@@ -426,5 +548,64 @@ mod tests {
         assert!(written.contains("wsId=default"));
         assert!(written.contains("sid=session-123"));
         assert!(written.contains("mcpProfile=kanban-planning"));
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn qoder_provider_adds_and_removes_local_mcp_server() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let qoder_bin = tempdir.path().join("qodercli");
+        let qoder_log = tempdir.path().join("qoder.log");
+        let script = format!(
+            "#!/bin/sh\nprintf '%s|%s\\n' \"$PWD\" \"$*\" >> '{}'\n",
+            qoder_log.display()
+        );
+        std::fs::write(&qoder_bin, script).expect("write qoder stub");
+        std::fs::set_permissions(&qoder_bin, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod qoder stub");
+
+        let previous_qoder_bin = std::env::var_os("QODER_BIN");
+        unsafe {
+            std::env::set_var("QODER_BIN", &qoder_bin);
+        }
+
+        let setup = ensure_mcp_for_provider(
+            "qoder",
+            tempdir.path().to_str().expect("tempdir path"),
+            "default",
+            "session-123",
+            Some("full"),
+            Some("kanban-planning"),
+        )
+        .await
+        .expect("ensure qoder mcp");
+
+        let cleanup = setup.cleanup.clone().expect("qoder cleanup action");
+        assert!(setup
+            .summary
+            .as_deref()
+            .is_some_and(|summary| summary.contains("qoder: added")));
+
+        let cleanup_summary = cleanup_mcp_for_provider(&cleanup).await;
+        assert!(cleanup_summary.contains("qoder: removed"));
+
+        let log = std::fs::read_to_string(&qoder_log).expect("read qoder log");
+        let log_lines: Vec<&str> = log.trim().lines().collect();
+        assert_eq!(log_lines.len(), 2);
+        assert!(log_lines[0].contains(
+            "mcp add routa-coordination http://127.0.0.1:3210/api/mcp?wsId=default&sid=session-123&toolMode=full&mcpProfile=kanban-planning -t streamable-http -s local"
+        ));
+        assert!(log_lines[1].contains("mcp remove routa-coordination -s local"));
+
+        match previous_qoder_bin {
+            Some(value) => unsafe {
+                std::env::set_var("QODER_BIN", value);
+            },
+            None => unsafe {
+                std::env::remove_var("QODER_BIN");
+            },
+        }
     }
 }

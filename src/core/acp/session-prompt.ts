@@ -842,7 +842,7 @@ export async function handleSessionPrompt({
 
     if (!claudeProc.alive) {
       console.warn(`[ACP Route] Claude Code process for session ${sessionId} is dead — attempting restart`);
-      manager.killSession(sessionId);
+      await manager.killSession(sessionId);
       const restartRecord = store.getSession(sessionId);
       if (!restartRecord) {
         return jsonrpcResponse(id ?? null, null, {

@@ -7,7 +7,13 @@ import {
     NotificationHandler,
 } from "@/core/acp/processer";
 import {ClaudeCodeProcess, buildClaudeCodeConfig, mapClaudeModeToPermissionMode} from "@/core/acp/claude-code-process";
-import {ensureMcpForProvider, parseMcpServersFromConfigs, providerSupportsMcp} from "@/core/acp/mcp-setup";
+import {
+    cleanupMcpForProvider,
+    ensureMcpForProvider,
+    type McpSetupCleanup,
+    parseMcpServersFromConfigs,
+    providerSupportsMcp,
+} from "@/core/acp/mcp-setup";
 import {getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import {OpencodeSdkAdapter, OpencodeSdkDirectAdapter, shouldUseOpencodeAdapter, getOpencodeServerUrl, isOpencodeServerConfigured, isOpencodeDirectApiConfigured} from "@/core/acp/opencode-sdk-adapter";
@@ -93,6 +99,45 @@ export class AcpProcessManager {
     private dockerAdapters = new Map<string, ManagedDockerAdapter>();
     private claudeCodeSdkAdapters = new Map<string, ManagedClaudeCodeSdkAdapter>();
     private workspaceAgents = new Map<string, ManagedWorkspaceAgent>();
+    private mcpSessionCleanups = new Map<string, McpSetupCleanup>();
+
+    private async prepareMcpForSession(
+        sessionId: string,
+        presetId: string,
+        cwd?: string,
+        workspaceId?: string,
+        toolMode?: "essential" | "full",
+        mcpProfile?: McpServerProfile,
+    ): Promise<string[] | undefined> {
+        if (!providerSupportsMcp(presetId)) {
+            return undefined;
+        }
+
+        const baseConfig = getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile);
+        const baseProviderId = presetId.endsWith("-registry")
+            ? presetId.slice(0, -"-registry".length)
+            : presetId;
+        const mcpConfig = baseProviderId === "qoder" ? { ...baseConfig, cwd } : baseConfig;
+        const mcpResult = await ensureMcpForProvider(presetId, mcpConfig);
+        if (mcpResult.cleanup) {
+            this.mcpSessionCleanups.set(sessionId, mcpResult.cleanup);
+        } else {
+            this.mcpSessionCleanups.delete(sessionId);
+        }
+        logAcpDebug(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
+        return mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
+    }
+
+    private async cleanupSessionMcp(sessionId: string): Promise<void> {
+        const cleanup = this.mcpSessionCleanups.get(sessionId);
+        if (!cleanup) {
+            return;
+        }
+
+        this.mcpSessionCleanups.delete(sessionId);
+        const summary = await cleanupMcpForProvider(cleanup);
+        logAcpDebug(`[AcpProcessManager] MCP cleanup for ${sessionId}: ${summary}`);
+    }
 
     hasActiveSession(sessionId: string): boolean {
         return Boolean(
@@ -135,50 +180,50 @@ export class AcpProcessManager {
             return this.createOpencodeSdkSession(sessionId, onNotification);
         }
 
-        // Setup MCP: writes config files and/or returns CLI args
-        // Pass workspaceId and sessionId so the MCP endpoint URL has ?wsId= and ?sid= params
-        // This ensures notes created by the agent are scoped to the current session.
-        let mcpConfigs: string[] | undefined;
-        if (providerSupportsMcp(presetId)) {
-            const mcpResult = await ensureMcpForProvider(
+        try {
+            const mcpConfigs = await this.prepareMcpForSession(
+                sessionId,
                 presetId,
-                getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile),
+                cwd,
+                workspaceId,
+                toolMode,
+                mcpProfile,
             );
-            mcpConfigs = mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
-            logAcpDebug(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
-        }
+            const config = await buildConfigFromPreset(presetId, cwd, extraArgs, extraEnv, mcpConfigs);
+            const proc = new AcpProcess(config, onNotification);
 
-        const config = await buildConfigFromPreset(presetId, cwd, extraArgs, extraEnv, mcpConfigs);
-        const proc = new AcpProcess(config, onNotification);
-
-        await proc.start();
-        await proc.initialize();
-        const acpSessionId = await proc.newSession(cwd);
-        proc.setSessionContext({
-            sessionId,
-            provider: sessionContext?.provider ?? presetId,
-            role: sessionContext?.role,
-            autoApprovePermissions: sessionContext?.autoApprovePermissions,
-        });
-        if (initialModeId) {
-            try {
-                await proc.sendRequest("session/set_mode", {
-                    sessionId: acpSessionId,
-                    modeId: initialModeId,
-                });
-            } catch {
-                // Some providers do not support set_mode; ignore.
+            await proc.start();
+            await proc.initialize();
+            const acpSessionId = await proc.newSession(cwd);
+            proc.setSessionContext({
+                sessionId,
+                provider: sessionContext?.provider ?? presetId,
+                role: sessionContext?.role,
+                autoApprovePermissions: sessionContext?.autoApprovePermissions,
+            });
+            if (initialModeId) {
+                try {
+                    await proc.sendRequest("session/set_mode", {
+                        sessionId: acpSessionId,
+                        modeId: initialModeId,
+                    });
+                } catch {
+                    // Some providers do not support set_mode; ignore.
+                }
             }
+
+            this.processes.set(sessionId, {
+                process: proc,
+                acpSessionId,
+                presetId,
+                createdAt: new Date(),
+            });
+
+            return acpSessionId;
+        } catch (error) {
+            await this.cleanupSessionMcp(sessionId);
+            throw error;
         }
-
-        this.processes.set(sessionId, {
-            process: proc,
-            acpSessionId,
-            presetId,
-            createdAt: new Date(),
-        });
-
-        return acpSessionId;
     }
 
     /**
@@ -196,39 +241,42 @@ export class AcpProcessManager {
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
         providerSessionId?: string,
     ): Promise<string> {
-        let mcpConfigs: string[] | undefined;
-        if (providerSupportsMcp(presetId)) {
-            const mcpResult = await ensureMcpForProvider(
+        try {
+            const mcpConfigs = await this.prepareMcpForSession(
+                sessionId,
                 presetId,
-                getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile),
+                cwd,
+                workspaceId,
+                toolMode,
+                mcpProfile,
             );
-            mcpConfigs = mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
-            logAcpDebug(`[AcpProcessManager] MCP setup for resumed ${presetId}: ${mcpResult.summary}`);
+            const config = await buildConfigFromPreset(presetId, cwd, undefined, undefined, mcpConfigs);
+            const proc = new AcpProcess(config, onNotification);
+
+            await proc.start();
+            await proc.initialize();
+            const resolvedProviderSessionId = providerSessionId ?? sessionId;
+            await proc.loadSession(resolvedProviderSessionId, cwd);
+            proc.setSessionContext({
+                sessionId,
+                provider: sessionContext?.provider ?? presetId,
+                role: sessionContext?.role,
+                autoApprovePermissions: sessionContext?.autoApprovePermissions,
+            });
+
+            const acpSessionId = proc.sessionId ?? resolvedProviderSessionId;
+            this.processes.set(sessionId, {
+                process: proc,
+                acpSessionId,
+                presetId,
+                createdAt: new Date(),
+            });
+
+            return acpSessionId;
+        } catch (error) {
+            await this.cleanupSessionMcp(sessionId);
+            throw error;
         }
-
-        const config = await buildConfigFromPreset(presetId, cwd, undefined, undefined, mcpConfigs);
-        const proc = new AcpProcess(config, onNotification);
-
-        await proc.start();
-        await proc.initialize();
-        const resolvedProviderSessionId = providerSessionId ?? sessionId;
-        await proc.loadSession(resolvedProviderSessionId, cwd);
-        proc.setSessionContext({
-            sessionId,
-            provider: sessionContext?.provider ?? presetId,
-            role: sessionContext?.role,
-            autoApprovePermissions: sessionContext?.autoApprovePermissions,
-        });
-
-        const acpSessionId = proc.sessionId ?? resolvedProviderSessionId;
-        this.processes.set(sessionId, {
-            process: proc,
-            acpSessionId,
-            presetId,
-            createdAt: new Date(),
-        });
-
-        return acpSessionId;
     }
 
     /**
@@ -1019,11 +1067,12 @@ export class AcpProcessManager {
     /**
      * Kill a session's agent process or adapter.
      */
-    killSession(sessionId: string): void {
+    async killSession(sessionId: string): Promise<void> {
         const managed = this.processes.get(sessionId);
         if (managed) {
             managed.process.kill();
             this.processes.delete(sessionId);
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -1031,6 +1080,7 @@ export class AcpProcessManager {
         if (claudeManaged) {
             claudeManaged.process.kill();
             this.claudeProcesses.delete(sessionId);
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -1038,6 +1088,7 @@ export class AcpProcessManager {
         if (adapterManaged) {
             adapterManaged.adapter.kill();
             this.opencodeAdapters.delete(sessionId);
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -1046,6 +1097,7 @@ export class AcpProcessManager {
             dockerManaged.adapter.kill();
             this.dockerAdapters.delete(sessionId);
             getDockerProcessManager().stopContainer(sessionId).catch(() => {});
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -1053,6 +1105,7 @@ export class AcpProcessManager {
         if (claudeCodeSdkManaged) {
             claudeCodeSdkManaged.adapter.kill();
             this.claudeCodeSdkAdapters.delete(sessionId);
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -1061,12 +1114,13 @@ export class AcpProcessManager {
             workspaceManaged.adapter.kill();
             this.workspaceAgents.delete(sessionId);
         }
+        await this.cleanupSessionMcp(sessionId);
     }
 
     /**
      * Kill all processes and adapters.
      */
-    killAll(): void {
+    async killAll(): Promise<void> {
         for (const [, managed] of this.processes) {
             managed.process.kill();
         }
@@ -1097,5 +1151,8 @@ export class AcpProcessManager {
             managed.adapter.kill();
         }
         this.workspaceAgents.clear();
+
+        const sessionIds = Array.from(this.mcpSessionCleanups.keys());
+        await Promise.all(sessionIds.map((sessionId) => this.cleanupSessionMcp(sessionId)));
     }
 }

@@ -41,6 +41,7 @@ import {
   getDefaultRoutaMcpConfig,
   type RoutaMcpConfig,
 } from "./mcp-config-generator";
+import { getServerBridge } from "@/core/platform";
 import {
   type CustomMcpServerConfig,
   getCustomMcpServerStore,
@@ -49,7 +50,23 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
-export type McpSupportedProvider = "claude" | "auggie" | "opencode" | "codex" | "gemini" | "kimi" | "copilot";
+export type McpSupportedProvider =
+  | "claude"
+  | "auggie"
+  | "opencode"
+  | "codex"
+  | "gemini"
+  | "kimi"
+  | "copilot"
+  | "qoder";
+
+export interface McpSetupCleanup {
+  action: "qoder-remove";
+  providerId: string;
+  serverName: string;
+  scope: "local" | "project" | "user";
+  cwd: string;
+}
 
 /**
  * Result of a file-based MCP setup (OpenCode / Auggie).
@@ -61,6 +78,8 @@ export interface McpSetupResult {
   mcpConfigs: string[];
   /** Human-readable summary for logs */
   summary: string;
+  /** Provider-specific teardown instructions for session-end cleanup */
+  cleanup?: McpSetupCleanup;
 }
 
 // ─── Public API ────────────────────────────────────────────────────────
@@ -70,8 +89,79 @@ export function providerSupportsMcp(providerId: string): boolean {
   const baseId = providerId.endsWith("-registry")
     ? providerId.slice(0, -"-registry".length)
     : providerId;
-  const supported: McpSupportedProvider[] = ["claude", "auggie", "opencode", "codex", "gemini", "kimi", "copilot"];
+  const supported: McpSupportedProvider[] = ["claude", "auggie", "opencode", "codex", "gemini", "kimi", "copilot", "qoder"];
   return supported.includes(baseId as McpSupportedProvider);
+}
+
+const QODER_MCP_SERVER_NAME = "routa-coordination";
+const QODER_MCP_SCOPE = "local" as const;
+
+interface CommandResult {
+  stdout: string;
+  stderr: string;
+}
+
+function resolveProviderCommand(providerId: string, fallbackCommand: string): string {
+  if (providerId === "qoder") {
+    const override = process.env.QODER_BIN?.trim();
+    if (override) {
+      return override;
+    }
+  }
+
+  return fallbackCommand;
+}
+
+async function runCommand(
+  command: string,
+  args: string[],
+  options?: { cwd?: string; env?: Record<string, string> },
+): Promise<CommandResult> {
+  const bridge = getServerBridge();
+  if (!bridge.process.isAvailable()) {
+    throw new Error("Process execution is not available on this platform");
+  }
+
+  const handle = bridge.process.spawn(command, args, {
+    cwd: options?.cwd,
+    env: options?.env,
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: false,
+    detached: false,
+  });
+
+  let stdout = "";
+  let stderr = "";
+
+  handle.stdout?.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString("utf-8");
+  });
+  handle.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString("utf-8");
+  });
+
+  const exitPromise = new Promise<{ code: number | null; signal: string | null }>((resolve, reject) => {
+    handle.on("exit", (code, signal) => resolve({ code, signal }));
+    handle.on("error", reject);
+  });
+
+  if (handle.ready) {
+    await handle.ready;
+  }
+
+  const exit = await exitPromise;
+
+  if ((exit.code ?? 0) !== 0) {
+    const output = [stderr.trim(), stdout.trim()].filter(Boolean).join("\n");
+    const signalSuffix = exit.signal ? `, signal=${exit.signal}` : "";
+    throw new Error(
+      output
+        ? `exit code ${exit.code ?? "unknown"}${signalSuffix}: ${output}`
+        : `exit code ${exit.code ?? "unknown"}${signalSuffix}`,
+    );
+  }
+
+  return { stdout, stderr };
 }
 
 /**
@@ -139,8 +229,31 @@ export async function ensureMcpForProvider(
       return await ensureMcpForKimi(mcpEndpoint, customServers);
     case "copilot":
       return await ensureMcpForCopilot(mcpEndpoint, cfg.workspaceId, customServers);
+    case "qoder":
+      return await ensureMcpForQoder(mcpEndpoint, cfg.cwd);
     default:
       return { mcpConfigs: [], summary: `${providerId}: unknown` };
+  }
+}
+
+export async function cleanupMcpForProvider(cleanup: McpSetupCleanup): Promise<string> {
+  switch (cleanup.action) {
+    case "qoder-remove": {
+      const command = resolveProviderCommand(cleanup.providerId, "qodercli");
+      try {
+        await runCommand(
+          command,
+          ["mcp", "remove", cleanup.serverName, "-s", cleanup.scope],
+          { cwd: cleanup.cwd },
+        );
+        return `qoder: removed ${cleanup.serverName} from ${cleanup.scope} config`;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return `qoder: mcp remove failed – ${message}`;
+      }
+    }
+    default:
+      return `${cleanup.providerId}: no cleanup action`;
   }
 }
 
@@ -760,6 +873,50 @@ async function ensureMcpForCopilot(
   }
 }
 
+async function ensureMcpForQoder(
+  mcpEndpoint: string,
+  cwd?: string,
+): Promise<McpSetupResult> {
+  const command = resolveProviderCommand("qoder", "qodercli");
+  const effectiveCwd = cwd?.trim() || process.cwd();
+
+  try {
+    await runCommand(
+      command,
+      [
+        "mcp",
+        "add",
+        QODER_MCP_SERVER_NAME,
+        mcpEndpoint,
+        "-t",
+        "streamable-http",
+        "-s",
+        QODER_MCP_SCOPE,
+      ],
+      { cwd: effectiveCwd },
+    );
+
+    return {
+      mcpConfigs: [],
+      summary: `qoder: added ${QODER_MCP_SERVER_NAME} via ${QODER_MCP_SCOPE} config`,
+      cleanup: {
+        action: "qoder-remove",
+        providerId: "qoder",
+        serverName: QODER_MCP_SERVER_NAME,
+        scope: QODER_MCP_SCOPE,
+        cwd: effectiveCwd,
+      },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[MCP:Qoder] Failed to add MCP server: ${msg}`);
+    return {
+      mcpConfigs: [],
+      summary: `qoder: mcp add failed – ${msg}`,
+    };
+  }
+}
+
 // ─── Legacy convenience wrappers ───────────────────────────────────────
 
 /** @deprecated Use ensureMcpForProvider("claude", config) */
@@ -792,6 +949,10 @@ export async function setupMcpForKimi(config?: RoutaMcpConfig): Promise<string[]
 
 export async function setupMcpForCopilot(config?: RoutaMcpConfig): Promise<string[]> {
   return (await ensureMcpForProvider("copilot", config)).mcpConfigs;
+}
+
+export async function setupMcpForQoder(config?: RoutaMcpConfig): Promise<string[]> {
+  return (await ensureMcpForProvider("qoder", config)).mcpConfigs;
 }
 
 // ─── Helpers (unchanged) ───────────────────────────────────────────────

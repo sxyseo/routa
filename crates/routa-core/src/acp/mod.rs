@@ -141,6 +141,8 @@ struct ManagedProcess {
     /// Working directory (for contributor context)
     #[allow(dead_code)]
     cwd: String,
+    /// Provider-specific MCP teardown to run when the session exits.
+    mcp_cleanup: Option<mcp_setup::McpCleanupAction>,
 }
 
 // ─── ACP Manager ────────────────────────────────────────────────────────
@@ -389,7 +391,7 @@ impl AcpManager {
         let (ntx, _) = broadcast::channel::<serde_json::Value>(256);
         let preset = get_preset_by_id_with_registry(provider_name).await?;
 
-        if let Some(summary) = mcp_setup::ensure_mcp_for_provider(
+        let mcp_setup = mcp_setup::ensure_mcp_for_provider(
             provider_name,
             &cwd,
             &workspace_id,
@@ -397,10 +399,11 @@ impl AcpManager {
             tool_mode.as_deref(),
             mcp_profile.as_deref(),
         )
-        .await?
-        {
+        .await?;
+        if let Some(summary) = mcp_setup.summary.as_deref() {
             tracing::info!("[AcpManager] {}", summary);
         }
+        let mcp_cleanup = mcp_setup.cleanup.clone();
 
         let mut extra_args: Vec<String> = preset.args.clone();
         if matches!(provider_name, "codex" | "codex-acp") {
@@ -420,25 +423,41 @@ impl AcpManager {
         }
 
         let preset_command = resolve_preset_command(&preset);
-        let process = AcpProcess::spawn(
-            &preset_command,
-            &extra_args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-            &cwd,
-            ntx.clone(),
-            &preset.name,
-            &session_id,
-        )
-        .await?;
-
-        process
-            .initialize_with_timeout(options.initialize_timeout_ms)
+        let launch_result = async {
+            let process = AcpProcess::spawn(
+                &preset_command,
+                &extra_args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                &cwd,
+                ntx.clone(),
+                &preset.name,
+                &session_id,
+            )
             .await?;
 
-        let resolved_provider_session_id =
-            provider_session_id.unwrap_or_else(|| session_id.clone());
-        let acp_session_id = process
-            .load_session(&resolved_provider_session_id, &cwd, &acp_mcp_servers)
-            .await?;
+            process
+                .initialize_with_timeout(options.initialize_timeout_ms)
+                .await?;
+
+            let resolved_provider_session_id =
+                provider_session_id.unwrap_or_else(|| session_id.clone());
+            let acp_session_id = process
+                .load_session(&resolved_provider_session_id, &cwd, &acp_mcp_servers)
+                .await?;
+
+            Ok::<_, String>((process, acp_session_id))
+        }
+        .await;
+
+        let (process, acp_session_id) = match launch_result {
+            Ok(result) => result,
+            Err(error) => {
+                if let Some(cleanup) = mcp_cleanup.as_ref() {
+                    let summary = mcp_setup::cleanup_mcp_for_provider(cleanup).await;
+                    tracing::warn!("[AcpManager] {}", summary);
+                }
+                return Err(error);
+            }
+        };
 
         self.register_managed_session(
             session_id.clone(),
@@ -452,6 +471,7 @@ impl AcpManager {
             AgentProcessType::Acp(Arc::new(process)),
             acp_session_id.clone(),
             ntx.clone(),
+            mcp_cleanup,
         )
         .await;
 
@@ -541,6 +561,7 @@ impl AcpManager {
         process_type: AgentProcessType,
         acp_session_id: String,
         ntx: broadcast::Sender<serde_json::Value>,
+        mcp_cleanup: Option<mcp_setup::McpCleanupAction>,
     ) {
         let created_at = chrono::Utc::now().to_rfc3339();
         let trace_writer = TraceWriter::new(&cwd);
@@ -574,6 +595,7 @@ impl AcpManager {
                 created_at,
                 trace_writer: trace_writer.clone(),
                 cwd: cwd.clone(),
+                mcp_cleanup,
             },
         );
         self.notification_channels
@@ -643,6 +665,7 @@ impl AcpManager {
             AgentProcessType::Acp(Arc::new(process)),
             acp_session_id.clone(),
             ntx.clone(),
+            None,
         )
         .await;
 
@@ -710,6 +733,7 @@ impl AcpManager {
             AgentProcessType::Acp(Arc::new(process)),
             acp_session_id.clone(),
             ntx.clone(),
+            None,
         )
         .await;
 
@@ -766,7 +790,7 @@ impl AcpManager {
         };
 
         // Check if this is Claude (uses stream-json protocol, not ACP)
-        let (process_type, acp_session_id) = if provider_name == "claude" {
+        let (process_type, acp_session_id, mcp_cleanup) = if provider_name == "claude" {
             // Use Claude Code stream-json protocol
             let config = ClaudeCodeConfig {
                 command: "claude".to_string(),
@@ -787,12 +811,13 @@ impl AcpManager {
             (
                 AgentProcessType::Claude(Arc::new(claude_process)),
                 claude_session_id,
+                None,
             )
         } else {
             // Use standard ACP protocol
             let preset = get_preset_by_id_with_registry(provider_name).await?;
 
-            if let Some(summary) = mcp_setup::ensure_mcp_for_provider(
+            let mcp_setup = mcp_setup::ensure_mcp_for_provider(
                 provider_name,
                 &cwd,
                 &workspace_id,
@@ -800,10 +825,11 @@ impl AcpManager {
                 tool_mode.as_deref(),
                 mcp_profile.as_deref(),
             )
-            .await?
-            {
+            .await?;
+            if let Some(summary) = mcp_setup.summary.as_deref() {
                 tracing::info!("[AcpManager] {}", summary);
             }
+            let mcp_cleanup = mcp_setup.cleanup.clone();
 
             // Build args: preset args + optional model flag
             let mut extra_args: Vec<String> = preset.args.clone();
@@ -825,25 +851,43 @@ impl AcpManager {
             }
 
             let preset_command = resolve_preset_command(&preset);
-            let process = AcpProcess::spawn(
-                &preset_command,
-                &extra_args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                &cwd,
-                ntx.clone(),
-                &preset.name,
-                &session_id,
-            )
-            .await?;
-
-            // Initialize the protocol
-            process
-                .initialize_with_timeout(options.initialize_timeout_ms)
+            let launch_result = async {
+                let process = AcpProcess::spawn(
+                    &preset_command,
+                    &extra_args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                    &cwd,
+                    ntx.clone(),
+                    &preset.name,
+                    &session_id,
+                )
                 .await?;
 
-            // Create the agent session
-            let agent_session_id = process.new_session(&cwd, &acp_mcp_servers).await?;
+                // Initialize the protocol
+                process
+                    .initialize_with_timeout(options.initialize_timeout_ms)
+                    .await?;
 
-            (AgentProcessType::Acp(Arc::new(process)), agent_session_id)
+                // Create the agent session
+                let agent_session_id = process.new_session(&cwd, &acp_mcp_servers).await?;
+
+                Ok::<_, String>((process, agent_session_id))
+            }
+            .await;
+
+            match launch_result {
+                Ok((process, agent_session_id)) => (
+                    AgentProcessType::Acp(Arc::new(process)),
+                    agent_session_id,
+                    mcp_cleanup,
+                ),
+                Err(error) => {
+                    if let Some(cleanup) = mcp_cleanup.as_ref() {
+                        let summary = mcp_setup::cleanup_mcp_for_provider(cleanup).await;
+                        tracing::warn!("[AcpManager] {}", summary);
+                    }
+                    return Err(error);
+                }
+            }
         };
 
         self.register_managed_session(
@@ -858,6 +902,7 @@ impl AcpManager {
             process_type,
             acp_session_id.clone(),
             ntx.clone(),
+            mcp_cleanup,
         )
         .await;
 
@@ -974,6 +1019,11 @@ impl AcpManager {
             match &managed.process {
                 AgentProcessType::Acp(p) => p.kill().await,
                 AgentProcessType::Claude(p) => p.kill().await,
+            }
+
+            if let Some(cleanup) = managed.mcp_cleanup.as_ref() {
+                let summary = mcp_setup::cleanup_mcp_for_provider(cleanup).await;
+                tracing::info!("[AcpManager] {}", summary);
             }
         }
         // Remove session record
@@ -1188,7 +1238,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             id: "qoder".to_string(),
             name: "Qoder".to_string(),
             command: "qodercli".to_string(),
-            args: vec!["--acp".to_string()],
+            args: vec!["--acp".to_string(), "--experimental-mcp-load".to_string()],
             description: "Qoder AI coding agent".to_string(),
             env_bin_override: Some("QODER_BIN".to_string()),
             resume: None,
@@ -1349,7 +1399,14 @@ mod tests {
     #[test]
     fn static_presets_include_qoder() {
         let presets = get_presets();
-        assert!(presets.iter().any(|preset| preset.id == "qoder"));
+        let qoder = presets
+            .iter()
+            .find(|preset| preset.id == "qoder")
+            .expect("qoder preset");
+        assert_eq!(
+            qoder.args,
+            vec!["--acp".to_string(), "--experimental-mcp-load".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -1359,7 +1416,10 @@ mod tests {
             .expect("qodercli alias should resolve");
         assert_eq!(preset.id, "qodercli");
         assert_eq!(preset.command, "qodercli");
-        assert_eq!(preset.args, vec!["--acp".to_string()]);
+        assert_eq!(
+            preset.args,
+            vec!["--acp".to_string(), "--experimental-mcp-load".to_string()]
+        );
     }
 
     #[test]
