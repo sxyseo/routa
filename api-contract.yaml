@@ -5840,6 +5840,93 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeletedResponse"
 
+  # ── Spec ──
+  /api/spec/issues:
+    get:
+      operationId: listSpecIssues
+      summary: List local issue specs
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Normalized docs/issues records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repoRoot:
+                    type: string
+                  issues:
+                    type: array
+                    items:
+                      type: object
+        "400":
+          description: Missing or invalid repository context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/spec/surface-index:
+    get:
+      operationId: getSpecSurfaceIndex
+      summary: Read the generated product surface index for spec analysis
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Machine-readable feature tree index with warnings when unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  generatedAt:
+                    type: string
+                  repoRoot:
+                    type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  pages:
+                    type: array
+                    items:
+                      type: object
+                  apis:
+                    type: array
+                    items:
+                      type: object
+        "400":
+          description: Missing or invalid repository context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ── Memory ──
   /api/memory:
     get:

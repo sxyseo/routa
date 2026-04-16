@@ -15,7 +15,9 @@ use crate::error::ServerError;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/issues", get(list_spec_issues))
+    Router::new()
+        .route("/issues", get(list_spec_issues))
+        .route("/surface-index", get(get_surface_index))
 }
 
 const SPEC_STATUSES: [&str; 4] = ["open", "investigating", "resolved", "wontfix"];
@@ -26,6 +28,39 @@ struct SpecIssuesQuery {
     workspace_id: Option<String>,
     codebase_id: Option<String>,
     repo_path: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeatureSurfaceIndexFile {
+    generated_at: Option<String>,
+    #[serde(default)]
+    pages: Vec<FeatureSurfacePage>,
+    #[serde(default)]
+    apis: Vec<FeatureSurfaceApi>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeatureSurfacePage {
+    route: String,
+    title: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    source_file: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeatureSurfaceApi {
+    domain: String,
+    method: String,
+    path: String,
+    #[serde(default)]
+    operation_id: String,
+    #[serde(default)]
+    summary: String,
 }
 
 fn yaml_scalar_to_string(value: &serde_yaml::Value) -> Option<String> {
@@ -117,6 +152,59 @@ fn normalize_status(raw: &str) -> String {
     } else {
         "open".to_string()
     }
+}
+
+fn empty_surface_index_response(repo_root: &PathBuf, warnings: Vec<String>) -> JsonValue {
+    json!({
+        "generatedAt": "",
+        "pages": [],
+        "apis": [],
+        "repoRoot": repo_root.to_string_lossy(),
+        "warnings": warnings,
+    })
+}
+
+fn normalize_surface_index(index: FeatureSurfaceIndexFile, repo_root: &PathBuf) -> JsonValue {
+    let pages: Vec<JsonValue> = index
+        .pages
+        .into_iter()
+        .filter(|page| !page.route.trim().is_empty() && !page.title.trim().is_empty())
+        .map(|page| {
+            json!({
+                "route": page.route.trim(),
+                "title": page.title.trim(),
+                "description": page.description.trim(),
+                "sourceFile": page.source_file.trim(),
+            })
+        })
+        .collect();
+
+    let apis: Vec<JsonValue> = index
+        .apis
+        .into_iter()
+        .filter(|api| {
+            !api.domain.trim().is_empty()
+                && !api.method.trim().is_empty()
+                && !api.path.trim().is_empty()
+        })
+        .map(|api| {
+            json!({
+                "domain": api.domain.trim(),
+                "method": api.method.trim(),
+                "path": api.path.trim(),
+                "operationId": api.operation_id.trim(),
+                "summary": api.summary.trim(),
+            })
+        })
+        .collect();
+
+    json!({
+        "generatedAt": index.generated_at.unwrap_or_default(),
+        "pages": pages,
+        "apis": apis,
+        "repoRoot": repo_root.to_string_lossy(),
+        "warnings": [],
+    })
 }
 
 async fn list_spec_issues(
@@ -214,6 +302,57 @@ async fn list_spec_issues(
         "issues": issues,
         "repoRoot": repo_root.to_string_lossy(),
     })))
+}
+
+async fn get_surface_index(
+    State(state): State<AppState>,
+    Query(query): Query<SpecIssuesQuery>,
+) -> Result<Json<JsonValue>, ServerError> {
+    let repo_root = resolve_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "Missing context: provide workspaceId, codebaseId, or repoPath",
+        ResolveRepoRootOptions {
+            prefer_current_repo_for_default_workspace: true,
+        },
+    )
+    .await?;
+
+    let index_path = repo_root
+        .join("docs")
+        .join("product-specs")
+        .join("feature-tree.index.json");
+    let relative_index_path = index_path
+        .strip_prefix(&repo_root)
+        .unwrap_or(&index_path)
+        .to_string_lossy()
+        .to_string();
+
+    let raw = match std::fs::read_to_string(&index_path) {
+        Ok(content) => content,
+        Err(_) => {
+            return Ok(Json(empty_surface_index_response(
+                &repo_root,
+                vec![format!("Feature surface index not found at {relative_index_path}")],
+            )))
+        }
+    };
+
+    let parsed = match serde_json::from_str::<FeatureSurfaceIndexFile>(&raw) {
+        Ok(index) => index,
+        Err(_) => {
+            return Ok(Json(empty_surface_index_response(
+                &repo_root,
+                vec![format!(
+                    "Feature surface index is not valid JSON at {relative_index_path}"
+                )],
+            )))
+        }
+    };
+
+    Ok(Json(normalize_surface_index(parsed, &repo_root)))
 }
 
 #[cfg(test)]

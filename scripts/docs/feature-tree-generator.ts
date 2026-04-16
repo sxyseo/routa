@@ -11,6 +11,7 @@ type RouteInfo = {
   route: string;
   title: string;
   description: string;
+  sourceFile: string;
 };
 
 type ApiFeature = {
@@ -18,6 +19,7 @@ type ApiFeature = {
   method: string;
   operationId: string;
   summary: string;
+  domain: string;
 };
 
 type FeatureNode = {
@@ -36,6 +38,23 @@ type FeatureTree = {
   children: FeatureNode[];
 };
 
+export type FeatureSurfaceIndex = {
+  generatedAt: string;
+  pages: Array<{
+    route: string;
+    title: string;
+    description: string;
+    sourceFile: string;
+  }>;
+  apis: Array<{
+    domain: string;
+    method: string;
+    path: string;
+    operationId: string;
+    summary: string;
+  }>;
+};
+
 type OpenApiMethod = {
   operationId?: string;
   summary?: string;
@@ -48,6 +67,7 @@ type OpenApiDoc = {
 const API_CONTRACT = fromRoot("api-contract.yaml");
 const APP_DIR = fromRoot("src", "app");
 const OUTPUT_MD = fromRoot("docs", "product-specs", "FEATURE_TREE.md");
+const OUTPUT_JSON = fromRoot("docs", "product-specs", "feature-tree.index.json");
 
 export function parsePageComment(content: string): { title: string | null; description: string | null } {
   const match = content.match(/\/\*\*\s*(.*?)\s*\*\//s);
@@ -138,6 +158,7 @@ function scanFrontendRoutes(): RouteInfo[] {
         route,
         title,
         description: parsed.description ?? "",
+        sourceFile: path.relative(process.cwd(), fullPath).replace(/\\/g, "/"),
       });
     }
   }
@@ -164,6 +185,7 @@ export function extractApiFeatures(apiContract: OpenApiDoc | null): Record<strin
         continue;
       }
       domainFeatures.push({
+        domain,
         path: apiPath,
         method: method.toUpperCase(),
         operationId: spec.operationId ?? "",
@@ -224,6 +246,39 @@ export function buildFeatureTree(routes: RouteInfo[], apiFeatures: Record<string
     name: "Routa.js",
     description: "Multi-agent coordination platform",
     children: [routesNode, apiNode],
+  };
+}
+
+export function buildFeatureSurfaceIndex(
+  routes: RouteInfo[],
+  apiFeatures: Record<string, ApiFeature[]>,
+): FeatureSurfaceIndex {
+  return {
+    generatedAt: new Date().toISOString(),
+    pages: routes.map((route) => ({
+      route: route.route,
+      title: route.title,
+      description: route.description,
+      sourceFile: route.sourceFile,
+    })),
+    apis: Object.values(apiFeatures)
+      .flatMap((features) => features)
+      .sort((left, right) => {
+        if (left.domain !== right.domain) {
+          return left.domain.localeCompare(right.domain);
+        }
+        if (left.path !== right.path) {
+          return left.path.localeCompare(right.path);
+        }
+        return left.method.localeCompare(right.method);
+      })
+      .map((feature) => ({
+        domain: feature.domain,
+        method: feature.method,
+        path: feature.path,
+        operationId: feature.operationId,
+        summary: feature.summary,
+      })),
   };
 }
 
@@ -334,7 +389,9 @@ function main(): void {
   const args = new Set(process.argv.slice(2));
   const routes = scanFrontendRoutes();
   const apiContract = loadYamlFile<OpenApiDoc>(API_CONTRACT);
-  const tree = buildFeatureTree(routes, extractApiFeatures(apiContract));
+  const apiFeatures = extractApiFeatures(apiContract);
+  const tree = buildFeatureTree(routes, apiFeatures);
+  const surfaceIndex = buildFeatureSurfaceIndex(routes, apiFeatures);
 
   if (args.has("--json")) {
     console.log(JSON.stringify(tree, null, 2));
@@ -347,7 +404,9 @@ function main(): void {
   if (args.has("--save")) {
     fs.mkdirSync(path.dirname(OUTPUT_MD), { recursive: true });
     fs.writeFileSync(OUTPUT_MD, renderMarkdown(tree), "utf8");
+    fs.writeFileSync(OUTPUT_JSON, JSON.stringify(surfaceIndex, null, 2) + "\n", "utf8");
     console.log(`✅ Saved to ${OUTPUT_MD}`);
+    console.log(`✅ Saved to ${OUTPUT_JSON}`);
     return;
   }
   printTreeTable(tree);

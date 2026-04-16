@@ -1436,3 +1436,80 @@ Rendered as markdown.
         "expected invalid repoPath error, got {error_json:?}"
     );
 }
+
+#[tokio::test]
+async fn api_spec_surface_index_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = tempfile::tempdir().expect("temp repo");
+    let specs_dir = repo_root.path().join("docs").join("product-specs");
+
+    std::fs::create_dir_all(&specs_dir).expect("product specs dir");
+    std::fs::write(
+        specs_dir.join("feature-tree.index.json"),
+        r#"{
+  "generatedAt": "2026-04-16T12:00:00.000Z",
+  "pages": [
+    {
+      "route": "/workspace/:workspaceId/spec",
+      "title": "Workspace / Spec",
+      "description": "Dense issue relationship board",
+      "sourceFile": "src/app/workspace/[workspaceId]/spec/page.tsx"
+    }
+  ],
+  "apis": [
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "operationId": "listSpecIssues",
+      "summary": "List local issue specs"
+    }
+  ]
+}"#,
+    )
+    .expect("write surface index");
+
+    let success_response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/surface-index"))
+        .query(&[("repoPath", repo_root.path().to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("get spec surface index");
+    assert_eq!(success_response.status(), StatusCode::OK);
+
+    let success_json: Value = success_response
+        .json()
+        .await
+        .expect("decode spec surface index");
+    assert_eq!(success_json["warnings"], json!([]));
+    assert_eq!(
+        success_json["pages"][0]["route"],
+        json!("/workspace/:workspaceId/spec")
+    );
+    assert_eq!(success_json["apis"][0]["domain"], json!("spec"));
+
+    std::fs::remove_file(specs_dir.join("feature-tree.index.json")).expect("remove surface index");
+
+    let missing_response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/surface-index"))
+        .query(&[("repoPath", repo_root.path().to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("get missing spec surface index");
+    assert_eq!(missing_response.status(), StatusCode::OK);
+
+    let missing_json: Value = missing_response
+        .json()
+        .await
+        .expect("decode missing spec surface index");
+    assert_eq!(missing_json["pages"], json!([]));
+    assert_eq!(missing_json["apis"], json!([]));
+    assert!(
+        missing_json["warnings"][0]
+            .as_str()
+            .is_some_and(|warning| warning.contains("Feature surface index not found")),
+        "expected missing surface index warning, got {missing_json:?}"
+    );
+}
