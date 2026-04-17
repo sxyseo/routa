@@ -39,6 +39,7 @@ interface RecoveryNotificationParams {
   columnId: string;
   reason: string;
   mode: KanbanDevSessionSupervisionMode;
+  maxTurnsHit?: boolean;
 }
 
 export type SendKanbanSessionPrompt = (params: {
@@ -62,9 +63,14 @@ function isRecoveryMode(mode: KanbanDevSessionSupervisionMode): mode is "watchdo
   return mode === "watchdog_retry" || mode === "ralph_loop";
 }
 
-function getRecoveryReason(event: AgentEvent, completionSatisfied: boolean): TaskLaneSessionRecoveryReason {
+const MAX_TURNS_STOP_REASONS = new Set(["tool_use", "max_turns"]);
+
+function getRecoveryReason(event: AgentEvent, completionSatisfied: boolean, maxTurnsHit?: boolean): TaskLaneSessionRecoveryReason {
   if (event.type === AgentEventType.AGENT_TIMEOUT) {
     return "watchdog_inactivity";
+  }
+  if (maxTurnsHit) {
+    return "agent_failed";
   }
   if (event.type === AgentEventType.AGENT_FAILED) {
     return "agent_failed";
@@ -77,15 +83,22 @@ function getRecoveryReason(event: AgentEvent, completionSatisfied: boolean): Tas
 
 function buildKanbanRecoveryPrompt(params: RecoveryNotificationParams): string {
   const mode = params.mode === "watchdog_retry" ? "watchdog_retry" : "ralph_loop";
-  return [
+  const lines = [
     `hi，这里有一个 Agent（acp session id = ${params.sessionId}）很久没动了，你看看怎么回事，要不要继续？`,
     `Card: ${params.cardTitle} (${params.cardId})`,
     `Board: ${params.boardId}`,
     `Column: ${params.columnId}`,
     `Mode: ${mode}`,
     `Reason: ${params.reason}`,
-    "如果 session 还在，请直接处理并继续任务；否则尽快确认下一步重建策略。",
-  ].join("\\n");
+  ];
+  if (params.maxTurnsHit) {
+    lines.push(
+      "⚠️ Previous session hit the max-turns limit and was terminated mid-task.",
+      "IMPORTANT: Before continuing the implementation, first commit ALL uncommitted changes from the previous session using `git add` + `git commit`. This preserves partial progress in case this session also runs out of turns.",
+    );
+  }
+  lines.push("如果 session 还在，请直接处理并继续任务；否则尽快确认下一步重建策略。");
+  return lines.join("\\n");
 }
 
 function getAutomationStepLabel(step: KanbanAutomationStep | undefined, stepIndex: number): string {
@@ -342,13 +355,23 @@ export class KanbanWorkflowOrchestrator {
       : getDisabledSupervisionConfig();
 
     const existingAutomation = this.activeAutomations.get(data.cardId);
-    if (
-      existingAutomation
+    if (existingAutomation
       && existingAutomation.boardId === data.boardId
-      && existingAutomation.columnId === targetColumn.id
-      && (existingAutomation.status === "queued" || existingAutomation.status === "running")
-    ) {
-      return;
+      && (existingAutomation.status === "queued" || existingAutomation.status === "running")) {
+      // If the existing automation is in the same column, skip entirely.
+      if (existingAutomation.columnId === targetColumn.id) {
+        return;
+      }
+      // If the existing automation is in a DIFFERENT column but still active,
+      // the agent called move_card while the previous automation was still running.
+      // Cancel the stale automation before starting the new one.
+      console.warn(
+        `[WorkflowOrchestrator] Cancelling stale automation for card ${data.cardId} ` +
+        `in column ${existingAutomation.columnId} (status: ${existingAutomation.status}) ` +
+        `because card moved to column ${targetColumn.id}.`,
+      );
+      existingAutomation.status = "failed";
+      this.cleanupCardSession?.(data.cardId);
     }
 
     const automationEntry: ActiveAutomation = {
@@ -424,26 +447,31 @@ export class KanbanWorkflowOrchestrator {
         });
       }
 
+      const stopReason = typeof event.data?.stopReason === "string" ? event.data.stopReason : undefined;
+      const maxTurnsHit = Boolean(stopReason && MAX_TURNS_STOP_REASONS.has(stopReason));
       const successEvent =
         event.type !== AgentEventType.AGENT_FAILED
         && event.type !== AgentEventType.AGENT_TIMEOUT
-        && event.data?.success !== false;
+        && event.data?.success !== false
+        && !maxTurnsHit;
       const completionSatisfied = await this.isCompletionSatisfied(task, automation, successEvent);
       const shouldRecover = task
-        ? await this.shouldRecover(task, automation, event, completionSatisfied)
+        ? await this.shouldRecover(task, automation, event, completionSatisfied, maxTurnsHit)
         : false;
 
       if (task) {
         const nextStatus = event.type === AgentEventType.AGENT_TIMEOUT
           ? "timed_out"
-          : successEvent && completionSatisfied
-            ? "completed"
-            : "failed";
+          : maxTurnsHit
+            ? "timed_out"
+            : successEvent && completionSatisfied
+              ? "completed"
+              : "failed";
         markTaskLaneSessionStatus(task, eventSessionId, nextStatus);
-        if (!successEvent || !completionSatisfied) {
+        if (!successEvent || !completionSatisfied || maxTurnsHit) {
           upsertTaskLaneSession(task, {
             sessionId: eventSessionId,
-            recoveryReason: getRecoveryReason(event, completionSatisfied),
+            recoveryReason: getRecoveryReason(event, completionSatisfied, maxTurnsHit),
           });
         }
       }
@@ -464,7 +492,7 @@ export class KanbanWorkflowOrchestrator {
       }
 
       if (task && shouldRecover) {
-        const recoveryReason = getRecoveryReason(event, completionSatisfied);
+        const recoveryReason = getRecoveryReason(event, completionSatisfied, maxTurnsHit);
         await this.notifyKanbanAgent({
           workspaceId: automation.workspaceId,
           sessionId: eventSessionId,
@@ -474,6 +502,7 @@ export class KanbanWorkflowOrchestrator {
           columnId: automation.columnId,
           reason: `Recovery reason: ${recoveryReason}.`,
           mode: automation.supervision.mode,
+          maxTurnsHit,
         });
         const recovered = await this.recoverAutomation(cardId, automation, task, recoveryReason);
         if (recovered) {
@@ -689,6 +718,7 @@ export class KanbanWorkflowOrchestrator {
     automation: ActiveAutomation,
     event: AgentEvent,
     completionSatisfied: boolean,
+    maxTurnsHit = false,
   ): Promise<boolean> {
     if (!isRecoveryMode(automation.supervision.mode)) {
       return false;
@@ -701,6 +731,9 @@ export class KanbanWorkflowOrchestrator {
     }
 
     if (event.type === AgentEventType.AGENT_TIMEOUT || event.type === AgentEventType.AGENT_FAILED) {
+      return true;
+    }
+    if (maxTurnsHit) {
       return true;
     }
     if (automation.supervision.mode === "ralph_loop" && event.type === AgentEventType.AGENT_COMPLETED) {
