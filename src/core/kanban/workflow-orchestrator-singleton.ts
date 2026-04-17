@@ -27,6 +27,7 @@ import {
   type AutomationSpecialistSummary,
 } from "./effective-task-automation";
 import { buildKanbanWorktreeNaming } from "./worktree-naming";
+import { ensureTaskWorktree } from "./ensure-task-worktree";
 import { getInternalApiOrigin, triggerAssignedTaskAgent } from "./agent-trigger";
 import { KanbanSessionQueue } from "./kanban-session-queue";
 import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } from "./board-session-limits";
@@ -172,71 +173,16 @@ async function startKanbanTaskSession(
   let worktreeCwd = initialWorktreeTruth?.cwd ?? process.cwd();
   let worktreeBranch = initialWorktreeTruth?.branch;
   if (params.expectedColumnId === "dev" && preferredCodebase && !nextTask.worktreeId) {
-    try {
-      const worktreeService = new GitWorktreeService(
-        system.worktreeStore,
-        system.codebaseStore,
-      );
-      const namingOverride = nextTask.nextBranchOverride
-        ? { branch: nextTask.nextBranchOverride, label: nextTask.nextBranchOverride }
-        : undefined;
-      const { branch, label } = namingOverride ?? buildKanbanWorktreeNaming(nextTask.id, { title: nextTask.title });
-      const baseBranchOverride = nextTask.nextBaseBranchOverride;
-      const worktreeRoot = workspace
-        ? getEffectiveWorkspaceMetadata(workspace).worktreeRoot
-        : getDefaultWorkspaceWorktreeRoot(nextTask.workspaceId);
-      const worktree = await worktreeService.createWorktree(preferredCodebase.id, {
-        branch,
-        baseBranch: baseBranchOverride ?? preferredCodebase.branch ?? "main",
-        label,
-        worktreeRoot,
-      });
-      nextTask.worktreeId = worktree.id;
-      // Clear ephemeral overrides after consumption
-      nextTask.nextBranchOverride = undefined;
-      nextTask.nextBaseBranchOverride = undefined;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // Branch collision: retry with a timestamp suffix
-      if (message.includes("already in use")) {
-        try {
-          const worktreeService = new GitWorktreeService(
-            system.worktreeStore,
-            system.codebaseStore,
-          );
-          const namingOverride = nextTask.nextBranchOverride
-            ? { branch: nextTask.nextBranchOverride, label: nextTask.nextBranchOverride }
-            : undefined;
-          const { branch, label } = namingOverride ?? buildKanbanWorktreeNaming(nextTask.id, { title: nextTask.title });
-          const retryBranch = `${branch}-${Date.now().toString(36)}`;
-          const baseBranchOverride = nextTask.nextBaseBranchOverride;
-          const worktreeRoot = workspace
-            ? getEffectiveWorkspaceMetadata(workspace).worktreeRoot
-            : getDefaultWorkspaceWorktreeRoot(nextTask.workspaceId);
-          const worktree = await worktreeService.createWorktree(preferredCodebase.id, {
-            branch: retryBranch,
-            baseBranch: baseBranchOverride ?? preferredCodebase.branch ?? "main",
-            label,
-            worktreeRoot,
-          });
-          nextTask.worktreeId = worktree.id;
-          nextTask.nextBranchOverride = undefined;
-          nextTask.nextBaseBranchOverride = undefined;
-        } catch (retryError) {
-          const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
-          nextTask.status = TaskStatus.BLOCKED;
-          nextTask.columnId = "blocked";
-          nextTask.lastSyncError = `Worktree creation failed after retry: ${retryMsg}`;
-          await system.taskStore.save(nextTask);
-          return { error: nextTask.lastSyncError };
-        }
-      } else {
-        nextTask.status = TaskStatus.BLOCKED;
-        nextTask.columnId = "blocked";
-        nextTask.lastSyncError = `Worktree creation failed: ${message}`;
-        await system.taskStore.save(nextTask);
-        return { error: nextTask.lastSyncError };
-      }
+    const result = await ensureTaskWorktree(nextTask, preferredCodebase, {
+      worktreeStore: system.worktreeStore,
+      codebaseStore: system.codebaseStore,
+      taskStore: system.taskStore,
+      workspace,
+      workspaceId: nextTask.workspaceId,
+    });
+    if (!result.ok) {
+      await system.taskStore.save(nextTask);
+      return { error: result.errorMessage };
     }
   }
   const resolvedWorktreeTruth = await resolveTaskWorktreeTruth(nextTask, system);

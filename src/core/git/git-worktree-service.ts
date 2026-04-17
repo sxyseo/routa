@@ -13,6 +13,7 @@ import type { WorktreeStore } from "../db/pg-worktree-store";
 import type { CodebaseStore } from "../db/pg-codebase-store";
 import type { Worktree } from "../models/worktree";
 import { createWorktree } from "../models/worktree";
+import { GIT_DEFAULT_BRANCH } from "./git-defaults";
 
 /**
  * Shell-escape a single argument for safe interpolation.
@@ -110,7 +111,7 @@ export class GitWorktreeService {
     }
 
     const repoPath = codebase.repoPath;
-    const baseBranch = options.baseBranch ?? codebase.branch ?? "main";
+    const baseBranch = options.baseBranch ?? codebase.branch ?? GIT_DEFAULT_BRANCH;
 
     // Generate branch name if not provided
     const shortId = crypto.randomUUID().slice(0, 8);
@@ -336,7 +337,7 @@ export class GitWorktreeService {
       throw new Error(`Codebase not found for worktree ${worktreeId}`);
     }
 
-    const base = options.baseBranch ?? worktree.baseBranch ?? codebase.branch ?? "main";
+    const base = options.baseBranch ?? worktree.baseBranch ?? codebase.branch ?? GIT_DEFAULT_BRANCH;
     const cwd = worktree.worktreePath;
     const repoPath = codebase.repoPath;
 

@@ -402,3 +402,24 @@ export function splitLegacyTaskComment(comment: string | undefined): TaskComment
     source: "legacy_import",
   }];
 }
+
+/**
+ * Clear session/delivery state fields on a task for a clean re-trigger.
+ * Used when reopening a task on a new branch or resetting its execution.
+ *
+ * @param full - If true, also clear worktree, PR, and delivery snapshot.
+ */
+export function resetTaskExecutionState(task: Task, full: boolean): void {
+  task.triggerSessionId = undefined;
+  task.lastSyncError = undefined;
+  task.verificationVerdict = undefined;
+  task.verificationReport = undefined;
+  task.completionSummary = undefined;
+
+  if (full) {
+    task.worktreeId = undefined;
+    task.pullRequestUrl = undefined;
+    task.pullRequestMergedAt = undefined;
+    task.deliverySnapshot = undefined;
+  }
+}

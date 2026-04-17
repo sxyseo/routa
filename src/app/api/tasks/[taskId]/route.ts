@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { monitorApiRoute } from "@/core/http/api-route-observability";
 import { getRoutaSystem } from "@/core/routa-system";
-import { hydrateTaskComments, TaskPriority, TaskStatus, VerificationVerdict, type Task } from "@/core/models/task";
+import { hydrateTaskComments, resetTaskExecutionState, TaskPriority, TaskStatus, VerificationVerdict, type Task } from "@/core/models/task";
 import { columnIdToTaskStatus, resolveTaskStatusForBoardColumn, taskStatusToColumnId } from "@/core/models/kanban";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { ensureTaskBoardContext } from "@/core/kanban/task-board-context";
 import { buildTaskGitHubIssueBody, updateGitHubIssue } from "@/core/kanban/github-issues";
 import { GitWorktreeService } from "@/core/git/git-worktree-service";
-import { getDefaultWorkspaceWorktreeRoot, getEffectiveWorkspaceMetadata } from "@/core/models/workspace";
-import { buildKanbanWorktreeNaming } from "@/core/kanban/worktree-naming";
+import { ensureTaskWorktree } from "@/core/kanban/ensure-task-worktree";
 import type { ArtifactType } from "@/core/models/artifact";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
 import { archiveActiveTaskSession, prepareTaskForColumnChange } from "@/core/kanban/task-session-transition";
@@ -258,11 +257,7 @@ export async function PATCH(
       }
 
       // Clear session/delivery state, but KEEP worktree + PR info
-      nextTask.triggerSessionId = undefined;
-      nextTask.lastSyncError = undefined;
-      nextTask.verificationVerdict = undefined;
-      nextTask.verificationReport = undefined;
-      nextTask.completionSummary = undefined;
+      resetTaskExecutionState(nextTask, false);
 
       // Move to dev column if not already there
       if (existing.columnId !== "dev") {
@@ -290,15 +285,7 @@ export async function PATCH(
       }
 
       // Reset all delivery / PR state
-      nextTask.worktreeId = undefined;
-      nextTask.pullRequestUrl = undefined;
-      nextTask.pullRequestMergedAt = undefined;
-      nextTask.deliverySnapshot = undefined;
-      nextTask.triggerSessionId = undefined;
-      nextTask.lastSyncError = undefined;
-      nextTask.verificationVerdict = undefined;
-      nextTask.verificationReport = undefined;
-      nextTask.completionSummary = undefined;
+      resetTaskExecutionState(nextTask, true);
 
       // Custom branch name override (consumed when worktree is created)
       if (strategy === "custom" && body.customBranchName) {
@@ -611,46 +598,29 @@ export async function PATCH(
     body.assignedProvider !== undefined || body.assignedSpecialistId !== undefined || body.assignedRole !== undefined
   );
   const retryingTrigger = body.retryTrigger === true;
+  const reopenTrigger = body.reopenOnNewBranch === true && nextTask.columnId === "dev" && !nextTask.worktreeId;
   const retryProviderId = typeof body.retryProviderId === "string" && body.retryProviderId.trim().length > 0
     ? body.retryProviderId.trim()
     : undefined;
 
-  if ((enteringDev || assignedWhileInDev || retryingTrigger) && !nextTask.triggerSessionId) {
+  if ((enteringDev || assignedWhileInDev || retryingTrigger || reopenTrigger) && !nextTask.triggerSessionId) {
     const worktreeTruth = await resolveTaskWorktreeTruth(nextTask, system, {
       preferredRepoPath: body.repoPath,
     });
     const preferredCodebase = worktreeTruth?.codebase;
 
     // Auto-create worktree when entering dev column (if no worktree yet and codebase exists)
-    if (enteringDev && preferredCodebase && !nextTask.worktreeId) {
-      try {
-        const worktreeService = new GitWorktreeService(system.worktreeStore, system.codebaseStore);
-        const namingOverride = nextTask.nextBranchOverride
-          ? { branch: nextTask.nextBranchOverride, label: nextTask.nextBranchOverride }
-          : undefined;
-        const { branch, label } = namingOverride ?? buildKanbanWorktreeNaming(nextTask.id);
-        // Req 5: use worktreeRoot from workspace metadata if configured
-        const workspace = await system.workspaceStore.get(nextTask.workspaceId);
-        const worktreeRoot = workspace
-          ? getEffectiveWorkspaceMetadata(workspace).worktreeRoot
-          : getDefaultWorkspaceWorktreeRoot(nextTask.workspaceId);
-        const worktree = await worktreeService.createWorktree(preferredCodebase.id, {
-          branch,
-          baseBranch: nextTask.nextBaseBranchOverride ?? preferredCodebase.branch ?? "main",
-          label,
-          worktreeRoot,
-        });
-        nextTask.worktreeId = worktree.id;
-        // Clear ephemeral overrides after consumption
-        nextTask.nextBranchOverride = undefined;
-        nextTask.nextBaseBranchOverride = undefined;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error("[kanban] Failed to auto-create worktree:", msg);
-        // Mark task as blocked if worktree creation fails
-        nextTask.status = TaskStatus.BLOCKED;
-        nextTask.columnId = "blocked";
-        nextTask.lastSyncError = `Worktree creation failed: ${msg}`;
+    if ((enteringDev || reopenTrigger) && preferredCodebase && !nextTask.worktreeId) {
+      const workspace = await system.workspaceStore.get(nextTask.workspaceId);
+      const result = await ensureTaskWorktree(nextTask, preferredCodebase, {
+        worktreeStore: system.worktreeStore,
+        codebaseStore: system.codebaseStore,
+        taskStore: system.taskStore,
+        workspace,
+        workspaceId: nextTask.workspaceId,
+      });
+      if (!result.ok) {
+        console.error("[kanban] Failed to auto-create worktree:", result.errorMessage);
         await system.taskStore.save(nextTask);
         getKanbanEventBroadcaster().notify({
           workspaceId: nextTask.workspaceId,
