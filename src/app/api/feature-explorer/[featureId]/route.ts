@@ -43,11 +43,15 @@ function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function collectRelatedFiles(feature: FeatureTree["features"][number], repoRoot: string): string[] {
+function collectRelatedFiles(
+  feature: FeatureTree["features"][number],
+  repoRoot: string,
+  observedFiles: string[],
+): string[] {
   const catalog = parseFeatureSurfaceCatalog(repoRoot);
-  const files = new Set<string>(feature.sourceFiles);
+  const files = new Set<string>([...feature.sourceFiles, ...observedFiles]);
 
-  for (const sourceFile of feature.sourceFiles) {
+  for (const sourceFile of files) {
     const links = parseFeatureSurfaceLinks(catalog, sourceFile);
     for (const link of links) {
       files.add(link.sourcePath);
@@ -128,12 +132,13 @@ export async function GET(
 
     const { featureStats, fileStats: rawFileStats } = collectFeatureSessionStats(repoRoot, featureTree);
 
-    const allFiles = collectRelatedFiles(feature, repoRoot);
     const featureStat = featureStats[feature.id] ?? {
       sessionCount: 0,
       changedFiles: feature.sourceFiles.length,
       updatedAt: "",
+      matchedFiles: [],
     };
+    const allFiles = collectRelatedFiles(feature, repoRoot, featureStat.matchedFiles);
 
     const response: FeatureDetailResponse = {
       id: feature.id,

@@ -129,6 +129,7 @@ describe("feature explorer transcript stats", () => {
     expect(featureStats["feature-a"]).toMatchObject({
       sessionCount: 1,
       changedFiles: 1,
+      matchedFiles: ["src/app/page.tsx"],
     });
     expect(fileStats["src/app/page.tsx"]).toMatchObject({
       changes: 1,
@@ -164,6 +165,7 @@ describe("feature explorer transcript stats", () => {
     expect(featureStats["feature-a"]).toMatchObject({
       sessionCount: 1,
       changedFiles: 1,
+      matchedFiles: ["src/app/page.tsx"],
     });
     expect(fileStats["src/app/page.tsx"]).toMatchObject({
       changes: 1,
@@ -191,6 +193,53 @@ describe("feature explorer transcript stats", () => {
 
     expect(featureStats["feature-a"]).toBeUndefined();
     expect(fileStats["src/app/other/page.tsx"]).toMatchObject({
+      changes: 1,
+      sessions: 1,
+    });
+  });
+
+  it("sanitizes noisy path values before attributing files", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-noisy-path-"));
+    process.env.HOME = tempRoot;
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(path.join(repoRoot, "src/app/page.tsx"), "export default function Page() { return null; }\n");
+
+    ensureFile(
+      path.join(tempRoot, ".codex", "sessions", "noisy.jsonl"),
+      [
+        JSON.stringify({
+          timestamp: "2026-04-17T01:51:41.963Z",
+          type: "session_meta",
+          payload: {
+            id: "noisy-session",
+            timestamp: "2026-04-17T01:50:56.919Z",
+            cwd: repoRoot,
+            source: "cli",
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-04-17T02:31:10.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "write_result",
+            path: "src/app/page.tsx (3 tests) 3ms\",",
+          },
+        }),
+        "",
+      ].join("\n"),
+    );
+
+    const { featureStats, fileStats } = collectFeatureSessionStats(repoRoot, createFeatureTree());
+
+    expect(featureStats["feature-a"]).toMatchObject({
+      sessionCount: 1,
+      changedFiles: 1,
+      matchedFiles: ["src/app/page.tsx"],
+    });
+    expect(fileStats["src/app/page.tsx"]).toMatchObject({
       changes: 1,
       sessions: 1,
     });

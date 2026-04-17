@@ -100,6 +100,7 @@ export interface FeatureTreeSummary {
   sessionCount: number;
   changedFiles: number;
   updatedAt: string;
+  matchedFiles: string[];
 }
 
 export interface FileStat {
@@ -715,8 +716,33 @@ function firstString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
+function sanitizePathCandidate(candidate: string): string | null {
+  const cleaned = toPosix(candidate)
+    .trim()
+    .replace(/^"+|"+$/g, "")
+    .replace(/^'+|'+$/g, "")
+    .replace(/[",;:]+$/g, "");
+
+  if (!cleaned) {
+    return null;
+  }
+
+  if (!/\s/.test(cleaned)) {
+    return cleaned;
+  }
+
+  const embeddedPath = cleaned.match(
+    /([A-Za-z0-9_@()[\]{}.\-/]+?\.(?:[cm]?[jt]sx?|jsx?|tsx?|rs|md|json|ya?ml|toml|css|scss|html))/,
+  );
+  if (embeddedPath?.[1]) {
+    return embeddedPath[1];
+  }
+
+  return cleaned;
+}
+
 function normalizeRepoRelative(repoRoot: string, candidate: string, sessionCwd: string): string | null {
-  const cleaned = toPosix(candidate).trim().replace(/^"+|"+$/g, "").replace(/^'+|'+$/g, "");
+  const cleaned = sanitizePathCandidate(candidate);
 
   if (!cleaned || cleaned === "/dev/null") {
     return null;
@@ -1223,6 +1249,7 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
       sessionCount: sessions.size,
       changedFiles: featureChangedFiles.get(featureId)?.size ?? 0,
       updatedAt: featureUpdatedAt.get(featureId) ?? "",
+      matchedFiles: [...(featureChangedFiles.get(featureId) ?? new Set<string>())].sort(),
     };
   }
 

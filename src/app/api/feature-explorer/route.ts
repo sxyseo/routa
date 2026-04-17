@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
         sessionCount: 0,
         changedFiles: feature.sourceFiles.length,
         updatedAt: "",
+        matchedFiles: [],
       };
       return toSummaryResponse(feature, stats);
     });

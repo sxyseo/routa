@@ -19,7 +19,7 @@ import {
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
-import { type CodebaseData, useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
+import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { useTranslation } from "@/i18n";
 
@@ -64,28 +64,22 @@ function formatShortDate(iso: string): string {
   return `${mm}-${dd}`;
 }
 
-function toRepoSelection(codebase: CodebaseData | null): RepoSelection | null {
-  if (!codebase) return null;
-  return {
-    name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
-    path: codebase.repoPath,
-    branch: codebase.branch ?? "",
-  };
-}
-
 export function FeatureExplorerPageClient({
   workspaceId,
 }: {
   workspaceId: string;
 }) {
+  const debugRepoSelection: RepoSelection = {
+    name: "routa-js",
+    path: "/Users/phodal/ai/routa-js",
+    branch: "",
+  };
   const router = useRouter();
   const { t } = useTranslation();
   const workspacesHook = useWorkspaces();
   const { codebases } = useCodebases(workspaceId);
 
   const workspace = workspacesHook.workspaces.find((item) => item.id === workspaceId) ?? null;
-  const defaultCodebase = codebases.find((cb) => cb.isDefault) ?? codebases[0] ?? null;
-  const defaultRepoSelection = useMemo(() => toRepoSelection(defaultCodebase), [defaultCodebase]);
   const workspaceRepos = useMemo(
     () =>
       codebases.map((codebase) => ({
@@ -106,13 +100,9 @@ export function FeatureExplorerPageClient({
     ? manualRepoSelectionState.selection
     : null;
 
-  const effectiveRepoSelection = manualRepoSelection ?? defaultRepoSelection;
-  const isRepoOverride = Boolean(
-    manualRepoSelection?.path && manualRepoSelection.path !== defaultRepoSelection?.path,
-  );
-  const repoRefreshKey = manualRepoSelection
-    ? `${manualRepoSelection.path}:${manualRepoSelection.branch}`
-    : undefined;
+  const effectiveRepoSelection = debugRepoSelection;
+  const isRepoOverride = true;
+  const repoRefreshKey = `${debugRepoSelection.path}:${manualRepoSelection?.branch ?? ""}`;
 
   const {
     loading,
@@ -125,7 +115,7 @@ export function FeatureExplorerPageClient({
     fetchFeatureDetail,
   } = useFeatureExplorerData({
     workspaceId,
-    repoPath: isRepoOverride ? manualRepoSelection?.path : undefined,
+    repoPath: isRepoOverride ? debugRepoSelection.path : undefined,
     refreshKey: repoRefreshKey,
   });
 

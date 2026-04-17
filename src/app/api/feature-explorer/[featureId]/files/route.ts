@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   FeatureTree,
   buildFileTree,
+  collectFeatureSessionStats,
   isContextError,
   parseContext,
   parseFeatureSurfaceCatalog,
@@ -18,11 +19,11 @@ function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function collectRelatedFiles(sourceFiles: string[], repoRoot: string): string[] {
+function collectRelatedFiles(sourceFiles: string[], observedFiles: string[], repoRoot: string): string[] {
   const catalog = parseFeatureSurfaceCatalog(repoRoot);
-  const files = new Set<string>(sourceFiles);
+  const files = new Set<string>([...sourceFiles, ...observedFiles]);
 
-  for (const sourceFile of sourceFiles) {
+  for (const sourceFile of files) {
     for (const link of parseFeatureSurfaceLinks(catalog, sourceFile)) {
       files.add(link.sourcePath);
     }
@@ -52,7 +53,12 @@ export async function GET(
       );
     }
 
-    const files = collectRelatedFiles(feature.sourceFiles, repoRoot);
+    const { featureStats } = collectFeatureSessionStats(repoRoot, featureTree);
+    const files = collectRelatedFiles(
+      feature.sourceFiles,
+      featureStats[feature.id]?.matchedFiles ?? [],
+      repoRoot,
+    );
 
     return NextResponse.json({
       featureId,
