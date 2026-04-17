@@ -11,6 +11,7 @@ import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { RuntimeFitnessStatusResponse } from "@/core/fitness/runtime-status-types";
 import type { FitnessSpecSummary } from "@/client/hooks/use-harness-settings-data";
 import type { PlanResponse } from "@/client/components/harness-execution-plan-flow";
+import type { EntrixRunResponse } from "@/core/fitness/entrix-run-types";
 import { buildCanvasSpecialistPrompt, extractCanvasSourceFromSpecialistOutput, extractCanvasSpecialistOutputFromHistory } from "@/core/canvas/specialist-source";
 import { buildKanbanFitnessWorkbenchUserPrompt } from "./kanban-fitness-workbench-prompt";
 import { compileCanvasTsx, CanvasErrorBoundary } from "@/client/canvas-runtime";
@@ -127,6 +128,16 @@ export function KanbanFitnessWorkbenchModal({
     error: null,
     data: null,
   });
+  const [runtimeState, setRuntimeState] = useState<QueryState<RuntimeFitnessStatusResponse | null>>({
+    loading: false,
+    error: null,
+    data: runtimeFitness ?? null,
+  });
+  const [entrixState, setEntrixState] = useState<QueryState<EntrixRunResponse | null>>({
+    loading: false,
+    error: null,
+    data: null,
+  });
   const [previewSource, setPreviewSource] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [persistError, setPersistError] = useState<string | null>(null);
@@ -139,7 +150,13 @@ export function KanbanFitnessWorkbenchModal({
   const repoPath = codebase?.repoPath ?? "";
   const repoLabel = codebase?.label ?? (repoPath ? basename(repoPath) : "");
   const branch = codebase?.branch ?? null;
-  const contextReady = open && Boolean(repoPath) && !specsState.loading && !planState.loading;
+  const contextReady = open
+    && Boolean(repoPath)
+    && !specsState.loading
+    && !planState.loading
+    && !runtimeState.loading
+    && !entrixState.loading
+    && Boolean(entrixState.data);
   const preferredProvider = useMemo(() => {
     const availableProviders = providers.filter((provider) => provider.status === "available");
     return availableProviders.find((provider) => provider.id === selectedProvider)?.id
@@ -155,17 +172,17 @@ export function KanbanFitnessWorkbenchModal({
       repoPath,
       repoLabel,
       branch,
-      runtimeFitness,
+      entrixRun: entrixState.data,
       specFiles: specsState.data,
       plan: planState.data,
     });
     return buildCanvasSpecialistPrompt(userPrompt);
   }, [
     branch,
+    entrixState.data,
     planState.data,
     repoLabel,
     repoPath,
-    runtimeFitness,
     specsState.data,
     workspaceId,
   ]);
@@ -178,6 +195,8 @@ export function KanbanFitnessWorkbenchModal({
     if (!repoPath) {
       setSpecsState({ loading: false, error: null, data: [] });
       setPlanState({ loading: false, error: null, data: null });
+      setRuntimeState({ loading: false, error: null, data: runtimeFitness ?? null });
+      setEntrixState({ loading: false, error: null, data: null });
       return;
     }
 
@@ -189,20 +208,38 @@ export function KanbanFitnessWorkbenchModal({
     let cancelled = false;
     setSpecsState((current) => ({ ...current, loading: true, error: null }));
     setPlanState((current) => ({ ...current, loading: true, error: null }));
+    setRuntimeState((current) => ({ ...current, loading: true, error: null }));
+    setEntrixState({ loading: true, error: null, data: null });
 
     const loadContext = async () => {
       try {
-        const [specsResponse, planResponse] = await Promise.all([
+        const [specsResponse, planResponse, runtimeResponse, entrixResponse] = await Promise.all([
           desktopAwareFetch(resolveApiPath(`/api/fitness/specs?${baseQuery.toString()}`), {
             cache: "no-store",
           }),
           desktopAwareFetch(resolveApiPath(`/api/fitness/plan?${planQuery.toString()}`), {
             cache: "no-store",
           }),
+          desktopAwareFetch(resolveApiPath(`/api/fitness/runtime?${baseQuery.toString()}`), {
+            cache: "no-store",
+          }),
+          desktopAwareFetch(resolveApiPath("/api/fitness/run"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workspaceId,
+              codebaseId: codebase?.id ?? undefined,
+              repoPath,
+              tier: "fast",
+              scope: "local",
+            }),
+          }),
         ]);
 
         const specsJson = await specsResponse.json().catch(() => null);
         const planJson = await planResponse.json().catch(() => null);
+        const runtimeJson = await runtimeResponse.json().catch(() => null);
+        const entrixJson = await entrixResponse.json().catch(() => null);
         if (cancelled) return;
 
         if (specsResponse.ok) {
@@ -232,6 +269,38 @@ export function KanbanFitnessWorkbenchModal({
             data: null,
           });
         }
+
+        const nextRuntimeFitness = runtimeResponse.ok
+          ? (runtimeJson ?? null) as RuntimeFitnessStatusResponse | null
+          : runtimeFitness ?? null;
+
+        if (runtimeResponse.ok) {
+          setRuntimeState({
+            loading: false,
+            error: null,
+            data: nextRuntimeFitness,
+          });
+        } else {
+          setRuntimeState({
+            loading: false,
+            error: runtimeJson?.error ?? "Failed to load runtime fitness",
+            data: runtimeFitness ?? null,
+          });
+        }
+
+        if (entrixResponse.ok) {
+          setEntrixState({
+            loading: false,
+            error: null,
+            data: (entrixJson ?? null) as EntrixRunResponse | null,
+          });
+        } else {
+          setEntrixState({
+            loading: false,
+            error: entrixJson?.error ?? "Failed to execute Entrix fitness",
+            data: null,
+          });
+        }
       } catch (error) {
         if (cancelled) return;
         const message = toErrorMessage(error) || "Failed to load fitness context";
@@ -245,6 +314,16 @@ export function KanbanFitnessWorkbenchModal({
           error: message,
           data: null,
         });
+        setRuntimeState({
+          loading: false,
+          error: message,
+          data: runtimeFitness ?? null,
+        });
+        setEntrixState({
+          loading: false,
+          error: message,
+          data: null,
+        });
       }
     };
 
@@ -253,7 +332,7 @@ export function KanbanFitnessWorkbenchModal({
     return () => {
       cancelled = true;
     };
-  }, [codebase, open, repoPath, workspaceId]);
+  }, [codebase, open, repoPath, runtimeFitness, workspaceId]);
 
   const startSession = useCallback(async () => {
     if (!repoPath || !workspaceId || !canvasPrompt) return;
@@ -495,6 +574,8 @@ export function KanbanFitnessWorkbenchModal({
               <div className="space-y-2 border-b border-slate-200 px-5 py-3 text-[12px] dark:border-[#232736]">
                 {specsState.error ? <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">{specsState.error}</div> : null}
                 {planState.error ? <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">{planState.error}</div> : null}
+                {runtimeState.error ? <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">{runtimeState.error}</div> : null}
+                {entrixState.error ? <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">{entrixState.error}</div> : null}
                 {previewError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">{previewError}</div> : null}
                 {persistError ? <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">{persistError}</div> : null}
               </div>
@@ -508,6 +589,7 @@ export function KanbanFitnessWorkbenchModal({
                   <div className="flex h-full min-h-[320px] items-center justify-center px-6 py-8">
                     <div className="max-w-md rounded-xl border border-dashed border-slate-300 bg-white/80 px-5 py-6 text-center text-[13px] leading-6 text-slate-600 dark:border-[#2a3142] dark:bg-[#131823] dark:text-slate-300">
                       {specsState.loading || planState.loading
+                        || runtimeState.loading || entrixState.loading
                         ? t.kanban.fitnessWorkbenchContextLoading
                         : acpLoading || pendingPromptSessionIdRef.current
                           ? t.kanban.fitnessWorkbenchGenerating
