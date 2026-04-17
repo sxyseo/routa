@@ -103,8 +103,8 @@ describe("FeatureExplorerPageClient", () => {
     expect(screen.getByTestId("repo-picker-value").textContent).toBe("routa-js|/repo/default|main");
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
       workspaceId: "default",
-      repoPath: undefined,
-      refreshKey: undefined,
+      repoPath: "/repo/default",
+      refreshKey: "/repo/default:main",
     });
 
     fireEvent.click(screen.getByRole("button", { name: "switch repo" }));
@@ -129,8 +129,8 @@ describe("FeatureExplorerPageClient", () => {
 
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
       workspaceId: "default",
-      repoPath: undefined,
-      refreshKey: undefined,
+      repoPath: "/repo/default",
+      refreshKey: "/repo/default:main",
     });
   });
 });

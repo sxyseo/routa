@@ -23,7 +23,7 @@ import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { useTranslation } from "@/i18n";
 
-import type { CapabilityGroup, FeatureDetail, FeatureSummary, FileTreeNode, InspectorTab } from "./types";
+import type { CapabilityGroup, FeatureDetail, FileTreeNode, InspectorTab } from "./types";
 import { useFeatureExplorerData } from "./use-feature-explorer-data";
 
 function flattenFiles(nodes: FileTreeNode[], acc: Record<string, FileTreeNode> = {}): Record<string, FileTreeNode> {
@@ -69,11 +69,6 @@ export function FeatureExplorerPageClient({
 }: {
   workspaceId: string;
 }) {
-  const debugRepoSelection: RepoSelection = {
-    name: "routa-js",
-    path: "/Users/phodal/ai/routa-js",
-    branch: "",
-  };
   const router = useRouter();
   const { t } = useTranslation();
   const workspacesHook = useWorkspaces();
@@ -85,7 +80,7 @@ export function FeatureExplorerPageClient({
       codebases.map((codebase) => ({
         name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
         path: codebase.repoPath,
-        branch: codebase.branch,
+        branch: codebase.branch ?? "",
       })),
     [codebases],
   );
@@ -99,10 +94,9 @@ export function FeatureExplorerPageClient({
   const manualRepoSelection = manualRepoSelectionState.workspaceId === workspaceId
     ? manualRepoSelectionState.selection
     : null;
-
-  const effectiveRepoSelection = debugRepoSelection;
-  const isRepoOverride = true;
-  const repoRefreshKey = `${debugRepoSelection.path}:${manualRepoSelection?.branch ?? ""}`;
+  const fallbackRepoSelection = workspaceRepos[0] ?? null;
+  const effectiveRepoSelection = manualRepoSelection ?? fallbackRepoSelection;
+  const repoRefreshKey = `${effectiveRepoSelection?.path ?? ""}:${effectiveRepoSelection?.branch ?? ""}`;
 
   const {
     loading,
@@ -115,12 +109,12 @@ export function FeatureExplorerPageClient({
     fetchFeatureDetail,
   } = useFeatureExplorerData({
     workspaceId,
-    repoPath: isRepoOverride ? debugRepoSelection.path : undefined,
+    repoPath: effectiveRepoSelection?.path,
     refreshKey: repoRefreshKey,
   });
 
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("context");
-  const [middleView, setMiddleView] = useState<"sessions" | "tree">("sessions");
+  const [middleView, setMiddleView] = useState<"list" | "tree">("tree");
   const [featureId, setFeatureId] = useState<string>("");
   const [query, setQuery] = useState("");
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -135,30 +129,6 @@ export function FeatureExplorerPageClient({
     if (!normalized) return features;
     return features.filter((f) => f.name.toLowerCase().includes(normalized));
   }, [features, query]);
-
-  const groupedFeatures = useMemo(() => {
-    const groupMap = new Map<string, { group: CapabilityGroup; items: FeatureSummary[] }>();
-
-    // Initialize groups from capability_groups (preserving order)
-    for (const group of capabilityGroups) {
-      groupMap.set(group.id, { group, items: [] });
-    }
-
-    for (const feature of filteredFeatures) {
-      const entry = groupMap.get(feature.group);
-      if (entry) {
-        entry.items.push(feature);
-      } else {
-        // Fallback: create an ad-hoc group
-        groupMap.set(feature.group, {
-          group: { id: feature.group, name: feature.group, description: "" },
-          items: [feature],
-        });
-      }
-    }
-
-    return Array.from(groupMap.values()).filter((g) => g.items.length > 0);
-  }, [filteredFeatures, capabilityGroups]);
 
   const fileTree = useMemo(() => featureDetail?.fileTree ?? [], [featureDetail]);
   const fileStats = useMemo(() => featureDetail?.fileStats ?? {}, [featureDetail]);
@@ -292,7 +262,7 @@ export function FeatureExplorerPageClient({
     >
       <div className="flex h-full min-h-0 bg-desktop-bg-primary">
         <main className="flex min-w-0 flex-1">
-          <section className="grid min-h-0 flex-1 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+          <section className="grid min-h-0 flex-1 xl:grid-cols-[260px_minmax(0,1fr)_460px] 2xl:grid-cols-[300px_minmax(0,1fr)_520px]">
             {/* ── Left panel: Feature list ── */}
             <aside className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary/20">
               <div className="border-b border-desktop-border px-3 py-2">
@@ -324,110 +294,74 @@ export function FeatureExplorerPageClient({
                   <div className="px-3 py-4 text-xs text-desktop-text-secondary">Loading…</div>
                 ) : error ? (
                   <div className="px-3 py-4 text-xs text-red-400">{error}</div>
-                ) : groupedFeatures.length === 0 ? (
+                ) : filteredFeatures.length === 0 ? (
                   <div className="px-3 py-4 text-xs text-desktop-text-secondary">
                     {t.featureExplorer.noFeatureMatches}
                   </div>
                 ) : (
-                  groupedFeatures.map(({ group, items }) => (
-                    <div key={group.id} className="border-b border-desktop-border">
-                      <div className="px-3 py-2">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
-                          {group.name}
-                        </div>
-                        {group.description ? (
-                          <div className="mt-1 text-[10px] leading-4 text-desktop-text-secondary/80">
-                            {group.description}
+                  <div className="px-2 pb-2">
+                    {filteredFeatures.map((feature) => {
+                      const isActive = feature.id === effectiveFeatureId;
+                      return (
+                        <button
+                          key={feature.id}
+                          onClick={() => handleSelectFeature(feature.id)}
+                          className={`mb-1 w-full rounded-sm border px-2 py-1.5 text-left transition-colors ${
+                            isActive
+                              ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary"
+                              : "border-transparent text-desktop-text-secondary hover:border-desktop-border hover:bg-desktop-bg-primary/70 hover:text-desktop-text-primary"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex h-5 w-7 items-center justify-center rounded-sm border text-[10px] font-semibold ${
+                              isActive
+                                ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
+                                : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary"
+                            }`}>
+                              {featureCodeBadge(feature.id)}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                              {feature.name}
+                            </span>
+                            <span className={`rounded-sm border px-1 py-0.5 text-[9px] font-medium ${
+                              feature.status === "shipped"
+                                ? "border-emerald-500/30 text-emerald-400"
+                                : "border-amber-500/30 text-amber-400"
+                            }`}>
+                              {feature.status}
+                            </span>
                           </div>
-                        ) : null}
-                      </div>
-                      <div className="px-2 pb-2">
-                        {items.map((feature) => {
-                          const isActive = feature.id === effectiveFeatureId;
-                          return (
-                            <button
-                              key={feature.id}
-                              onClick={() => handleSelectFeature(feature.id)}
-                              className={`mb-1 w-full rounded-sm border px-2 py-1.5 text-left transition-colors ${
-                                isActive
-                                  ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary"
-                                  : "border-transparent text-desktop-text-secondary hover:border-desktop-border hover:bg-desktop-bg-primary/70 hover:text-desktop-text-primary"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className={`inline-flex h-5 w-7 items-center justify-center rounded-sm border text-[10px] font-semibold ${
-                                  isActive
-                                    ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
-                                    : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary"
-                                }`}>
-                                  {featureCodeBadge(feature.id)}
-                                </span>
-                                <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
-                                  {feature.name}
-                                </span>
-                                <span className={`rounded-sm border px-1 py-0.5 text-[9px] font-medium ${
-                                  feature.status === "shipped"
-                                    ? "border-emerald-500/30 text-emerald-400"
-                                    : "border-amber-500/30 text-amber-400"
-                                }`}>
-                                  {feature.status}
-                                </span>
-                              </div>
-                              <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-current/80">
-                                {feature.summary}
-                              </div>
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-current/70">
-                                <span>{feature.sourceFileCount}f</span>
-                                <span>{feature.pageCount}p</span>
-                                <span>{feature.apiCount}a</span>
-                                <span>{formatShortDate(feature.updatedAt)}</span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))
+                          <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-current/80">
+                            {feature.summary}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </aside>
 
             {/* ── Middle panel: File tree ── */}
             <section className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-primary">
-              <div className="border-b border-desktop-border px-3 py-2">
-                {activeFeature && (
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="inline-flex h-5 w-7 items-center justify-center rounded-sm border border-desktop-accent bg-desktop-bg-active text-[10px] font-semibold text-desktop-text-primary">
-                          {featureCodeBadge(activeFeature.id)}
-                        </span>
-                        <span className="truncate text-[13px] font-semibold text-desktop-text-primary">
-                          {activeFeature.name}
-                        </span>
-                        <span className="text-[10px] text-desktop-text-secondary">
-                          {activeFeature.sessionCount}s · {activeFeature.sourceFileCount}f
-                        </span>
-                      </div>
-                      <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-desktop-text-secondary">
-                        {activeFeature.summary}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-desktop-text-secondary">
-                        <span>{activeGroup?.name ?? activeFeature.group}</span>
-                        <span>{activeFeature.pageCount}p</span>
-                        <span>{activeFeature.apiCount}a</span>
-                        <span>{activeFeature.sourceFileCount}f</span>
-                      </div>
-                    </div>
-                    <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-medium ${
-                      activeFeature.status === "shipped"
-                        ? "border-emerald-500/30 text-emerald-400"
-                        : "border-amber-500/30 text-amber-400"
-                    }`}>
-                      {activeFeature.status}
-                    </span>
-                  </div>
-                )}
+              <div className="flex items-center justify-between border-b border-desktop-border px-3 py-2">
+                <div className="text-xs font-semibold text-desktop-text-secondary">
+                  {t.featureExplorer.filesHeading}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setMiddleView("list")}
+                    className={`rounded-sm px-1.5 py-0.5 text-[9px] font-medium ${middleView === "list" ? "bg-desktop-bg-active text-desktop-text-primary" : "text-desktop-text-secondary hover:text-desktop-text-primary"}`}
+                  >
+                    {t.featureExplorer.listView}
+                  </button>
+                  <button
+                    onClick={() => setMiddleView("tree")}
+                    className={`rounded-sm px-1.5 py-0.5 text-[9px] font-medium ${middleView === "tree" ? "bg-desktop-bg-active text-desktop-text-primary" : "text-desktop-text-secondary hover:text-desktop-text-primary"}`}
+                  >
+                    {t.featureExplorer.treeView}
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center justify-between border-b border-desktop-border bg-desktop-bg-secondary/40 px-3 py-1.5">
@@ -436,20 +370,6 @@ export function FeatureExplorerPageClient({
                   <div>{t.featureExplorer.changeColumn}</div>
                   <div>{t.featureExplorer.sessionsColumn}</div>
                   <div>{t.featureExplorer.updatedColumn}</div>
-                </div>
-                <div className="ml-2 flex items-center gap-1">
-                  <button
-                    onClick={() => setMiddleView("sessions")}
-                    className={`rounded-sm px-1.5 py-0.5 text-[9px] font-medium ${middleView === "sessions" ? "bg-desktop-bg-active text-desktop-text-primary" : "text-desktop-text-secondary hover:text-desktop-text-primary"}`}
-                  >
-                    {t.featureExplorer.sessionsColumn}
-                  </button>
-                  <button
-                    onClick={() => setMiddleView("tree")}
-                    className={`rounded-sm px-1.5 py-0.5 text-[9px] font-medium ${middleView === "tree" ? "bg-desktop-bg-active text-desktop-text-primary" : "text-desktop-text-secondary hover:text-desktop-text-primary"}`}
-                  >
-                    Tree
-                  </button>
                 </div>
               </div>
 
@@ -460,7 +380,7 @@ export function FeatureExplorerPageClient({
                   <div className="px-3 py-4 text-xs text-desktop-text-secondary">
                     {t.featureExplorer.noFilesSelected}
                   </div>
-                ) : middleView === "sessions" ? (
+                ) : middleView === "list" ? (
                   <div className="divide-y divide-desktop-border">
                     {sessionSortedFiles.map((node) => {
                       const stat = fileStats[node.path];
@@ -482,7 +402,7 @@ export function FeatureExplorerPageClient({
                             />
                             <button onClick={() => setActiveFileId(node.id)} className="flex min-w-0 items-center gap-1.5 text-left">
                               <FileIcon path={node.path} />
-                              <span className="truncate text-[12px] text-desktop-text-primary" title={node.path}>{node.path}</span>
+                              <span className="break-all text-[12px] text-desktop-text-primary" title={node.path}>{node.path}</span>
                             </button>
                           </div>
                           <div className="text-[11px] text-desktop-text-secondary">{stat?.changes ?? "-"}</div>
@@ -546,14 +466,17 @@ export function FeatureExplorerPageClient({
                     { id: "api" as const, label: t.featureExplorer.apiTab, icon: FlaskConical },
                   ]).map((tab) => {
                     const Icon = tab.icon;
+                    const isScreenshot = tab.id === "screenshot";
                     return (
                       <button
                         key={tab.id}
-                        onClick={() => setInspectorTab(tab.id)}
+                        onClick={() => (!isScreenshot ? setInspectorTab(tab.id) : null)}
                         className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[11px] font-medium transition-colors ${
                           inspectorTab === tab.id
                             ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary"
-                            : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+                            : isScreenshot
+                              ? "cursor-not-allowed border-desktop-border bg-desktop-bg-primary/30 text-desktop-text-secondary/60"
+                              : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
                         }`}
                       >
                         <Icon className="h-3.5 w-3.5" />
@@ -658,11 +581,34 @@ function ContextPanel({
             <FileIcon path={activeFile.path} />
             <span className="truncate text-xs font-semibold">{activeFile.name}</span>
           </div>
-          <div className="mt-1 truncate text-[10px] text-desktop-text-secondary">
+          <div className="mt-1 break-all text-[10px] text-desktop-text-secondary">
             {activeFile.path}
           </div>
         </ContextSection>
       )}
+
+      <ContextSection title={t.featureExplorer.selectedFileSignals}>
+        <div className="space-y-2">
+          <div>
+            <div className="text-[10px] font-medium text-desktop-text-secondary">{t.featureExplorer.sessionEvidence}</div>
+            <div className="mt-1 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary">
+              {activeFile ? t.featureExplorer.pendingImplementation : t.featureExplorer.noFilesSelected}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-medium text-desktop-text-secondary">{t.featureExplorer.toolHistory}</div>
+            <div className="mt-1 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary">
+              {activeFile ? t.featureExplorer.pendingImplementation : t.featureExplorer.noFilesSelected}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-medium text-desktop-text-secondary">{t.featureExplorer.promptHistory}</div>
+            <div className="mt-1 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary">
+              {activeFile ? t.featureExplorer.pendingImplementation : t.featureExplorer.noFilesSelected}
+            </div>
+          </div>
+        </div>
+      </ContextSection>
 
       <ContextSection title={t.featureExplorer.sourceFilesLabel}>
         <div className="space-y-1">
@@ -706,33 +652,16 @@ function ScreenshotPanel({
     return <div className="text-xs text-desktop-text-secondary">-</div>;
   }
 
-  const pageDetails = featureDetail.pageDetails ?? featureDetail.pages.map((route) => ({
-    name: route,
-    route,
-    description: "",
-  }));
-
   return (
     <ContextSection title={t.featureExplorer.screenshotTab}>
-      {pageDetails.length === 0 ? (
-        <div className="text-[11px] text-desktop-text-secondary">{t.featureExplorer.noPagesDeclared}</div>
-      ) : (
-        <div className="space-y-2">
-          {pageDetails.map((page) => (
-            <div key={page.route} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary p-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] font-medium text-desktop-text-primary">{page.name}</div>
-                  <div className="mt-1 break-all font-mono text-[10px] text-desktop-text-secondary">{page.route}</div>
-                </div>
-              </div>
-              {page.description ? (
-                <div className="mt-2 text-[11px] leading-5 text-desktop-text-secondary">{page.description}</div>
-              ) : null}
-            </div>
-          ))}
+      <div className="space-y-2">
+        <div className="text-[11px] text-desktop-text-secondary">{t.featureExplorer.screenshotComingSoon}</div>
+        <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2 text-[11px] text-desktop-text-secondary">
+          {featureDetail.pageDetails?.length || featureDetail.pages.length > 0
+            ? t.featureExplorer.pendingImplementation
+            : t.featureExplorer.noPagesDeclared}
         </div>
-      )}
+      </div>
     </ContextSection>
   );
 }

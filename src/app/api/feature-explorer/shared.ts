@@ -13,6 +13,8 @@ const MAX_TRANSCRIPT_FILE_SIZE = 10 * 1024 * 1024;
 const BROAD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const IGNORED_PATHS = new Set([".git", "node_modules", ".next", "dist", "out", "target"]);
 
+type FallbackSourceDir = string;
+
 export interface CapabilityGroup {
   id: string;
   name: string;
@@ -397,6 +399,58 @@ function walkAppFiles(root: string, current: string, out: string[]): void {
   }
 }
 
+function getFallbackSourceDirs(featureSourceFiles: string[]): FallbackSourceDir[] {
+  const sourceDirs = new Set<string>();
+
+  for (const sourceFile of featureSourceFiles) {
+    const normalized = toPosix(sourceFile);
+
+    if (!normalized.startsWith(`${APP_ROOT}/`)) {
+      continue;
+    }
+
+    let sourceDir: string;
+    if (normalized.endsWith("/page.tsx")) {
+      sourceDir = normalized.slice(0, -"/page.tsx".length);
+    } else if (normalized.endsWith("/route.ts")) {
+      sourceDir = normalized.slice(0, -"/route.ts".length);
+    } else {
+      sourceDir = path.posix.dirname(normalized);
+    }
+
+    if (sourceDir === APP_ROOT) {
+      continue;
+    }
+
+    const appRelative = sourceDir.slice(`${APP_ROOT}/`.length);
+    const segments = appRelative.split("/").filter(Boolean);
+    if (segments.length <= 1) {
+      continue;
+    }
+
+    if (segments.length === 2 && segments[segments.length - 1] === "[workspaceId]") {
+      continue;
+    }
+
+    sourceDirs.add(sourceDir);
+  }
+
+  return [...sourceDirs];
+}
+
+function hasDirectoryMatch(
+  featureSourceFiles: string[],
+  changedFile: string,
+): boolean {
+  const fallbackSourceDirs = getFallbackSourceDirs(featureSourceFiles);
+  const normalizedChangedFile = toPosix(changedFile);
+
+  return fallbackSourceDirs.some(
+    (sourceDir) =>
+      normalizedChangedFile === sourceDir || normalizedChangedFile.startsWith(`${sourceDir}/`),
+  );
+}
+
 export function parseFeatureSurfaceCatalog(repoRoot: string): SurfaceCatalog[] {
   const appRoot = path.join(repoRoot, APP_ROOT);
   const entries: string[] = [];
@@ -487,6 +541,7 @@ export function parseFeatureTreeLinks(
 ): FeatureLink[] {
   const links: FeatureLink[] = [];
   const seen = new Set<string>();
+  let hasExactMatch = false;
 
   for (const surface of surfaceLinks) {
     const sourceMatch = feature.sourceFiles.includes(changedFile) || feature.sourceFiles.includes(surface.sourcePath);
@@ -509,6 +564,28 @@ export function parseFeatureTreeLinks(
       viaPath,
       confidence: sourceMatch ? "High" : "Medium",
     });
+    hasExactMatch = true;
+  }
+
+  if (hasExactMatch) {
+    return links;
+  }
+
+  if (hasDirectoryMatch(feature.sourceFiles, changedFile)) {
+    for (const surface of surfaceLinks) {
+      const key = `${feature.id}|${surface.route}|${changedFile}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      links.push({
+        featureId: feature.id,
+        featureName: feature.name,
+        route: surface.route,
+        viaPath: changedFile,
+        confidence: "Medium",
+      });
+    }
   }
 
   return links;

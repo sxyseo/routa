@@ -33,6 +33,28 @@ function createFeatureTree(): FeatureTree {
   };
 }
 
+function createDirectoryFallbackFeatureTree(): FeatureTree {
+  return {
+    capabilityGroups: [],
+    features: [
+      {
+        id: "feature-directory",
+        name: "Feature Directory",
+        group: "core",
+        summary: "Tracks nested workspace feature explorer files",
+        status: "active",
+        pages: [],
+        apis: [],
+        sourceFiles: ["src/app/workspace/[workspaceId]/feature-explorer/page.tsx"],
+        relatedFeatures: [],
+        domainObjects: [],
+      },
+    ],
+    frontendPages: [],
+    apiEndpoints: [],
+  };
+}
+
 function ensureFile(filePath: string, content = ""): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf8");
@@ -240,6 +262,39 @@ describe("feature explorer transcript stats", () => {
       matchedFiles: ["src/app/page.tsx"],
     });
     expect(fileStats["src/app/page.tsx"]).toMatchObject({
+      changes: 1,
+      sessions: 1,
+    });
+  });
+
+  it("attributed feature changes by directory when route declarations are absent", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-directory-"));
+    process.env.HOME = tempRoot;
+
+    const repoRoot = path.join(tempRoot, "repo");
+    const featureExplorerRoute = path.join(repoRoot, "src/app/workspace/[workspaceId]/feature-explorer");
+    ensureFile(path.join(featureExplorerRoute, "page.tsx"), "export default function Page() { return null; }\n");
+    ensureFile(path.join(featureExplorerRoute, "widget.tsx"), "export default function Widget() { return null; }\n");
+
+    writeCodexTranscript(
+      path.join(tempRoot, ".codex", "sessions", "directory.jsonl"),
+      repoRoot,
+      " M src/app/workspace/[workspaceId]/feature-explorer/widget.tsx\n",
+      Date.now(),
+      "directory-session",
+    );
+
+    const { featureStats, fileStats } = collectFeatureSessionStats(
+      repoRoot,
+      createDirectoryFallbackFeatureTree(),
+    );
+
+    expect(featureStats["feature-directory"]).toMatchObject({
+      sessionCount: 1,
+      changedFiles: 1,
+      matchedFiles: ["src/app/workspace/[workspaceId]/feature-explorer/widget.tsx"],
+    });
+    expect(fileStats["src/app/workspace/[workspaceId]/feature-explorer/widget.tsx"]).toMatchObject({
       changes: 1,
       sessions: 1,
     });

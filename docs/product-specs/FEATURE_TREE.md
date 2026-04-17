@@ -43,6 +43,16 @@ feature_metadata:
       source_files:
         - src/app/workspace/[workspaceId]/page.tsx
         - src/app/workspace/[workspaceId]/overview/page.tsx
+    - id: feature-explorer
+      name: Feature Explorer
+      group: workspace-coordination
+      summary: Inspect workspace feature surfaces and session-backed file activity.
+      status: evolving
+      pages:
+        - /workspace/:workspaceId/feature-explorer
+      source_files:
+        - src/app/workspace/[workspaceId]/feature-explorer/page.tsx
+        - src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx
     - id: session-recovery
       name: Session Recovery
       group: agent-execution
@@ -609,4 +619,3 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/worktrees/{id}` | Get a single worktree |
 | DELETE | `/api/worktrees/{id}` | Remove a worktree |
 | POST | `/api/worktrees/{id}/validate` | Validate worktree health on disk |
-

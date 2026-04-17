@@ -231,6 +231,8 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     tryLiveRequest: string;
     expectedStatus: string;
     state: string;
+    treeView: string;
+    listView: string;
     noFilesSelected: string;
     sessionsLabel: string;
     filesLabel: string;
@@ -258,6 +260,12 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     capabilityGroup: string;
     groupDescription: string;
     statusLabel: string;
+    sessionEvidence: string;
+    toolHistory: string;
+    promptHistory: string;
+    pendingImplementation: string;
+    screenshotComingSoon: string;
+    selectedFileSignals: string;
     declaredPages: string;
     declaredApis: string;
     sourceFilesLabel: string;
