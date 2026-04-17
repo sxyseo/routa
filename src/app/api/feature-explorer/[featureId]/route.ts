@@ -86,6 +86,7 @@ export async function GET(
       surfaceLinks,
       pageDetails,
       apiDetails,
+      fileStats: {},
     });
   } catch (error) {
     const message = toMessage(error);

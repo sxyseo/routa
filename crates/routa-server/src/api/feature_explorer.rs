@@ -67,6 +67,15 @@ struct FeatureDetailResponse {
     surface_links: Vec<SurfaceLinkResponse>,
     page_details: Vec<PageDetailResponse>,
     api_details: Vec<ApiDetailResponse>,
+    file_stats: HashMap<String, FileStatResponse>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileStatResponse {
+    changes: usize,
+    sessions: usize,
+    updated_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -173,11 +182,15 @@ fn insert_into_tree(children: &mut Vec<FileTreeNode>, parts: &[&str], full_path:
     }
 }
 
+/// Per-file statistics: (change_count, session_count, latest_timestamp)
+type FileStats = HashMap<String, (usize, usize, String)>;
+
 fn collect_session_stats(
     repo_root: &Path,
     feature_tree: &FeatureTreeCatalog,
-) -> HashMap<String, (usize, usize, String)> {
+) -> (HashMap<String, (usize, usize, String)>, FileStats) {
     let mut stats: HashMap<String, (usize, usize, String)> = HashMap::new();
+    let mut file_stats: FileStats = HashMap::new();
 
     // Try to collect real transcript data
     let surface_catalog = FeatureSurfaceCatalog::from_repo_root(repo_root).unwrap_or_default();
@@ -240,6 +253,19 @@ fn collect_session_stats(
                         entry.2 = ts;
                     }
                 }
+
+                // Collect per-file stats
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+                for file_path in &changed_files {
+                    let entry = file_stats
+                        .entry(file_path.clone())
+                        .or_insert((0, 0, String::new()));
+                    entry.0 += 1; // change count
+                    entry.1 += 1; // session count (this file was touched in this session)
+                    if entry.2.is_empty() || ts > entry.2 {
+                        entry.2 = ts.clone();
+                    }
+                }
             }
         }
         Err(_) => {
@@ -254,7 +280,7 @@ fn collect_session_stats(
             .or_insert((0, feature.source_files.len(), String::new()));
     }
 
-    stats
+    (stats, file_stats)
 }
 
 fn split_declared_api(declaration: &str) -> Option<(&str, &str)> {
@@ -278,7 +304,7 @@ async fn get_feature_list(
     .map_err(|e| map_context_error(e))?;
 
     let feature_tree = load_feature_tree(&repo_root).map_err(|e| map_error(e))?;
-    let session_stats = collect_session_stats(&repo_root, &feature_tree);
+    let (session_stats, _file_stats) = collect_session_stats(&repo_root, &feature_tree);
 
     let capability_groups: Vec<CapabilityGroupResponse> = feature_tree
         .capability_groups
@@ -341,7 +367,7 @@ async fn get_feature_detail(
     .map_err(|e| map_context_error(e))?;
 
     let feature_tree = load_feature_tree(&repo_root).map_err(|e| map_error(e))?;
-    let session_stats = collect_session_stats(&repo_root, &feature_tree);
+    let (session_stats, file_stats) = collect_session_stats(&repo_root, &feature_tree);
 
     let feature = feature_tree
         .features
@@ -427,6 +453,23 @@ async fn get_feature_detail(
         .cloned()
         .unwrap_or((0, feature.source_files.len(), String::new()));
 
+    // Build per-file stats for this feature's source files
+    let feature_file_stats: HashMap<String, FileStatResponse> = all_files
+        .iter()
+        .filter_map(|f| {
+            file_stats.get(f).map(|(changes, sessions, updated)| {
+                (
+                    f.clone(),
+                    FileStatResponse {
+                        changes: *changes,
+                        sessions: *sessions,
+                        updated_at: updated.clone(),
+                    },
+                )
+            })
+        })
+        .collect();
+
     let response = FeatureDetailResponse {
         id: feature.id.clone(),
         name: feature.name.clone(),
@@ -449,6 +492,7 @@ async fn get_feature_detail(
         surface_links,
         page_details,
         api_details,
+        file_stats: feature_file_stats,
     };
 
     Ok(Json(serde_json::to_value(response).map_err(|e| map_error(e))?))

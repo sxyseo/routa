@@ -36,6 +36,13 @@ export interface FeatureDetail {
   surfaceLinks?: SurfaceLink[];
   pageDetails?: PageDetail[];
   apiDetails?: ApiDetail[];
+  fileStats?: Record<string, FileStat>;
+}
+
+export interface FileStat {
+  changes: number;
+  sessions: number;
+  updatedAt: string;
 }
 
 export interface FileTreeNode {

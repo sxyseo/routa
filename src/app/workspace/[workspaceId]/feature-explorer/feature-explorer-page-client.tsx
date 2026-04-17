@@ -54,6 +54,15 @@ function featureCodeBadge(featureId: string): string {
   return featureId.slice(0, 2).toUpperCase();
 }
 
+function formatShortDate(iso: string): string {
+  if (!iso || iso === "-") return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${mm}-${dd}`;
+}
+
 export function FeatureExplorerPageClient({
   workspaceId,
 }: {
@@ -124,6 +133,7 @@ export function FeatureExplorerPageClient({
   }, [filteredFeatures, capabilityGroups]);
 
   const fileTree = useMemo(() => featureDetail?.fileTree ?? [], [featureDetail]);
+  const fileStats = useMemo(() => featureDetail?.fileStats ?? {}, [featureDetail]);
   const flatMap = useMemo(() => flattenFiles(fileTree), [fileTree]);
   const activeFile = flatMap[activeFileId] ?? null;
   const activeFeature = features.find((f) => f.id === effectiveFeatureId);
@@ -391,6 +401,7 @@ export function FeatureExplorerPageClient({
                         expandedIds={expandedIds}
                         activeFileId={activeFileId}
                         selectedFileIds={selectedFileIds}
+                        fileStats={fileStats}
                         onToggleNode={handleToggleNode}
                         onToggleFileSelection={handleToggleFileSelection}
                         onSetActiveFile={setActiveFileId}
@@ -741,6 +752,7 @@ function TreeNodeRow({
   expandedIds,
   activeFileId,
   selectedFileIds,
+  fileStats,
   onToggleNode,
   onToggleFileSelection,
   onSetActiveFile,
@@ -750,6 +762,7 @@ function TreeNodeRow({
   expandedIds: Record<string, boolean>;
   activeFileId: string;
   selectedFileIds: string[];
+  fileStats: Record<string, { changes: number; sessions: number; updatedAt: string }>;
   onToggleNode: (nodeId: string) => void;
   onToggleFileSelection: (fileId: string) => void;
   onSetActiveFile: (fileId: string) => void;
@@ -793,6 +806,7 @@ function TreeNodeRow({
               expandedIds={expandedIds}
               activeFileId={activeFileId}
               selectedFileIds={selectedFileIds}
+              fileStats={fileStats}
               onToggleNode={onToggleNode}
               onToggleFileSelection={onToggleFileSelection}
               onSetActiveFile={onSetActiveFile}
@@ -804,6 +818,7 @@ function TreeNodeRow({
 
   const isActive = activeFileId === node.id;
   const isSelected = selectedFileIds.includes(node.id);
+  const stat = fileStats[node.path];
 
   return (
     <div
@@ -823,9 +838,9 @@ function TreeNodeRow({
           <span className="truncate text-[12px] text-desktop-text-primary">{node.name}</span>
         </button>
       </div>
-      <div className="text-[11px] text-desktop-text-secondary">-</div>
-      <div className="text-[11px] text-desktop-text-secondary">-</div>
-      <div className="text-[11px] text-desktop-text-secondary">-</div>
+      <div className="text-[11px] text-desktop-text-secondary">{stat?.changes ?? "-"}</div>
+      <div className="text-[11px] text-desktop-text-secondary">{stat?.sessions ?? "-"}</div>
+      <div className="text-[11px] text-desktop-text-secondary">{stat?.updatedAt ? formatShortDate(stat.updatedAt) : "-"}</div>
     </div>
   );
 }
