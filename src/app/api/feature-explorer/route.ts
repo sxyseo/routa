@@ -1,63 +1,99 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isContextError, parseContext, parseFeatureTree, resolveRepoRoot, tryProxyToRustBackend } from "./shared";
+
+import {
+  collectFeatureSessionStats,
+  FeatureTreeFeature,
+  isContextError,
+  parseContext,
+  parseFeatureTree,
+  resolveRepoRoot,
+} from "./shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+interface CapabilityGroupResponse {
+  id: string;
+  name: string;
+  description: string;
+}
+
+interface FeatureSummaryResponse {
+  id: string;
+  name: string;
+  group: string;
+  summary: string;
+  status: string;
+  sessionCount: number;
+  changedFiles: number;
+  updatedAt: string;
+  sourceFileCount: number;
+  pageCount: number;
+  apiCount: number;
+}
+
+interface FeatureListResponse {
+  capabilityGroups: CapabilityGroupResponse[];
+  features: FeatureSummaryResponse[];
+}
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function toSummaryResponse(
+  feature: FeatureTreeFeature,
+  stats: { sessionCount: number; changedFiles: number; updatedAt: string },
+) {
+  return {
+    id: feature.id,
+    name: feature.name,
+    group: feature.group,
+    summary: feature.summary,
+    status: feature.status,
+    sessionCount: stats?.sessionCount ?? 0,
+    changedFiles: stats?.changedFiles ?? feature.sourceFiles.length,
+    updatedAt: stats?.updatedAt && stats.updatedAt !== "" ? stats.updatedAt : "-",
+    sourceFileCount: feature.sourceFiles.length,
+    pageCount: feature.pages.length,
+    apiCount: feature.apis.length,
+  };
+}
+
 export async function GET(request: NextRequest) {
-  // Resolve repo root first so we can pass it to the Rust backend
-  const context = parseContext(request.nextUrl.searchParams);
-  let repoRoot: string | undefined;
   try {
-    repoRoot = await resolveRepoRoot(context);
-  } catch {
-    // ignore — will fall through to TS or proxy without repoPath
-  }
+    const context = parseContext(request.nextUrl.searchParams);
+    const repoRoot = await resolveRepoRoot(context);
+    const featureTree = parseFeatureTree(repoRoot);
+    const { featureStats } = collectFeatureSessionStats(repoRoot, featureTree);
 
-  // Try proxying to routa-server, enriching query with resolved repoPath
-  const params = new URLSearchParams(request.nextUrl.searchParams);
-  if (repoRoot && !params.has("repoPath")) {
-    params.set("repoPath", repoRoot);
-  }
-  const proxied = await tryProxyToRustBackend("", params.toString());
-  if (proxied) return proxied;
-
-  try {
-    const root = repoRoot ?? (await resolveRepoRoot(context));
-    const result = parseFeatureTree(root);
-
-    const features = result.features.map((f) => ({
-      id: f.id,
-      name: f.name,
-      group: f.group,
-      summary: f.summary,
-      status: f.status,
-      sessionCount: 0,
-      changedFiles: f.source_files.length,
-      updatedAt: "-",
-      sourceFileCount: f.source_files.length,
-      pageCount: f.pages.length,
-      apiCount: f.apis.length,
+    const capabilityGroups = featureTree.capabilityGroups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      description: group.description,
     }));
 
-    return NextResponse.json({
-      capabilityGroups: result.capabilityGroups,
-      features,
+    const features = featureTree.features.map((feature) => {
+      const stats = featureStats[feature.id] ?? {
+        sessionCount: 0,
+        changedFiles: feature.sourceFiles.length,
+        updatedAt: "",
+      };
+      return toSummaryResponse(feature, stats);
     });
+
+    return NextResponse.json({
+      capabilityGroups,
+      features,
+    } as FeatureListResponse);
   } catch (error) {
     const message = toMessage(error);
     if (isContextError(message)) {
-      return NextResponse.json(
-        { error: "Feature explorer context error", details: message },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: message }, { status: 400 });
     }
+
     return NextResponse.json(
-      { error: "Feature explorer error", details: message },
+      { error: "Feature explorer failed", details: message },
       { status: 500 },
     );
   }

@@ -1,85 +1,141 @@
 import { NextRequest, NextResponse } from "next/server";
+
 import {
+  ApiEndpointDetail,
+  FrontendPageDetail,
+  FeatureTree,
   buildFileTree,
+  collectFeatureSessionStats,
   isContextError,
   parseContext,
+  parseFeatureSurfaceCatalog,
+  parseFeatureSurfaceLinks,
   parseFeatureTree,
   resolveRepoRoot,
-  tryProxyToRustBackend,
+  splitDeclaredApi,
 } from "../shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function splitDeclaredApi(declaration: string): { method: string; endpoint: string } {
-  const [method, endpoint] = declaration.split(/\s+/, 2);
-  if (endpoint) {
-    return { method, endpoint };
-  }
-  return { method: "GET", endpoint: declaration };
+interface FeatureDetailResponse {
+  id: string;
+  name: string;
+  group: string;
+  summary: string;
+  status: string;
+  pages: string[];
+  apis: string[];
+  sourceFiles: string[];
+  relatedFeatures: string[];
+  domainObjects: string[];
+  sessionCount: number;
+  changedFiles: number;
+  updatedAt: string;
+  fileTree: ReturnType<typeof buildFileTree>;
+  surfaceLinks: { kind: string; route: string; sourcePath: string }[];
+  pageDetails: FrontendPageDetail[];
+  apiDetails: ApiEndpointDetail[];
+  fileStats: Record<string, { changes: number; sessions: number; updatedAt: string }>;
 }
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function collectRelatedFiles(feature: FeatureTree["features"][number], repoRoot: string): string[] {
+  const catalog = parseFeatureSurfaceCatalog(repoRoot);
+  const files = new Set<string>(feature.sourceFiles);
+
+  for (const sourceFile of feature.sourceFiles) {
+    const links = parseFeatureSurfaceLinks(catalog, sourceFile);
+    for (const link of links) {
+      files.add(link.sourcePath);
+    }
+  }
+
+  return [...files].sort();
+}
+
+function collectSurfaceLinks(
+  feature: FeatureTree["features"][number],
+  repoRoot: string,
+): { kind: string; route: string; sourcePath: string }[] {
+  const catalog = parseFeatureSurfaceCatalog(repoRoot);
+  const lookup = new Map<string, { kind: string; route: string; sourcePath: string }>();
+
+  for (const sourceFile of feature.sourceFiles) {
+    for (const link of parseFeatureSurfaceLinks(catalog, sourceFile)) {
+      const key = `${link.kind}|${link.route}|${link.sourcePath}`;
+      lookup.set(key, {
+        kind: link.kind,
+        route: link.route,
+        sourcePath: link.sourcePath,
+      });
+    }
+  }
+
+  return [...lookup.values()];
+}
+
+function toPageDetails(feature: FeatureTree["features"][number], featureTree: FeatureTree): FrontendPageDetail[] {
+  return feature.pages.map((route) => {
+    const matched = featureTree.frontendPages.find((page) => page.route === route);
+    return matched ?? {
+      name: route,
+      route,
+      description: "",
+    };
+  });
+}
+
+function toApiDetails(feature: FeatureTree["features"][number], featureTree: FeatureTree): ApiEndpointDetail[] {
+  return feature.apis.map((declaration) => {
+    const parsed = splitDeclaredApi(declaration);
+    const matched = featureTree.apiEndpoints.find(
+      (api) => api.method.toUpperCase() === parsed.method.toUpperCase() && api.endpoint === parsed.endpoint,
+    );
+
+    return matched ?? {
+      group: "",
+      method: parsed.method,
+      endpoint: parsed.endpoint,
+      description: "",
+    };
+  });
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ featureId: string }> },
 ) {
-  const { featureId } = await params;
-
-  // Resolve repo root first so we can pass it to the Rust backend
-  const context = parseContext(request.nextUrl.searchParams);
-  let repoRoot: string | undefined;
   try {
-    repoRoot = await resolveRepoRoot(context);
-  } catch {
-    // ignore
-  }
+    const { featureId } = await params;
+    const context = parseContext(request.nextUrl.searchParams);
+    const repoRoot = await resolveRepoRoot(context);
+    const featureTree = parseFeatureTree(repoRoot);
+    const feature = featureTree.features.find((item) => item.id === featureId);
 
-  // Try proxying to routa-server, enriching query with resolved repoPath
-  const proxyParams = new URLSearchParams(request.nextUrl.searchParams);
-  if (repoRoot && !proxyParams.has("repoPath")) {
-    proxyParams.set("repoPath", repoRoot);
-  }
-  const proxied = await tryProxyToRustBackend(`/${encodeURIComponent(featureId)}`, proxyParams.toString());
-  if (proxied) return proxied;
-
-  try {
-    const root = repoRoot ?? (await resolveRepoRoot(context));
-    const { features, frontendPages, apiEndpoints } = parseFeatureTree(root);
-
-    const feature = features.find((f) => f.id === featureId);
     if (!feature) {
       return NextResponse.json(
-        { error: "Feature not found", featureId },
+        {
+          error: "Feature not found",
+          featureId,
+        },
         { status: 404 },
       );
     }
 
-    const allFiles = [...feature.source_files].sort();
-    const fileTree = buildFileTree(allFiles);
+    const { featureStats, fileStats: rawFileStats } = collectFeatureSessionStats(repoRoot, featureTree);
 
-    const pageDetails = feature.pages.map((route) => {
-      const matched = frontendPages.find((page) => page.route === route);
-      return matched ?? { name: route, route, description: "" };
-    });
+    const allFiles = collectRelatedFiles(feature, repoRoot);
+    const featureStat = featureStats[feature.id] ?? {
+      sessionCount: 0,
+      changedFiles: feature.sourceFiles.length,
+      updatedAt: "",
+    };
 
-    const apiDetails = feature.apis.map((declaration) => {
-      const parsed = splitDeclaredApi(declaration);
-      const matched = apiEndpoints.find(
-        (api) => api.method.toUpperCase() === parsed.method.toUpperCase() && api.endpoint === parsed.endpoint,
-      );
-      return matched ?? { group: "", method: parsed.method, endpoint: parsed.endpoint, description: "" };
-    });
-
-    const surfaceLinks = [
-      ...feature.pages.map((route) => ({ kind: "Page", route, sourcePath: "" })),
-      ...feature.apis.map((route) => ({ kind: "API", route, sourcePath: "" })),
-    ];
-
-    return NextResponse.json({
+    const response: FeatureDetailResponse = {
       id: feature.id,
       name: feature.name,
       group: feature.group,
@@ -88,17 +144,32 @@ export async function GET(
       pages: feature.pages,
       apis: feature.apis,
       sourceFiles: allFiles,
-      relatedFeatures: feature.related_features,
-      domainObjects: feature.domain_objects,
-      sessionCount: 0,
-      changedFiles: allFiles.length,
-      updatedAt: "-",
-      fileTree,
-      surfaceLinks,
-      pageDetails,
-      apiDetails,
+      relatedFeatures: feature.relatedFeatures,
+      domainObjects: feature.domainObjects,
+      sessionCount: featureStat.sessionCount,
+      changedFiles: featureStat.changedFiles,
+      updatedAt: featureStat.updatedAt !== "" ? featureStat.updatedAt : "-",
+      fileTree: buildFileTree(allFiles),
+      surfaceLinks: collectSurfaceLinks(feature, repoRoot),
+      pageDetails: toPageDetails(feature, featureTree),
+      apiDetails: toApiDetails(feature, featureTree),
       fileStats: {},
-    });
+    };
+
+    for (const filePath of allFiles) {
+      const stat = rawFileStats[filePath];
+      if (!stat) {
+        continue;
+      }
+
+      response.fileStats[filePath] = {
+        changes: stat.changes,
+        sessions: stat.sessions,
+        updatedAt: stat.updatedAt,
+      };
+    }
+
+    return NextResponse.json(response);
   } catch (error) {
     const message = toMessage(error);
     if (isContextError(message)) {
@@ -107,8 +178,9 @@ export async function GET(
         { status: 400 },
       );
     }
+
     return NextResponse.json(
-      { error: "Feature explorer error", details: message },
+      { error: "Feature explorer failed", details: message },
       { status: 500 },
     );
   }
