@@ -208,28 +208,18 @@ fn collect_session_stats(
     // Try to collect real transcript data
     let surface_catalog = FeatureSurfaceCatalog::from_repo_root(repo_root).unwrap_or_default();
     let analyzer = SessionAnalyzer::with_catalogs(&surface_catalog, feature_tree);
+    let normalized_registry =
+        trace_parser::AdapterRegistry::new().with_adapter(trace_parser::CodexSessionAdapter);
 
     match trace_parser::collect_broad_transcript_summaries(repo_root) {
         Ok(transcripts) => {
             for transcript in &transcripts {
-                let changed_files =
-                    collect_changed_files_from_events(repo_root, &transcript.recovered_events);
-                let mut tool_names: Vec<String> = Vec::new();
-
-                for event in &transcript.recovered_events {
-                    match event {
-                        trace_parser::TranscriptRecoveredEvent::ToolUse { tool_name, .. } => {
-                            tool_names.push(tool_name.clone());
-                        }
-                    }
-                }
-
-                let input = FeatureTraceInput {
-                    session_id: transcript.session_id.clone(),
-                    changed_files: changed_files.clone(),
-                    tool_call_names: tool_names,
-                };
-
+                let input = build_feature_trace_input_from_transcript(
+                    repo_root,
+                    transcript,
+                    &normalized_registry,
+                );
+                let changed_files = input.changed_files.clone();
                 let analysis = analyzer.analyze_input(&input);
 
                 let ts_str = {
@@ -282,6 +272,66 @@ fn collect_session_stats(
             })
             .collect(),
     )
+}
+
+fn build_feature_trace_input_from_transcript(
+    repo_root: &Path,
+    transcript: &trace_parser::TranscriptSessionBackfill,
+    normalized_registry: &trace_parser::AdapterRegistry,
+) -> FeatureTraceInput {
+    if transcript.client == "codex" {
+        if let Ok(session) = normalized_registry.parse_path(Path::new(&transcript.transcript_path))
+        {
+            if let Some(input) =
+                build_feature_trace_input_from_normalized_session(repo_root, &session)
+            {
+                return input;
+            }
+        }
+    }
+
+    let changed_files = collect_changed_files_from_events(repo_root, &transcript.recovered_events);
+    let tool_call_names = transcript
+        .recovered_events
+        .iter()
+        .map(|event| match event {
+            trace_parser::TranscriptRecoveredEvent::ToolUse { tool_name, .. } => tool_name.clone(),
+        })
+        .collect();
+
+    FeatureTraceInput {
+        session_id: transcript.session_id.clone(),
+        changed_files,
+        tool_call_names,
+    }
+}
+
+fn build_feature_trace_input_from_normalized_session(
+    repo_root: &Path,
+    session: &trace_parser::NormalizedSession,
+) -> Option<FeatureTraceInput> {
+    let changed_files = session
+        .file_events
+        .iter()
+        .filter_map(|event| normalize_repo_relative(repo_root, &event.path))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let tool_call_names = session
+        .tool_calls
+        .iter()
+        .map(|tool_call| tool_call.tool_name.clone())
+        .collect::<Vec<_>>();
+
+    if changed_files.is_empty() && tool_call_names.is_empty() {
+        return None;
+    }
+
+    Some(FeatureTraceInput {
+        session_id: session.session_id.clone(),
+        changed_files,
+        tool_call_names,
+    })
 }
 
 fn record_analysis(
@@ -862,5 +912,47 @@ mod tests {
         assert!(paths
             .contains(&"src/app/workspace/[workspaceId]/feature-explorer/page.tsx".to_string()));
         assert!(paths.contains(&"src/app/workspace/[workspaceId]/sessions/page.tsx".to_string()));
+    }
+
+    #[test]
+    fn normalized_codex_sessions_contribute_git_status_file_events() {
+        let dir = tempdir().expect("tempdir");
+        let repo_root = dir.path().join("repo");
+        std::fs::create_dir_all(repo_root.join("src/app")).expect("repo src dir");
+        let transcript_path = dir.path().join("rollout-test.jsonl");
+        std::fs::write(
+            &transcript_path,
+            format!(
+                concat!(
+                    "{{\"timestamp\":\"2026-04-17T01:51:41.963Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"sess-1\",\"timestamp\":\"2026-04-17T01:50:56.919Z\",\"cwd\":\"{}\",\"source\":\"cli\",\"model_provider\":\"openai\"}}}}\n",
+                    "{{\"timestamp\":\"2026-04-17T02:31:10.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"exec_command_end\",\"turn_id\":\"turn-1\",\"command\":[\"/bin/zsh\",\"-lc\",\"git status --short\"],\"aggregated_output\":\" M src/app/page.tsx\\n\",\"exit_code\":0}}}}\n"
+                ),
+                repo_root.display()
+            ),
+        )
+        .expect("write transcript");
+
+        let registry =
+            trace_parser::AdapterRegistry::new().with_adapter(trace_parser::CodexSessionAdapter);
+        let transcript = trace_parser::TranscriptSessionBackfill {
+            client: "codex".to_string(),
+            session_id: "sess-1".to_string(),
+            cwd: repo_root.to_string_lossy().to_string(),
+            model: Some("openai".to_string()),
+            transcript_path: transcript_path.to_string_lossy().to_string(),
+            source: Some("cli".to_string()),
+            last_seen_at_ms: 1_000,
+            status: "active".to_string(),
+            turn_id: Some("turn-1".to_string()),
+            prompt: Some("inspect repo".to_string()),
+            turn_started_at_ms: 1_000,
+            recovered_events: Vec::new(),
+        };
+
+        let input = build_feature_trace_input_from_transcript(&repo_root, &transcript, &registry);
+
+        assert_eq!(input.session_id, "sess-1");
+        assert_eq!(input.changed_files, vec!["src/app/page.tsx".to_string()]);
+        assert!(input.tool_call_names.contains(&"exec_command".to_string()));
     }
 }

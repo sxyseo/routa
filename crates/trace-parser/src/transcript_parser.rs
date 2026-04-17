@@ -5,7 +5,7 @@ use crate::transcript_discovery::{
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -122,13 +122,12 @@ pub fn collect_broad_transcript_summaries(
     let mut transcripts = collect_recent_transcripts(&session_roots)?;
     transcripts.retain(|(_, modified_ms)| now_ms.saturating_sub(*modified_ms) <= BROAD_WINDOW_MS);
     transcripts.sort_by(|a, b| b.1.cmp(&a.1));
-    transcripts.truncate(MAX_BROAD_TRANSCRIPTS);
-
-    Ok(parse_matching_transcript_summaries(
+    Ok(collect_matching_transcript_summaries(
         &transcripts,
         repo_root,
         now_ms,
         BROAD_WINDOW_MS,
+        Some(MAX_BROAD_TRANSCRIPTS),
     ))
 }
 
@@ -167,13 +166,33 @@ pub fn parse_matching_transcript_summaries(
     now_ms: i64,
     active_window_ms: i64,
 ) -> Vec<TranscriptSessionBackfill> {
+    collect_matching_transcript_summaries(transcripts, repo_root, now_ms, active_window_ms, None)
+}
+
+fn collect_matching_transcript_summaries(
+    transcripts: &[(PathBuf, i64)],
+    repo_root: &Path,
+    now_ms: i64,
+    active_window_ms: i64,
+    max_matches: Option<usize>,
+) -> Vec<TranscriptSessionBackfill> {
     let mut summaries = Vec::new();
+    let repo_identity = resolve_repo_identity(repo_root);
+    let mut identity_cache: HashMap<PathBuf, Option<RepoIdentity>> = HashMap::new();
 
     for (path, modified_ms) in transcripts {
+        if max_matches.is_some_and(|limit| summaries.len() >= limit) {
+            break;
+        }
         let Some(summary) = parse_transcript_backfill(path, *modified_ms) else {
             continue;
         };
-        if !repo_path_matches(repo_root, Path::new(&summary.cwd)) {
+        if !repo_path_matches_with_identity(
+            repo_root,
+            repo_identity.as_ref(),
+            Path::new(&summary.cwd),
+            &mut identity_cache,
+        ) {
             continue;
         }
         if summary.status != "active"
@@ -617,34 +636,44 @@ fn parse_chat_jsonl_backfill(
             .and_then(Value::as_str)
             .and_then(parse_rfc3339_ms)
             .unwrap_or_else(|| {
-                entry.get("updated_at")
+                entry
+                    .get("updated_at")
                     .and_then(Value::as_i64)
                     .unwrap_or(last_seen_at_ms)
             });
         last_seen_at_ms = observed_at_ms;
 
         session_id = session_id
-            .or_else(|| entry.get("sessionId").and_then(Value::as_str).map(str::to_string))
+            .or_else(|| {
+                entry
+                    .get("sessionId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
             .or_else(|| entry.get("id").and_then(Value::as_str).map(str::to_string));
         cwd = cwd
             .or_else(|| entry.get("cwd").and_then(Value::as_str).map(str::to_string))
             .or_else(|| {
-                entry.get("working_dir")
+                entry
+                    .get("working_dir")
                     .and_then(Value::as_str)
                     .map(str::to_string)
             })
             .or_else(|| {
-                entry.get("workingDir")
+                entry
+                    .get("workingDir")
                     .and_then(Value::as_str)
                     .map(str::to_string)
             });
         model = model.or_else(|| {
-            entry.pointer("/message/model")
+            entry
+                .pointer("/message/model")
                 .and_then(Value::as_str)
                 .map(str::to_string)
         });
         source = source.or_else(|| {
-            entry.get("entrypoint")
+            entry
+                .get("entrypoint")
                 .and_then(Value::as_str)
                 .map(str::to_string)
         });
@@ -1010,7 +1039,11 @@ fn extract_chat_user_prompt(entry: &Value) -> Option<String> {
         return None;
     }
 
-    if entry.pointer("/message/content/0/type").and_then(Value::as_str) == Some("tool_result") {
+    if entry
+        .pointer("/message/content/0/type")
+        .and_then(Value::as_str)
+        == Some("tool_result")
+    {
         return None;
     }
 
@@ -1057,7 +1090,8 @@ fn extract_text_parts(content: &Value) -> Option<String> {
 }
 
 fn chat_turn_id(entry: &Value) -> Option<String> {
-    entry.get("promptId")
+    entry
+        .get("promptId")
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| {
@@ -1066,7 +1100,12 @@ fn chat_turn_id(entry: &Value) -> Option<String> {
                 .and_then(Value::as_str)
                 .map(str::to_string)
         })
-        .or_else(|| entry.get("uuid").and_then(Value::as_str).map(str::to_string))
+        .or_else(|| {
+            entry
+                .get("uuid")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
 }
 
 fn infer_client_from_path(path: &Path) -> String {
@@ -1081,7 +1120,10 @@ fn infer_client_from_path(path: &Path) -> String {
 }
 
 fn infer_client_from_entry(entry: &Value) -> Option<String> {
-    let version = entry.get("version").and_then(Value::as_str).unwrap_or_default();
+    let version = entry
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let entrypoint = entry
         .get("entrypoint")
         .and_then(Value::as_str)
@@ -1175,7 +1217,9 @@ fn augment_turn_id(entry: &Value) -> Option<String> {
         })
 }
 
-fn augment_recovered_events_from_chat_history(chat_history: &[Value]) -> Vec<TranscriptRecoveredEvent> {
+fn augment_recovered_events_from_chat_history(
+    chat_history: &[Value],
+) -> Vec<TranscriptRecoveredEvent> {
     let mut events = Vec::new();
     for entry in chat_history {
         let changed_files = entry
@@ -1201,10 +1245,79 @@ fn augment_recovered_events_from_chat_history(chat_history: &[Value]) -> Vec<Tra
     events
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RepoIdentity {
+    top_level: PathBuf,
+    common_dir: PathBuf,
+}
+
+#[cfg(test)]
 fn repo_path_matches(repo_root: &Path, session_cwd: &Path) -> bool {
+    let repo_identity = resolve_repo_identity(repo_root);
+    let mut identity_cache = HashMap::new();
+    repo_path_matches_with_identity(
+        repo_root,
+        repo_identity.as_ref(),
+        session_cwd,
+        &mut identity_cache,
+    )
+}
+
+fn repo_path_matches_with_identity(
+    repo_root: &Path,
+    repo_identity: Option<&RepoIdentity>,
+    session_cwd: &Path,
+    identity_cache: &mut HashMap<PathBuf, Option<RepoIdentity>>,
+) -> bool {
     repo_root == session_cwd
         || repo_root.starts_with(session_cwd)
         || session_cwd.starts_with(repo_root)
+        || repo_identity.is_some_and(|repo_identity| {
+            let session_identity = identity_cache
+                .entry(session_cwd.to_path_buf())
+                .or_insert_with(|| resolve_repo_identity(session_cwd));
+
+            session_identity.as_ref().is_some_and(|session_identity| {
+                session_identity.top_level == repo_identity.top_level
+                    || session_identity.common_dir == repo_identity.common_dir
+            })
+        })
+}
+
+fn resolve_repo_identity(path: &Path) -> Option<RepoIdentity> {
+    let top_level = git_rev_parse_path(path, &["rev-parse", "--show-toplevel"])?;
+    let common_dir = git_rev_parse_path(path, &["rev-parse", "--git-common-dir"])
+        .or_else(|| Some(top_level.join(".git")))?;
+
+    Some(RepoIdentity {
+        top_level: std::fs::canonicalize(&top_level).unwrap_or(top_level),
+        common_dir: std::fs::canonicalize(&common_dir).unwrap_or(common_dir),
+    })
+}
+
+fn git_rev_parse_path(path: &Path, args: &[&str]) -> Option<PathBuf> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let raw = String::from_utf8(output.stdout).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let parsed = PathBuf::from(trimmed);
+    Some(if parsed.is_absolute() {
+        parsed
+    } else {
+        path.join(parsed)
+    })
 }
 
 fn parse_rfc3339_ms(timestamp: &str) -> Option<i64> {
@@ -1254,6 +1367,7 @@ fn dedupe_prompt_previews(prompts: Vec<String>, limit: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
     use tempfile::tempdir;
 
     #[test]
@@ -1377,6 +1491,93 @@ mod tests {
     fn transcript_globs_follow_allowed_extensions() {
         assert_eq!(transcript_globs(&["jsonl"]), vec!["*.jsonl"]);
         assert_eq!(transcript_globs(&["json"]), vec!["*.json"]);
-        assert_eq!(transcript_globs(&["jsonl", "json"]), vec!["*.jsonl", "*.json"]);
+        assert_eq!(
+            transcript_globs(&["jsonl", "json"]),
+            vec!["*.jsonl", "*.json"]
+        );
+    }
+
+    #[test]
+    fn repo_path_matches_accepts_git_worktrees_with_shared_common_dir() {
+        let dir = tempdir().expect("tempdir");
+        let repo_root = dir.path().join("repo");
+        let worktree_root = dir.path().join("repo-worktree");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+        std::fs::write(repo_root.join("README.md"), "hello\n").expect("write readme");
+
+        run_git(&repo_root, &["init"]);
+        run_git(&repo_root, &["config", "user.name", "Test User"]);
+        run_git(&repo_root, &["config", "user.email", "test@example.com"]);
+        run_git(&repo_root, &["add", "README.md"]);
+        run_git(&repo_root, &["commit", "-m", "init"]);
+        run_git(
+            &repo_root,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature/test-worktree",
+                worktree_root.to_str().expect("worktree path"),
+            ],
+        );
+
+        assert!(repo_path_matches(&repo_root, &worktree_root));
+        assert!(repo_path_matches(&worktree_root, &repo_root));
+    }
+
+    #[test]
+    fn collect_matching_transcript_summaries_limits_after_repo_matching() {
+        let dir = tempdir().expect("tempdir");
+        let repo_root = dir.path().join("repo");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+
+        let unmatched = dir.path().join("unmatched.jsonl");
+        let matched = dir.path().join("matched.jsonl");
+        write_codex_session_meta(&unmatched, "sess-unmatched", "/tmp/other-repo");
+        write_codex_session_meta(
+            &matched,
+            "sess-matched",
+            repo_root.to_str().expect("repo path"),
+        );
+
+        let now_ms = Utc::now().timestamp_millis();
+        let summaries = collect_matching_transcript_summaries(
+            &[
+                (unmatched.clone(), now_ms - 1_000),
+                (matched.clone(), now_ms - 2_000),
+            ],
+            &repo_root,
+            now_ms,
+            BROAD_WINDOW_MS,
+            Some(1),
+        );
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].session_id, "sess-matched");
+    }
+
+    fn write_codex_session_meta(path: &Path, session_id: &str, cwd: &str) {
+        std::fs::write(
+            path,
+            format!(
+                "{{\"timestamp\":\"2026-04-17T01:51:41.963Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{session_id}\",\"timestamp\":\"2026-04-17T01:50:56.919Z\",\"cwd\":\"{cwd}\",\"source\":\"cli\",\"model_provider\":\"openai\"}}}}\n"
+            ),
+        )
+        .expect("write session meta");
+    }
+
+    fn run_git(repo_root: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo_root)
+            .args(args)
+            .output()
+            .expect("git command should run");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }
