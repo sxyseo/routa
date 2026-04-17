@@ -42,14 +42,17 @@ interface KanbanFitnessWorkbenchModalProps {
 
 function buildBaseFitnessQuery(
   workspaceId: string,
-  codebase: CodebaseData | null,
+  input: {
+    codebaseId?: string | null;
+    repoPath?: string | null;
+  },
 ): URLSearchParams {
   const query = new URLSearchParams({ workspaceId });
-  if (codebase?.id) {
-    query.set("codebaseId", codebase.id);
+  if (input.codebaseId) {
+    query.set("codebaseId", input.codebaseId);
   }
-  if (codebase?.repoPath) {
-    query.set("repoPath", codebase.repoPath);
+  if (input.repoPath) {
+    query.set("repoPath", input.repoPath);
   }
   return query;
 }
@@ -145,11 +148,13 @@ export function KanbanFitnessWorkbenchModal({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const pendingPromptSessionIdRef = useRef<string | null>(null);
   const lastPersistedSourceRef = useRef<string | null>(null);
+  const latestRuntimeFitnessRef = useRef<RuntimeFitnessStatusResponse | null>(runtimeFitness ?? null);
   const startAttemptedRef = useRef(false);
 
   const repoPath = codebase?.repoPath ?? "";
   const repoLabel = codebase?.label ?? (repoPath ? basename(repoPath) : "");
   const branch = codebase?.branch ?? null;
+  const codebaseId = codebase?.id ?? null;
   const contextReady = open
     && Boolean(repoPath)
     && !specsState.loading
@@ -188,6 +193,10 @@ export function KanbanFitnessWorkbenchModal({
   ]);
 
   useEffect(() => {
+    latestRuntimeFitnessRef.current = runtimeFitness ?? null;
+  }, [runtimeFitness]);
+
+  useEffect(() => {
     if (!open) {
       startAttemptedRef.current = false;
       return;
@@ -195,12 +204,15 @@ export function KanbanFitnessWorkbenchModal({
     if (!repoPath) {
       setSpecsState({ loading: false, error: null, data: [] });
       setPlanState({ loading: false, error: null, data: null });
-      setRuntimeState({ loading: false, error: null, data: runtimeFitness ?? null });
+      setRuntimeState({ loading: false, error: null, data: latestRuntimeFitnessRef.current });
       setEntrixState({ loading: false, error: null, data: null });
       return;
     }
 
-    const baseQuery = buildBaseFitnessQuery(workspaceId, codebase);
+    const baseQuery = buildBaseFitnessQuery(workspaceId, {
+      codebaseId,
+      repoPath,
+    });
     const planQuery = new URLSearchParams(baseQuery);
     planQuery.set("tier", "normal");
     planQuery.set("scope", "local");
@@ -228,7 +240,7 @@ export function KanbanFitnessWorkbenchModal({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               workspaceId,
-              codebaseId: codebase?.id ?? undefined,
+              codebaseId: codebaseId ?? undefined,
               repoPath,
               tier: "fast",
               scope: "local",
@@ -272,7 +284,7 @@ export function KanbanFitnessWorkbenchModal({
 
         const nextRuntimeFitness = runtimeResponse.ok
           ? (runtimeJson ?? null) as RuntimeFitnessStatusResponse | null
-          : runtimeFitness ?? null;
+          : latestRuntimeFitnessRef.current;
 
         if (runtimeResponse.ok) {
           setRuntimeState({
@@ -284,7 +296,7 @@ export function KanbanFitnessWorkbenchModal({
           setRuntimeState({
             loading: false,
             error: runtimeJson?.error ?? "Failed to load runtime fitness",
-            data: runtimeFitness ?? null,
+            data: latestRuntimeFitnessRef.current,
           });
         }
 
@@ -317,7 +329,7 @@ export function KanbanFitnessWorkbenchModal({
         setRuntimeState({
           loading: false,
           error: message,
-          data: runtimeFitness ?? null,
+          data: latestRuntimeFitnessRef.current,
         });
         setEntrixState({
           loading: false,
@@ -332,7 +344,7 @@ export function KanbanFitnessWorkbenchModal({
     return () => {
       cancelled = true;
     };
-  }, [codebase, open, repoPath, runtimeFitness, workspaceId]);
+  }, [codebaseId, open, repoPath, workspaceId]);
 
   const startSession = useCallback(async () => {
     if (!repoPath || !workspaceId || !canvasPrompt) return;
