@@ -9,8 +9,13 @@ use crate::shared::models::{
 use anyhow::Result;
 use chrono::Datelike;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use trace_learning::{
+    discover_transcript_session_roots, discover_transcript_session_roots_with_overrides,
+    TranscriptSessionRoot, TranscriptSessionSource,
+};
 
 struct TranscriptSessionBackfill {
     session_id: String,
@@ -98,15 +103,13 @@ fn collect_active_transcript_summaries(
     const ACTIVE_WINDOW_MS: i64 = 30 * 60 * 1000;
     const FAST_RECENT_TRANSCRIPTS: usize = 12;
 
-    let sessions_root = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .map(|home| home.join(".codex").join("sessions"));
-    let Some(sessions_root) = sessions_root.filter(|path| path.exists()) else {
+    let session_roots = discover_transcript_session_roots();
+    if session_roots.is_empty() {
         return Ok(Vec::new());
-    };
+    }
 
     let now_ms = chrono::Utc::now().timestamp_millis();
-    let mut transcripts = collect_recent_transcripts(&sessions_root)?;
+    let mut transcripts = collect_recent_transcripts(&session_roots)?;
     transcripts
         .retain(|(_, modified_ms)| now_ms.saturating_sub(*modified_ms) <= BACKFILL_WINDOW_MS);
     transcripts.sort_by(|a, b| b.1.cmp(&a.1));
@@ -136,15 +139,13 @@ fn collect_recent_transcript_summaries(
     const FAST_RECENT_TRANSCRIPTS: usize = 12;
     const MAX_TRANSCRIPTS: usize = 48;
 
-    let sessions_root = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .map(|home| home.join(".codex").join("sessions"));
-    let Some(sessions_root) = sessions_root.filter(|path| path.exists()) else {
+    let session_roots = discover_transcript_session_roots();
+    if session_roots.is_empty() {
         return Ok(Vec::new());
-    };
+    }
 
     let now_ms = chrono::Utc::now().timestamp_millis();
-    let mut transcripts = collect_recent_transcripts(&sessions_root)?;
+    let mut transcripts = collect_recent_transcripts(&session_roots)?;
     transcripts
         .retain(|(_, modified_ms)| now_ms.saturating_sub(*modified_ms) <= BACKFILL_WINDOW_MS);
     transcripts.sort_by(|a, b| b.1.cmp(&a.1));
@@ -200,6 +201,73 @@ fn parse_matching_transcript_summaries(
         summaries.push(summary);
     }
     summaries
+}
+
+fn collect_recent_transcripts(roots: &[TranscriptSessionRoot]) -> Result<Vec<(PathBuf, i64)>> {
+    let mut files = Vec::new();
+    for root in roots {
+        let mut root_files = match root.kind {
+            TranscriptSessionSource::Codex => collect_recent_codex_transcripts(&root.path)?,
+            TranscriptSessionSource::ClaudeProjects => {
+                collect_recent_claude_project_transcripts(&root.path)?
+            }
+        };
+        files.append(&mut root_files);
+    }
+
+    let mut deduped = Vec::new();
+    let mut seen_paths = HashSet::new();
+    for (path, modified_ms) in files {
+        if seen_paths.insert(path.clone()) {
+            deduped.push((path, modified_ms));
+        }
+    }
+
+    Ok(deduped)
+}
+
+fn collect_recent_codex_transcripts(root: &Path) -> Result<Vec<(PathBuf, i64)>> {
+    let mut stack = recent_transcript_dirs(root);
+    collect_recent_transcripts_from_dirs(&mut stack)
+}
+
+fn collect_recent_claude_project_transcripts(root: &Path) -> Result<Vec<(PathBuf, i64)>> {
+    let mut stack = vec![root.to_path_buf()];
+    collect_recent_transcripts_from_dirs(&mut stack)
+}
+
+fn collect_recent_transcripts_from_dirs(dirs: &mut Vec<PathBuf>) -> Result<Vec<(PathBuf, i64)>> {
+    let mut files = Vec::new();
+    while let Some(dir) = dirs.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                dirs.push(path);
+                continue;
+            }
+            if !file_type.is_file()
+                || path.extension().and_then(|ext| ext.to_str()) != Some("jsonl")
+            {
+                continue;
+            }
+            let modified_ms = entry
+                .metadata()
+                .ok()
+                .and_then(|meta| meta.modified().ok())
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|dur| dur.as_millis() as i64)
+                .unwrap_or_default();
+            files.push((path, modified_ms));
+        }
+    }
+    Ok(files)
 }
 
 fn apply_transcript_summary_to_db(
@@ -623,41 +691,6 @@ fn truncate_text(text: &str, max_chars: usize) -> String {
     out
 }
 
-fn collect_recent_transcripts(root: &std::path::Path) -> Result<Vec<(std::path::PathBuf, i64)>> {
-    let mut stack = recent_transcript_dirs(root);
-    let mut files = Vec::new();
-    while let Some(dir) = stack.pop() {
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            if file_type.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if !file_type.is_file()
-                || path.extension().and_then(|ext| ext.to_str()) != Some("jsonl")
-            {
-                continue;
-            }
-            let modified_ms = entry
-                .metadata()
-                .ok()
-                .and_then(|meta| meta.modified().ok())
-                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|dur| dur.as_millis() as i64)
-                .unwrap_or_default();
-            files.push((path, modified_ms));
-        }
-    }
-    Ok(files)
-}
-
 fn recent_transcript_dirs(root: &std::path::Path) -> Vec<std::path::PathBuf> {
     let today = chrono::Local::now().date_naive();
     let yesterday = today.pred_opt();
@@ -959,6 +992,95 @@ mod tests {
     use super::*;
     use crate::shared::db::Db;
     use tempfile::tempdir;
+
+    #[test]
+    fn discover_transcript_session_roots_prefers_override_for_claude_config_dir() {
+        let dir = tempdir().expect("tempdir");
+        let home = dir.path().join("home");
+        let codex_root = home.join(".codex").join("sessions");
+        let custom_claude_root = dir.path().join("custom-claude").join("config");
+        let default_claude_root = home.join(".claude").join("projects");
+        let custom_projects_root = custom_claude_root.join("projects");
+        std::fs::create_dir_all(&codex_root).expect("create codex dir");
+        std::fs::create_dir_all(&default_claude_root).expect("create default claude dir");
+        std::fs::create_dir_all(&custom_projects_root).expect("create custom claude dir");
+
+        let roots = discover_transcript_session_roots_with_overrides(
+            Some(&home),
+            Some(&custom_claude_root),
+        );
+
+        assert!(roots.iter().any(|root| {
+            root.kind == TranscriptSessionSource::Codex && root.path == codex_root
+        }));
+        assert!(roots.iter().any(|root| {
+            root.kind == TranscriptSessionSource::ClaudeProjects
+                && root.path == custom_projects_root
+        }));
+        assert!(!roots
+            .iter()
+            .any(|root| root.kind == TranscriptSessionSource::ClaudeProjects
+                && root.path == default_claude_root));
+    }
+
+    #[test]
+    fn collect_recent_transcripts_scans_codex_and_claude_projects_roots() {
+        let dir = tempdir().expect("tempdir");
+        let home = dir.path().join("home");
+        let today = chrono::Local::now().date_naive();
+        let yesterday = today.pred_opt().unwrap_or(today);
+        let codex_root = home
+            .join(".codex")
+            .join("sessions")
+            .join(format!("{:04}", today.year()))
+            .join(format!("{:02}", today.month()))
+            .join(format!("{:02}", today.day()));
+        let codex_file = codex_root.join("codex-session-today.jsonl");
+        let codex_file_yesterday = home
+            .join(".codex")
+            .join("sessions")
+            .join(format!("{:04}", yesterday.year()))
+            .join(format!("{:02}", yesterday.month()))
+            .join(format!("{:02}", yesterday.day()))
+            .join("codex-session-yesterday.jsonl");
+        let claude_file = home
+            .join(".claude")
+            .join("projects")
+            .join("repo")
+            .join("session.jsonl");
+        std::fs::create_dir_all(codex_root).expect("create codex date dir");
+        std::fs::create_dir_all(
+            home.join(".codex")
+                .join("sessions")
+                .join(format!("{:04}", yesterday.year()))
+                .join(format!("{:02}", yesterday.month()))
+                .join(format!("{:02}", yesterday.day())),
+        )
+        .expect("create codex yesterday dir");
+        std::fs::create_dir_all(claude_file.parent().expect("parent")).expect("create claude dir");
+        std::fs::write(&codex_file, "{}\n").expect("write codex transcript");
+        std::fs::write(&codex_file_yesterday, "{}\n").expect("write codex yesterday transcript");
+        std::fs::write(&claude_file, "{}\n").expect("write claude transcript");
+
+        let roots = vec![
+            TranscriptSessionRoot {
+                kind: TranscriptSessionSource::Codex,
+                path: home.join(".codex").join("sessions"),
+            },
+            TranscriptSessionRoot {
+                kind: TranscriptSessionSource::ClaudeProjects,
+                path: home.join(".claude").join("projects"),
+            },
+        ];
+        let files = collect_recent_transcripts(&roots).expect("collect transcripts");
+
+        let paths: Vec<_> = files.iter().map(|(path, _)| path.as_path()).collect();
+        assert!(
+            paths.contains(&codex_file.as_path())
+                || paths.contains(&codex_file_yesterday.as_path())
+        );
+        assert!(paths.contains(&claude_file.as_path()));
+    }
 
     #[test]
     fn recover_prompt_from_transcript_uses_matching_turn_user_message() {
