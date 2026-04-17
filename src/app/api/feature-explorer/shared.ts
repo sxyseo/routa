@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { execFileSync } from "child_process";
 import * as yaml from "js-yaml";
 
 export { isContextError, parseContext, resolveRepoRoot } from "../harness/hooks/shared";
@@ -9,6 +10,7 @@ const FEATURE_TREE_PATH = "docs/product-specs/FEATURE_TREE.md";
 const APP_ROOT = "src/app";
 const MAX_TRANSCRIPT_FILES = 200;
 const MAX_TRANSCRIPT_FILE_SIZE = 10 * 1024 * 1024;
+const BROAD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const IGNORED_PATHS = new Set([".git", "node_modules", ".next", "dist", "out", "target"]);
 
 export interface CapabilityGroup {
@@ -109,6 +111,23 @@ export interface FileStat {
 export interface FeatureStats {
   featureStats: Record<string, FeatureTreeSummary>;
   fileStats: Record<string, FileStat>;
+}
+
+interface TranscriptCandidate {
+  transcriptPath: string;
+  modifiedMs: number;
+}
+
+interface ParsedFeatureTranscript {
+  sessionId: string;
+  cwd: string;
+  updatedAt: string;
+  events: unknown[];
+}
+
+interface RepoIdentity {
+  topLevel: string;
+  commonDir: string;
 }
 
 export interface FileTreeNode {
@@ -491,22 +510,6 @@ export function parseFeatureTreeLinks(
     });
   }
 
-  if (links.length === 0) {
-    for (const sourceFile of feature.sourceFiles) {
-      const key = `${feature.id}|${sourceFile}`;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      links.push({
-        featureId: feature.id,
-        featureName: feature.name,
-        viaPath: sourceFile,
-        confidence: "Medium",
-      });
-    }
-  }
-
   return links;
 }
 
@@ -647,43 +650,131 @@ function commandFromUnknown(event: unknown): string | undefined {
   }
 
   const map = event as Record<string, unknown>;
-  if (typeof map.command === "string") {
-    return map.command;
-  }
-
-  if (typeof map.cmd === "string") {
-    return map.cmd;
-  }
+  const directCommand = stringifyCommand(map.command) ?? stringifyCommand(map.cmd);
+  if (directCommand) return directCommand;
 
   if (typeof map.tool_input === "object" && map.tool_input !== null) {
     const toolInput = map.tool_input as Record<string, unknown>;
-    if (typeof toolInput.command === "string") {
-      return toolInput.command;
+    return stringifyCommand(toolInput.command) ?? stringifyCommand(toolInput.cmd);
+  }
+
+  return undefined;
+}
+
+function commandOutputFromUnknown(event: unknown): string | undefined {
+  if (!event || typeof event !== "object") {
+    return undefined;
+  }
+
+  const map = event as Record<string, unknown>;
+  const directOutput = firstString(
+    map.aggregated_output,
+    map.output,
+    map.stdout,
+    map.stderr,
+    map.result,
+  );
+  if (directOutput) {
+    return directOutput;
+  }
+
+  if (typeof map.tool_output === "object" && map.tool_output !== null) {
+    const toolOutput = map.tool_output as Record<string, unknown>;
+    return firstString(
+      toolOutput.aggregated_output,
+      toolOutput.output,
+      toolOutput.stdout,
+      toolOutput.stderr,
+      toolOutput.result,
+    );
+  }
+
+  return undefined;
+}
+
+function stringifyCommand(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value.filter((part): part is string => typeof part === "string");
+    return parts.length > 0 ? parts.join(" ") : undefined;
+  }
+
+  return undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
     }
   }
 
   return undefined;
 }
 
-function normalizeRepoRelative(repoRoot: string, candidate: string): string | null {
+function normalizeRepoRelative(repoRoot: string, candidate: string, sessionCwd: string): string | null {
   const cleaned = toPosix(candidate).trim().replace(/^"+|"+$/g, "").replace(/^'+|'+$/g, "");
 
   if (!cleaned || cleaned === "/dev/null") {
     return null;
   }
 
-  const absolute = path.isAbsolute(cleaned) ? cleaned : path.join(repoRoot, cleaned);
-  const relative = path.relative(repoRoot, absolute);
-  const relativePosix = toPosix(relative);
-
-  if (!relativePosix || relativePosix.startsWith("../") || path.isAbsolute(relativePosix)) {
-    return null;
+  if (!path.isAbsolute(cleaned)) {
+    const relativeCandidate = toPosix(cleaned).replace(/^\.\//, "");
+    if (!relativeCandidate || relativeCandidate === "." || relativeCandidate.startsWith("../")) {
+      return null;
+    }
+    return relativeCandidate;
   }
 
-  return relativePosix;
+  const candidatePaths = [sessionCwd, repoRoot];
+  for (const basePath of candidatePaths) {
+    const relative = path.relative(basePath, cleaned);
+    const relativePosix = toPosix(relative);
+    if (relativePosix && !relativePosix.startsWith("../") && !path.isAbsolute(relativePosix)) {
+      return relativePosix;
+    }
+  }
+
+  return null;
 }
 
-function collectChangedFilesFromToolLike(event: unknown, repoRoot: string): string[] {
+function extractChangedFilesFromCommandOutput(command: string, output: string): string[] {
+  const changed = new Set<string>();
+  const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+  if (command.includes("git status --short")) {
+    for (const line of lines) {
+      const match = line.match(/^[ MADRCU?!]{1,2}\s+(.+)$/);
+      const pathCandidate = (match?.[1] ?? line).split(" -> ").pop()?.trim();
+      if (pathCandidate) {
+        changed.add(pathCandidate);
+      }
+    }
+  }
+
+  if (command.includes("git diff --name-only")) {
+    for (const line of lines) {
+      changed.add(line);
+    }
+  }
+
+  if (command.includes("git diff") || command.includes("git show")) {
+    for (const line of lines) {
+      const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+      if (match?.[2]) {
+        changed.add(match[2]);
+      }
+    }
+  }
+
+  return [...changed];
+}
+
+function collectChangedFilesFromToolLike(event: unknown, repoRoot: string, sessionCwd: string): string[] {
   const candidates = new Set<string>();
   collectFileValues(event, candidates);
 
@@ -696,10 +787,16 @@ function collectChangedFilesFromToolLike(event: unknown, repoRoot: string): stri
       candidates.add(token);
     }
   }
+  const commandOutput = commandOutputFromUnknown(event);
+  if (command && commandOutput) {
+    for (const candidate of extractChangedFilesFromCommandOutput(command, commandOutput)) {
+      candidates.add(candidate);
+    }
+  }
 
   const changed: string[] = [];
   for (const candidate of candidates) {
-    const normalized = normalizeRepoRelative(repoRoot, candidate);
+    const normalized = normalizeRepoRelative(repoRoot, candidate, sessionCwd);
     if (normalized) {
       changed.push(normalized);
     }
@@ -708,7 +805,7 @@ function collectChangedFilesFromToolLike(event: unknown, repoRoot: string): stri
   return changed;
 }
 
-function findTranscriptPaths(): string[] {
+function collectTranscriptCandidates(): TranscriptCandidate[] {
   const roots = [
     path.join(process.env.HOME ?? "", ".codex", "sessions"),
     path.join(process.env.HOME ?? "", ".qoder", "projects"),
@@ -722,9 +819,9 @@ function findTranscriptPaths(): string[] {
 
   const queue = roots.filter(Boolean);
   const visited = new Set<string>();
-  const collected: string[] = [];
+  const collected: TranscriptCandidate[] = [];
 
-  while (queue.length > 0 && collected.length < MAX_TRANSCRIPT_FILES) {
+  while (queue.length > 0) {
     const current = queue.shift();
     if (!current || visited.has(current)) {
       continue;
@@ -741,7 +838,7 @@ function findTranscriptPaths(): string[] {
     if (!stat.isDirectory()) {
       const lower = current.toLowerCase();
       if ((lower.endsWith(".jsonl") || lower.endsWith(".json")) && stat.size < MAX_TRANSCRIPT_FILE_SIZE) {
-        collected.push(current);
+        collected.push({ transcriptPath: current, modifiedMs: stat.mtimeMs });
       }
       continue;
     }
@@ -761,13 +858,7 @@ function findTranscriptPaths(): string[] {
     }
   }
 
-  return collected.sort((left, right) => {
-    try {
-      return fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs;
-    } catch {
-      return 0;
-    }
-  });
+  return collected.sort((left, right) => right.modifiedMs - left.modifiedMs);
 }
 
 function parseTranscriptUpdatedAt(root: Record<string, unknown>): string {
@@ -797,6 +888,52 @@ function parseTranscriptUpdatedAt(root: Record<string, unknown>): string {
   }
 
   return "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseTranscriptEntries(transcriptPath: string, content: string): Record<string, unknown>[] {
+  const lines = content.split(/\r?\n/).filter(Boolean);
+  const payloads: Record<string, unknown>[] = [];
+
+  if (transcriptPath.endsWith(".jsonl")) {
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line);
+        if (isRecord(parsed)) {
+          payloads.push(parsed);
+        }
+      } catch {
+        continue;
+      }
+    }
+    return payloads;
+  }
+
+  try {
+    const parsed = JSON.parse(content);
+    if (isRecord(parsed)) {
+      payloads.push(parsed);
+      return payloads;
+    }
+  } catch {
+    // Fallback to line-oriented parsing below.
+  }
+
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line);
+      if (isRecord(parsed)) {
+        payloads.push(parsed);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return payloads;
 }
 
 function extractEventsFromTranscript(root: unknown): unknown[] {
@@ -830,6 +967,176 @@ function extractEventsFromTranscript(root: unknown): unknown[] {
   return events;
 }
 
+function canonicalizePath(value: string): string {
+  try {
+    return fs.realpathSync.native(value);
+  } catch {
+    return path.resolve(value);
+  }
+}
+
+function gitRevParsePath(cwd: string, args: string[]): string | null {
+  try {
+    const raw = execFileSync("git", ["-C", cwd, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (!raw) {
+      return null;
+    }
+    return path.isAbsolute(raw) ? canonicalizePath(raw) : canonicalizePath(path.join(cwd, raw));
+  } catch {
+    return null;
+  }
+}
+
+function resolveRepoIdentity(repoRoot: string): RepoIdentity | null {
+  const topLevel = gitRevParsePath(repoRoot, ["rev-parse", "--show-toplevel"]);
+  if (!topLevel) {
+    return null;
+  }
+
+  const commonDir = gitRevParsePath(repoRoot, ["rev-parse", "--git-common-dir"]) ?? canonicalizePath(path.join(topLevel, ".git"));
+  return {
+    topLevel,
+    commonDir,
+  };
+}
+
+function isSameOrDescendant(basePath: string, candidatePath: string): boolean {
+  const relative = path.relative(basePath, candidatePath);
+  return relative === "" || (!relative.startsWith("../") && !path.isAbsolute(relative));
+}
+
+function repoPathMatches(
+  repoRoot: string,
+  sessionCwd: string,
+  repoIdentity: RepoIdentity | null,
+  identityCache: Map<string, RepoIdentity | null>,
+): boolean {
+  const normalizedRepoRoot = canonicalizePath(repoRoot);
+  const normalizedSessionCwd = canonicalizePath(sessionCwd);
+
+  if (
+    normalizedRepoRoot === normalizedSessionCwd
+    || isSameOrDescendant(normalizedRepoRoot, normalizedSessionCwd)
+    || isSameOrDescendant(normalizedSessionCwd, normalizedRepoRoot)
+  ) {
+    return true;
+  }
+
+  if (!repoIdentity) {
+    return false;
+  }
+
+  const cached = identityCache.get(normalizedSessionCwd);
+  const sessionIdentity = cached !== undefined ? cached : resolveRepoIdentity(normalizedSessionCwd);
+  if (cached === undefined) {
+    identityCache.set(normalizedSessionCwd, sessionIdentity);
+  }
+
+  return !!sessionIdentity && (
+    sessionIdentity.topLevel === repoIdentity.topLevel
+    || sessionIdentity.commonDir === repoIdentity.commonDir
+  );
+}
+
+function parseTranscriptSession(transcriptPath: string, modifiedMs: number): ParsedFeatureTranscript | null {
+  let content: string;
+  try {
+    content = fs.readFileSync(transcriptPath, "utf8");
+  } catch {
+    return null;
+  }
+
+  const entries = parseTranscriptEntries(transcriptPath, content);
+  if (entries.length === 0) {
+    return null;
+  }
+
+  let sessionId = path.basename(transcriptPath);
+  let cwd = "";
+  let updatedAt = new Date(modifiedMs).toISOString().slice(0, 19);
+  const events: unknown[] = [];
+
+  for (const entry of entries) {
+    const payload = isRecord(entry.payload) ? entry.payload : undefined;
+    const topLevelType = typeof entry.type === "string" ? entry.type : undefined;
+
+    if (topLevelType === "session_meta" && payload) {
+      sessionId = firstString(
+        payload.id,
+        payload.session_id,
+        payload.sessionId,
+        entry.session_id,
+        entry.sessionId,
+      ) ?? sessionId;
+      cwd = firstString(payload.cwd, entry.cwd) ?? cwd;
+      updatedAt = parseTranscriptUpdatedAt(payload) || parseTranscriptUpdatedAt(entry) || updatedAt;
+      continue;
+    }
+
+    sessionId = firstString(
+      entry.session_id,
+      entry.sessionId,
+      payload?.session_id,
+      payload?.sessionId,
+    ) ?? sessionId;
+    cwd = firstString(entry.cwd, payload?.cwd) ?? cwd;
+    updatedAt = parseTranscriptUpdatedAt(entry) || parseTranscriptUpdatedAt(payload ?? {}) || updatedAt;
+
+    if ((topLevelType === "event_msg" || topLevelType === "response_item") && payload) {
+      events.push(payload);
+      continue;
+    }
+
+    const nestedEvents = extractEventsFromTranscript(entry);
+    if (nestedEvents.length > 0 && !(nestedEvents.length === 1 && nestedEvents[0] === entry)) {
+      events.push(...nestedEvents);
+    }
+  }
+
+  if (!cwd) {
+    return null;
+  }
+
+  return {
+    sessionId,
+    cwd,
+    updatedAt,
+    events,
+  };
+}
+
+function collectMatchingTranscriptSessions(repoRoot: string): ParsedFeatureTranscript[] {
+  const now = Date.now();
+  const repoIdentity = resolveRepoIdentity(repoRoot);
+  const identityCache = new Map<string, RepoIdentity | null>();
+  const matched: ParsedFeatureTranscript[] = [];
+
+  for (const candidate of collectTranscriptCandidates()) {
+    if (matched.length >= MAX_TRANSCRIPT_FILES) {
+      break;
+    }
+    if (now - candidate.modifiedMs > BROAD_WINDOW_MS) {
+      continue;
+    }
+
+    const transcript = parseTranscriptSession(candidate.transcriptPath, candidate.modifiedMs);
+    if (!transcript) {
+      continue;
+    }
+
+    if (!repoPathMatches(repoRoot, transcript.cwd, repoIdentity, identityCache)) {
+      continue;
+    }
+
+    matched.push(transcript);
+  }
+
+  return matched;
+}
+
 export function collectFeatureSessionStats(repoRoot: string, featureTree: FeatureTree): FeatureStats {
   const featureStats: Record<string, FeatureTreeSummary> = {};
   const fileStats: Record<string, FileStat> = {};
@@ -839,120 +1146,74 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
   const featureUpdatedAt = new Map<string, string>();
 
   const surfaceCatalog = parseFeatureSurfaceCatalog(repoRoot);
-  const transcriptPaths = findTranscriptPaths();
+  const transcripts = collectMatchingTranscriptSessions(repoRoot);
 
-  for (const transcriptPath of transcriptPaths) {
-    let content: string;
-    try {
-      content = fs.readFileSync(transcriptPath, "utf8");
-    } catch {
+  for (const transcript of transcripts) {
+    const changedFromTranscript = new Set<string>();
+    const sessionFeatures = new Set<string>();
+    const featureMatchedFiles = new Map<string, Set<string>>();
+
+    for (const event of transcript.events) {
+      for (const changed of collectChangedFilesFromToolLike(event, repoRoot, transcript.cwd)) {
+        changedFromTranscript.add(changed);
+      }
+    }
+
+    if (changedFromTranscript.size === 0) {
       continue;
     }
 
-    const lines = content.split(/\r?\n/).filter(Boolean);
-    const payloads: unknown[] = [];
+    for (const changedFile of changedFromTranscript) {
+      const fileEntry = fileStats[changedFile] ?? {
+        changes: 0,
+        sessions: 0,
+        updatedAt: "",
+      };
+      fileEntry.changes += 1;
+      fileEntry.sessions += 1;
+      if (!fileEntry.updatedAt || (transcript.updatedAt && transcript.updatedAt > fileEntry.updatedAt)) {
+        fileEntry.updatedAt = transcript.updatedAt;
+      }
+      fileStats[changedFile] = fileEntry;
 
-    if (transcriptPath.endsWith(".jsonl")) {
-      for (const line of lines) {
-        try {
-          payloads.push(JSON.parse(line));
-        } catch {
+      const surfaceLinks = parseFeatureSurfaceLinks(surfaceCatalog, changedFile);
+
+      for (const feature of featureTree.features) {
+        const links = parseFeatureTreeLinks(feature, surfaceLinks, changedFile);
+
+        if (links.length > 0) {
+          sessionFeatures.add(feature.id);
+          const files = featureMatchedFiles.get(feature.id) ?? new Set<string>();
+          for (const link of links) {
+            files.add(link.viaPath);
+          }
+          featureMatchedFiles.set(feature.id, files);
           continue;
         }
-      }
-    } else {
-      try {
-        payloads.push(JSON.parse(content));
-      } catch {
-        for (const line of lines) {
-          try {
-            payloads.push(JSON.parse(line));
-          } catch {
-            continue;
-          }
+
+        if (surfaceLinks.length === 0 && feature.sourceFiles.includes(changedFile)) {
+          sessionFeatures.add(feature.id);
+          const files = featureMatchedFiles.get(feature.id) ?? new Set<string>();
+          files.add(changedFile);
+          featureMatchedFiles.set(feature.id, files);
         }
       }
     }
 
-    for (const payload of payloads) {
-      if (!payload || typeof payload !== "object") {
-        continue;
+    for (const featureId of sessionFeatures) {
+      const sessions = featureSessionIds.get(featureId) ?? new Set<string>();
+      sessions.add(transcript.sessionId);
+      featureSessionIds.set(featureId, sessions);
+
+      const changedFiles = featureChangedFiles.get(featureId) ?? new Set<string>();
+      for (const changedFile of featureMatchedFiles.get(featureId) ?? changedFromTranscript) {
+        changedFiles.add(changedFile);
       }
+      featureChangedFiles.set(featureId, changedFiles);
 
-      const map = payload as Record<string, unknown>;
-      const sessionId =
-        (typeof map.session_id === "string" && map.session_id)
-        || (typeof map.sessionId === "string" && map.sessionId)
-        || path.basename(transcriptPath);
-      const updatedAt = parseTranscriptUpdatedAt(map);
-
-      const changedFromTranscript = new Set<string>();
-      const sessionFeatures = new Set<string>();
-      const featureMatchedFiles = new Map<string, Set<string>>();
-
-      const events = extractEventsFromTranscript(payload);
-      for (const event of events) {
-        for (const changed of collectChangedFilesFromToolLike(event, repoRoot)) {
-          changedFromTranscript.add(changed);
-        }
-      }
-
-      if (changedFromTranscript.size === 0) {
-        continue;
-      }
-
-      for (const changedFile of changedFromTranscript) {
-        const fileEntry = fileStats[changedFile] ?? {
-          changes: 0,
-          sessions: 0,
-          updatedAt: "",
-        };
-        fileEntry.changes += 1;
-        fileEntry.sessions += 1;
-        if (!fileEntry.updatedAt || (updatedAt && updatedAt > fileEntry.updatedAt)) {
-          fileEntry.updatedAt = updatedAt;
-        }
-        fileStats[changedFile] = fileEntry;
-
-        const surfaceLinks = parseFeatureSurfaceLinks(surfaceCatalog, changedFile);
-
-        for (const feature of featureTree.features) {
-          const links = parseFeatureTreeLinks(feature, surfaceLinks, changedFile);
-
-          if (links.length > 0) {
-            sessionFeatures.add(feature.id);
-            const files = featureMatchedFiles.get(feature.id) ?? new Set<string>();
-            for (const link of links) {
-              files.add(link.viaPath);
-            }
-            featureMatchedFiles.set(feature.id, files);
-            continue;
-          }
-
-          if (surfaceLinks.length === 0 && feature.sourceFiles.includes(changedFile)) {
-            sessionFeatures.add(feature.id);
-            const files = featureMatchedFiles.get(feature.id) ?? new Set<string>();
-            files.add(changedFile);
-            featureMatchedFiles.set(feature.id, files);
-          }
-        }
-      }
-
-      for (const featureId of sessionFeatures) {
-        const sessions = featureSessionIds.get(featureId) ?? new Set<string>();
-        sessions.add(sessionId);
-        featureSessionIds.set(featureId, sessions);
-
-        const changedFiles = featureChangedFiles.get(featureId) ?? new Set<string>();
-        for (const changedFile of featureMatchedFiles.get(featureId) ?? changedFromTranscript) {
-          changedFiles.add(changedFile);
-        }
-        featureChangedFiles.set(featureId, changedFiles);
-
-        const currentUpdatedAt = featureUpdatedAt.get(featureId) ?? "";
-        if (!currentUpdatedAt || (updatedAt && updatedAt > currentUpdatedAt)) {
-          featureUpdatedAt.set(featureId, updatedAt);
-        }
+      const currentUpdatedAt = featureUpdatedAt.get(featureId) ?? "";
+      if (!currentUpdatedAt || (transcript.updatedAt && transcript.updatedAt > currentUpdatedAt)) {
+        featureUpdatedAt.set(featureId, transcript.updatedAt);
       }
     }
   }

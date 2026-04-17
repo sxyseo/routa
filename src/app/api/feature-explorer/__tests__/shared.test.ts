@@ -1,0 +1,198 @@
+/**
+ * @vitest-environment node
+ */
+
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { execFileSync } from "child_process";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import type { FeatureTree } from "../shared";
+import { collectFeatureSessionStats } from "../shared";
+
+function createFeatureTree(): FeatureTree {
+  return {
+    capabilityGroups: [],
+    features: [
+      {
+        id: "feature-a",
+        name: "Feature A",
+        group: "core",
+        summary: "Tracks page changes",
+        status: "active",
+        pages: ["/"],
+        apis: [],
+        sourceFiles: ["src/app/page.tsx"],
+        relatedFeatures: [],
+        domainObjects: [],
+      },
+    ],
+    frontendPages: [],
+    apiEndpoints: [],
+  };
+}
+
+function ensureFile(filePath: string, content = ""): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, "utf8");
+}
+
+function writeCodexTranscript(
+  filePath: string,
+  cwd: string,
+  output: string,
+  modifiedMs: number,
+  sessionId = path.basename(filePath, path.extname(filePath)),
+): void {
+  ensureFile(
+    filePath,
+    [
+      JSON.stringify({
+        timestamp: "2026-04-17T01:51:41.963Z",
+        type: "session_meta",
+        payload: {
+          id: sessionId,
+          timestamp: "2026-04-17T01:50:56.919Z",
+          cwd,
+          source: "cli",
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-04-17T02:31:10.000Z",
+        type: "event_msg",
+        payload: {
+          type: "exec_command_end",
+          turn_id: "turn-1",
+          command: ["/bin/zsh", "-lc", "git status --short"],
+          aggregated_output: output,
+          exit_code: 0,
+        },
+      }),
+      "",
+    ].join("\n"),
+  );
+
+  const modifiedAt = new Date(modifiedMs);
+  fs.utimesSync(filePath, modifiedAt, modifiedAt);
+}
+
+function runGit(repoRoot: string, args: string[]): void {
+  execFileSync("git", ["-C", repoRoot, ...args], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+describe("feature explorer transcript stats", () => {
+  const originalHome = process.env.HOME;
+  const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+
+  beforeEach(() => {
+    process.env.CLAUDE_CONFIG_DIR = "";
+  });
+
+  afterEach(() => {
+    process.env.HOME = originalHome;
+    process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+  });
+
+  it("applies the transcript cap after repo matching", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-shared-"));
+    process.env.HOME = tempRoot;
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(path.join(repoRoot, "src/app/page.tsx"), "export default function Page() { return null; }\n");
+
+    const sessionRoot = path.join(tempRoot, ".codex", "sessions");
+    const now = Date.now();
+
+    for (let index = 0; index <= 200; index += 1) {
+      writeCodexTranscript(
+        path.join(sessionRoot, `unmatched-${index}.jsonl`),
+        path.join(tempRoot, `other-repo-${index}`),
+        " M src/app/page.tsx\n",
+        now - index,
+      );
+    }
+
+    writeCodexTranscript(
+      path.join(sessionRoot, "matched.jsonl"),
+      repoRoot,
+      " M src/app/page.tsx\n",
+      now - 10_000,
+      "matched-session",
+    );
+
+    const { featureStats, fileStats } = collectFeatureSessionStats(repoRoot, createFeatureTree());
+
+    expect(featureStats["feature-a"]).toMatchObject({
+      sessionCount: 1,
+      changedFiles: 1,
+    });
+    expect(fileStats["src/app/page.tsx"]).toMatchObject({
+      changes: 1,
+      sessions: 1,
+    });
+  });
+
+  it("matches git worktree sessions for the same repository", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-worktree-"));
+    process.env.HOME = tempRoot;
+
+    const repoRoot = path.join(tempRoot, "repo");
+    const worktreeRoot = path.join(tempRoot, "repo-worktree");
+    ensureFile(path.join(repoRoot, "src/app/page.tsx"), "export default function Page() { return null; }\n");
+
+    runGit(repoRoot, ["init"]);
+    runGit(repoRoot, ["config", "user.name", "Test User"]);
+    runGit(repoRoot, ["config", "user.email", "test@example.com"]);
+    runGit(repoRoot, ["add", "src/app/page.tsx"]);
+    runGit(repoRoot, ["commit", "-m", "init"]);
+    runGit(repoRoot, ["worktree", "add", "-b", "feature/worktree-stats", worktreeRoot]);
+
+    writeCodexTranscript(
+      path.join(tempRoot, ".codex", "sessions", "worktree.jsonl"),
+      worktreeRoot,
+      " M src/app/page.tsx\n",
+      Date.now(),
+      "worktree-session",
+    );
+
+    const { featureStats, fileStats } = collectFeatureSessionStats(repoRoot, createFeatureTree());
+
+    expect(featureStats["feature-a"]).toMatchObject({
+      sessionCount: 1,
+      changedFiles: 1,
+    });
+    expect(fileStats["src/app/page.tsx"]).toMatchObject({
+      changes: 1,
+      sessions: 1,
+    });
+  });
+
+  it("does not attribute unrelated changed files to every feature", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-unrelated-"));
+    process.env.HOME = tempRoot;
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(path.join(repoRoot, "src/app/page.tsx"), "export default function Page() { return null; }\n");
+    ensureFile(path.join(repoRoot, "src/app/other/page.tsx"), "export default function Other() { return null; }\n");
+
+    writeCodexTranscript(
+      path.join(tempRoot, ".codex", "sessions", "other.jsonl"),
+      repoRoot,
+      " M src/app/other/page.tsx\n",
+      Date.now(),
+      "other-session",
+    );
+
+    const { featureStats, fileStats } = collectFeatureSessionStats(repoRoot, createFeatureTree());
+
+    expect(featureStats["feature-a"]).toBeUndefined();
+    expect(fileStats["src/app/other/page.tsx"]).toMatchObject({
+      changes: 1,
+      sessions: 1,
+    });
+  });
+});
