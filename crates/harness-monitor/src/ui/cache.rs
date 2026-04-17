@@ -1144,7 +1144,6 @@ impl AppCache {
     pub(super) fn test_mapping_graph_enrichment_note(&self) -> Option<&str> {
         self.test_mapping_full_refresh_note.as_deref()
     }
-
     pub(super) fn repo_review_hints(
         &self,
         files: &[&crate::shared::models::FileView],
