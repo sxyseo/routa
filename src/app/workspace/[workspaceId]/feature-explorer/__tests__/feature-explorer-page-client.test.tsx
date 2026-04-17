@@ -304,4 +304,100 @@ describe("FeatureExplorerPageClient", () => {
     expect(screen.getByText("/workspace/:workspaceId/feature-explorer")).toBeTruthy();
     expect(screen.getAllByText("GET /api/feature-explorer").length).toBeGreaterThan(0);
   });
+
+  it("summarizes folder session counts from descendant files", async () => {
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [
+        { id: "kanban", name: "Kanban", description: "" },
+      ],
+      features: [
+        {
+          id: "kanban-workflow",
+          name: "Kanban Workflow",
+          group: "kanban",
+          summary: "Workflow surface",
+          status: "active",
+          sessionCount: 6,
+          changedFiles: 6,
+          updatedAt: "2026-04-17T08:00:00.000Z",
+          sourceFileCount: 1,
+          pageCount: 0,
+          apiCount: 0,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        metadata: null,
+        repoRoot: "",
+        warnings: [],
+      },
+      featureDetail: {
+        id: "kanban-workflow",
+        name: "Kanban Workflow",
+        group: "kanban",
+        summary: "Workflow surface",
+        status: "active",
+        pages: [],
+        apis: [],
+        sourceFiles: ["src/app/api/kanban/boards/route.ts"],
+        relatedFeatures: [],
+        domainObjects: [],
+        sessionCount: 6,
+        changedFiles: 6,
+        updatedAt: "2026-04-17T08:00:00.000Z",
+        fileTree: [
+          {
+            id: "folder-src",
+            name: "src",
+            path: "src",
+            kind: "folder",
+            children: [
+              {
+                id: "folder-app",
+                name: "app",
+                path: "src/app",
+                kind: "folder",
+                children: [
+                  {
+                    id: "file-route",
+                    name: "route.ts",
+                    path: "src/app/api/kanban/boards/route.ts",
+                    kind: "file",
+                    children: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        fileStats: {
+          "src/app/api/kanban/boards/route.ts": {
+            changes: 6,
+            sessions: 6,
+            updatedAt: "2026-04-17T08:00:00.000Z",
+          },
+        },
+      },
+      featureDetailLoading: false,
+      initialFeatureId: "kanban-workflow",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("feature-tree-sessions-folder-src").textContent).toBe("6");
+    });
+
+    expect(screen.getByTestId("feature-tree-changes-folder-src").textContent).toBe("6");
+    expect(screen.getByTestId("feature-tree-sessions-folder-app").textContent).toBe("6");
+    expect(screen.getByTestId("feature-tree-updated-folder-src").textContent).not.toBe("-");
+  });
 });

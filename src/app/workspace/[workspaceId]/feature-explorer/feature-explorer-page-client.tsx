@@ -50,15 +50,52 @@ function flattenFiles(nodes: FileTreeNode[], acc: Record<string, FileTreeNode> =
   return acc;
 }
 
-function collectLeafIds(node: FileTreeNode, acc: string[] = []): string[] {
-  if (node.kind === "file") {
-    acc.push(node.id);
-    return acc;
+type TreeNodeStat = {
+  changes: number;
+  sessions: number;
+  updatedAt: string;
+};
+
+function maxUpdatedAt(left: string, right: string): string {
+  if (!left) return right;
+  if (!right) return left;
+  return right > left ? right : left;
+}
+
+function buildTreeNodeStats(
+  nodes: FileTreeNode[],
+  fileStats: Record<string, { changes: number; sessions: number; updatedAt: string }>,
+): Record<string, TreeNodeStat> {
+  const statsByNodeId: Record<string, TreeNodeStat> = {};
+
+  const visit = (node: FileTreeNode): TreeNodeStat => {
+    if (node.kind === "file") {
+      const stat = fileStats[node.path] ?? { changes: 0, sessions: 0, updatedAt: "" };
+      statsByNodeId[node.id] = stat;
+      return stat;
+    }
+
+    const aggregate = node.children.reduce<TreeNodeStat>(
+      (acc, child) => {
+        const childStat = visit(child);
+        return {
+          changes: acc.changes + childStat.changes,
+          sessions: acc.sessions + childStat.sessions,
+          updatedAt: maxUpdatedAt(acc.updatedAt, childStat.updatedAt),
+        };
+      },
+      { changes: 0, sessions: 0, updatedAt: "" },
+    );
+
+    statsByNodeId[node.id] = aggregate;
+    return aggregate;
+  };
+
+  for (const node of nodes) {
+    visit(node);
   }
-  for (const child of node.children ?? []) {
-    collectLeafIds(child, acc);
-  }
-  return acc;
+
+  return statsByNodeId;
 }
 
 function featureCodeBadge(featureId: string): string {
@@ -407,6 +444,7 @@ export function FeatureExplorerPageClient({
     [featureDetail, surfaceOnlySelection],
   );
   const flatMap = useMemo(() => flattenFiles(fileTree), [fileTree]);
+  const treeNodeStats = useMemo(() => buildTreeNodeStats(fileTree, fileStats), [fileTree, fileStats]);
 
   // Flat file list sorted by sessions desc, then changes desc
   const sessionSortedFiles = useMemo(() => {
@@ -754,7 +792,7 @@ export function FeatureExplorerPageClient({
                         expandedIds={expandedIds}
                         activeFileId={activeFileId}
                         selectedFileIds={selectedFileIds}
-                        fileStats={fileStats}
+                        treeNodeStats={treeNodeStats}
                         onToggleNode={handleToggleNode}
                         onToggleFileSelection={handleToggleFileSelection}
                         onSetActiveFile={setActiveFileId}
@@ -1202,7 +1240,7 @@ function TreeNodeRow({
   expandedIds,
   activeFileId,
   selectedFileIds,
-  fileStats,
+  treeNodeStats,
   onToggleNode,
   onToggleFileSelection,
   onSetActiveFile,
@@ -1212,17 +1250,16 @@ function TreeNodeRow({
   expandedIds: Record<string, boolean>;
   activeFileId: string;
   selectedFileIds: string[];
-  fileStats: Record<string, { changes: number; sessions: number; updatedAt: string }>;
+  treeNodeStats: Record<string, TreeNodeStat>;
   onToggleNode: (nodeId: string) => void;
   onToggleFileSelection: (fileId: string) => void;
   onSetActiveFile: (fileId: string) => void;
 }) {
   const paddingLeft = 12 + depth * 16;
+  const stat = treeNodeStats[node.id];
 
   if (node.kind === "folder") {
     const isExpanded = expandedIds[node.id] ?? true;
-    const leafIds = collectLeafIds(node);
-    const selectedLeafCount = leafIds.filter((id) => selectedFileIds.includes(id)).length;
 
     return (
       <>
@@ -1240,11 +1277,15 @@ function TreeNodeRow({
             <Folder className="h-3.5 w-3.5 text-amber-400" />
             <span className="text-[12px]">{node.name}</span>
           </button>
-          <div className="text-[11px] text-desktop-text-secondary">-</div>
-          <div className="text-[11px] text-desktop-text-secondary">
-            {selectedLeafCount > 0 ? selectedLeafCount : "-"}
+          <div data-testid={`feature-tree-changes-${node.id}`} className="text-[11px] text-desktop-text-secondary">
+            {stat?.changes ? stat.changes : "-"}
           </div>
-          <div className="text-[11px] text-desktop-text-secondary">-</div>
+          <div data-testid={`feature-tree-sessions-${node.id}`} className="text-[11px] text-desktop-text-secondary">
+            {stat?.sessions ? stat.sessions : "-"}
+          </div>
+          <div data-testid={`feature-tree-updated-${node.id}`} className="text-[11px] text-desktop-text-secondary">
+            {stat?.updatedAt ? formatShortDate(stat.updatedAt) : "-"}
+          </div>
         </div>
 
         {isExpanded &&
@@ -1256,7 +1297,7 @@ function TreeNodeRow({
               expandedIds={expandedIds}
               activeFileId={activeFileId}
               selectedFileIds={selectedFileIds}
-              fileStats={fileStats}
+              treeNodeStats={treeNodeStats}
               onToggleNode={onToggleNode}
               onToggleFileSelection={onToggleFileSelection}
               onSetActiveFile={onSetActiveFile}
@@ -1268,7 +1309,6 @@ function TreeNodeRow({
 
   const isActive = activeFileId === node.id;
   const isSelected = selectedFileIds.includes(node.id);
-  const stat = fileStats[node.path];
 
   return (
     <div
