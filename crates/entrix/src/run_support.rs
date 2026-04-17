@@ -363,7 +363,8 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path();
         std::fs::create_dir_all(repo_root.join("src")).expect("create src");
-        std::fs::write(repo_root.join("src/service.rs"), "pub fn run() {}\n").expect("write source");
+        std::fs::write(repo_root.join("src/service.rs"), "pub fn run() {}\n")
+            .expect("write source");
 
         let result = probe_test_mapping(repo_root, &["src/service.rs".to_string()], "HEAD");
         assert!(result.passed);

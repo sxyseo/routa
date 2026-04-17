@@ -172,7 +172,11 @@ fn shared_analysis_reports_graph_disabled() {
     let temp = tempdir().expect("tempdir");
     let repo_root = temp.path();
     fs::create_dir_all(repo_root.join("src")).expect("create src dir");
-    fs::write(repo_root.join("src/service.ts"), "export function run() {}\n").expect("write source");
+    fs::write(
+        repo_root.join("src/service.ts"),
+        "export function run() {}\n",
+    )
+    .expect("write source");
 
     let report = analyze_test_mappings(
         repo_root,
@@ -197,7 +201,11 @@ fn shared_analysis_reports_graph_ok_when_enabled() {
     let temp = tempdir().expect("tempdir");
     let repo_root = temp.path();
     fs::create_dir_all(repo_root.join("src")).expect("create src dir");
-    fs::write(repo_root.join("src/service.ts"), "export function run() {}\n").expect("write source");
+    fs::write(
+        repo_root.join("src/service.ts"),
+        "export function run() {}\n",
+    )
+    .expect("write source");
 
     let report = analyze_test_mappings(
         repo_root,

@@ -391,12 +391,8 @@ pub fn analyze_test_mappings(
         }
     };
 
-    let graph_test_files_by_source = graph_test_files_by_source(
-        repo_root,
-        changed_files,
-        &registry,
-        &graph,
-    );
+    let graph_test_files_by_source =
+        graph_test_files_by_source(repo_root, changed_files, &registry, &graph);
     let report = registry.analyze_changed_files_with_graph(
         repo_root,
         changed_files,
@@ -733,7 +729,10 @@ fn graph_test_files_by_source(
     }
 
     let mut by_source = BTreeMap::new();
-    for source_file in changed_files.iter().filter(|path| !registry.is_test_file(path)) {
+    for source_file in changed_files
+        .iter()
+        .filter(|path| !registry.is_test_file(path))
+    {
         let query = query_current_graph(repo_root, source_file, "tests_for", ReviewBuildMode::Skip);
         if query.status != "ok" {
             continue;
