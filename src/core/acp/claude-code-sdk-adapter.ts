@@ -1,3 +1,4 @@
+
 /**
  * Claude Code Agent SDK Adapter for Serverless Environments (Vercel)
  *
@@ -385,7 +386,7 @@ export class ClaudeCodeSdkAdapter {
       const queryOptions: Parameters<typeof query>[0]["options"] = {
         cwd: promptCwd,
         model: this._modelOverride ?? config.model,
-        maxTurns: this._maxTurnsOverride ?? 30,
+        maxTurns: this._maxTurnsOverride ?? 60,
         // Required for token-level incremental streaming events.
         includePartialMessages: true,
         abortController: this.abortController,
@@ -614,7 +615,7 @@ export class ClaudeCodeSdkAdapter {
       const queryOptions: Parameters<typeof query>[0]["options"] = {
         cwd: promptCwd,
         model: this._modelOverride ?? config.model,
-        maxTurns: this._maxTurnsOverride ?? 30,
+        maxTurns: this._maxTurnsOverride ?? 60,
         // Keep message semantics aligned with promptStream().
         includePartialMessages: true,
         abortController: this.abortController,
