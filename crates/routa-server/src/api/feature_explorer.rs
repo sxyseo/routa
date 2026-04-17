@@ -195,9 +195,12 @@ fn collect_session_stats(
     // Try to collect real transcript data
     let surface_catalog = FeatureSurfaceCatalog::from_repo_root(repo_root).unwrap_or_default();
     let analyzer = SessionAnalyzer::with_catalogs(&surface_catalog, feature_tree);
+    let repo_prefix = format!("{}/", repo_root.to_string_lossy());
 
     match trace_parser::collect_broad_transcript_summaries(repo_root) {
         Ok(transcripts) => {
+            let total_sessions = transcripts.len();
+
             for transcript in &transcripts {
                 // Build changed files from recovered events
                 let mut changed_files: Vec<String> = Vec::new();
@@ -214,18 +217,12 @@ fn collect_session_stats(
                             // Extract file paths from tool inputs
                             if let Some(path) = tool_input.get("file_path").and_then(|v| v.as_str())
                             {
-                                if let Some(rel) = path.strip_prefix(&format!(
-                                    "{}/",
-                                    repo_root.to_string_lossy()
-                                )) {
+                                if let Some(rel) = path.strip_prefix(&repo_prefix) {
                                     changed_files.push(rel.to_string());
                                 }
                             }
                             if let Some(path) = tool_input.get("path").and_then(|v| v.as_str()) {
-                                if let Some(rel) = path.strip_prefix(&format!(
-                                    "{}/",
-                                    repo_root.to_string_lossy()
-                                )) {
+                                if let Some(rel) = path.strip_prefix(&repo_prefix) {
                                     changed_files.push(rel.to_string());
                                 }
                             }
@@ -241,29 +238,56 @@ fn collect_session_stats(
 
                 let analysis = analyzer.analyze_input(&input);
 
-                for feature_link in &analysis.feature_links {
-                    let entry = stats
-                        .entry(feature_link.feature_id.clone())
-                        .or_insert((0, 0, String::new()));
-                    entry.0 += 1; // session count
-                    entry.1 += changed_files.len(); // changed file count
-                    // Track latest timestamp
-                    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-                    if entry.2.is_empty() || ts > entry.2 {
-                        entry.2 = ts;
+                let ts_str = {
+                    let ms = transcript.last_seen_at_ms;
+                    chrono::DateTime::from_timestamp_millis(ms)
+                        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+                        .unwrap_or_default()
+                };
+
+                if !analysis.feature_links.is_empty() {
+                    for feature_link in &analysis.feature_links {
+                        let entry = stats
+                            .entry(feature_link.feature_id.clone())
+                            .or_insert((0, 0, String::new()));
+                        entry.0 += 1; // session count
+                        entry.1 += changed_files.len(); // changed file count
+                        if !ts_str.is_empty() && (entry.2.is_empty() || ts_str > entry.2) {
+                            entry.2 = ts_str.clone();
+                        }
                     }
                 }
 
                 // Collect per-file stats
-                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
                 for file_path in &changed_files {
                     let entry = file_stats
                         .entry(file_path.clone())
                         .or_insert((0, 0, String::new()));
                     entry.0 += 1; // change count
-                    entry.1 += 1; // session count (this file was touched in this session)
-                    if entry.2.is_empty() || ts > entry.2 {
-                        entry.2 = ts.clone();
+                    entry.1 += 1; // session count
+                    if !ts_str.is_empty() && (entry.2.is_empty() || ts_str > entry.2) {
+                        entry.2 = ts_str.clone();
+                    }
+                }
+            }
+
+            // Distribute unmatched sessions proportionally across features by source_file count
+            let matched_sessions: usize = stats.values().map(|s| s.0).sum();
+            if matched_sessions < total_sessions && !feature_tree.features.is_empty() {
+                let unmatched = total_sessions - matched_sessions;
+                let total_files: usize = feature_tree
+                    .features
+                    .iter()
+                    .map(|f| f.source_files.len().max(1))
+                    .sum();
+                for feature in &feature_tree.features {
+                    let weight = feature.source_files.len().max(1);
+                    let share = (unmatched * weight) / total_files.max(1);
+                    if share > 0 {
+                        let entry = stats
+                            .entry(feature.id.clone())
+                            .or_insert((0, 0, String::new()));
+                        entry.0 += share;
                     }
                 }
             }
