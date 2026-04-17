@@ -497,20 +497,6 @@ function ContextPanel({
     return <div className="text-xs text-desktop-text-secondary">-</div>;
   }
 
-  const pageDetails = featureDetail.pageDetails ?? featureDetail.pages.map((route) => ({
-    name: route,
-    route,
-    description: "",
-  }));
-
-  const apiDetails = featureDetail.apiDetails ?? featureDetail.apis.map((declaration) => {
-    const [method, endpoint] = declaration.split(/\s+/, 2);
-    if (endpoint) {
-      return { group: "", method, endpoint, description: "" };
-    }
-    return { group: "", method: "GET", endpoint: declaration, description: "" };
-  });
-
   return (
     <div className="space-y-2">
       <ContextSection title={t.featureExplorer.featureSummary}>
@@ -523,8 +509,6 @@ function ContextPanel({
           <div className="grid gap-px overflow-hidden rounded-sm border border-desktop-border bg-desktop-border sm:grid-cols-2">
             <MetricCell label={t.featureExplorer.capabilityGroup} value={activeGroup?.name ?? featureDetail.group} />
             <MetricCell label={t.featureExplorer.statusLabel} value={featureDetail.status} />
-            <MetricCell label={t.featureExplorer.declaredPages} value={String(pageDetails.length)} />
-            <MetricCell label={t.featureExplorer.declaredApis} value={String(apiDetails.length)} />
             <MetricCell label={t.featureExplorer.sourceFilesLabel} value={String(featureDetail.sourceFiles.length)} />
             <MetricCell label={t.featureExplorer.sessionsLabel} value={String(featureDetail.sessionCount)} />
           </div>
@@ -577,68 +561,6 @@ function ContextPanel({
           </div>
         </ContextSection>
       )}
-
-      {featureDetail.domainObjects.length > 0 && (
-        <ContextSection title={t.featureExplorer.domainObjectsLabel}>
-          <div className="flex flex-wrap gap-1">
-            {featureDetail.domainObjects.map((obj) => (
-              <span
-                key={obj}
-                className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px] text-desktop-text-secondary"
-              >
-                {obj}
-              </span>
-            ))}
-          </div>
-        </ContextSection>
-      )}
-
-      {featureDetail.surfaceLinks && featureDetail.surfaceLinks.length > 0 && (
-        <ContextSection title={t.featureExplorer.surfaceLinksLabel}>
-          <div className="space-y-1">
-            {featureDetail.surfaceLinks.map((link, i) => (
-              <div
-                key={`${link.route}-${i}`}
-                className="flex items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary"
-              >
-                <span className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${
-                  link.kind === "Page"
-                    ? "border-sky-500/30 text-sky-400"
-                    : "border-emerald-500/30 text-emerald-400"
-                }`}>
-                  {link.kind}
-                </span>
-                <span className="truncate">{link.route}</span>
-              </div>
-            ))}
-          </div>
-        </ContextSection>
-      )}
-
-      {pageDetails.length > 0 ? (
-        <ContextSection title={t.featureExplorer.declaredPages}>
-          <div className="space-y-1">
-            {pageDetails.map((page) => (
-              <SurfaceDetailCard
-                key={page.route}
-                title={page.name}
-                subtitle={page.route}
-                description={page.description}
-              />
-            ))}
-          </div>
-        </ContextSection>
-      ) : null}
-
-      {apiDetails.length > 0 ? (
-        <ContextSection title={t.featureExplorer.declaredApis}>
-          <div className="space-y-1">
-            {apiDetails.map((api) => (
-              <ApiDetailCard key={`${api.method}-${api.endpoint}`} api={api} />
-            ))}
-          </div>
-        </ContextSection>
-      ) : null}
     </div>
   );
 }
@@ -909,53 +831,6 @@ function MetricCell({ label, value }: { label: string; value: string }) {
         {label}
       </div>
       <div className="mt-1 text-[12px] font-medium text-desktop-text-primary">{value}</div>
-    </div>
-  );
-}
-
-function SurfaceDetailCard({
-  title,
-  subtitle,
-  description,
-}: {
-  title: string;
-  subtitle: string;
-  description?: string;
-}) {
-  return (
-    <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary p-2.5">
-      <div className="text-[11px] font-medium text-desktop-text-primary">{title}</div>
-      <div className="mt-1 break-all font-mono text-[10px] text-desktop-text-secondary">{subtitle}</div>
-      {description ? (
-        <div className="mt-2 text-[11px] leading-5 text-desktop-text-secondary">{description}</div>
-      ) : null}
-    </div>
-  );
-}
-
-function ApiDetailCard({
-  api,
-}: {
-  api: NonNullable<FeatureDetail["apiDetails"]>[number];
-}) {
-  return (
-    <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary p-2.5">
-      <div className="flex items-center gap-2">
-        <span className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${api.method === "GET"
-          ? "border-emerald-500/30 text-emerald-400"
-          : api.method === "POST"
-            ? "border-sky-500/30 text-sky-400"
-            : "border-amber-500/30 text-amber-400"}`}>
-          {api.method}
-        </span>
-        <span className="min-w-0 truncate font-mono text-[10px] text-desktop-text-primary">{api.endpoint}</span>
-      </div>
-      {api.group ? (
-        <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-desktop-text-secondary">{api.group}</div>
-      ) : null}
-      {api.description ? (
-        <div className="mt-2 text-[11px] leading-5 text-desktop-text-secondary">{api.description}</div>
-      ) : null}
     </div>
   );
 }
