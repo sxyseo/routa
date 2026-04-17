@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import yaml from "js-yaml";
 
 import { fromRoot } from "../lib/paths";
 import { loadYamlFile } from "../lib/yaml";
@@ -53,6 +54,33 @@ export type FeatureSurfaceIndex = {
     operationId: string;
     summary: string;
   }>;
+  metadata: FeatureMetadata | null;
+};
+
+export type FeatureMetadataGroup = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
+export type FeatureMetadataItem = {
+  id: string;
+  name: string;
+  group?: string;
+  summary?: string;
+  pages?: string[];
+  apis?: string[];
+  domainObjects?: string[];
+  relatedFeatures?: string[];
+  sourceFiles?: string[];
+  screenshots?: string[];
+  status?: string;
+};
+
+export type FeatureMetadata = {
+  schemaVersion: number;
+  capabilityGroups: FeatureMetadataGroup[];
+  features: FeatureMetadataItem[];
 };
 
 type OpenApiMethod = {
@@ -68,6 +96,132 @@ const API_CONTRACT = fromRoot("api-contract.yaml");
 const APP_DIR = fromRoot("src", "app");
 const OUTPUT_MD = fromRoot("docs", "product-specs", "FEATURE_TREE.md");
 const OUTPUT_JSON = fromRoot("docs", "product-specs", "feature-tree.index.json");
+
+function normalizeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => normalizeString(item)).filter(Boolean);
+}
+
+export function normalizeFeatureMetadata(input: unknown): FeatureMetadata | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const raw = input as {
+    schemaVersion?: unknown;
+    schema_version?: unknown;
+    capabilityGroups?: unknown;
+    capability_groups?: unknown;
+    features?: unknown;
+  };
+  const schemaVersion = Number(raw.schemaVersion ?? raw.schema_version);
+
+  const rawCapabilityGroups = raw.capabilityGroups ?? raw.capability_groups;
+  const capabilityGroups = Array.isArray(rawCapabilityGroups)
+    ? rawCapabilityGroups
+      .map((group: unknown): FeatureMetadataGroup | null => {
+        if (!group || typeof group !== "object") {
+          return null;
+        }
+
+        const id = normalizeString((group as { id?: unknown }).id);
+        const name = normalizeString((group as { name?: unknown }).name);
+        if (!id || !name) {
+          return null;
+        }
+
+        const description = normalizeString((group as { description?: unknown }).description);
+        return {
+          id,
+          name,
+          ...(description ? { description } : {}),
+        };
+      })
+      .filter((group: FeatureMetadataGroup | null): group is FeatureMetadataGroup => Boolean(group))
+    : [];
+
+  const features = Array.isArray(raw.features)
+    ? raw.features
+      .map((feature): FeatureMetadataItem | null => {
+        if (!feature || typeof feature !== "object") {
+          return null;
+        }
+
+        const id = normalizeString((feature as { id?: unknown }).id);
+        const name = normalizeString((feature as { name?: unknown }).name);
+        if (!id || !name) {
+          return null;
+        }
+
+        const group = normalizeString((feature as { group?: unknown }).group);
+        const summary = normalizeString((feature as { summary?: unknown }).summary);
+        const status = normalizeString((feature as { status?: unknown }).status);
+        const pages = normalizeStringArray((feature as { pages?: unknown }).pages);
+        const apis = normalizeStringArray((feature as { apis?: unknown }).apis);
+        const domainObjects = normalizeStringArray(
+          (feature as { domainObjects?: unknown; domain_objects?: unknown }).domainObjects
+            ?? (feature as { domain_objects?: unknown }).domain_objects,
+        );
+        const relatedFeatures = normalizeStringArray(
+          (feature as { relatedFeatures?: unknown; related_features?: unknown }).relatedFeatures
+            ?? (feature as { related_features?: unknown }).related_features,
+        );
+        const sourceFiles = normalizeStringArray(
+          (feature as { sourceFiles?: unknown; source_files?: unknown }).sourceFiles
+            ?? (feature as { source_files?: unknown }).source_files,
+        );
+        const screenshots = normalizeStringArray((feature as { screenshots?: unknown }).screenshots);
+
+        return {
+          id,
+          name,
+          ...(group ? { group } : {}),
+          ...(summary ? { summary } : {}),
+          ...(status ? { status } : {}),
+          ...(pages.length > 0 ? { pages } : {}),
+          ...(apis.length > 0 ? { apis } : {}),
+          ...(domainObjects.length > 0 ? { domainObjects } : {}),
+          ...(relatedFeatures.length > 0 ? { relatedFeatures } : {}),
+          ...(sourceFiles.length > 0 ? { sourceFiles } : {}),
+          ...(screenshots.length > 0 ? { screenshots } : {}),
+        };
+      })
+      .filter((feature): feature is FeatureMetadataItem => Boolean(feature))
+    : [];
+
+  return {
+    schemaVersion: Number.isFinite(schemaVersion) && schemaVersion > 0 ? schemaVersion : 1,
+    capabilityGroups,
+    features,
+  };
+}
+
+export function readFeatureMetadataFromFeatureTree(markdown: string): FeatureMetadata | null {
+  const match = markdown.match(/^---\n([\s\S]*?)\n---\n/);
+  if (!match) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(match[1]);
+  } catch {
+    return null;
+  }
+
+  const featureMetadata = parsed && typeof parsed === "object"
+    ? (parsed as { feature_metadata?: unknown }).feature_metadata
+    : null;
+
+  return normalizeFeatureMetadata(featureMetadata);
+}
 
 export function parsePageComment(content: string): { title: string | null; description: string | null } {
   const match = content.match(/\/\*\*\s*(.*?)\s*\*\//s);
@@ -252,6 +406,7 @@ export function buildFeatureTree(routes: RouteInfo[], apiFeatures: Record<string
 export function buildFeatureSurfaceIndex(
   routes: RouteInfo[],
   apiFeatures: Record<string, ApiFeature[]>,
+  metadata: FeatureMetadata | null = null,
 ): FeatureSurfaceIndex {
   return {
     generatedAt: new Date().toISOString(),
@@ -279,10 +434,39 @@ export function buildFeatureSurfaceIndex(
         operationId: feature.operationId,
         summary: feature.summary,
       })),
+    metadata,
   };
 }
 
-export function renderMarkdown(tree: FeatureTree): string {
+function buildFrontmatterMetadata(metadata: FeatureMetadata): string {
+  return yaml.dump(
+    {
+      feature_metadata: {
+        schema_version: metadata.schemaVersion,
+        capability_groups: metadata.capabilityGroups.map((group) => ({
+          id: group.id,
+          name: group.name,
+          ...(group.description ? { description: group.description } : {}),
+        })),
+        features: metadata.features.map((feature) => ({
+          id: feature.id,
+          name: feature.name,
+          ...(feature.group ? { group: feature.group } : {}),
+          ...(feature.summary ? { summary: feature.summary } : {}),
+          ...(feature.status ? { status: feature.status } : {}),
+          ...(feature.pages?.length ? { pages: feature.pages } : {}),
+          ...(feature.apis?.length ? { apis: feature.apis } : {}),
+          ...(feature.domainObjects?.length ? { domain_objects: feature.domainObjects } : {}),
+          ...(feature.relatedFeatures?.length ? { related_features: feature.relatedFeatures } : {}),
+          ...(feature.sourceFiles?.length ? { source_files: feature.sourceFiles } : {}),
+          ...(feature.screenshots?.length ? { screenshots: feature.screenshots } : {}),
+        })),
+      },
+    },
+  ).trimEnd();
+}
+
+export function renderMarkdown(tree: FeatureTree, metadata: FeatureMetadata | null = null): string {
   const lines: string[] = [
     "---",
     "status: generated",
@@ -292,7 +476,15 @@ export function renderMarkdown(tree: FeatureTree): string {
     "  - api-contract.yaml",
     "update_policy:",
     "  - Regenerate with `node --import tsx scripts/docs/feature-tree-generator.ts --save`.",
-    "  - Do not hand-edit generated endpoint or route tables.",
+    "  - Hand-edit only `feature_metadata` in this frontmatter block.",
+    "  - Do not hand-edit generated endpoint or route tables below.",
+  ];
+
+  if (metadata) {
+    lines.push(buildFrontmatterMetadata(metadata));
+  }
+
+  lines.push(
     "---",
     "",
     `# ${tree.name} — Product Feature Specification`,
@@ -300,10 +492,11 @@ export function renderMarkdown(tree: FeatureTree): string {
     `${tree.description}. This document is auto-generated from:`,
     "- Frontend routes: `src/app/**/page.tsx`",
     "- API contract: `api-contract.yaml`",
+    "- Feature metadata: `feature_metadata` frontmatter in this file",
     "",
     "---",
     "",
-  ];
+  );
 
   for (const section of tree.children) {
     if (section.id === "routes") {
@@ -389,9 +582,11 @@ function main(): void {
   const args = new Set(process.argv.slice(2));
   const routes = scanFrontendRoutes();
   const apiContract = loadYamlFile<OpenApiDoc>(API_CONTRACT);
+  const existingFeatureTree = fs.existsSync(OUTPUT_MD) ? fs.readFileSync(OUTPUT_MD, "utf8") : "";
+  const metadata = readFeatureMetadataFromFeatureTree(existingFeatureTree);
   const apiFeatures = extractApiFeatures(apiContract);
   const tree = buildFeatureTree(routes, apiFeatures);
-  const surfaceIndex = buildFeatureSurfaceIndex(routes, apiFeatures);
+  const surfaceIndex = buildFeatureSurfaceIndex(routes, apiFeatures, metadata);
 
   if (args.has("--json")) {
     console.log(JSON.stringify(tree, null, 2));
@@ -403,7 +598,7 @@ function main(): void {
   }
   if (args.has("--save")) {
     fs.mkdirSync(path.dirname(OUTPUT_MD), { recursive: true });
-    fs.writeFileSync(OUTPUT_MD, renderMarkdown(tree), "utf8");
+    fs.writeFileSync(OUTPUT_MD, renderMarkdown(tree, metadata), "utf8");
     fs.writeFileSync(OUTPUT_JSON, JSON.stringify(surfaceIndex, null, 2) + "\n", "utf8");
     console.log(`✅ Saved to ${OUTPUT_MD}`);
     console.log(`✅ Saved to ${OUTPUT_JSON}`);

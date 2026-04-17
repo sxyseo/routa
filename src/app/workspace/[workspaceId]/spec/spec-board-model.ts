@@ -36,10 +36,37 @@ export type FeatureSurfaceApi = {
   summary: string;
 };
 
+export type FeatureSurfaceMetadataGroup = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
+export type FeatureSurfaceMetadataItem = {
+  id: string;
+  name: string;
+  group?: string;
+  summary?: string;
+  pages?: string[];
+  apis?: string[];
+  domainObjects?: string[];
+  relatedFeatures?: string[];
+  sourceFiles?: string[];
+  screenshots?: string[];
+  status?: string;
+};
+
+export type FeatureSurfaceMetadata = {
+  schemaVersion: number;
+  capabilityGroups: FeatureSurfaceMetadataGroup[];
+  features: FeatureSurfaceMetadataItem[];
+};
+
 export type FeatureSurfaceIndexResponse = {
   generatedAt: string;
   pages: FeatureSurfacePage[];
   apis: FeatureSurfaceApi[];
+  metadata: FeatureSurfaceMetadata | null;
   repoRoot: string;
   warnings: string[];
 };

@@ -6,7 +6,122 @@ sources:
   - api-contract.yaml
 update_policy:
   - Regenerate with `node --import tsx scripts/docs/feature-tree-generator.ts --save`.
-  - Do not hand-edit generated endpoint or route tables.
+  - Hand-edit only `feature_metadata` in this frontmatter block.
+  - Do not hand-edit generated endpoint or route tables below.
+feature_metadata:
+  schema_version: 1
+  capability_groups:
+    - id: workspace-coordination
+      name: Workspace Coordination
+      description: Workspace-scoped navigation, overview, and cross-surface coordination.
+    - id: agent-execution
+      name: Agent Execution
+      description: Session-centric agent runs, recovery, and traceable execution context.
+    - id: kanban-automation
+      name: Kanban Automation
+      description: Task flow, lane automation, and workflow progression.
+    - id: team-collaboration
+      name: Team Collaboration
+      description: Multi-agent and multi-session collaboration inside a workspace.
+    - id: governance-settings
+      name: Governance and Settings
+      description: Harness, fluency, MCP, settings, and platform governance surfaces.
+  features:
+    - id: workspace-overview
+      name: Workspace Overview
+      group: workspace-coordination
+      summary: Entry point for a selected workspace and its scoped surfaces.
+      status: shipped
+      pages:
+        - /workspace/:workspaceId
+        - /workspace/:workspaceId/overview
+      domain_objects:
+        - workspace
+        - codebase
+        - note
+        - activity
+      source_files:
+        - src/app/workspace/[workspaceId]/page.tsx
+        - src/app/workspace/[workspaceId]/overview/page.tsx
+    - id: session-recovery
+      name: Session Recovery
+      group: agent-execution
+      summary: Restore, inspect, and continue workspace-scoped agent sessions.
+      status: shipped
+      pages:
+        - /workspace/:workspaceId/sessions
+        - /workspace/:workspaceId/sessions/:sessionId
+      apis:
+        - GET /api/sessions
+        - GET /api/sessions/{id}
+        - GET /api/sessions/{sessionId}/context
+      domain_objects:
+        - workspace
+        - session
+        - trace
+      related_features:
+        - workspace-overview
+        - team-runs
+      source_files:
+        - src/app/workspace/[workspaceId]/sessions/page.tsx
+        - src/app/workspace/[workspaceId]/sessions/[sessionId]/page.tsx
+    - id: kanban-workflow
+      name: Kanban Workflow
+      group: kanban-automation
+      summary: Coordinate tasks through lane transitions, automation, and git-aware execution.
+      status: shipped
+      pages:
+        - /workspace/:workspaceId/kanban
+      apis:
+        - GET /api/kanban/boards
+        - POST /api/kanban/boards
+        - GET /api/kanban/events
+      domain_objects:
+        - workspace
+        - board
+        - task
+        - workflow
+      related_features:
+        - session-recovery
+      source_files:
+        - src/app/workspace/[workspaceId]/kanban/page.tsx
+        - src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx
+    - id: team-runs
+      name: Team Runs
+      group: team-collaboration
+      summary: Orchestrate and inspect multi-agent team runs within a workspace.
+      status: shipped
+      pages:
+        - /workspace/:workspaceId/team
+        - /workspace/:workspaceId/team/:sessionId
+      domain_objects:
+        - workspace
+        - team-run
+        - session
+      related_features:
+        - session-recovery
+      source_files:
+        - src/app/workspace/[workspaceId]/team/page.tsx
+        - src/app/workspace/[workspaceId]/team/[sessionId]/page.tsx
+    - id: harness-console
+      name: Harness Console
+      group: governance-settings
+      summary: Inspect repo signals, governance surfaces, and fitness-related runtime status.
+      status: evolving
+      pages:
+        - /settings/harness
+        - /workspace/:workspaceId/spec
+      apis:
+        - GET /api/harness/repo-signals
+        - GET /api/harness/design-decisions
+        - GET /api/fitness/runtime
+      domain_objects:
+        - harness
+        - spec
+        - fitness
+      source_files:
+        - src/app/workspace/[workspaceId]/spec/page.tsx
+        - src/client/hooks/use-harness-settings-data.ts
 ---
 
 # Routa.js — Product Feature Specification
@@ -14,6 +129,7 @@ update_policy:
 Multi-agent coordination platform. This document is auto-generated from:
 - Frontend routes: `src/app/**/page.tsx`
 - API contract: `api-contract.yaml`
+- Feature metadata: `feature_metadata` frontmatter in this file
 
 ---
 
@@ -24,6 +140,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | Home | `/` |  |
 | A2A Protocol Test Page | `/a2a` | Interactive testing interface for the Agent-to-Agent (A2A) protocol |
 | AG-UI Protocol Test Page | `/ag-ui` | Standalone page for testing AG-UI protocol integration |
+| Canvas | `/canvas/:id` |  |
 | Debug / Acp Replay | `/debug/acp-replay` |  |
 | Mcp Tools | `/mcp-tools` |  |
 | Messages Page - Notification & PR Agent Execution History | `/messages` | Shows: - All notifications with filtering - PR Agent execution history from back |
@@ -119,6 +236,16 @@ Multi-agent coordination platform. This document is auto-generated from:
 | PATCH | `/api/background-tasks/{id}` | Update a background task (PENDING only) |
 | DELETE | `/api/background-tasks/{id}` | Cancel a background task |
 | POST | `/api/background-tasks/{id}/retry` | Retry a failed background task |
+
+### Canvas (5)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/canvas` | List canvas artifacts for a workspace |
+| POST | `/api/canvas` | Create a canvas artifact |
+| GET | `/api/canvas/{id}` | Fetch a canvas artifact by ID |
+| DELETE | `/api/canvas/{id}` | Delete a canvas artifact |
+| POST | `/api/canvas/specialist` | Generate a canvas artifact directly from a specialist prompt |
 
 ### Clone (9)
 

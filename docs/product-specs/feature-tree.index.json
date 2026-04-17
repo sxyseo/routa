@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-16T14:54:34.269Z",
+  "generatedAt": "2026-04-17T05:47:09.706Z",
   "pages": [
     {
       "route": "/",
@@ -18,6 +18,12 @@
       "title": "AG-UI Protocol Test Page",
       "description": "Standalone page for testing AG-UI protocol integration. Features: - Send prompts via AG-UI protocol ",
       "sourceFile": "src/app/ag-ui/page.tsx"
+    },
+    {
+      "route": "/canvas/:id",
+      "title": "Canvas",
+      "description": "",
+      "sourceFile": "src/app/canvas/[id]/page.tsx"
     },
     {
       "route": "/debug/acp-replay",
@@ -424,6 +430,41 @@
       "path": "/api/background-tasks/process",
       "operationId": "processBackgroundTasks",
       "summary": "Process the next pending background task"
+    },
+    {
+      "domain": "canvas",
+      "method": "GET",
+      "path": "/api/canvas",
+      "operationId": "listCanvasArtifacts",
+      "summary": "List canvas artifacts for a workspace"
+    },
+    {
+      "domain": "canvas",
+      "method": "POST",
+      "path": "/api/canvas",
+      "operationId": "createCanvasArtifact",
+      "summary": "Create a canvas artifact"
+    },
+    {
+      "domain": "canvas",
+      "method": "DELETE",
+      "path": "/api/canvas/{id}",
+      "operationId": "deleteCanvasArtifact",
+      "summary": "Delete a canvas artifact"
+    },
+    {
+      "domain": "canvas",
+      "method": "GET",
+      "path": "/api/canvas/{id}",
+      "operationId": "getCanvasArtifact",
+      "summary": "Fetch a canvas artifact by ID"
+    },
+    {
+      "domain": "canvas",
+      "method": "POST",
+      "path": "/api/canvas/specialist",
+      "operationId": "createCanvasFromSpecialist",
+      "summary": "Generate a canvas artifact directly from a specialist prompt"
     },
     {
       "domain": "clone",
@@ -1748,5 +1789,163 @@
       "operationId": "validateWorktree",
       "summary": "Validate worktree health on disk"
     }
-  ]
+  ],
+  "metadata": {
+    "schemaVersion": 1,
+    "capabilityGroups": [
+      {
+        "id": "workspace-coordination",
+        "name": "Workspace Coordination",
+        "description": "Workspace-scoped navigation, overview, and cross-surface coordination."
+      },
+      {
+        "id": "agent-execution",
+        "name": "Agent Execution",
+        "description": "Session-centric agent runs, recovery, and traceable execution context."
+      },
+      {
+        "id": "kanban-automation",
+        "name": "Kanban Automation",
+        "description": "Task flow, lane automation, and workflow progression."
+      },
+      {
+        "id": "team-collaboration",
+        "name": "Team Collaboration",
+        "description": "Multi-agent and multi-session collaboration inside a workspace."
+      },
+      {
+        "id": "governance-settings",
+        "name": "Governance and Settings",
+        "description": "Harness, fluency, MCP, settings, and platform governance surfaces."
+      }
+    ],
+    "features": [
+      {
+        "id": "workspace-overview",
+        "name": "Workspace Overview",
+        "group": "workspace-coordination",
+        "summary": "Entry point for a selected workspace and its scoped surfaces.",
+        "status": "shipped",
+        "pages": [
+          "/workspace/:workspaceId",
+          "/workspace/:workspaceId/overview"
+        ],
+        "domainObjects": [
+          "workspace",
+          "codebase",
+          "note",
+          "activity"
+        ],
+        "sourceFiles": [
+          "src/app/workspace/[workspaceId]/page.tsx",
+          "src/app/workspace/[workspaceId]/overview/page.tsx"
+        ]
+      },
+      {
+        "id": "session-recovery",
+        "name": "Session Recovery",
+        "group": "agent-execution",
+        "summary": "Restore, inspect, and continue workspace-scoped agent sessions.",
+        "status": "shipped",
+        "pages": [
+          "/workspace/:workspaceId/sessions",
+          "/workspace/:workspaceId/sessions/:sessionId"
+        ],
+        "apis": [
+          "GET /api/sessions",
+          "GET /api/sessions/{id}",
+          "GET /api/sessions/{sessionId}/context"
+        ],
+        "domainObjects": [
+          "workspace",
+          "session",
+          "trace"
+        ],
+        "relatedFeatures": [
+          "workspace-overview",
+          "team-runs"
+        ],
+        "sourceFiles": [
+          "src/app/workspace/[workspaceId]/sessions/page.tsx",
+          "src/app/workspace/[workspaceId]/sessions/[sessionId]/page.tsx"
+        ]
+      },
+      {
+        "id": "kanban-workflow",
+        "name": "Kanban Workflow",
+        "group": "kanban-automation",
+        "summary": "Coordinate tasks through lane transitions, automation, and git-aware execution.",
+        "status": "shipped",
+        "pages": [
+          "/workspace/:workspaceId/kanban"
+        ],
+        "apis": [
+          "GET /api/kanban/boards",
+          "POST /api/kanban/boards",
+          "GET /api/kanban/events"
+        ],
+        "domainObjects": [
+          "workspace",
+          "board",
+          "task",
+          "workflow"
+        ],
+        "relatedFeatures": [
+          "session-recovery"
+        ],
+        "sourceFiles": [
+          "src/app/workspace/[workspaceId]/kanban/page.tsx",
+          "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx"
+        ]
+      },
+      {
+        "id": "team-runs",
+        "name": "Team Runs",
+        "group": "team-collaboration",
+        "summary": "Orchestrate and inspect multi-agent team runs within a workspace.",
+        "status": "shipped",
+        "pages": [
+          "/workspace/:workspaceId/team",
+          "/workspace/:workspaceId/team/:sessionId"
+        ],
+        "domainObjects": [
+          "workspace",
+          "team-run",
+          "session"
+        ],
+        "relatedFeatures": [
+          "session-recovery"
+        ],
+        "sourceFiles": [
+          "src/app/workspace/[workspaceId]/team/page.tsx",
+          "src/app/workspace/[workspaceId]/team/[sessionId]/page.tsx"
+        ]
+      },
+      {
+        "id": "harness-console",
+        "name": "Harness Console",
+        "group": "governance-settings",
+        "summary": "Inspect repo signals, governance surfaces, and fitness-related runtime status.",
+        "status": "evolving",
+        "pages": [
+          "/settings/harness",
+          "/workspace/:workspaceId/spec"
+        ],
+        "apis": [
+          "GET /api/harness/repo-signals",
+          "GET /api/harness/design-decisions",
+          "GET /api/fitness/runtime"
+        ],
+        "domainObjects": [
+          "harness",
+          "spec",
+          "fitness"
+        ],
+        "sourceFiles": [
+          "src/app/workspace/[workspaceId]/spec/page.tsx",
+          "src/client/hooks/use-harness-settings-data.ts"
+        ]
+      }
+    ]
+  }
 }

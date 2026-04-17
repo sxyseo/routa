@@ -10,8 +10,6 @@ import {
   GitBranch,
   Link2,
   PieChart,
-  Rows3,
-  Route,
 } from "lucide-react";
 import { resolveApiPath } from "@/client/config/backend";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
@@ -109,6 +107,7 @@ function emptySurfaceIndexResponse(warnings: string[] = []): FeatureSurfaceIndex
     generatedAt: "",
     pages: [],
     apis: [],
+    metadata: null,
     repoRoot: "",
     warnings,
   };
@@ -132,6 +131,9 @@ function normalizeSurfaceIndexPayload(
     apis: Array.isArray((payload as { apis?: unknown }).apis)
       ? (payload as { apis: FeatureSurfaceIndexResponse["apis"] }).apis
       : [],
+    metadata: typeof (payload as { metadata?: unknown }).metadata === "object"
+      ? (payload as { metadata: FeatureSurfaceIndexResponse["metadata"] }).metadata
+      : null,
     repoRoot: typeof (payload as { repoRoot?: unknown }).repoRoot === "string"
       ? (payload as { repoRoot: string }).repoRoot
       : "",
@@ -157,18 +159,36 @@ type IssueAreaGroup = {
   families: IssueFamily[];
 };
 
-function isUsefulSurfaceHit(hit: SurfaceHit): boolean {
-  return (hit.explicit || hit.confidence !== "low")
-    && hit.secondaryLabel !== "/"
-    && hit.secondaryLabel !== "/workspace/:workspaceId"
-    && !hit.label.toLowerCase().includes("wrapper");
-}
-
 function pickLeadIssue(family: IssueFamily): SpecIssue {
   return family.issues.find((issue) => {
     const status = normalizeSpecStatus(issue.status);
     return status === "open" || status === "investigating";
   }) ?? family.issues[0] as SpecIssue;
+}
+
+function getCompletionStats(totalCount: number, unresolvedCount: number) {
+  const resolvedCount = Math.max(0, totalCount - unresolvedCount);
+  const ratio = totalCount > 0 ? resolvedCount / totalCount : 0;
+  return {
+    resolvedCount,
+    unresolvedCount,
+    totalCount,
+    ratio,
+    progressPercent: `${Math.round(ratio * 100)}%`,
+  };
+}
+
+function getProgressBarClass(ratio: number) {
+  if (ratio >= 1) {
+    return "bg-emerald-500/20 dark:bg-emerald-400/20";
+  }
+  if (ratio >= 0.5) {
+    return "bg-sky-500/18 dark:bg-sky-400/20";
+  }
+  if (ratio > 0) {
+    return "bg-amber-500/18 dark:bg-amber-400/18";
+  }
+  return "bg-rose-500/14 dark:bg-rose-400/14";
 }
 
 function getAreaLabel(family: IssueFamily): string {
@@ -260,13 +280,11 @@ function SpecToolbar({
 function SpecFamilyExplorer({
   families,
   relationsByFilename,
-  surfaceHitsByFilename,
   selectedIssue,
   onSelectIssue,
 }: {
   families: IssueFamily[];
   relationsByFilename: Map<string, IssueRelations>;
-  surfaceHitsByFilename: Map<string, SurfaceHit[]>;
   selectedIssue: SpecIssue | null;
   onSelectIssue: (issue: SpecIssue) => void;
 }) {
@@ -410,27 +428,33 @@ function SpecFamilyExplorer({
             const isSelectedArea = selectedAreaId === area.id;
             const isAreaExpanded = expandedAreaIds.has(area.id)
               || (isSelectedArea && !collapsedSelectedAreaIds.has(area.id));
+            const areaProgress = getCompletionStats(area.issueCount, area.unresolvedCount);
             return (
               <section key={area.id} className="rounded-lg border border-black/6 bg-[#f8fafc] dark:border-white/10 dark:bg-white/[0.02]">
                 <button
                   type="button"
                   onClick={() => toggleArea(area.id, isAreaExpanded, isSelectedArea)}
-                  className="flex w-full items-center gap-2 px-2.5 py-2 text-left"
+                  className="relative flex w-full items-center gap-2 overflow-hidden px-2.5 py-2 text-left"
                 >
+                  <span
+                    aria-hidden="true"
+                    className={`absolute inset-y-0 left-0 rounded-r-full ${getProgressBarClass(areaProgress.ratio)}`}
+                    style={{ width: areaProgress.progressPercent }}
+                  />
                   {isAreaExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={1.8} />
+                    <ChevronDown className="relative z-10 h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={1.8} />
                   ) : (
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={1.8} />
+                    <ChevronRight className="relative z-10 h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={1.8} />
                   )}
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-900 dark:text-slate-50">
+                  <span className="relative z-10 min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-900 dark:text-slate-50">
                     {area.label}
                   </span>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <CompactBadge className="bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200">
-                      {area.unresolvedCount} {statusLabels.open}
+                  <div className="relative z-10 flex shrink-0 items-center gap-1">
+                    <CompactBadge className="bg-white/85 text-slate-700 dark:bg-black/20 dark:text-slate-100">
+                      {areaProgress.resolvedCount}/{areaProgress.totalCount}
                     </CompactBadge>
-                    <CompactBadge className="bg-black/[0.04] text-slate-500 dark:bg-white/6 dark:text-slate-300">
-                      {area.issueCount}
+                    <CompactBadge className="bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200">
+                      {areaProgress.unresolvedCount}
                     </CompactBadge>
                   </div>
                 </button>
@@ -441,7 +465,6 @@ function SpecFamilyExplorer({
                       {area.families.map((family) => {
                         const leadIssue = pickLeadIssue(family);
                         const clusterLabel = getClusterLabel(family);
-                        const clusterSurface = family.surfaces.find(isUsefulSurfaceHit)?.secondaryLabel ?? null;
                         const isSelectedFamily = selectedFamilyId === family.id;
                         const isClusterExpanded = expandedClusterIds.has(family.id)
                           || (isSelectedFamily && !collapsedSelectedClusterIds.has(family.id));
@@ -477,16 +500,11 @@ function SpecFamilyExplorer({
                                     {family.issues.length} {t.specBoard.members}
                                   </CompactBadge>
                                   <CompactBadge className="bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200">
-                                    {family.unresolvedCount} {statusLabels.open}
+                                    {family.unresolvedCount}
                                   </CompactBadge>
                                   {family.relationCount > 0 ? (
                                     <CompactBadge className="bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200">
                                       {family.relationCount} {t.specBoard.relations}
-                                    </CompactBadge>
-                                  ) : null}
-                                  {clusterSurface ? (
-                                    <CompactBadge className="max-w-full bg-white/80 text-slate-500 dark:bg-white/8 dark:text-slate-300">
-                                      <span className="truncate">{clusterSurface}</span>
                                     </CompactBadge>
                                   ) : null}
                                 </div>
@@ -497,16 +515,6 @@ function SpecFamilyExplorer({
                               <div className="ml-4 border-l border-black/8 pl-2 dark:border-white/10">
                                 <div className="space-y-0.5">
                                   {family.issues.map((issue) => {
-                                    const relations = relationsByFilename.get(issue.filename) ?? {
-                                      outgoing: [],
-                                      incoming: [],
-                                      localOutgoing: [],
-                                      familyId: issue.filename,
-                                      familyIssues: [],
-                                    };
-                                    const visibleHits = (surfaceHitsByFilename.get(issue.filename) ?? [])
-                                      .filter(isUsefulSurfaceHit)
-                                      .slice(0, 1);
                                     const normalizedStatus = normalizeSpecStatus(issue.status);
                                     const isSelected = selectedIssue?.filename === issue.filename;
                                     const metaParts = [
@@ -534,46 +542,6 @@ function SpecFamilyExplorer({
                                           <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
                                             {metaParts.join(" · ")}
                                           </div>
-
-                                          {isSelected ? (
-                                            <div className="mt-1 space-y-0.5">
-                                              {relations.localOutgoing.slice(0, 2).map((localIssue) => (
-                                                <div
-                                                  key={`out:${localIssue.filename}`}
-                                                  className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400"
-                                                >
-                                                  <Link2 className="h-3 w-3 shrink-0" strokeWidth={1.8} />
-                                                  <span className="truncate">{localIssue.title || localIssue.filename}</span>
-                                                </div>
-                                              ))}
-                                              {relations.incoming.slice(0, 1).map((incomingIssue) => (
-                                                <div
-                                                  key={`in:${incomingIssue.filename}`}
-                                                  className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400"
-                                                >
-                                                  <GitBranch className="h-3 w-3 shrink-0" strokeWidth={1.8} />
-                                                  <span className="truncate">{incomingIssue.title || incomingIssue.filename}</span>
-                                                </div>
-                                              ))}
-                                              {visibleHits.map((hit) => (
-                                                <div
-                                                  key={`surface:${hit.key}`}
-                                                  className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500"
-                                                >
-                                                  {hit.kind === "page" ? (
-                                                    <Rows3 className="h-3 w-3 shrink-0" strokeWidth={1.8} />
-                                                  ) : (
-                                                    <Route className="h-3 w-3 shrink-0" strokeWidth={1.8} />
-                                                  )}
-                                                  <span className="truncate">{hit.secondaryLabel}</span>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : visibleHits[0] ? (
-                                            <div className="truncate text-[10px] text-slate-400 dark:text-slate-500">
-                                              {visibleHits[0].secondaryLabel}
-                                            </div>
-                                          ) : null}
                                         </div>
                                       </button>
                                     );
@@ -1090,7 +1058,6 @@ export function SpecBoardPanel({ workspaceId }: { workspaceId: string }) {
           <SpecFamilyExplorer
             families={visibleFamilies}
             relationsByFilename={boardModel.relationsByFilename}
-            surfaceHitsByFilename={boardModel.surfaceHitsByFilename}
             selectedIssue={selectedIssue}
             onSelectIssue={setSelectedIssue}
           />
