@@ -265,6 +265,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     surfaceLinksLabel: string;
     noPagesDeclared: string;
     noApisDeclared: string;
+    repository: string;
   };
 
   // Settings panel

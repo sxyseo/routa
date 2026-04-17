@@ -259,6 +259,7 @@ const en: TranslationDictionary = {
     surfaceLinksLabel: "Surface links",
     noPagesDeclared: "No pages declared",
     noApisDeclared: "No APIs declared",
+    repository: "Repository",
   },
 
   settings: {

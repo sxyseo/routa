@@ -258,6 +258,7 @@ const zh: TranslationDictionary = {
     surfaceLinksLabel: "界面关联",
     noPagesDeclared: "未声明页面",
     noApisDeclared: "未声明 API",
+    repository: "代码仓库",
   },
 
   settings: {

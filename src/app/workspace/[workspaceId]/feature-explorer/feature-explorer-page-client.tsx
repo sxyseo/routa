@@ -18,7 +18,7 @@ import {
 
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
-import { useWorkspaces } from "@/client/hooks/use-workspaces";
+import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { useTranslation } from "@/i18n";
 
@@ -62,8 +62,13 @@ export function FeatureExplorerPageClient({
   const router = useRouter();
   const { t } = useTranslation();
   const workspacesHook = useWorkspaces();
+  const { codebases } = useCodebases(workspaceId);
 
   const workspace = workspacesHook.workspaces.find((item) => item.id === workspaceId) ?? null;
+  const defaultCodebase = codebases.find((cb) => cb.isDefault) ?? codebases[0] ?? null;
+  const repoLabel = defaultCodebase
+    ? (defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? defaultCodebase.repoPath)
+    : null;
 
   const {
     loading,
@@ -232,6 +237,19 @@ export function FeatureExplorerPageClient({
           <section className="grid min-h-0 flex-1 xl:grid-cols-[240px_minmax(0,1fr)_340px]">
             {/* ── Left panel: Feature list ── */}
             <aside className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary/20">
+              {repoLabel && (
+                <div className="border-b border-desktop-border px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
+                    {t.featureExplorer.repository}
+                  </div>
+                  <div className="mt-1 truncate text-[12px] font-medium text-desktop-text-primary" title={defaultCodebase?.repoPath}>
+                    {repoLabel}
+                  </div>
+                  {defaultCodebase?.branch && (
+                    <div className="mt-0.5 text-[10px] text-desktop-text-secondary">{defaultCodebase.branch}</div>
+                  )}
+                </div>
+              )}
               <div className="border-b border-desktop-border px-3 py-2">
                 <label className="flex items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2.5 py-1.5 text-xs text-desktop-text-secondary">
                   <Search className="h-3.5 w-3.5" />
