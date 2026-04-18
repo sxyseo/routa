@@ -485,12 +485,16 @@ describe("FeatureExplorerPageClient", () => {
 
     render(<FeatureExplorerPageClient workspaceId="default" />);
 
+    const executionGroupToggle = screen.getByRole("button", { name: /Execution/i });
     expect(screen.getAllByText("Execution").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Feature A").length).toBeGreaterThan(0);
     expect(screen.getByText("Feature Structure")).toBeTruthy();
     expect(screen.getByText("Summary")).toBeTruthy();
     expect(screen.getByTestId("feature-metric-pages-feature-a").textContent).toContain("1");
     expect(screen.getByTestId("feature-metric-apis-feature-a").textContent).toContain("1");
+    expect(within(executionGroupToggle).getByText("1 Pages")).toBeTruthy();
+    expect(within(executionGroupToggle).getByText("1 API")).toBeTruthy();
+    expect(within(executionGroupToggle).getByText("1 files")).toBeTruthy();
     expect(screen.getByText("/workspace/:workspaceId/feature-explorer")).toBeTruthy();
     expect(screen.getByText("/api/feature-explorer")).toBeTruthy();
     expect(screen.getByLabelText("Expand Feature A")).toBeTruthy();
