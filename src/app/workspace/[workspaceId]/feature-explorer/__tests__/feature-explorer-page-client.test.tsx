@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const navState = vi.hoisted(() => ({
@@ -16,6 +16,61 @@ const { useWorkspaces, useCodebases } = vi.hoisted(() => ({
 
 const { useFeatureExplorerData } = vi.hoisted(() => ({
   useFeatureExplorerData: vi.fn(),
+}));
+
+const analysisAcpState = vi.hoisted(() => ({
+  connected: false,
+  sessionId: null as string | null,
+  updates: [],
+  providers: [
+    {
+      id: "opencode",
+      name: "OpenCode",
+      description: "OpenCode provider",
+      command: "opencode",
+      status: "available" as const,
+      source: "static" as const,
+    },
+    {
+      id: "codex",
+      name: "Codex",
+      description: "Codex provider",
+      command: "codex-acp",
+      status: "available" as const,
+      source: "static" as const,
+    },
+  ],
+  selectedProvider: "opencode",
+  loading: false,
+  error: null as string | null,
+  authError: null,
+  dockerConfigError: null as string | null,
+  connect: vi.fn(async () => {
+    analysisAcpState.connected = true;
+  }),
+  createSession: vi.fn(),
+  resumeSession: vi.fn(),
+  forkSession: vi.fn(),
+  selectSession: vi.fn((sessionId: string) => {
+    analysisAcpState.sessionId = sessionId;
+  }),
+  setProvider: vi.fn((provider: string) => {
+    analysisAcpState.selectedProvider = provider;
+  }),
+  setMode: vi.fn(),
+  prompt: vi.fn(),
+  promptSession: vi.fn(async (sessionId: string) => {
+    analysisAcpState.sessionId = sessionId;
+  }),
+  respondToUserInput: vi.fn(),
+  respondToUserInputForSession: vi.fn(),
+  cancel: vi.fn(),
+  disconnect: vi.fn(),
+  clearAuthError: vi.fn(),
+  clearDockerConfigError: vi.fn(),
+  listProviderModels: vi.fn(async () => []),
+  writeTerminal: vi.fn(),
+  resizeTerminal: vi.fn(),
 }));
 
 const sessionLaunchState = vi.hoisted(() => ({
@@ -52,6 +107,10 @@ vi.mock("../use-feature-explorer-data", () => ({
   useFeatureExplorerData,
 }));
 
+vi.mock("@/client/hooks/use-acp", () => ({
+  useAcp: () => analysisAcpState,
+}));
+
 vi.mock("@/client/utils/diagnostics", () => ({
   desktopAwareFetch: sessionLaunchState.desktopAwareFetch,
 }));
@@ -66,6 +125,12 @@ vi.mock("@/client/components/desktop-app-shell", () => ({
 
 vi.mock("@/client/components/workspace-switcher", () => ({
   WorkspaceSwitcher: () => <div data-testid="workspace-switcher" />,
+}));
+
+vi.mock("@/client/components/chat-panel", () => ({
+  ChatPanel: ({ activeSessionId }: { activeSessionId: string | null }) => (
+    <div data-testid="chat-panel">{activeSessionId ?? "no-session"}</div>
+  ),
 }));
 
 vi.mock("@/client/components/repo-picker", () => ({
@@ -93,6 +158,26 @@ vi.mock("@/client/components/repo-picker", () => ({
   ),
 }));
 
+vi.mock("@/client/components/acp-provider-dropdown", () => ({
+  AcpProviderDropdown: ({
+    providers,
+    onProviderChange,
+    dataTestId,
+  }: {
+    providers: Array<{ id: string; name: string }>;
+    onProviderChange: (provider: string) => void;
+    dataTestId?: string;
+  }) => (
+    <div data-testid={dataTestId ?? "acp-provider-dropdown"}>
+      {providers.map((provider) => (
+        <button key={provider.id} type="button" onClick={() => onProviderChange(provider.id)}>
+          {provider.name}
+        </button>
+      ))}
+    </div>
+  ),
+}));
+
 Object.defineProperty(window, "localStorage", {
   value: localStorageMock,
   writable: true,
@@ -113,6 +198,28 @@ describe("FeatureExplorerPageClient", () => {
     clipboardState.writeText.mockReset();
     sessionLaunchState.desktopAwareFetch.mockReset();
     sessionLaunchState.storePendingPrompt.mockReset();
+    analysisAcpState.connected = false;
+    analysisAcpState.sessionId = null;
+    analysisAcpState.selectedProvider = "opencode";
+    analysisAcpState.error = null;
+    analysisAcpState.connect.mockClear();
+    analysisAcpState.createSession.mockReset();
+    analysisAcpState.resumeSession.mockReset();
+    analysisAcpState.forkSession.mockReset();
+    analysisAcpState.selectSession.mockClear();
+    analysisAcpState.setProvider.mockClear();
+    analysisAcpState.setMode.mockReset();
+    analysisAcpState.prompt.mockReset();
+    analysisAcpState.promptSession.mockClear();
+    analysisAcpState.respondToUserInput.mockReset();
+    analysisAcpState.respondToUserInputForSession.mockReset();
+    analysisAcpState.cancel.mockReset();
+    analysisAcpState.disconnect.mockReset();
+    analysisAcpState.clearAuthError.mockReset();
+    analysisAcpState.clearDockerConfigError.mockReset();
+    analysisAcpState.listProviderModels.mockReset();
+    analysisAcpState.writeTerminal.mockReset();
+    analysisAcpState.resizeTerminal.mockReset();
     useWorkspaces.mockReturnValue({
       loading: false,
       workspaces: [{ id: "default", title: "Default Workspace" }],
@@ -157,7 +264,7 @@ describe("FeatureExplorerPageClient", () => {
   });
 
   it("uses the default codebase until the user selects another local repository", async () => {
-    render(<FeatureExplorerPageClient workspaceId="default" />);
+    const view = render(<FeatureExplorerPageClient workspaceId="default" />);
 
     expect(screen.getByTestId("repo-picker-value").textContent).toBe("routa-js|/repo/default|main");
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
@@ -209,7 +316,7 @@ describe("FeatureExplorerPageClient", () => {
       }),
     );
 
-    render(<FeatureExplorerPageClient workspaceId="default" />);
+    const view = render(<FeatureExplorerPageClient workspaceId="default" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("repo-picker-value").textContent).toBe(
@@ -227,7 +334,7 @@ describe("FeatureExplorerPageClient", () => {
   it("falls back to the workspace codebase when nothing is stored", async () => {
     window.localStorage.clear();
 
-    render(<FeatureExplorerPageClient workspaceId="default" />);
+    const view = render(<FeatureExplorerPageClient workspaceId="default" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("repo-picker-value").textContent).toBe(
@@ -901,7 +1008,7 @@ describe("FeatureExplorerPageClient", () => {
       fetchFeatureDetail: vi.fn().mockResolvedValue(null),
     });
 
-    render(<FeatureExplorerPageClient workspaceId="default" />);
+    const view = render(<FeatureExplorerPageClient workspaceId="default" />);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Open analysis panel" })).toBeTruthy();
@@ -915,6 +1022,10 @@ describe("FeatureExplorerPageClient", () => {
       expect(screen.getByTestId("feature-explorer-session-analysis-drawer")).toBeTruthy();
     });
 
+    fireEvent.click(
+      within(screen.getByTestId("feature-explorer-session-analysis-provider")).getByRole("button", { name: "Codex" }),
+    );
+    view.rerender(<FeatureExplorerPageClient workspaceId="default" />);
     fireEvent.click(screen.getByRole("button", { name: "Analyze selected sessions" }));
 
     await waitFor(() => {
@@ -937,20 +1048,25 @@ describe("FeatureExplorerPageClient", () => {
       role: "ROUTA",
       specialistId: "file-session-analyst",
       specialistLocale: "en",
+      provider: "codex",
     });
 
     await waitFor(() => {
-      expect(sessionLaunchState.storePendingPrompt).toHaveBeenCalledWith(
+      expect(analysisAcpState.selectSession).toHaveBeenCalledWith("analysis-session-1");
+      expect(analysisAcpState.promptSession).toHaveBeenCalledWith(
         "analysis-session-1",
         expect.stringContaining("crates/routa-server/src/api/kanban.rs"),
       );
     });
 
-    const [, prompt] = sessionLaunchState.storePendingPrompt.mock.calls[0] as [string, string];
+    const [, prompt] = analysisAcpState.promptSession.mock.calls[0] as [string, string];
     expect(prompt).toContain("019d-kanban-analysis");
     expect(prompt).toContain("Summarize what context should have been provided earlier");
     expect(prompt).not.toContain("Operation not permitted");
-    expect(navState.push).toHaveBeenCalledWith("/workspace/default/sessions/analysis-session-1");
+    expect(sessionLaunchState.storePendingPrompt).not.toHaveBeenCalled();
+    expect(navState.push).not.toHaveBeenCalledWith("/workspace/default/sessions/analysis-session-1");
+    expect(screen.getByTestId("feature-explorer-analysis-session-pane")).toBeTruthy();
+    expect(screen.getByTestId("chat-panel").textContent).toBe("analysis-session-1");
   });
 
   it("aggregates folder selection sessions across descendant files", async () => {

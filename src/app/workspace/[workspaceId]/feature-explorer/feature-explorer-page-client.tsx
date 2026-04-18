@@ -16,11 +16,12 @@ import {
 } from "lucide-react";
 
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
+import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
+import { useAcp } from "@/client/hooks/use-acp";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
-import { storePendingPrompt } from "@/client/utils/pending-prompt";
 import { loadRepoSelection, saveRepoSelection } from "@/client/utils/repo-selection-storage";
 import { useTranslation } from "@/i18n";
 
@@ -28,6 +29,7 @@ import type {
   AggregatedSelectionSession,
   FeatureDetail,
   FeatureSurfacePage,
+  FileSessionDiagnostics,
   FileTreeNode,
   InspectorTab,
 } from "./types";
@@ -141,6 +143,54 @@ function buildSelectableFileIdsByNode(
   return acc;
 }
 
+function mergeDistinctStrings(left: string[], right: string[]): string[] {
+  return [...new Set([...left, ...right])];
+}
+
+function mergeSessionDiagnostics(
+  left?: FileSessionDiagnostics,
+  right?: FileSessionDiagnostics,
+): FileSessionDiagnostics | undefined {
+  if (!left) {
+    return right ? {
+      ...right,
+      toolCallsByName: { ...right.toolCallsByName },
+      readFiles: [...right.readFiles],
+      writtenFiles: [...right.writtenFiles],
+      repeatedReadFiles: [...right.repeatedReadFiles],
+      repeatedCommands: [...right.repeatedCommands],
+      failedTools: right.failedTools.map((failure) => ({ ...failure })),
+    } : undefined;
+  }
+
+  if (!right) {
+    return left;
+  }
+
+  const toolCallsByName: Record<string, number> = { ...left.toolCallsByName };
+  for (const [toolName, count] of Object.entries(right.toolCallsByName)) {
+    toolCallsByName[toolName] = Math.max(toolCallsByName[toolName] ?? 0, count);
+  }
+
+  const failedTools = new Map(
+    left.failedTools.map((failure) => [`${failure.toolName}|${failure.command ?? ""}|${failure.message}`, failure] as const),
+  );
+  for (const failure of right.failedTools) {
+    failedTools.set(`${failure.toolName}|${failure.command ?? ""}|${failure.message}`, failure);
+  }
+
+  return {
+    toolCallCount: Math.max(left.toolCallCount, right.toolCallCount),
+    failedToolCallCount: Math.max(left.failedToolCallCount, right.failedToolCallCount),
+    toolCallsByName,
+    readFiles: mergeDistinctStrings(left.readFiles, right.readFiles).sort((a, b) => a.localeCompare(b)),
+    writtenFiles: mergeDistinctStrings(left.writtenFiles, right.writtenFiles).sort((a, b) => a.localeCompare(b)),
+    repeatedReadFiles: mergeDistinctStrings(left.repeatedReadFiles, right.repeatedReadFiles).sort((a, b) => a.localeCompare(b)),
+    repeatedCommands: mergeDistinctStrings(left.repeatedCommands, right.repeatedCommands),
+    failedTools: [...failedTools.values()],
+  };
+}
+
 function formatShortDate(iso: string): string {
   if (!iso || iso === "-") return "-";
   const d = new Date(iso);
@@ -219,6 +269,15 @@ export function FeatureExplorerPageClient({
   const { codebases } = useCodebases(workspaceId);
 
   const workspace = workspacesHook.workspaces.find((item) => item.id === workspaceId) ?? null;
+  const analysisAcp = useAcp();
+  const analysisAcpConnected = analysisAcp.connected;
+  const analysisAcpLoading = analysisAcp.loading;
+  const connectAnalysisAcp = analysisAcp.connect;
+  const analysisProviders = analysisAcp.providers;
+  const analysisSelectedProvider = analysisAcp.selectedProvider;
+  const setAnalysisProvider = analysisAcp.setProvider;
+  const selectAnalysisSession = analysisAcp.selectSession;
+  const promptAnalysisSession = analysisAcp.promptSession;
   const workspaceRepos = useMemo(
     () =>
       codebases.map((codebase) => ({
@@ -279,6 +338,10 @@ export function FeatureExplorerPageClient({
   const [isSessionAnalysisDrawerOpen, setIsSessionAnalysisDrawerOpen] = useState(false);
   const [isStartingSessionAnalysis, setIsStartingSessionAnalysis] = useState(false);
   const [sessionAnalysisError, setSessionAnalysisError] = useState<string | null>(null);
+  const [analysisSessionId, setAnalysisSessionId] = useState<string | null>(null);
+  const [analysisSessionName, setAnalysisSessionName] = useState("");
+  const [analysisSessionProviderId, setAnalysisSessionProviderId] = useState("");
+  const [isAnalysisSessionPaneOpen, setIsAnalysisSessionPaneOpen] = useState(false);
 
   // Derive effective feature ID: user-selected or auto-initialized from hook
   const effectiveFeatureId = featureId || initialFeatureId;
@@ -758,6 +821,7 @@ export function FeatureExplorerPageClient({
           if (!existing.resumeCommand && session.resumeCommand) {
             existing.resumeCommand = session.resumeCommand;
           }
+          existing.diagnostics = mergeSessionDiagnostics(existing.diagnostics, session.diagnostics);
           for (const prompt of session.promptHistory ?? []) {
             if (!existing.promptHistory.includes(prompt)) {
               existing.promptHistory.push(prompt);
@@ -785,6 +849,7 @@ export function FeatureExplorerPageClient({
           toolNames: [...(session.toolNames ?? [])],
           ...(session.resumeCommand ? { resumeCommand: session.resumeCommand } : {}),
           changedFiles: [...(session.changedFiles ?? [fileNode.path])],
+          ...(session.diagnostics ? { diagnostics: mergeSessionDiagnostics(undefined, session.diagnostics) } : {}),
         });
       }
     }
@@ -810,6 +875,13 @@ export function FeatureExplorerPageClient({
     : selectedSurface
       ? `${selectedSurface.label}${selectedSurfaceFeatureNames[0] ? ` -> ${selectedSurfaceFeatureNames[0]}` : ""}`
       : "";
+  const analysisSessionProviderName = useMemo(
+    () => analysisProviders.find((provider) => provider.id === analysisSessionProviderId)?.name ?? analysisSessionProviderId,
+    [analysisProviders, analysisSessionProviderId],
+  );
+  const featureExplorerLayoutClassName = isAnalysisSessionPaneOpen
+    ? "grid min-h-0 flex-1 xl:grid-cols-[360px_minmax(0,1fr)_500px_minmax(24rem,36rem)] 2xl:grid-cols-[420px_minmax(0,1fr)_560px_minmax(26rem,40rem)]"
+    : "grid min-h-0 flex-1 xl:grid-cols-[360px_minmax(0,1fr)_500px] 2xl:grid-cols-[420px_minmax(0,1fr)_560px]";
 
   const handleWorkspaceSelect = (nextWorkspaceId: string) => {
     router.push(`/workspace/${encodeURIComponent(nextWorkspaceId)}/feature-explorer`);
@@ -856,7 +928,6 @@ export function FeatureExplorerPageClient({
   const [prevDetailId, setPrevDetailId] = useState<string>("");
   useEffect(() => {
     if (resolvedFeatureDetail && resolvedFeatureDetail.id !== prevDetailId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- legitimate initialization of derived selection state
       setPrevDetailId(resolvedFeatureDetail.id);
       applyFileAutoSelect(
         resolvedFeatureDetail,
@@ -1003,6 +1074,20 @@ export function FeatureExplorerPageClient({
     }
   }, [isSessionAnalysisDrawerOpen, selectedFilePaths.length, selectedScopeSessions.length]);
 
+  useEffect(() => {
+    if ((!isSessionAnalysisDrawerOpen && !isAnalysisSessionPaneOpen) || analysisAcpConnected || analysisAcpLoading) {
+      return;
+    }
+
+    void connectAnalysisAcp();
+  }, [
+    analysisAcpConnected,
+    analysisAcpLoading,
+    connectAnalysisAcp,
+    isAnalysisSessionPaneOpen,
+    isSessionAnalysisDrawerOpen,
+  ]);
+
   const handleOpenSessionAnalysisDrawer = () => {
     setSessionAnalysisError(null);
     setIsSessionAnalysisDrawerOpen(true);
@@ -1017,6 +1102,11 @@ export function FeatureExplorerPageClient({
     setIsStartingSessionAnalysis(true);
 
     try {
+      const sessionName = buildSessionAnalysisSessionName(
+        locale,
+        surfaceOnlySelection ? null : resolvedFeatureDetail,
+        selectedFilePaths,
+      );
       const prompt = buildSessionAnalysisPrompt({
         locale,
         workspaceId,
@@ -1042,7 +1132,8 @@ export function FeatureExplorerPageClient({
             role: "ROUTA",
             specialistId: "file-session-analyst",
             specialistLocale: locale,
-            name: buildSessionAnalysisSessionName(locale, surfaceOnlySelection ? null : resolvedFeatureDetail, selectedFilePaths),
+            name: sessionName,
+            provider: analysisSelectedProvider,
           },
         }),
       });
@@ -1065,8 +1156,14 @@ export function FeatureExplorerPageClient({
         throw new Error(t.featureExplorer.sessionAnalysisFailed);
       }
 
-      storePendingPrompt(sessionId, prompt);
-      router.push(`/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`);
+      await connectAnalysisAcp();
+      selectAnalysisSession(sessionId);
+      setAnalysisSessionId(sessionId);
+      setAnalysisSessionName(sessionName);
+      setAnalysisSessionProviderId(analysisSelectedProvider);
+      setIsAnalysisSessionPaneOpen(true);
+      setIsSessionAnalysisDrawerOpen(false);
+      void promptAnalysisSession(sessionId, prompt);
     } catch (err) {
       setSessionAnalysisError(
         err instanceof Error && err.message
@@ -1097,7 +1194,7 @@ export function FeatureExplorerPageClient({
     >
       <div className="flex h-full min-h-0 bg-desktop-bg-primary">
         <main className="flex min-w-0 flex-1">
-          <section className="grid min-h-0 flex-1 xl:grid-cols-[360px_minmax(0,1fr)_500px] 2xl:grid-cols-[420px_minmax(0,1fr)_560px]">
+          <section className={featureExplorerLayoutClassName}>
             {/* ── Left panel: Feature list ── */}
             <aside className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary/20">
               <div className="border-b border-desktop-border px-3 py-2">
@@ -1439,6 +1536,63 @@ export function FeatureExplorerPageClient({
                 )}
               </div>
             </aside>
+
+            {isAnalysisSessionPaneOpen && analysisSessionId ? (
+              <aside
+                className="flex min-h-0 flex-col border-l border-desktop-border bg-desktop-bg-primary"
+                data-testid="feature-explorer-analysis-session-pane"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-desktop-border px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-desktop-text-primary">
+                      {analysisSessionName || t.featureExplorer.sessionAnalysisTitle}
+                    </div>
+                    <div
+                      className="mt-0.5 overflow-x-auto whitespace-nowrap text-[11px] text-desktop-text-secondary"
+                      title={analysisSessionId}
+                    >
+                      {analysisSessionProviderName || analysisSessionProviderId || analysisSelectedProvider} · {analysisSessionId}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(analysisSessionId)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[11px] text-desktop-text-secondary hover:text-desktop-text-primary"
+                    >
+                      {t.common.openInNewTab}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAnalysisSessionPaneOpen(false);
+                        setAnalysisSessionId(null);
+                      }}
+                      className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[11px] text-desktop-text-secondary hover:text-desktop-text-primary"
+                    >
+                      {t.common.close}
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1">
+                  <ChatPanel
+                    acp={analysisAcp}
+                    activeSessionId={analysisSessionId}
+                    onEnsureSession={async () => analysisSessionId}
+                    onSelectSession={async (sessionId) => {
+                      setAnalysisSessionId(sessionId);
+                      selectAnalysisSession(sessionId);
+                    }}
+                    repoSelection={effectiveRepoSelection}
+                    onRepoChange={() => {}}
+                    codebases={codebases}
+                    activeWorkspaceId={workspaceId}
+                    agentRole="ROUTA"
+                  />
+                </div>
+              </aside>
+            ) : null}
           </section>
         </main>
 
@@ -1446,6 +1600,9 @@ export function FeatureExplorerPageClient({
           open={isSessionAnalysisDrawerOpen}
           selectedFilePaths={selectedFilePaths}
           selectedScopeSessions={selectedScopeSessions}
+          providers={analysisProviders}
+          selectedProvider={analysisSelectedProvider}
+          onProviderChange={setAnalysisProvider}
           isStartingSessionAnalysis={isStartingSessionAnalysis}
           sessionAnalysisError={sessionAnalysisError}
           onClose={() => setIsSessionAnalysisDrawerOpen(false)}

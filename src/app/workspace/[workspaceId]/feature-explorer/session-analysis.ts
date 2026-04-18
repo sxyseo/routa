@@ -65,6 +65,16 @@ function buildSessionBlocks(locale: Locale, sessions: AggregatedSelectionSession
     const changedFiles = sanitizeChangedFiles(session.changedFiles);
     const promptHistory = uniquePreserveOrder(session.promptHistory);
     const toolNames = uniqueSorted(session.toolNames);
+    const diagnostics = session.diagnostics;
+    const readFiles = diagnostics?.readFiles ?? [];
+    const repeatedReadFiles = diagnostics?.repeatedReadFiles ?? [];
+    const repeatedCommands = diagnostics?.repeatedCommands ?? [];
+    const failedTools = diagnostics?.failedTools ?? [];
+    const toolCallBreakdown = diagnostics
+      ? Object.entries(diagnostics.toolCallsByName)
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+        .map(([toolName, count]) => `${toolName}: ${count}`)
+      : [];
 
     return [
       `## Session ${index + 1}`,
@@ -73,12 +83,28 @@ function buildSessionBlocks(locale: Locale, sessions: AggregatedSelectionSession
       `- Updated At: ${session.updatedAt}`,
       session.resumeCommand ? `- Resume Command: ${session.resumeCommand}` : "",
       `- Prompt Snippet: ${session.promptSnippet || (locale === "zh" ? "无" : "None")}`,
+      diagnostics ? `- Tool Calls: ${diagnostics.toolCallCount}` : "",
+      diagnostics ? `- Failed Tool Calls: ${diagnostics.failedToolCallCount}` : "",
       locale === "zh" ? "### Prompt History" : "### Prompt History",
       formatOrderedList(promptHistory, noPrompts),
       locale === "zh" ? "### Tool Names" : "### Tool Names",
       formatBulletList(toolNames, noTools),
+      locale === "zh" ? "### Tool Call Breakdown" : "### Tool Call Breakdown",
+      formatBulletList(toolCallBreakdown, noTools),
       locale === "zh" ? "### Changed Files" : "### Changed Files",
       formatBulletList(changedFiles, noChangedFiles),
+      locale === "zh" ? "### Read Files" : "### Read Files",
+      formatBulletList(readFiles, locale === "zh" ? "没有可信的读取文件记录" : "No trustworthy read-file evidence"),
+      locale === "zh" ? "### Repeated Reads" : "### Repeated Reads",
+      formatBulletList(repeatedReadFiles, locale === "zh" ? "没有发现重复读取" : "No repeated reads detected"),
+      locale === "zh" ? "### Repeated Commands" : "### Repeated Commands",
+      formatBulletList(repeatedCommands, locale === "zh" ? "没有发现重复命令" : "No repeated commands detected"),
+      locale === "zh" ? "### Failed Tools" : "### Failed Tools",
+      formatBulletList(
+        failedTools.map((failure) =>
+          `${failure.toolName}${failure.command ? ` | ${failure.command}` : ""} | ${failure.message}`),
+        locale === "zh" ? "没有发现失败工具调用" : "No failed tool calls detected",
+      ),
     ].filter(Boolean).join("\n");
   }).join("\n\n");
 }

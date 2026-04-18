@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 
 import { useTranslation } from "@/i18n";
+import type { AcpProviderInfo } from "@/client/acp-client";
+import { AcpProviderDropdown } from "@/client/components/acp-provider-dropdown";
 
 import type {
   AggregatedSelectionSession,
@@ -401,6 +403,9 @@ export function SessionAnalysisDrawer({
   open,
   selectedFilePaths,
   selectedScopeSessions,
+  providers,
+  selectedProvider,
+  onProviderChange,
   isStartingSessionAnalysis = false,
   sessionAnalysisError,
   onClose,
@@ -410,6 +415,9 @@ export function SessionAnalysisDrawer({
   open: boolean;
   selectedFilePaths: string[];
   selectedScopeSessions: AggregatedSelectionSession[];
+  providers: AcpProviderInfo[];
+  selectedProvider: string;
+  onProviderChange: (provider: string) => void;
   isStartingSessionAnalysis?: boolean;
   sessionAnalysisError?: string | null;
   onClose: () => void;
@@ -455,9 +463,20 @@ export function SessionAnalysisDrawer({
         </div>
 
         <div className="border-b border-desktop-border bg-desktop-bg-secondary/40 px-4 py-2.5">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
             <InlineMetricPill label={t.featureExplorer.filesLabel} value={String(selectedFilePaths.length)} />
             <InlineMetricPill label={t.featureExplorer.sessionsLabel} value={String(selectedScopeSessions.length)} />
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
+                {t.settings.provider}
+              </span>
+              <AcpProviderDropdown
+                providers={providers}
+                selectedProvider={selectedProvider}
+                onProviderChange={onProviderChange}
+                dataTestId="feature-explorer-session-analysis-provider"
+              />
+            </div>
           </div>
         </div>
 

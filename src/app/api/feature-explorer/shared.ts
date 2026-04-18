@@ -23,6 +23,8 @@ const MAX_FILE_SIGNAL_SESSIONS = 6;
 const MAX_FILE_SIGNAL_TOOLS = 8;
 const MAX_FILE_SIGNAL_PROMPTS = 6;
 const MAX_FILE_SIGNAL_CHANGED_FILES = 12;
+const MAX_FILE_SIGNAL_FAILED_TOOLS = 6;
+const MAX_FILE_SIGNAL_REPEATED_COMMANDS = 6;
 const IGNORED_PATHS = new Set([".git", "node_modules", ".next", "dist", "out", "target"]);
 
 type FallbackSourceDir = string;
@@ -177,12 +179,30 @@ export interface FileSessionSignal {
   toolNames: string[];
   changedFiles?: string[];
   resumeCommand?: string;
+  diagnostics?: FileSessionDiagnostics;
 }
 
 export interface FileSignal {
   sessions: FileSessionSignal[];
   toolHistory: string[];
   promptHistory: string[];
+}
+
+export interface FileSessionToolFailure {
+  toolName: string;
+  command?: string;
+  message: string;
+}
+
+export interface FileSessionDiagnostics {
+  toolCallCount: number;
+  failedToolCallCount: number;
+  toolCallsByName: Record<string, number>;
+  readFiles: string[];
+  writtenFiles: string[];
+  repeatedReadFiles: string[];
+  repeatedCommands: string[];
+  failedTools: FileSessionToolFailure[];
 }
 
 export interface FeatureStats {
@@ -986,6 +1006,247 @@ function appendLimitedUnique(target: string[], value: string, limit: number): vo
   target.push(value);
 }
 
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function normalizeCommandSignature(command: string): string {
+  return command.replace(/\s+/g, " ").trim();
+}
+
+function truncateDiagnosticText(text: string, maxLength: number = 220): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function unwrapShellCommand(command: string): string {
+  const tokens = shellLikeSplit(command);
+  if (tokens.length < 3) {
+    return command;
+  }
+
+  const executable = path.posix.basename(tokens[0] ?? "");
+  const shellLike = executable === "sh" || executable === "bash" || executable === "zsh";
+  if (!shellLike) {
+    return command;
+  }
+
+  const cFlagIndex = tokens.findIndex((token) => token === "-c" || token === "-lc");
+  if (cFlagIndex >= 0 && tokens[cFlagIndex + 1]) {
+    return tokens.slice(cFlagIndex + 1).join(" ");
+  }
+
+  return command;
+}
+
+function toolNameFromFeatureEvent(event: unknown): string | undefined {
+  if (!isRecord(event)) {
+    return undefined;
+  }
+
+  if (event.type === "function_call" && typeof event.name === "string") {
+    return event.name;
+  }
+
+  if (typeof event.tool_name === "string") {
+    return event.tool_name;
+  }
+
+  if (event.type === "exec_command_end" || event.type === "exec_command_begin") {
+    return "exec_command";
+  }
+
+  return commandFromUnknown(event) ? "exec_command" : undefined;
+}
+
+function extractReadCandidatesFromCommand(command: string): string[] {
+  const innerCommand = unwrapShellCommand(command);
+  const tokens = shellLikeSplit(innerCommand);
+  if (tokens.length === 0) {
+    return [];
+  }
+
+  const executable = path.posix.basename(tokens[0] ?? "");
+  const readCommands = new Set(["bat", "cat", "head", "less", "more", "nl", "sed", "tail"]);
+  if (!readCommands.has(executable)) {
+    return [];
+  }
+
+  return tokens.slice(1).filter((token) => token !== "--" && !token.startsWith("-"));
+}
+
+function collectReadFilesFromToolLike(event: unknown, repoRoot: string, sessionCwd: string): string[] {
+  const candidates = new Set<string>();
+  const toolName = toolNameFromFeatureEvent(event)?.toLowerCase() ?? "";
+  const command = commandFromUnknown(event);
+  const directReadTool = toolName.includes("read")
+    || toolName === "open"
+    || toolName === "view"
+    || toolName === "fs/read_text_file";
+
+  if (directReadTool) {
+    collectFileValues(event, candidates);
+  }
+
+  if (command) {
+    for (const token of extractReadCandidatesFromCommand(command)) {
+      candidates.add(token);
+    }
+  }
+
+  const readFiles: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeRepoRelative(repoRoot, candidate, sessionCwd);
+    if (normalized && !readFiles.includes(normalized)) {
+      readFiles.push(normalized);
+    }
+  }
+
+  return readFiles;
+}
+
+function detectFailedToolCall(event: unknown): FileSessionToolFailure | null {
+  if (!isRecord(event)) {
+    return null;
+  }
+
+  const exitCode = typeof event.exit_code === "number"
+    ? event.exit_code
+    : typeof event.exitCode === "number"
+      ? event.exitCode
+      : undefined;
+  const status = typeof event.status === "string" ? event.status.trim().toLowerCase() : "";
+  const failed = (typeof exitCode === "number" && exitCode !== 0)
+    || status === "failed"
+    || status === "error";
+
+  if (!failed) {
+    return null;
+  }
+
+  const toolName = toolNameFromFeatureEvent(event) ?? "tool";
+  const message = firstNonEmptyString(
+    event.stderr,
+    event.error,
+    event.message,
+    commandOutputFromUnknown(event),
+  ) ?? (typeof exitCode === "number" ? `Exit code ${exitCode}` : "Tool call failed");
+
+  return {
+    toolName,
+    ...(commandFromUnknown(event) ? { command: truncateDiagnosticText(commandFromUnknown(event) ?? "") } : {}),
+    message: truncateDiagnosticText(message),
+  };
+}
+
+function deriveTranscriptSessionDiagnostics(
+  transcript: ReturnType<typeof collectMatchingTranscriptSessions>[number],
+  repoRoot: string,
+  writtenFiles: string[],
+): FileSessionDiagnostics {
+  const toolCallsByName: Record<string, number> = {};
+  const readCounts = new Map<string, number>();
+  const repeatedCommandCounts = new Map<string, number>();
+  const failedTools: FileSessionToolFailure[] = [];
+  const pendingExecRequests = new Map<string, number>();
+  let failedToolCallCount = 0;
+
+  const incrementToolCall = (toolName: string) => {
+    toolCallsByName[toolName] = (toolCallsByName[toolName] ?? 0) + 1;
+  };
+
+  const incrementCommand = (signature: string) => {
+    if (!signature) {
+      return;
+    }
+    repeatedCommandCounts.set(signature, (repeatedCommandCounts.get(signature) ?? 0) + 1);
+  };
+
+  const appendFailure = (failure: FileSessionToolFailure | null) => {
+    if (!failure) {
+      return;
+    }
+    failedToolCallCount += 1;
+    if (failedTools.length < MAX_FILE_SIGNAL_FAILED_TOOLS) {
+      failedTools.push(failure);
+    }
+  };
+
+  for (const event of transcript.events) {
+    const toolName = toolNameFromFeatureEvent(event);
+    const command = commandFromUnknown(event);
+    const commandSignature = command ? normalizeCommandSignature(unwrapShellCommand(command)) : "";
+
+    for (const readFile of collectReadFilesFromToolLike(event, repoRoot, transcript.cwd)) {
+      readCounts.set(readFile, (readCounts.get(readFile) ?? 0) + 1);
+    }
+
+    if (!isRecord(event)) {
+      continue;
+    }
+
+    if (event.type === "function_call") {
+      if (toolName) {
+        incrementToolCall(toolName);
+      }
+      if (toolName === "exec_command" && commandSignature) {
+        pendingExecRequests.set(commandSignature, (pendingExecRequests.get(commandSignature) ?? 0) + 1);
+      }
+      incrementCommand(commandSignature);
+      appendFailure(detectFailedToolCall(event));
+      continue;
+    }
+
+    if (event.type === "exec_command_begin" || event.type === "exec_command_end") {
+      const pending = commandSignature ? (pendingExecRequests.get(commandSignature) ?? 0) : 0;
+      if (pending > 0 && commandSignature) {
+        pendingExecRequests.set(commandSignature, pending - 1);
+      } else {
+        incrementToolCall("exec_command");
+        incrementCommand(commandSignature);
+      }
+      appendFailure(detectFailedToolCall(event));
+      continue;
+    }
+
+    if (toolName) {
+      incrementToolCall(toolName);
+      incrementCommand(commandSignature);
+      appendFailure(detectFailedToolCall(event));
+    }
+  }
+
+  const sortedReadFiles = [...readCounts.keys()].sort((left, right) => left.localeCompare(right));
+  const repeatedReadFiles = [...readCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([filePath, count]) => `${filePath} x${count}`);
+  const repeatedCommands = [...repeatedCommandCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, MAX_FILE_SIGNAL_REPEATED_COMMANDS)
+    .map(([commandText, count]) => `${truncateDiagnosticText(commandText, 120)} x${count}`);
+
+  return {
+    toolCallCount: Object.values(toolCallsByName).reduce((sum, count) => sum + count, 0),
+    failedToolCallCount,
+    toolCallsByName,
+    readFiles: sortedReadFiles,
+    writtenFiles: [...new Set(writtenFiles)].sort((left, right) => left.localeCompare(right)),
+    repeatedReadFiles,
+    repeatedCommands,
+    failedTools,
+  };
+}
+
 function sanitizePathCandidate(candidate: string): string | null {
   const cleaned = toPosix(candidate)
     .trim()
@@ -1172,6 +1433,10 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
     }
 
     const transcriptKey = `${transcript.provider}:${transcript.sessionId}`;
+    const changedFiles = [...changedFromTranscript]
+      .slice(0, MAX_FILE_SIGNAL_CHANGED_FILES)
+      .sort((left, right) => left.localeCompare(right));
+    const diagnostics = deriveTranscriptSessionDiagnostics(transcript, repoRoot, changedFiles);
 
     for (const changedFile of changedFromTranscript) {
       const fileEntry = fileStats[changedFile] ?? {
@@ -1204,9 +1469,8 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
           promptSnippet: transcript.promptHistory[0] ?? "",
           promptHistory: transcript.promptHistory.slice(0, MAX_FILE_SIGNAL_PROMPTS),
           toolNames: transcript.toolHistory.slice(0, MAX_FILE_SIGNAL_TOOLS),
-          changedFiles: [...changedFromTranscript].slice(0, MAX_FILE_SIGNAL_CHANGED_FILES).sort((left, right) =>
-            left.localeCompare(right)
-          ),
+          changedFiles,
+          diagnostics,
           ...(transcript.resumeCommand ? { resumeCommand: transcript.resumeCommand } : {}),
         });
       }

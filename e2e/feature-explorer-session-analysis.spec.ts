@@ -177,6 +177,7 @@ function buildFeatureDetail() {
 async function installFeatureExplorerMocks(page: Page, onAcpRequest?: (body: unknown) => void) {
   await page.addInitScript(({ repoPath }) => {
     window.localStorage.setItem("routa.locale", "en");
+    window.localStorage.setItem("routa.acp.selectedProvider", "opencode");
     window.localStorage.setItem(
       "routa.repoSelection.featureExplorer.default",
       JSON.stringify({
@@ -235,15 +236,95 @@ async function installFeatureExplorerMocks(page: Page, onAcpRequest?: (body: unk
     await route.fulfill(json(buildFeatureDetail()));
   });
 
-  if (onAcpRequest) {
-    await page.route("**/api/acp", async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
+  await page.route("**/api/providers?**", async (route) => {
+    await route.fulfill(json({
+      providers: [
+        {
+          id: "opencode",
+          name: "OpenCode",
+          description: "OpenCode provider",
+          command: "opencode",
+          status: "available",
+          source: "static",
+        },
+        {
+          id: "codex",
+          name: "Codex",
+          description: "Codex provider",
+          command: "codex-acp",
+          status: "available",
+          source: "static",
+        },
+      ],
+    }));
+  });
 
-      const body = route.request().postDataJSON();
-      onAcpRequest(body);
+  await page.route("**/api/sessions", async (route) => {
+    await route.fulfill(json({
+      sessions: [
+        {
+          sessionId: "analysis-session-1",
+          provider: "codex",
+          modeId: "default",
+        },
+      ],
+    }));
+  });
+
+  await page.route("**/api/sessions/analysis-session-1/transcript", async (route) => {
+    await route.fulfill(json({
+      sessionId: "analysis-session-1",
+      history: [],
+      latestEventKind: "turn_complete",
+      source: "history",
+      historyMessageCount: 0,
+      traceMessageCount: 0,
+      messages: [
+        {
+          id: "analysis-message-1",
+          role: "assistant",
+          content: "Start by narrowing the scope to kanban.rs and the six linked sessions.",
+          timestamp: "2026-04-18T00:00:00.000Z",
+        },
+      ],
+    }));
+  });
+
+  await page.route("**/api/acp?sessionId=*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: "data: {\"method\":\"session/update\",\"params\":{\"sessionId\":\"analysis-session-1\",\"update\":{\"sessionUpdate\":\"turn_complete\",\"stopReason\":\"end_turn\"}}}\n\n",
+    });
+  });
+
+  await page.route("**/api/acp", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+
+    const body = route.request().postDataJSON();
+    onAcpRequest?.(body);
+    const method = typeof body?.method === "string" ? body.method : "";
+
+    if (method === "initialize") {
+      await route.fulfill(json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          protocolVersion: 1,
+          agentCapabilities: {},
+          agentInfo: {
+            name: "Codex ACP",
+            version: "test",
+          },
+        },
+      }));
+      return;
+    }
+
+    if (method === "session/new") {
       await route.fulfill(json({
         jsonrpc: "2.0",
         id: 1,
@@ -251,8 +332,26 @@ async function installFeatureExplorerMocks(page: Page, onAcpRequest?: (body: unk
           sessionId: "analysis-session-1",
         },
       }));
-    });
-  }
+      return;
+    }
+
+    if (method === "session/prompt") {
+      await route.fulfill(json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          stopReason: "end_turn",
+        },
+      }));
+      return;
+    }
+
+    await route.fulfill(json({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {},
+    }));
+  });
 }
 
 test.describe("Feature Explorer session analysis", () => {
@@ -271,9 +370,9 @@ test.describe("Feature Explorer session analysis", () => {
   });
 
   test("opens a right-side drawer and starts the specialist analysis session", async ({ page }) => {
-    let acpRequestBody: unknown = null;
+    const acpRequests: unknown[] = [];
     await installFeatureExplorerMocks(page, (body) => {
-      acpRequestBody = body;
+      acpRequests.push(body);
     });
 
     await page.goto(FEATURE_URL, { waitUntil: "domcontentloaded" });
@@ -291,10 +390,22 @@ test.describe("Feature Explorer session analysis", () => {
     expect(viewport).not.toBeNull();
     expect((box?.x ?? 0) + (box?.width ?? 0)).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 8);
 
+    await page.getByTestId("feature-explorer-session-analysis-provider").click();
+    await page.getByRole("button", { name: "Codex" }).click();
     await page.getByRole("button", { name: "Analyze selected sessions" }).click();
-    await page.waitForURL("**/workspace/default/sessions/analysis-session-1", { timeout: 15_000 });
 
-    expect(acpRequestBody).toMatchObject({
+    await expect(page.getByTestId("feature-explorer-analysis-session-pane")).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(`${BASE_URL}${FEATURE_URL}`);
+    await expect(page.getByText("Start by narrowing the scope to kanban.rs and the six linked sessions.")).toBeVisible();
+
+    const sessionNewRequest = acpRequests.find((request) =>
+      typeof request === "object"
+      && request !== null
+      && "method" in request
+      && (request as { method?: string }).method === "session/new"
+    );
+
+    expect(sessionNewRequest).toMatchObject({
       method: "session/new",
       params: {
         workspaceId: WORKSPACE_ID,
@@ -304,6 +415,7 @@ test.describe("Feature Explorer session analysis", () => {
         specialistId: "file-session-analyst",
         specialistLocale: "en",
         name: "File session analysis · kanban.rs",
+        provider: "codex",
       },
     });
   });

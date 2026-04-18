@@ -52,6 +52,20 @@ interface FeatureDetailResponse {
       toolNames: string[];
       changedFiles?: string[];
       resumeCommand?: string;
+      diagnostics?: {
+        toolCallCount: number;
+        failedToolCallCount: number;
+        toolCallsByName: Record<string, number>;
+        readFiles: string[];
+        writtenFiles: string[];
+        repeatedReadFiles: string[];
+        repeatedCommands: string[];
+        failedTools: Array<{
+          toolName: string;
+          command?: string;
+          message: string;
+        }>;
+      };
     }>;
     toolHistory: string[];
     promptHistory: string[];

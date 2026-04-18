@@ -47,6 +47,23 @@ export interface FileStat {
   updatedAt: string;
 }
 
+export interface FileSessionToolFailure {
+  toolName: string;
+  command?: string;
+  message: string;
+}
+
+export interface FileSessionDiagnostics {
+  toolCallCount: number;
+  failedToolCallCount: number;
+  toolCallsByName: Record<string, number>;
+  readFiles: string[];
+  writtenFiles: string[];
+  repeatedReadFiles: string[];
+  repeatedCommands: string[];
+  failedTools: FileSessionToolFailure[];
+}
+
 export interface FileSessionSignal {
   provider: string;
   sessionId: string;
@@ -56,6 +73,7 @@ export interface FileSessionSignal {
   toolNames: string[];
   changedFiles?: string[];
   resumeCommand?: string;
+  diagnostics?: FileSessionDiagnostics;
 }
 
 export interface FileSignal {
@@ -73,6 +91,7 @@ export interface AggregatedSelectionSession {
   toolNames: string[];
   resumeCommand?: string;
   changedFiles: string[];
+  diagnostics?: FileSessionDiagnostics;
 }
 
 export interface FileTreeNode {
