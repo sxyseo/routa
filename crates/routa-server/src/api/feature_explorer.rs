@@ -5,7 +5,8 @@ use axum::{
     Json, Router,
 };
 use feature_trace::{
-    FeatureSurfaceCatalog, FeatureTraceInput, FeatureTreeCatalog, SessionAnalysis, SessionAnalyzer,
+    build_feature_prompt_context, FeaturePromptContext, FeatureSurfaceCatalog, FeatureTraceInput,
+    FeatureTreeCatalog, SessionAnalysis, SessionAnalyzer,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -62,6 +63,7 @@ struct FeatureDetailResponse {
     session_count: usize,
     changed_files: usize,
     updated_at: String,
+    prompt_context: Option<FeaturePromptContext>,
     file_tree: Vec<FileTreeNode>,
     surface_links: Vec<SurfaceLinkResponse>,
     page_details: Vec<PageDetailResponse>,
@@ -197,9 +199,14 @@ struct FileStatAggregate {
 fn collect_session_stats(
     repo_root: &Path,
     feature_tree: &FeatureTreeCatalog,
-) -> (HashMap<String, (usize, usize, String)>, FileStats) {
+) -> (
+    HashMap<String, (usize, usize, String)>,
+    FileStats,
+    Vec<SessionAnalysis>,
+) {
     let mut stats: HashMap<String, FeatureStatAggregate> = HashMap::new();
     let mut file_stats: HashMap<String, FileStatAggregate> = HashMap::new();
+    let mut analyses = Vec::new();
 
     // Try to collect real transcript data
     let surface_catalog = FeatureSurfaceCatalog::from_repo_root(repo_root).unwrap_or_default();
@@ -217,6 +224,7 @@ fn collect_session_stats(
                 );
                 let changed_files = input.changed_files.clone();
                 let analysis = analyzer.analyze_input(&input);
+                analyses.push(analysis.clone());
 
                 let ts_str = {
                     let ms = transcript.last_seen_at_ms;
@@ -267,6 +275,7 @@ fn collect_session_stats(
                 )
             })
             .collect(),
+        analyses,
     )
 }
 
@@ -590,7 +599,7 @@ async fn get_feature_list(
     .map_err(map_context_error)?;
 
     let feature_tree = load_feature_tree(&repo_root).map_err(map_error)?;
-    let (session_stats, _file_stats) = collect_session_stats(&repo_root, &feature_tree);
+    let (session_stats, _file_stats, _analyses) = collect_session_stats(&repo_root, &feature_tree);
 
     let capability_groups: Vec<CapabilityGroupResponse> = feature_tree
         .capability_groups
@@ -653,7 +662,7 @@ async fn get_feature_detail(
     .map_err(map_context_error)?;
 
     let feature_tree = load_feature_tree(&repo_root).map_err(map_error)?;
-    let (session_stats, file_stats) = collect_session_stats(&repo_root, &feature_tree);
+    let (session_stats, file_stats, analyses) = collect_session_stats(&repo_root, &feature_tree);
 
     let feature = feature_tree
         .features
@@ -773,6 +782,10 @@ async fn get_feature_detail(
             "-".to_string()
         } else {
             updated_at
+        },
+        prompt_context: {
+            let context = build_feature_prompt_context(&feature.id, &analyses);
+            (context.session_count > 0).then_some(context)
         },
         file_tree,
         surface_links,

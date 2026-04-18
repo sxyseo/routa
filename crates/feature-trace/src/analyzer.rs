@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_PROMPT_PREVIEWS: usize = 4;
 const MAX_PROMPT_PREVIEW_LENGTH: usize = 180;
+const MAX_CONTEXT_ITEMS: usize = 5;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeatureTraceInput {
@@ -31,6 +32,23 @@ pub struct SessionAnalysis {
     pub file_operation_counts: BTreeMap<String, usize>,
     pub surface_links: Vec<FeatureSurfaceLink>,
     pub feature_links: Vec<ProductFeatureLink>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CountSummary {
+    pub name: String,
+    pub count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeaturePromptContext {
+    pub feature_id: String,
+    pub session_count: usize,
+    pub prompt_previews: Vec<CountSummary>,
+    pub tool_call_counts: Vec<CountSummary>,
+    pub file_operation_counts: Vec<CountSummary>,
 }
 
 pub struct SessionAnalyzer<'a> {
@@ -151,6 +169,45 @@ impl<'a> SessionAnalyzer<'a> {
     }
 }
 
+pub fn build_feature_prompt_context(
+    feature_id: &str,
+    analyses: &[SessionAnalysis],
+) -> FeaturePromptContext {
+    let matching: Vec<&SessionAnalysis> = analyses
+        .iter()
+        .filter(|analysis| {
+            analysis
+                .feature_links
+                .iter()
+                .any(|link| link.feature_id == feature_id)
+        })
+        .collect();
+
+    let mut prompt_counts = BTreeMap::new();
+    let mut tool_call_counts = BTreeMap::new();
+    let mut file_operation_counts = BTreeMap::new();
+
+    for analysis in &matching {
+        for prompt in &analysis.prompt_previews {
+            *prompt_counts.entry(prompt.clone()).or_insert(0) += 1;
+        }
+        for (tool_name, count) in &analysis.tool_call_counts {
+            *tool_call_counts.entry(tool_name.clone()).or_insert(0) += *count;
+        }
+        for (operation, count) in &analysis.file_operation_counts {
+            *file_operation_counts.entry(operation.clone()).or_insert(0) += *count;
+        }
+    }
+
+    FeaturePromptContext {
+        feature_id: feature_id.to_string(),
+        session_count: matching.len(),
+        prompt_previews: summarize_counts(prompt_counts),
+        tool_call_counts: summarize_counts(tool_call_counts),
+        file_operation_counts: summarize_counts(file_operation_counts),
+    }
+}
+
 fn summarize_prompt_previews(prompts: &[String]) -> Vec<String> {
     let mut previews = Vec::new();
 
@@ -182,6 +239,22 @@ fn normalize_prompt_preview(prompt: &str) -> String {
 
 fn normalize_file_operation(operation: &str) -> String {
     operation.trim().to_ascii_lowercase()
+}
+
+fn summarize_counts(counts: BTreeMap<String, usize>) -> Vec<CountSummary> {
+    let mut items = counts
+        .into_iter()
+        .map(|(name, count)| CountSummary { name, count })
+        .collect::<Vec<_>>();
+
+    items.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    items.truncate(MAX_CONTEXT_ITEMS);
+    items
 }
 
 #[cfg(test)]
@@ -252,5 +325,80 @@ mod tests {
         );
         assert_eq!(analysis.file_operation_counts.get("modified"), Some(&2));
         assert_eq!(analysis.file_operation_counts.get("renamed"), Some(&1));
+    }
+
+    #[test]
+    fn build_feature_prompt_context_aggregates_matching_sessions_only() {
+        let matching = SessionAnalysis {
+            session_id: "sess-1".to_string(),
+            changed_files: vec!["src/app/page.tsx".to_string()],
+            tool_call_counts: BTreeMap::from([
+                ("apply_patch".to_string(), 2),
+                ("Read".to_string(), 1),
+            ]),
+            prompt_previews: vec![
+                "Refine the feature explorer detail panel".to_string(),
+                "Refine the feature explorer detail panel".to_string(),
+            ],
+            file_operation_counts: BTreeMap::from([("modified".to_string(), 3)]),
+            surface_links: Vec::new(),
+            feature_links: vec![ProductFeatureLink {
+                feature_id: "feature-explorer".to_string(),
+                feature_name: "Feature Explorer".to_string(),
+                route: Some("/workspace/:workspaceId/feature-explorer".to_string()),
+                via_path: "src/app/page.tsx".to_string(),
+                confidence: SurfaceLinkConfidence::High,
+            }],
+        };
+        let second_match = SessionAnalysis {
+            session_id: "sess-2".to_string(),
+            changed_files: vec!["src/app/page.tsx".to_string()],
+            tool_call_counts: BTreeMap::from([("Read".to_string(), 3)]),
+            prompt_previews: vec!["Trace repeated file reads in feature explorer".to_string()],
+            file_operation_counts: BTreeMap::from([
+                ("modified".to_string(), 1),
+                ("renamed".to_string(), 1),
+            ]),
+            surface_links: Vec::new(),
+            feature_links: vec![ProductFeatureLink {
+                feature_id: "feature-explorer".to_string(),
+                feature_name: "Feature Explorer".to_string(),
+                route: Some("/workspace/:workspaceId/feature-explorer".to_string()),
+                via_path: "src/app/page.tsx".to_string(),
+                confidence: SurfaceLinkConfidence::High,
+            }],
+        };
+        let non_matching = SessionAnalysis {
+            session_id: "sess-3".to_string(),
+            changed_files: vec!["src/app/other.tsx".to_string()],
+            tool_call_counts: BTreeMap::from([("Write".to_string(), 5)]),
+            prompt_previews: vec!["Do not include me".to_string()],
+            file_operation_counts: BTreeMap::from([("deleted".to_string(), 2)]),
+            surface_links: Vec::new(),
+            feature_links: vec![ProductFeatureLink {
+                feature_id: "session-recovery".to_string(),
+                feature_name: "Session Recovery".to_string(),
+                route: None,
+                via_path: "src/app/other.tsx".to_string(),
+                confidence: SurfaceLinkConfidence::High,
+            }],
+        };
+
+        let context = build_feature_prompt_context(
+            "feature-explorer",
+            &[matching, second_match, non_matching],
+        );
+
+        assert_eq!(context.feature_id, "feature-explorer");
+        assert_eq!(context.session_count, 2);
+        assert_eq!(
+            context.prompt_previews[0].name,
+            "Refine the feature explorer detail panel"
+        );
+        assert_eq!(context.prompt_previews[0].count, 2);
+        assert_eq!(context.tool_call_counts[0].name, "Read");
+        assert_eq!(context.tool_call_counts[0].count, 4);
+        assert_eq!(context.file_operation_counts[0].name, "modified");
+        assert_eq!(context.file_operation_counts[0].count, 4);
     }
 }
