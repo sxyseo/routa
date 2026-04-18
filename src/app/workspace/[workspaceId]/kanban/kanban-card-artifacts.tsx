@@ -187,7 +187,7 @@ function ScreenshotLightbox({
 
 function ScreenshotGallery({
   artifacts,
-  compact: _compact,
+  compact,
   artifactLabels: _artifactLabels,
   t,
 }: {
@@ -257,7 +257,7 @@ function ArtifactGroupSection({
   artifacts,
   compact: _compact,
   defaultOpen,
-  artifactLabels: _artifactLabels,
+  artifactLabels,
   t,
 }: {
   type: ArtifactType;

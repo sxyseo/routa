@@ -175,7 +175,7 @@ export class GitWorktreeService {
         // checkout respects the setting even before the worktree gitconfig exists.
         if (process.platform === "win32") {
           await execGit(["config", "core.longPaths", "true"], repoPath).catch(() => {});
-          await execGit(["config", "--global", "core.longPaths", "true"]).catch(() => {});
+          await execGit(["config", "--global", "core.longPaths", "true"], repoPath).catch(() => {});
         }
 
         // Prune stale worktree references
