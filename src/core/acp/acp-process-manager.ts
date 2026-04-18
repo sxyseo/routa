@@ -729,8 +729,8 @@ export class AcpProcessManager {
         let model = sessionRecord?.model;
         let role = sessionRecord?.role;
         let specialistId = sessionRecord?.specialistId;
-        let allowedNativeTools = sessionRecord?.allowedNativeTools;
-        let specialistSystemPrompt = sessionRecord?.specialistSystemPrompt;
+        const allowedNativeTools = sessionRecord?.allowedNativeTools;
+        const specialistSystemPrompt = sessionRecord?.specialistSystemPrompt;
 
         // If not in HTTP store (serverless cold start), try to recover from database
         if (!sessionRecord && isServerlessEnvironment() && getDatabaseDriver() === "postgres") {

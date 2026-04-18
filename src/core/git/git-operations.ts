@@ -217,8 +217,8 @@ export async function rebaseBranchSafe(
   } catch {
     let conflictFiles: string[] | undefined;
     try {
-      const { stdout } = await gitExec("git diff --name-only --diff-filter=U", repoPath);
-      conflictFiles = stdout.trim().split("\n").filter(Boolean);
+      const diffOutput = await gitExec("git diff --name-only --diff-filter=U", repoPath);
+      conflictFiles = diffOutput.trim().split("\n").filter(Boolean);
     } catch {
       // Could not read conflict files
     }

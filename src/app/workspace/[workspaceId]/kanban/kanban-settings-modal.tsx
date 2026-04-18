@@ -125,7 +125,7 @@ export function KanbanSettingsModal({
     devSessionSupervision: normalizeDevSessionSupervision(board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION),
     branchRules: board.branchRules ?? branchRules,
     githubTokenConfigured: Boolean(board.githubTokenConfigured),
-  }), [board.devSessionSupervision, board.githubTokenConfigured, board.sessionConcurrencyLimit, initialColumnAutomation, initialEditableColumns]);
+  }), [board.branchRules, board.devSessionSupervision, board.githubTokenConfigured, board.sessionConcurrencyLimit, branchRules, initialColumnAutomation, initialEditableColumns]);
 
   const currentSnapshot = useMemo(() => JSON.stringify({
     columns: normalizeColumns(editableColumns),
