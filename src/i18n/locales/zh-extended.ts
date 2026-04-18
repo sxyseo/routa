@@ -1108,6 +1108,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     topLevelOnly: "仅显示顶层引导会话。",
     inspectRunDesc: "打开任意运行以检查任务树、协调流和团队面板。",
     noTeamRunsYet: "暂无团队运行。",
+    unnamedRun: "未命名团队运行",
     launchAbove: "在上方启动一个引导会话。",
     directDelegates: "直接委派",
     totalSubSessions: "总子会话",

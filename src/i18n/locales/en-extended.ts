@@ -1108,6 +1108,7 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     topLevelOnly: "Top-level lead sessions only.",
     inspectRunDesc: "Open any run to inspect the task tree, coordination feed, and team panel.",
     noTeamRunsYet: "No Team runs yet.",
+    unnamedRun: "Unnamed Team run",
     launchAbove: "Launch a lead session above.",
     directDelegates: "Direct delegates",
     totalSubSessions: "Total sub-sessions",

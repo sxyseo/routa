@@ -370,7 +370,7 @@ export function TeamPageClient() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                          {run.name ?? "Unnamed Team run"}
+                          {run.name ?? t.team.unnamedRun}
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                           <span>{formatRelativeTime(run.createdAt)}</span>

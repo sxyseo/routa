@@ -1119,6 +1119,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     topLevelOnly: string;
     inspectRunDesc: string;
     noTeamRunsYet: string;
+    unnamedRun: string;
     launchAbove: string;
     directDelegates: string;
     totalSubSessions: string;

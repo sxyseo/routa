@@ -32,6 +32,7 @@ vi.mock("@/i18n", () => ({
         teamRuns: "Team Runs",
         topLevelOnly: "Top-level only",
         noTeamRunsYet: "No team runs yet",
+        unnamedRun: "Unnamed Team run",
         launchAbove: "Launch one above",
       },
       home: {
@@ -127,5 +128,42 @@ describe("TeamPageClient", () => {
     });
 
     expect(await screen.findByText("Team - Investigate regression")).toBeTruthy();
+  });
+
+  it("renders the unnamed team-run fallback from i18n", async () => {
+    mockDesktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/sessions?workspaceId=default&surface=team") {
+        return {
+          ok: true,
+          json: async () => ({
+            sessions: [
+              {
+                sessionId: "team-run-1",
+                workspaceId: "default",
+                acpStatus: "ready",
+                createdAt: "2026-04-18T00:00:00.000Z",
+              },
+            ],
+          }),
+        } as Response;
+      }
+
+      if (url === "/api/specialists") {
+        return {
+          ok: true,
+          json: async () => ({ specialists: [] }),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response;
+    });
+
+    render(<TeamPageClient />);
+
+    expect(await screen.findByText("Unnamed Team run")).toBeTruthy();
   });
 });
