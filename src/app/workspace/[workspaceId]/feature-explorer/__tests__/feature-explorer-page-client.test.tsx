@@ -621,7 +621,7 @@ describe("FeatureExplorerPageClient", () => {
     expect(screen.getByText("0 curated")).toBeTruthy();
     expect(screen.getByText("1 inferred")).toBeTruthy();
     expect(screen.queryByText("Feature taxonomy missing")).toBeNull();
-    expect(screen.getByText("Inferred Surfaces")).toBeTruthy();
+    expect(screen.getAllByText("Inferred Surfaces").length).toBeGreaterThan(0);
   });
 
   it("keeps feature navigation in the incoming source order", async () => {
@@ -1005,10 +1005,10 @@ describe("FeatureExplorerPageClient", () => {
     expect(screen.getByTestId("feature-tree-updated-folder-src").textContent).not.toBe("-");
 
     fireEvent.click(screen.getByTestId("feature-tree-select-folder-src"));
-    expect(screen.getByText("0f")).toBeTruthy();
+    expect(screen.getByText("0 files selected")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("feature-tree-select-folder-src"));
-    expect(screen.getByText("1f")).toBeTruthy();
+    expect(screen.getByText("1 files selected")).toBeTruthy();
   });
 
 });

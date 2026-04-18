@@ -359,6 +359,13 @@ const zh: TranslationDictionary = {
     frameworkDetected: "框架",
     previewMode: "预览",
     writeMode: "写入文件",
+    inspectorEmptyTitle: "上下文检视",
+    inspectorEmptyDescription: "在左侧面板中选择一个 Feature 或 Surface，即可在此查看详情、会话信号和分析选项。",
+    filesSelectedLabel: "个文件已选择",
+    capabilitiesTooltip: "按能力分组浏览功能",
+    surfacesTooltip: "按 URL 路径浏览前端页面",
+    apisTooltip: "按路径浏览 API 端点",
+    pathsTooltip: "按源文件路径浏览",
   },
 
   settings: {

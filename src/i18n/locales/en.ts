@@ -360,6 +360,13 @@ const en: TranslationDictionary = {
     frameworkDetected: "Framework",
     previewMode: "Preview",
     writeMode: "Write files",
+    inspectorEmptyTitle: "Context Inspector",
+    inspectorEmptyDescription: "Select a feature or surface from the left panel to see its details, session signals, and analysis options here.",
+    filesSelectedLabel: "files selected",
+    capabilitiesTooltip: "Browse features grouped by capability",
+    surfacesTooltip: "Browse frontend pages by URL path",
+    apisTooltip: "Browse API endpoints by path",
+    pathsTooltip: "Browse by source file path",
   },
 
   settings: {

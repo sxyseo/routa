@@ -72,22 +72,34 @@ export function FeatureExplorerPageClient({
       })),
     [codebases],
   );
-  const [repoSelectionOverrides, setRepoSelectionOverrides] = useState<Record<string, RepoSelection | null>>(() => {
-    const initialSelection = loadInitialRepoSelection(workspaceId);
-    return initialSelection ? { [workspaceId]: initialSelection } : {};
-  });
+  const [repoSelectionOverrides, setRepoSelectionOverrides] = useState<Record<string, RepoSelection | null>>({});
   const [generateRefreshCounter, setGenerateRefreshCounter] = useState(0);
   const hasRepoSelectionOverride = Object.prototype.hasOwnProperty.call(repoSelectionOverrides, workspaceId);
   const manualRepoSelection = hasRepoSelectionOverride
     ? (repoSelectionOverrides[workspaceId] ?? null)
-    : loadInitialRepoSelection(workspaceId);
+    : null;
   const fallbackRepoSelection = workspaceRepos[0] ?? null;
   const effectiveRepoSelection = manualRepoSelection ?? fallbackRepoSelection;
   const repoRefreshKey = `${effectiveRepoSelection?.path ?? ""}:${effectiveRepoSelection?.branch ?? ""}:${generateRefreshCounter}`;
 
   useEffect(() => {
+    if (hasRepoSelectionOverride) {
+      return;
+    }
+
+    setRepoSelectionOverrides((prev) => ({
+      ...prev,
+      [workspaceId]: loadInitialRepoSelection(workspaceId),
+    }));
+  }, [hasRepoSelectionOverride, workspaceId]);
+
+  useEffect(() => {
+    if (!hasRepoSelectionOverride) {
+      return;
+    }
+
     saveRepoSelection("featureExplorer", workspaceId, manualRepoSelection);
-  }, [manualRepoSelection, workspaceId]);
+  }, [hasRepoSelectionOverride, manualRepoSelection, workspaceId]);
 
   const {
     loading,
@@ -107,8 +119,8 @@ export function FeatureExplorerPageClient({
 
   const [middleView, setMiddleView] = useState<"list" | "tree">("tree");
   const [surfaceNavigationView, setSurfaceNavigationView] = useState<SurfaceNavigationView>("capabilities");
-  const [initialUrlState] = useState<FeatureExplorerUrlState>(() => readFeatureExplorerUrlState());
-  const [featureId, setFeatureId] = useState<string>(initialUrlState.featureId);
+  const [initialUrlState, setInitialUrlState] = useState<FeatureExplorerUrlState>({ featureId: "", filePath: "" });
+  const [featureId, setFeatureId] = useState<string>("");
   const [selectedSurfaceKey, setSelectedSurfaceKey] = useState<string>("");
   const [query, setQuery] = useState("");
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -117,10 +129,9 @@ export function FeatureExplorerPageClient({
   const [structureSectionCollapsed, setStructureSectionCollapsed] = useState<Record<string, boolean>>({});
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [activeFileId, setActiveFileId] = useState<string>("");
-  const [desiredFilePath, setDesiredFilePath] = useState<string>(initialUrlState.filePath);
-  const [hasResolvedInitialUrlSelection, setHasResolvedInitialUrlSelection] = useState(
-    initialUrlState.featureId === "",
-  );
+  const [desiredFilePath, setDesiredFilePath] = useState<string>("");
+  const [hasResolvedInitialUrlSelection, setHasResolvedInitialUrlSelection] = useState(false);
+  const [hasHydratedClientState, setHasHydratedClientState] = useState(false);
   const [isSessionAnalysisDrawerOpen, setIsSessionAnalysisDrawerOpen] = useState(false);
   const [isGenerateDrawerOpen, setIsGenerateDrawerOpen] = useState(false);
   const [isStartingSessionAnalysis, setIsStartingSessionAnalysis] = useState(false);
@@ -192,6 +203,15 @@ export function FeatureExplorerPageClient({
     [capabilityTreeNodes],
   );
 
+  useEffect(() => {
+    const urlState = readFeatureExplorerUrlState();
+    setInitialUrlState(urlState);
+    setFeatureId(urlState.featureId);
+    setDesiredFilePath(urlState.filePath);
+    setHasResolvedInitialUrlSelection(urlState.featureId === "");
+    setHasHydratedClientState(true);
+  }, [workspaceId]);
+
   const handleWorkspaceSelect = (nextWorkspaceId: string) => {
     router.push(`/workspace/${encodeURIComponent(nextWorkspaceId)}/feature-explorer`);
   };
@@ -246,7 +266,7 @@ export function FeatureExplorerPageClient({
   }, [desiredFilePath, effectiveFeatureId, prevDetailId, resolvedFeatureDetail]);
 
   useEffect(() => {
-    if (hasResolvedInitialUrlSelection || !initialUrlState.featureId || loading || featureDetailLoading) {
+    if (!hasHydratedClientState || hasResolvedInitialUrlSelection || !initialUrlState.featureId || loading || featureDetailLoading) {
       return;
     }
 
@@ -267,12 +287,13 @@ export function FeatureExplorerPageClient({
     hasResolvedInitialUrlSelection,
     initialUrlState.featureId,
     initialUrlState.filePath,
+    hasHydratedClientState,
     loading,
     resolvedFeatureDetail,
   ]);
 
   useEffect(() => {
-    if (!hasResolvedInitialUrlSelection) {
+    if (!hasHydratedClientState || !hasResolvedInitialUrlSelection) {
       return;
     }
 
@@ -280,7 +301,7 @@ export function FeatureExplorerPageClient({
       featureId: effectiveFeatureId,
       filePath: activeFile?.path ?? "",
     });
-  }, [activeFile?.path, effectiveFeatureId, hasResolvedInitialUrlSelection]);
+  }, [activeFile?.path, effectiveFeatureId, hasHydratedClientState, hasResolvedInitialUrlSelection]);
 
   const handleSelectFeature = (nextFeatureId: string) => {
     setFeatureId(nextFeatureId);
@@ -556,6 +577,7 @@ export function FeatureExplorerPageClient({
                       key={option.id}
                       type="button"
                       onClick={() => setSurfaceNavigationView(option.id)}
+                      title={option.tooltip}
                       className={`rounded-sm border px-2 py-1 text-[10px] font-medium ${
                         surfaceNavigationView === option.id
                           ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary"
@@ -596,7 +618,7 @@ export function FeatureExplorerPageClient({
                   featureSidebarGroups.length > 0 ? (
                     <div className="space-y-3 px-2 pb-3 pt-2">
                       {featureSidebarGroups.map((group) => {
-                        const collapsed = surfaceSectionCollapsed[group.id] ?? (group.id === inferredGroupId);
+                        const collapsed = surfaceSectionCollapsed[group.id] ?? (group.id === inferredGroupId && curatedFeatureCount > 0);
                         const groupNode = capabilityTreeNodes.find((node) => node.id === `capability:${group.id}`);
                         const groupMetrics = capabilityGroupMetrics[group.id] ?? { pages: 0, apis: 0, files: 0 };
                         return (
@@ -881,7 +903,7 @@ export function FeatureExplorerPageClient({
               <div className="border-t border-desktop-border bg-desktop-bg-secondary/20 px-3 py-1.5">
                 <div className="flex min-w-0 items-center justify-between gap-3">
                   <div className="truncate text-[11px] text-desktop-text-secondary">
-                    {selectedFileIds.length}f
+                    {selectedFileIds.length} {t.featureExplorer.filesSelectedLabel}
                   </div>
                   <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
                     <button

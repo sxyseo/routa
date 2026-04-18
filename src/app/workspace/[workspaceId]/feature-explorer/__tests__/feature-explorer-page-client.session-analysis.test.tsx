@@ -753,7 +753,7 @@ describe("FeatureExplorerPageClient session analysis", () => {
       expect(screen.getByText("019d-folder-b")).toBeTruthy();
     });
 
-    expect(screen.getByText("2f")).toBeTruthy();
+    expect(screen.getByText("2 files selected")).toBeTruthy();
   });
 
   it("hydrates file selection from the url and keeps it in sync", async () => {

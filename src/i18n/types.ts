@@ -366,6 +366,13 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     frameworkDetected: string;
     previewMode: string;
     writeMode: string;
+    inspectorEmptyTitle: string;
+    inspectorEmptyDescription: string;
+    filesSelectedLabel: string;
+    capabilitiesTooltip: string;
+    surfacesTooltip: string;
+    apisTooltip: string;
+    pathsTooltip: string;
   };
 
   // Settings panel

@@ -47,6 +47,7 @@ type CapabilityTreeGroup = {
 type SurfaceNavigationOption = {
   id: SurfaceNavigationView;
   label: string;
+  tooltip?: string;
 };
 
 type SurfaceTreeSection = {
@@ -494,12 +495,12 @@ export function useFeatureExplorerViewModel({
   ]);
   const surfaceNavigationOptions = useMemo<SurfaceNavigationOption[]>(
     () => [
-      { id: "capabilities", label: messages.sectionView },
-      { id: "surfaces", label: messages.browserUrlView },
-      { id: "apis", label: messages.apiView },
-      { id: "paths", label: messages.pathView },
+      { id: "capabilities", label: messages.sectionView, tooltip: messages.capabilitiesTooltip },
+      { id: "surfaces", label: messages.browserUrlView, tooltip: messages.surfacesTooltip },
+      { id: "apis", label: messages.apiView, tooltip: messages.apisTooltip },
+      { id: "paths", label: messages.pathView, tooltip: messages.pathsTooltip },
     ],
-    [messages.apiView, messages.browserUrlView, messages.pathView, messages.sectionView],
+    [messages.apiView, messages.browserUrlView, messages.capabilitiesTooltip, messages.apisTooltip, messages.pathView, messages.pathsTooltip, messages.sectionView, messages.surfacesTooltip],
   );
   const surfaceTreeSection = useMemo<SurfaceTreeSection>(() => {
     if (surfaceNavigationView === "capabilities") {
