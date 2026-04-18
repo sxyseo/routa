@@ -34,22 +34,30 @@ done
 
 # Resolve entrix binary or fall back to cargo runner
 if command -v entrix >/dev/null 2>&1; then
-  ENTRIX_CMD="entrix"
-  ENTRIX_RUNNER=()
+  ENTRIX_BIN=("entrix")
 else
-  ENTRIX_CMD="cargo"
-  ENTRIX_RUNNER=("run" "-q" "-p" "entrix" "--")
+  ENTRIX_BIN=("cargo" "run" "-q" "-p" "entrix" "--")
 fi
 
 SNAPSHOT_PATH="${REPO_ROOT}/docs/fitness/reports/autoresearch-snapshot.json"
 
-START_MS=$(date +%s%3N)
+# Cross-platform millisecond timestamp (macOS date lacks %N)
+now_ms() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import time; print(int(time.time()*1000))'
+  else
+    # Fallback: seconds * 1000 (loses sub-second precision)
+    echo "$(( $(date +%s) * 1000 ))"
+  fi
+}
+
+START_MS=$(now_ms)
 
 # Run entrix and capture JSON output
 set +e
 RAW_OUTPUT=$(
   cd "${REPO_ROOT}" && \
-  "${ENTRIX_CMD}" "${ENTRIX_RUNNER[@]}" run \
+  "${ENTRIX_BIN[@]}" run \
     --tier "${TIER}" \
     --scope local \
     --json 2>&1
@@ -57,7 +65,7 @@ RAW_OUTPUT=$(
 EXIT_CODE=$?
 set -e
 
-END_MS=$(date +%s%3N)
+END_MS=$(now_ms)
 ELAPSED_MS=$(( END_MS - START_MS ))
 
 # Extract the last JSON object from output
@@ -79,7 +87,7 @@ echo "${JSON_OUTPUT}" > "${SNAPSHOT_PATH}"
 
 # Parse metrics from JSON using python3 (available in most CI/dev envs)
 if command -v python3 >/dev/null 2>&1; then
-  METRICS=$(python3 - "${ELAPSED_MS}" "${EXIT_CODE}" <<'PYEOF'
+  METRICS=$(echo "${JSON_OUTPUT}" | python3 -c '
 import json, sys
 
 elapsed_ms = int(sys.argv[1])
@@ -105,7 +113,7 @@ failed_checks  = sum(1 for m in all_metrics if not m.get("passed", False) and m.
 passed_checks  = checks_count - failed_checks
 cache_hit_ratio = round(passed_checks / checks_count, 4) if checks_count > 0 else 0.0
 
-durations = sorted([m.get("duration_ms", 0) for m in all_metrics], reverse=True)
+durations = sorted([m.get("duration_ms") or 0 for m in all_metrics], reverse=True)
 top_slowest_ms = int(durations[0]) if durations else 0
 
 print(f"METRIC fitness_ms={elapsed_ms}")
@@ -116,8 +124,7 @@ print(f"METRIC cache_hit_ratio={cache_hit_ratio}")
 
 if exit_code != 0 or data.get("hard_gate_blocked", False):
     print("checks_failed=1")
-PYEOF
-  echo "${JSON_OUTPUT}" | python3 - "${ELAPSED_MS}" "${EXIT_CODE}")
+' "${ELAPSED_MS}" "${EXIT_CODE}")
   echo "${METRICS}"
 else
   # Fallback: emit timing only
