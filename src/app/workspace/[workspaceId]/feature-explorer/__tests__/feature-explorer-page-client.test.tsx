@@ -270,7 +270,7 @@ describe("FeatureExplorerPageClient", () => {
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
       workspaceId: "default",
       repoPath: "/repo/default",
-      refreshKey: "/repo/default:main",
+      refreshKey: "/repo/default:main:0",
     });
 
     expect(window.localStorage.getItem("routa.repoSelection.featureExplorer.default")).toBeNull();
@@ -286,7 +286,7 @@ describe("FeatureExplorerPageClient", () => {
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
       workspaceId: "default",
       repoPath: "/tmp/local-project",
-      refreshKey: "/tmp/local-project:feature-x",
+      refreshKey: "/tmp/local-project:feature-x:0",
     });
     expect(window.localStorage.getItem("routa.repoSelection.featureExplorer.default")).toContain(
       "/tmp/local-project",
@@ -301,7 +301,7 @@ describe("FeatureExplorerPageClient", () => {
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
       workspaceId: "default",
       repoPath: "/repo/default",
-      refreshKey: "/repo/default:main",
+      refreshKey: "/repo/default:main:0",
     });
     expect(window.localStorage.getItem("routa.repoSelection.featureExplorer.default")).toBeNull();
   });
@@ -327,7 +327,7 @@ describe("FeatureExplorerPageClient", () => {
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
       workspaceId: "default",
       repoPath: "/tmp/persisted-repo",
-      refreshKey: "/tmp/persisted-repo:debug-branch",
+      refreshKey: "/tmp/persisted-repo:debug-branch:0",
     });
   });
 
@@ -345,7 +345,7 @@ describe("FeatureExplorerPageClient", () => {
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
       workspaceId: "default",
       repoPath: "/repo/default",
-      refreshKey: "/repo/default:main",
+      refreshKey: "/repo/default:main:0",
     });
     expect(window.localStorage.getItem("routa.repoSelection.featureExplorer.default")).toBeNull();
   });
@@ -1385,5 +1385,102 @@ describe("FeatureExplorerPageClient", () => {
         "file=src%2Fapp%2Fworkspace%2F%5BworkspaceId%5D%2Foverview%2Fpage.tsx",
       );
     });
+  });
+
+  it("shows learned prompt context when the feature detail includes aggregated session patterns", async () => {
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [{ id: "workspace", name: "Workspace", description: "" }],
+      features: [
+        {
+          id: "workspace-overview",
+          name: "Workspace Overview",
+          group: "workspace",
+          summary: "Workspace shell",
+          status: "shipped",
+          sessionCount: 12,
+          changedFiles: 2,
+          updatedAt: "2026-04-17T08:00:00.000Z",
+          sourceFileCount: 2,
+          pageCount: 1,
+          apiCount: 0,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        implementationApis: [],
+        metadata: null,
+        repoRoot: "",
+        warnings: [],
+      },
+      featureDetail: {
+        id: "workspace-overview",
+        name: "Workspace Overview",
+        group: "workspace",
+        summary: "Workspace shell",
+        status: "shipped",
+        pages: [],
+        apis: [],
+        sourceFiles: [
+          "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx",
+        ],
+        relatedFeatures: [],
+        domainObjects: [],
+        sessionCount: 12,
+        changedFiles: 2,
+        updatedAt: "2026-04-17T08:00:00.000Z",
+        promptContext: {
+          featureId: "workspace-overview",
+          sessionCount: 3,
+          promptPreviews: [
+            { name: "Refine workspace overview context panel", count: 2 },
+          ],
+          toolCallCounts: [
+            { name: "Read", count: 4 },
+            { name: "apply_patch", count: 2 },
+          ],
+          fileOperationCounts: [
+            { name: "modified", count: 5 },
+          ],
+        },
+        fileTree: [
+          {
+            id: "file-kanban-page",
+            name: "kanban-page-client.tsx",
+            path: "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx",
+            kind: "file",
+            children: [],
+          },
+        ],
+        fileStats: {
+          "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx": {
+            changes: 3,
+            sessions: 3,
+            updatedAt: "2026-04-17T08:00:00.000Z",
+          },
+        },
+        fileSignals: {},
+      },
+      featureDetailLoading: false,
+      initialFeatureId: "workspace-overview",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Learned prompt context")).toBeTruthy();
+    });
+
+    expect(screen.getByText("Historical feature-linked sessions summarized into reusable prompt, tool, and file-operation patterns.")).toBeTruthy();
+    expect(screen.getByText("Refine workspace overview context panel")).toBeTruthy();
+    expect(screen.getByText("apply_patch")).toBeTruthy();
+    expect(screen.getByText("modified")).toBeTruthy();
   });
 });

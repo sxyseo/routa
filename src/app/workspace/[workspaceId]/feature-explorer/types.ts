@@ -33,12 +33,26 @@ export interface FeatureDetail {
   sessionCount: number;
   changedFiles: number;
   updatedAt: string;
+  promptContext?: FeaturePromptContext | null;
   fileTree: FileTreeNode[];
   surfaceLinks?: SurfaceLink[];
   pageDetails?: PageDetail[];
   apiDetails?: ApiDetail[];
   fileStats?: Record<string, FileStat>;
   fileSignals?: Record<string, FileSignal>;
+}
+
+export interface CountSummary {
+  name: string;
+  count: number;
+}
+
+export interface FeaturePromptContext {
+  featureId: string;
+  sessionCount: number;
+  promptPreviews: CountSummary[];
+  toolCallCounts: CountSummary[];
+  fileOperationCounts: CountSummary[];
 }
 
 export interface FileStat {

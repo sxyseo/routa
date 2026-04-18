@@ -15,6 +15,7 @@ import { useTranslation } from "@/i18n";
 import type {
   AggregatedSelectionSession,
   ApiDetail,
+  CountSummary,
   FeatureDetail,
 } from "./types";
 import {
@@ -153,6 +154,34 @@ function InlineMetricPill({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CountSummaryList({
+  items,
+  emptyMessage,
+}: {
+  items: CountSummary[];
+  emptyMessage: string;
+}) {
+  if (items.length === 0) {
+    return <SignalEmptyState message={emptyMessage} />;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {items.map((item) => (
+        <div
+          key={item.name}
+          className="flex items-center justify-between gap-3 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px]"
+        >
+          <span className="min-w-0 flex-1 break-words text-desktop-text-secondary">{item.name}</span>
+          <span className="shrink-0 rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-desktop-text-primary">
+            {item.count}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ContextPanel({
   featureDetail,
   selectedFileCount,
@@ -248,6 +277,67 @@ export function ContextPanel({
             </div>
           </div>
         </section>
+      ) : null}
+
+      {featureDetail?.promptContext ? (
+        <ContextSection title={t.featureExplorer.learnedPromptContext}>
+          <div className="space-y-2.5">
+            <div className="text-[11px] leading-5 text-desktop-text-secondary">
+              {t.featureExplorer.learnedPromptContextDescription}
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              <InlineMetricPill
+                label={t.featureExplorer.sessionsLabel}
+                value={String(featureDetail.promptContext.sessionCount)}
+              />
+              <InlineMetricPill
+                label={t.featureExplorer.promptPatternsLabel}
+                value={String(featureDetail.promptContext.promptPreviews.length)}
+              />
+              <InlineMetricPill
+                label={t.featureExplorer.toolPatternsLabel}
+                value={String(featureDetail.promptContext.toolCallCounts.length)}
+              />
+              <InlineMetricPill
+                label={t.featureExplorer.fileOperationPatternsLabel}
+                value={String(featureDetail.promptContext.fileOperationCounts.length)}
+              />
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-3">
+              <div className="space-y-1">
+                <div className="text-[10px] font-medium text-desktop-text-secondary">
+                  {t.featureExplorer.promptPatternsLabel}
+                </div>
+                <CountSummaryList
+                  items={featureDetail.promptContext.promptPreviews}
+                  emptyMessage={t.featureExplorer.noLearnedPrompts}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-[10px] font-medium text-desktop-text-secondary">
+                  {t.featureExplorer.toolPatternsLabel}
+                </div>
+                <CountSummaryList
+                  items={featureDetail.promptContext.toolCallCounts}
+                  emptyMessage={t.featureExplorer.noLearnedTools}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-[10px] font-medium text-desktop-text-secondary">
+                  {t.featureExplorer.fileOperationPatternsLabel}
+                </div>
+                <CountSummaryList
+                  items={featureDetail.promptContext.fileOperationCounts}
+                  emptyMessage={t.featureExplorer.noLearnedFileOperations}
+                />
+              </div>
+            </div>
+          </div>
+        </ContextSection>
       ) : null}
 
       <ContextSection title={t.featureExplorer.selectedFileSignals}>
