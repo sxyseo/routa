@@ -174,13 +174,15 @@ async function startKanbanTaskSession(
   // Sync source repos when task starts actual execution (not just queue enqueue).
   // This ensures agents analyze code based on the latest remote state.
   if (task.codebaseIds?.length) {
+    let codebases: Awaited<ReturnType<typeof system.codebaseStore.listByWorkspace>>;
     try {
-      const codebases = await system.codebaseStore.listByWorkspace(task.workspaceId);
-      for (const cb of codebases) {
-        if (cb.repoPath) fetchRemote(cb.repoPath);
-      }
+      codebases = await system.codebaseStore.listByWorkspace(task.workspaceId);
     } catch {
-      // fetch failure should not block automation
+      // Store failure should not block automation
+      codebases = [];
+    }
+    for (const cb of codebases) {
+      if (cb.repoPath) fetchRemote(cb.repoPath);
     }
   }
   if (params.expectedColumnId && task.columnId !== params.expectedColumnId) {

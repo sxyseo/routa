@@ -97,13 +97,17 @@ export async function ensureTaskWorktree(
     }
   }
 
-  // 3. Check source repo working tree cleanliness
-  const repoStatus = getRepoStatus(preferredCodebase.repoPath);
-  if (!repoStatus.clean) {
-    console.warn(
-      `[ensureTaskWorktree] Source repo has ${repoStatus.modified} modified, ${repoStatus.untracked} untracked file(s). ` +
-      `Worktree will be created from the committed state of '${effectiveBaseBranch}'.`,
-    );
+  // 3. Warn if source repo has uncommitted changes (non-blocking diagnostic)
+  try {
+    const repoStatus = getRepoStatus(preferredCodebase.repoPath);
+    if (!repoStatus.clean) {
+      console.warn(
+        `[ensureTaskWorktree] Source repo has ${repoStatus.modified} modified, ${repoStatus.untracked} untracked file(s). ` +
+        `Worktree will be created from the committed state of '${effectiveBaseBranch}'.`,
+      );
+    }
+  } catch {
+    // Status check failure should not block worktree creation
   }
 
   // 4. Resolve worktree root
