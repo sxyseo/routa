@@ -22,6 +22,7 @@ import {
   type ExplorerSurfaceItem,
   getHttpMethodBadgeClass,
 } from "./surface-navigation";
+import { sanitizeChangedFiles } from "./session-analysis";
 
 function formatShortDate(iso: string): string {
   if (!iso || iso === "-") return "-";
@@ -242,6 +243,7 @@ export function ContextPanel({
                   ? session.promptHistory
                   : (session.promptSnippet ? [session.promptSnippet] : []);
                 const visiblePrompts = isExpanded ? promptHistory : promptHistory.slice(0, 2);
+                const relatedFiles = sanitizeChangedFiles(session.changedFiles);
 
                 return (
                   <div
@@ -318,13 +320,13 @@ export function ContextPanel({
                       </button>
                     ) : null}
 
-                    {session.changedFiles.length > 0 ? (
+                    {relatedFiles.length > 0 ? (
                       <div className="mt-2 space-y-1">
                         <div className="text-[10px] font-medium text-desktop-text-secondary">
                           {t.featureExplorer.relatedFiles}
                         </div>
                         <div className="max-h-24 space-y-1 overflow-y-auto pr-1">
-                          {session.changedFiles.map((filePath) => (
+                          {relatedFiles.map((filePath) => (
                             <div
                               key={`${sessionKey}:${filePath}`}
                               className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[10px] text-desktop-text-secondary"

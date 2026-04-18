@@ -907,6 +907,8 @@ describe("FeatureExplorerPageClient", () => {
       expect(screen.getByRole("button", { name: "Open analysis panel" })).toBeTruthy();
     });
 
+    expect(screen.queryByText(/Operation not permitted/i)).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "Open analysis panel" }));
 
     await waitFor(() => {
