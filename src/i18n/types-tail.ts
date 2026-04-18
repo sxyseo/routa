@@ -309,6 +309,39 @@ export interface TailTranslationDictionarySections {
     loading: string;
     disable: string;
     enable: string;
+    // Platform switcher
+    platformSwitcherLabel: string;
+    platformGithub: string;
+    platformGitlab: string;
+    // GitLab-specific fields
+    gitlabRepository: string;
+    gitlabToken: string;
+    gitlabWebhookUrl: string;
+    gitlabServerUrl: string;
+    gitlabServerUrlHint: string;
+    gitlabProjectId: string;
+    gitlabProjectIdHint: string;
+    registerOnGitlab: string;
+    registerPromptGitlab: string;
+    gitlabEmptyTitle: string;
+    gitlabEmptyDescription: string;
+    gitlabWebhookSecret: string;
+    gitlabTriggerTypes: {
+      pushEvents: string;
+      pushEventsDesc: string;
+      mergeRequestEvents: string;
+      mergeRequestEventsDesc: string;
+      issueEvents: string;
+      issueEventsDesc: string;
+      noteEvents: string;
+      noteEventsDesc: string;
+      pipelineEvents: string;
+      pipelineEventsDesc: string;
+      tagPushEvents: string;
+      tagPushEventsDesc: string;
+      wikiPageEvents: string;
+      wikiPageEventsDesc: string;
+    };
   };
 
   // A2A Page
