@@ -521,6 +521,7 @@ export async function executeMcpTool(
           sessionId: args.sessionId as string | undefined,
           priority: args.priority as "low" | "medium" | "high" | "urgent" | undefined,
           labels: args.labels as string[] | undefined,
+          pullRequestUrl: args.pullRequestUrl as string | undefined,
         })
       );
     case "delete_card":
@@ -1233,7 +1234,7 @@ export function getMcpToolDefinitions(
     },
     {
       name: "update_card",
-      description: "Update a Kanban card's title, description, comment, priority, or labels. From dev onward, use comment for progress notes because the story description is frozen. For story-readiness fields such as scope, acceptance criteria, verification commands, or test cases, use update_task instead.",
+      description: "Update a Kanban card's title, description, comment, priority, labels, or pullRequestUrl. From dev onward, use comment for progress notes because the story description is frozen. For story-readiness fields such as scope, acceptance criteria, verification commands, or test cases, use update_task instead.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1243,6 +1244,7 @@ export function getMcpToolDefinitions(
           comment: { type: "string", description: "Comment or progress note to append to the card" },
           priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Card priority" },
           labels: { type: "array", items: { type: "string" }, description: "Card labels" },
+          pullRequestUrl: { type: "string", description: "PR/MR URL to persist on the task" },
         },
         required: ["cardId"],
       },

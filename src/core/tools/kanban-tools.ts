@@ -406,6 +406,7 @@ export class KanbanTools {
     sessionId?: string;
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
+    pullRequestUrl?: string;
   }): Promise<ToolResult> {
     const task = await this.taskStore.get(params.cardId);
     if (!task) {
@@ -459,6 +460,7 @@ export class KanbanTools {
     }
     if (params.priority !== undefined) task.priority = params.priority as TaskPriority;
     if (params.labels !== undefined) task.labels = params.labels;
+    if (params.pullRequestUrl !== undefined) task.pullRequestUrl = params.pullRequestUrl;
     task.updatedAt = new Date();
 
     await this.taskStore.save(task);

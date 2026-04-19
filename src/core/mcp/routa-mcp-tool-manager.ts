@@ -1047,6 +1047,7 @@ Note: taskId must be a UUID from create_task, not a task name.`,
         sessionId: z.string().optional().describe("Session ID adding the progress note"),
         priority: z.enum(["low", "medium", "high", "urgent"]).optional().describe("New priority"),
         labels: z.array(z.string()).optional().describe("New labels"),
+        pullRequestUrl: z.string().optional().describe("PR/MR URL to persist on the task"),
       },
       async (params) => {
         if (!this.kanbanTools) {
@@ -1061,6 +1062,7 @@ Note: taskId must be a UUID from create_task, not a task name.`,
           sessionId: params.sessionId,
           priority: params.priority,
           labels: params.labels,
+          pullRequestUrl: params.pullRequestUrl,
         });
         return this.toMcpResult(result);
       }
