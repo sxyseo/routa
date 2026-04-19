@@ -25,7 +25,7 @@ import {
   getRefCommitInfo,
   listBranches,
   listRemoteBranches,
-  fetchRemote,
+
   getBranchStatus,
   checkoutBranch,
   deleteBranch,
@@ -37,7 +37,7 @@ import {
   isBareGitRepository,
 } from "@/core/git";
 
-function buildBranchPayload(repoPath: string, fetched = false) {
+function buildBranchPayload(repoPath: string, _fetched = false) {
   const current = getCurrentBranch(repoPath) ?? "unknown";
   const local = listBranches(repoPath);
   const remote = listRemoteBranches(repoPath);
