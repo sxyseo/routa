@@ -353,6 +353,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     sessionAnalysisStarting: string;
     sessionAnalysisFailed: string;
     generateFeatureTree: string;
+    refreshingFeatureTree: string;
     generateDrawerTitle: string;
     generateDrawerDescription: string;
     generateModeLabel: string;
@@ -620,6 +621,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
 
   repoPicker: {
     clearSelection: string;
+    changeRepository: string;
     selectCloneOrLoad: string;
     repositories: string;
     cloneFromGitHub: string;

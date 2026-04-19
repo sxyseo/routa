@@ -14,7 +14,7 @@ import { desktopAwareFetch } from "../utils/diagnostics";
 import { createPortal } from "react-dom";
 import { BranchSelector } from "./branch-selector";
 import { useTranslation } from "@/i18n";
-import { Check, Copy, Download, PieChart, Search, X, GitBranch, Book, Folder, RefreshCcw } from "lucide-react";
+import { Check, ChevronDown, Copy, Download, PieChart, Search, X, GitBranch, Book, Folder, RefreshCcw } from "lucide-react";
 
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -842,6 +842,16 @@ function SelectedRepoPill({
           title={repoTitle}
         >
           {shortName}
+        </button>
+
+        <button
+          type="button"
+          onClick={onClickName}
+          className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          title={t.repoPicker.changeRepository}
+          aria-label={t.repoPicker.changeRepository}
+        >
+          <ChevronDown className="h-3 w-3" />
         </button>
 
         <div className="shrink-0">

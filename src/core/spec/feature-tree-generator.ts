@@ -100,6 +100,8 @@ type OpenApiDoc = {
 };
 
 const IGNORED_PATHS = new Set([".git", "node_modules", ".next", "dist", "out", "target"]);
+const PREFLIGHT_CACHE_TTL_MS = 30_000;
+const preflightCache = new Map<string, { expiresAt: number; result: FeatureTreePreflightResult }>();
 
 export type GenerateFeatureTreeOptions = {
   repoRoot: string;
@@ -159,7 +161,7 @@ function normalizeString(value: unknown): string {
 
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.map((item) => normalizeString(item)).filter(Boolean);
+  return uniqueSorted(value.map((item) => normalizeString(item)).filter(Boolean));
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -824,6 +826,11 @@ function buildCandidateRoot(repoRoot: string, candidateRoot: string): FeatureTre
 
 export function preflightFeatureTree(repoRoot: string): FeatureTreePreflightResult {
   const resolvedRepoRoot = path.resolve(repoRoot);
+  const cached = preflightCache.get(resolvedRepoRoot);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.result;
+  }
+
   const candidateRoots = collectCandidateRoots(resolvedRepoRoot).map((candidateRoot) =>
     buildCandidateRoot(resolvedRepoRoot, candidateRoot));
   const selectedCandidate = [...candidateRoots].sort((left, right) =>
@@ -836,7 +843,7 @@ export function preflightFeatureTree(repoRoot: string): FeatureTreePreflightResu
       : "",
   ]);
 
-  return {
+  const result = {
     repoRoot: resolvedRepoRoot,
     selectedScanRoot,
     frameworksDetected: detectFramework(selectedScanRoot),
@@ -845,6 +852,13 @@ export function preflightFeatureTree(repoRoot: string): FeatureTreePreflightResu
       right.score - left.score || left.path.localeCompare(right.path)),
     warnings,
   };
+
+  preflightCache.set(resolvedRepoRoot, {
+    expiresAt: Date.now() + PREFLIGHT_CACHE_TTL_MS,
+    result,
+  });
+
+  return result;
 }
 
 // ── Markdown rendering ──────────────────────────────────────────────
@@ -1055,7 +1069,9 @@ export async function generateFeatureTree(options: GenerateFeatureTreeOptions): 
     a.domain.localeCompare(b.domain) || a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
   const rustApis = scanRustApiRoutes(effectiveRepoRoot, effectiveScanRoot);
   const apiContract = loadApiContract(effectiveRepoRoot, effectiveScanRoot);
-  const metadata = metadataOverride ?? loadPersistedFeatureMetadata(effectiveRepoRoot, outputMd, outputJson);
+  const metadata = metadataOverride
+    ? normalizeFeatureMetadata(metadataOverride)
+    : loadPersistedFeatureMetadata(effectiveRepoRoot, outputMd, outputJson);
   const apiFeatures = extractApiFeatures(apiContract);
   const tree = buildFeatureTree(routes, apiFeatures);
   const implementationApis = [
@@ -1083,6 +1099,7 @@ export async function generateFeatureTree(options: GenerateFeatureTreeOptions): 
     wroteFiles.push(path.relative(repoRoot, outputMd));
     fs.writeFileSync(outputJson, JSON.stringify(surfaceIndex, null, 2) + "\n", "utf8");
     wroteFiles.push(path.relative(repoRoot, outputJson));
+    preflightCache.delete(effectiveRepoRoot);
   } else {
     wroteFiles.push(path.relative(repoRoot, outputMd), path.relative(repoRoot, outputJson));
   }

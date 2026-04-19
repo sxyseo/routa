@@ -346,6 +346,7 @@ const zh: TranslationDictionary = {
     sessionAnalysisStarting: "正在启动分析…",
     sessionAnalysisFailed: "启动分析会话失败",
     generateFeatureTree: "生成 Feature Tree",
+    refreshingFeatureTree: "正在刷新 Feature 索引…",
     generateDrawerTitle: "生成 Feature Tree",
     generateDrawerDescription: "先做仓库预检，再默认通过 specialist Agent 生成并展示过程日志，必要时再回退到快速扫描。",
     generateModeLabel: "生成模式",
@@ -614,6 +615,7 @@ const zh: TranslationDictionary = {
 
   repoPicker: {
     clearSelection: "清除仓库选择",
+    changeRepository: "切换仓库",
     selectCloneOrLoad: "选择、克隆或加载仓库...",
     repositories: "仓库",
     cloneFromGitHub: "从 GitHub 克隆",

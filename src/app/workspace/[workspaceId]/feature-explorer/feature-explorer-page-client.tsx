@@ -73,6 +73,7 @@ export function FeatureExplorerPageClient({
   );
   const [repoSelectionOverrides, setRepoSelectionOverrides] = useState<Record<string, RepoSelection | null>>({});
   const [generateRefreshCounter, setGenerateRefreshCounter] = useState(0);
+  const [isRefreshingFeatureTree, setIsRefreshingFeatureTree] = useState(false);
   const hasRepoSelectionOverride = Object.prototype.hasOwnProperty.call(repoSelectionOverrides, workspaceId);
   const manualRepoSelection = hasRepoSelectionOverride
     ? (repoSelectionOverrides[workspaceId] ?? null)
@@ -115,6 +116,12 @@ export function FeatureExplorerPageClient({
     repoPath: effectiveRepoSelection?.path,
     refreshKey: repoRefreshKey,
   });
+
+  useEffect(() => {
+    if (!loading) {
+      setIsRefreshingFeatureTree(false);
+    }
+  }, [loading]);
 
   const [middleView, setMiddleView] = useState<"list" | "tree">("tree");
   const [surfaceNavigationView, setSurfaceNavigationView] = useState<SurfaceNavigationView>("capabilities");
@@ -661,6 +668,11 @@ export function FeatureExplorerPageClient({
                   ))}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1 text-[9px] text-desktop-text-secondary">
+                  {isRefreshingFeatureTree ? (
+                    <span className="rounded-sm border border-desktop-accent/40 bg-desktop-accent/10 px-1.5 py-0.5 text-desktop-accent">
+                      {t.featureExplorer.refreshingFeatureTree}
+                    </span>
+                  ) : null}
                   <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
                     {curatedFeatureCount} {t.featureExplorer.curatedFeaturesLabel}
                   </span>
@@ -1016,7 +1028,10 @@ export function FeatureExplorerPageClient({
           repoPath={effectiveRepoSelection?.path}
           generateOpen={isGenerateDrawerOpen}
           onCloseGenerate={() => setIsGenerateDrawerOpen(false)}
-          onGenerated={() => setGenerateRefreshCounter((c) => c + 1)}
+          onGenerated={() => {
+            setIsRefreshingFeatureTree(true);
+            setGenerateRefreshCounter((c) => c + 1);
+          }}
           sessionAnalysisDrawerKey={`session-analysis:${isSessionAnalysisDrawerOpen ? "open" : "closed"}:${selectedFilePaths.join("|")}:${selectedScopeSessions.map((session) => `${session.provider}:${session.sessionId}`).join("|")}`}
           sessionAnalysisOpen={isSessionAnalysisDrawerOpen}
           selectedFilePaths={selectedFilePaths}

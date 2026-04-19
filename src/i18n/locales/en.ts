@@ -347,6 +347,7 @@ const en: TranslationDictionary = {
     sessionAnalysisStarting: "Starting analysis…",
     sessionAnalysisFailed: "Failed to start the analysis session",
     generateFeatureTree: "Generate Feature Tree",
+    refreshingFeatureTree: "Refreshing feature index…",
     generateDrawerTitle: "Generate Feature Tree",
     generateDrawerDescription: "Preflight the repository, then either run an agent specialist with live logs or fall back to a deterministic quick scan.",
     generateModeLabel: "Generation mode",
@@ -618,6 +619,7 @@ const en: TranslationDictionary = {
 
   repoPicker: {
     clearSelection: "Clear repo selection",
+    changeRepository: "Change repository",
     selectCloneOrLoad: "Select, clone, or load a repository...",
     repositories: "Repositories",
     cloneFromGitHub: "Clone from GitHub",
