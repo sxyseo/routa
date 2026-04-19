@@ -61,7 +61,7 @@ function formatDeliveryRules(rules: KanbanDeliveryRules | undefined): string {
   if (rules.requireCommittedChanges) labels.push("committed changes");
   if (rules.requireCleanWorktree) labels.push("clean worktree");
   if (rules.requirePullRequestReady) labels.push("PR-ready branch");
-  if (rules.autoMergeAfterPR) labels.push(`auto-merge (${rules.mergeStrategy ?? "squash"})`);
+  if (rules.autoMergeAfterPR) labels.push(`auto-merge (${rules.mergeStrategy ?? "merge_commit"})`);
   return labels.length > 0 ? labels.join(", ") : "none";
 }
 

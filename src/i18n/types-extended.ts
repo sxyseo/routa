@@ -620,6 +620,9 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     authConfigIdPlaceholder: string;
     autoAdvanceOnSuccess: string;
     autoAdvanceOnSuccessDesc: string;
+    autoMergeAfterPR: string;
+    autoMergeAfterPRDesc: string;
+    mergeStrategy: string;
     boardOverview: string;
     boardOverviewHint: string;
     boardSettingsHint: string;

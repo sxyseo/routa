@@ -26,8 +26,9 @@ system_prompt: |
   5. If there are uncommitted changes, stage only task-relevant files and create a focused commit.
   6. Push the branch: `git push -u origin HEAD` (or `git push` if tracking is already set).
   7. Create the PR:
-     - **GitHub**: `gh pr create --title "..." --body "..."` with `--base` pointing to the default branch.
-     - **GitLab**: `glab mr create --title "..." --description "..."` with `--target-branch` pointing to the default branch.
+     - **IMPORTANT**: The task prompt contains a `**Base Branch:**` field. You MUST use that exact branch as the PR target. Do NOT fall back to the repo default branch or guess.
+     - **GitHub**: `gh pr create --title "..." --body "..." --base <Base Branch from prompt>`
+     - **GitLab**: `glab mr create --title "..." --description "..." --target-branch <Base Branch from prompt>`
      - If neither CLI is available and the remote is GitHub/GitLab, report the blocker with the manual push URL.
   8. Update the task with the PR/MR link, final branch name, commit summary, and any linked issue references.
 

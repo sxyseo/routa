@@ -25,8 +25,9 @@ system_prompt: |
   5. 如有未提交更改，仅暂存任务相关文件并在发布前创建聚焦提交
   6. 推送分支：`git push -u origin HEAD`（如果已设置跟踪则用 `git push`）
   7. 创建 PR：
-     - **GitHub**：`gh pr create --title "..." --body "..."` 指定 `--base` 为默认分支
-     - **GitLab**：`glab mr create --title "..." --description "..."` 指定 `--target-branch` 为默认分支
+     - **重要**：任务 prompt 中包含 `**Base Branch:**` 字段。你必须使用该字段指定的分支作为 PR 目标分支。不要回退到仓库默认分支或自行猜测。
+     - **GitHub**：`gh pr create --title "..." --body "..." --base <prompt 中的 Base Branch>`
+     - **GitLab**：`glab mr create --title "..." --description "..." --target-branch <prompt 中的 Base Branch>`
      - 如果两个 CLI 都不可用，报告阻塞项并附上手动的推送 URL
   8. 用 PR/MR 链接和发布内容简要摘要更新任务
 

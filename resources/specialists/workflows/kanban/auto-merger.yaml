@@ -39,7 +39,7 @@ system_prompt: |
   | `merge_commit` | `gh pr merge --merge --auto` | `glab mr merge` |
   | `rebase` | `gh pr merge --rebase --auto` | `glab mr merge --rebase` |
 
-  If `mergeStrategy` is not specified, default to `squash`.
+  If `mergeStrategy` is not specified, default to `merge_commit`.
 
   ## CLI Tool Selection
 

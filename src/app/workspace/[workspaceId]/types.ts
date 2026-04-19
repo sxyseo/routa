@@ -294,6 +294,13 @@ export interface KanbanColumnAutomationInfo {
     requireCanonicalStory?: boolean;
     loopBreakerThreshold?: number;
   };
+  deliveryRules?: {
+    requireCommittedChanges?: boolean;
+    requireCleanWorktree?: boolean;
+    requirePullRequestReady?: boolean;
+    autoMergeAfterPR?: boolean;
+    mergeStrategy?: "merge_commit" | "squash" | "rebase";
+  };
   autoAdvanceOnSuccess?: boolean;
 }
 

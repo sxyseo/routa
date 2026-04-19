@@ -182,6 +182,12 @@ export function normalizeAutomationForDirtyCheck(
         enabled: Boolean(automation.enabled),
         transitionType: automation.transitionType ?? "entry",
         autoAdvanceOnSuccess: Boolean(automation.autoAdvanceOnSuccess),
+        deliveryRules: automation.deliveryRules
+          ? {
+              autoMergeAfterPR: Boolean(automation.deliveryRules.autoMergeAfterPR),
+              mergeStrategy: automation.deliveryRules.mergeStrategy ?? null,
+            }
+          : null,
         requiredArtifacts: [...(automation.requiredArtifacts ?? [])].sort(),
         requiredTaskFields: [...(automation.requiredTaskFields ?? [])].sort(),
         steps: getEditableAutomationSteps(automation).map((step, index) => ({
@@ -965,6 +971,49 @@ export function ColumnAutomationWorkspace({
                   </span>
                 </span>
               </label>
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                  <input
+                    type="checkbox"
+                    checked={automation.deliveryRules?.autoMergeAfterPR ?? false}
+                    onChange={(event) => onUpdate({
+                      ...automation,
+                      deliveryRules: {
+                        ...automation.deliveryRules,
+                        autoMergeAfterPR: event.target.checked,
+                      },
+                    })}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                  />
+                  <span>
+                    <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.autoMergeAfterPR}</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      {t.kanban.autoMergeAfterPRDesc}
+                    </span>
+                  </span>
+                </label>
+                {automation.deliveryRules?.autoMergeAfterPR ? (
+                  <div className="pl-1">
+                    <ConfigField label={t.kanban.mergeStrategy}>
+                      <SelectControl
+                        aria-label={t.kanban.mergeStrategy}
+                        value={automation.deliveryRules?.mergeStrategy ?? "merge_commit"}
+                        onChange={(event) => onUpdate({
+                          ...automation,
+                          deliveryRules: {
+                            ...automation.deliveryRules,
+                            mergeStrategy: event.target.value as "merge_commit" | "squash" | "rebase",
+                          },
+                        })}
+                      >
+                        <option value="squash">Squash</option>
+                        <option value="merge_commit">Merge commit</option>
+                        <option value="rebase">Rebase</option>
+                      </SelectControl>
+                    </ConfigField>
+                  </div>
+                ) : null}
+              </div>
             </div>
             ) : null}
           </section>

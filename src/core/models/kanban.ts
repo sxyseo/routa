@@ -34,7 +34,7 @@ export interface KanbanDeliveryRules {
   requirePullRequestReady?: boolean;
   /** When true, the auto-merger specialist will attempt to merge the PR after CI passes. Defaults to false (human merge). */
   autoMergeAfterPR?: boolean;
-  /** Merge strategy to use when autoMergeAfterPR is true. Defaults to "squash". */
+  /** Merge strategy to use when autoMergeAfterPR is true. Defaults to "merge_commit". */
   mergeStrategy?: KanbanMergeStrategy;
 }
 
