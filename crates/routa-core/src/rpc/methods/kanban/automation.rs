@@ -518,7 +518,10 @@ pub(super) fn build_task_prompt(
     .join("\n")
 }
 
-async fn trigger_assigned_task_agent(state: &AppState, task: &mut Task) -> Result<(), String> {
+pub(super) async fn trigger_assigned_task_agent(
+    state: &AppState,
+    task: &mut Task,
+) -> Result<(), String> {
     let board = load_task_board(state, task).await?;
     let step = resolve_task_automation_step(board.as_ref(), task);
     if is_a2a_step(step.as_ref()) {
@@ -1005,7 +1008,10 @@ pub(super) fn apply_trigger_result(
     }
 }
 
-async fn load_task_board(state: &AppState, task: &Task) -> Result<Option<KanbanBoard>, String> {
+pub(super) async fn load_task_board(
+    state: &AppState,
+    task: &Task,
+) -> Result<Option<KanbanBoard>, String> {
     if let Some(board_id) = task.board_id.as_deref() {
         state
             .kanban_store

@@ -326,6 +326,127 @@ pub async fn list_cards_by_column(
     Ok(())
 }
 
+pub struct ListCardsOptions<'a> {
+    pub workspace_id: &'a str,
+    pub board_id: Option<&'a str>,
+    pub column_id: Option<&'a str>,
+    pub status: Option<&'a str>,
+    pub priority: Option<&'a str>,
+    pub labels: Option<Vec<&'a str>>,
+}
+
+pub async fn list_cards(state: &AppState, options: ListCardsOptions<'_>) -> Result<(), String> {
+    let router = RpcRouter::new(state.clone());
+    let mut params = serde_json::json!({
+        "workspaceId": options.workspace_id,
+    });
+    if let Some(board_id) = options.board_id {
+        params["boardId"] = serde_json::json!(board_id);
+    }
+    if let Some(column_id) = options.column_id {
+        params["columnId"] = serde_json::json!(column_id);
+    }
+    if let Some(status) = options.status {
+        params["status"] = serde_json::json!(status);
+    }
+    if let Some(priority) = options.priority {
+        params["priority"] = serde_json::json!(priority);
+    }
+    if let Some(labels) = options.labels {
+        params["labels"] = serde_json::json!(labels);
+    }
+
+    let response = router
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.listCards",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn board_status(
+    state: &AppState,
+    workspace_id: &str,
+    board_id: Option<&str>,
+) -> Result<(), String> {
+    let router = RpcRouter::new(state.clone());
+    let mut params = serde_json::json!({
+        "workspaceId": workspace_id,
+    });
+    if let Some(board_id) = board_id {
+        params["boardId"] = serde_json::json!(board_id);
+    }
+
+    let response = router
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.boardStatus",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn list_automations(
+    state: &AppState,
+    workspace_id: &str,
+    board_id: Option<&str>,
+) -> Result<(), String> {
+    let router = RpcRouter::new(state.clone());
+    let mut params = serde_json::json!({
+        "workspaceId": workspace_id,
+    });
+    if let Some(board_id) = board_id {
+        params["boardId"] = serde_json::json!(board_id);
+    }
+
+    let response = router
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.listAutomations",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn trigger_automation(
+    state: &AppState,
+    card_id: &str,
+    column_id: Option<&str>,
+    force: bool,
+    dry_run: bool,
+) -> Result<(), String> {
+    let router = RpcRouter::new(state.clone());
+    let mut params = serde_json::json!({
+        "cardId": card_id,
+        "force": force,
+        "dryRun": dry_run,
+    });
+    if let Some(column_id) = column_id {
+        params["columnId"] = serde_json::json!(column_id);
+    }
+
+    let response = router
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.triggerAutomation",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
 pub async fn decompose_tasks(
     state: &AppState,
     workspace_id: &str,
