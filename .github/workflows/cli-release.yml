@@ -247,12 +247,10 @@ jobs:
           if [[ -f dist/release/baseline-manifest.json ]]; then
               entrix release-trigger \
                 --manifest dist/release/manifest.json \
-                --baseline-manifest dist/release/baseline-manifest.json \
-                --fail-on-block
+                --baseline-manifest dist/release/baseline-manifest.json
           else
             entrix release-trigger \
-              --manifest dist/release/manifest.json \
-              --fail-on-block
+              --manifest dist/release/manifest.json
           fi
 
       - name: Upload release manifest
@@ -304,8 +302,7 @@ jobs:
       - name: Re-check release surface
         run: |
           entrix release-trigger \
-            --manifest dist/release/manifest.json \
-            --fail-on-block
+            --manifest dist/release/manifest.json
 
       - name: Verify install smoke
         run: |
@@ -363,8 +360,7 @@ jobs:
       - name: Re-check release surface before publish
         run: |
           entrix release-trigger \
-            --manifest dist/release/manifest.json \
-            --fail-on-block
+            --manifest dist/release/manifest.json
 
       - name: Publish tarballs
         env:

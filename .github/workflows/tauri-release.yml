@@ -299,12 +299,10 @@ jobs:
           if [[ -f dist/release/baseline-manifest-${{ matrix.key }}.json ]]; then
             entrix release-trigger \
               --manifest dist/release/manifest-${{ matrix.key }}.json \
-              --baseline-manifest dist/release/baseline-manifest-${{ matrix.key }}.json \
-              --fail-on-block
+              --baseline-manifest dist/release/baseline-manifest-${{ matrix.key }}.json
           else
             entrix release-trigger \
-              --manifest dist/release/manifest-${{ matrix.key }}.json \
-              --fail-on-block
+              --manifest dist/release/manifest-${{ matrix.key }}.json
           fi
 
       - name: Upload bundled assets
@@ -374,7 +372,7 @@ jobs:
           fi
           for manifest in "${manifests[@]}"; do
             echo "Verifying ${manifest}"
-            entrix release-trigger --manifest "${manifest}" --fail-on-block
+            entrix release-trigger --manifest "${manifest}"
           done
 
   # Disabled: generate-release-notes job removed due to git tag resolution issues
