@@ -1074,7 +1074,12 @@ export function fetchRemote(repoPath: string): boolean {
  * Fetch remote refs, then fast-forward every local branch to its
  * corresponding remote tracking branch (origin/<branch>).
  *
- * Safe: --ff-only refuses to move the branch if it has divergent commits.
+ * Bare repos: uses `git update-ref` to move branch pointers directly
+ * since merge/checkout/reset require a working tree.
+ *
+ * Regular repos: --ff-only refuses to move if divergent; forceReset
+ * falls back to hard reset.
+ *
  * Designed for base repos where routa never commits directly — keeping
  * `main`/`private` in sync ensures new worktrees start from latest code.
  */
@@ -1092,25 +1097,36 @@ export function fetchAndFastForward(
   const forced: string[] = [];
   const skipped: string[] = [];
   const branches = listBranches(repoPath);
+  const isBare = isBareGitRepository(repoPath);
 
   for (const branch of branches) {
-    try {
-      gitExecSync(["merge", "--ff-only", `origin/${branch}`], repoPath);
-      synced.push(branch);
-    } catch {
-      // --ff-only failed — try force reset for base repos
-      if (options?.forceReset) {
-        try {
-          // Discard local changes and hard-reset to remote
-          gitExecSync(["checkout", branch], repoPath);
-          gitExecSync(["reset", "--hard", `origin/${branch}`], repoPath);
-          gitExecSync(["clean", "-fd"], repoPath);
-          forced.push(branch);
-        } catch {
+    if (isBare) {
+      try {
+        gitExecSync(
+          ["update-ref", `refs/heads/${branch}`, `refs/remotes/origin/${branch}`],
+          repoPath,
+        );
+        synced.push(branch);
+      } catch {
+        skipped.push(branch);
+      }
+    } else {
+      try {
+        gitExecSync(["merge", "--ff-only", `origin/${branch}`], repoPath);
+        synced.push(branch);
+      } catch {
+        if (options?.forceReset) {
+          try {
+            gitExecSync(["checkout", branch], repoPath);
+            gitExecSync(["reset", "--hard", `origin/${branch}`], repoPath);
+            gitExecSync(["clean", "-fd"], repoPath);
+            forced.push(branch);
+          } catch {
+            skipped.push(branch);
+          }
+        } else {
           skipped.push(branch);
         }
-      } else {
-        skipped.push(branch);
       }
     }
   }
