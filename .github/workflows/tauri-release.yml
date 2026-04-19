@@ -18,6 +18,7 @@ jobs:
   build-tauri:
     permissions:
       contents: read
+      actions: read
 
     strategy:
       fail-fast: false
@@ -336,6 +337,9 @@ jobs:
   verify-tauri:
     name: Verify staged desktop release
     needs: build-tauri
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

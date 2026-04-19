@@ -85,6 +85,7 @@ jobs:
       )
     permissions:
       contents: write
+      actions: read
     uses: ./.github/workflows/tauri-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
@@ -110,6 +111,9 @@ jobs:
       github.event.inputs.dry_run == true ||
       github.event.inputs.publish_cli == 'true' ||
       github.event.inputs.publish_cli == true
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/cli-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
@@ -125,6 +129,9 @@ jobs:
       github.event.inputs.dry_run == true ||
       github.event.inputs.publish_harness_monitor == 'true' ||
       github.event.inputs.publish_harness_monitor == true
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/harness-monitor-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
@@ -140,6 +147,9 @@ jobs:
       github.event.inputs.dry_run == true ||
       github.event.inputs.publish_entrix == 'true' ||
       github.event.inputs.publish_entrix == true
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/entrix-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
@@ -155,6 +165,9 @@ jobs:
         (github.event.inputs.dry_run == 'false' || github.event.inputs.dry_run == false) &&
         (github.event.inputs.publish_crates == 'true' || github.event.inputs.publish_crates == true)
       )
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/cargo-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}

@@ -124,6 +124,9 @@ jobs:
   stage:
     name: Stage Entrix npm packages
     needs: build
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
@@ -209,6 +212,9 @@ jobs:
     needs:
       - build
       - stage
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -297,6 +303,9 @@ jobs:
     needs:
       - stage
       - verify
+    permissions:
+      contents: read
+      actions: read
     if: ${{ (inputs.publish == true || github.event.inputs.publish == 'true' || github.event.inputs.publish == true) }}
     runs-on: ubuntu-latest
     steps:
@@ -388,4 +397,3 @@ jobs:
           echo ""
           echo "Install with:"
           echo "  npm install -g entrix@${{ needs.stage.outputs.version }}"
-

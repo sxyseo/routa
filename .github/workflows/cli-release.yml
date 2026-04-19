@@ -119,6 +119,9 @@ jobs:
   stage:
     name: Stage npm packages
     needs: build
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
@@ -255,6 +258,9 @@ jobs:
     needs:
       - build
       - stage
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -306,6 +312,9 @@ jobs:
       - build
       - stage
       - verify
+    permissions:
+      contents: read
+      actions: read
     if: |
       github.event_name == 'workflow_call' ||
       github.event.inputs.publish == 'true' ||
