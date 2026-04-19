@@ -368,6 +368,7 @@ export function KanbanCardActivityBar({
   const selectedLaneSession = selectedRunId ? laneSessionMap.get(selectedRunId) : undefined;
   const selectedRun = selectedRunId ? runMap.get(selectedRunId) : undefined;
   const selectedStepLabel = getLaneSessionStepLabel(selectedLaneSession);
+  const reversedBarIds = [...orderedSessionIds].reverse();
 
   if (orderedSessionIds.length === 0) {
     return (
@@ -397,7 +398,8 @@ export function KanbanCardActivityBar({
       )}
       <div className="flex items-start gap-2 border-b border-slate-200/70 pb-2 dark:border-[#232736]">
         <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto border-slate-200/70 scrollbar-thin">
-          {orderedSessionIds.map((sessionId, index) => {
+          {reversedBarIds.map((sessionId, reverseIndex) => {
+            const index = orderedSessionIds.length - 1 - reverseIndex;
             const active = sessionId === selectedRunId;
             const laneSession = laneSessionMap.get(sessionId);
             const run = runMap.get(sessionId);
