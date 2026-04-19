@@ -260,7 +260,15 @@ export function KanbanTab({
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(null);
   // Live branch info for selected codebase
-  const [liveBranchInfo, setLiveBranchInfo] = useState<{ current: string; branches: string[] } | null>(null);
+  const [liveBranchInfo, setLiveBranchInfo] = useState<{
+    current: string;
+    branches: string[];
+    headCommit?: { sha: string; shortSha: string; message: string; authorName: string; authoredAt: string };
+    remoteCommit?: { sha: string; shortSha: string; message: string; authorName: string; authoredAt: string };
+  } | null>(null);
+  const [fetchingLatest, setFetchingLatest] = useState(false);
+  const [fetchLatestError, setFetchLatestError] = useState<string | null>(null);
+  const [fetchLatestResult, setFetchLatestResult] = useState<string | null>(null);
 
   // Worktree cache: worktreeId -> WorktreeInfo
   const [worktreeCache, setWorktreeCache] = useState<Record<string, WorktreeInfo>>({});
@@ -1134,6 +1142,44 @@ export function KanbanTab({
     }
   }, [selectedCodebase, onRefresh]);
 
+  // Fetch + fast-forward handler for the selected codebase
+  const handleFetchLatest = useCallback(async () => {
+    if (!selectedCodebase?.repoPath) return;
+    setFetchingLatest(true);
+    setFetchLatestError(null);
+    setFetchLatestResult(null);
+    try {
+      const fetchRes = await desktopAwareFetch("/api/clone/branches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoPath: selectedCodebase.repoPath }),
+      });
+      if (!fetchRes.ok) {
+        const data = await fetchRes.json();
+        throw new Error(data.error ?? "Fetch failed");
+      }
+      const data = await fetchRes.json();
+      setLiveBranchInfo({
+        current: data.current ?? "",
+        branches: data.local ?? [],
+        headCommit: data.headCommit ?? undefined,
+        remoteCommit: data.remoteCommit ?? undefined,
+      });
+      const localSha = data.headCommit?.sha;
+      const remoteSha = data.remoteCommit?.sha;
+      if (localSha && remoteSha) {
+        setFetchLatestResult(localSha === remoteSha ? "synced" : "updated");
+      } else {
+        setFetchLatestResult("synced");
+      }
+      onRefresh();
+    } catch (err) {
+      setFetchLatestError(err instanceof Error ? err.message : "Failed to fetch latest");
+    } finally {
+      setFetchingLatest(false);
+    }
+  }, [selectedCodebase, onRefresh]);
+
   // Replace all repos handler - updates all codebases to use the new cloned path
   const handleReplaceAllRepos = useCallback(async () => {
     if (!selectedCodebase?.sourceUrl || !editRepoSelection) return;
@@ -1291,12 +1337,16 @@ export function KanbanTab({
       }
     } catch { /* ignore */ }
 
-    // Fetch live branch info from the repo
+    // Fetch live branch info from the repo (POST triggers git fetch --all first)
     try {
-      const branchRes = await desktopAwareFetch(`/api/clone/branches?repoPath=${encodeURIComponent(codebase.repoPath)}`, { cache: "no-store" });
+      const branchRes = await desktopAwareFetch(`/api/clone/branches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoPath: codebase.repoPath }),
+      });
       if (branchRes.ok) {
         const branchData = await branchRes.json();
-        setLiveBranchInfo({ current: branchData.current, branches: branchData.local || [] });
+        setLiveBranchInfo({ current: branchData.current, branches: branchData.local || [], headCommit: branchData.headCommit ?? undefined });
       }
     } catch { /* ignore */ }
   }, [workspaceId]);
@@ -2042,6 +2092,10 @@ export function KanbanTab({
     handleReclone,
     recloning,
     recloneSuccess,
+    handleFetchLatest,
+    fetchingLatest,
+    fetchLatestError,
+    fetchLatestResult,
     onStartEditCodebase: handleStartEditCodebase,
     onRequestRemoveCodebase: () => setShowDeleteCodebaseConfirm(true),
     onClose: closeCodebaseModal,

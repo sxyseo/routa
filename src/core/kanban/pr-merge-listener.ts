@@ -15,7 +15,7 @@
 
 import { AgentEvent, AgentEventType } from "../events/event-bus";
 import { rebaseBranchSafe } from "../git/git-operations";
-import { fetchRemote } from "../git/git-utils";
+import { fetchRemote, fetchAndFastForward } from "../git/git-utils";
 import type { RoutaSystem } from "../routa-system";
 import { getKanbanBranchRules, DEFAULT_BRANCH_RULES } from "./board-branch-rules";
 
@@ -60,10 +60,15 @@ export function startPrMergeListener(system: RoutaSystem): void {
       ? getKanbanBranchRules(workspace?.metadata, boardId)
       : DEFAULT_BRANCH_RULES;
 
-    // 2. Set pullRequestMergedAt
+    // 2. Set pullRequestMergedAt and clear stale PR creation errors
     if (!task.pullRequestMergedAt) {
       task.pullRequestMergedAt = mergedAt ? new Date(mergedAt) : new Date();
       task.updatedAt = new Date();
+      // Clear lastSyncError if it was caused by a PR creation failure —
+      // the PR is now merged so the error is no longer relevant.
+      if (task.lastSyncError?.includes("pr create") || task.lastSyncError?.includes("Auto PR creation failed")) {
+        task.lastSyncError = undefined;
+      }
       await system.taskStore.save(task);
       console.log(
         `[PrMergeListener] Set pullRequestMergedAt for task ${task.id}.`,
@@ -110,10 +115,10 @@ async function fetchMainCodebase(
     const codebases = await system.codebaseStore.listByWorkspace(workspaceId);
     for (const cb of codebases) {
       if (cb.repoPath) {
-        const fetched = fetchRemote(cb.repoPath);
-        if (fetched) {
+        const result = fetchAndFastForward(cb.repoPath, { forceReset: true });
+        if (result.fetched) {
           console.log(
-            `[PrMergeListener] Fetched latest for codebase ${cb.id} at ${cb.repoPath}.`,
+            `[PrMergeListener] Fetched & fast-forwarded codebase ${cb.id} at ${cb.repoPath}. synced=${result.synced.join(",")} skipped=${result.skipped.join(",")}`,
           );
         }
       }

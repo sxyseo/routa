@@ -1058,6 +1058,7 @@ describe("KanbanCardDetail changes tab", () => {
             hasUncommittedChanges: false,
             isGitHubRepo: true,
             canCreatePullRequest: true,
+      isMergedIntoBase: false,
           },
         })}
         availableProviders={[]}
@@ -1393,6 +1394,7 @@ describe("KanbanCardDetail changes tab", () => {
             hasUncommittedChanges: false,
             isGitHubRepo: true,
             canCreatePullRequest: true,
+      isMergedIntoBase: false,
           },
         })}
         availableProviders={[]}
@@ -1509,6 +1511,7 @@ describe("KanbanCardDetail changes tab", () => {
             hasUncommittedChanges: true,
             isGitHubRepo: true,
             canCreatePullRequest: false,
+      isMergedIntoBase: false,
           },
         })}
         availableProviders={[]}

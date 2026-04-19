@@ -333,6 +333,10 @@ export interface KanbanBoardInfo {
       rebaseDownstream: boolean;
       autoCreatePullRequest: boolean;
     };
+    baseBranch?: {
+      strategy: "codebase_default" | "fixed" | "dependency_inherit";
+      fixedBranch?: string;
+    };
   };
   queue?: KanbanBoardQueueInfo;
   columns: KanbanColumnInfo[];

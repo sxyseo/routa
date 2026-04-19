@@ -86,6 +86,9 @@ export function KanbanSettingsModal({
         rebaseDownstream: true,
         autoCreatePullRequest: false,
       },
+      baseBranch: {
+        strategy: "dependency_inherit",
+      },
     },
   );
   const [selectedViewId, setSelectedViewId] = useState<string>(() => board.columns[0]?.id ?? BOARD_VIEW_ID);
@@ -718,6 +721,54 @@ export function KanbanSettingsModal({
                           <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.autoCreatePullRequestHint}</span>
                         </span>
                       </label>
+                    </div>
+                  </SectionCard>
+
+                  <SectionCard eyebrow={t.kanban.prTargetBranchEyebrow} title={t.kanban.prTargetBranchTitle} description={t.kanban.prTargetBranchHint}>
+                    <div className="space-y-3">
+                      <label className="block space-y-1.5">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.kanban.prTargetStrategy}
+                        </span>
+                        <select
+                          value={branchRules?.baseBranch?.strategy ?? "dependency_inherit"}
+                          onChange={(event) => {
+                            const strategy = event.target.value as "codebase_default" | "fixed" | "dependency_inherit";
+                            setBranchRules((current) => ({
+                              ...current,
+                              baseBranch: { strategy, fixedBranch: current.baseBranch?.fixedBranch },
+                            }));
+                          }}
+                          className="block w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-[#111722] dark:text-slate-100"
+                        >
+                          <option value="dependency_inherit">{t.kanban.prStrategyDependencyInherit}</option>
+                          <option value="codebase_default">{t.kanban.prStrategyCodebaseDefault}</option>
+                          <option value="fixed">{t.kanban.prStrategyFixed}</option>
+                        </select>
+                        <span className="block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          {t.kanban.prTargetStrategyHint}
+                        </span>
+                      </label>
+                      {(branchRules?.baseBranch?.strategy ?? "dependency_inherit") === "fixed" ? (
+                        <label className="block space-y-1.5">
+                          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                            {t.kanban.prFixedBranch}
+                          </span>
+                          <input
+                            type="text"
+                            value={branchRules?.baseBranch?.fixedBranch ?? ""}
+                            onChange={(event) => setBranchRules((current) => ({
+                              ...current,
+                              baseBranch: { strategy: "fixed", fixedBranch: event.target.value },
+                            }))}
+                            placeholder="main"
+                            className="block w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 dark:border-slate-800 dark:bg-[#111722] dark:text-slate-100 dark:placeholder-slate-500"
+                          />
+                          <span className="block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                            {t.kanban.prFixedBranchHint}
+                          </span>
+                        </label>
+                      ) : null}
                     </div>
                   </SectionCard>
 

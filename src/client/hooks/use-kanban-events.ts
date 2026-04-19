@@ -5,6 +5,9 @@ import { getDesktopApiBaseUrl } from "../utils/diagnostics";
 import { resolveApiPath } from "../config/backend";
 
 const FITNESS_INVALIDATE_THROTTLE_MS = 750;
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+const RECONNECT_JITTER_MS = 500;
 
 interface UseKanbanEventsOptions {
   workspaceId: string;
@@ -14,6 +17,7 @@ interface UseKanbanEventsOptions {
 export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOptions): void {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef(0);
   const fitnessInvalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFitnessInvalidateAtRef = useRef(0);
   const tearingDownRef = useRef(false);
@@ -24,6 +28,13 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
   useEffect(() => {
     onInvalidateRef.current = onInvalidate;
   }, [onInvalidate]);
+
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }, []);
 
   const connectSSE = useCallback(() => {
     if (eventSourceRef.current) {
@@ -40,7 +51,10 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
       try {
         const data = JSON.parse(event.data) as { type?: string };
         if (data.type === "connected") {
+          // Reset reconnect backoff on successful connection
+          reconnectAttemptRef.current = 0;
           if (hasConnectedOnceRef.current) {
+            // Reconnected after a disconnect — do a full sync
             onInvalidateRef.current();
           } else {
             hasConnectedOnceRef.current = true;
@@ -74,17 +88,32 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
     };
 
     es.onerror = () => {
-      if (tearingDownRef.current || document.visibilityState === "hidden") {
+      if (tearingDownRef.current) {
         es.close();
         eventSourceRef.current = null;
         return;
       }
+
       es.close();
       eventSourceRef.current = null;
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = setTimeout(() => connectSseRef.current(), 3000);
+
+      // Don't schedule reconnect while page is hidden — visibilitychange will handle it
+      if (document.visibilityState === "hidden") return;
+
+      // Exponential backoff with jitter: 1s → 2s → 4s → 8s → 16s → 30s max
+      const attempt = reconnectAttemptRef.current;
+      const baseDelay = Math.min(
+        RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt),
+        RECONNECT_MAX_DELAY_MS,
+      );
+      const jitter = Math.floor(Math.random() * RECONNECT_JITTER_MS);
+      const delay = baseDelay + jitter;
+      reconnectAttemptRef.current = attempt + 1;
+
+      clearReconnectTimer();
+      reconnectTimerRef.current = setTimeout(() => connectSseRef.current(), delay);
     };
-  }, [workspaceId]);
+  }, [clearReconnectTimer, workspaceId]);
 
   useEffect(() => {
     connectSseRef.current = connectSSE;
@@ -95,12 +124,26 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
 
     tearingDownRef.current = false;
     hasConnectedOnceRef.current = false;
+    reconnectAttemptRef.current = 0;
     lastFitnessInvalidateAtRef.current = 0;
     connectSSE();
+
+    // Reconnect SSE when page becomes visible after sleep/tab-switch
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      // If there's no active connection, reconnect
+      if (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED) {
+        reconnectAttemptRef.current = 0;
+        connectSSE();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       tearingDownRef.current = true;
       hasConnectedOnceRef.current = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -109,10 +152,7 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
         clearTimeout(fitnessInvalidateTimerRef.current);
         fitnessInvalidateTimerRef.current = null;
       }
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
+      clearReconnectTimer();
     };
-  }, [connectSSE, workspaceId]);
+  }, [clearReconnectTimer, connectSSE, workspaceId]);
 }

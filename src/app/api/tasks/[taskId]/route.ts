@@ -638,7 +638,17 @@ export async function PATCH(
     ? body.retryProviderId.trim()
     : undefined;
 
-  if ((enteringDev || assignedWhileInDev || retryingTrigger || reopenTrigger) && !nextTask.triggerSessionId) {
+  // Determine if the target column has lane automation enabled
+  let enteringAutomatedColumn = false;
+  if (existing.columnId !== nextTask.columnId && nextTask.columnId && nextTask.boardId) {
+    const automationBoard = board ?? await system.kanbanBoardStore.get(nextTask.boardId);
+    const targetColumn = automationBoard?.columns.find((c: { id: string }) => c.id === nextTask.columnId);
+    if (targetColumn?.automation?.enabled) {
+      enteringAutomatedColumn = true;
+    }
+  }
+
+  if ((enteringDev || enteringAutomatedColumn || assignedWhileInDev || retryingTrigger || reopenTrigger) && !nextTask.triggerSessionId) {
     const worktreeTruth = await resolveTaskWorktreeTruth(nextTask, system, {
       preferredRepoPath: body.repoPath,
     });

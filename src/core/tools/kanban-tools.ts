@@ -342,6 +342,7 @@ export class KanbanTools {
         deliveryReadiness,
         targetColumn.name,
         targetColumn.automation?.deliveryRules,
+        task,
       );
       if (deliveryError) {
         await this.recordTaskMoveBlockComment(task, deliveryError, task.triggerSessionId);

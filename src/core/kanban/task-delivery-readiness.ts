@@ -9,6 +9,7 @@ import type { Codebase } from "@/core/models/codebase";
 import type { Task } from "@/core/models/task";
 import type { Worktree } from "@/core/models/worktree";
 import { resolveTaskWorktreeTruth } from "./task-worktree-truth";
+import { parseCanonicalStory } from "./canonical-story";
 
 interface DeliverySystemLike {
   codebaseStore: {
@@ -32,6 +33,8 @@ export interface TaskDeliveryReadiness {
   behind: number;
   commitsSinceBase: number;
   hasCommitsSinceBase: boolean;
+  /** True when HEAD is an ancestor of base — changes already merged. */
+  isMergedIntoBase: boolean;
   hasUncommittedChanges: boolean;
   isGitHubRepo: boolean;
   canCreatePullRequest: boolean;
@@ -78,6 +81,7 @@ function mapReadiness(
     behind: deliveryStatus.status.behind,
     commitsSinceBase: deliveryStatus.commitsSinceBase,
     hasCommitsSinceBase: deliveryStatus.hasCommitsSinceBase,
+    isMergedIntoBase: deliveryStatus.isMergedIntoBase,
     hasUncommittedChanges: deliveryStatus.hasUncommittedChanges,
     isGitHubRepo: deliveryStatus.isGitHubRepo,
     canCreatePullRequest: deliveryStatus.canCreatePullRequest,
@@ -98,6 +102,7 @@ export async function buildTaskDeliveryReadiness(
       behind: 0,
       commitsSinceBase: 0,
       hasCommitsSinceBase: false,
+      isMergedIntoBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: false,
       canCreatePullRequest: false,
@@ -115,6 +120,7 @@ export async function buildTaskDeliveryReadiness(
       behind: 0,
       commitsSinceBase: 0,
       hasCommitsSinceBase: false,
+      isMergedIntoBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: false,
       canCreatePullRequest: false,
@@ -132,6 +138,7 @@ export async function buildTaskDeliveryReadiness(
       behind: 0,
       commitsSinceBase: 0,
       hasCommitsSinceBase: false,
+      isMergedIntoBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: false,
       canCreatePullRequest: false,
@@ -153,6 +160,16 @@ function formatBaseReference(readiness: TaskDeliveryReadiness): string {
   return readiness.baseRef ?? readiness.baseBranch ?? "the base branch";
 }
 
+/** Check if a task is analysis-only (all surface_coverage fields are "not_applicable"). */
+function isAnalysisOnlyTask(task: Task | undefined): boolean {
+  if (!task?.objective) return false;
+  const { story } = parseCanonicalStory(task.objective);
+  const sc = story?.story?.surface_coverage;
+  if (!sc) return false;
+  const values = Object.values(sc);
+  return values.length > 0 && values.every((v) => v === "not_applicable");
+}
+
 export function hasDeliveryRules(
   rules: KanbanDeliveryRules | undefined,
 ): rules is KanbanDeliveryRules {
@@ -169,6 +186,7 @@ export function buildTaskDeliveryTransitionErrorFromRules(
   readiness: TaskDeliveryReadiness,
   targetColumnName: string,
   rules: KanbanDeliveryRules | undefined,
+  task?: Task,
 ): string | null {
   if (!hasDeliveryRules(rules)) {
     return null;
@@ -182,7 +200,7 @@ export function buildTaskDeliveryTransitionErrorFromRules(
     return `Cannot move task to "${targetColumnName}": ${readiness.reason}`;
   }
 
-  if (rules.requireCommittedChanges && !readiness.hasCommitsSinceBase) {
+  if (rules.requireCommittedChanges && !readiness.hasCommitsSinceBase && !readiness.isMergedIntoBase && !isAnalysisOnlyTask(task)) {
     return `Cannot move task to "${targetColumnName}": no committed changes detected on branch "${readiness.branch ?? "unknown"}" relative to "${formatBaseReference(readiness)}". Commit your implementation before requesting review.`;
   }
 
@@ -193,7 +211,7 @@ export function buildTaskDeliveryTransitionErrorFromRules(
     return `Cannot move task to "${targetColumnName}": branch "${readiness.branch ?? "unknown"}" still has uncommitted changes (${readiness.modified} modified, ${readiness.untracked} untracked). Commit, stash, or discard them before ${transitionAction}.`;
   }
 
-  if (rules.requirePullRequestReady && readiness.isGitHubRepo && !readiness.canCreatePullRequest) {
+  if (rules.requirePullRequestReady && readiness.isGitHubRepo && !readiness.canCreatePullRequest && !readiness.isMergedIntoBase) {
     const baseBranch = readiness.baseBranch ?? "the base branch";
     return `Cannot move task to "${targetColumnName}": GitHub repo is not PR-ready yet. Use a feature branch instead of "${baseBranch}" so this task can open a pull request cleanly.`;
   }
@@ -205,6 +223,7 @@ export function buildTaskDeliveryTransitionError(
   readiness: TaskDeliveryReadiness,
   targetColumnName: string,
   targetColumnId: string,
+  task?: Task,
 ): string | null {
   const rules: KanbanDeliveryRules | undefined = targetColumnId === "review"
     ? {
@@ -219,5 +238,5 @@ export function buildTaskDeliveryTransitionError(
       }
     : undefined;
 
-  return buildTaskDeliveryTransitionErrorFromRules(readiness, targetColumnName, rules);
+  return buildTaskDeliveryTransitionErrorFromRules(readiness, targetColumnName, rules, task);
 }

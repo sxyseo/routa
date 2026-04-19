@@ -21,18 +21,34 @@ import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs";
 import {
   getCurrentBranch,
+  getHeadCommitInfo,
+  getRefCommitInfo,
   listBranches,
   listRemoteBranches,
   fetchRemote,
   getBranchStatus,
   checkoutBranch,
   deleteBranch,
-  pullBranch,
+  fetchAndFastForward,
+  stashPullPop,
   getBranchInfo,
   getRepoStatus,
   resetLocalChanges,
   isBareGitRepository,
 } from "@/core/git";
+
+function buildBranchPayload(repoPath: string, fetched = false) {
+  const current = getCurrentBranch(repoPath) ?? "unknown";
+  const local = listBranches(repoPath);
+  const remote = listRemoteBranches(repoPath);
+  const status = getBranchStatus(repoPath, current);
+  const headCommit = getHeadCommitInfo(repoPath);
+  const remoteCommit = current !== "unknown"
+    ? getRefCommitInfo(repoPath, `origin/${current}`)
+    : null;
+
+  return { current, local, remote, status, headCommit, remoteCommit };
+}
 
 export async function GET(request: NextRequest) {
   const repoPath = request.nextUrl.searchParams.get("repoPath");
@@ -43,12 +59,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const current = getCurrentBranch(repoPath) ?? "unknown";
-  const local = listBranches(repoPath);
-  const remote = listRemoteBranches(repoPath);
-  const status = getBranchStatus(repoPath, current);
-
-  return NextResponse.json({ current, local, remote, status });
+  return NextResponse.json(buildBranchPayload(repoPath));
 }
 
 export async function POST(request: NextRequest) {
@@ -62,15 +73,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Fetch remote, then return all branches
-  fetchRemote(repoPath);
+  // Fetch remote refs and fast-forward local branches to match origin
+  // forceReset: base repos should always match remote, local changes have no value
+  fetchAndFastForward(repoPath, { forceReset: true });
 
-  const current = getCurrentBranch(repoPath) ?? "unknown";
-  const local = listBranches(repoPath);
-  const remote = listRemoteBranches(repoPath);
-  const status = getBranchStatus(repoPath, current);
-
-  return NextResponse.json({ current, local, remote, status });
+  return NextResponse.json(buildBranchPayload(repoPath, true));
 }
 
 export async function PATCH(request: NextRequest) {
@@ -142,19 +149,34 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  // Optionally pull after checkout
+  // Optionally pull after checkout (stash + pull + pop for dirty trees)
   if (doPull) {
-    pullBranch(repoPath);
+    const pullResult = stashPullPop(repoPath);
+    if (!pullResult.success) {
+      const branchInfo = getBranchInfo(repoPath);
+      const status = getBranchStatus(repoPath, branchInfo.current);
+      const headCommit = getHeadCommitInfo(repoPath);
+      return NextResponse.json({
+        success: false,
+        error: pullResult.error ?? "Pull failed",
+        branch: branchInfo.current,
+        branches: branchInfo.branches,
+        status,
+        headCommit,
+      }, { status: 500 });
+    }
   }
 
   const branchInfo = getBranchInfo(repoPath);
   const status = getBranchStatus(repoPath, branchInfo.current);
+  const headCommit = getHeadCommitInfo(repoPath);
 
   return NextResponse.json({
     success: true,
     branch: branchInfo.current,
     branches: branchInfo.branches,
     status,
+    headCommit,
   });
 }
 

@@ -203,6 +203,8 @@ export interface RepoDeliveryStatus {
   status: RepoStatus;
   commitsSinceBase: number;
   hasCommitsSinceBase: boolean;
+  /** True when HEAD is an ancestor of base (changes already merged back). */
+  isMergedIntoBase: boolean;
   hasUncommittedChanges: boolean;
   remoteUrl: string | null;
   isGitHubRepo: boolean;
@@ -243,6 +245,62 @@ export function getCurrentBranch(repoPath: string): string | null {
   try {
     const branch = gitExecSync(["rev-parse", "--abbrev-ref", "HEAD"], repoPath);
     return branch || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the full SHA of the current HEAD commit.
+ */
+export function getHeadSha(repoPath: string): string | null {
+  try {
+    const sha = gitExecSync(["rev-parse", "HEAD"], repoPath);
+    return sha || null;
+  } catch {
+    return null;
+  }
+}
+
+export interface HeadCommitInfo {
+  sha: string;
+  shortSha: string;
+  message: string;
+  authorName: string;
+  authoredAt: string;
+}
+
+/**
+ * Get HEAD commit details: SHA, message, author, date.
+ */
+export function getHeadCommitInfo(repoPath: string): HeadCommitInfo | null {
+  try {
+    const output = gitExecSync(
+      ["show", "-s", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI", "HEAD"],
+      repoPath,
+    );
+    if (!output) return null;
+    const [sha, shortSha, message, authorName, authoredAt] = output.split("\x1f");
+    if (!sha || !shortSha) return null;
+    return { sha, shortSha, message: message ?? "", authorName: authorName ?? "", authoredAt: authoredAt ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get commit details for an arbitrary ref (e.g. "origin/main", "origin/private").
+ */
+export function getRefCommitInfo(repoPath: string, ref: string): HeadCommitInfo | null {
+  try {
+    const output = gitExecSync(
+      ["show", "-s", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI", ref],
+      repoPath,
+    );
+    if (!output) return null;
+    const [sha, shortSha, message, authorName, authoredAt] = output.split("\x1f");
+    if (!sha || !shortSha) return null;
+    return { sha, shortSha, message: message ?? "", authorName: authorName ?? "", authoredAt: authoredAt ?? "" };
   } catch {
     return null;
   }
@@ -876,6 +934,19 @@ export function getRepoDeliveryStatus(
     && Boolean(normalizedBaseBranch)
     && branch !== normalizedBaseBranch;
 
+  // Detect if changes have already been merged back into the base branch.
+  // When HEAD is an ancestor of baseRef, `git merge-base --is-ancestor` succeeds
+  // meaning the feature branch content exists in the base already.
+  let isMergedIntoBase = false;
+  if (baseRef) {
+    try {
+      gitExecSync(["merge-base", "--is-ancestor", "HEAD", baseRef], repoPath);
+      isMergedIntoBase = true;
+    } catch {
+      // Not an ancestor — changes not yet merged
+    }
+  }
+
   return {
     branch,
     baseBranch: normalizedBaseBranch,
@@ -883,6 +954,7 @@ export function getRepoDeliveryStatus(
     status,
     commitsSinceBase,
     hasCommitsSinceBase,
+    isMergedIntoBase,
     hasUncommittedChanges,
     remoteUrl,
     isGitHubRepo,
@@ -999,6 +1071,54 @@ export function fetchRemote(repoPath: string): boolean {
 }
 
 /**
+ * Fetch remote refs, then fast-forward every local branch to its
+ * corresponding remote tracking branch (origin/<branch>).
+ *
+ * Safe: --ff-only refuses to move the branch if it has divergent commits.
+ * Designed for base repos where routa never commits directly — keeping
+ * `main`/`private` in sync ensures new worktrees start from latest code.
+ */
+export function fetchAndFastForward(
+  repoPath: string,
+  options?: { forceReset?: boolean },
+): { fetched: boolean; synced: string[]; forced: string[]; skipped: string[] } {
+  let fetched = false;
+  try {
+    gitExecSync(["fetch", "--all", "--prune"], repoPath);
+    fetched = true;
+  } catch { /* proceed with existing refs */ }
+
+  const synced: string[] = [];
+  const forced: string[] = [];
+  const skipped: string[] = [];
+  const branches = listBranches(repoPath);
+
+  for (const branch of branches) {
+    try {
+      gitExecSync(["merge", "--ff-only", `origin/${branch}`], repoPath);
+      synced.push(branch);
+    } catch {
+      // --ff-only failed — try force reset for base repos
+      if (options?.forceReset) {
+        try {
+          // Discard local changes and hard-reset to remote
+          gitExecSync(["checkout", branch], repoPath);
+          gitExecSync(["reset", "--hard", `origin/${branch}`], repoPath);
+          gitExecSync(["clean", "-fd"], repoPath);
+          forced.push(branch);
+        } catch {
+          skipped.push(branch);
+        }
+      } else {
+        skipped.push(branch);
+      }
+    }
+  }
+
+  return { fetched, synced, forced, skipped };
+}
+
+/**
  * Get branch status: commits ahead/behind upstream.
  */
 export interface BranchStatus {
@@ -1047,6 +1167,40 @@ export function getBranchStatus(
 export function pullBranch(repoPath: string): { success: boolean; error?: string } {
   try {
     gitExecSync(["pull", "--ff-only"], repoPath);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Pull failed",
+    };
+  }
+}
+
+/**
+ * Safe pull: stash → pull --ff-only → stash pop.
+ * Handles dirty working trees that would block a regular pull.
+ */
+export function stashPullPop(repoPath: string): { success: boolean; error?: string } {
+  try {
+    // Check if there are local changes that need stashing
+    const statusOutput = gitExecSync(["status", "--porcelain"], repoPath);
+    const hasLocalChanges = statusOutput.trim().length > 0;
+
+    if (hasLocalChanges) {
+      gitExecSync(["stash", "--include-untracked"], repoPath);
+    }
+
+    try {
+      gitExecSync(["pull", "--ff-only"], repoPath);
+    } finally {
+      if (hasLocalChanges) {
+        try {
+          gitExecSync(["stash", "pop"], repoPath);
+        } catch {
+          // Stash pop conflict — leave stash intact, don't fail the pull
+        }
+      }
+    }
     return { success: true };
   } catch (err) {
     return {

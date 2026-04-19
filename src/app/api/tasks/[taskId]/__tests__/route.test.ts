@@ -107,6 +107,7 @@ describe("/api/tasks/[taskId]", () => {
       hasUncommittedChanges: false,
       isGitHubRepo: false,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
       reason: "Task has no linked repository or worktree.",
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(null);
@@ -828,6 +829,7 @@ describe("/api/tasks/[taskId]", () => {
       hasUncommittedChanges: false,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Review": no committed changes detected on branch "issue/task-1" relative to "origin/main". Commit your implementation before requesting review.',
@@ -897,6 +899,7 @@ describe("/api/tasks/[taskId]", () => {
       hasUncommittedChanges: true,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Review": branch "issue/task-1" still has uncommitted changes (2 modified, 1 untracked). Commit, stash, or discard them before requesting review.',
@@ -968,6 +971,7 @@ describe("/api/tasks/[taskId]", () => {
       hasUncommittedChanges: false,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Done": GitHub repo is not PR-ready yet. Use a feature branch instead of "main" so this task can open a pull request cleanly.',
@@ -990,6 +994,7 @@ describe("/api/tasks/[taskId]", () => {
       checked: true,
       branch: "main",
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     expect(taskStore.save).not.toHaveBeenCalled();
   });

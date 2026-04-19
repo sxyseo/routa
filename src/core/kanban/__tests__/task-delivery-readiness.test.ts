@@ -98,6 +98,7 @@ describe("task delivery readiness", () => {
       remoteUrl: "git@github.com:acme/platform.git",
       isGitHubRepo: true,
       canCreatePullRequest: true,
+      isMergedIntoBase: false,
     });
 
     const readiness = await buildTaskDeliveryReadiness(task, system);
@@ -114,6 +115,7 @@ describe("task delivery readiness", () => {
       branch: "issue/task-1",
       commitsSinceBase: 1,
       canCreatePullRequest: true,
+      isMergedIntoBase: false,
     });
   });
 
@@ -166,6 +168,7 @@ describe("task delivery readiness", () => {
       hasUncommittedChanges: false,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     }, "Review", "review");
     const reviewDirtyError = buildTaskDeliveryTransitionError({
       checked: true,
@@ -181,6 +184,7 @@ describe("task delivery readiness", () => {
       hasUncommittedChanges: true,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     }, "Review", "review");
     const doneError = buildTaskDeliveryTransitionError({
       checked: true,
@@ -196,6 +200,7 @@ describe("task delivery readiness", () => {
       hasUncommittedChanges: true,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     }, "Done", "done");
 
     expect(reviewError).toContain("no committed changes detected");
@@ -219,6 +224,7 @@ describe("task delivery readiness", () => {
       hasUncommittedChanges: false,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     }, "QA Gate", {
       requireCommittedChanges: true,
       requireCleanWorktree: true,
@@ -238,6 +244,7 @@ describe("task delivery readiness", () => {
       hasUncommittedChanges: false,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     }, "Release", {
       requireCommittedChanges: true,
       requireCleanWorktree: true,

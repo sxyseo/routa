@@ -53,6 +53,7 @@ describe("task delivery snapshot", () => {
       hasUncommittedChanges: false,
       isGitHubRepo: true,
       canCreatePullRequest: true,
+      isMergedIntoBase: false,
     }, {
       source: "review_transition",
       capturedAt: new Date("2026-04-09T01:02:03.000Z"),
@@ -111,6 +112,7 @@ describe("task delivery snapshot", () => {
       hasUncommittedChanges: false,
       isGitHubRepo: true,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     }, {
       source: "done_transition",
     });

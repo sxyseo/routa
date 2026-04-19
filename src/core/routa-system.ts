@@ -33,6 +33,7 @@ import { InMemoryKanbanBoardStore, KanbanBoardStore } from "./store/kanban-board
 import { InMemoryArtifactStore, ArtifactStore } from "./store/artifact-store";
 import { PermissionStore } from "./tools/permission-store";
 import { startWorkflowOrchestrator } from "./kanban/workflow-orchestrator-singleton";
+import { startLaneScanner } from "./kanban/kanban-lane-scanner";
 import { getKanbanEventBroadcaster } from "./kanban/kanban-event-broadcaster";
 import { AgentEventType } from "./events/event-bus";
 
@@ -354,6 +355,9 @@ export function getRoutaSystem(): RoutaSystem {
     // Start the workflow orchestrator to listen for column transitions
     const system = g[GLOBAL_KEY] as RoutaSystem;
     startWorkflowOrchestrator(system);
+
+    // Start the lane scanner to auto-trigger automation for idle cards
+    startLaneScanner(system);
 
     // Set up EventBus → KanbanEventBroadcaster bridge for file changes
     setupFileChangeBridge(system);

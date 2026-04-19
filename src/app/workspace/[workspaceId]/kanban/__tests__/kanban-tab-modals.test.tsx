@@ -111,6 +111,10 @@ describe("KanbanCodebaseModal", () => {
         recloning={false}
         recloneSuccess={null}
         onStartEditCodebase={vi.fn()}
+        handleFetchLatest={vi.fn()}
+        fetchingLatest={false}
+        fetchLatestError={null}
+        fetchLatestResult={null}
         onRequestRemoveCodebase={vi.fn()}
         onClose={vi.fn()}
       />
@@ -178,6 +182,10 @@ describe("KanbanCodebaseModal", () => {
         recloning={false}
         recloneSuccess={null}
         onStartEditCodebase={vi.fn()}
+        handleFetchLatest={vi.fn()}
+        fetchingLatest={false}
+        fetchLatestError={null}
+        fetchLatestResult={null}
         onRequestRemoveCodebase={vi.fn()}
         onClose={vi.fn()}
       />
@@ -240,6 +248,10 @@ describe("KanbanCodebaseModal", () => {
         recloning={false}
         recloneSuccess={null}
         onStartEditCodebase={vi.fn()}
+        handleFetchLatest={vi.fn()}
+        fetchingLatest={false}
+        fetchLatestError={null}
+        fetchLatestResult={null}
         onRequestRemoveCodebase={vi.fn()}
         onClose={vi.fn()}
       />
@@ -291,6 +303,10 @@ describe("KanbanCodebaseModal", () => {
         recloning={false}
         recloneSuccess={null}
         onStartEditCodebase={vi.fn()}
+        handleFetchLatest={vi.fn()}
+        fetchingLatest={false}
+        fetchLatestError={null}
+        fetchLatestResult={null}
         onRequestRemoveCodebase={vi.fn()}
         onClose={vi.fn()}
       />

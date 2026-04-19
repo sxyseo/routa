@@ -7,7 +7,7 @@ import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker"
 import { useTranslation } from "@/i18n";
 import type { KanbanRequiredTaskField } from "@/core/models/kanban";
 import type { TaskInfo, WorktreeInfo } from "../types";
-import { ExternalLink, Info, Pencil, Plus, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
+import { ClipboardCopy, Download, ExternalLink, Info, Pencil, Plus, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
 
 
 export interface KanbanCodebaseModalProps {
@@ -33,7 +33,7 @@ export interface KanbanCodebaseModalProps {
   localTasks: TaskInfo[];
   handleDeleteCodebaseWorktrees: (worktrees: WorktreeInfo[]) => void | Promise<void>;
   deletingWorktreeIds: string[];
-  liveBranchInfo: { current: string; branches: string[] } | null;
+  liveBranchInfo: { current: string; branches: string[]; headCommit?: { sha: string; shortSha: string; message: string; authorName: string; authoredAt: string } } | null;
   branchActionError: string | null;
   repoHealth?: { missingRepoTasks: number; cwdMismatchTasks: number };
   onSelectCodebase: (codebase: CodebaseData) => void | Promise<void>;
@@ -43,6 +43,10 @@ export interface KanbanCodebaseModalProps {
   handleReclone: () => void | Promise<void>;
   recloning: boolean;
   recloneSuccess: string | null;
+  handleFetchLatest: () => void | Promise<void>;
+  fetchingLatest: boolean;
+  fetchLatestError: string | null;
+  fetchLatestResult: string | null;
   onStartEditCodebase: () => void;
   onRequestRemoveCodebase: () => void;
   onClose: () => void;
@@ -81,6 +85,10 @@ export function KanbanCodebaseModal({
   handleReclone,
   recloning,
   recloneSuccess,
+  handleFetchLatest,
+  fetchingLatest,
+  fetchLatestError,
+  fetchLatestResult,
   onStartEditCodebase,
   onRequestRemoveCodebase,
   onClose,
@@ -432,6 +440,63 @@ export function KanbanCodebaseModal({
                     <InfoField label={t.kanbanModals.branch} value={liveBranchInfo?.current ?? selectedCodebase.branch ?? "—"} />
                     <InfoField label={t.kanbanModals.sourceType} value={selectedCodebaseSourceType} />
                   </div>
+
+                  {liveBranchInfo?.headCommit ? (
+                    <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
+                          {t.kanbanModals.latestCommit}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void handleFetchLatest()}
+                            disabled={fetchingLatest}
+                            title={t.kanbanModals.fetchLatest}
+                            className="inline-flex items-center gap-1.5 rounded-sm border border-desktop-accent bg-desktop-accent px-2 py-1 text-[10px] font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {fetchingLatest
+                              ? <RefreshCw className="h-3 w-3 animate-spin" />
+                              : <Download className="h-3 w-3" />}
+                            <span>{fetchingLatest ? t.kanbanModals.fetchingLatest : t.kanbanModals.fetchLatest}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void navigator.clipboard.writeText(liveBranchInfo.headCommit!.sha)}
+                            title={t.kanbanModals.copySha}
+                            className="shrink-0 rounded-sm p-1 text-desktop-text-secondary transition hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+                          >
+                            <ClipboardCopy className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                      {fetchLatestError ? (
+                        <div className="mt-1.5 text-[10px] text-rose-400">{fetchLatestError}</div>
+                      ) : fetchLatestResult === "updated" ? (
+                        <div className="mt-1.5 text-[10px] text-emerald-400">{t.kanbanModals.fetchSynced}</div>
+                      ) : fetchLatestResult === "synced" ? (
+                        <div className="mt-1.5 text-[10px] text-desktop-text-secondary">{t.kanbanModals.fetchAlreadySynced}</div>
+                      ) : null}
+                      <div className="mt-1.5 space-y-1">
+                        <div className="truncate font-mono text-[11px] text-desktop-text-primary" title={liveBranchInfo.headCommit.sha}>
+                          {liveBranchInfo.headCommit.sha}
+                        </div>
+                        <div className="truncate text-[11px] text-desktop-text-primary">
+                          {liveBranchInfo.headCommit.message || "—"}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-[10px] text-desktop-text-secondary">
+                          {liveBranchInfo.headCommit.authorName ? (
+                            <span>{liveBranchInfo.headCommit.authorName}</span>
+                          ) : null}
+                          {liveBranchInfo.headCommit.authoredAt ? (
+                            <time dateTime={liveBranchInfo.headCommit.authoredAt}>
+                              {formatTimestamp(liveBranchInfo.headCommit.authoredAt)}
+                            </time>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {selectedCodebase.sourceUrl ? (
                     <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-3 py-3">

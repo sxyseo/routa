@@ -112,6 +112,8 @@ function getAutomationStepLabel(step: KanbanAutomationStep | undefined, stepInde
 }
 
 const NON_DEV_AUTOMATION_REPEAT_LIMIT = 3;
+/** Blocked lane allows more retries but is still bounded to prevent infinite loops. */
+const BLOCKED_AUTOMATION_REPEAT_LIMIT = 10;
 
 export function getNonDevAutomationRunCount(
   task: Pick<Task, "laneSessions"> | undefined,
@@ -141,17 +143,18 @@ export function hasExceededNonDevAutomationRepeatLimit(
   columnId: string,
   stage: KanbanColumnStage,
 ): boolean {
-  // Blocked lane should always allow automation so the resolver can attempt
-  // to unblock the task regardless of previous failure count.
-  if (stage === "blocked") {
-    return false;
-  }
-  return getNonDevAutomationRunCount(task, columnId, stage) >= NON_DEV_AUTOMATION_REPEAT_LIMIT;
+  const limit = stage === "blocked"
+    ? BLOCKED_AUTOMATION_REPEAT_LIMIT
+    : NON_DEV_AUTOMATION_REPEAT_LIMIT;
+  return getNonDevAutomationRunCount(task, columnId, stage) >= limit;
 }
 
-function buildNonDevAutomationRepeatLimitMessage(columnName: string, runCount: number): string {
+function buildNonDevAutomationRepeatLimitMessage(columnName: string, runCount: number, stage: KanbanColumnStage): string {
+  const limit = stage === "blocked"
+    ? BLOCKED_AUTOMATION_REPEAT_LIMIT
+    : NON_DEV_AUTOMATION_REPEAT_LIMIT;
   return `Stopped Kanban automation for "${columnName}" after ${runCount + 1} runs. `
-    + `Non-dev lanes are limited to ${NON_DEV_AUTOMATION_REPEAT_LIMIT} automation runs to prevent loops.`;
+    + `${stage === "blocked" ? "Blocked" : "Non-dev"} lanes are limited to ${limit} automation runs to prevent loops.`;
 }
 
 /** Context persisted for a session attempt when supervision is enabled. */
@@ -333,6 +336,7 @@ export class KanbanWorkflowOrchestrator {
         task.lastSyncError = buildNonDevAutomationRepeatLimitMessage(
           targetColumn.name,
           getNonDevAutomationRunCount(task, targetColumn.id, targetColumn.stage),
+          targetColumn.stage,
         );
         task.updatedAt = new Date();
         await this.taskStore.save(task);
@@ -403,6 +407,15 @@ export class KanbanWorkflowOrchestrator {
       );
       existingAutomation.status = "failed";
       this.cleanupCardSession?.(data.cardId);
+      // Mark the stale automation's session as "transitioned" so it doesn't
+      // stay "running" in laneSessions after the card moves to a new column.
+      if (existingAutomation.sessionId) {
+        const staleTask = await this.taskStore.get(data.cardId);
+        if (staleTask) {
+          markTaskLaneSessionStatus(staleTask, existingAutomation.sessionId, "transitioned");
+          await this.taskStore.save(staleTask);
+        }
+      }
     }
 
     const automationEntry: ActiveAutomation = {
@@ -600,6 +613,33 @@ export class KanbanWorkflowOrchestrator {
           `Auto-advancing as safety net. Specialist should call move_card explicitly.`
         );
         await this.autoAdvanceCard(cardId, automation);
+      }
+
+      // Terminal-lane guard: when done-lane automation completes successfully but
+      // the card has nowhere to advance (done is the last column), clear the
+      // triggerSessionId and ensure the task stays in a stable state. Without this,
+      // a stale triggerSessionId from a completed session combined with a non-COMPLETED
+      // task status would cause the Lane Scanner to re-trigger endlessly.
+      if (automation.status === "completed" && task && automation.stage === "done") {
+        const freshTask = await this.taskStore.get(cardId);
+        if (freshTask && freshTask.columnId === automation.columnId) {
+          // Card is still in the done column — check if it's the last column
+          const currentBoard = await this.kanbanBoardStore.get(automation.boardId);
+          if (currentBoard) {
+            const sortedCols = currentBoard.columns.slice().sort((a, b) => a.position - b.position);
+            const doneIndex = sortedCols.findIndex((c) => c.id === automation.columnId);
+            const isLastColumn = doneIndex === sortedCols.length - 1;
+            if (isLastColumn && freshTask.status !== "COMPLETED") {
+              console.log(
+                `[WorkflowOrchestrator] Card ${cardId} completed done-lane (terminal column). ` +
+                `Setting status to COMPLETED to prevent re-trigger loops.`,
+              );
+              freshTask.status = "COMPLETED" as import("../models/task").TaskStatus;
+              freshTask.updatedAt = new Date();
+              await this.taskStore.save(freshTask);
+            }
+          }
+        }
       }
 
       const completedAutomation = automation;
