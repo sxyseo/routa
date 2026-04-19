@@ -89,7 +89,7 @@ function buildSpecialistSystemPrompt(
 
   const sections = [specialist.systemPrompt.trim()];
 
-  if (specialist.id === "feature-surface-metadata-analyst") {
+  if (specialist.id === "feature-surface-metadata-analyst" || specialist.id === "feature-tree-orchestrator") {
     sections.push(buildFeatureTreeSpecPromptSection());
   }
 

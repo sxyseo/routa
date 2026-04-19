@@ -21,7 +21,7 @@ const { useFeatureExplorerData } = vi.hoisted(() => ({
 const analysisAcpState = vi.hoisted(() => ({
   connected: false,
   sessionId: null as string | null,
-  updates: [],
+  updates: [] as Array<{ sessionId: string; update?: Record<string, unknown> }>,
   providers: [
     {
       id: "opencode",
@@ -200,6 +200,7 @@ describe("FeatureExplorerPageClient", () => {
     sessionLaunchState.storePendingPrompt.mockReset();
     analysisAcpState.connected = false;
     analysisAcpState.sessionId = null;
+    analysisAcpState.updates = [];
     analysisAcpState.selectedProvider = "opencode";
     analysisAcpState.error = null;
     analysisAcpState.connect.mockClear();
@@ -351,7 +352,23 @@ describe("FeatureExplorerPageClient", () => {
   });
 
   it("opens the generate drawer and posts generation requests with the selected repo context", async () => {
-    sessionLaunchState.desktopAwareFetch.mockResolvedValue(
+    sessionLaunchState.desktopAwareFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          repoRoot: "/repo/default",
+          selectedScanRoot: "/repo/default",
+          frameworksDetected: ["nextjs"],
+          adapters: [{ id: "nextjs-app-router", confidence: "high", signals: ["src/app"] }],
+          candidateRoots: [],
+          warnings: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    sessionLaunchState.desktopAwareFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           generatedAt: "2026-04-18T07:50:22.614Z",
@@ -377,6 +394,8 @@ describe("FeatureExplorerPageClient", () => {
 
     expect(screen.getByTestId("generate-feature-tree-drawer")).toBeTruthy();
 
+    await screen.findByText("Quick scan");
+    fireEvent.click(screen.getByRole("button", { name: "Quick scan" }));
     fireEvent.click(screen.getByLabelText("Preview only"));
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
@@ -390,9 +409,10 @@ describe("FeatureExplorerPageClient", () => {
       );
     });
 
-    const requestBody = JSON.parse(
-      (sessionLaunchState.desktopAwareFetch.mock.calls[0]?.[1] as RequestInit)?.body as string,
+    const generateCall = sessionLaunchState.desktopAwareFetch.mock.calls.find(
+      ([input]) => input === "/spec/feature-tree/generate",
     );
+    const requestBody = JSON.parse((generateCall?.[1] as RequestInit)?.body as string);
     expect(requestBody).toEqual({
       workspaceId: "default",
       repoPath: "/repo/default",
@@ -400,8 +420,145 @@ describe("FeatureExplorerPageClient", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("nextjs")).toBeTruthy();
+      expect(screen.getAllByText("nextjs").length).toBeGreaterThan(0);
       expect(screen.getByText("737")).toBeTruthy();
+    });
+  });
+
+  it("runs agent-first generation and auto-commits returned metadata after turn completion", async () => {
+    analysisAcpState.createSession.mockResolvedValue({ sessionId: "feature-tree-session-1" });
+    sessionLaunchState.desktopAwareFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            repoRoot: "/repo/default",
+            selectedScanRoot: "/repo/default/packages/app",
+            frameworksDetected: ["nextjs"],
+            adapters: [{ id: "nextjs-app-router", confidence: "high", signals: ["src/app"] }],
+            candidateRoots: [
+              {
+                path: "/repo/default/packages/app",
+                kind: "app",
+                score: 99,
+                surfaceCounts: { pages: 16, appRouterApis: 1, pagesApis: 3, rustApis: 0 },
+                adapters: ["nextjs-app-router", "nextjs-pages-api"],
+                warnings: [],
+              },
+            ],
+            warnings: ["Selected nested scan root packages/app based on detected product surface."],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            sessionId: "feature-tree-session-1",
+            messages: [
+              {
+                role: "assistant",
+                content: JSON.stringify({
+                  schemaVersion: 1,
+                  capabilityGroups: [{ id: "workspace", name: "Workspace" }],
+                  features: [{ id: "workspace-overview", name: "Workspace Overview", group: "workspace", status: "draft" }],
+                }),
+              },
+            ],
+            latestEventKind: "turn_complete",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            generatedAt: "2026-04-19T12:00:00.000Z",
+            frameworksDetected: ["nextjs"],
+            wroteFiles: [
+              "docs/product-specs/FEATURE_TREE.md",
+              "docs/product-specs/feature-tree.index.json",
+            ],
+            warnings: ["Scanned packages/app and wrote outputs to repo root."],
+            pagesCount: 16,
+            apisCount: 4,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+
+    const view = render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    fireEvent.click(screen.getByTestId("generate-feature-tree-button"));
+
+    await screen.findByText("Agent");
+    fireEvent.click(screen.getByRole("button", { name: "Generate with agent" }));
+
+    await waitFor(() => {
+      expect(analysisAcpState.connect).toHaveBeenCalled();
+      expect(analysisAcpState.createSession).toHaveBeenCalledWith(
+        "/repo/default",
+        "opencode",
+        undefined,
+        "ROUTA",
+        "default",
+        undefined,
+        undefined,
+        "feature-tree-orchestrator",
+        "en",
+        undefined,
+        undefined,
+        "main",
+      );
+      expect(analysisAcpState.promptSession).toHaveBeenCalledWith(
+        "feature-tree-session-1",
+        expect.stringContaining("Preferred scan root: /repo/default/packages/app"),
+      );
+    });
+
+    analysisAcpState.updates = [
+      {
+        sessionId: "feature-tree-session-1",
+        update: { sessionUpdate: "turn_complete" },
+      },
+    ];
+
+    view.rerender(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(sessionLaunchState.desktopAwareFetch).toHaveBeenCalledWith(
+        "/sessions/feature-tree-session-1/transcript",
+      );
+      expect(sessionLaunchState.desktopAwareFetch).toHaveBeenCalledWith(
+        "/spec/feature-tree/commit",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+
+    const commitCall = sessionLaunchState.desktopAwareFetch.mock.calls.find(
+      ([input]) => input === "/spec/feature-tree/commit",
+    );
+    const commitBody = JSON.parse((commitCall?.[1] as RequestInit)?.body as string);
+    expect(commitBody).toEqual({
+      workspaceId: "default",
+      repoPath: "/repo/default",
+      scanRoot: "/repo/default/packages/app",
+      metadata: {
+        schemaVersion: 1,
+        capabilityGroups: [{ id: "workspace", name: "Workspace" }],
+        features: [{ id: "workspace-overview", name: "Workspace Overview", group: "workspace", status: "draft" }],
+      },
     });
   });
 

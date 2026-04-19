@@ -3,6 +3,8 @@
 import { type ComponentProps } from "react";
 
 import { ChatPanel } from "@/client/components/chat-panel";
+import type { RepoSelection } from "@/client/components/repo-picker";
+import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { useTranslation } from "@/i18n";
 
 import {
@@ -56,6 +58,8 @@ export function FeatureExplorerInspectorPane({
 export function FeatureExplorerDrawers({
   workspaceId,
   repoPath,
+  repoSelection,
+  codebases,
   generateOpen,
   onCloseGenerate,
   onGenerated,
@@ -80,12 +84,12 @@ export function FeatureExplorerDrawers({
   acp,
   onEnsureAnalysisSession,
   onSelectAnalysisSession,
-  repoSelection,
-  codebases,
   t,
 }: {
   workspaceId: string;
   repoPath?: string;
+  repoSelection: RepoSelection | null;
+  codebases: CodebaseData[];
   generateOpen: boolean;
   onCloseGenerate: () => void;
   onGenerated: () => void;
@@ -110,8 +114,6 @@ export function FeatureExplorerDrawers({
   acp: ComponentProps<typeof ChatPanel>["acp"];
   onEnsureAnalysisSession: () => Promise<string | null>;
   onSelectAnalysisSession: (sessionId: string) => Promise<void>;
-  repoSelection: ComponentProps<typeof ChatPanel>["repoSelection"];
-  codebases: ComponentProps<typeof ChatPanel>["codebases"];
   t: TranslationT;
 }) {
   return (
@@ -120,6 +122,8 @@ export function FeatureExplorerDrawers({
         open={generateOpen}
         workspaceId={workspaceId}
         repoPath={repoPath}
+        repoSelection={repoSelection}
+        codebases={codebases}
         onClose={onCloseGenerate}
         onGenerated={onGenerated}
       />
