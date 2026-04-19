@@ -10,7 +10,7 @@ describe("board-branch-rules", () => {
   describe("normalizeBranchRules", () => {
     it("returns defaults when input is undefined", () => {
       const rules = normalizeBranchRules(undefined);
-      expect(rules.lifecycle.autoCreatePullRequest).toBe(false);
+      expect(rules.lifecycle.autoCreatePullRequest).toBe(true);
       expect(rules.lifecycle.deleteBranchOnMerge).toBe(true);
       expect(rules.lifecycle.removeWorktreeOnMerge).toBe(true);
       expect(rules.lifecycle.rebaseDownstream).toBe(true);
@@ -30,14 +30,14 @@ describe("board-branch-rules", () => {
       expect(rules.lifecycle.autoCreatePullRequest).toBe(false);
     });
 
-    it("defaults autoCreatePullRequest to false for non-boolean values", () => {
+    it("defaults autoCreatePullRequest to true for non-boolean values", () => {
       const rules = normalizeBranchRules({
         lifecycle: {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           autoCreatePullRequest: "yes" as any,
         },
       });
-      expect(rules.lifecycle.autoCreatePullRequest).toBe(false);
+      expect(rules.lifecycle.autoCreatePullRequest).toBe(true);
     });
   });
 
@@ -69,7 +69,7 @@ describe("board-branch-rules", () => {
       expect(rules.lifecycle.deleteBranchOnMerge).toBe(false);
       expect(rules.lifecycle.rebaseDownstream).toBe(false);
       expect(rules.lifecycle.removeWorktreeOnMerge).toBe(true); // default
-      expect(rules.lifecycle.autoCreatePullRequest).toBe(false); // default
+      expect(rules.lifecycle.autoCreatePullRequest).toBe(true); // default
     });
 
     it("handles corrupted JSON gracefully", () => {

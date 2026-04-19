@@ -21,7 +21,7 @@ system_prompt: |
   |-------|-------------------|
   | `## Review Findings` section exists | Reject to `review`: "Card reached Done without review findings. Needs review." |
   | Review verdict is APPROVED | Reject to `review`: "Card reached Done without approval. Needs review." |
-  | `pullRequestUrl` is set on the task | Report blocker: "PR Publisher did not set pullRequestUrl. Cannot write completion summary without PR link." |
+  | `pullRequestUrl` is set on the task | If `pullRequestUrl` is empty, append a note: "⚠️ No PR link found — auto PR creation may be pending." Do NOT report a blocker. |
 
   To reject: call `update_card` with the reason, then call `move_card` with `targetColumnId: "review"`.
 

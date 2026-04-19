@@ -328,7 +328,17 @@ export class KanbanWorkflowOrchestrator {
     const laneObjective = task?.objective?.trim() || data.cardTitle;
     const targetColumn = resolved.column;
     const automation = resolved.automation;
-    const steps = getKanbanAutomationSteps(automation);
+    let steps = getKanbanAutomationSteps(automation);
+
+    // When autoCreatePullRequest is enabled, skip the pr-publisher specialist
+    // step — the pr-auto-create listener will handle PR creation via event.
+    if (targetColumn.stage === "done" && this.resolveBranchRules) {
+      const branchRules = await this.resolveBranchRules({ workspaceId: data.workspaceId, boardId: data.boardId });
+      if (branchRules?.lifecycle.autoCreatePullRequest) {
+        steps = steps.filter(s => s.specialistId !== "kanban-pr-publisher");
+      }
+    }
+
     if (steps.length === 0) return;
 
     if (hasExceededNonDevAutomationRepeatLimit(task, targetColumn.id, targetColumn.stage)) {

@@ -84,7 +84,7 @@ export function KanbanSettingsModal({
         deleteBranchOnMerge: true,
         removeWorktreeOnMerge: true,
         rebaseDownstream: true,
-        autoCreatePullRequest: false,
+        autoCreatePullRequest: true,
       },
       baseBranch: {
         strategy: "dependency_inherit",
@@ -709,7 +709,7 @@ export function KanbanSettingsModal({
                       <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
                         <input
                           type="checkbox"
-                          checked={branchRules?.lifecycle.autoCreatePullRequest ?? false}
+                          checked={branchRules?.lifecycle.autoCreatePullRequest ?? true}
                           onChange={(event) => setBranchRules((current) => ({
                             ...current,
                             lifecycle: { ...current.lifecycle, autoCreatePullRequest: event.target.checked },

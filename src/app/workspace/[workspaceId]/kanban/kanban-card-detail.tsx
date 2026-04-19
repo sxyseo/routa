@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Maximize2, Minimize2, X } from "lucide-react";
+import { Check, Copy, Maximize2, Minimize2, X } from "lucide-react";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { Select } from "@/client/components/select";
@@ -145,6 +145,68 @@ function formatCommentActor(entry: {
     return entry.sessionId;
   }
   return null;
+}
+
+function ProgressNoteEntry({
+  entry,
+  index,
+  t,
+}: {
+  entry: { id: string; body: string; createdAt?: string; source?: "legacy_import" | "update_card"; agentId?: string; sessionId?: string };
+  index: number;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  const [copied, setCopied] = useState(false);
+  const timestamp = formatCommentTimestamp(entry.createdAt);
+  const sourceLabel = formatCommentSource(entry.source, t);
+  const actorLabel = formatCommentActor(entry);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(entry.body).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      setCopied(false);
+    });
+  };
+
+  return (
+    <div className="group rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/30">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+        <div className="flex flex-wrap items-center gap-2">
+          <span>{`Note ${index + 1}`}</span>
+          {sourceLabel ? (
+            <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
+              {sourceLabel}
+            </span>
+          ) : null}
+          {actorLabel ? (
+            <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
+              {actorLabel}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          {timestamp ? <span>{timestamp}</span> : null}
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="shrink-0 rounded p-0.5 text-slate-400 opacity-0 transition-colors hover:bg-slate-200 hover:text-slate-600 group-hover:opacity-100 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+            title={t.common.copyToClipboard}
+            aria-label={t.common.copyToClipboard}
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+      </div>
+      <div className="mt-2">
+        <MarkdownViewer
+          content={entry.body}
+          className="prose prose-sm max-w-none text-slate-800 dark:prose-invert dark:text-slate-200"
+        />
+      </div>
+    </div>
+  );
 }
 
 function formatEffectiveAutomationTarget(
@@ -538,37 +600,9 @@ export function KanbanCardDetail({
                   </div>
                   {progressNotes.length > 0 ? (
                     <div className={`space-y-3 ${compactMode ? "mt-2 px-3 py-2.5" : "mt-2 px-4 py-2.5"}`}>
-                      {progressNotes.map((entry, index) => {
-                        const timestamp = formatCommentTimestamp(entry.createdAt);
-                        const sourceLabel = formatCommentSource(entry.source, t);
-                        const actorLabel = formatCommentActor(entry);
-                        return (
-                          <div key={entry.id} className="rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/30">
-                            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span>{`Note ${index + 1}`}</span>
-                                {sourceLabel ? (
-                                  <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
-                                    {sourceLabel}
-                                  </span>
-                                ) : null}
-                                {actorLabel ? (
-                                  <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
-                                    {actorLabel}
-                                  </span>
-                                ) : null}
-                              </div>
-                              {timestamp ? <span>{timestamp}</span> : null}
-                            </div>
-                            <div className="mt-2">
-                              <MarkdownViewer
-                                content={entry.body}
-                                className="prose prose-sm max-w-none text-slate-800 dark:prose-invert dark:text-slate-200"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {progressNotes.map((entry, index) => (
+                        <ProgressNoteEntry key={entry.id} entry={entry} index={index} t={t} />
+                      ))}
                     </div>
                   ) : (
                     <div className={`text-sm text-slate-500 dark:text-slate-400 ${compactMode ? "mt-2 px-3 py-2.5" : "mt-2 px-4 py-2.5"}`}>

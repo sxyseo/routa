@@ -95,7 +95,7 @@ export const DEFAULT_BRANCH_RULES: KanbanBranchRules = {
     deleteBranchOnMerge: true,
     removeWorktreeOnMerge: true,
     rebaseDownstream: true,
-    autoCreatePullRequest: false,
+    autoCreatePullRequest: true,
   },
   triggers: {
     worktreeCreationColumns: ["dev"],

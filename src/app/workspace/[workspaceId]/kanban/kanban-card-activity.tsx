@@ -396,7 +396,7 @@ export function KanbanCardActivityBar({
         </div>
       )}
       <div className="flex items-start gap-2 border-b border-slate-200/70 pb-2 dark:border-[#232736]">
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1 border-slate-200/70">
+        <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto border-slate-200/70 scrollbar-thin">
           {orderedSessionIds.map((sessionId, index) => {
             const active = sessionId === selectedRunId;
             const laneSession = laneSessionMap.get(sessionId);
@@ -410,7 +410,7 @@ export function KanbanCardActivityBar({
                 key={sessionId}
                 type="button"
                 onClick={() => onSelectSession?.(sessionId)}
-                className={`inline-flex max-w-full items-center gap-1.5 border-b-2 px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                className={`shrink-0 inline-flex max-w-full items-center gap-1.5 border-b-2 px-3 py-1.5 text-[11px] font-medium transition-colors ${
                   active
                     ? "border-b-[#b45309] text-slate-900 dark:border-b-[#f59e0b] dark:text-slate-100"
                     : "border-b-transparent text-slate-600 hover:border-b-slate-300 dark:border-b-transparent dark:text-slate-400 dark:hover:border-b-slate-600"
@@ -514,6 +514,7 @@ function SessionHistoryPanel({
   const sessionMap = new Map(sessions.map((session) => [session.sessionId, session]));
   const laneSessionMap = new Map(laneSessions.map((entry) => [entry.sessionId, entry]));
   const runMap = new Map((runs ?? []).map((run) => [run.sessionId ?? run.id, run]));
+  const reversedIds = [...orderedSessionIds].reverse();
 
   return (
     <>
@@ -529,7 +530,8 @@ function SessionHistoryPanel({
         </div>
       </div>
       <div className={`overflow-y-auto pr-1 ${compact ? "mt-3 max-h-80 space-y-1.5" : "mt-4 max-h-[34rem] space-y-2"}`}>
-        {orderedSessionIds.map((sessionId, index) => {
+        {reversedIds.map((sessionId, reverseIndex) => {
+          const index = orderedSessionIds.length - 1 - reverseIndex;
           const session = sessionMap.get(sessionId);
           const isCurrent = sessionId === currentSessionId;
           const laneSession = laneSessionMap.get(sessionId);
