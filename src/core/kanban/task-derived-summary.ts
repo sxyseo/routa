@@ -46,6 +46,18 @@ const REQUIRED_TASK_FIELD_LABELS: Record<KanbanRequiredTaskField, string> = {
 
 const DEPENDENCY_DECLARATION_PATTERN = /\b(depends on|blocked by|dependency plan|execution order|ready now|no dependencies)\b/i;
 
+/**
+ * Matches scope text that implies the task has external dependencies
+ * (e.g. "requires Redis", "depends on the payment API", "integrates with Slack").
+ */
+const SCOPE_EXTERNAL_DEPENDENCY_PATTERN = /\b(requires?|depends?\s+on|integrates?\s+with|consumes?|relies?\s+on|needs?|uses?)\s+\S/i;
+
+/**
+ * Matches an explicit declaration that a task has no dependencies.
+ * Used to allow tasks with no dependency hints in scope to pass the check.
+ */
+const EXPLICIT_NO_DEPENDENCIES_PATTERN = /\bno\s+dependencies\b/i;
+
 function normalizeText(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
@@ -183,6 +195,9 @@ export function buildTaskStoryReadinessChecks(task: Task): TaskStoryReadiness["c
   const acceptanceCriteria = normalizeItems(task.acceptanceCriteria);
   const verificationCommands = normalizeItems(task.verificationCommands);
   const testCases = normalizeItems(task.testCases);
+  const dependencies = normalizeItems(task.dependencies);
+
+  const depsResult = checkDependenciesDeclared(task, scope, objective, dependencies, parseResult, hasCanonicalDependencies);
 
   return {
     scope: scope.length > 0,
@@ -190,11 +205,65 @@ export function buildTaskStoryReadinessChecks(task: Task): TaskStoryReadiness["c
     verificationCommands: verificationCommands.length > 0,
     testCases: testCases.length > 0,
     verificationPlan: verificationCommands.length > 0 || testCases.length > 0,
-    dependenciesDeclared: hasCanonicalDependencies
-      || normalizeItems(task.dependencies).length > 0
-      || Boolean(normalizeText(task.parallelGroup))
-      || DEPENDENCY_DECLARATION_PATTERN.test(objective),
+    dependenciesDeclared: depsResult.passed,
+    dependenciesDeclaredHint: depsResult.hint,
   };
+}
+
+/**
+ * Enhanced dependenciesDeclared check:
+ * - AC1: When scope mentions external dependency keywords and dependencies array is empty → fail with hint
+ * - AC2: When no scope dependency hints and dependencies is empty → allow explicit "no dependencies" marking to pass
+ */
+function checkDependenciesDeclared(
+  task: Task,
+  scope: string,
+  objective: string,
+  dependencies: string[],
+  parseResult: ReturnType<typeof parseCanonicalStory>,
+  hasCanonicalDependencies: boolean,
+): { passed: boolean; hint?: string } {
+  // Dependencies array non-empty → pass
+  if (dependencies.length > 0) {
+    return { passed: true };
+  }
+
+  // Canonical story declares dependencies → pass
+  if (hasCanonicalDependencies) {
+    return { passed: true };
+  }
+
+  // Canonical story lists depends_on items → pass
+  const canonicalDependsOn = parseResult.story?.story.dependencies_and_sequencing.depends_on ?? [];
+  if (canonicalDependsOn.length > 0) {
+    return { passed: true };
+  }
+
+  // Parallel group set → pass
+  if (normalizeText(task.parallelGroup)) {
+    return { passed: true };
+  }
+
+  // AC1: Scope mentions external dependencies but none declared → fail
+  const scopeHint = SCOPE_EXTERNAL_DEPENDENCY_PATTERN.exec(scope);
+  if (scopeHint) {
+    return {
+      passed: false,
+      hint: `Scope mentions "${scopeHint[0].trim()}" but no dependencies are declared. Add required dependencies to the dependencies array or provide a canonical story with dependencies_and_sequencing.`,
+    };
+  }
+
+  // AC2: No scope hints → allow explicit "no dependencies" marking
+  if (EXPLICIT_NO_DEPENDENCIES_PATTERN.test(objective)) {
+    return { passed: true };
+  }
+
+  // Backward compatibility: general dependency declaration pattern in narrative
+  if (DEPENDENCY_DECLARATION_PATTERN.test(objective)) {
+    return { passed: true };
+  }
+
+  return { passed: false };
 }
 
 export function validateTaskReadiness(

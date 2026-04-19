@@ -63,6 +63,7 @@ export interface TaskStoryReadiness {
     testCases: boolean;
     verificationPlan: boolean;
     dependenciesDeclared: boolean;
+    dependenciesDeclaredHint?: string;
   };
 }
 

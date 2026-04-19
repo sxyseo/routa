@@ -217,6 +217,7 @@ export interface TaskInfo {
       testCases: boolean;
       verificationPlan: boolean;
       dependenciesDeclared: boolean;
+      dependenciesDeclaredHint?: string;
     };
   };
   investValidation?: {
