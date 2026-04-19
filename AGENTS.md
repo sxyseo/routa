@@ -33,6 +33,7 @@ The project is intentionally not "two separate products". Web and desktop differ
 - If Tauri routes look wrong, verify fallback mapping in `crates/routa-server/src/lib.rs` and placeholders in `out/workspace/__placeholder__/`.
 - For large or cross-core changes, run graph probes first: `entrix graph impact`, `entrix graph test-radius`, or `entrix graph review-context`.
 - Temporary frontend debug `console.log` is allowed during diagnosis; remove all debug logs before finish.
+- Shared repo-level agent skills live under `.agents/skills/`. The canonical release automation skill is `.agents/skills/release/` and should be invoked as `/release`.
 
 ## Validation
 
