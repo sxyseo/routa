@@ -16,6 +16,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       "kanban-qa-frontend",
       "kanban-pr-publisher",
       "kanban-blocked-resolver",
+      undefined,
     ]);
     expect(columns.map((column) => column.automation?.steps?.[0]?.role)).toEqual([
       "CRAFTER",
@@ -24,6 +25,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       "GATE",
       "DEVELOPER",
       "CRAFTER",
+      undefined,
     ]);
     expect(columns[0].automation?.autoAdvanceOnSuccess).toBe(true);
     expect(columns.slice(1).every((column) => column.automation?.autoAdvanceOnSuccess === false)).toBe(true);
@@ -54,7 +56,7 @@ describe("applyRecommendedAutomationToColumns", () => {
     ]);
   });
 
-  it("normalizes the default board layout to keep blocked after done", () => {
+  it("normalizes the default board layout to keep blocked after done and archived last", () => {
     const columns = normalizeDefaultKanbanColumnPositions([
       { ...DEFAULT_KANBAN_COLUMNS.find((column) => column.id === "blocked")!, position: 4 },
       { ...DEFAULT_KANBAN_COLUMNS.find((column) => column.id === "done")!, position: 5 },
@@ -68,8 +70,9 @@ describe("applyRecommendedAutomationToColumns", () => {
       "review",
       "done",
       "blocked",
+      "archived",
     ]);
-    expect(columns.map((column) => column.position)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(columns.map((column) => column.position)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
   it("backfills legacy backlog automation with system auto-advance", () => {
