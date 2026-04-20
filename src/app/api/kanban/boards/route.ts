@@ -15,6 +15,17 @@ import type { KanbanBoard, KanbanDevSessionSupervision } from "@/core/models/kan
 
 export const dynamic = "force-dynamic";
 
+const REVIVE_COOLDOWN_MS = 30_000;
+const lastReviveByWorkspace = new Map<string, number>();
+
+function cleanupReviveTimestamps(): void {
+  if (lastReviveByWorkspace.size <= 50) return;
+  const cutoff = Date.now() - REVIVE_COOLDOWN_MS * 2;
+  for (const [key, ts] of lastReviveByWorkspace) {
+    if (ts < cutoff) lastReviveByWorkspace.delete(key);
+  }
+}
+
 function sanitizeBoard(
   board: KanbanBoard,
   extras?: {
@@ -53,11 +64,35 @@ export async function GET(request: NextRequest) {
   const queue = getKanbanSessionQueue(system);
   const sessionStore = getHttpSessionStore();
   const processManager = getAcpProcessManager();
-  await sessionStore.hydrateFromDb();
-  await Promise.all(boards.map((board) => reviveMissingEntryAutomations(system, workspaceId, board.id, {
-    sessionStore,
-    processManager,
-  })));
+
+  // Fire-and-forget: start hydration but don't block the boards response.
+  // The revive logic on the next request (or SSE tick) will pick up any
+  // recovered automations once hydration completes.
+  const hydrationDone = sessionStore.hydrateFromDb();
+
+  // Only run revive if hydration is already done (subsequent requests).
+  // Skip on first request to avoid blocking 30+ seconds.
+  // Cooldown prevents revive-induced SSE events from causing feedback loops.
+  const lastRevive = lastReviveByWorkspace.get(workspaceId) ?? 0;
+  const reviveAllowed = sessionStore.isHydrated() && Date.now() - lastRevive >= REVIVE_COOLDOWN_MS;
+  cleanupReviveTimestamps();
+  if (reviveAllowed) {
+    lastReviveByWorkspace.set(workspaceId, Date.now());
+    await Promise.all(boards.map((board) => reviveMissingEntryAutomations(system, workspaceId, board.id, {
+      sessionStore,
+      processManager,
+    })));
+  } else if (!sessionStore.isHydrated()) {
+    void hydrationDone.then(() => {
+      lastReviveByWorkspace.set(workspaceId, Date.now());
+      for (const board of boards) {
+        void reviveMissingEntryAutomations(system, workspaceId, board.id, {
+          sessionStore,
+          processManager,
+        });
+      }
+    });
+  }
   return NextResponse.json({
     boards: await Promise.all(boards.map(async (board) => sanitizeBoard(board, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),

@@ -86,6 +86,14 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
     sqlite.pragma("journal_mode = WAL");
     // Enable foreign keys
     sqlite.pragma("foreign_keys = ON");
+    // Performance PRAGMAs: reduce fsync overhead and use memory for temp tables.
+    // NOTE: synchronous=NORMAL trades durability for speed — in WAL mode, a power
+    // loss or OS crash on Windows may lose the last ~1s of transactions. Acceptable
+    // for a local dev tool; set ROUTA_SQLITE_SYNCHRONOUS=FULL to override.
+    sqlite.pragma("synchronous = NORMAL");
+    sqlite.pragma("temp_store = MEMORY");
+    sqlite.pragma("mmap_size = 268435456");    // 256 MB memory-mapped I/O
+    sqlite.pragma("cache_size = -20000");       // 20 MB page cache
 
     // Wrap raw sqlite with timing before passing to Drizzle
     const timedSqlite = withSqliteTiming(sqlite);
@@ -524,6 +532,11 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       depends_on_task_ids TEXT,
       task_output TEXT
     )
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_background_tasks_result_session_id
+    ON background_tasks (result_session_id)
   `);
 
   db.run(sql`

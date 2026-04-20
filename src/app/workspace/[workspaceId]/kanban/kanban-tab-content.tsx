@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentProps } from "react";
+import React, { type ComponentProps } from "react";
 import { ArrowRight } from "lucide-react";
 import { AcpProviderDropdown } from "@/client/components/acp-provider-dropdown";
 import type { KanbanAgentPromptHandler, KanbanBoardInfo } from "../types";
@@ -152,6 +152,8 @@ function KanbanTabHeaderActionSlot({
   );
 }
 
+const KanbanTabHeaderActionSlotMemo = React.memo(KanbanTabHeaderActionSlot);
+
 export function KanbanTabContent({
   headerProps,
   headerActionProps,
@@ -174,7 +176,7 @@ export function KanbanTabContent({
   };
 
   const headerActionSlot = (
-    <KanbanTabHeaderActionSlot
+    <KanbanTabHeaderActionSlotMemo
       board={headerProps.board}
       onAgentPrompt={headerActionProps.onAgentPrompt}
       availableProviders={headerActionProps.availableProviders}

@@ -1,4 +1,4 @@
-export const AGENT_REFRESH_BURST_DELAYS_MS = [1_000, 4_000, 8_000, 12_000] as const;
+export const AGENT_REFRESH_BURST_DELAYS_MS = [2_000, 10_000] as const;
 export { buildKanbanTaskAgentPrompt } from "./i18n/kanban-task-agent";
 
 export function scheduleKanbanRefreshBurst(onRefresh: () => void): () => void {

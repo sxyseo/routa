@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { GitBranch, FileCode, Activity, Zap, RotateCcw } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
@@ -122,7 +122,7 @@ function fitnessDotClass(
   return "bg-slate-400";
 }
 
-export function KanbanStatusBar({
+export const KanbanStatusBar = React.memo(function KanbanStatusBar({
   defaultCodebase,
   codebases,
   fileChangesSummary,
@@ -147,6 +147,19 @@ export function KanbanStatusBar({
 }: KanbanStatusBarProps) {
   const { t } = useTranslation();
   const [recovering, setRecovering] = useState(false);
+  const handleRecover = useCallback(async () => {
+    if (recovering) return;
+    setRecovering(true);
+    try {
+      const params = new URLSearchParams();
+      if (workspaceId) params.set("workspaceId", workspaceId);
+      if (boardId) params.set("boardId", boardId);
+      await desktopAwareFetch(`/api/kanban/recover-running?${params}`, { method: "POST" });
+      onRecovered?.();
+    } finally {
+      setRecovering(false);
+    }
+  }, [recovering, workspaceId, boardId, onRecovered]);
   const repoCount = codebases.length;
   const repoDisplayName = defaultCodebase
     ? defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? defaultCodebase.repoPath
@@ -365,18 +378,7 @@ export function KanbanStatusBar({
             </span>
             {(boardQueue?.runningCount ?? 0) > 0 && workspaceId && (
               <button
-                onClick={useCallback(async () => {
-                  if (recovering) return;
-                  setRecovering(true);
-                  try {
-                    const params = new URLSearchParams({ workspaceId });
-                    if (boardId) params.set("boardId", boardId);
-                    await desktopAwareFetch(`/api/kanban/recover-running?${params}`, { method: "POST" });
-                    onRecovered?.();
-                  } finally {
-                    setRecovering(false);
-                  }
-                }, [recovering, workspaceId, boardId, onRecovered])}
+                onClick={handleRecover}
                 disabled={recovering}
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-desktop-bg-active transition-colors disabled:opacity-50"
                 title="清除所有僵尸运行状态"
@@ -402,4 +404,4 @@ export function KanbanStatusBar({
       </div>
     </div>
   );
-}
+});

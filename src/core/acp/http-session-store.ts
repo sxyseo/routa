@@ -207,6 +207,8 @@ class HttpSessionStore {
   private static readonly CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   private lastCleanupTime = 0;
   private lastAccessTime = new Map<string, number>();
+  /** Sessions confirmed not linked to any BackgroundTask — skip future lookups. */
+  private nonBackgroundSessions = new Set<string>();
 
   enterStreamingMode(sessionId: string): void {
     this.streamingSessionIds.add(sessionId);
@@ -284,6 +286,7 @@ class HttpSessionStore {
     this.sessionActivities.delete(sessionId);
     this.pendingNotifications.delete(sessionId);
     this.sessionAssistantOutput.delete(sessionId);
+    this.nonBackgroundSessions.delete(sessionId);
     // Clean up AgentEventBridge
     this.agentEventBridges.get(sessionId)?.cleanup();
     this.agentEventBridges.delete(sessionId);
@@ -970,8 +973,13 @@ class HttpSessionStore {
     };
   }
 
-  /** Whether DB hydration has been performed */
+  /** Whether DB hydration has completed (not just started) */
   private hydrated = false;
+
+  /** Returns true if the initial DB hydration has completed. */
+  isHydrated(): boolean {
+    return this.hydrated;
+  }
 
   /**
    * Load sessions from the database into the in-memory store.
@@ -979,7 +987,6 @@ class HttpSessionStore {
    */
   async hydrateFromDb(): Promise<void> {
     if (this.hydrated) return;
-    this.hydrated = true;
 
     const dbSessions = await hydrateSessionsFromDb();
     for (const s of dbSessions) {
@@ -1005,6 +1012,7 @@ class HttpSessionStore {
     if (dbSessions.length > 0) {
       console.log(`[HttpSessionStore] Hydrated ${dbSessions.length} sessions from database`);
     }
+    this.hydrated = true;
   }
 
   /**
@@ -1016,9 +1024,13 @@ class HttpSessionStore {
     updates: NormalizedSessionUpdate[]
   ): Promise<void> {
     try {
+      if (this.nonBackgroundSessions.has(sessionId)) return;
       const system = getRoutaSystem();
       const task = await system.backgroundTaskStore.findBySessionId(sessionId);
-      if (!task) return; // Not a background task session
+      if (!task) {
+        this.nonBackgroundSessions.add(sessionId);
+        return;
+      }
 
       let latestOutput = task.taskOutput ?? "";
 

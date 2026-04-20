@@ -28,7 +28,7 @@
   ],
   "scripts": {
     "postinstall": "node scripts/install/run-patch-package.mjs",
-    "dev": "cross-env NODE_OPTIONS='--max-old-space-size=4096' next dev",
+    "dev": "cross-env NODE_OPTIONS='--max-old-space-size=8192' next dev",
     "acp:runner": "node --import tsx scripts/fitness/start-acp-runner.ts",
     "build": "cross-env NODE_OPTIONS='--max-old-space-size=8192' next build",
     "tauri:dev": "npm --prefix apps/desktop run dev",

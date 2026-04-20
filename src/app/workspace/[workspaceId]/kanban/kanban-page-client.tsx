@@ -67,6 +67,8 @@ export function KanbanPageClient() {
   const refreshBurstCleanupRef = useRef<(() => void) | null>(null);
   const warmedupProvidersRef = useRef<Set<string>>(new Set());
   const autoSyncedWorkspaceRef = useRef<string | null>(null);
+  const codebasesRef = useRef<CodebaseData[]>(codebases);
+  codebasesRef.current = codebases;
 
   // Auto-connect ACP
   useEffect(() => {
@@ -183,18 +185,25 @@ export function KanbanPageClient() {
     })();
   }, [workspaceId, refreshKey]);
 
-  // Fetch specialists
+  // Fetch specialists — skip the initial SSR locale and wait for the client-side
+  // locale to stabilize to avoid double-fetching (e.g. en→zh-CN).
+  const stableSpecialistLanguageRef = useRef<KanbanSpecialistLanguage | null>(null);
   useEffect(() => {
+    if (stableSpecialistLanguageRef.current === specialistLanguage) return;
+    stableSpecialistLanguageRef.current = specialistLanguage;
+    const controller = new AbortController();
     (async () => {
       try {
         const res = await desktopAwareFetch(
           `/api/specialists?workspaceId=${encodeURIComponent(workspaceId)}&locale=${encodeURIComponent(specialistLanguage)}`,
-          { cache: "no-store" },
+          { cache: "no-store", signal: controller.signal },
         );
         const data = await res.json();
+        if (controller.signal.aborted) return;
         setSpecialists(Array.isArray(data?.specialists) ? data.specialists : []);
       } catch { /* ignore */ }
     })();
+    return () => controller.abort();
   }, [workspaceId, specialistLanguage]);
 
   useEffect(() => {
@@ -375,12 +384,12 @@ export function KanbanPageClient() {
 
   useEffect(() => {
     if (!workspaceId || workspaceId === "__placeholder__") return;
-    if (codebases.length === 0) return;
+    if (codebasesRef.current.length === 0) return;
     if (autoSyncedWorkspaceRef.current === workspaceId) return;
 
     autoSyncedWorkspaceRef.current = workspaceId;
-    void syncWorkspaceRepos(codebases);
-  }, [workspaceId, codebases, syncWorkspaceRepos]);
+    void syncWorkspaceRepos(codebasesRef.current);
+  }, [workspaceId, syncWorkspaceRepos]);
 
   useEffect(() => {
     if (repoSync.status !== "done") return;

@@ -88,7 +88,7 @@ const KANBAN_BOARD_QUERY_KEY = "boardId";
 const KANBAN_DETAIL_TASK_QUERY_KEY = "taskId";
 const MIN_DETAIL_SPLIT_RATIO = 0.32;
 const MAX_DETAIL_SPLIT_RATIO = 0.72;
-const LIVE_SESSION_TAIL_POLL_MS = 10_000;
+const LIVE_SESSION_TAIL_POLL_MS = 15_000;
 
 type MoveBlockedState = {
   message: string;
@@ -632,6 +632,7 @@ export function KanbanTab({
   const runtimeFitness = useRuntimeFitnessStatus({
     workspaceId,
     codebaseId: defaultCodebase?.id ?? null,
+    repoPath: defaultCodebase?.repoPath ?? null,
     enabled: workspaceId !== "__placeholder__",
     refreshSignal,
     isPageVisible,
@@ -2144,6 +2145,11 @@ export function KanbanTab({
     } : undefined,
   };
 
+  const handleFileChangesClick = useCallback(() => setFileChangesOpen((prev) => !prev), []);
+  const handleGitLogClick = useCallback(() => setGitLogOpen((prev) => !prev), []);
+  const handleProviderClick = useCallback(() => {}, []);
+  const handleFitnessClick = useCallback(() => setShowFitnessWorkbench(true), []);
+
   const statusBarProps = {
     defaultCodebase,
     codebases,
@@ -2153,14 +2159,10 @@ export function KanbanTab({
     repoHealth,
     selectedProvider: selectedProviderInfo,
     onRepoClick: openCodebaseModal,
-    onFileChangesClick: () => setFileChangesOpen((prev) => !prev),
-    onGitLogClick: () => setGitLogOpen((prev) => !prev),
-    onProviderClick: () => {
-      // Could open provider settings or do nothing
-    },
-    onFitnessClick: () => {
-      setShowFitnessWorkbench(true);
-    },
+    onFileChangesClick: handleFileChangesClick,
+    onGitLogClick: handleGitLogClick,
+    onProviderClick: handleProviderClick,
+    onFitnessClick: handleFitnessClick,
     fileChangesOpen,
     gitLogOpen,
     repoSync,

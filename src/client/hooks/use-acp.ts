@@ -381,12 +381,11 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         })(),
       }));
 
-      // Background task: Load registry providers (with timeout protection)
-      // This runs in parallel and adds registry providers when ready
-      client.loadRegistryProviders().then((allProviders) => {
+      // Background task: Load registry providers with status check in one call
+      // Previously this was split into loadRegistryProviders() + listProviders(true, true)
+      // which caused 2 requests. Now we do a single request with both check and registry.
+      client.listProviders(true, true).then((allProviders) => {
         if (tearingDownRef.current) return;
-        // loadRegistryProviders returns ALL providers (local + registry)
-        // Filter to get only registry providers to avoid duplicates
         const disabledProvs = loadHiddenProviders();
         const registryProviders = sortProvidersByPreference(
           allProviders
@@ -395,46 +394,18 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         );
         if (registryProviders.length > 0) {
           setState((s) => {
-            // Keep only local providers from current state, add new registry providers
             const localProviders = s.providers.filter((p) => p.source === "static");
             return {
               ...s,
               providers: sortProvidersByPreference([...localProviders, ...registryProviders]),
             };
           });
-
-          // Background task 3: Check registry provider availability (slower)
-          // This updates the status from "checking" to "available" or "unavailable"
-          client.listProviders(true, true).then((checkedAllProviders) => {
-            if (tearingDownRef.current) return;
-            const disabledProvs = loadHiddenProviders();
-            const checkedRegistry = sortProvidersByPreference(
-              checkedAllProviders
-                .filter((p) => p.source === "registry")
-                .filter((p) => !disabledProvs.includes(p.id))
-            );
-            if (checkedRegistry.length > 0) {
-              setState((s) => {
-                const localProviders = s.providers.filter((p) => p.source === "static");
-                return {
-                  ...s,
-                  providers: sortProvidersByPreference([...localProviders, ...checkedRegistry]),
-                };
-              });
-            }
-          }).catch((err) => {
-            if (tearingDownRef.current || shouldSuppressTeardownError(err)) {
-              return;
-            }
-            logRuntime("info", "useAcp.connect", "Failed to check registry provider status", err);
-          });
         }
       }).catch((err) => {
         if (tearingDownRef.current || shouldSuppressTeardownError(err)) {
           return;
         }
-        // Registry load failed (timeout or network error) - not critical
-        logRuntime("info", "useAcp.connect", "Registry providers unavailable (network/timeout)", err);
+        logRuntime("info", "useAcp.connect", "Failed to load registry providers", err);
       });
     } catch (err) {
       if (tearingDownRef.current || shouldSuppressTeardownError(err)) {

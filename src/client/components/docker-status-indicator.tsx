@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/i18n";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
@@ -23,6 +23,7 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const { t } = useTranslation();
   const [status, setStatus] = useState<DockerStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const fetchedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -40,9 +41,13 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
+    // Only fetch once, even when locale causes re-renders
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     void refresh();
   }, [refresh]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import React, { type CSSProperties } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
@@ -525,7 +525,7 @@ function KanbanCardSurface({
   );
 }
 
-export function KanbanCard({
+export const KanbanCard = React.memo(function KanbanCard({
   ...props
 }: KanbanCardProps) {
   const {
@@ -550,7 +550,7 @@ export function KanbanCard({
       style={isDragging ? { opacity: 0.16 } : undefined}
     />
   );
-}
+});
 
 export function KanbanCardOverlay(props: KanbanCardProps) {
   return <KanbanCardSurface {...props} dragOverlay />;

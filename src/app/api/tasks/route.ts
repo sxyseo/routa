@@ -39,6 +39,27 @@ import { buildTaskDeliveryReadiness } from "@/core/kanban/task-delivery-readines
 
 export const dynamic = "force-dynamic";
 
+const STORE_CACHE_TTL_MS = 3_000;
+type StoreCacheEntry = { ts: number; promise: Promise<unknown[]> };
+const storeCache = new Map<string, StoreCacheEntry>();
+
+function getCached<T>(cacheKey: string, load: () => Promise<T[]>): Promise<T[]> {
+  const entry = storeCache.get(cacheKey);
+  if (entry && Date.now() - entry.ts < STORE_CACHE_TTL_MS) {
+    return entry.promise as Promise<T[]>;
+  }
+  const promise = load();
+  storeCache.set(cacheKey, { ts: Date.now(), promise });
+  // Evict expired entries periodically (after every cache miss)
+  if (storeCache.size > 50) {
+    const now = Date.now();
+    for (const [k, v] of storeCache) {
+      if (now - v.ts >= STORE_CACHE_TTL_MS) storeCache.delete(k);
+    }
+  }
+  return promise;
+}
+
 type RoutaSystem = ReturnType<typeof getRoutaSystem>;
 
 type TaskSerializationSystem = {
@@ -87,10 +108,10 @@ async function createTaskSerializationSystem(
   tasks: Task[],
 ): Promise<TaskSerializationSystem> {
   const [codebases, worktrees, artifacts] = await Promise.all([
-    system.codebaseStore.listByWorkspace(workspaceId),
-    listWorktreesSafely(system, workspaceId),
+    getCached(`codebase:${workspaceId}`, () => system.codebaseStore.listByWorkspace(workspaceId)),
+    getCached(`worktree:${workspaceId}`, () => listWorktreesSafely(system, workspaceId)),
     typeof system.artifactStore.listByWorkspace === "function"
-      ? system.artifactStore.listByWorkspace(workspaceId)
+      ? getCached(`artifact:${workspaceId}`, () => system.artifactStore.listByWorkspace(workspaceId))
       : Promise.resolve([]),
   ]);
   const hasPreloadedArtifacts = typeof system.artifactStore.listByWorkspace === "function";
