@@ -87,6 +87,7 @@ const zh: TranslationDictionary = {
     concurrency: "并发数",
     crafters: "CRAFTER",
     routaModeToast: "ROUTA 模式：协调器将规划任务，委派给 CRAFTER 智能体，并通过 GATE 验证。",
+    archive: "归档",
   },
 
   home: {

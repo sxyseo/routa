@@ -87,6 +87,7 @@ const en: TranslationDictionary = {
     concurrency: "Concurrency",
     crafters: "CRAFTERs",
     routaModeToast: "ROUTA mode: Coordinator will plan, delegate to CRAFTER agents, and verify with GATE.",
+    archive: "Archive",
   },
 
   home: {
