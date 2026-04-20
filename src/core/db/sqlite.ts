@@ -207,6 +207,9 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       assigned_role TEXT,
       assigned_specialist_id TEXT,
       assigned_specialist_name TEXT,
+      fallback_agent_chain TEXT,
+      enable_automatic_fallback INTEGER,
+      max_fallback_attempts INTEGER,
       trigger_session_id TEXT,
       session_ids TEXT DEFAULT '[]',
       lane_sessions TEXT DEFAULT '[]',
@@ -244,6 +247,9 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN assigned_role TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN assigned_specialist_id TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN assigned_specialist_name TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN fallback_agent_chain TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN enable_automatic_fallback INTEGER`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN max_fallback_attempts INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN trigger_session_id TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_id TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_number INTEGER`);

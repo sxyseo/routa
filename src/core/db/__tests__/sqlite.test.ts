@@ -110,4 +110,29 @@ describe("ensureSqliteDefaultWorkspace", () => {
       if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
     }
   });
+
+  it("initializes fallback task columns for fresh sqlite databases", () => {
+    const dbPath = path.join(os.tmpdir(), `routa-sqlite-fallback-columns-${Date.now()}.db`);
+    closeSqliteDatabase();
+
+    try {
+      getSqliteDatabase(dbPath);
+      const raw = new BetterSqlite3(dbPath, { readonly: true });
+      const columns = raw.prepare(`
+        PRAGMA table_info(tasks)
+      `).all() as Array<{ name: string }>;
+      raw.close();
+
+      expect(columns.map((column) => column.name)).toEqual(
+        expect.arrayContaining([
+          "fallback_agent_chain",
+          "enable_automatic_fallback",
+          "max_fallback_attempts",
+        ]),
+      );
+    } finally {
+      closeSqliteDatabase();
+      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+    }
+  });
 });
