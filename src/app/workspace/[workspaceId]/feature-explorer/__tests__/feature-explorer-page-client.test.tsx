@@ -519,7 +519,7 @@ describe("FeatureExplorerPageClient", () => {
                 }),
               },
             ],
-            latestEventKind: "usage_update",
+            latestEventKind: "turn_complete",
           }),
           {
             status: 200,
@@ -579,7 +579,7 @@ describe("FeatureExplorerPageClient", () => {
     analysisAcpState.updates = [
       {
         sessionId: "feature-tree-session-1",
-        update: { sessionUpdate: "usage_update" },
+        update: { sessionUpdate: "turn_complete" },
       },
     ];
 
@@ -588,6 +588,7 @@ describe("FeatureExplorerPageClient", () => {
     await waitFor(() => {
       expect(sessionLaunchState.desktopAwareFetch).toHaveBeenCalledWith(
         "/sessions/feature-tree-session-1/transcript",
+        { cache: "no-store" },
       );
       expect(sessionLaunchState.desktopAwareFetch).toHaveBeenCalledWith(
         "/spec/feature-tree/commit",
@@ -611,6 +612,143 @@ describe("FeatureExplorerPageClient", () => {
         capabilityGroups: [{ id: "workspace", name: "Workspace" }],
         features: [{ id: "workspace-overview", name: "Workspace Overview", group: "workspace", status: "draft" }],
       },
+    });
+  });
+
+  it("retries transcript hydration after turn completion without re-triggering the spinner forever", async () => {
+    analysisAcpState.createSession.mockResolvedValue({ sessionId: "feature-tree-session-1" });
+    sessionLaunchState.desktopAwareFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            repoRoot: "/repo/default",
+            selectedScanRoot: "/repo/default/packages/app",
+            frameworksDetected: ["nextjs"],
+            adapters: [{ id: "nextjs-app-router", confidence: "high", signals: ["src/app"] }],
+            candidateRoots: [],
+            warnings: [],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            sessionId: "feature-tree-session-1",
+            messages: [
+              {
+                role: "assistant",
+                content: "working on it",
+              },
+            ],
+            latestEventKind: "turn_complete",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            sessionId: "feature-tree-session-1",
+            messages: [
+              {
+                role: "assistant",
+                content: JSON.stringify({
+                  schemaVersion: 1,
+                  capabilityGroups: [{ id: "workspace", name: "Workspace" }],
+                  features: [{ id: "workspace-overview", name: "Workspace Overview", group: "workspace", status: "draft" }],
+                }),
+              },
+            ],
+            latestEventKind: "turn_complete",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            generatedAt: "2026-04-19T12:00:00.000Z",
+            frameworksDetected: ["nextjs"],
+            wroteFiles: [
+              "docs/product-specs/FEATURE_TREE.md",
+              "docs/product-specs/feature-tree.index.json",
+            ],
+            warnings: [],
+            pagesCount: 16,
+            apisCount: 4,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+
+    const view = render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    fireEvent.click(screen.getByTestId("generate-feature-tree-button"));
+    await screen.findByText("Agent");
+    fireEvent.click(screen.getByRole("button", { name: "Generate with agent" }));
+
+    await waitFor(() => {
+      expect(analysisAcpState.promptSession).toHaveBeenCalledWith(
+        "feature-tree-session-1",
+        expect.stringContaining("Preferred scan root: /repo/default/packages/app"),
+      );
+    });
+
+    analysisAcpState.updates = [
+      {
+        sessionId: "feature-tree-session-1",
+        update: { sessionUpdate: "turn_complete" },
+      },
+    ];
+
+    view.rerender(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Applying agent result…" })).toBeTruthy();
+    });
+
+    expect(
+      sessionLaunchState.desktopAwareFetch.mock.calls.filter(
+        ([input]) => input === "/sessions/feature-tree-session-1/transcript",
+      ),
+    ).toHaveLength(1);
+    expect(
+      sessionLaunchState.desktopAwareFetch.mock.calls.filter(
+        ([input]) => input === "/spec/feature-tree/commit",
+      ),
+    ).toHaveLength(0);
+
+    await waitFor(() => {
+      expect(
+        sessionLaunchState.desktopAwareFetch.mock.calls.filter(
+          ([input]) => input === "/sessions/feature-tree-session-1/transcript",
+        ),
+      ).toHaveLength(2);
+    }, { timeout: 2000 });
+
+    await waitFor(() => {
+      expect(
+        sessionLaunchState.desktopAwareFetch.mock.calls.filter(
+          ([input]) => input === "/spec/feature-tree/commit",
+        ),
+      ).toHaveLength(1);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Applying agent result…" })).toBeNull();
     });
   });
 

@@ -94,15 +94,15 @@ function hasPotentialCommitTrigger(
   updates: Array<{ sessionId: string; update?: Record<string, unknown> }>,
   sessionId: string,
 ): boolean {
-  return updates.some((update) => {
-    if (update.sessionId !== sessionId) {
-      return false;
+  for (let index = updates.length - 1; index >= 0; index -= 1) {
+    const update = updates[index];
+    if (update?.sessionId !== sessionId) {
+      continue;
     }
-    const sessionUpdate = update.update?.sessionUpdate;
-    return sessionUpdate === "turn_complete"
-      || sessionUpdate === "usage_update"
-      || sessionUpdate === "agent_message";
-  });
+    return update.update?.sessionUpdate === "turn_complete";
+  }
+
+  return false;
 }
 
 function buildGenerationPrompt(args: {
@@ -201,7 +201,11 @@ export function GenerateFeatureTreeDrawer({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("");
   const [hasPromptedSession, setHasPromptedSession] = useState(false);
+  const [transcriptRetryNonce, setTranscriptRetryNonce] = useState(0);
   const committedSessionIdsRef = useRef<Set<string>>(new Set());
+  const transcriptRetryCountRef = useRef<Record<string, number>>({});
+  const transcriptRetryTimerRef = useRef<number | null>(null);
+  const transcriptCommitInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!open || !repoPath) return;
@@ -249,12 +253,19 @@ export function GenerateFeatureTreeDrawer({
       setSessionId(null);
       setSessionName("");
       setHasPromptedSession(false);
+      setTranscriptRetryNonce(0);
       committedSessionIdsRef.current.clear();
+      transcriptRetryCountRef.current = {};
+      transcriptCommitInFlightRef.current = false;
+      if (transcriptRetryTimerRef.current !== null) {
+        window.clearTimeout(transcriptRetryTimerRef.current);
+        transcriptRetryTimerRef.current = null;
+      }
     }
   }, [open]);
 
   useEffect(() => {
-    if (!sessionId || !preflight || applyingAgentResult) {
+    if (!sessionId || !preflight || transcriptCommitInFlightRef.current) {
       return;
     }
 
@@ -263,11 +274,22 @@ export function GenerateFeatureTreeDrawer({
       return;
     }
 
+    if (transcriptRetryTimerRef.current !== null) {
+      window.clearTimeout(transcriptRetryTimerRef.current);
+      transcriptRetryTimerRef.current = null;
+    }
+
+    const attempt = transcriptRetryCountRef.current[sessionId] ?? 0;
+    const maxAttempts = 4;
+    transcriptCommitInFlightRef.current = true;
     setApplyingAgentResult(true);
 
     void (async () => {
       try {
-        const transcriptResponse = await desktopAwareFetch(`/sessions/${encodeURIComponent(sessionId)}/transcript`);
+        const transcriptResponse = await desktopAwareFetch(
+          `/sessions/${encodeURIComponent(sessionId)}/transcript`,
+          { cache: "no-store" },
+        );
         const transcript = await transcriptResponse.json() as SessionTranscriptPayload;
         if (!transcriptResponse.ok) {
           throw new Error("Failed to load generation transcript.");
@@ -277,10 +299,22 @@ export function GenerateFeatureTreeDrawer({
         try {
           metadata = extractAssistantJson(transcript.messages);
         } catch {
+          if (attempt >= maxAttempts) {
+            throw new Error(t.featureExplorer.generateFailed);
+          }
+          const nextAttempt = attempt + 1;
+          const delayMs = attempt === 0 ? 250 : 1000;
+          transcriptRetryCountRef.current[sessionId] = nextAttempt;
+          transcriptRetryTimerRef.current = window.setTimeout(() => {
+            transcriptCommitInFlightRef.current = false;
+            transcriptRetryTimerRef.current = null;
+            setTranscriptRetryNonce((current) => current + 1);
+          }, delayMs);
           return;
         }
 
         committedSessionIdsRef.current.add(sessionId);
+        transcriptRetryCountRef.current[sessionId] = 0;
         const commitResponse = await desktopAwareFetch("/spec/feature-tree/commit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -301,11 +335,21 @@ export function GenerateFeatureTreeDrawer({
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
-        setApplyingAgentResult(false);
-        setGenerating(false);
+        const retryPending = transcriptRetryTimerRef.current !== null;
+        transcriptCommitInFlightRef.current = false;
+        if (!retryPending) {
+          setApplyingAgentResult(false);
+          setGenerating(false);
+        }
       }
     })();
-  }, [applyingAgentResult, onGenerated, preflight, repoPath, sessionId, updates, workspaceId]);
+  }, [onGenerated, preflight, repoPath, sessionId, t.featureExplorer.generateFailed, transcriptRetryNonce, updates, workspaceId]);
+
+  useEffect(() => () => {
+    if (transcriptRetryTimerRef.current !== null) {
+      window.clearTimeout(transcriptRetryTimerRef.current);
+    }
+  }, []);
 
   const effectiveRepoSelection = useMemo<RepoSelection | null>(() => {
     if (repoSelection) return repoSelection;
