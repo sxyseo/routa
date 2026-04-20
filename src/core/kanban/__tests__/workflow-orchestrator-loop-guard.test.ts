@@ -84,7 +84,45 @@ describe("workflow orchestrator loop guard", () => {
       },
     ];
 
-    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(1);
+    // timed_out is excluded from count (infrastructure issue), so only the dev
+    // column break resets the consecutive run counter — no counted sessions remain.
+    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(0);
+    expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(false);
+  });
+
+  it("excludes timed_out from loop count but counts failed sessions", () => {
+    const task = createTask({
+      id: "task-timeout-exclude",
+      title: "Timeout exclude",
+      objective: "Infrastructure timeouts should not count toward loop limit",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+
+    task.laneSessions = [
+      {
+        sessionId: "review-1",
+        columnId: "review",
+        status: "timed_out",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "review-2",
+        columnId: "review",
+        status: "timed_out",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "review-3",
+        columnId: "review",
+        status: "timed_out",
+        startedAt: new Date().toISOString(),
+      },
+    ];
+
+    // All timed_out — count is 0, not over limit
+    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(0);
     expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(false);
   });
 

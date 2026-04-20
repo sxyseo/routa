@@ -137,6 +137,10 @@ export function getNonDevAutomationRunCount(
     if (stepId && entry.stepId && entry.stepId !== stepId) {
       continue;
     }
+    // Infrastructure timeouts are not task failures — don't count them toward the loop limit
+    if (entry.status === "timed_out") {
+      continue;
+    }
     runCount += 1;
   }
 
