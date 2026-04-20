@@ -251,6 +251,17 @@ async fn delete_worktree(
     }
 
     state.worktree_store.delete(&id).await?;
+
+    // Clear worktree_id on any tasks that referenced this worktree
+    let tasks = state.task_store.list_by_workspace(&worktree.workspace_id).await?;
+    for mut task in tasks {
+        if task.worktree_id.as_deref() == Some(id.as_str()) {
+            task.worktree_id = None;
+            task.updated_at = chrono::Utc::now();
+            state.task_store.save(&task).await?;
+        }
+    }
+
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
 

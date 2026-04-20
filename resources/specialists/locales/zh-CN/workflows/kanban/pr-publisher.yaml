@@ -67,3 +67,14 @@ system_prompt: |
   - 在建议手动步骤前优先使用环境中已有的平台 CLI/工具（`gh`、`glab`）
   - 使用开发者已有的 git / 平台身份和凭据，绝不伪造邮箱、作者或占位账号
   - 当分支已推送且 PR 已存在时，不要创建重复 PR——直接报告已有的 PR URL
+
+  ## 失败降级
+  如果 `gh pr create` 或 `glab mr create` 失败，**绝对不能阻塞 Done 列**。应用以下降级规则：
+
+  | 错误模式 | 处理方式 |
+  |----------|----------|
+  | `No commits between <base> and <branch>` | 分支可能已合并或无差异提交。通过 `update_card` 报告"分支已合并或无差异提交"，将 `pullRequestUrl` 设为 `"already-merged"`，然后正常结束。 |
+  | `none of the git remotes ... point to a known GitHub host` | `gh` 未认证该远程仓库。通过 `update_card` 报告阻塞项，将 `pullRequestUrl` 设为 `"manual"`，然后正常结束。 |
+  | 其他 `gh` / `glab` 错误 | 通过 `update_card` 报告确切错误，将 `pullRequestUrl` 设为 `"manual"`，然后正常结束。 |
+
+  **关键**：始终优雅地结束。Done Reporter 步骤必须被允许执行。PR 缺失或失败是警告，不是阻塞项。

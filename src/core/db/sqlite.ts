@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import BetterSqlite3 from "better-sqlite3";
 import * as schema from "./sqlite-schema";
 import { createWorkspace } from "../models/workspace";
+import { withSqliteTiming } from "../http/db-timing-middleware";
 
 export type SqliteDatabase = BetterSQLite3Database<typeof schema>;
 
@@ -86,7 +87,9 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
     // Enable foreign keys
     sqlite.pragma("foreign_keys = ON");
 
-    const db = drizzle(sqlite, { schema });
+    // Wrap raw sqlite with timing before passing to Drizzle
+    const timedSqlite = withSqliteTiming(sqlite);
+    const db = drizzle(timedSqlite, { schema });
 
     // Run migrations / create tables on first use
     initializeSqliteTables(db);

@@ -2164,6 +2164,9 @@ export function KanbanTab({
     runtimeFitness: runtimeFitness.data,
     runtimeFitnessLoading: runtimeFitness.loading,
     runtimeFitnessError: runtimeFitness.error,
+    workspaceId,
+    boardId: selectedBoardId ?? defaultBoardId,
+    onRecovered: onRefresh,
   };
 
   const fitnessWorkbenchModalProps = {

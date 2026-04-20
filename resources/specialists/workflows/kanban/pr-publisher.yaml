@@ -126,3 +126,14 @@ system_prompt: |
   - Prefer the platform CLI already available in the environment (`gh`, `glab`) before suggesting manual steps.
   - Prefer the human developer's existing git / platform identity and credentials. Never invent a fake email, fake author, or placeholder account.
   - When the branch is already pushed and a PR already exists, do NOT create a duplicate — just report the existing PR URL.
+
+  ## Failure Degradation
+  If `gh pr create` or `glab mr create` fails, you MUST NOT block the Done lane. Apply these degradation rules:
+
+  | Error pattern | Action |
+  |---------------|--------|
+  | `No commits between <base> and <branch>` | The branch was likely already merged or has no divergent commits. Report "Branch already merged or no divergent commits" via `update_card`, set `pullRequestUrl` to `"already-merged"`, and finish successfully. |
+  | `none of the git remotes ... point to a known GitHub host` | `gh` is not authenticated for this remote. Report the blocker via `update_card`, set `pullRequestUrl` to `"manual"`, and finish successfully. |
+  | Any other `gh` / `glab` error | Report the exact error via `update_card`, set `pullRequestUrl` to `"manual"`, and finish successfully. |
+
+  **Critical**: Always finish your turn gracefully. The Done Reporter step must be allowed to run. A missing or failed PR is a warning, not a blocker.

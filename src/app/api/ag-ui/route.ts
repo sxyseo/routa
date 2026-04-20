@@ -27,6 +27,7 @@ import { isClaudeCodeSdkConfigured } from "@/core/acp/claude-code-sdk-adapter";
 import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
 import { persistSessionToDb, saveHistoryToDb } from "@/core/acp/session-db-persister";
 import { SessionWriteBuffer } from "@/core/acp/session-write-buffer";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export const dynamic = "force-dynamic";
 
@@ -456,7 +457,8 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return new Response(stream, {
+  const monitoredStream = monitorSSEConnection(request, "/api/ag-ui", stream);
+  return new Response(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-store, must-revalidate",

@@ -1,7 +1,9 @@
 "use client";
 
-import { GitBranch, FileCode, Activity, Zap } from "lucide-react";
+import { useState, useCallback } from "react";
+import { GitBranch, FileCode, Activity, Zap, RotateCcw } from "lucide-react";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { RuntimeFitnessModeSummary, RuntimeFitnessStatusResponse } from "@/core/fitness/runtime-status-types";
@@ -49,6 +51,12 @@ interface KanbanStatusBarProps {
   runtimeFitnessLoading?: boolean;
   /** Runtime Fitness 加载错误 */
   runtimeFitnessError?: string | null;
+  /** Workspace ID */
+  workspaceId?: string;
+  /** Board ID */
+  boardId?: string;
+  /** 恢复完成后的回调 */
+  onRecovered?: () => void;
 }
 
 function formatModeLabel(summary: RuntimeFitnessModeSummary | null, fastLabel: string, fullLabel: string) {
@@ -133,8 +141,12 @@ export function KanbanStatusBar({
   runtimeFitness,
   runtimeFitnessLoading = false,
   runtimeFitnessError,
+  workspaceId,
+  boardId,
+  onRecovered,
 }: KanbanStatusBarProps) {
   const { t } = useTranslation();
+  const [recovering, setRecovering] = useState(false);
   const repoCount = codebases.length;
   const repoDisplayName = defaultCodebase
     ? defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? defaultCodebase.repoPath
@@ -351,6 +363,28 @@ export function KanbanStatusBar({
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
               {t.kanban.queuedLabel} {boardQueue?.queuedCount ?? 0}
             </span>
+            {(boardQueue?.runningCount ?? 0) > 0 && workspaceId && (
+              <button
+                onClick={useCallback(async () => {
+                  if (recovering) return;
+                  setRecovering(true);
+                  try {
+                    const params = new URLSearchParams({ workspaceId });
+                    if (boardId) params.set("boardId", boardId);
+                    await desktopAwareFetch(`/api/kanban/recover-running?${params}`, { method: "POST" });
+                    onRecovered?.();
+                  } finally {
+                    setRecovering(false);
+                  }
+                }, [recovering, workspaceId, boardId, onRecovered])}
+                disabled={recovering}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-desktop-bg-active transition-colors disabled:opacity-50"
+                title="清除所有僵尸运行状态"
+              >
+                <RotateCcw className={`w-3 h-3 ${recovering ? "animate-spin" : ""}`} />
+                {recovering ? "恢复中..." : "恢复"}
+              </button>
+            )}
           </div>
         )}
 

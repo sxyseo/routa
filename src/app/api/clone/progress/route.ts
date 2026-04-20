@@ -21,6 +21,7 @@ import {
   getBranchInfo,
 } from "@/core/git";
 import { getGitErrorMessage, isGitAuthError, getGitAuthErrorMessage } from "@/core/git";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -163,7 +164,8 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return new Response(stream, {
+  const monitoredStream = monitorSSEConnection(request, "/api/clone/progress", stream);
+  return new Response(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

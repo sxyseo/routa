@@ -14,6 +14,7 @@ import { getHttpSessionStore } from "@/core/acp/http-session-store";
 import { getRoutaSystem } from "@/core/routa-system";
 import { getA2ATaskBridge } from "@/core/a2a";
 import { AgentRole } from "@/core/models/agent";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export const dynamic = "force-dynamic";
 
@@ -181,7 +182,8 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  return new NextResponse(stream, {
+  const monitoredStream = monitorSSEConnection(request, "/api/a2a/rpc", stream);
+  return new NextResponse(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",

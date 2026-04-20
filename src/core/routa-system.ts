@@ -36,6 +36,7 @@ import { startWorkflowOrchestrator } from "./kanban/workflow-orchestrator-single
 import { startLaneScanner } from "./kanban/kanban-lane-scanner";
 import { getKanbanEventBroadcaster } from "./kanban/kanban-event-broadcaster";
 import { AgentEventType } from "./events/event-bus";
+import { decorateSystemWithTiming } from "./http/store-timing-proxy";
 
 export interface RoutaSystem {
   agentStore: AgentStore;
@@ -362,6 +363,10 @@ export function getRoutaSystem(): RoutaSystem {
     // Set up EventBus → KanbanEventBroadcaster bridge for file changes
     setupFileChangeBridge(system);
   }
+
+  // Always apply timing decoration (idempotent: returns original if ROUTA_STORE_TIMING!=1)
+  g[GLOBAL_KEY] = decorateSystemWithTiming(g[GLOBAL_KEY] as RoutaSystem);
+
   return g[GLOBAL_KEY] as RoutaSystem;
 }
 

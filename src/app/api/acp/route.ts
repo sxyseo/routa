@@ -29,6 +29,7 @@ import { resolveMcpServerProfile, type McpServerProfile } from "@/core/mcp/mcp-s
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
 import { AcpError } from "@/core/acp/acp-process";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 import {
   loadHistorySinceEventIdFromDb,
   loadSessionFromDb,
@@ -306,7 +307,8 @@ export async function GET(request: NextRequest) {
   });
 
   // ─── Return response with proper headers ─────────────────────────────────────
-  const response = new Response(stream, {
+  const monitoredStream = monitorSSEConnection(request, "/api/acp", stream);
+  const response = new Response(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-store, must-revalidate",

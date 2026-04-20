@@ -14,7 +14,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
-import { ChevronLeft, Columns2, FileCode2, House, MonitorUp, ScrollText, Settings, Share2 } from "lucide-react";
+import { Activity, ChevronLeft, Columns2, FileCode2, House, MonitorUp, ScrollText, Settings, Share2 } from "lucide-react";
 import { HarnessMark } from "./harness-mark";
 
 
@@ -63,7 +63,8 @@ export function DesktopSidebar({
     {
       id: "home",
       label: t.nav.home,
-      href: workspaceBaseHref ? `${workspaceBaseHref}/kanban` : "/",
+      href: "/",
+      exactMatch: true,
       icon: (
         <House className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
@@ -113,6 +114,16 @@ export function DesktopSidebar({
       label: t.nav.fluency,
       href: settingsFluencyHref,
       icon: <MonitorUp className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>,
+    },
+    {
+      id: "performance",
+      label: "性能监控",
+      href: normalizedWorkspaceId
+        ? `/settings/performance?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
+        : "/settings/performance",
+      icon: (
+        <Activity className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+      ),
     },
     {
       id: "settings",

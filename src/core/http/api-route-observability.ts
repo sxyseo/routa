@@ -5,6 +5,7 @@ import { performance } from "node:perf_hooks";
 import type { NextRequest, NextResponse } from "next/server";
 
 import { getProjectStorageDir } from "@/core/storage/folder-slug";
+import { metricsCollector, type InMemoryMetricsCollector, type SSEConnectionRecord } from "./performance-metrics";
 
 const DEFAULT_SLOW_API_THRESHOLD_MS = 1_000;
 const LOG_FILE_NAME = "slow-api-requests.jsonl";
@@ -90,7 +91,51 @@ export async function monitorApiRoute(
 
     console.warn("[api:slow]", record);
     enqueueSlowApiRecord(record);
+    metricsCollector.recordRequest(record);
   }
 
   return response;
+}
+
+/** Get the global metrics collector for querying performance data */
+export function getMetricsCollector(): InMemoryMetricsCollector {
+  return metricsCollector;
+}
+
+/** Wrap an SSE stream to track connection lifecycle */
+export function monitorSSEConnection(
+  request: NextRequest,
+  route: string,
+  stream: ReadableStream,
+): ReadableStream {
+  const connId = `sse-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const record: SSEConnectionRecord = {
+    connId,
+    route,
+    connectedAt: new Date().toISOString(),
+    workspaceId: new URL(request.url).searchParams.get("workspaceId") ?? "*",
+  };
+  metricsCollector.recordSSEConnect(record);
+
+  const reader = stream.getReader();
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          metricsCollector.recordSSEDisconnect(connId);
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        metricsCollector.recordSSEDisconnect(connId);
+        controller.error(error);
+      }
+    },
+    cancel() {
+      metricsCollector.recordSSEDisconnect(connId);
+      reader.cancel();
+    },
+  });
 }

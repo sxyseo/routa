@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getA2ATaskBridge, A2ATask } from "@/core/a2a";
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export const dynamic = "force-dynamic";
 
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
     const updatedTask = bridge.getTask(a2aTask.id) ?? a2aTask;
 
     if (action === "stream") {
-      return handleStreamResponse(updatedTask);
+      return handleStreamResponse(request, updatedTask);
     }
 
     // Non-streaming: return the task
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
 /**
  * Handle streaming response via SSE
  */
-function handleStreamResponse(task: A2ATask) {
+function handleStreamResponse(request: NextRequest, task: A2ATask) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     start(controller) {
@@ -181,7 +182,8 @@ function handleStreamResponse(task: A2ATask) {
     },
   });
 
-  return new NextResponse(stream, {
+  const monitoredStream = monitorSSEConnection(request, "/api/a2a/message", stream);
+  return new NextResponse(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",

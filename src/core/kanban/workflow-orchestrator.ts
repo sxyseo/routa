@@ -120,6 +120,7 @@ export function getNonDevAutomationRunCount(
   task: Pick<Task, "laneSessions"> | undefined,
   columnId: string,
   stage: KanbanColumnStage,
+  stepId?: string,
 ): number {
   if (!task || stage === "dev") {
     return 0;
@@ -133,6 +134,9 @@ export function getNonDevAutomationRunCount(
     if (entry.columnId !== columnId) {
       break;
     }
+    if (stepId && entry.stepId && entry.stepId !== stepId) {
+      continue;
+    }
     runCount += 1;
   }
 
@@ -143,11 +147,12 @@ export function hasExceededNonDevAutomationRepeatLimit(
   task: Pick<Task, "laneSessions"> | undefined,
   columnId: string,
   stage: KanbanColumnStage,
+  stepId?: string,
 ): boolean {
   const limit = stage === "blocked"
     ? BLOCKED_AUTOMATION_REPEAT_LIMIT
     : NON_DEV_AUTOMATION_REPEAT_LIMIT;
-  return getNonDevAutomationRunCount(task, columnId, stage) >= limit;
+  return getNonDevAutomationRunCount(task, columnId, stage, stepId) >= limit;
 }
 
 function buildNonDevAutomationRepeatLimitMessage(columnName: string, runCount: number, stage: KanbanColumnStage): string {
@@ -389,11 +394,11 @@ export class KanbanWorkflowOrchestrator {
 
     if (steps.length === 0) return;
 
-    if (hasExceededNonDevAutomationRepeatLimit(task, targetColumn.id, targetColumn.stage)) {
+    if (hasExceededNonDevAutomationRepeatLimit(task, targetColumn.id, targetColumn.stage, steps[0]?.id)) {
       if (task) {
         task.lastSyncError = buildNonDevAutomationRepeatLimitMessage(
           targetColumn.name,
-          getNonDevAutomationRunCount(task, targetColumn.id, targetColumn.stage),
+          getNonDevAutomationRunCount(task, targetColumn.id, targetColumn.stage, steps[0]?.id),
           targetColumn.stage,
         );
         task.updatedAt = new Date();
@@ -587,9 +592,33 @@ export class KanbanWorkflowOrchestrator {
       const hasNextStep = successEvent
         && completionSatisfied
         && nextStepIndex < automation.steps.length;
+      // Soft-gate: when the current GATE step fails/times out but there are remaining
+      // steps in the lane, attempt to advance anyway. The downstream specialist (e.g.
+      // Review Guard) is responsible for the final APPROVED/REJECTED decision, so a
+      // failed upstream QA check should not prevent it from running.
+      const currentStepRole = automation.steps[automation.currentStepIndex]?.role?.toUpperCase();
+      const canSoftGateAdvance = !successEvent
+        && currentStepRole === "GATE"
+        && nextStepIndex < automation.steps.length;
       let failedToAdvanceWithinLane = false;
 
       if (task && hasNextStep) {
+        const startedNextStep = await this.startNextAutomationStep(cardId, automation, task, nextStepIndex);
+        if (startedNextStep) {
+          automation.signaledSessionIds.add(eventSessionId);
+          return;
+        }
+        failedToAdvanceWithinLane = true;
+      }
+
+      // Soft-gate fallback: try next step even when current GATE step failed
+      if (task && !hasNextStep && canSoftGateAdvance && !shouldRecover) {
+        console.warn(
+          `[WorkflowOrchestrator] Soft-gate: GATE step ${getAutomationStepLabel(automation.steps[automation.currentStepIndex], automation.currentStepIndex)} failed for card ${cardId}. Advancing to next step as soft-gate.`,
+        );
+        if (task.lastSyncError) {
+          task.lastSyncError = `${getAutomationStepLabel(automation.steps[automation.currentStepIndex], automation.currentStepIndex)} failed but soft-gated to next step.`;
+        }
         const startedNextStep = await this.startNextAutomationStep(cardId, automation, task, nextStepIndex);
         if (startedNextStep) {
           automation.signaledSessionIds.add(eventSessionId);

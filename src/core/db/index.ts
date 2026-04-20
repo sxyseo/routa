@@ -21,6 +21,7 @@ import { drizzle as neonDrizzle, NeonHttpDatabase } from "drizzle-orm/neon-http"
 import { drizzle as pgDrizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { withPostgresTiming } from "../http/db-timing-middleware";
 
 // ─── Type Exports ───────────────────────────────────────────────────────
 
@@ -110,13 +111,15 @@ export function getPostgresDatabase(): PostgresDatabase {
       // Neon serverless: uses HTTP transport — suitable for Vercel/edge deployments
       console.error("[DB] Using Neon serverless driver (HTTP)");
       const sql = neon(databaseUrl);
-      g[PG_GLOBAL_KEY] = neonDrizzle(sql, { schema });
+      const rawDb = neonDrizzle(sql, { schema });
+      g[PG_GLOBAL_KEY] = withPostgresTiming(rawDb, "pg-neon");
     } else {
       // Standard Postgres (local, RDS, CI, Docker, etc.): uses TCP via postgres-js
       console.error("[DB] Using standard postgres-js driver (TCP)");
       const client = postgres(databaseUrl, { max: 10 });
       // Cast: both NeonHttpDatabase and PostgresJsDatabase share the drizzle query API
-      g[PG_GLOBAL_KEY] = pgDrizzle(client, { schema }) as unknown as PostgresDatabase;
+      const rawDb = pgDrizzle(client, { schema }) as unknown as PostgresDatabase;
+      g[PG_GLOBAL_KEY] = withPostgresTiming(rawDb, "pg-standard");
     }
   }
   return g[PG_GLOBAL_KEY] as PostgresDatabase;

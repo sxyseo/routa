@@ -25,6 +25,7 @@ import { createRoutaMcpServer } from "@/core/mcp/routa-mcp-server";
 import { getGlobalToolMode } from "@/core/mcp/tool-mode-config";
 import type { ToolMode } from "@/core/mcp/routa-mcp-tool-manager";
 import { resolveMcpServerProfile } from "@/core/mcp/mcp-server-profiles";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 // ─── Session management ────────────────────────────────────────────────
 
@@ -429,6 +430,18 @@ export async function GET(request: NextRequest) {
     // Ensure Accept header for GET (SDK requires text/event-stream)
     const patchedRequest = ensureAcceptHeader(request, "text/event-stream");
     const response = await session.transport.handleRequest(patchedRequest);
+
+    // Wrap SSE body with monitoring if present
+    if (response.body) {
+      const monitoredBody = monitorSSEConnection(request, "/api/mcp", response.body);
+      const monitoredResponse = new Response(monitoredBody, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+      return withCorsHeaders(monitoredResponse);
+    }
+
     return withCorsHeaders(response);
   } catch (error) {
     console.error("[MCP Route] GET error:", error);

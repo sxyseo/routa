@@ -313,6 +313,7 @@ fn legacy_specialist_ids_for_stage(stage: &str) -> &'static [&'static str] {
             "pr-reviewer",
             "kanban-workflow",
             "kanban-review-guard",
+            "kanban-qa-frontend",
         ],
         "blocked" => &["claude-code", "developer", "routa", "kanban-workflow"],
         "done" => &["gate", "verifier", "claude-code", "kanban-workflow"],
@@ -376,7 +377,6 @@ fn recommended_automation_for_stage(stage: &str) -> Option<KanbanColumnAutomatio
         )),
         "review" => Some(build_recommended_automation(
             vec![
-                recommended_step("qa-frontend", "GATE", "QA Frontend"),
                 recommended_step("review-guard", "GATE", "Review Guard"),
             ],
             false,
@@ -395,7 +395,10 @@ fn recommended_automation_for_stage(stage: &str) -> Option<KanbanColumnAutomatio
             false,
         )),
         "done" => Some(build_recommended_automation(
-            vec![recommended_step("done-reporter", "GATE", "Done Reporter")],
+            vec![
+                recommended_step("pr-publisher", "DEVELOPER", "PR Publisher"),
+                recommended_step("done-reporter", "GATE", "Done Reporter"),
+            ],
             false,
         )),
         _ => None,
