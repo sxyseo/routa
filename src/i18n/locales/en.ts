@@ -186,6 +186,7 @@ const en: TranslationDictionary = {
     advancedGroupOther: "Other",
     records: "Records",
     spec: "Spec",
+    archive: "Archive",
   },
 
   featureExplorer: {

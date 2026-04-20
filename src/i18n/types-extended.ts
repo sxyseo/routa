@@ -1553,4 +1553,25 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
   };
 
   // Message Bubble
+
+  // Archive History
+  archiveHistory: {
+    title: string;
+    subtitle: string;
+    searchPlaceholder: string;
+    filterByLabel: string;
+    allLabels: string;
+    noResults: string;
+    emptyTitle: string;
+    emptySubtitle: string;
+    archivedAt: string;
+    viewDetail: string;
+    closeDetail: string;
+    description: string;
+    comments: string;
+    noDescription: string;
+    noComments: string;
+    cardCount: string;
+    labelFilterClear: string;
+  };
 }

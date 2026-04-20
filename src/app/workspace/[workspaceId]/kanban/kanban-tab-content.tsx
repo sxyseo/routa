@@ -10,6 +10,7 @@ import { KanbanGitHubImportModal } from "./kanban-github-import-modal";
 import { KanbanBoardSurface, KanbanCreateTaskModal, KanbanTaskDetailOverlay } from "./kanban-tab-panels";
 import { KanbanSettingsModal } from "./kanban-settings-modal";
 import { KanbanFitnessWorkbenchModal } from "./kanban-fitness-workbench-modal";
+import { KanbanArchiveView } from "./kanban-archive-view";
 import {
   KanbanCodebaseModal,
   KanbanDeleteCodebaseModal,
@@ -67,6 +68,8 @@ export interface KanbanTabContentProps {
   moveBlockedModalProps: MoveBlockedModalProps;
   statusBarProps: StatusBarProps;
   fitnessWorkbenchModalProps: FitnessWorkbenchModalProps;
+  archiveOpen?: boolean;
+  onCloseArchive?: () => void;
 }
 
 function KanbanTabHeaderActionSlot({
@@ -170,6 +173,8 @@ export function KanbanTabContent({
   moveBlockedModalProps,
   statusBarProps,
   fitnessWorkbenchModalProps,
+  archiveOpen = false,
+  onCloseArchive,
 }: KanbanTabContentProps) {
   const { key: codebaseModalKey, ...codebaseModalRestProps } = codebaseModalProps as KanbanCodebaseModalProps & {
     key?: string;
@@ -228,6 +233,13 @@ export function KanbanTabContent({
       <KanbanMoveBlockedModal {...moveBlockedModalProps}/>
       <KanbanStatusBar {...statusBarProps}/>
       <KanbanFitnessWorkbenchModal {...fitnessWorkbenchModalProps}/>
+      {headerProps.board && (
+        <KanbanArchiveView
+          workspaceId={headerProps.board.workspaceId}
+          open={archiveOpen}
+          onClose={onCloseArchive ?? (() => {})}
+        />
+      )}
     </div>
   );
 }

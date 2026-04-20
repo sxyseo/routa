@@ -1530,5 +1530,25 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     usage: "Usage",
   },
 
+  archiveHistory: {
+    title: "Archive History",
+    subtitle: "Browse completed and archived tasks",
+    searchPlaceholder: "Search by title or description…",
+    filterByLabel: "Filter by label",
+    allLabels: "All labels",
+    noResults: "No archived tasks match your search.",
+    emptyTitle: "No archived tasks",
+    emptySubtitle: "Completed and cancelled tasks will appear here.",
+    archivedAt: "Archived",
+    viewDetail: "View detail",
+    closeDetail: "Close",
+    description: "Description",
+    comments: "Comments",
+    noDescription: "No description.",
+    noComments: "No comments.",
+    cardCount: "{count} archived cards",
+    labelFilterClear: "Clear filter",
+  },
+
   ...enTail,
 };

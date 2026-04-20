@@ -14,7 +14,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
-import { Activity, ChevronLeft, Columns2, FileCode2, House, MonitorUp, ScrollText, Settings, Share2 } from "lucide-react";
+import { Activity, ChevronLeft, Columns2, FileCode2, House, MonitorUp, ScrollText, Settings, Share2, Archive } from "lucide-react";
 import { HarnessMark } from "./harness-mark";
 
 
@@ -91,6 +91,14 @@ export function DesktopSidebar({
       href: workspaceBaseHref ? `${workspaceBaseHref}/team` : "/",
       icon: (
         <Share2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}/>
+      ),
+    },
+    {
+      id: "archive",
+      label: t.nav.archive,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/archive` : "/",
+      icon: (
+        <Archive className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
   ];

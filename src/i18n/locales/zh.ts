@@ -185,6 +185,7 @@ const zh: TranslationDictionary = {
     advancedGroupOther: "其它",
     records: "记录",
     spec: "规格",
+    archive: "归档",
   },
 
   featureExplorer: {

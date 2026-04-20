@@ -1530,5 +1530,25 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     usage: "用量",
   },
 
+  archiveHistory: {
+    title: "归档历史",
+    subtitle: "浏览已完成和已归档的任务",
+    searchPlaceholder: "按标题或描述搜索…",
+    filterByLabel: "按标签筛选",
+    allLabels: "全部标签",
+    noResults: "没有匹配的归档任务。",
+    emptyTitle: "暂无归档任务",
+    emptySubtitle: "已完成和已取消的任务将显示在此处。",
+    archivedAt: "归档时间",
+    viewDetail: "查看详情",
+    closeDetail: "关闭",
+    description: "描述",
+    comments: "评论",
+    noDescription: "暂无描述。",
+    noComments: "暂无评论。",
+    cardCount: "{count} 张归档卡片",
+    labelFilterClear: "清除筛选",
+  },
+
   ...zhTail,
 };

@@ -223,6 +223,7 @@ export function KanbanTab({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view;
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const [agentInput, setAgentInput] = useState("");
   const [agentLoading, setAgentLoading] = useState(false);
@@ -1859,6 +1860,7 @@ export function KanbanTab({
     onOpenGitHubImport: () => setShowGitHubImportModal(true),
     onRefresh,
     onOpenSettings: board ? () => setShowSettings(true) : undefined,
+    onOpenArchive: board ? () => setArchiveOpen(true) : undefined,
   };
 
   const kanbanTabHeaderActionProps = {
@@ -2201,6 +2203,8 @@ export function KanbanTab({
       moveBlockedModalProps={moveBlockedModalProps}
       statusBarProps={statusBarProps}
       fitnessWorkbenchModalProps={fitnessWorkbenchModalProps}
+      archiveOpen={archiveOpen}
+      onCloseArchive={() => setArchiveOpen(false)}
     />
   );
 }

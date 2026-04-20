@@ -192,6 +192,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     advancedGroupOther: string;
     records: string;
     spec: string;
+    archive: string;
   };
 
   featureExplorer: {
