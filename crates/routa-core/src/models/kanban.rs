@@ -413,6 +413,7 @@ fn default_column_position_for_stage(stage: &str) -> usize {
         "review" => 3,
         "done" => 4,
         "blocked" => 5,
+        "archived" => 6,
         _ => 99,
     }
 }
@@ -623,6 +624,7 @@ pub fn column_id_to_task_status(column_id: Option<&str>) -> TaskStatus {
         "review" => TaskStatus::ReviewRequired,
         "blocked" => TaskStatus::Blocked,
         "done" => TaskStatus::Completed,
+        "archived" => TaskStatus::Cancelled,
         _ => TaskStatus::Pending,
     }
 }
@@ -633,6 +635,7 @@ pub fn task_status_to_column_id(status: &TaskStatus) -> &'static str {
         TaskStatus::ReviewRequired => "review",
         TaskStatus::Blocked => "blocked",
         TaskStatus::Completed => "done",
+        TaskStatus::Cancelled => "archived",
         _ => "backlog",
     }
 }

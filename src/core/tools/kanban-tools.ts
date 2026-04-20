@@ -74,7 +74,7 @@ import {
 import { resolveTaskWorktreeTruth } from "../kanban/task-worktree-truth";
 import { checkCanMoveToNextColumn } from "../kanban/dependency-gate";
 
-const DESCRIPTION_FROZEN_STAGES = new Set<KanbanColumnStage>(["dev", "review", "blocked", "done"]);
+const DESCRIPTION_FROZEN_STAGES = new Set<KanbanColumnStage>(["dev", "review", "blocked", "done", "archived"]);
 
 export class KanbanTools {
   private eventBus?: EventBus;
@@ -245,11 +245,23 @@ export class KanbanTools {
     }
 
     const targetColumn = board.columns.find((c) => c.id === params.targetColumnId);
-    if (!targetColumn) {
+    // Allow "archived" as a virtual column even if not present on the board
+    const isArchivedVirtualColumn = params.targetColumnId === "archived" && !targetColumn;
+    if (!targetColumn && !isArchivedVirtualColumn) {
       return errorResult(`Column not found: ${params.targetColumnId}`);
     }
+    const resolvedTargetColumn = targetColumn ?? {
+      id: "archived",
+      name: "Archived",
+      position: board.columns.length,
+      stage: "archived" as KanbanColumnStage,
+    };
 
     const fromColumnId = task.columnId ?? "backlog";
+    // Archived cards cannot be moved out via moveCard; use a dedicated unarchive endpoint instead
+    if (fromColumnId === "archived") {
+      return errorResult(`Cannot move card "${task.title}" out of Archived. Use a dedicated unarchive action to restore it.`);
+    }
     const fromColumn = board.columns.find((c) => c.id === fromColumnId);
     const allowReviewFallbackToDev = fromColumnId === "review"
       && params.targetColumnId === "dev"
@@ -276,7 +288,7 @@ export class KanbanTools {
           && activeAutomation.columnId !== fromColumnId
         ) {
           return errorResult(
-            `Cannot move "${task.title}" to "${targetColumn.name}": an active automation is still running ` +
+            `Cannot move "${task.title}" to "${resolvedTargetColumn.name}": an active automation is still running ` +
             `in column "${activeAutomation.columnName ?? activeAutomation.columnId}" (status: ${activeAutomation.status}). ` +
             "Wait for it to complete before moving the card.",
           );
@@ -300,7 +312,7 @@ export class KanbanTools {
     }
 
     // Check required artifacts before allowing transition
-    const requiredArtifacts = targetColumn.automation?.requiredArtifacts;
+    const requiredArtifacts = resolvedTargetColumn.automation?.requiredArtifacts;
     if (requiredArtifacts && requiredArtifacts.length > 0 && this.artifactStore) {
       const missingArtifacts: string[] = [];
       for (const artifactType of requiredArtifacts) {
@@ -314,35 +326,35 @@ export class KanbanTools {
       }
       if (missingArtifacts.length > 0) {
         return errorResult(
-          `Cannot move card to "${targetColumn.name}": missing required artifacts: ${missingArtifacts.join(", ")}. ` +
+          `Cannot move card to "${resolvedTargetColumn.name}": missing required artifacts: ${missingArtifacts.join(", ")}. ` +
           `Please provide these artifacts before moving the card.`
         );
       }
     }
 
-    const requiredTaskFields = resolveTargetRequiredTaskFields(board.columns, targetColumn.id);
+    const requiredTaskFields = resolveTargetRequiredTaskFields(board.columns, resolvedTargetColumn.id);
     if (requiredTaskFields.length > 0) {
       const readiness = validateTaskReadiness(task, requiredTaskFields);
       if (!readiness.ready) {
         const missingTaskFields = readiness.missing.map(formatRequiredTaskFieldLabel);
         return errorResult(
-          `Cannot move card to "${targetColumn.name}": missing required task fields: ${missingTaskFields.join(", ")}. `
+          `Cannot move card to "${resolvedTargetColumn.name}": missing required task fields: ${missingTaskFields.join(", ")}. `
           + "Please complete this story definition before moving the card.",
         );
       }
     }
 
-    const contractReadiness = buildTaskContractReadiness(task, targetColumn.automation?.contractRules);
+    const contractReadiness = buildTaskContractReadiness(task, resolvedTargetColumn.automation?.contractRules);
     const contractError = buildTaskContractTransitionErrorFromRules(
       contractReadiness,
-      targetColumn.name,
-      targetColumn.automation?.contractRules,
+      resolvedTargetColumn.name,
+      resolvedTargetColumn.automation?.contractRules,
     );
     if (contractError) {
       await this.recordTaskContractGateFailure(
         task,
         contractError,
-        targetColumn.name,
+        resolvedTargetColumn.name,
         contractReadiness.loopBreakerThreshold,
         task.triggerSessionId,
       );
@@ -354,8 +366,8 @@ export class KanbanTools {
       deliveryReadiness = await buildTaskDeliveryReadiness(task, this.automationSystem!);
       const deliveryError = buildTaskDeliveryTransitionErrorFromRules(
         deliveryReadiness,
-        targetColumn.name,
-        targetColumn.automation?.deliveryRules,
+        resolvedTargetColumn.name,
+        resolvedTargetColumn.automation?.deliveryRules,
         task,
       );
       if (deliveryError) {
@@ -404,7 +416,7 @@ export class KanbanTools {
         fromColumnId,
         toColumnId: params.targetColumnId,
         fromColumnName: fromColumn?.name,
-        toColumnName: targetColumn.name,
+        toColumnName: resolvedTargetColumn.name,
       });
     }
 
@@ -1142,6 +1154,7 @@ function normalizeColumnStage(columnId?: string): KanbanColumnStage | undefined 
     case "review":
     case "blocked":
     case "done":
+    case "archived":
       return (columnId ?? "backlog").toLowerCase() as KanbanColumnStage;
     default:
       return undefined;

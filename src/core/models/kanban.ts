@@ -141,7 +141,7 @@ export const DEFAULT_KANBAN_COLUMN_ORDER: KanbanColumnStage[] = [
   "archived",
 ];
 
-export const KANBAN_HAPPY_PATH_COLUMN_ORDER: Exclude<KanbanColumnStage, "blocked">[] = [
+export const KANBAN_HAPPY_PATH_COLUMN_ORDER: Exclude<KanbanColumnStage, "blocked" | "archived">[] = [
   "backlog",
   "todo",
   "dev",

@@ -1256,7 +1256,7 @@ export function getMcpToolDefinitions(
         type: "object",
         properties: {
           cardId: { type: "string", description: "Card ID (same as task ID)" },
-          targetColumnId: { type: "string", description: "Target column ID. Valid columns: 'backlog', 'todo', 'dev' (in progress), 'review', 'blocked', 'done'" },
+          targetColumnId: { type: "string", description: "Target column ID. Valid columns: 'backlog', 'todo', 'dev' (in progress), 'review', 'blocked', 'done', 'archived'" },
           position: { type: "number", description: "Position within the column (optional)" },
         },
         required: ["cardId", "targetColumnId"],

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::kanban::KanbanColumnAutomation;
 
-const VALID_STAGES: &[&str] = &["backlog", "todo", "dev", "review", "blocked", "done"];
+const VALID_STAGES: &[&str] = &["backlog", "todo", "dev", "review", "blocked", "done", "archived"];
 const VALID_TRANSITION_TYPES: &[&str] = &["entry", "exit", "both"];
 const VALID_ARTIFACTS: &[&str] = &["screenshot", "test_results", "code_diff"];
 const VALID_REQUIRED_TASK_FIELDS: &[&str] = &[
