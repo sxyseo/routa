@@ -418,6 +418,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     models: string;
     mcpServers: string;
     webhooks: string;
+    workspaceDeletion: string;
     schedules: string;
     workflows: string;
     roleDefaults: string;
@@ -444,6 +445,22 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     sessions: string;
     refreshSystemInfo: string;
     language: string;
+    dangerZone: string;
+    workspaceDangerZone: {
+      title: string;
+      description: string;
+      renameTitle: string;
+      newNamePlaceholder: string;
+      saveName: string;
+      renaming: string;
+      renamedSuccess: string;
+      confirmPlaceholder: string;
+      deleteButton: string;
+      confirmButton: string;
+      deleting: string;
+      deletedSuccess: string;
+      error: string;
+    };
     onboardingSection: {
       title: string;
       description: string;

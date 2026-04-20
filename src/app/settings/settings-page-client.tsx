@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
@@ -18,11 +18,17 @@ interface ProviderOption {
   status?: string;
 }
 
+interface WorkspaceInfo {
+  id: string;
+  title: string;
+}
+
 export function SettingsPageClient() {
   const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [workspaceInfo, setWorkspaceInfo] = useState<WorkspaceInfo | null>(null);
   const requestedTab = searchParams.get("tab");
   const initialTab = isSettingsTab(requestedTab) ? requestedTab : undefined;
   const workspaceId = normalizeWorkspaceQueryId(searchParams.get("workspaceId"));
@@ -43,6 +49,29 @@ export function SettingsPageClient() {
     void fetchProviders();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const fetchWorkspace = async () => {
+      if (!workspaceId) {
+        if (!cancelled) setWorkspaceInfo(null);
+        return;
+      }
+      try {
+        const res = await desktopAwareFetch(`/api/workspaces/${workspaceId}`);
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          setWorkspaceInfo({ id: workspaceId, title: data.workspace?.title ?? workspaceId });
+        } else if (!cancelled) {
+          setWorkspaceInfo({ id: workspaceId, title: workspaceId });
+        }
+      } catch {
+        if (!cancelled) setWorkspaceInfo({ id: workspaceId, title: workspaceId });
+      }
+    };
+    void fetchWorkspace();
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
   const handleClose = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
@@ -51,10 +80,14 @@ export function SettingsPageClient() {
     router.push(workspaceId ? `/workspace/${workspaceId}/sessions` : "/");
   };
 
+  const handleWorkspaceTitleChange = useCallback((title: string) => {
+    setWorkspaceInfo((prev) => (prev ? { ...prev, title } : prev));
+  }, []);
+
   return (
     <DesktopAppShell
       workspaceId={workspaceId}
-      workspaceSwitcher={(
+      titleBarRight={(
         <div className="flex items-center gap-1.5 rounded-xl border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-primary">
           <Settings className="h-3 w-3 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           <span>{t.settings.title}</span>
@@ -68,6 +101,9 @@ export function SettingsPageClient() {
         providers={providers}
         initialTab={initialTab}
         variant="page"
+        workspaceId={workspaceId ?? undefined}
+        workspaceTitle={workspaceInfo?.title}
+        onWorkspaceTitleChange={workspaceId ? handleWorkspaceTitleChange : undefined}
       />
     </DesktopAppShell>
   );
@@ -78,5 +114,6 @@ function isSettingsTab(value: string | null): value is SettingsTab {
     || value === "registry"
     || value === "roles"
     || value === "models"
-    || value === "webhooks";
+    || value === "webhooks"
+    || value === "workspace";
 }

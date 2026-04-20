@@ -70,7 +70,7 @@
   --dt-border: var(--brand-slate-300);
   --dt-border-light: var(--brand-slate-200);
   --dt-text-primary: var(--brand-slate-900);
-  --dt-text-secondary: var(--brand-slate-700);
+  --dt-text-secondary: var(--brand-slate-600);
   --dt-text-muted: var(--brand-slate-500);
   --dt-accent: var(--dt-brand-blue);
   --dt-accent-strong: var(--dt-brand-blue-soft);
@@ -88,7 +88,7 @@
   --dt-panel-header-bg: var(--brand-slate-200);
   --dt-list-item-hover: var(--brand-blue-100);
   --dt-badge-bg: var(--dt-brand-route);
-  --dt-badge-warning-bg: var(--dt-brand-orange);
+  --dt-badge-warning-bg: var(--dt-badge-orange);
   --dt-badge-success-bg: var(--dt-brand-green);
 }
 

@@ -157,6 +157,9 @@ export interface SettingsPanelProps {
   initialTab?: SettingsTab;
   onResetOnboarding?: () => void;
   variant?: "modal" | "page";
+  workspaceId?: string;
+  workspaceTitle?: string;
+  onWorkspaceTitleChange?: (title: string) => void;
 }
 
 export type SettingsTab =
@@ -168,7 +171,8 @@ export type SettingsTab =
   | "mcp"
   | "webhooks"
   | "schedules"
-  | "workflows";
+  | "workflows"
+  | "workspace";
 
 export const inputCls =
   "w-full text-xs px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-[#1e2130] text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:outline-none";

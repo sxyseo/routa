@@ -42,7 +42,7 @@ import {
   type SettingsPanelProps,
   type SettingsTab,
 } from "./settings-panel-shared";
-import { ArrowLeft, RefreshCw, Settings, TriangleAlert, X, Package } from "lucide-react";
+import { ArrowLeft, RefreshCw, Settings, TriangleAlert, X, Package, Trash2, AlertTriangle } from "lucide-react";
 
 export {
   getModelDefinitionByAlias,
@@ -816,13 +816,200 @@ function DockerConfigModalContent({ open: _open, errorMessage, onClose, onSaved 
   );
 }
 
-// ─── Main Settings Panel ───────────────────────────────────────────────────
-export function SettingsPanel({ open, onClose, providers, initialTab, onResetOnboarding, variant = "modal" }: SettingsPanelProps) {
-  if (!open) return null;
-  return <SettingsPanelContent onClose={onClose} providers={providers} initialTab={initialTab} onResetOnboarding={onResetOnboarding} variant={variant} />;
+// ─── Workspace Settings Tab ─────────────────────────────────────────────────
+
+function WorkspaceSettingsTab({
+  workspaceId,
+  workspaceTitle,
+  onTitleChange,
+}: {
+  workspaceId: string;
+  workspaceTitle?: string;
+  onTitleChange: (title: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [newName, setNewName] = useState(workspaceTitle ?? workspaceId);
+  const [renameStatus, setRenameStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [renameError, setRenameError] = useState("");
+  const displayTitle = workspaceTitle ?? workspaceId;
+
+  const handleRename = async () => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === displayTitle) return;
+    setRenameStatus("loading");
+    setRenameError("");
+    try {
+      const res = await desktopAwareFetch(`/api/workspaces/${workspaceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: trimmed }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      setRenameStatus("success");
+      onTitleChange(trimmed);
+      setTimeout(() => setRenameStatus("idle"), 2000);
+    } catch (err) {
+      setRenameStatus("error");
+      setRenameError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <div className="px-4 py-4 overflow-y-auto h-full">
+      <div className={settingsCardCls}>
+        <div className="flex items-center gap-2 mb-1">
+          <Settings className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} />
+          <p className={sectionHeadCls}>{t.settings.workspaceDangerZone.renameTitle}</p>
+        </div>
+        <p className="mt-1 mb-4 text-xs text-slate-500 dark:text-slate-400">
+          {t.settings.workspaceDangerZone.description.replace("Permanently delete", "Update").replace("This action cannot be undone.", "")}
+        </p>
+
+        <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/40">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{displayTitle}</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">{workspaceId}</p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+            {t.settings.workspaceDangerZone.newNamePlaceholder}
+          </label>
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder={displayTitle}
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 placeholder-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:placeholder-slate-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+        </div>
+
+        {renameStatus === "error" && (
+          <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            {renameError}
+          </div>
+        )}
+        {renameStatus === "success" && (
+          <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-600 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
+            {t.settings.workspaceDangerZone.renamedSuccess}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleRename}
+          disabled={!newName.trim() || newName.trim() === displayTitle || renameStatus === "loading"}
+          className="mt-3 flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <span>{renameStatus === "loading" ? t.settings.workspaceDangerZone.renaming : t.settings.workspaceDangerZone.saveName}</span>
+        </button>
+      </div>
+
+      <WorkspaceDangerZonePanel workspaceId={workspaceId} workspaceTitle={workspaceTitle} />
+    </div>
+  );
 }
 
-function SettingsPanelContent({ onClose, providers, initialTab, onResetOnboarding, variant = "modal" }: Omit<SettingsPanelProps, "open">) {
+// ─── Workspace Danger Zone ──────────────────────────────────────────────────
+
+function WorkspaceDangerZonePanel({
+  workspaceId,
+  workspaceTitle,
+}: {
+  workspaceId: string;
+  workspaceTitle?: string;
+}) {
+  const { t } = useTranslation();
+  const [confirmText, setConfirmText] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+  const displayTitle = workspaceTitle ?? workspaceId;
+  const isConfirmed = confirmText === displayTitle;
+
+  const handleDelete = async () => {
+    if (!isConfirmed) return;
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const res = await desktopAwareFetch(`/api/workspaces/${workspaceId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      setStatus("success");
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 1500);
+    } catch (err) {
+      setStatus("error");
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <div className={`${settingsCardCls} mt-4 border-red-200 dark:border-red-800`}>
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} />
+        <p className={sectionHeadCls + " text-red-500/80"}>{t.settings.workspaceDangerZone.title}</p>
+      </div>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {t.settings.workspaceDangerZone.description}
+      </p>
+
+      {/* Confirm input */}
+      <div className="mt-4">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+          {t.settings.workspaceDangerZone.confirmPlaceholder}
+        </label>
+        <input
+          type="text"
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder={displayTitle}
+          className="w-full rounded-md border border-red-300 bg-white px-3 py-2 text-sm text-slate-700 placeholder-slate-400 dark:border-red-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder-slate-500 focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+          autoComplete="off"
+        />
+      </div>
+
+      {/* Error */}
+      {status === "error" && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+          {t.settings.workspaceDangerZone.error}: {errorMsg}
+        </div>
+      )}
+
+      {/* Success */}
+      {status === "success" && (
+        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-600 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
+          {t.settings.workspaceDangerZone.deletedSuccess}
+        </div>
+      )}
+
+      {/* Delete button */}
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={!isConfirmed || status === "loading" || status === "success"}
+        className="mt-4 w-full flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Trash2 className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} />
+        {status === "loading" ? t.settings.workspaceDangerZone.deleting : t.settings.workspaceDangerZone.deleteButton}
+      </button>
+    </div>
+  );
+}
+
+// ─── Main Settings Panel ───────────────────────────────────────────────────
+export function SettingsPanel({ open, onClose, providers, initialTab, onResetOnboarding, variant = "modal", workspaceId, workspaceTitle, onWorkspaceTitleChange }: SettingsPanelProps) {
+  if (!open) return null;
+  return <SettingsPanelContent onClose={onClose} providers={providers} initialTab={initialTab} onResetOnboarding={onResetOnboarding} variant={variant} workspaceId={workspaceId} workspaceTitle={workspaceTitle} onWorkspaceTitleChange={onWorkspaceTitleChange} />;
+}
+
+function SettingsPanelContent({ onClose, providers, initialTab, onResetOnboarding, variant = "modal", workspaceId, workspaceTitle, onWorkspaceTitleChange }: Omit<SettingsPanelProps, "open">) {
   const { t } = useTranslation();
   const [settings, setSettings] = useState<DefaultProviderSettings>(() => loadDefaultProviders());
   const [modelDefs, setModelDefs] = useState<ModelDefinition[]>(() => loadModelDefinitions());
@@ -857,6 +1044,7 @@ function SettingsPanelContent({ onClose, providers, initialTab, onResetOnboardin
     { key: "roles", label: t.settings.roles },
     { key: "models", label: t.settings.models },
     { key: "webhooks", label: t.settings.webhooks },
+    ...(workspaceId ? [{ key: "workspace" as SettingsTab, label: t.settings.workspaceDeletion ?? "Workspace" }] : []),
   ];
 
   const activeTabMeta = TAB_DEFS.find((tab) => tab.key === activeTab) ?? TAB_DEFS[0];
@@ -910,13 +1098,20 @@ function SettingsPanelContent({ onClose, providers, initialTab, onResetOnboardin
       )}
       {activeTab === "models" && <ModelsTab />}
       {activeTab === "webhooks" && <WebhooksTab />}
+      {activeTab === "workspace" && workspaceId && (
+        <WorkspaceSettingsTab
+          workspaceId={workspaceId}
+          workspaceTitle={workspaceTitle}
+          onTitleChange={onWorkspaceTitleChange ?? (() => {})}
+        />
+      )}
     </div>
   );
 
   if (isPageVariant) {
     return (
       <div className="flex h-full min-h-0 bg-desktop-bg-primary text-desktop-text-primary">
-        <SettingsCenterNav activeItem={activeTab} />
+        <SettingsCenterNav activeItem={activeTab} workspaceId={workspaceId} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="border-b border-desktop-border px-8 py-8">

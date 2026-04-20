@@ -33,6 +33,13 @@ export interface UseWorkspacesReturn {
   archiveWorkspace: (id: string) => Promise<void>;
 }
 
+const WORKSPACE_CHANGE_EVENT = "routa:workspace-changed";
+
+function broadcastWorkspaceChange(workspaceId: string | null) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(WORKSPACE_CHANGE_EVENT, { detail: { workspaceId } }));
+}
+
 export function useWorkspaces(): UseWorkspacesReturn {
   const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
   // Start with loading=true since we fetch on mount
@@ -59,6 +66,7 @@ export function useWorkspaces(): UseWorkspacesReturn {
     if (!res.ok) return null;
     const data = await res.json();
     await fetchWorkspaces();
+    broadcastWorkspaceChange(data.workspace?.id ?? null);
     return data.workspace ?? null;
   }, [fetchWorkspaces]);
 
@@ -69,6 +77,7 @@ export function useWorkspaces(): UseWorkspacesReturn {
       body: JSON.stringify({ archived: true }),
     });
     await fetchWorkspaces();
+    broadcastWorkspaceChange(null);
   }, [fetchWorkspaces]);
 
   useEffect(() => {

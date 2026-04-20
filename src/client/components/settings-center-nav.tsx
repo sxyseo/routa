@@ -7,6 +7,7 @@ import type { SettingsTab } from "./settings-panel-shared";
 
 interface SettingsCenterNavProps {
   activeItem?: SettingsNavItem;
+  workspaceId?: string;
 }
 
 export type SettingsNavItem =
@@ -16,14 +17,19 @@ export type SettingsNavItem =
   | "workflows"
   | "schedules";
 
-export function SettingsCenterNav({ activeItem }: SettingsCenterNavProps) {
+export function SettingsCenterNav({ activeItem, workspaceId }: SettingsCenterNavProps) {
   const { t } = useTranslation();
+
+  const getHref = (tab: string) =>
+    workspaceId ? `/settings?tab=${tab}&workspaceId=${workspaceId}` : `/settings?tab=${tab}`;
+
   const configItems: Array<{ key: SettingsNavItem; label: string; href: string }> = [
-    { key: "providers", label: t.settings.providers, href: "/settings?tab=providers" },
-    { key: "registry", label: t.settings.registry, href: "/settings?tab=registry" },
-    { key: "roles", label: t.settings.roleDefaults, href: "/settings?tab=roles" },
-    { key: "models", label: t.settings.models, href: "/settings?tab=models" },
-    { key: "webhooks", label: t.settings.webhooks, href: "/settings?tab=webhooks" },
+    { key: "providers", label: t.settings.providers, href: getHref("providers") },
+    { key: "registry", label: t.settings.registry, href: getHref("registry") },
+    { key: "roles", label: t.settings.roleDefaults, href: getHref("roles") },
+    { key: "models", label: t.settings.models, href: getHref("models") },
+    { key: "webhooks", label: t.settings.webhooks, href: getHref("webhooks") },
+    ...(workspaceId ? [{ key: "workspace" as SettingsNavItem, label: t.settings.workspaceDeletion ?? "Workspace", href: getHref("workspace") }] : []),
   ];
   const workspaceToolItems: Array<{ key: SettingsNavItem; label: string; href: string }> = [
     { key: "specialists", label: t.nav.specialists, href: "/settings/specialists" },

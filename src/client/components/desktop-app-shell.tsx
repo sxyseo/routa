@@ -15,6 +15,7 @@
 import React, { useCallback, useSyncExternalStore } from "react";
 import { DesktopShellHeader } from "./desktop-shell-header";
 import { DesktopSidebar } from "./desktop-sidebar";
+import { useWorkspaceContext } from "@/client/contexts/workspace-context";
 
 const DESKTOP_SIDEBAR_COLLAPSED_KEY = "routa.desktop.sidebar-collapsed";
 const DESKTOP_SIDEBAR_CHANGE_EVENT = "routa:desktop-sidebar-collapsed";
@@ -80,6 +81,7 @@ export function DesktopAppShell({
   workspaceSwitcher,
   sidebarTopAction,
 }: DesktopAppShellProps) {
+  const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
   const isSidebarCollapsed = useSyncExternalStore(
     subscribeToDesktopSidebarCollapsed,
     getDesktopSidebarCollapsedSnapshot,
@@ -105,8 +107,8 @@ export function DesktopAppShell({
       data-testid="desktop-shell-root"
     >
       <DesktopShellHeader
-        workspaceId={workspaceId}
-        workspaceTitle={workspaceTitle}
+        workspaceId={activeWorkspaceId ?? workspaceId ?? undefined}
+        workspaceTitle={activeWorkspace?.title ?? workspaceTitle}
         workspaceSwitcher={workspaceSwitcher}
         titleBarRight={titleBarRight}
       />
@@ -114,7 +116,7 @@ export function DesktopAppShell({
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0" data-testid="desktop-shell-body">
         <DesktopSidebar
-          workspaceId={workspaceId}
+          workspaceId={activeWorkspaceId ?? workspaceId ?? undefined}
           collapsed={isSidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!isSidebarCollapsed)}
           topAction={sidebarTopAction}

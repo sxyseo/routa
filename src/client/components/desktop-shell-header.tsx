@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 
+import { useWorkspaceContext } from "@/client/contexts/workspace-context";
 import { useTranslation } from "@/i18n";
 import { ShellHeaderControls } from "./shell-header-controls";
 import { Folder } from "lucide-react";
@@ -22,31 +23,36 @@ export function DesktopShellHeader({
   titleBarRight,
 }: DesktopShellHeaderProps) {
   const { t } = useTranslation();
-  const normalizedWorkspaceId = workspaceId?.trim() || null;
+  const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
+
+  // Use the synced active workspace as primary, fall back to props
+  const syncedId = activeWorkspaceId ?? workspaceId ?? null;
+  const syncedTitle = activeWorkspace?.title ?? workspaceTitle ?? null;
+  const normalizedWorkspaceId = syncedId?.trim() || null;
   const workspaceHref = normalizedWorkspaceId ? `/workspace/${normalizedWorkspaceId}` : null;
-  const workspaceLabel = workspaceTitle ?? normalizedWorkspaceId ?? t.workspace.workspaces;
+  const workspaceLabel = syncedTitle ?? normalizedWorkspaceId ?? t.workspace.workspaces;
 
   return (
     <header
-      className="relative z-30 flex h-10 shrink-0 items-center overflow-visible border-b border-desktop-border bg-desktop-bg-tertiary backdrop-blur-md select-none"
+      className="relative z-30 flex h-10 shrink-0 items-center overflow-visible border-b border-desktop-border bg-desktop-bg-secondary backdrop-blur-md select-none"
       data-testid="desktop-shell-header"
     >
       <div className="w-20 h-full app-drag-region" />
 
-      <div className="ml-3">
+      <div className="ml-2 flex items-center">
         {workspaceSwitcher ?? (
           workspaceHref ? (
           <Link
             href={workspaceHref}
-            className="flex items-center gap-1.5 rounded-xl border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-primary transition-colors hover:bg-desktop-bg-active"
+            className="flex items-center gap-1.5 rounded-lg border border-desktop-border bg-desktop-bg-primary/60 px-2.5 py-1 text-[11px] text-desktop-text-primary transition-colors hover:bg-desktop-bg-active"
           >
-            <Folder className="w-3 h-3 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            <span className="max-w-30 truncate">{workspaceLabel}</span>
+            <Folder className="w-3.5 h-3.5 shrink-0 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
+            <span className="min-w-0 max-w-[140px] truncate">{workspaceLabel}</span>
           </Link>
           ) : (
-            <div className="flex items-center gap-1.5 rounded-xl border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-secondary">
-              <Folder className="w-3 h-3 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-              <span className="max-w-30 truncate">{workspaceLabel}</span>
+            <div className="flex items-center gap-1.5 rounded-lg border border-desktop-border bg-desktop-bg-primary/60 px-2.5 py-1 text-[11px] text-desktop-text-secondary">
+              <Folder className="w-3.5 h-3.5 shrink-0 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
+              <span className="min-w-0 max-w-[140px] truncate">{workspaceLabel}</span>
             </div>
           )
         )}

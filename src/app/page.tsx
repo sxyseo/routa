@@ -20,6 +20,7 @@ import {
 } from "@/client/components/settings-panel";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
+import { useWorkspaceContext } from "@/client/contexts/workspace-context";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
@@ -81,11 +82,11 @@ function isTopLevelTeamRun(session: SessionInfo) {
 function HomePageContent() {
   const router = useRouter();
   const workspacesHook = useWorkspaces();
+  const { activeWorkspaceId, setActiveWorkspaceId, activeWorkspace } = useWorkspaceContext();
   const acp = useAcp();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
 
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"providers" | "roles" | "specialists" | undefined>(undefined);
   const [preferredMode, setPreferredMode] = useState<OnboardingMode | null>(null);
@@ -121,7 +122,7 @@ function HomePageContent() {
     if (!activeWorkspaceId && workspacesHook.workspaces.length > 0) {
       setActiveWorkspaceId(workspacesHook.workspaces[0].id);
     }
-  }, [activeWorkspaceId, searchParams, workspacesHook.workspaces]);
+  }, [activeWorkspaceId, searchParams, workspacesHook.workspaces, setActiveWorkspaceId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -197,7 +198,7 @@ function HomePageContent() {
       return true;
     }
     return false;
-  }, [workspacesHook]);
+  }, [workspacesHook, setActiveWorkspaceId]);
 
   const handleOpenProviders = useCallback(() => {
     setSettingsInitialTab("providers");
@@ -252,7 +253,6 @@ function HomePageContent() {
     return false;
   }, [activeWorkspaceId, fetchCodebases, workspacesHook.workspaces]);
 
-  const activeWorkspace = workspacesHook.workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
   const requestedSurfaceId = searchParams.get("mode");
   const activeData = activeWorkspaceId ? (workspaceHomeData[activeWorkspaceId] ?? EMPTY_HOME_DATA) : EMPTY_HOME_DATA;
   const recentSessions = useMemo(() => (

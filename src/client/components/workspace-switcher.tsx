@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceData } from "../hooks/use-workspaces";
+import { useWorkspaceContext } from "../contexts/workspace-context";
 import { useTranslation } from "@/i18n";
 import { normalizeWorkspaceQueryId } from "../utils/workspace-id";
 import { Check, ChevronDown, Folder, Plus, Search } from "lucide-react";
@@ -46,6 +47,17 @@ export function WorkspaceSwitcher({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { t } = useTranslation();
+
+  const { refreshWorkspaces } = useWorkspaceContext();
+
+  // Listen for workspace changes from other components
+  useEffect(() => {
+    const handler = () => {
+      void refreshWorkspaces();
+    };
+    window.addEventListener("routa:workspace-changed", handler);
+    return () => window.removeEventListener("routa:workspace-changed", handler);
+  }, [refreshWorkspaces]);
 
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
   const visibleTitle = active?.title ?? activeWorkspaceTitle;
@@ -112,11 +124,11 @@ export function WorkspaceSwitcher({
 
   const isDesktopTheme = desktop || compact;
   const triggerCls = isDesktopTheme
-    ? "flex items-center gap-1.5 rounded-md border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[11px] text-desktop-text-primary transition-all hover:bg-desktop-bg-active/80"
+    ? "flex items-center gap-1.5 h-7 px-2.5 rounded-lg border border-desktop-border bg-desktop-bg-primary/60 text-[11px] text-desktop-text-primary transition-colors hover:bg-desktop-bg-active"
     : "inline-flex w-full max-w-[220px] items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left text-sm text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-[#1e2130] dark:text-slate-300 dark:hover:bg-slate-800";
-  const triggerIconSize = isDesktopTheme ? "w-3 h-3" : "w-3.5 h-3.5";
+  const triggerIconSize = isDesktopTheme ? "w-3.5 h-3.5 shrink-0" : "w-3.5 h-3.5";
   const chevronCls = isDesktopTheme
-    ? `w-2.5 h-2.5 text-desktop-text-secondary transition-transform ${open ? "rotate-180" : ""}`
+    ? `w-2.5 h-2.5 shrink-0 text-desktop-text-secondary transition-transform ${open ? "rotate-180" : ""}`
     : `w-3 h-3 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`;
 
   const dropdownBg = isDesktopTheme
@@ -127,27 +139,27 @@ export function WorkspaceSwitcher({
     ? "bg-desktop-bg-active text-desktop-accent"
     : "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300";
   const listItemBase = isDesktopTheme
-    ? "flex items-center gap-2 w-full px-2.5 py-1.5 text-[11px] rounded-md"
+    ? "flex items-center gap-2 w-full px-2.5 py-1.5 text-[11px] rounded-md cursor-pointer"
     : "flex items-center gap-2 text-left w-full px-2.5 py-2 text-xs";
   const footerBorder = isDesktopTheme ? "border-desktop-border" : "border-slate-100 dark:border-slate-800";
   const footerText = isDesktopTheme ? "text-desktop-text-secondary" : "text-slate-400";
-  const rowIcon = isDesktopTheme ? "w-3 h-3" : "w-3.5 h-3.5";
-  const rowActiveIcon = isDesktopTheme ? "w-3 h-3 text-desktop-accent" : "w-3 h-3 text-blue-500";
+  const rowIcon = isDesktopTheme ? "w-3 h-3 shrink-0" : "w-3.5 h-3.5";
+  const rowActiveIcon = isDesktopTheme ? "w-3 h-3 text-desktop-accent shrink-0" : "w-3 h-3 text-blue-500 shrink-0";
   const footerBtn = isDesktopTheme
-    ? "rounded bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-accent hover:bg-desktop-bg-active/80"
+    ? "flex items-center gap-1 rounded px-2 py-1 text-[11px] text-desktop-accent hover:bg-desktop-bg-active"
     : "rounded border border-blue-200/70 bg-blue-50 px-2 py-1.5 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300";
   const createInputCls = isDesktopTheme
-    ? "h-7 border border-desktop-border bg-desktop-bg-primary px-2 text-[11px] text-desktop-text-primary placeholder:text-desktop-text-secondary focus:border-desktop-accent"
+    ? "h-6 border border-desktop-border bg-desktop-bg-primary px-2 text-[11px] text-desktop-text-primary placeholder:text-desktop-text-secondary focus:border-desktop-accent focus:outline-none"
     : "h-7 border border-slate-300 bg-white px-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 focus:border-blue-500 dark:focus:border-blue-500";
   const createBtnCls = isDesktopTheme
-    ? "rounded bg-desktop-accent px-2 py-1 text-[11px] font-medium text-desktop-accent-text hover:bg-desktop-accent-strong"
+    ? "flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium text-desktop-accent bg-desktop-bg-active hover:bg-desktop-accent hover:text-white"
     : "rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700";
   const searchInputCls = isDesktopTheme
-    ? "border-desktop-border text-[11px] bg-desktop-bg-primary text-desktop-text-primary placeholder:text-desktop-text-secondary focus:border-desktop-accent"
+    ? "border-desktop-border text-[11px] bg-desktop-bg-primary text-desktop-text-primary placeholder:text-desktop-text-secondary focus:border-desktop-accent focus:outline-none"
     : "border-slate-300 bg-white text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
 
   return (
-    <div className="relative" ref={dropdownRef} data-testid="desktop-workspace-switcher">
+    <div className="relative flex items-center" ref={dropdownRef} data-testid="desktop-workspace-switcher">
       <button
         type="button"
         onClick={() => {
@@ -161,7 +173,7 @@ export function WorkspaceSwitcher({
         title={visibleTitle ?? t.workspace.selectWorkspace}
       >
         <Folder className={triggerIconSize} strokeWidth={2} />
-        <span className="min-w-0 flex-1 truncate">
+        <span className="min-w-0 flex-1 truncate max-w-[120px]">
           {loading ? "..." : (visibleTitle ?? t.workspace.select)}
         </span>
         <ChevronDown className={chevronCls} strokeWidth={2} />
@@ -169,10 +181,10 @@ export function WorkspaceSwitcher({
 
       {open && (
         <div
-          className={`absolute top-full left-0 z-50 mt-1 min-w-[14rem] max-w-[18rem] border shadow-xl ${dropdownBg} rounded-lg ${footerBorder}`}
+          className={`absolute top-full left-0 z-50 mt-1 min-w-[14rem] max-w-[18rem] border shadow-xl rounded-lg ${dropdownBg}`}
         >
-          <div className="border-b border-current/20 p-1.5">
-            <div className="flex items-center gap-1.5 rounded-md border border-current/20 px-2 py-1">
+          <div className={`border-b border-current/20 p-1.5`}>
+            <div className={`flex items-center gap-1.5 rounded-md border border-current/20 px-2 py-1`}>
               <Search className={isDesktopTheme ? "w-3 h-3" : "w-3.5 h-3.5"} strokeWidth={2} />
               <input
                 type="text"
@@ -246,7 +258,7 @@ export function WorkspaceSwitcher({
               <button
                 type="button"
                 onClick={() => setCreating(true)}
-                className={`w-full rounded flex items-center justify-center gap-1.5 ${footerBtn}`}
+                className={`w-full ${footerBtn}`}
               >
                 <Plus className={rowIcon} strokeWidth={2} />
                 {t.workspace.newWorkspace}

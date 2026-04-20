@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { I18nProvider } from "@/i18n";
 import { ThemeInitializer } from "@/client/components/theme-initializer";
+import { WorkspaceProvider } from "@/client/contexts/workspace-context";
 
 export const metadata: Metadata = {
   title: "Routa - Multi-Agent Coordinator",
@@ -43,7 +44,9 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <ThemeInitializer />
-        <I18nProvider>{children}</I18nProvider>
+        <I18nProvider>
+          <WorkspaceProvider>{children}</WorkspaceProvider>
+        </I18nProvider>
       </body>
     </html>
   );
