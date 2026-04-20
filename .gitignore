@@ -120,6 +120,7 @@ target/
 .playwright-mcp/*
 .playwright-cli/*
 *.png
+!apps/desktop/src-tauri/icons/tray-template-macos.png
 routa.db-shm
 dogfood-output
 .worktrees

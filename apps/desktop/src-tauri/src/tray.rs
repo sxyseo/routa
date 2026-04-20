@@ -32,6 +32,14 @@ const TRAY_SETTINGS_AGENTS_ID: &str = "tray:settings:agents";
 const TRAY_SETTINGS_WEBHOOKS_ID: &str = "tray:settings:webhooks";
 const TRAY_QUIT_ID: &str = "tray:quit";
 
+#[cfg(target_os = "macos")]
+const MACOS_TRAY_TEMPLATE_ICON: tauri::image::Image<'_> =
+    tauri::include_image!("./icons/tray-template-macos.png");
+
+fn use_template_icon_for_tray() -> bool {
+    cfg!(target_os = "macos")
+}
+
 // ─── Data types ──────────────────────────────────────────────────────────────
 
 /// A configured GitHub repository to expose in the tray menu.
@@ -223,12 +231,19 @@ pub fn setup_tray(app: &AppHandle, repos: &[GitHubRepo]) -> tauri::Result<()> {
 
     #[cfg(target_os = "macos")]
     {
+        // macOS tray icons work best with a dedicated monochrome template asset.
+        // Using the full-color application icon here makes the menu-bar glyph
+        // hard to read and can disappear entirely when marked as a template.
         builder = builder
-            .icon_as_template(true)
+            .icon(MACOS_TRAY_TEMPLATE_ICON)
             .show_menu_on_left_click(false)
             .on_tray_icon_event(|tray, event| {
                 handle_tray_icon_event(tray.app_handle(), &event);
             });
+
+        if use_template_icon_for_tray() {
+            builder = builder.icon_as_template(true);
+        }
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -390,9 +405,7 @@ fn toggle_main_window(app: &AppHandle) {
 /// It is interpolated directly into JavaScript and must never contain user-controlled data.
 fn navigate_to_absolute_route(app: &AppHandle, path: &str) {
     if let Some(window) = app.get_webview_window("main") {
-        let js = format!(
-            "window.location.href = `${{window.location.origin}}{path}`;"
-        );
+        let js = format!("window.location.href = `${{window.location.origin}}{path}`;");
         let _ = window.eval(&js);
         show_main_window(app);
     }
@@ -575,5 +588,10 @@ mod tests {
 
         assert!(!should_open_main_window_for_tray_event(&right_click));
         assert!(!should_open_main_window_for_tray_event(&left_down));
+    }
+
+    #[test]
+    fn tray_uses_template_icon_only_on_macos() {
+        assert_eq!(use_template_icon_for_tray(), cfg!(target_os = "macos"));
     }
 }
