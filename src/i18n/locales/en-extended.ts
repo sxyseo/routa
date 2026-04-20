@@ -911,6 +911,13 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     branchStrategyCancel: "Cancel",
     branchStrategyNameRequired: "Branch name is required for custom strategy",
     branchStrategyActiveSessionWarning: "This task has an active session. The operation will terminate it.",
+    parentTask: "Parent Task",
+    childTasks: "Child Tasks",
+    childTasksProgress: "{completed}/{total} completed",
+    childTaskCompleted: "Completed",
+    childTaskStatusColumn: "{column}",
+    noChildTasks: "No child tasks.",
+    viewParentTask: "View parent task",
     // Dependencies
     dependencies: "Dependencies",
     dependenciesHint: "Manage prerequisite dependencies and blocked status for this task.",

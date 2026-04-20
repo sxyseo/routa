@@ -197,6 +197,15 @@ export interface TaskInfo {
   dependencyStatus?: "clear" | "blocked";
   blocking?: string[];
   parallelGroup?: string;
+  /** Parent task ID for sub-task hierarchy */
+  parentTaskId?: string;
+  /** Child tasks referencing this task as parent */
+  childTasks?: Array<{
+    id: string;
+    title: string;
+    status: string;
+    columnId?: string;
+  }>;
   creationSource?: "manual" | "agent" | "api" | "session";
   /** Associated codebase IDs for this task */
   codebaseIds?: string[];

@@ -29,7 +29,7 @@ import { KanbanCardArtifacts } from "./kanban-card-artifacts";
 import { KanbanCardProviderOverrideDropdown } from "./kanban-card-provider-override-dropdown";
 // Legacy imports - removed, functionality replaced by KanbanTaskGitWorkflowPanel
 // import { TaskFileDiffPreview, TaskCommitDiffPreview, CommitRow } from "./kanban-diff-preview";
-import { StoryReadinessPanel, EvidenceBundlePanel, ReviewFeedbackPanel, DependenciesPanel } from "./kanban-detail-panels";
+import { StoryReadinessPanel, EvidenceBundlePanel, ReviewFeedbackPanel, TaskHierarchyPanel, DependenciesPanel } from "./kanban-detail-panels";
 import { getKanbanSessionCopy } from "./i18n/kanban-session-copy";
 import {
   findSpecialistById,
@@ -582,6 +582,22 @@ export function KanbanCardDetail({
                   }}
                 />
               </section>
+
+              {(task.parentTaskId || (task.childTasks && task.childTasks.length > 0)) && (
+                <DetailSection
+                  title={task.parentTaskId ? t.kanbanDetail.parentTask : t.kanbanDetail.childTasks}
+                  compact={compactMode}
+                >
+                  <TaskHierarchyPanel
+                    task={task}
+                    compact={compactMode}
+                    onViewTask={(taskId) => {
+                      // Navigate to the task by refreshing with the task ID context
+                      onRefresh();
+                    }}
+                  />
+                </DetailSection>
+              )}
 
               <DetailSection
                 title={t.kanbanDetail.reviewFeedback}

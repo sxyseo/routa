@@ -916,6 +916,13 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     branchStrategyCancel: string;
     branchStrategyNameRequired: string;
     branchStrategyActiveSessionWarning: string;
+    parentTask: string;
+    childTasks: string;
+    childTasksProgress: string;
+    childTaskCompleted: string;
+    childTaskStatusColumn: string;
+    noChildTasks: string;
+    viewParentTask: string;
     dependencies: string;
     dependenciesHint: string;
     dependsOnLabel: string;

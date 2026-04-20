@@ -349,6 +349,107 @@ export function ReviewFeedbackPanel({
   );
 }
 
+export function TaskHierarchyPanel({
+  task,
+  compact = false,
+  onViewTask,
+}: {
+  task: TaskInfo;
+  compact?: boolean;
+  onViewTask?: (taskId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const hasParent = Boolean(task.parentTaskId);
+  const childTasks = task.childTasks ?? [];
+  const hasChildTasks = childTasks.length > 0;
+
+  if (!hasParent && !hasChildTasks) {
+    return null;
+  }
+
+  const completedCount = childTasks.filter(
+    (child) => child.status === "COMPLETED" || child.columnId === "done",
+  ).length;
+  const totalCount = childTasks.length;
+  const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+
+  return (
+    <div className={`space-y-2.5 ${compact ? "px-2 py-2" : "px-3 py-2.5"}`}>
+      {/* Parent task link */}
+      {hasParent && (
+        <div className="flex items-center gap-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+            {t.kanbanDetail.parentTask}
+          </div>
+          <button
+            type="button"
+            onClick={() => onViewTask?.(task.parentTaskId!)}
+            className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 transition-colors hover:border-amber-300 hover:bg-amber-100 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200 dark:hover:border-amber-700 dark:hover:bg-amber-900/20"
+            title={t.kanbanDetail.viewParentTask}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
+            <span className="truncate max-w-[200px]">{task.parentTaskId!.slice(0, 8)}…</span>
+          </button>
+        </div>
+      )}
+
+      {/* Child tasks list */}
+      {hasChildTasks && (
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+            {t.kanbanDetail.childTasks}
+          </div>
+          <div className={`space-y-1 ${compact ? "" : "pl-0.5"}`}>
+            {childTasks.map((child) => {
+              const isCompleted = child.status === "COMPLETED" || child.columnId === "done";
+              return (
+                <button
+                  key={child.id}
+                  type="button"
+                  onClick={() => onViewTask?.(child.id)}
+                  className="flex w-full items-center gap-2 rounded border border-slate-200/80 bg-slate-50/80 px-2.5 py-1.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700/70 dark:bg-slate-900/30 dark:hover:border-slate-600 dark:hover:bg-slate-800/50"
+                >
+                  <span
+                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                      isCompleted
+                        ? "bg-emerald-500 dark:bg-emerald-400"
+                        : "bg-slate-300 dark:bg-slate-600"
+                    }`}
+                  />
+                  <span className={`flex-1 truncate text-sm ${isCompleted ? "text-slate-500 dark:text-slate-400 line-through" : "font-medium text-slate-800 dark:text-slate-200"}`}>
+                    {child.title}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
+                    {isCompleted
+                      ? t.kanbanDetail.childTaskCompleted
+                      : child.columnId ?? child.status}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Progress bar */}
+          {totalCount > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                <span>{t.kanbanDetail.childTasksProgress.replace("{completed}", String(completedCount)).replace("{total}", String(totalCount))}</span>
+                <span>{Math.round(progressPercent)}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/60">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all dark:bg-emerald-400"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface DependenciesPanelProps {
   task: TaskInfo;
   boardTasks: Array<{ id: string; title: string; status?: string; columnId?: string; dependencies?: string[] }>;

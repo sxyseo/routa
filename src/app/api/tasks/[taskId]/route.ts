@@ -62,6 +62,17 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
   const deliveryReadiness = await buildTaskDeliveryReadiness(task, system);
   const comments = hydrateTaskComments(task.comments, task.comment);
 
+  // Query child tasks that reference this task as parent
+  const allWorkspaceTasks = await system.taskStore.listByWorkspace(task.workspaceId);
+  const childTasks = allWorkspaceTasks
+    .filter((t) => t.parentTaskId === task.id)
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      columnId: t.columnId,
+    }));
+
   return {
     ...task,
     comments,
@@ -70,6 +81,7 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     storyReadiness,
     investValidation,
     deliveryReadiness,
+    childTasks: childTasks.length > 0 ? childTasks : undefined,
     githubSyncedAt: task.githubSyncedAt?.toISOString(),
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
