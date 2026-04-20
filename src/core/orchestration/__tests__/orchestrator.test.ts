@@ -257,6 +257,25 @@ describe("RoutaOrchestrator", () => {
     expect(result.error).toContain("First call create_task");
   });
 
+  it("returns an error when loading the delegated task fails", async () => {
+    const { orchestrator, system, task } = createOrchestratorFixture();
+    (system.taskStore.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("store exploded"));
+
+    const result = await orchestrator.delegateTaskWithSpawn({
+      taskId: task.id,
+      callerAgentId: "caller-agent",
+      callerSessionId: "caller-session",
+      workspaceId: task.workspaceId,
+      specialist: "crafter",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: `Failed to load task ${task.id}: store exploded`,
+    });
+    expect(system.tools.createAgent).not.toHaveBeenCalled();
+  });
+
   it("writes delegation memory under the caller session cwd when the child runs elsewhere", async () => {
     const { orchestrator, task } = createOrchestratorFixture();
     getSessionMock.mockImplementation((sessionId: string) =>
@@ -400,6 +419,56 @@ describe("RoutaOrchestrator", () => {
 
     expect(recordChildCompletionMock).toHaveBeenCalledTimes(1);
     expect(sendPromptToSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries waking the parent without rewriting completion memory", async () => {
+    const { orchestrator, task } = createOrchestratorFixture();
+    (orchestrator as unknown as { spawnChildAgent: () => Promise<{ sandboxId?: string }> }).spawnChildAgent =
+      vi.fn(async () => ({ sandboxId: "sandbox-1" }));
+    const sendPromptToSessionMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("wake exploded"))
+      .mockResolvedValueOnce(undefined);
+    (orchestrator as unknown as { sendPromptToSession: typeof sendPromptToSessionMock }).sendPromptToSession =
+      sendPromptToSessionMock;
+
+    await orchestrator.delegateTaskWithSpawn({
+      taskId: task.id,
+      callerAgentId: "caller-agent",
+      callerSessionId: "caller-session",
+      workspaceId: task.workspaceId,
+      specialist: "crafter",
+    });
+
+    recordChildCompletionMock.mockClear();
+    const record = orchestrator.getChildAgents("caller-agent")[0];
+
+    await expect(
+      (
+        orchestrator as unknown as {
+          finalizeChildCompletion: (
+            childAgentId: string,
+            record: unknown,
+            source: "reported",
+          ) => Promise<void>;
+        }
+      ).finalizeChildCompletion("child-agent-1", record, "reported"),
+    ).rejects.toThrow("wake exploded");
+
+    await expect(
+      (
+        orchestrator as unknown as {
+          finalizeChildCompletion: (
+            childAgentId: string,
+            record: unknown,
+            source: "session_end",
+          ) => Promise<void>;
+        }
+      ).finalizeChildCompletion("child-agent-1", record, "session_end"),
+    ).resolves.toBeUndefined();
+
+    expect(recordChildCompletionMock).toHaveBeenCalledTimes(1);
+    expect(sendPromptToSessionMock).toHaveBeenCalledTimes(2);
   });
 
   it("keeps completion handling non-blocking when the task snapshot lookup fails", async () => {

@@ -96,6 +96,7 @@ interface ChildAgentRecord {
   role: AgentRole;
   provider: string;
   cwd: string;
+  completionMemoryRecorded?: boolean;
   completionHandled?: boolean;
   /** Tool call ID from the parent session's delegate_task_to_agent call (if available) */
   delegationToolCallId?: string;
@@ -432,7 +433,14 @@ export class RoutaOrchestrator {
     }
 
     // 2. Get the task
-    const task = await this.system.taskStore.get(taskId);
+    let task: Task | undefined;
+    try {
+      task = await this.system.taskStore.get(taskId);
+    } catch (err) {
+      return errorResult(
+        `Failed to load task ${taskId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     if (!task) {
       // Check if the taskId looks like a name instead of a UUID
       const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(taskId);
@@ -1128,28 +1136,31 @@ export class RoutaOrchestrator {
     record: ChildAgentRecord,
     source: CompletionSnapshotSource,
   ): Promise<void> {
-    try {
-      let task: Task | undefined;
+    if (!record.completionMemoryRecorded) {
       try {
-        task = await this.system.taskStore.get(record.taskId);
-      } catch (err) {
-        console.warn("[Orchestrator] Failed to load task for completion memory:", err);
-      }
+        let task: Task | undefined;
+        try {
+          task = await this.system.taskStore.get(record.taskId);
+        } catch (err) {
+          console.warn("[Orchestrator] Failed to load task for completion memory:", err);
+        }
 
-      await this.getMemoryWriter(record.cwd).recordChildCompletion({
-        sessionId: record.sessionId,
-        role: record.role,
-        agentId: childAgentId,
-        taskId: record.taskId,
-        taskTitle: task?.title ?? record.taskId,
-        status: task?.status ?? "unknown",
-        summary: task?.completionSummary,
-        verificationVerdict: task?.verificationVerdict ?? null,
-        verificationReport: task?.verificationReport ?? null,
-        snapshotSource: source,
-      });
-    } catch (err) {
-      console.warn("[Orchestrator] Failed to write completion memory:", err);
+        await this.getMemoryWriter(record.cwd).recordChildCompletion({
+          sessionId: record.sessionId,
+          role: record.role,
+          agentId: childAgentId,
+          taskId: record.taskId,
+          taskTitle: task?.title ?? record.taskId,
+          status: task?.status ?? "unknown",
+          summary: task?.completionSummary,
+          verificationVerdict: task?.verificationVerdict ?? null,
+          verificationReport: task?.verificationReport ?? null,
+          snapshotSource: source,
+        });
+        record.completionMemoryRecorded = true;
+      } catch (err) {
+        console.warn("[Orchestrator] Failed to write completion memory:", err);
+      }
     }
 
     // Clean up the report file watcher
