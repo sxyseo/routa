@@ -105,3 +105,44 @@ async fn kanban_board_github_token_persists_but_never_leaks_from_api() {
         .expect("stored board should still exist");
     assert_eq!(stored_board.github_token, None);
 }
+
+#[tokio::test]
+async fn github_access_uses_board_token_when_board_has_saved_credentials() {
+    let fixture = ApiFixture::new().await;
+
+    let boards_response = fixture
+        .client
+        .get(fixture.endpoint("/api/kanban/boards?workspaceId=default"))
+        .send()
+        .await
+        .expect("list boards request should succeed");
+    assert_eq!(boards_response.status(), StatusCode::OK);
+    let boards_json: Value = boards_response.json().await.expect("decode boards");
+    let board_id = boards_json["boards"][0]["id"]
+        .as_str()
+        .expect("default board id should exist");
+
+    let patch_response = fixture
+        .client
+        .patch(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .json(&json!({ "githubToken": "github_pat_test" }))
+        .send()
+        .await
+        .expect("patch board request should succeed");
+    assert_eq!(patch_response.status(), StatusCode::OK);
+
+    let access_response = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/github/access?boardId={board_id}")))
+        .send()
+        .await
+        .expect("github access request should succeed");
+    assert_eq!(access_response.status(), StatusCode::OK);
+
+    let access_json: Value = access_response
+        .json()
+        .await
+        .expect("decode access response");
+    assert_eq!(access_json["available"], json!(true));
+    assert_eq!(access_json["source"], json!("board"));
+}
