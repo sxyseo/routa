@@ -29,7 +29,7 @@ vi.mock("@/i18n", () => ({
         loadingBranches: "Loading branches",
         noMatchingBranches: "No matching branches",
         noBranchesFound: "No branches found",
-        pullNewCommits: "Pull {{count}} new commit{{plural}}",
+        pullNewCommits: "Pull {count} new commit{plural}",
       },
       common: {
         refresh: "Refresh",
@@ -142,6 +142,7 @@ describe("BranchSelector", () => {
     fireEvent.click(screen.getByRole("button", { name: /main/i }));
 
     const search = await screen.findByPlaceholderText("Search branches");
+    expect(screen.getByRole("button", { name: "Pull 1 new commit" })).not.toBeNull();
     fireEvent.change(search, { target: { value: "feature" } });
 
     expect(await screen.findByRole("button", { name: "feature/a" })).not.toBeNull();
