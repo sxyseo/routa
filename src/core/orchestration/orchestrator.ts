@@ -300,6 +300,10 @@ export class RoutaOrchestrator {
     return getHttpSessionStore().getSession(sessionId)?.cwd ?? fallbackCwd;
   }
 
+  private hasKnownSessionId(sessionId: string): boolean {
+    return sessionId.trim().length > 0 && sessionId !== "unknown";
+  }
+
   private async finalizeChildCompletion(
     childAgentId: string,
     record: ChildAgentRecord,
@@ -336,8 +340,13 @@ export class RoutaOrchestrator {
       return;
     }
 
-    const agent = await this.system.agentStore.get(childAgentId);
-    if (agent?.status === AgentStatus.COMPLETED || agent?.status === AgentStatus.ERROR) {
+    let agentStatus: AgentStatus | undefined;
+    try {
+      agentStatus = (await this.system.agentStore.get(childAgentId))?.status;
+    } catch (err) {
+      console.warn("[Orchestrator] Failed to load agent for session-end completion:", err);
+    }
+    if (agentStatus === AgentStatus.COMPLETED || agentStatus === AgentStatus.ERROR) {
       return;
     }
 
@@ -648,19 +657,8 @@ export class RoutaOrchestrator {
         : "You will be notified when this agent completes.";
 
     try {
-      const parentMemoryWriter = this.getMemoryWriter(this.resolveSessionCwd(callerSessionId, cwd));
       const childMemoryWriter = this.getMemoryWriter(cwd);
-      await Promise.all([
-        parentMemoryWriter.recordDelegation({
-          sessionId: callerSessionId,
-          parentAgentId: callerAgentId,
-          childAgentId: agentId,
-          childRole: specialistConfig.role,
-          taskId,
-          taskTitle: task.title,
-          provider,
-          waitMode,
-        }),
+      const memoryWrites = [
         childMemoryWriter.recordChildSessionStart({
           sessionId: childSessionId,
           role: specialistConfig.role,
@@ -671,7 +669,29 @@ export class RoutaOrchestrator {
           provider,
           initialPrompt: delegationPrompt,
         }),
-      ]);
+      ];
+
+      if (this.hasKnownSessionId(callerSessionId)) {
+        const parentMemoryWriter = this.getMemoryWriter(this.resolveSessionCwd(callerSessionId, cwd));
+        memoryWrites.push(
+          parentMemoryWriter.recordDelegation({
+            sessionId: callerSessionId,
+            parentAgentId: callerAgentId,
+            childAgentId: agentId,
+            childRole: specialistConfig.role,
+            taskId,
+            taskTitle: task.title,
+            provider,
+            waitMode,
+          }),
+        );
+      } else {
+        console.warn(
+          `[Orchestrator] Skipping parent delegation memory for ${agentId} because caller session is unknown`,
+        );
+      }
+
+      await Promise.all(memoryWrites);
     } catch (err) {
       console.warn("[Orchestrator] Failed to persist agent memory:", err);
     }
