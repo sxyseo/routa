@@ -35,9 +35,12 @@ describe("buildTraceRunDigest", () => {
     expect(digest.toolCalls).toEqual([]);
     expect(digest.errorCount).toBe(0);
     expect(digest.timeRange).toBeNull();
+    expect(digest.verificationSignals).toEqual([]);
+    expect(digest.churnMarkers).toEqual([]);
+    expect(digest.confidenceFlags).toEqual([]);
   });
 
-  it("collects file operations", () => {
+  it("collects file operations with touch counts", () => {
     const records: TraceRecord[] = [
       makeRecord("sess-1", "tool_call", {
         files: [
@@ -58,27 +61,32 @@ describe("buildTraceRunDigest", () => {
     const indexFile = digest.filesTouched.find((f) => f.path === "src/index.ts");
     expect(indexFile?.operations).toContain("read");
     expect(indexFile?.operations).toContain("write");
+    expect(indexFile?.touchCount).toBe(2);
 
     const utilsFile = digest.filesTouched.find((f) => f.path === "src/utils.ts");
     expect(utilsFile?.operations).toEqual(["write"]);
+    expect(utilsFile?.touchCount).toBe(1);
   });
 
   it("collects tool call statistics", () => {
     const records: TraceRecord[] = [
       makeRecord("sess-1", "tool_call", {
-        tool: { name: "read_file", status: "running" },
+        tool: { name: "read_file", toolCallId: "tc1", status: "running" },
       }),
       makeRecord("sess-1", "tool_result", {
-        tool: { name: "read_file", status: "completed" },
+        tool: { name: "read_file", toolCallId: "tc1", status: "completed" },
       }),
       makeRecord("sess-1", "tool_call", {
-        tool: { name: "write_file", status: "running" },
+        tool: { name: "write_file", toolCallId: "tc2", status: "running" },
       }),
       makeRecord("sess-1", "tool_result", {
-        tool: { name: "write_file", status: "failed", output: "Permission denied" },
+        tool: { name: "write_file", toolCallId: "tc2", status: "failed", output: "Permission denied" },
       }),
       makeRecord("sess-1", "tool_call", {
-        tool: { name: "read_file", status: "running" },
+        tool: { name: "read_file", toolCallId: "tc3", status: "running" },
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "read_file", toolCallId: "tc3", status: "completed" },
       }),
     ];
 
@@ -147,6 +155,120 @@ describe("buildTraceRunDigest", () => {
       end: "2026-04-20T10:10:00Z",
     });
   });
+
+  it("detects verification commands from shell tool calls", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "run_command", toolCallId: "tc1", status: "running", input: { command: "npm test" } },
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "run_command", toolCallId: "tc1", status: "completed", output: "All tests passed" },
+      }),
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "execute_command", toolCallId: "tc2", status: "running", input: { command: "npx eslint src/" } },
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "execute_command", toolCallId: "tc2", status: "failed", output: "3 lint errors" },
+      }),
+    ];
+
+    const digest = buildTraceRunDigest("sess-1", records);
+    expect(digest.verificationSignals).toHaveLength(2);
+
+    const testSignal = digest.verificationSignals.find((v) => v.command.includes("npm test"));
+    expect(testSignal?.passed).toBe(true);
+
+    const lintSignal = digest.verificationSignals.find((v) => v.command.includes("eslint"));
+    expect(lintSignal?.passed).toBe(false);
+    expect(lintSignal?.outputSummary).toContain("3 lint errors");
+  });
+
+  it("does not flag non-verification shell commands", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "run_command", toolCallId: "tc1", status: "running", input: { command: "ls -la" } },
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "run_command", toolCallId: "tc1", status: "completed" },
+      }),
+    ];
+
+    const digest = buildTraceRunDigest("sess-1", records);
+    expect(digest.verificationSignals).toHaveLength(0);
+  });
+
+  it("detects file churn markers", () => {
+    const records: TraceRecord[] = Array.from({ length: 4 }, () =>
+      makeRecord("sess-1", "tool_call", {
+        files: [{ path: "src/hot-file.ts", operation: "write" }],
+      }),
+    );
+
+    const digest = buildTraceRunDigest("sess-1", records);
+    expect(digest.churnMarkers).toHaveLength(1);
+    expect(digest.churnMarkers[0].target).toBe("src/hot-file.ts");
+    expect(digest.churnMarkers[0].type).toBe("file");
+    expect(digest.churnMarkers[0].count).toBe(4);
+  });
+
+  it("detects tool failure churn markers", () => {
+    const records: TraceRecord[] = Array.from({ length: 4 }, (_, i) => [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "flaky_tool", toolCallId: `tc${i}`, status: "running" },
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "flaky_tool", toolCallId: `tc${i}`, status: "failed", output: "fail" },
+      }),
+    ]).flat();
+
+    const digest = buildTraceRunDigest("sess-1", records);
+    const toolChurn = digest.churnMarkers.find((c) => c.type === "tool");
+    expect(toolChurn).toBeDefined();
+    expect(toolChurn!.target).toBe("flaky_tool");
+    expect(toolChurn!.count).toBe(4);
+  });
+
+  it("flags missing tool results as confidence signal", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "read_file", toolCallId: "tc1", status: "running" },
+      }),
+      // No matching tool_result
+    ];
+
+    const digest = buildTraceRunDigest("sess-1", records);
+    expect(digest.confidenceFlags.length).toBeGreaterThan(0);
+    expect(digest.confidenceFlags[0]).toContain("no matching result");
+  });
+
+  it("flags modified files without verification commands", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "write_file", toolCallId: "tc1", status: "running" },
+        files: [{ path: "src/index.ts", operation: "write" }],
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "write_file", toolCallId: "tc1", status: "completed" },
+      }),
+    ];
+
+    const digest = buildTraceRunDigest("sess-1", records);
+    expect(digest.confidenceFlags.some((f) => f.includes("no verification"))).toBe(true);
+  });
+
+  it("flags failed verification commands as confidence signal", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "run_command", toolCallId: "tc1", status: "running", input: { command: "npm test" } },
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "run_command", toolCallId: "tc1", status: "failed", output: "Tests failed" },
+      }),
+    ];
+
+    const digest = buildTraceRunDigest("sess-1", records);
+    expect(digest.confidenceFlags.some((f) => f.includes("verification command(s) failed"))).toBe(true);
+  });
 });
 
 describe("formatDigestForRole", () => {
@@ -157,15 +279,15 @@ describe("formatDigestForRole", () => {
         { path: "src/index.ts", operation: "read" },
         { path: "src/utils.ts", operation: "write" },
       ],
-      tool: { name: "read_file", status: "running" },
+      tool: { name: "read_file", toolCallId: "tc1", status: "running" },
     }),
     makeRecord("sess-1", "tool_result", {
       timestamp: "2026-04-20T10:01:00Z",
-      tool: { name: "read_file", status: "completed" },
+      tool: { name: "read_file", toolCallId: "tc1", status: "completed" },
     }),
     makeRecord("sess-1", "tool_result", {
       timestamp: "2026-04-20T10:02:00Z",
-      tool: { name: "write_file", status: "failed", output: "Permission denied" },
+      tool: { name: "write_file", toolCallId: "tc2", status: "failed", output: "Permission denied" },
     }),
     makeRecord("sess-1", "agent_thought", {
       timestamp: "2026-04-20T10:03:00Z",
@@ -224,5 +346,78 @@ describe("formatDigestForRole", () => {
     const crafterFormatted = formatDigestForRole(digest, AgentRole.CRAFTER);
     // CRAFTER skips read-only files (no files section at all)
     expect(crafterFormatted).not.toContain("`README.md`");
+  });
+
+  it("GATE format shows verification evidence", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "run_command", toolCallId: "tc1", status: "running", input: { command: "npm test" } },
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "run_command", toolCallId: "tc1", status: "completed" },
+      }),
+    ];
+    const digest = buildTraceRunDigest("sess-1", records);
+    const formatted = formatDigestForRole(digest, AgentRole.GATE);
+
+    expect(formatted).toContain("### Verification Evidence");
+    expect(formatted).toContain("✅ PASSED");
+    expect(formatted).toContain("npm test");
+  });
+
+  it("GATE format shows missing verification warning", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        files: [{ path: "src/index.ts", operation: "write" }],
+        tool: { name: "write_file", toolCallId: "tc1", status: "running" },
+      }),
+      makeRecord("sess-1", "tool_result", {
+        tool: { name: "write_file", toolCallId: "tc1", status: "completed" },
+      }),
+    ];
+    const digest = buildTraceRunDigest("sess-1", records);
+    const formatted = formatDigestForRole(digest, AgentRole.GATE);
+
+    expect(formatted).toContain("No verification commands detected");
+  });
+
+  it("GATE format shows suspicious gaps", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "read_file", toolCallId: "tc-orphan", status: "running" },
+      }),
+      // no result → orphan
+    ];
+    const digest = buildTraceRunDigest("sess-1", records);
+    const formatted = formatDigestForRole(digest, AgentRole.GATE);
+
+    expect(formatted).toContain("### Suspicious Gaps");
+    expect(formatted).toContain("no matching result");
+  });
+
+  it("CRAFTER format shows churn risk prominently", () => {
+    const records: TraceRecord[] = Array.from({ length: 4 }, () =>
+      makeRecord("sess-1", "tool_call", {
+        files: [{ path: "src/hot.ts", operation: "write" }],
+      }),
+    );
+    const digest = buildTraceRunDigest("sess-1", records);
+    const formatted = formatDigestForRole(digest, AgentRole.CRAFTER);
+
+    expect(formatted).toContain("### High-Risk Areas (Repeated Churn)");
+    expect(formatted).toContain("`src/hot.ts`");
+  });
+
+  it("CRAFTER format shows risk signal count", () => {
+    const records: TraceRecord[] = [
+      makeRecord("sess-1", "tool_call", {
+        tool: { name: "read_file", toolCallId: "tc-orphan", status: "running" },
+      }),
+    ];
+    const digest = buildTraceRunDigest("sess-1", records);
+    const formatted = formatDigestForRole(digest, AgentRole.CRAFTER);
+
+    expect(formatted).toContain("### Risk Signals");
+    expect(formatted).toContain("confidence-reducing signal(s) detected");
   });
 });

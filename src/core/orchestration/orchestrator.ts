@@ -439,6 +439,12 @@ export class RoutaOrchestrator {
           enrichedAdditionalContext = enrichedAdditionalContext
             ? `${enrichedAdditionalContext}\n\n${formatted}`
             : formatted;
+          console.log(
+            `[Orchestrator] Trace digest injected for ${specialistConfig.role} delegation (session=${callerSessionId}): ` +
+            `${digest.totalEvents} events, ${digest.filesTouched.length} files, ` +
+            `${digest.errorCount} errors, ${digest.verificationSignals.length} verifications, ` +
+            `${digest.churnMarkers.length} churn markers, ${digest.confidenceFlags.length} confidence flags`,
+          );
         }
       }
     } catch {

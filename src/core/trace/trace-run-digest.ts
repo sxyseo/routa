@@ -21,6 +21,8 @@ export interface FileDigestEntry {
   path: string;
   /** Operations performed (read, write, create, delete) */
   operations: string[];
+  /** Number of times this file was touched (churn indicator) */
+  touchCount: number;
 }
 
 export interface ToolCallDigestEntry {
@@ -30,6 +32,24 @@ export interface ToolCallDigestEntry {
   count: number;
   /** Number of failures */
   failures: number;
+}
+
+export interface VerificationSignal {
+  /** The command or tool that ran a verification step */
+  command: string;
+  /** Whether it passed */
+  passed: boolean;
+  /** Brief output summary on failure */
+  outputSummary?: string;
+}
+
+export interface ChurnEntry {
+  /** File path or tool name with high churn */
+  target: string;
+  /** Type: "file" or "tool" */
+  type: "file" | "tool";
+  /** Number of repeated touches/retries */
+  count: number;
 }
 
 export interface TraceRunDigest {
@@ -49,7 +69,30 @@ export interface TraceRunDigest {
   keyThoughts: string[];
   /** Timestamp of the first and last event */
   timeRange: { start: string; end: string } | null;
+  /** Verification commands detected and their outcomes */
+  verificationSignals: VerificationSignal[];
+  /** High-churn files or tools (repeated retries / edits) */
+  churnMarkers: ChurnEntry[];
+  /** Confidence-reducing signals */
+  confidenceFlags: string[];
 }
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+/** Tool names that indicate verification/test/build commands */
+const VERIFICATION_TOOL_PATTERNS = [
+  "run_command", "execute_command", "run_terminal", "bash", "shell",
+];
+
+/** Keywords in command input that suggest a verification step */
+const VERIFICATION_CMD_KEYWORDS = [
+  "test", "vitest", "jest", "pytest", "cargo test", "npm test",
+  "check", "lint", "eslint", "tsc", "build", "compile",
+  "verify", "validate",
+];
+
+/** Churn threshold: a file or tool touched this many times is flagged */
+const CHURN_THRESHOLD = 3;
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
 
@@ -60,20 +103,25 @@ export function buildTraceRunDigest(
   sessionId: string,
   records: TraceRecord[],
 ): TraceRunDigest {
-  const fileMap = new Map<string, Set<string>>();
+  const fileMap = new Map<string, { ops: Set<string>; touchCount: number }>();
   const toolMap = new Map<string, { count: number; failures: number }>();
   const errors: string[] = [];
   const thoughts: string[] = [];
+  const verificationSignals: VerificationSignal[] = [];
+  const confidenceFlags: string[] = [];
+  const pendingToolCalls = new Map<string, string>(); // toolCallId → toolName
+  const pendingVerifications = new Map<string, number>(); // toolCallId → index in verificationSignals
 
   for (const record of records) {
     // Collect file operations
     if (record.files) {
       for (const file of record.files) {
-        const ops = fileMap.get(file.path) ?? new Set<string>();
+        const entry = fileMap.get(file.path) ?? { ops: new Set<string>(), touchCount: 0 };
         if (file.operation) {
-          ops.add(file.operation);
+          entry.ops.add(file.operation);
         }
-        fileMap.set(file.path, ops);
+        entry.touchCount++;
+        fileMap.set(file.path, entry);
       }
     }
 
@@ -82,18 +130,54 @@ export function buildTraceRunDigest(
       const existing = toolMap.get(record.tool.name) ?? { count: 0, failures: 0 };
       if (record.eventType === "tool_call") {
         existing.count++;
+        // Track pending calls for missing-result detection
+        if (record.tool.toolCallId) {
+          pendingToolCalls.set(record.tool.toolCallId, record.tool.name);
+        }
+
+        // Detect verification commands
+        if (isVerificationTool(record.tool.name, record.tool.input)) {
+          const cmd = extractCommandString(record.tool.name, record.tool.input);
+          const idx = verificationSignals.length;
+          verificationSignals.push({ command: cmd, passed: true }); // optimistic, updated on result
+          if (record.tool.toolCallId) {
+            pendingVerifications.set(record.tool.toolCallId, idx);
+          }
+        }
       }
-      if (record.tool.status === "failed" || record.tool.status === "error") {
-        existing.failures++;
-        // Capture error summary
-        if (errors.length < 5) {
-          const output = record.tool.output;
-          const summary = typeof output === "string"
-            ? output.slice(0, 200)
-            : typeof output === "object" && output !== null && "error" in output
-              ? String((output as { error: unknown }).error).slice(0, 200)
-              : `${record.tool.name} failed`;
-          errors.push(summary);
+      if (record.eventType === "tool_result") {
+        // Clear pending
+        if (record.tool.toolCallId) {
+          pendingToolCalls.delete(record.tool.toolCallId);
+        }
+
+        if (record.tool.status === "failed" || record.tool.status === "error") {
+          existing.failures++;
+          // Capture error summary
+          if (errors.length < 5) {
+            const output = record.tool.output;
+            const summary = typeof output === "string"
+              ? output.slice(0, 200)
+              : typeof output === "object" && output !== null && "error" in output
+                ? String((output as { error: unknown }).error).slice(0, 200)
+                : `${record.tool.name} failed`;
+            errors.push(summary);
+          }
+
+          // Update verification signal if this was a verification tool
+          const verifIdx = record.tool.toolCallId
+            ? pendingVerifications.get(record.tool.toolCallId)
+            : undefined;
+          if (verifIdx !== undefined) {
+            verificationSignals[verifIdx].passed = false;
+            verificationSignals[verifIdx].outputSummary = typeof record.tool.output === "string"
+              ? record.tool.output.slice(0, 200)
+              : undefined;
+            pendingVerifications.delete(record.tool.toolCallId!);
+          }
+        } else if (record.tool.toolCallId) {
+          // Successful result — clear pending verification tracking
+          pendingVerifications.delete(record.tool.toolCallId);
         }
       }
       toolMap.set(record.tool.name, existing);
@@ -107,11 +191,19 @@ export function buildTraceRunDigest(
     }
   }
 
+  // Detect missing tool results (confidence-reducing signal)
+  if (pendingToolCalls.size > 0) {
+    confidenceFlags.push(
+      `${pendingToolCalls.size} tool call(s) have no matching result (may indicate interrupted execution)`,
+    );
+  }
+
   // Build file digest entries
   const filesTouched: FileDigestEntry[] = Array.from(fileMap.entries())
-    .map(([filePath, ops]) => ({
+    .map(([filePath, entry]) => ({
       path: filePath,
-      operations: Array.from(ops),
+      operations: Array.from(entry.ops),
+      touchCount: entry.touchCount,
     }))
     .sort((a, b) => a.path.localeCompare(b.path));
 
@@ -124,6 +216,42 @@ export function buildTraceRunDigest(
     }))
     .sort((a, b) => b.count - a.count);
 
+  // Detect churn markers
+  const churnMarkers: ChurnEntry[] = [];
+  for (const file of filesTouched) {
+    if (file.touchCount >= CHURN_THRESHOLD) {
+      churnMarkers.push({ target: file.path, type: "file", count: file.touchCount });
+    }
+  }
+  for (const tool of toolCalls) {
+    if (tool.failures >= CHURN_THRESHOLD) {
+      churnMarkers.push({ target: tool.name, type: "tool", count: tool.failures });
+    }
+  }
+  churnMarkers.sort((a, b) => b.count - a.count);
+
+  // Additional confidence flags
+  const errorCount = toolCalls.reduce((sum, t) => sum + t.failures, 0);
+  if (errorCount > 0 && verificationSignals.length === 0) {
+    confidenceFlags.push("No verification commands detected despite errors occurring");
+  }
+
+  const writtenFiles = filesTouched.filter((f) =>
+    f.operations.some((op) => op === "write" || op === "create"),
+  );
+  if (writtenFiles.length > 0 && verificationSignals.length === 0) {
+    confidenceFlags.push(
+      `${writtenFiles.length} file(s) were modified but no verification/test commands were observed`,
+    );
+  }
+
+  const failedVerifications = verificationSignals.filter((v) => !v.passed);
+  if (failedVerifications.length > 0) {
+    confidenceFlags.push(
+      `${failedVerifications.length} verification command(s) failed`,
+    );
+  }
+
   // Time range
   const timestamps = records.map((r) => r.timestamp).filter(Boolean).sort();
   const timeRange = timestamps.length >= 2
@@ -131,8 +259,6 @@ export function buildTraceRunDigest(
     : timestamps.length === 1
       ? { start: timestamps[0], end: timestamps[0] }
       : null;
-
-  const errorCount = toolCalls.reduce((sum, t) => sum + t.failures, 0);
 
   return {
     sessionId,
@@ -143,7 +269,44 @@ export function buildTraceRunDigest(
     errorSummaries: errors,
     keyThoughts: thoughts,
     timeRange,
+    verificationSignals,
+    churnMarkers,
+    confidenceFlags,
   };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function isVerificationTool(toolName: string, input: unknown): boolean {
+  const normalized = toolName.toLowerCase();
+  const isShellTool = VERIFICATION_TOOL_PATTERNS.some((p) => normalized.includes(p));
+  if (!isShellTool) return false;
+
+  // Check command content for verification keywords
+  const cmdStr = extractRawCommand(input);
+  if (!cmdStr) return false;
+
+  return VERIFICATION_CMD_KEYWORDS.some((kw) => cmdStr.toLowerCase().includes(kw));
+}
+
+function extractRawCommand(input: unknown): string | undefined {
+  if (typeof input === "string") return input;
+  if (typeof input === "object" && input !== null) {
+    const obj = input as Record<string, unknown>;
+    return typeof obj.command === "string"
+      ? obj.command
+      : typeof obj.cmd === "string"
+        ? obj.cmd
+        : typeof obj.content === "string"
+          ? obj.content
+          : undefined;
+  }
+  return undefined;
+}
+
+function extractCommandString(toolName: string, input: unknown): string {
+  const raw = extractRawCommand(input);
+  return raw ? raw.slice(0, 100) : toolName;
 }
 
 // ─── Formatter ───────────────────────────────────────────────────────────────
@@ -185,7 +348,8 @@ export function formatDigestForRole(
     const limited = displayFiles.slice(0, maxFiles);
     for (const file of limited) {
       const opsStr = file.operations.length > 0 ? ` (${file.operations.join(", ")})` : "";
-      sections.push(`- \`${file.path}\`${opsStr}`);
+      const churnStr = file.touchCount >= CHURN_THRESHOLD ? ` ⚠ HIGH CHURN (${file.touchCount}x)` : "";
+      sections.push(`- \`${file.path}\`${opsStr}${churnStr}`);
     }
     if (displayFiles.length > maxFiles) {
       sections.push(`- ... and ${displayFiles.length - maxFiles} more files`);
@@ -207,6 +371,35 @@ export function formatDigestForRole(
     sections.push("");
   }
 
+  // Verification signals section
+  if (digest.verificationSignals.length > 0) {
+    const label = isGate ? "Verification Evidence" : "Verification Status";
+    sections.push(`### ${label}`);
+    for (const signal of digest.verificationSignals) {
+      const status = signal.passed ? "✅ PASSED" : "❌ FAILED";
+      sections.push(`- ${status}: \`${signal.command}\``);
+      if (!signal.passed && signal.outputSummary && isGate) {
+        sections.push(`  > ${signal.outputSummary}`);
+      }
+    }
+    sections.push("");
+  } else if (isGate && digest.filesTouched.some((f) => f.operations.some((op) => op === "write" || op === "create"))) {
+    sections.push("### Verification Evidence");
+    sections.push("⚠ **No verification commands detected.** Files were modified but no test/build/lint commands were observed in traces.");
+    sections.push("");
+  }
+
+  // Churn markers (CRAFTER gets this prominently, GATE as supporting info)
+  if (digest.churnMarkers.length > 0) {
+    const label = isGate ? "Churn Indicators" : "High-Risk Areas (Repeated Churn)";
+    sections.push(`### ${label}`);
+    for (const churn of digest.churnMarkers) {
+      const typeLabel = churn.type === "file" ? "file" : "tool (repeated failures)";
+      sections.push(`- \`${churn.target}\` — ${typeLabel}, ${churn.count}x`);
+    }
+    sections.push("");
+  }
+
   // Errors section
   if (digest.errorCount > 0) {
     sections.push(`### ${isGate ? "Errors Encountered" : "Error Flags"}`);
@@ -218,6 +411,21 @@ export function formatDigestForRole(
       }
     }
     sections.push("");
+  }
+
+  // Confidence flags (GATE gets full list, CRAFTER gets count)
+  if (digest.confidenceFlags.length > 0) {
+    if (isGate) {
+      sections.push("### Suspicious Gaps");
+      for (const flag of digest.confidenceFlags) {
+        sections.push(`- ⚠ ${flag}`);
+      }
+      sections.push("");
+    } else {
+      sections.push(`### Risk Signals`);
+      sections.push(`${digest.confidenceFlags.length} confidence-reducing signal(s) detected. See GATE verification for details.`);
+      sections.push("");
+    }
   }
 
   // Key thoughts (GATE only — helps verifier understand agent reasoning)
