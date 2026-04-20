@@ -118,6 +118,20 @@ export async function register() {
         startBackgroundWorker();
       }
 
+      // Eagerly initialize the RoutaSystem and hydrate sessions from DB
+      // so the first API request doesn't bear the full cold-start cost.
+      void (async () => {
+        try {
+          const { getRoutaSystem } = await import("./core/routa-system");
+          const { getHttpSessionStore } = await import("./core/acp/http-session-store");
+          const system = getRoutaSystem();
+          await getHttpSessionStore().hydrateFromDb();
+          console.log(`[instrumentation] RoutaSystem initialized (${Object.keys(system).length} stores)`);
+        } catch (err) {
+          console.error("[instrumentation] Failed to pre-initialize RoutaSystem:", err);
+        }
+      })();
+
       servicesSpan?.setAttribute("routa.scheduler.started", !skipRuntimeServices);
       servicesSpan?.setAttribute(
         "routa.background_worker.started",
