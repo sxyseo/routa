@@ -16,6 +16,7 @@ import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
+import { getTaskDevServerRegistry } from "./task-dev-server-registry";
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -269,14 +270,28 @@ export function buildTaskPrompt(
       ]
     : [];
 
-  const devVerificationSection = currentColumnId === "dev"
+  const taskDevServer = getTaskDevServerRegistry().getForTask(task.id);
+  const devVerificationSection = currentColumnId === "dev" || currentColumnId === "review"
     ? [
         "## Dev Verification Safety",
         "",
         "Verify frontend changes against the current task worktree and the preview process started for this session.",
-        "Do not assume `http://localhost:3000` is the right preview target unless this session started that exact server for the current worktree.",
-        "Do not use broad process-kill commands such as `pkill -f \"next dev\"` or otherwise stop shared developer servers.",
-        "If you start a temporary preview server, stop only the exact process started for this session, preferably via its recorded PID. Do not use `ps | grep | xargs kill`, `killall`, or broad `pkill` patterns for cleanup.",
+        ...(taskDevServer
+          ? [
+              `This task has a dedicated dev server port: ${taskDevServer.port}`,
+              `Dev server URL: ${taskDevServer.url}`,
+              currentColumnId === "dev"
+                ? `You MUST start your dev server on this port: \`PORT=${taskDevServer.port} npm run dev\`. Do NOT stop this dev server when you finish — the Review agent will reuse it.`
+                : `The dev server for this task should be running at ${taskDevServer.url}. Use this URL for all Playwright verification. Do NOT use localhost:3000.`,
+              "Start the server as a background process so it survives session end.",
+              "Do not use broad process-kill commands such as `pkill -f \"next dev\"` or otherwise stop shared developer servers.",
+              "If you start a temporary preview server, stop only the exact process started for this session, preferably via its recorded PID.",
+            ]
+          : [
+              "Do not assume `http://localhost:3000` is the right preview target unless this session started that exact server for the current worktree.",
+              "Do not use broad process-kill commands such as `pkill -f \"next dev\"` or otherwise stop shared developer servers.",
+              "If you start a temporary preview server, stop only the exact process started for this session, preferably via its recorded PID.",
+            ]),
         "If the UI depends on env vars or setup, start verification with those exact env vars, mention them in `update_card`, and attach evidence from that configured run.",
         "If safe runtime verification is blocked, use `request_previous_lane_handoff` for environment preparation or runtime context instead of looping on restarts.",
         "",
@@ -476,12 +491,28 @@ async function triggerAcpTaskAgent(params: {
   boardColumns: KanbanColumn[];
   summaryContext?: TaskPromptSummaryContext;
   eventBus?: EventBus;
+  taskDevPort?: number;
 }): Promise<AutomationRunHandle | { error: string }> {
   const provider = resolveKanbanAutomationProvider(params.task.assignedProvider);
   const role = params.task.assignedRole ?? "CRAFTER";
   const sessionLabel = params.task.assignedSpecialistName
     ?? params.task.assignedSpecialistId
     ?? role;
+
+  const sessionParams: Record<string, unknown> = {
+    cwd: params.cwd,
+    branch: params.branch,
+    provider,
+    role,
+    toolMode: "full",
+    workspaceId: params.workspaceId,
+    specialistId: params.task.assignedSpecialistId,
+    specialistLocale: params.specialistLocale,
+    name: `${params.task.title} · ${sessionLabel}`,
+  };
+  if (params.taskDevPort) {
+    sessionParams.env = { TASK_DEV_PORT: String(params.taskDevPort) };
+  }
 
   const newSessionResponse = await fetch(`${params.origin}/api/acp`, {
     method: "POST",
@@ -490,17 +521,7 @@ async function triggerAcpTaskAgent(params: {
       jsonrpc: "2.0",
       id: uuidv4(),
       method: "session/new",
-      params: {
-        cwd: params.cwd,
-        branch: params.branch,
-        provider,
-        role,
-        toolMode: "full",
-        workspaceId: params.workspaceId,
-        specialistId: params.task.assignedSpecialistId,
-        specialistLocale: params.specialistLocale,
-        name: `${params.task.title} · ${sessionLabel}`,
-      },
+      params: sessionParams,
     }),
   });
 
@@ -664,6 +685,7 @@ export async function triggerAssignedTaskAgent(params: {
   boardColumns?: KanbanColumn[];
   summaryContext?: TaskPromptSummaryContext;
   eventBus?: EventBus;
+  taskDevPort?: number;
 }): Promise<{ sessionId?: string; error?: string; transport?: KanbanTransport; externalTaskId?: string; contextId?: string; displayTarget?: string }> {
   const {
     origin,
@@ -677,6 +699,7 @@ export async function triggerAssignedTaskAgent(params: {
     boardColumns = [],
     summaryContext,
     eventBus,
+    taskDevPort,
   } = params;
   const transport = getStepTransport(step);
   const runHandle = transport === "a2a"
@@ -699,6 +722,7 @@ export async function triggerAssignedTaskAgent(params: {
         boardColumns,
         summaryContext,
         eventBus,
+        taskDevPort,
       });
 
   if ("error" in runHandle) {

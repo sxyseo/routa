@@ -39,6 +39,7 @@ import { startWorktreeCleanupListener } from "./worktree-cleanup";
 import { startPrMergeListener } from "./pr-merge-listener";
 import { startPrAutoCreateListener } from "./pr-auto-create";
 import { checkDependencyGate } from "./dependency-gate";
+import { getTaskDevServerRegistry } from "./task-dev-server-registry";
 import {
   buildTaskEvidenceSummary,
   buildTaskInvestValidation,
@@ -264,6 +265,19 @@ async function startKanbanTaskSession(
     investValidation: buildTaskInvestValidation(taskForSession),
   };
 
+  // Allocate task-level dev server port for dev/review columns
+  let taskDevPort: number | undefined;
+  const currentStage = board?.columns.find((col) => col.id === (params.expectedColumnId ?? nextTask.columnId))?.stage;
+  if (currentStage === "dev" || currentStage === "review") {
+    const registry = getTaskDevServerRegistry();
+    const allocated = await registry.ensureForTask(
+      nextTask.id,
+      params.expectedColumnId ?? nextTask.columnId ?? "",
+      "pending",
+    );
+    taskDevPort = allocated.port;
+  }
+
   const triggerResult = await triggerAssignedTaskAgent({
     origin: getInternalApiOrigin(),
     workspaceId: nextTask.workspaceId,
@@ -276,6 +290,7 @@ async function startKanbanTaskSession(
     boardColumns: board?.columns ?? [],
     summaryContext,
     eventBus: system.eventBus,
+    taskDevPort,
   });
 
   if (triggerResult.sessionId) {

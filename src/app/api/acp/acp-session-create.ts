@@ -201,6 +201,9 @@ export async function handleSessionNew({
   const customArgs = Array.isArray(p.customArgs) ? (p.customArgs as string[]) : undefined;
   const authJson = (p.authJson as string | undefined);
   const autoApprovePermissions = p.autoApprovePermissions === true;
+  const extraEnv = (typeof p.env === "object" && p.env !== null)
+    ? p.env as Record<string, string>
+    : undefined;
 
   if (customCommand !== undefined && (typeof customCommand !== "string" || !customCommand.trim())) {
     return jsonrpcResponse(id ?? null, null, {
@@ -424,7 +427,7 @@ export async function handleSessionNew({
           forwardSessionUpdate,
         );
       } else if (isDockerOpenCode) {
-        const dockerExtraEnv: Record<string, string> = {};
+        const dockerExtraEnv: Record<string, string> = { ...extraEnv };
         if (apiKey) {
           dockerExtraEnv.ANTHROPIC_API_KEY = apiKey;
           dockerExtraEnv.ANTHROPIC_AUTH_TOKEN = apiKey;
@@ -472,7 +475,7 @@ export async function handleSessionNew({
           mcpConfigs,
           modeId,
           role,
-          undefined,
+          extraEnv,
           allowedNativeTools,
         );
       } else if (customCommand) {
@@ -502,7 +505,7 @@ export async function handleSessionNew({
           provider,
           modeId,
           extraArgs.length > 0 ? extraArgs : undefined,
-          undefined,
+          extraEnv,
           workspaceId,
           toolMode,
           mcpProfile,

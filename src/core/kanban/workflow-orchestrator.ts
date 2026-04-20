@@ -27,6 +27,7 @@ import { getDefaultKanbanDevSessionSupervision } from "./board-session-supervisi
 import { markTaskLaneSessionStatus, upsertTaskLaneSession } from "./task-lane-history";
 import { checkDependencyGate } from "./dependency-gate";
 import { type KanbanBranchRules } from "./board-branch-rules";
+import { getTaskDevServerRegistry } from "./task-dev-server-registry";
 
 const WATCHDOG_SCAN_INTERVAL_MS = 30_000;
 const COMPLETED_AUTOMATION_CLEANUP_DELAY_MS = 30_000;
@@ -590,6 +591,8 @@ export class KanbanWorkflowOrchestrator {
       // Schedule worktree cleanup for completed done-lane tasks
       if (automation.status === "completed" && automation.stage === "done") {
         this.scheduleWorktreeCleanup(cardId, automation);
+        // Release task-level dev server port
+        getTaskDevServerRegistry().releaseForTask(cardId);
       }
 
       // Auto-create PR if configured and task has no PR yet
@@ -876,6 +879,22 @@ export class KanbanWorkflowOrchestrator {
         }
       } catch (err) {
         console.error("[WorkflowOrchestrator] Stale-trigger scan failed:", err instanceof Error ? err.message : err);
+      }
+    }
+
+    // ── Task dev server health check ────────────────────────────────────────
+    // Run every cycle for active task dev servers. Release ports that fail
+    // 3 consecutive health checks or exceed the 4-hour max age.
+    const registry = getTaskDevServerRegistry();
+    for (const taskId of registry.getActiveTaskIds()) {
+      await registry.isHealthy(taskId);
+      if (registry.shouldRelease(taskId)) {
+        const record = registry.getForTask(taskId);
+        console.log(
+          `[WorkflowOrchestrator] Releasing task dev server for ${taskId}: ` +
+          `port ${record?.port}, failures=${record?.healthCheckFailures ?? 0}`,
+        );
+        registry.releaseForTask(taskId);
       }
     }
   }
