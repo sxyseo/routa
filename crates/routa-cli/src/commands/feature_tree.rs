@@ -1,54 +1,155 @@
 //! `routa feature-tree` command group.
 //!
-//! Wraps the TypeScript feature-tree generator script as a first-class
-//! CLI command instead of a hidden script invocation.
+//! Uses the shared feature-tree script as an execution backend while exposing
+//! a stable Rust CLI surface for preflight, generate, commit, and inspect.
 
-use std::process::Command;
+use std::path::PathBuf;
 
-/// Run `feature-tree generate` — scan the repo and produce
-/// `FEATURE_TREE.md` + `feature-tree.index.json`.
-pub fn generate(
-    repo_path: Option<&str>,
-    dry_run: bool,
-) -> Result<(), String> {
-    let repo_root = repo_path
-        .map(std::path::PathBuf::from)
+use routa_server::feature_tree::{
+    ensure_feature_tree_success, run_feature_tree_script, workspace_root,
+};
+
+fn repo_root(repo_path: Option<&str>) -> Result<PathBuf, String> {
+    let resolved = repo_path
+        .map(PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
 
-    let script = repo_root.join("scripts/docs/feature-tree-generator.ts");
-    if !script.exists() {
+    if !resolved.exists() {
         return Err(format!(
-            "Feature tree generator script not found at {}",
-            script.display()
+            "Repository path does not exist: {}",
+            resolved.display()
         ));
     }
 
-    let mut args: Vec<&str> = vec!["--import", "tsx"];
-    let script_str = script.to_string_lossy();
-    args.push(&script_str);
+    resolved
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve repository path: {e}"))
+}
 
-    if !dry_run {
-        args.push("--save");
+fn print_stdout(output: &std::process::Output) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.trim().is_empty() {
+        print!("{stdout}");
+    }
+}
+
+pub fn preflight(repo_path: Option<&str>, json_output: bool) -> Result<(), String> {
+    let repo_root = repo_root(repo_path)?;
+    let args = vec![
+        "--mode".to_string(),
+        "preflight".to_string(),
+        "--repo-root".to_string(),
+        repo_root.to_string_lossy().to_string(),
+    ];
+
+    let output = run_feature_tree_script(&args, &workspace_root())?;
+    ensure_feature_tree_success(&output, "Feature tree preflight failed")?;
+
+    if json_output {
+        print_stdout(&output);
+        return Ok(());
+    }
+
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse preflight JSON: {e}"))?;
+    let selected = parsed["selectedScanRoot"].as_str().unwrap_or("unknown");
+    let frameworks = parsed["frameworksDetected"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_else(|| "generic".to_string());
+
+    println!("🔎 Feature Tree Preflight");
+    println!("  Repo root:        {}", repo_root.display());
+    println!("  Selected root:    {selected}");
+    println!("  Frameworks:       {frameworks}");
+    Ok(())
+}
+
+pub fn generate(
+    repo_path: Option<&str>,
+    scan_root: Option<&str>,
+    dry_run: bool,
+    json_output: bool,
+) -> Result<(), String> {
+    let repo_root = repo_root(repo_path)?;
+    let mut args = vec![
+        "--mode".to_string(),
+        "generate".to_string(),
+        "--repo-root".to_string(),
+        repo_root.to_string_lossy().to_string(),
+    ];
+
+    if let Some(scan_root) = scan_root {
+        args.push("--scan-root".to_string());
+        args.push(scan_root.to_string());
+    }
+
+    args.push(if dry_run {
+        "--dry-run".to_string()
     } else {
-        args.push("--json");
+        "--write".to_string()
+    });
+
+    if !json_output {
+        eprintln!("🌳 Generating feature tree…");
     }
 
-    eprintln!("🌳 Generating feature tree…");
-    let status = Command::new("node")
-        .args(&args)
-        .current_dir(&repo_root)
-        .status()
-        .map_err(|e| format!("Failed to run feature tree generator: {e}"))?;
+    let output = run_feature_tree_script(&args, &workspace_root())?;
+    ensure_feature_tree_success(&output, "Feature tree generation failed")?;
 
-    if !status.success() {
-        return Err(format!(
-            "Feature tree generator exited with status: {}",
-            status.code().unwrap_or(-1)
-        ));
-    }
-
-    if !dry_run {
+    if json_output || dry_run {
+        print_stdout(&output);
+    } else {
         eprintln!("✅ Feature tree generated successfully.");
+    }
+
+    Ok(())
+}
+
+pub fn commit(
+    repo_path: Option<&str>,
+    scan_root: Option<&str>,
+    metadata_file: Option<&str>,
+    json_output: bool,
+) -> Result<(), String> {
+    let repo_root = repo_root(repo_path)?;
+    let mut args = vec![
+        "--mode".to_string(),
+        "commit".to_string(),
+        "--repo-root".to_string(),
+        repo_root.to_string_lossy().to_string(),
+    ];
+
+    if let Some(scan_root) = scan_root {
+        args.push("--scan-root".to_string());
+        args.push(scan_root.to_string());
+    }
+
+    if let Some(metadata_file) = metadata_file {
+        let metadata_path = PathBuf::from(metadata_file);
+        if !metadata_path.exists() {
+            return Err(format!(
+                "Metadata file does not exist: {}",
+                metadata_path.display()
+            ));
+        }
+        args.push("--metadata-file".to_string());
+        args.push(metadata_path.to_string_lossy().to_string());
+    }
+
+    let output = run_feature_tree_script(&args, &workspace_root())?;
+    ensure_feature_tree_success(&output, "Feature tree commit failed")?;
+
+    if json_output {
+        print_stdout(&output);
+    } else {
+        eprintln!("✅ Feature tree committed successfully.");
     }
 
     Ok(())
@@ -56,9 +157,7 @@ pub fn generate(
 
 /// Run `feature-tree inspect` — read and display the current feature tree index.
 pub fn inspect(repo_path: Option<&str>) -> Result<(), String> {
-    let repo_root = repo_path
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+    let repo_root = repo_root(repo_path)?;
 
     let json_path = repo_root.join("docs/product-specs/feature-tree.index.json");
     let md_path = repo_root.join("docs/product-specs/FEATURE_TREE.md");
@@ -114,4 +213,23 @@ pub fn inspect(repo_path: Option<&str>) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::workspace_root;
+    use routa_server::feature_tree::feature_tree_script_path;
+
+    #[test]
+    fn resolves_workspace_root_to_repo_root() {
+        let root = workspace_root();
+        assert!(root.join("Cargo.toml").exists());
+        assert!(root.join("scripts/docs/feature-tree-generator.ts").exists());
+    }
+
+    #[test]
+    fn resolves_feature_tree_script_from_workspace_root() {
+        let script = feature_tree_script_path().expect("script path should resolve");
+        assert!(script.ends_with("scripts/docs/feature-tree-generator.ts"));
+    }
 }
