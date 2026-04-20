@@ -235,6 +235,12 @@ type FileSignals = HashMap<String, FileSignalResponse>;
 /// Per-feature statistics: (session_count, changed_file_count, latest_timestamp)
 type FeatureStats = HashMap<String, (usize, usize, String)>;
 
+struct AnalysisRecordTargets<'a> {
+    stats: &'a mut HashMap<String, FeatureStatAggregate>,
+    file_stats: &'a mut HashMap<String, FileStatAggregate>,
+    file_signals: &'a mut FileSignals,
+}
+
 #[derive(Debug, Default)]
 struct FeatureStatAggregate {
     session_ids: BTreeSet<String>,
@@ -328,9 +334,11 @@ fn collect_session_stats(
                 );
 
                 record_analysis(
-                    &mut stats,
-                    &mut file_stats,
-                    &mut file_signals,
+                    &mut AnalysisRecordTargets {
+                        stats: &mut stats,
+                        file_stats: &mut file_stats,
+                        file_signals: &mut file_signals,
+                    },
                     &transcript.session_id,
                     &signal_context,
                     &changed_files,
@@ -489,9 +497,7 @@ fn build_feature_trace_input_from_normalized_session(
 }
 
 fn record_analysis(
-    stats: &mut HashMap<String, FeatureStatAggregate>,
-    file_stats: &mut HashMap<String, FileStatAggregate>,
-    file_signals: &mut FileSignals,
+    targets: &mut AnalysisRecordTargets<'_>,
     session_id: &str,
     signal_context: &SessionSignalContext,
     changed_files: &[String],
@@ -500,7 +506,10 @@ fn record_analysis(
 ) {
     let mut seen_feature_file_pairs = HashSet::new();
     for feature_link in &analysis.feature_links {
-        let entry = stats.entry(feature_link.feature_id.clone()).or_default();
+        let entry = targets
+            .stats
+            .entry(feature_link.feature_id.clone())
+            .or_default();
         entry.session_ids.insert(session_id.to_string());
         if seen_feature_file_pairs.insert((
             feature_link.feature_id.clone(),
@@ -525,7 +534,7 @@ fn record_analysis(
         .collect::<Vec<_>>();
 
     for file_path in changed_files {
-        let entry = file_stats.entry(file_path.clone()).or_default();
+        let entry = targets.file_stats.entry(file_path.clone()).or_default();
         entry.change_count += 1;
         entry.session_ids.insert(session_id.to_string());
         if !updated_at.is_empty()
@@ -534,14 +543,14 @@ fn record_analysis(
             entry.updated_at = updated_at.to_string();
         }
 
-        let signal_entry =
-            file_signals
-                .entry(file_path.clone())
-                .or_insert_with(|| FileSignalResponse {
-                    sessions: Vec::new(),
-                    tool_history: Vec::new(),
-                    prompt_history: Vec::new(),
-                });
+        let signal_entry = targets
+            .file_signals
+            .entry(file_path.clone())
+            .or_insert_with(|| FileSignalResponse {
+                sessions: Vec::new(),
+                tool_history: Vec::new(),
+                prompt_history: Vec::new(),
+            });
 
         if !signal_entry.sessions.iter().any(|session| {
             session.provider == signal_context.provider && session.session_id == session_id
@@ -641,7 +650,7 @@ fn build_session_signal_context(
         resume_command: build_resume_command(&transcript.client, &transcript.session_id),
         diagnostics: (!raw_events.is_empty()).then(|| {
             derive_transcript_session_diagnostics(
-                &raw_events,
+                raw_events,
                 repo_root,
                 Path::new(&transcript.cwd),
                 changed_files,
@@ -1983,9 +1992,11 @@ mod tests {
         };
 
         record_analysis(
-            &mut stats,
-            &mut file_stats,
-            &mut file_signals,
+            &mut AnalysisRecordTargets {
+                stats: &mut stats,
+                file_stats: &mut file_stats,
+                file_signals: &mut file_signals,
+            },
             "sess-1",
             &signal_context,
             &["src/app/workspace/[workspaceId]/sessions/page.tsx".to_string()],
@@ -2145,9 +2156,11 @@ mod tests {
             };
 
             record_analysis(
-                &mut stats,
-                &mut file_stats,
-                &mut file_signals,
+                &mut AnalysisRecordTargets {
+                    stats: &mut stats,
+                    file_stats: &mut file_stats,
+                    file_signals: &mut file_signals,
+                },
                 &format!("sess-{day}"),
                 &signal_context,
                 &changed_files,
