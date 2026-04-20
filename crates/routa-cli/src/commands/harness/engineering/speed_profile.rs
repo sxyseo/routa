@@ -66,7 +66,12 @@ where
                 warnings.push(format!(
                     "speed-profile experiment exited with status {}; stderr: {}",
                     execution.exit_code.unwrap_or_default(),
-                    execution.stderr.trim().chars().take(200).collect::<String>()
+                    execution
+                        .stderr
+                        .trim()
+                        .chars()
+                        .take(200)
+                        .collect::<String>()
                 ));
             }
 
@@ -87,7 +92,9 @@ where
             }
         }
         Err(error) => {
-            warnings.push(format!("speed-profile experiment failed to launch: {error}"));
+            warnings.push(format!(
+                "speed-profile experiment failed to launch: {error}"
+            ));
         }
     }
 
@@ -185,7 +192,11 @@ fn entrix_command(repo_root: &Path) -> Command {
     let debug_binary = repo_root
         .join("target")
         .join("debug")
-        .join(if cfg!(windows) { "entrix.exe" } else { "entrix" });
+        .join(if cfg!(windows) {
+            "entrix.exe"
+        } else {
+            "entrix"
+        });
     if debug_binary.exists() {
         Command::new(debug_binary)
     } else {
@@ -259,8 +270,14 @@ fn build_speed_profile_metrics(
     let failed_checks = metrics
         .iter()
         .filter(|metric| {
-            let state = metric.get("state").and_then(Value::as_str).unwrap_or_default();
-            let passed = metric.get("passed").and_then(Value::as_bool).unwrap_or(false);
+            let state = metric
+                .get("state")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let passed = metric
+                .get("passed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             state != "waived" && !passed
         })
         .count();
@@ -307,7 +324,11 @@ fn build_speed_profile_metrics(
 fn value_to_u64(value: &Value) -> Option<u64> {
     value
         .as_u64()
-        .or_else(|| value.as_i64().and_then(|value| (value >= 0).then_some(value as u64)))
+        .or_else(|| {
+            value
+                .as_i64()
+                .and_then(|value| (value >= 0).then_some(value as u64))
+        })
         .or_else(|| {
             value
                 .as_f64()
@@ -433,8 +454,9 @@ mod tests {
         assert!(report.warnings.iter().any(|warning| {
             warning.contains("speed-profile command: entrix run --tier fast --scope local --json")
         }));
-        assert!(report.warnings.iter().any(|warning| {
-            warning.contains("speed-profile metrics: METRIC fitness_ms=2000")
-        }));
+        assert!(report
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("speed-profile metrics: METRIC fitness_ms=2000") }));
     }
 }
