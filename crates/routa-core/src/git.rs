@@ -1391,6 +1391,18 @@ pub struct RepoChanges {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RepoCommitChange {
+    pub sha: String,
+    pub short_sha: String,
+    pub summary: String,
+    pub author_name: String,
+    pub authored_at: String,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepoFileDiff {
     pub path: String,
     pub status: FileChangeStatus,
@@ -1566,6 +1578,32 @@ pub fn get_repo_changes(repo_path: &str) -> RepoChanges {
     }
 }
 
+fn has_git_ref(repo_path: &str, git_ref: &str) -> bool {
+    git_command()
+        .args(["rev-parse", "--verify", git_ref])
+        .current_dir(repo_path)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+pub fn resolve_base_ref(repo_path: &str, base_branch: Option<&str>) -> Option<String> {
+    let normalized_base_branch = base_branch.map(str::trim).filter(|value| !value.is_empty());
+    let candidates = [
+        normalized_base_branch.map(|branch| format!("origin/{branch}")),
+        normalized_base_branch.map(str::to_string),
+        Some("origin/main".to_string()),
+        Some("main".to_string()),
+        Some("origin/master".to_string()),
+        Some("master".to_string()),
+    ];
+
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|candidate| has_git_ref(repo_path, candidate))
+}
+
 fn git_output_in_repo(repo_path: &str, args: &[&str]) -> Option<String> {
     git_command()
         .args(args)
@@ -1574,6 +1612,123 @@ fn git_output_in_repo(repo_path: &str, args: &[&str]) -> Option<String> {
         .ok()
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+pub fn get_remote_url(repo_path: &str) -> Option<String> {
+    git_output_in_repo(repo_path, &["config", "--get", "remote.origin.url"]).and_then(|output| {
+        let trimmed = output.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+pub fn count_commits_since_ref(repo_path: &str, base_ref: &str) -> usize {
+    let range = format!("{base_ref}..HEAD");
+    git_output_in_repo(repo_path, &["rev-list", "--count", range.as_str()])
+        .and_then(|output| output.trim().parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
+fn count_numstat_totals(numstat: &str) -> (i32, i32) {
+    numstat
+        .lines()
+        .fold((0, 0), |(additions, deletions), line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 3 {
+                return (additions, deletions);
+            }
+
+            let next_additions = if parts[0] == "-" {
+                additions
+            } else {
+                additions + parts[0].parse::<i32>().unwrap_or(0)
+            };
+            let next_deletions = if parts[1] == "-" {
+                deletions
+            } else {
+                deletions + parts[1].parse::<i32>().unwrap_or(0)
+            };
+
+            (next_additions, next_deletions)
+        })
+}
+
+pub fn get_repo_commit_changes(
+    repo_path: &str,
+    base_ref: &str,
+    max_count: Option<usize>,
+) -> Vec<RepoCommitChange> {
+    let max_count = std::cmp::max(max_count.unwrap_or(20), 1);
+    let range = format!("{base_ref}..HEAD");
+    let max_count_str = max_count.to_string();
+    let output = match git_output_in_repo(
+        repo_path,
+        &[
+            "log",
+            "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI",
+            range.as_str(),
+            "-n",
+            max_count_str.as_str(),
+        ],
+    ) {
+        Some(output) => output,
+        None => return Vec::new(),
+    };
+
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\u{001f}').collect();
+            if parts.len() < 5 {
+                return None;
+            }
+
+            let sha = parts[0].trim();
+            let short_sha = parts[1].trim();
+            let summary = parts[2].trim();
+            let author_name = parts[3].trim();
+            let authored_at = parts[4].trim();
+
+            if sha.is_empty()
+                || short_sha.is_empty()
+                || summary.is_empty()
+                || author_name.is_empty()
+                || authored_at.is_empty()
+            {
+                return None;
+            }
+
+            let numstat = git_output_in_repo(
+                repo_path,
+                &[
+                    "--no-pager",
+                    "show",
+                    "--format=",
+                    "--numstat",
+                    "--find-renames",
+                    "--find-copies",
+                    sha,
+                ],
+            )
+            .unwrap_or_default();
+            let (additions, deletions) = count_numstat_totals(&numstat);
+
+            Some(RepoCommitChange {
+                sha: sha.to_string(),
+                short_sha: short_sha.to_string(),
+                summary: summary.to_string(),
+                author_name: author_name.to_string(),
+                authored_at: authored_at.to_string(),
+                additions,
+                deletions,
+            })
+        })
+        .collect()
 }
 
 fn count_diff_patch_lines(patch: &str) -> (i32, i32) {

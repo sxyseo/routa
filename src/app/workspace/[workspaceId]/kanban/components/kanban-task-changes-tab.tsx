@@ -6,6 +6,7 @@ import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { KanbanEnhancedFileChangesPanel } from "./kanban-enhanced-file-changes-panel";
 import { CommitRow, TaskCommitDiffPreview } from "../kanban-diff-preview";
+import { formatChangeSummary } from "../kanban-file-changes-panel";
 import type {
   KanbanCommitChangeItem,
   KanbanCommitDiffPreview,
@@ -214,6 +215,25 @@ export function KanbanTaskChangesTab({
               {scopePath}
             </span>
           ) : null}
+          <span
+            data-testid="kanban-task-change-branch"
+            className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-medium text-slate-600 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300"
+          >
+            @{taskChanges.branch}
+          </span>
+          {taskChanges.status.ahead > 0 ? (
+            <span data-testid="kanban-task-change-ahead" className="text-slate-500 dark:text-slate-400">
+              {t.kanban.aheadCount.replace("{count}", String(taskChanges.status.ahead))}
+            </span>
+          ) : null}
+          {taskChanges.status.behind > 0 ? (
+            <span data-testid="kanban-task-change-behind" className="text-slate-500 dark:text-slate-400">
+              {t.kanban.behindCount.replace("{count}", String(taskChanges.status.behind))}
+            </span>
+          ) : null}
+          <span data-testid="kanban-task-change-summary" className="text-slate-500 dark:text-slate-400">
+            {formatChangeSummary(taskChanges, t.kanban)}
+          </span>
           {prPlatform ? (
             <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
               {platformLabel}

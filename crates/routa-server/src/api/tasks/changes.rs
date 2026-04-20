@@ -112,10 +112,30 @@ pub async fn get_task_changes(
                 &repo_path
             })
         });
-    let branch = codebase
+    let branch = worktree
         .as_ref()
-        .and_then(|item| item.branch.clone())
+        .map(|item| item.branch.clone())
+        .or_else(|| codebase.as_ref().and_then(|item| item.branch.clone()))
         .unwrap_or_else(|| "unknown".to_string());
+    let target_branch = worktree
+        .as_ref()
+        .map(|item| item.base_branch.clone())
+        .or_else(|| codebase.as_ref().and_then(|item| item.branch.clone()));
+    let remote_url = codebase
+        .as_ref()
+        .and_then(|item| item.source_url.clone())
+        .or_else(|| {
+            if repo_path.is_empty() {
+                None
+            } else {
+                crate::git::get_remote_url(&repo_path)
+            }
+        });
+    let base_ref = if repo_path.is_empty() {
+        None
+    } else {
+        crate::git::resolve_base_ref(&repo_path, target_branch.as_deref())
+    };
     let source = if worktree.is_some() {
         "worktree"
     } else {
@@ -131,6 +151,14 @@ pub async fn get_task_changes(
                 "branch": branch,
                 "status": { "clean": true, "ahead": 0, "behind": 0, "modified": 0, "untracked": 0 },
                 "files": [],
+                "mode": "worktree",
+                "baseRef": base_ref,
+                "remoteUrl": remote_url,
+                "commits": [],
+                "currentBranch": branch,
+                "targetBranch": target_branch,
+                "ahead": 0,
+                "behind": 0,
                 "source": source,
                 "worktreeId": worktree.as_ref().map(|item| item.id.clone()),
                 "worktreePath": worktree.as_ref().map(|item| item.worktree_path.clone()),
@@ -148,6 +176,14 @@ pub async fn get_task_changes(
                 "branch": branch,
                 "status": { "clean": true, "ahead": 0, "behind": 0, "modified": 0, "untracked": 0 },
                 "files": [],
+                "mode": "worktree",
+                "baseRef": base_ref,
+                "remoteUrl": remote_url,
+                "commits": [],
+                "currentBranch": branch,
+                "targetBranch": target_branch,
+                "ahead": 0,
+                "behind": 0,
                 "source": source,
                 "worktreeId": worktree.as_ref().map(|item| item.id.clone()),
                 "worktreePath": worktree.as_ref().map(|item| item.worktree_path.clone()),
@@ -157,6 +193,17 @@ pub async fn get_task_changes(
     }
 
     let changes = crate::git::get_repo_changes(&repo_path);
+    let commits = if let Some(resolved_base_ref) = base_ref.as_deref() {
+        let commit_count = crate::git::count_commits_since_ref(&repo_path, resolved_base_ref);
+        if commit_count > 0 {
+            crate::git::get_repo_commit_changes(&repo_path, resolved_base_ref, Some(commit_count))
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
     Ok(Json(serde_json::json!({
         "changes": {
             "codebaseId": codebase_id,
@@ -165,6 +212,14 @@ pub async fn get_task_changes(
             "branch": changes.branch,
             "status": changes.status,
             "files": changes.files,
+            "mode": if commits.is_empty() { "worktree" } else { "commits" },
+            "baseRef": base_ref,
+            "remoteUrl": remote_url,
+            "commits": commits,
+            "currentBranch": changes.branch,
+            "targetBranch": target_branch,
+            "ahead": changes.status.ahead,
+            "behind": changes.status.behind,
             "source": source,
             "worktreeId": worktree.as_ref().map(|item| item.id.clone()),
             "worktreePath": worktree.as_ref().map(|item| item.worktree_path.clone()),

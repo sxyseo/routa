@@ -80,6 +80,48 @@ describe("KanbanTaskChangesTab", () => {
     });
   });
 
+  it("keeps branch status visible even when the worktree is clean", async () => {
+    desktopAwareFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        changes: {
+          codebaseId: "codebase-1",
+          repoPath: "/repo",
+          label: "platform",
+          branch: "feature/clean-branch",
+          status: { clean: true, ahead: 1, behind: 0, modified: 0, untracked: 0 },
+          files: [],
+          commits: [],
+          source: "repo",
+        },
+      }),
+    });
+
+    render(
+      <KanbanTaskChangesTab
+        task={{
+          id: "task-clean",
+          title: "Show branch state",
+          status: "IN_PROGRESS",
+          comments: [],
+          labels: [],
+          dependencies: [],
+          createdAt: "2026-04-08T00:00:00.000Z",
+          updatedAt: "2026-04-08T00:00:00.000Z",
+        }}
+        codebases={[]}
+        taskId="task-clean"
+        workspaceId="workspace-1"
+        onRefresh={vi.fn()}
+      />
+    );
+
+    expect((await screen.findByTestId("kanban-task-change-branch")).textContent).toContain("@feature/clean-branch");
+    expect(screen.getByTestId("kanban-task-change-ahead").textContent).toContain("1 ahead");
+    expect(screen.getByTestId("kanban-task-change-summary").textContent).toContain("Clean");
+    expect(screen.getByText("No local changes in this task worktree.")).toBeTruthy();
+  });
+
   it("renders committed diff as a single scrollable list of expandable file sections", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
