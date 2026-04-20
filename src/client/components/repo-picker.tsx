@@ -454,27 +454,39 @@ export function RepoPicker({
 
   // Merge cloned repos with additional repos (workspace codebases)
   const allRepos = useMemo(() => {
-    const merged: ClonedRepo[] = sourceMode === "additional-only" ? [] : [...repos];
-    const existingPaths = new Set(merged.map((r) => r.path));
+    const merged: ClonedRepo[] = [];
+    const existingPaths = new Set<string>();
+
+    const pushRepo = (repo: ClonedRepo) => {
+      if (existingPaths.has(repo.path)) {
+        return;
+      }
+      merged.push(repo);
+      existingPaths.add(repo.path);
+    };
+
+    if (sourceMode !== "additional-only") {
+      for (const repo of repos) {
+        pushRepo(repo);
+      }
+    }
 
     // Add additional repos that aren't already in the cloned repos list
     if (additionalRepos) {
       for (const ar of additionalRepos) {
-        if (!existingPaths.has(ar.path)) {
-          merged.push({
-            name: ar.name,
-            path: ar.path,
-            dirName: ar.path.split("/").pop() || ar.name,
-            branch: ar.branch || "",
-            branches: ar.branch ? [ar.branch] : [],
-            status: { clean: true, ahead: 0, behind: 0, modified: 0, untracked: 0 },
-          });
-        }
+        pushRepo({
+          name: ar.name,
+          path: ar.path,
+          dirName: ar.path.split("/").pop() || ar.name,
+          branch: ar.branch || "",
+          branches: ar.branch ? [ar.branch] : [],
+          status: { clean: true, ahead: 0, behind: 0, modified: 0, untracked: 0 },
+        });
       }
     }
 
-    if (value && !existingPaths.has(value.path)) {
-      merged.push({
+    if (value) {
+      pushRepo({
         name: value.name,
         path: value.path,
         dirName: value.path.split("/").pop() || value.name,

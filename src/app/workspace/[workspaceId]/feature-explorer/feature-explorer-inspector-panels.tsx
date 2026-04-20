@@ -170,9 +170,11 @@ function CountSummaryList({
       {items.map((item) => (
         <div
           key={item.name}
-          className="flex items-center justify-between gap-3 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px]"
+          className="flex min-w-0 items-center justify-between gap-3 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px]"
         >
-          <span className="min-w-0 flex-1 break-words text-desktop-text-secondary">{item.name}</span>
+          <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-desktop-text-secondary">
+            {item.name}
+          </span>
           <span className="shrink-0 rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-desktop-text-primary">
             {item.count}
           </span>
@@ -302,7 +304,7 @@ export function ContextPanel({
             </div>
 
             <div className="grid gap-2 md:grid-cols-3">
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <div className="text-[10px] font-medium text-desktop-text-secondary">
                   {t.featureExplorer.promptPatternsLabel}
                 </div>
@@ -312,7 +314,7 @@ export function ContextPanel({
                 />
               </div>
 
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <div className="text-[10px] font-medium text-desktop-text-secondary">
                   {t.featureExplorer.toolPatternsLabel}
                 </div>
@@ -322,7 +324,7 @@ export function ContextPanel({
                 />
               </div>
 
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <div className="text-[10px] font-medium text-desktop-text-secondary">
                   {t.featureExplorer.fileOperationPatternsLabel}
                 </div>
