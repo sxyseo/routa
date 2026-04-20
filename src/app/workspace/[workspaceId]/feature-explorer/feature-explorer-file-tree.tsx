@@ -206,7 +206,12 @@ export function TreeNodeRow({
           onChange={() => onToggleNodeSelection(node.id)}
           className="h-3.5 w-3.5 rounded border-black/15 bg-transparent dark:border-white/20"
         />
-        <button onClick={() => onSetActiveFile(node.id)} className="flex min-w-0 items-center gap-1.5 text-left">
+        <button
+          type="button"
+          data-testid={`feature-tree-activate-${node.id}`}
+          onClick={() => onSetActiveFile(node.id)}
+          className="flex min-w-0 items-center gap-1.5 text-left"
+        >
           <FileIcon path={node.path} />
           <span className="truncate text-[12px] text-desktop-text-primary">{node.name}</span>
         </button>

@@ -1229,4 +1229,178 @@ describe("FeatureExplorerPageClient", () => {
     expect((screen.getByTestId("feature-tree-select-file-route") as HTMLInputElement).checked).toBe(true);
   });
 
+  it("updates inspector evidence when activating a different file row", async () => {
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [{ id: "workspace", name: "Workspace", description: "" }],
+      features: [
+        {
+          id: "workspace-overview",
+          name: "Workspace Overview",
+          group: "workspace",
+          summary: "Workspace entry point",
+          status: "shipped",
+          sessionCount: 2,
+          changedFiles: 2,
+          updatedAt: "2026-04-18T08:00:00.000Z",
+          sourceFileCount: 2,
+          pageCount: 1,
+          apiCount: 0,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [
+          {
+            route: "/workspace/:workspaceId",
+            title: "Workspace Overview",
+            description: "Workspace entry point",
+            sourceFile: "src/app/workspace/[workspaceId]/page.tsx",
+          },
+        ],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        implementationApis: [],
+        metadata: {
+          schemaVersion: 1,
+          capabilityGroups: [{ id: "workspace", name: "Workspace", description: "" }],
+          features: [
+            {
+              id: "workspace-overview",
+              name: "Workspace Overview",
+              group: "workspace",
+              pages: ["/workspace/:workspaceId"],
+              apis: [],
+              sourceFiles: [
+                "src/app/workspace/[workspaceId]/overview/page.tsx",
+                "src/app/workspace/[workspaceId]/page.tsx",
+              ],
+            },
+          ],
+        },
+        repoRoot: "/repo/default",
+        warnings: [],
+      },
+      featureDetail: {
+        id: "workspace-overview",
+        name: "Workspace Overview",
+        group: "workspace",
+        summary: "Workspace entry point",
+        status: "shipped",
+        pages: ["/workspace/:workspaceId"],
+        apis: [],
+        sourceFiles: [
+          "src/app/workspace/[workspaceId]/overview/page.tsx",
+          "src/app/workspace/[workspaceId]/page.tsx",
+        ],
+        relatedFeatures: [],
+        domainObjects: [],
+        sessionCount: 2,
+        changedFiles: 2,
+        updatedAt: "2026-04-18T08:00:00.000Z",
+        fileTree: [
+          {
+            id: "folder-src",
+            name: "src",
+            path: "src",
+            kind: "folder",
+            children: [
+              {
+                id: "folder-app",
+                name: "app",
+                path: "src/app",
+                kind: "folder",
+                children: [
+                  {
+                    id: "file-overview",
+                    name: "page.tsx",
+                    path: "src/app/workspace/[workspaceId]/overview/page.tsx",
+                    kind: "file",
+                    children: [],
+                  },
+                  {
+                    id: "file-root",
+                    name: "page.tsx",
+                    path: "src/app/workspace/[workspaceId]/page.tsx",
+                    kind: "file",
+                    children: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        fileStats: {
+          "src/app/workspace/[workspaceId]/overview/page.tsx": {
+            changes: 1,
+            sessions: 1,
+            updatedAt: "2026-04-17T08:00:00.000Z",
+          },
+          "src/app/workspace/[workspaceId]/page.tsx": {
+            changes: 1,
+            sessions: 1,
+            updatedAt: "2026-04-18T08:00:00.000Z",
+          },
+        },
+        fileSignals: {
+          "src/app/workspace/[workspaceId]/overview/page.tsx": {
+            sessions: [
+              {
+                provider: "codex",
+                sessionId: "session-overview",
+                updatedAt: "2026-04-17T08:00:00.000Z",
+                promptSnippet: "overview prompt",
+                promptHistory: ["overview prompt"],
+                toolNames: ["Read"],
+                changedFiles: ["src/app/workspace/[workspaceId]/overview/page.tsx"],
+              },
+            ],
+            toolHistory: ["Read"],
+            promptHistory: ["overview prompt"],
+          },
+          "src/app/workspace/[workspaceId]/page.tsx": {
+            sessions: [
+              {
+                provider: "codex",
+                sessionId: "session-root",
+                updatedAt: "2026-04-18T08:00:00.000Z",
+                promptSnippet: "root prompt",
+                promptHistory: ["root prompt"],
+                toolNames: ["Write"],
+                changedFiles: ["src/app/workspace/[workspaceId]/page.tsx"],
+              },
+            ],
+            toolHistory: ["Write"],
+            promptHistory: ["root prompt"],
+          },
+        },
+      },
+      featureDetailLoading: false,
+      initialFeatureId: "workspace-overview",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("session-overview")).toBeTruthy();
+    });
+
+    expect((screen.getByTestId("feature-tree-select-file-overview") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId("feature-tree-select-file-root") as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(screen.getByTestId("feature-tree-activate-file-root"));
+
+    await waitFor(() => {
+      expect(screen.getByText("session-root")).toBeTruthy();
+    });
+
+    expect(screen.queryByText("session-overview")).toBeNull();
+    expect((screen.getByTestId("feature-tree-select-file-overview") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("feature-tree-select-file-root") as HTMLInputElement).checked).toBe(true);
+  });
+
 });

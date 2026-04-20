@@ -429,6 +429,11 @@ export function FeatureExplorerPageClient({
     setDesiredFilePath(flatMap[fileId]?.path ?? "");
   };
 
+  const handleActivateFile = (fileId: string) => {
+    handleSetActiveFile(fileId);
+    setSelectedFileIds(fileId ? [fileId] : []);
+  };
+
   const handleToggleNodeSelection = (nodeId: string) => {
     const targetFileIds = selectableFileIdsByNode[nodeId] ?? [];
     if (targetFileIds.length === 0) {
@@ -912,7 +917,12 @@ export function FeatureExplorerPageClient({
                                         onChange={() => handleToggleNodeSelection(node.id)}
                                         className="h-3.5 w-3.5 rounded border-black/15 bg-transparent dark:border-white/20"
                                       />
-                                      <button onClick={() => handleSetActiveFile(node.id)} className="flex min-w-0 items-center gap-1.5 text-left">
+                                      <button
+                                        type="button"
+                                        data-testid={`feature-tree-activate-${node.id}`}
+                                        onClick={() => handleActivateFile(node.id)}
+                                        className="flex min-w-0 items-center gap-1.5 text-left"
+                                      >
                                         <FileIcon path={node.path} />
                                         <span className="break-all text-[12px] text-desktop-text-primary" title={node.path}>{node.path}</span>
                                       </button>
@@ -938,7 +948,7 @@ export function FeatureExplorerPageClient({
                                   selectableFileIdsByNode={selectableFileIdsByNode}
                                   onToggleNode={handleToggleNode}
                                   onToggleNodeSelection={handleToggleNodeSelection}
-                                  onSetActiveFile={handleSetActiveFile}
+                                  onSetActiveFile={handleActivateFile}
                                 />
                               ))}
                             </div>
