@@ -307,7 +307,7 @@ export class KanbanTools {
         this.taskStore,
       );
       if (!depCheck.canMove) {
-        return errorResult(depCheck.message ?? `Cannot move card to "${targetColumn.name}": blocked by unfinished dependencies: ${depCheck.blockedBy.join(", ")}`);
+        return errorResult(depCheck.message ?? `Cannot move card to "${targetColumn?.name ?? params.targetColumnId}": blocked by unfinished dependencies: ${depCheck.blockedBy.join(", ")}`);
       }
     }
 
