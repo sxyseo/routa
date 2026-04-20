@@ -350,6 +350,8 @@ export function taskStatusToColumnId(status: TaskStatus | string | undefined): s
       return "blocked";
     case TaskStatus.COMPLETED:
       return "done";
+    case TaskStatus.ARCHIVED:
+      return "archived";
     default:
       return "backlog";
   }

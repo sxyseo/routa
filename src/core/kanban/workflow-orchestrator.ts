@@ -220,6 +220,14 @@ export type ResolveBranchRules = (params: {
 /** Callback to scan persisted tasks for stale triggerSessionIds */
 export type ScanStaleTaskTriggers = () => Promise<number>;
 
+/** Callback to synchronously create a PR for a completed task (pre-automation) */
+export type ExecuteAutoPrCreation = (params: {
+  cardId: string;
+  cardTitle: string;
+  boardId: string;
+  worktreeId: string;
+}) => Promise<string | undefined>;
+
 export class KanbanWorkflowOrchestrator {
   private handlerKey = "kanban-workflow-orchestrator";
   private activeAutomations = new Map<string, ActiveAutomation>();
@@ -229,6 +237,7 @@ export class KanbanWorkflowOrchestrator {
   private resolveBranchRules?: ResolveBranchRules;
   private sendKanbanSessionPrompt?: SendKanbanSessionPrompt;
   private staleTriggerScanner?: ScanStaleTaskTriggers;
+  private executeAutoPrCreation?: ExecuteAutoPrCreation;
   private staleTriggerScanCycle = 0;
   private watchdogTimer?: ReturnType<typeof setInterval>;
 
@@ -312,6 +321,11 @@ export class KanbanWorkflowOrchestrator {
     this.staleTriggerScanner = fn;
   }
 
+  /** Set the callback for synchronous auto PR creation (called before done-lane steps) */
+  setExecuteAutoPrCreation(fn: ExecuteAutoPrCreation): void {
+    this.executeAutoPrCreation = fn;
+  }
+
   /** Get all active automations */
   getActiveAutomations(): ActiveAutomation[] {
     return Array.from(this.activeAutomations.values());
@@ -342,11 +356,34 @@ export class KanbanWorkflowOrchestrator {
     let steps = getKanbanAutomationSteps(automation);
 
     // When autoCreatePullRequest is enabled, skip the pr-publisher specialist
-    // step — the pr-auto-create listener will handle PR creation via event.
+    // step and create the PR synchronously BEFORE downstream steps run.
+    // This ensures auto-merger and done-reporter see the pullRequestUrl.
     if (targetColumn.stage === "done" && this.resolveBranchRules) {
       const branchRules = await this.resolveBranchRules({ workspaceId: data.workspaceId, boardId: data.boardId });
       if (branchRules?.lifecycle.autoCreatePullRequest) {
         steps = steps.filter(s => s.specialistId !== "kanban-pr-publisher");
+
+        // Synchronous pre-automation PR creation — runs before any done-lane steps
+        if (task && !task.pullRequestUrl && task.worktreeId && this.executeAutoPrCreation) {
+          console.log(
+            `[WorkflowOrchestrator] Pre-automation PR creation for task ${data.cardId}.`,
+          );
+          try {
+            await this.executeAutoPrCreation({
+              cardId: data.cardId,
+              cardTitle: data.cardTitle,
+              boardId: data.boardId,
+              worktreeId: task.worktreeId,
+            });
+          } catch (err) {
+            console.error(
+              `[WorkflowOrchestrator] Pre-automation PR creation failed for ${data.cardId}:`,
+              err,
+            );
+            // Continue automation — PR creation failure is not fatal.
+            // The done-reporter will correctly note the missing PR link.
+          }
+        }
       }
     }
 
@@ -595,15 +632,9 @@ export class KanbanWorkflowOrchestrator {
         getTaskDevServerRegistry().releaseForTask(cardId);
       }
 
-      // Auto-create PR if configured and task has no PR yet
-      if (automation.status === "completed" && automation.stage === "done" && task && !task.pullRequestUrl) {
-        const branchRules = this.resolveBranchRules
-          ? await this.resolveBranchRules({ workspaceId: automation.workspaceId, boardId: automation.boardId })
-          : undefined;
-        if (branchRules?.lifecycle.autoCreatePullRequest) {
-          this.triggerAutoPrCreation(cardId, automation, task);
-        }
-      }
+      // NOTE: Auto PR creation now happens BEFORE done-lane automation steps
+      // (in handleColumnTransitionData), not as a post-automation event.
+      // This ensures auto-merger and done-reporter see pullRequestUrl.
 
       // Save lane-session updates BEFORE autoAdvanceCard, which reloads the task
       // and emits a synchronous COLUMN_TRANSITION. Saving after would overwrite the
@@ -1341,37 +1372,4 @@ export class KanbanWorkflowOrchestrator {
     }
   }
 
-  /**
-   * Trigger automatic PR creation for a completed task.
-   * Emits a PR_CREATE_REQUESTED event so downstream handlers can
-   * create the PR using the task's worktree branch.
-   */
-  private triggerAutoPrCreation(
-    cardId: string,
-    automation: ActiveAutomation,
-    task: Task,
-  ): void {
-    if (!task.worktreeId) {
-      console.log(
-        `[WorkflowOrchestrator] Skipping auto PR creation for ${cardId}: no worktree.`,
-      );
-      return;
-    }
-
-    console.log(
-      `[WorkflowOrchestrator] Triggering auto PR creation for task ${cardId}.`,
-    );
-    this.eventBus.emit({
-      type: AgentEventType.PR_CREATE_REQUESTED,
-      agentId: "kanban-workflow-orchestrator",
-      workspaceId: automation.workspaceId,
-      data: {
-        cardId,
-        cardTitle: automation.cardTitle,
-        boardId: automation.boardId,
-        worktreeId: task.worktreeId,
-      },
-      timestamp: new Date(),
-    });
-  }
 }

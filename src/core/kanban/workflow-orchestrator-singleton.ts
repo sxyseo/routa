@@ -37,7 +37,7 @@ import { dispatchSessionPrompt } from "@/core/acp/session-prompt";
 import type { ColumnTransitionData } from "./column-transition";
 import { startWorktreeCleanupListener } from "./worktree-cleanup";
 import { startPrMergeListener } from "./pr-merge-listener";
-import { startPrAutoCreateListener } from "./pr-auto-create";
+import { startPrAutoCreateListener, executeAutoPrCreation } from "./pr-auto-create";
 import { checkDependencyGate } from "./dependency-gate";
 import { getTaskDevServerRegistry } from "./task-dev-server-registry";
 import {
@@ -514,6 +514,11 @@ export function startWorkflowOrchestrator(system: RoutaSystem): void {
     prompt: params.prompt,
   }));
   orchestrator.setScanStaleTaskTriggers(() => scanStaleTaskTriggers(system));
+  orchestrator.setExecuteAutoPrCreation((params) => executeAutoPrCreation(
+    system.worktreeStore,
+    system.taskStore,
+    params,
+  ));
   orchestrator.start();
   queue.start();
   startWorktreeCleanupListener(system);
