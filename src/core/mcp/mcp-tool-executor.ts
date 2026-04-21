@@ -23,6 +23,7 @@ import {
 import { readFeatureTreeSpecResource } from "@/core/spec/feature-tree-spec-resource-contract";
 import { ToolMode } from "./routa-mcp-tool-manager";
 import { getMcpProfileToolAllowlist, type McpServerProfile } from "./mcp-server-profiles";
+import { parseTaskJitContextAnalysis } from "../models/task";
 
 async function resolveSessionProvider(sessionId: string | undefined): Promise<string | undefined> {
   if (!sessionId) return undefined;
@@ -351,7 +352,9 @@ export async function executeMcpTool(
             verificationCommands: args.verificationCommands as string[] | undefined,
             testCases: args.testCases as string[] | undefined,
             contextSearchSpec: args.contextSearchSpec as Record<string, unknown> | undefined,
-            jitContextAnalysis: args.jitContextAnalysis as Record<string, unknown> | null | undefined,
+            jitContextAnalysis: args.jitContextAnalysis === null
+              ? null
+              : parseTaskJitContextAnalysis(args.jitContextAnalysis),
           },
         })
       );

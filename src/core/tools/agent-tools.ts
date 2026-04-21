@@ -30,6 +30,7 @@ import {
   createAgent as createAgentModel,
 } from "../models/agent";
 import {
+  mergeTaskJitContextAnalysis,
   normalizeTaskContextSearchSpec,
   Task,
   TaskStatus,
@@ -859,6 +860,7 @@ export class AgentTools {
       verificationCommands?: string[];
       testCases?: string[];
       contextSearchSpec?: import("../models/task").TaskContextSearchSpec;
+      jitContextAnalysis?: import("../models/task").TaskJitContextAnalysis | null;
     };
     agentId: string;
   }): Promise<ToolResult> {
@@ -899,6 +901,12 @@ export class AgentTools {
     if (updates.testCases !== undefined) task.testCases = updates.testCases;
     if (updates.contextSearchSpec !== undefined) {
       task.contextSearchSpec = normalizeTaskContextSearchSpec(updates.contextSearchSpec);
+    }
+    if (updates.jitContextAnalysis !== undefined) {
+      task.jitContextSnapshot = mergeTaskJitContextAnalysis(
+        task.jitContextSnapshot,
+        updates.jitContextAnalysis,
+      );
     }
 
     // Always check review lane convergence when verification verdict is updated

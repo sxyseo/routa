@@ -365,7 +365,10 @@ export class RoutaMcpToolManager {
         const result = await this.tools.updateTask({
           taskId,
           expectedVersion,
-          updates,
+          updates: {
+            ...updates,
+            jitContextAnalysis: params.jitContextAnalysis as import("../models/task").TaskJitContextAnalysis | null | undefined,
+          },
           agentId: agentId ?? "system",
         });
         return this.toMcpResult(result);

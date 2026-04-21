@@ -325,4 +325,76 @@ describe("AgentTools extended coverage", () => {
     expect(updated?.columnId).toBe("released-stage");
     expect(updated?.status).toBe(TaskStatus.COMPLETED);
   });
+
+  it("persists structured jit context analysis through updateTask", async () => {
+    const task = createTask({
+      id: "task-jit-analysis",
+      title: "Analyze JIT history",
+      objective: "Persist structured history analysis",
+      workspaceId: "ws-1",
+      boardId: "board-1",
+      columnId: "todo",
+      jitContextSnapshot: {
+        generatedAt: "2026-04-21T08:00:00.000Z",
+        summary: "Recovered history context for kanban-workflow.",
+        matchConfidence: "high",
+        matchReasons: ["Matched the kanban-workflow feature."],
+        warnings: [],
+        matchedFileDetails: [],
+        matchedSessionIds: ["session-codex"],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+      },
+    });
+    await taskStore.save(task);
+
+    const result = await tools.updateTask({
+      taskId: "task-jit-analysis",
+      updates: {
+        jitContextAnalysis: {
+          summary: "Start from the Kanban API and blocked interval reconstruction.",
+          issues: {
+            input: ["The first task label was too broad."],
+            location: ["The API entry point is crates/routa-server/src/api/kanban.rs."],
+            tooling: ["A stale tasks.rs path caused read failures."],
+          },
+          topFiles: ["crates/routa-server/src/api/kanban.rs"],
+          topSessions: [{
+            sessionId: "session-codex",
+            provider: "codex",
+            reason: "This session touched the durable flow-event path directly.",
+          }],
+          topLeads: ["Verify blocked/unblocked pairing first."],
+          contextToInject: ["Inject the flow-event model and blocked interval read-model context."],
+          reusablePrompts: ["Check Rust and TS flow-event parity first."],
+          recommendedContextSearchSpec: {
+            query: "kanban flow event persistence",
+            featureCandidates: ["kanban-workflow"],
+          },
+          evidence: ["Recovered session-codex from the selected files."],
+          inference: ["The next implementation session should start from the API layer."],
+        },
+      },
+      agentId: "agent-1",
+    });
+
+    expect(result.success).toBe(true);
+    const updated = await taskStore.get("task-jit-analysis");
+    expect(updated?.jitContextSnapshot?.analysis).toEqual(expect.objectContaining({
+      summary: "Start from the Kanban API and blocked interval reconstruction.",
+      topFiles: ["crates/routa-server/src/api/kanban.rs"],
+      topSessions: [
+        expect.objectContaining({
+          sessionId: "session-codex",
+          provider: "codex",
+        }),
+      ],
+      recommendedContextSearchSpec: expect.objectContaining({
+        query: "kanban flow event persistence",
+        featureCandidates: ["kanban-workflow"],
+      }),
+    }));
+    expect(updated?.jitContextSnapshot?.summary).toBe("Recovered history context for kanban-workflow.");
+  });
 });
