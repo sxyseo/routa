@@ -188,6 +188,9 @@ export interface ActiveAutomation {
   stage: KanbanColumnStage;
   automation: KanbanColumnAutomation;
   steps: KanbanAutomationStep[];
+  /** Original unfiltered automation steps from config (before autoCreatePullRequest filtering).
+   *  Used to map filtered step indices back to config indices for correct laneSession recording. */
+  configSteps: KanbanAutomationStep[];
   currentStepIndex: number;
   sessionId?: string;
   startedAt: Date;
@@ -368,6 +371,9 @@ export class KanbanWorkflowOrchestrator {
     const targetColumn = resolved.column;
     const automation = resolved.automation;
     let steps = getKanbanAutomationSteps(automation);
+    // Preserve original config indices so that stepIndex stored in laneSessions
+    // matches the unfiltered automation config (used by lane scanner resume).
+    const configSteps = steps;
 
     // When autoCreatePullRequest is enabled, skip the pr-publisher specialist
     // step and create the PR synchronously BEFORE downstream steps run.
@@ -528,6 +534,7 @@ export class KanbanWorkflowOrchestrator {
       stage: targetColumn.stage,
       automation,
       steps,
+      configSteps,
       currentStepIndex: startStepIndex,
       startedAt: new Date(),
       status: "queued",
@@ -543,6 +550,13 @@ export class KanbanWorkflowOrchestrator {
     // Trigger agent session if callback is available
     if (this.createSession) {
       try {
+        // Map filtered step index back to original config index so laneSessions
+        // record the correct stepIndex (matching the unfiltered automation config
+        // used by the lane scanner).
+        const effectiveStep = steps[startStepIndex];
+        const originalStepIndex = effectiveStep
+          ? configSteps.findIndex(s => s.id === effectiveStep.id || (s.specialistId && s.specialistId === effectiveStep.specialistId))
+          : startStepIndex;
         const sessionId = await this.createSession({
           workspaceId: data.workspaceId,
           cardId: data.cardId,
@@ -550,8 +564,8 @@ export class KanbanWorkflowOrchestrator {
           columnId: targetColumn.id,
           columnName: targetColumn.name,
           automation,
-          step: steps[startStepIndex],
-          stepIndex: startStepIndex,
+          step: effectiveStep,
+          stepIndex: originalStepIndex >= 0 ? originalStepIndex : startStepIndex,
           supervision: this.buildSupervisionContext(automationEntry, laneObjective),
         });
         if (sessionId) {
@@ -1170,6 +1184,9 @@ export class KanbanWorkflowOrchestrator {
     automation.signaledSessionIds.clear();
 
     try {
+      const originalIdx = automation.configSteps.findIndex(
+        s => s.id === nextStep.id || (s.specialistId && s.specialistId === nextStep.specialistId),
+      );
       const sessionId = await this.createSession({
         workspaceId: automation.workspaceId,
         cardId,
@@ -1178,7 +1195,7 @@ export class KanbanWorkflowOrchestrator {
         columnName: automation.columnName,
         automation: automation.automation,
         step: nextStep,
-        stepIndex: nextStepIndex,
+        stepIndex: originalIdx >= 0 ? originalIdx : nextStepIndex,
         supervision: this.buildSupervisionContext(automation, task.objective || automation.cardTitle),
       });
 
@@ -1234,6 +1251,11 @@ export class KanbanWorkflowOrchestrator {
 
     try {
       const currentStep = automation.steps[automation.currentStepIndex];
+      const originalIdx = currentStep
+        ? automation.configSteps.findIndex(
+            s => s.id === currentStep.id || (s.specialistId && s.specialistId === currentStep.specialistId),
+          )
+        : -1;
       const sessionId = await this.createSession({
         workspaceId: automation.workspaceId,
         cardId,
@@ -1242,7 +1264,7 @@ export class KanbanWorkflowOrchestrator {
         columnName: automation.columnName,
         automation: automation.automation,
         step: currentStep,
-        stepIndex: automation.currentStepIndex,
+        stepIndex: originalIdx >= 0 ? originalIdx : automation.currentStepIndex,
         supervision: this.buildSupervisionContext(automation, task.objective || automation.cardTitle, {
           recoveredFromSessionId: previousSessionId,
           recoveryReason: reason,
