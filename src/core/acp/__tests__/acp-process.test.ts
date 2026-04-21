@@ -374,4 +374,36 @@ describe("AcpProcess codex permission handling", () => {
     await expect(pending).rejects.toThrow("Codex process exited (code=1)");
     vi.useRealTimers();
   });
+
+  it("converts late stopReason responses into turn_complete notifications", () => {
+    const onNotification = vi.fn();
+    const process = createProcess(onNotification);
+
+    process.setSessionContext({
+      sessionId: "session-1",
+      provider: "codex",
+      role: "CRAFTER",
+    });
+
+    (process as any)._sessionId = "acp-session-1";
+    (process as any).handleMessage({
+      jsonrpc: "2.0",
+      id: 3,
+      result: {
+        stopReason: "end_turn",
+      },
+    });
+
+    expect(onNotification).toHaveBeenCalledWith({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "acp-session-1",
+        update: {
+          sessionUpdate: "turn_complete",
+          stopReason: "end_turn",
+        },
+      },
+    });
+  });
 });

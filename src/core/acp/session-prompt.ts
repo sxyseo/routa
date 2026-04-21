@@ -164,6 +164,59 @@ function getPromptErrorData(error: unknown): Record<string, unknown> | undefined
   return undefined;
 }
 
+function maybePushSyntheticTurnComplete(
+  store: ReturnType<typeof getHttpSessionStore>,
+  sessionId: string,
+  result: unknown,
+): void {
+  if (!result || typeof result !== "object") {
+    return;
+  }
+
+  const payload = result as Record<string, unknown>;
+  const stopReason = typeof payload.stopReason === "string" ? payload.stopReason : undefined;
+  if (!stopReason) {
+    return;
+  }
+
+  const lastNotification = store.getHistory(sessionId).at(-1);
+  const lastUpdate = lastNotification?.update as Record<string, unknown> | undefined;
+  if (lastUpdate?.sessionUpdate === "turn_complete") {
+    return;
+  }
+
+  const rawUsage = payload.usage;
+  const usageRecord = rawUsage && typeof rawUsage === "object"
+    ? rawUsage as Record<string, unknown>
+    : undefined;
+  const inputTokens = typeof usageRecord?.input_tokens === "number"
+    ? usageRecord.input_tokens
+    : typeof usageRecord?.inputTokens === "number"
+      ? usageRecord.inputTokens
+      : undefined;
+  const outputTokens = typeof usageRecord?.output_tokens === "number"
+    ? usageRecord.output_tokens
+    : typeof usageRecord?.outputTokens === "number"
+      ? usageRecord.outputTokens
+      : undefined;
+
+  store.pushNotification({
+    sessionId,
+    update: {
+      sessionUpdate: "turn_complete",
+      stopReason,
+      ...(inputTokens !== undefined || outputTokens !== undefined
+        ? {
+            usage: {
+              ...(inputTokens !== undefined ? { input_tokens: inputTokens } : {}),
+              ...(outputTokens !== undefined ? { output_tokens: outputTokens } : {}),
+            },
+          }
+        : {}),
+    },
+  });
+}
+
 function isAcpErrorLike(error: unknown): error is AcpErrorLike {
   if (!error || typeof error !== "object") return false;
   const candidate = error as Record<string, unknown>;
@@ -917,6 +970,7 @@ export async function handleSessionPrompt({
       }
       try {
         const result = await restarted.prompt(sessionId, promptText);
+        maybePushSyntheticTurnComplete(store, sessionId, result);
         store.flushAgentBuffer(sessionId);
         void persistSessionHistorySnapshot(sessionId, store);
         return jsonrpcResponse(id ?? null, result);
@@ -943,6 +997,7 @@ export async function handleSessionPrompt({
 
     try {
       const result = await claudeProc.prompt(sessionId, promptText);
+      maybePushSyntheticTurnComplete(store, sessionId, result);
       store.flushAgentBuffer(sessionId);
       void persistSessionHistorySnapshot(sessionId, store);
       return jsonrpcResponse(id ?? null, result);
@@ -987,6 +1042,7 @@ export async function handleSessionPrompt({
 
   try {
     const result = await proc.prompt(acpSessionId, promptText);
+    maybePushSyntheticTurnComplete(store, sessionId, result);
     store.flushAgentBuffer(sessionId);
     void persistSessionHistorySnapshot(sessionId, store);
     return jsonrpcResponse(id ?? null, result);

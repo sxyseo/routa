@@ -78,6 +78,7 @@ export class AcpProcess {
     private _config: AcpProcessConfig;
     private _initResult: AcpInitResult | null = null;
     private _sessionContext: AcpSessionContext | null = null;
+    private lastSyntheticTurnStopReason: string | null = null;
 
     constructor(config: AcpProcessConfig, onNotification: NotificationHandler) {
         this._config = config;
@@ -575,6 +576,10 @@ export class AcpProcess {
                 }
                 return;
             }
+
+            if (this.handleLateTurnCompleteResult(msg.result)) {
+                return;
+            }
         }
 
         // Agent→Client requests (has id and method, expects response)
@@ -600,6 +605,38 @@ export class AcpProcess {
             `[AcpProcess:${this._config.displayName}] Unhandled message:`,
             JSON.stringify(msg)
         );
+    }
+
+    private handleLateTurnCompleteResult(result: unknown): boolean {
+        if (!result || typeof result !== "object") {
+            return false;
+        }
+
+        const payload = result as Record<string, unknown>;
+        const stopReason = typeof payload.stopReason === "string"
+            ? payload.stopReason
+            : undefined;
+        if (!stopReason) {
+            return false;
+        }
+
+        if (this.lastSyntheticTurnStopReason === stopReason) {
+            return true;
+        }
+
+        this.lastSyntheticTurnStopReason = stopReason;
+        this.onNotification({
+            jsonrpc: "2.0",
+            method: "session/update",
+            params: {
+                sessionId: this._sessionId ?? "pending",
+                update: {
+                    sessionUpdate: "turn_complete",
+                    stopReason,
+                },
+            },
+        });
+        return true;
     }
 
     /**
