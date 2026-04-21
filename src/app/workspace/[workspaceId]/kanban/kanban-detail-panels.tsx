@@ -10,6 +10,12 @@ import type {
   TaskAdaptiveHistorySummary,
   TaskAdaptiveMatchedFileDetail,
 } from "@/core/harness/task-adaptive";
+import {
+  normalizeTaskJitContextAnalysis,
+  normalizeTaskContextSearchSpec,
+  type TaskContextSearchSpec,
+  type TaskJitContextSnapshot,
+} from "@/core/models/task";
 import type { TaskInfo } from "../types";
 import { buildKanbanTaskAdaptiveHarnessOptions } from "./kanban-task-adaptive";
 import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
@@ -102,12 +108,151 @@ function getMatchedFileDetails(pack: TaskAdaptiveHarnessPack | null): TaskAdapti
     return pack.matchedFileDetails;
   }
 
-  return pack.selectedFiles.map((filePath) => ({
+  return (pack.selectedFiles ?? []).map((filePath) => ({
     filePath,
     changes: 0,
     sessions: 0,
     updatedAt: "",
   }));
+}
+
+function packFromTaskJitContextSnapshot(snapshot: TaskJitContextSnapshot | undefined): TaskAdaptiveHarnessPack | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  return {
+    summary: snapshot.summary,
+    historySummary: snapshot.historySummary as TaskAdaptiveHistorySummary | undefined,
+    warnings: snapshot.warnings,
+    featureId: snapshot.featureId,
+    featureName: snapshot.featureName,
+    matchConfidence: snapshot.matchConfidence,
+    matchReasons: snapshot.matchReasons,
+    selectedFiles: snapshot.matchedFileDetails.map((detail) => detail.filePath),
+    matchedFileDetails: snapshot.matchedFileDetails,
+    matchedSessionIds: snapshot.matchedSessionIds,
+    failures: snapshot.failures.map((failure) => ({
+      ...failure,
+      provider: failure.provider ?? "unknown",
+    })),
+    repeatedReadFiles: snapshot.repeatedReadFiles,
+    sessions: snapshot.sessions.map((session) => ({
+      ...session,
+      provider: session.provider ?? "unknown",
+      failedReadSignals: session.failedReadSignals.map((failure) => ({
+        ...failure,
+        provider: failure.provider ?? session.provider ?? "unknown",
+      })),
+    })),
+    frictionProfiles: [],
+  };
+}
+
+function buildRecommendedContextSearchSpec(
+  task: TaskInfo,
+  harnessOptions: AcpTaskAdaptiveHarnessOptions,
+  pack: TaskAdaptiveHarnessPack,
+): TaskContextSearchSpec | undefined {
+  const analysisRecommendation = task.jitContextSnapshot?.analysis?.recommendedContextSearchSpec;
+  const next = normalizeTaskContextSearchSpec({
+    query: task.contextSearchSpec?.query ?? analysisRecommendation?.query ?? harnessOptions.query ?? task.title,
+    featureCandidates: uniquePreserveOrder([
+      ...(task.contextSearchSpec?.featureCandidates ?? []),
+      ...(analysisRecommendation?.featureCandidates ?? []),
+      ...(pack.featureId ? [pack.featureId] : []),
+      ...(harnessOptions.featureIds ?? []),
+    ]).slice(0, 4),
+    relatedFiles: uniquePreserveOrder([
+      ...(analysisRecommendation?.relatedFiles ?? []),
+      ...getMatchedFileDetails(pack).map((detail) => detail.filePath),
+    ]).slice(0, 12),
+    routeCandidates: uniquePreserveOrder([
+      ...(task.contextSearchSpec?.routeCandidates ?? []),
+      ...(analysisRecommendation?.routeCandidates ?? []),
+      ...(harnessOptions.routeCandidates ?? []),
+    ]),
+    apiCandidates: uniquePreserveOrder([
+      ...(task.contextSearchSpec?.apiCandidates ?? []),
+      ...(analysisRecommendation?.apiCandidates ?? []),
+      ...(harnessOptions.apiCandidates ?? []),
+    ]),
+    moduleHints: uniquePreserveOrder([
+      ...(task.contextSearchSpec?.moduleHints ?? []),
+      ...(analysisRecommendation?.moduleHints ?? []),
+      ...(harnessOptions.moduleHints ?? []),
+    ]),
+    symptomHints: uniquePreserveOrder([
+      ...(task.contextSearchSpec?.symptomHints ?? []),
+      ...(analysisRecommendation?.symptomHints ?? []),
+      ...(harnessOptions.symptomHints ?? []),
+    ]),
+  });
+
+  return next;
+}
+
+function buildTaskJitContextSnapshot(
+  task: TaskInfo,
+  repoPath: string | null | undefined,
+  harnessOptions: AcpTaskAdaptiveHarnessOptions,
+  pack: TaskAdaptiveHarnessPack,
+): TaskJitContextSnapshot {
+  const matchReasons = uniquePreserveOrder(pack.matchReasons ?? []);
+  const warnings = uniquePreserveOrder(pack.warnings ?? []);
+  const matchedSessionIds = uniquePreserveOrder(pack.matchedSessionIds ?? []);
+  const failures = uniqueFailureSignals(pack.failures ?? []);
+  const repeatedReadFiles = uniquePreserveOrder(pack.repeatedReadFiles ?? []);
+  const sessions = pack.sessions ?? [];
+
+  return {
+    generatedAt: new Date().toISOString(),
+    repoPath: repoPath ?? undefined,
+    featureId: pack.featureId,
+    featureName: pack.featureName,
+    summary: pack.summary,
+    matchConfidence: pack.matchConfidence ?? "low",
+    matchReasons,
+    warnings,
+    matchedFileDetails: getMatchedFileDetails(pack),
+    matchedSessionIds,
+    failures,
+    repeatedReadFiles,
+    sessions: sessions.map((session) => ({
+      provider: session.provider,
+      sessionId: session.sessionId,
+      updatedAt: session.updatedAt,
+      promptSnippet: session.promptSnippet,
+      matchedFiles: uniquePreserveOrder(session.matchedFiles),
+      matchedChangedFiles: uniquePreserveOrder(session.matchedChangedFiles),
+      matchedReadFiles: uniquePreserveOrder(session.matchedReadFiles),
+      matchedWrittenFiles: uniquePreserveOrder(session.matchedWrittenFiles),
+      repeatedReadFiles: uniquePreserveOrder(session.repeatedReadFiles),
+      toolNames: uniquePreserveOrder(session.toolNames),
+      failedReadSignals: uniqueFailureSignals(session.failedReadSignals),
+      resumeCommand: session.resumeCommand,
+    })),
+    historySummary: pack.historySummary
+      ? {
+          overview: pack.historySummary.overview,
+          seedSessionCount: pack.historySummary.seedSessionCount,
+          recoveredSessionCount: pack.historySummary.recoveredSessionCount,
+          matchedFileCount: pack.historySummary.matchedFileCount,
+          seedSessions: (pack.historySummary.seedSessions ?? []).map((session) => ({
+            provider: session.provider,
+            sessionId: session.sessionId,
+            updatedAt: session.updatedAt,
+            promptSnippet: session.promptSnippet,
+            touchedFiles: uniquePreserveOrder(session.touchedFiles),
+            repeatedReadFiles: uniquePreserveOrder(session.repeatedReadFiles),
+            toolNames: uniquePreserveOrder(session.toolNames),
+            failedReadSignals: uniqueFailureSignals(session.failedReadSignals),
+          })),
+        }
+      : undefined,
+    recommendedContextSearchSpec: buildRecommendedContextSearchSpec(task, harnessOptions, pack),
+    analysis: normalizeTaskJitContextAnalysis(task.jitContextSnapshot?.analysis),
+  };
 }
 
 function formatMatchConfidenceLabel(
@@ -164,7 +309,7 @@ function uniqueFailureSignals(failures: TaskAdaptiveHarnessPack["failures"]): Ta
   const seen = new Set<string>();
   const result: TaskAdaptiveHarnessPack["failures"] = [];
 
-  for (const failure of failures) {
+  for (const failure of failures ?? []) {
     const key = [failure.sessionId, failure.toolName, failure.command ?? "", failure.message].join("\u0000");
     if (seen.has(key)) {
       continue;
@@ -411,27 +556,66 @@ function buildJitHistoryAnalysisPrompt(
 
   if (specialistLanguage === "zh-CN") {
     return [
-      "请对这张 Kanban 卡片的历史实现线索做一次只读复盘，目标是压缩上下文、指出最值得继续深挖的历史证据，并给下一次实现会话更好的注入方式。",
+      "请对这张 Kanban 卡片的历史实现线索做一次只读复盘，目标是压缩上下文、指出最值得继续深挖的历史证据，并把结构化结论保存回当前卡片。",
       "",
-      "你的任务：",
+      "必须执行的工作流：",
       "1. 先区分“种子会话”和“最终命中会话”，不要把所有历史 session 当成同等证据。",
       "2. 先基于下面已经预加载的摘要证据做综合分析，再决定是否需要回读少量 transcript JSONL。",
       "3. 优先解释这些命中会话和候选文件，到底为当前 story 提供了什么上下文，而不是复述 transcript。",
       "4. 把问题拆开：一类是需求/上下文输入问题，一类是代码定位问题，一类是工具/路径/读取失败问题。",
       "5. 明确区分“证据支持”的判断和“你的推断”；尽量引用具体 session ID 或文件。",
-      "6. 给出下一次实现/规划会话最值得注入的上下文，避免再次把 10+ 个 session 全量塞给模型。",
-      "7. 产出 2 到 4 条可直接复用的后续提示词。",
+      "6. 调用 `update_task`，把分析结果保存到当前任务的 `jitContextAnalysis` 字段里。",
+      "7. 保存成功后，只用简短回复确认你保存了哪些高价值结论；不要再输出一整段 JSON。",
       "",
-      "输出格式：",
-      "## 会话分层",
-      "## 结论",
-      "## 输入问题 vs 定位问题 vs 工具问题",
-      "## 最值得继续深挖的 3-5 个线索",
-      "## 建议注入到下一次会话的上下文",
-      "## 可复用的后续提示词",
-      "## 证据与推断边界",
+      "必须保存的 JSON 结构：",
+      "```json",
+      JSON.stringify({
+        taskId: task.id,
+        jitContextAnalysis: {
+          summary: "一句压缩后的总判断",
+          sessionLayers: {
+            seedSessions: ["019d..."],
+            matchedSessions: ["019d..."],
+            explanation: "一句话说明为什么这些 seed 会话比最终命中会话更弱",
+          },
+          issues: {
+            input: ["输入/上下文问题"],
+            location: ["代码定位问题"],
+            tooling: ["工具/路径/读取失败问题"],
+          },
+          topFiles: ["repo-relative/path.ts"],
+          topSessions: [
+            {
+              sessionId: "019d...",
+              provider: "codex",
+              reason: "为什么这条会话值得优先看",
+            },
+          ],
+          topLeads: ["最值得继续深挖的线索"],
+          contextToInject: ["下一次实现/规划会话应该注入的上下文"],
+          reusablePrompts: ["可直接复用的后续提示词"],
+          recommendedContextSearchSpec: {
+            query: "可复用的检索 query",
+            featureCandidates: ["feature-id"],
+            relatedFiles: ["repo-relative/path.ts"],
+            routeCandidates: ["/workspace/..."],
+            apiCandidates: ["/api/..."],
+            moduleHints: ["module hint"],
+            symptomHints: ["symptom hint"],
+          },
+          evidence: ["证据支持的判断"],
+          inference: ["推断或建议"],
+        },
+      }, null, 2),
+      "```",
+      "",
+      "补充规则：",
+      "- `topSessions` 优先放最终命中的 Codex/Claude 会话，而不是泛泛的 ACP 会话。",
+      "- `recommendedContextSearchSpec` 只保留下一次 JIT 检索真正需要复用的高信号 hints。",
+      "- 如果某个字段没有内容，用空数组；不要省略整个结构。",
       "",
       "上下文：",
+      `- Task ID: ${task.id}`,
       `- 标题：${task.title}`,
       task.objective ? `- 目标：${task.objective}` : null,
       workspaceLabel ? `- Workspace: ${workspaceLabel}` : null,
@@ -474,27 +658,66 @@ function buildJitHistoryAnalysisPrompt(
   }
 
   return [
-    "Run a read-only retrospective on the history signals for this Kanban card. The goal is to compress context, surface the strongest evidence, and recommend what should be injected into the next implementation session.",
+    "Run a read-only retrospective on the history signals for this Kanban card. The goal is to compress context, surface the strongest evidence, and save a structured result back to the task.",
     "",
-    "Your tasks:",
+    "Required workflow:",
     "1. Distinguish retrieval seed sessions from the final matched sessions. Do not treat every historical session as equally trustworthy.",
     "2. Start from the preloaded summary evidence below before deciding whether any transcript rereads are necessary.",
     "3. Explain what the matched sessions and files contribute to the current story instead of replaying transcripts.",
     "4. Split the findings into request/context-input issues, code-location issues, and tooling/path/read failures.",
     "5. Separate evidence-backed conclusions from your own inference and cite concrete session IDs or files when possible.",
-    "6. Recommend what context should be injected into the next planning or implementation session so the model does not need all 10+ sessions again.",
-    "7. Produce 2 to 4 reusable follow-up prompts.",
+    "6. Call `update_task` and persist the result into the task's `jitContextAnalysis` field.",
+    "7. After the save succeeds, reply with a short confirmation of the highest-value items you saved. Do not dump the full JSON again.",
     "",
-    "Output format:",
-    "## Session Layers",
-    "## Conclusion",
-    "## Input vs Location vs Tooling Friction",
-    "## Top 3-5 Follow-up Leads",
-    "## Context To Inject Next Time",
-    "## Reusable Follow-up Prompts",
-    "## Evidence vs Inference",
+    "Required JSON payload:",
+    "```json",
+    JSON.stringify({
+      taskId: task.id,
+      jitContextAnalysis: {
+        summary: "One compressed conclusion",
+        sessionLayers: {
+          seedSessions: ["019d..."],
+          matchedSessions: ["019d..."],
+          explanation: "One sentence explaining why the seed sessions are weaker than the final matched sessions",
+        },
+        issues: {
+          input: ["Context-input issue"],
+          location: ["Code-location issue"],
+          tooling: ["Tool/path/read-failure issue"],
+        },
+        topFiles: ["repo-relative/path.ts"],
+        topSessions: [
+          {
+            sessionId: "019d...",
+            provider: "codex",
+            reason: "Why this matched session is worth inspecting first",
+          },
+        ],
+        topLeads: ["Top follow-up lead"],
+        contextToInject: ["Context to inject into the next planning or implementation session"],
+        reusablePrompts: ["Reusable follow-up prompt"],
+        recommendedContextSearchSpec: {
+          query: "Reusable retrieval query",
+          featureCandidates: ["feature-id"],
+          relatedFiles: ["repo-relative/path.ts"],
+          routeCandidates: ["/workspace/..."],
+          apiCandidates: ["/api/..."],
+          moduleHints: ["module hint"],
+          symptomHints: ["symptom hint"],
+        },
+        evidence: ["Evidence-backed statement"],
+        inference: ["Inference or recommendation"],
+      },
+    }, null, 2),
+    "```",
+    "",
+    "Extra rules:",
+    "- Prefer final matched Codex/Claude sessions in `topSessions` instead of generic ACP sessions.",
+    "- Keep `recommendedContextSearchSpec` focused on the small set of hints that should survive into the next JIT retrieval.",
+    "- If a field has no content, send an empty array instead of removing the field entirely.",
     "",
     "Context:",
+    `- Task ID: ${task.id}`,
     `- Title: ${task.title}`,
     task.objective ? `- Objective: ${task.objective}` : null,
     workspaceLabel ? `- Workspace: ${workspaceLabel}` : null,
@@ -842,6 +1065,7 @@ export function JitContextPanel({
   repoPath,
   specialistLanguage,
   activeSessionId,
+  onPatchTask,
   onLoadIntoSession,
   onOpenHistoryAnalysis,
   compact = false,
@@ -852,17 +1076,22 @@ export function JitContextPanel({
   repoPath?: string | null;
   specialistLanguage: KanbanSpecialistLanguage;
   activeSessionId?: string | null;
+  onPatchTask?: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   onLoadIntoSession?: (sessionId: string, prompt: string) => Promise<void>;
   onOpenHistoryAnalysis?: (prompt: string, targetWindow: Window | null) => Promise<void>;
   compact?: boolean;
   showTitle?: boolean;
 }) {
   const { t } = useTranslation();
+  const persistedPack = useMemo(
+    () => packFromTaskJitContextSnapshot(task.jitContextSnapshot),
+    [task.jitContextSnapshot],
+  );
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(Boolean(persistedPack));
   const [error, setError] = useState<string | null>(null);
-  const [pack, setPack] = useState<TaskAdaptiveHarnessPack | null>(null);
+  const [pack, setPack] = useState<TaskAdaptiveHarnessPack | null>(persistedPack);
   const [injecting, setInjecting] = useState(false);
   const [injectError, setInjectError] = useState<string | null>(null);
   const [injectSuccess, setInjectSuccess] = useState(false);
@@ -896,6 +1125,7 @@ export function JitContextPanel({
   );
   const historicalIssueCount = uniqueFailures.length + uniqueRepeatedReadFiles.length;
   const historySummary = pack?.historySummary ?? null;
+  const savedAnalysis = task.jitContextSnapshot?.analysis;
   const historySeedSessionCount = historySummary?.seedSessionCount ?? 0;
   const recoveredSessionCount = pack?.sessions.length ?? 0;
   const matchedFileDetails = getMatchedFileDetails(pack);
@@ -909,16 +1139,16 @@ export function JitContextPanel({
   useEffect(() => {
     setExpanded(false);
     setLoading(false);
-    setLoaded(false);
+    setLoaded(Boolean(persistedPack));
     setError(null);
-    setPack(null);
+    setPack(persistedPack);
     setInjecting(false);
     setInjectError(null);
     setInjectSuccess(false);
     setOpeningAnalysis(false);
     setAnalysisError(null);
     setAnalysisSuccess(false);
-  }, [harnessSignature, repoPath, workspaceId]);
+  }, [harnessSignature, persistedPack, repoPath, workspaceId]);
 
   const loadContext = async () => {
     if (loading) {
@@ -962,6 +1192,17 @@ export function JitContextPanel({
       }
       setPack(data);
       setLoaded(true);
+      if (onPatchTask) {
+        const nextSnapshot = buildTaskJitContextSnapshot(task, repoPath, harnessOptions, data);
+        const currentSnapshot = task.jitContextSnapshot;
+        const nextSignature = JSON.stringify(nextSnapshot);
+        const currentSignature = currentSnapshot ? JSON.stringify(currentSnapshot) : "";
+        if (nextSignature !== currentSignature) {
+          void onPatchTask(task.id, {
+            jitContextSnapshot: nextSnapshot,
+          }).catch(() => {});
+        }
+      }
     } catch (fetchError) {
       setPack(null);
       setLoaded(true);
@@ -1202,6 +1443,198 @@ export function JitContextPanel({
                     <span>{t.kanbanDetail.relatedSessions}: {historySummary.recoveredSessionCount}</span>
                     <span>{t.kanbanDetail.matchedFiles}: {historySummary.matchedFileCount}</span>
                   </div>
+                </div>
+              ) : null}
+
+              {savedAnalysis ? (
+                <div className="rounded-xl border border-sky-200/80 bg-sky-50/70 px-3 py-2.5 dark:border-sky-900/50 dark:bg-sky-900/10">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+                      {t.kanbanDetail.savedHistoryAnalysis}
+                    </div>
+                    {formatTimestamp(savedAnalysis.updatedAt) ? (
+                      <span className="text-[11px] text-sky-700/80 dark:text-sky-200/80">
+                        {t.kanbanDetail.updatedAt}: {formatTimestamp(savedAnalysis.updatedAt)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
+                    {savedAnalysis.summary}
+                  </div>
+
+                  {savedAnalysis.sessionLayers ? (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                        {t.kanbanDetail.analysisSessionLayers}
+                      </div>
+                      {savedAnalysis.sessionLayers.explanation ? (
+                        <div className="text-sm text-slate-700 dark:text-slate-200">
+                          {savedAnalysis.sessionLayers.explanation}
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        <span>{t.kanbanDetail.historySeedSessions}: {savedAnalysis.sessionLayers.seedSessions.length}</span>
+                        <span>{t.kanbanDetail.relatedSessions}: {savedAnalysis.sessionLayers.matchedSessions.length}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {savedAnalysis.topLeads.length > 0 ? (
+                    <div className="mt-3 space-y-1">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                        {t.kanbanDetail.analysisTopLeads}
+                      </div>
+                      {savedAnalysis.topLeads.map((lead, index) => (
+                        <div key={`analysis-lead:${index}:${lead}`} className="text-sm text-slate-700 dark:text-slate-200">
+                          {lead}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {savedAnalysis.topFiles.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                        {t.kanbanDetail.analysisTopFiles}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {savedAnalysis.topFiles.map((filePath, index) => (
+                          <span
+                            key={`analysis-file:${index}:${filePath}`}
+                            className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300"
+                          >
+                            {filePath}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {savedAnalysis.topSessions.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                        {t.kanbanDetail.analysisTopSessions}
+                      </div>
+                      <div className="space-y-2">
+                        {savedAnalysis.topSessions.map((session, index) => (
+                          <div
+                            key={`analysis-session:${index}:${session.sessionId}`}
+                            className="rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 dark:border-slate-700/70 dark:bg-slate-950/40"
+                          >
+                            <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+                              <span>{session.sessionId}</span>
+                              {session.provider ? (
+                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                                  {session.provider}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                              {session.reason}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {(savedAnalysis.issues.input.length > 0 || savedAnalysis.issues.location.length > 0 || savedAnalysis.issues.tooling.length > 0) ? (
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      {savedAnalysis.issues.input.length > 0 ? (
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                            {t.kanbanDetail.analysisInputIssues}
+                          </div>
+                          {savedAnalysis.issues.input.map((issue, index) => (
+                            <div key={`analysis-input:${index}:${issue}`} className="text-sm text-slate-700 dark:text-slate-200">
+                              {issue}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {savedAnalysis.issues.location.length > 0 ? (
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                            {t.kanbanDetail.analysisLocationIssues}
+                          </div>
+                          {savedAnalysis.issues.location.map((issue, index) => (
+                            <div key={`analysis-location:${index}:${issue}`} className="text-sm text-slate-700 dark:text-slate-200">
+                              {issue}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {savedAnalysis.issues.tooling.length > 0 ? (
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                            {t.kanbanDetail.analysisToolingIssues}
+                          </div>
+                          {savedAnalysis.issues.tooling.map((issue, index) => (
+                            <div key={`analysis-tooling:${index}:${issue}`} className="text-sm text-slate-700 dark:text-slate-200">
+                              {issue}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {savedAnalysis.contextToInject.length > 0 ? (
+                    <div className="mt-3 space-y-1">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                        {t.kanbanDetail.analysisContextToInject}
+                      </div>
+                      {savedAnalysis.contextToInject.map((item, index) => (
+                        <div key={`analysis-context:${index}:${item}`} className="text-sm text-slate-700 dark:text-slate-200">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {savedAnalysis.reusablePrompts.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                        {t.kanbanDetail.analysisReusablePrompts}
+                      </div>
+                      <div className="space-y-2">
+                        {savedAnalysis.reusablePrompts.map((prompt, index) => (
+                          <div
+                            key={`analysis-prompt:${index}:${prompt}`}
+                            className="rounded-md bg-white/80 px-2 py-1.5 text-sm text-slate-700 dark:bg-slate-950/60 dark:text-slate-200"
+                          >
+                            {prompt}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {savedAnalysis.evidence.length > 0 ? (
+                    <div className="mt-3 space-y-1">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                        {t.kanbanDetail.analysisEvidence}
+                      </div>
+                      {savedAnalysis.evidence.map((item, index) => (
+                        <div key={`analysis-evidence:${index}:${item}`} className="text-sm text-slate-700 dark:text-slate-200">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {savedAnalysis.inference.length > 0 ? (
+                    <div className="mt-3 space-y-1">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                        {t.kanbanDetail.analysisInference}
+                      </div>
+                      {savedAnalysis.inference.map((item, index) => (
+                        <div key={`analysis-inference:${index}:${item}`} className="text-sm text-slate-700 dark:text-slate-200">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

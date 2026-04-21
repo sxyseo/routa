@@ -790,6 +790,18 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     jitContextSearchFailed: string;
     noJitContext: string;
     historySummary: string;
+    savedHistoryAnalysis: string;
+    analysisSessionLayers: string;
+    analysisTopLeads: string;
+    analysisTopFiles: string;
+    analysisTopSessions: string;
+    analysisInputIssues: string;
+    analysisLocationIssues: string;
+    analysisToolingIssues: string;
+    analysisContextToInject: string;
+    analysisReusablePrompts: string;
+    analysisEvidence: string;
+    analysisInference: string;
     historicalIssues: string;
     noHistoricalIssues: string;
     historySeedSessions: string;

@@ -781,6 +781,7 @@ export function KanbanCardDetail({
               repoPath={getTaskHistoryRepositoryPath()}
               specialistLanguage={specialistLanguage}
               activeSessionId={jitContextSessionId}
+              onPatchTask={onPatchTask}
               onLoadIntoSession={onLoadJitContextIntoSession}
               onOpenHistoryAnalysis={onOpenJitContextHistoryAnalysis}
               compact={compactMode}

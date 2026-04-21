@@ -412,6 +412,8 @@ describe("KanbanCardDetail repository health", () => {
       throw new Error(`Unexpected desktopAwareFetch: ${url}`);
     });
 
+    const onPatchTask = vi.fn(async () => createTask("task-jit", "Recover JIT context"));
+
     render(
       <KanbanCardDetail
         task={{
@@ -445,7 +447,7 @@ describe("KanbanCardDetail repository health", () => {
         worktreeCache={{}}
         sessions={[]}
         fullWidth
-        onPatchTask={vi.fn(async () => createTask("task-jit", "Recover JIT context"))}
+        onPatchTask={onPatchTask}
         onRetryTrigger={vi.fn()}
         onDelete={vi.fn()}
         onRefresh={vi.fn()}
@@ -489,6 +491,20 @@ describe("KanbanCardDetail repository health", () => {
       taskType: "planning",
       locale: "en",
       role: "CRAFTER",
+    });
+    await waitFor(() => {
+      expect(onPatchTask).toHaveBeenCalledWith(
+        "task-jit",
+        expect.objectContaining({
+          jitContextSnapshot: expect.objectContaining({
+            summary: "history summary",
+            recommendedContextSearchSpec: expect.objectContaining({
+              query: "Recover JIT context",
+              relatedFiles: ["src/app/page.tsx"],
+            }),
+          }),
+        }),
+      );
     });
   });
 
@@ -641,17 +657,103 @@ describe("KanbanCardDetail repository health", () => {
     const historyAnalysisPrompt = String(lastOpenHistoryAnalysisCall[0] ?? "");
     const historyTargetWindow = lastOpenHistoryAnalysisCall[1];
     expect(historyTargetWindow).toBe(targetWindow);
+    expect(historyAnalysisPrompt).toContain("- Task ID: task-jit-analysis");
     expect(historyAnalysisPrompt).toContain("- Repo Path: /tmp/repo-a");
     expect(historyAnalysisPrompt).toContain("- Task Type: planning");
     expect(historyAnalysisPrompt).toContain("### Transcript Hints");
     expect(historyAnalysisPrompt).toContain("~/.codex/sessions/**/session-codex*.jsonl");
     expect(historyAnalysisPrompt).toContain("### Final Matched Codex Or Claude Sessions");
     expect(historyAnalysisPrompt).toContain("Inspect the Kanban API route before touching the UI shell.");
+    expect(historyAnalysisPrompt).toContain("Call `update_task` and persist the result into the task's `jitContextAnalysis` field.");
+    expect(historyAnalysisPrompt).toContain("\"jitContextAnalysis\"");
     expect(historyAnalysisPrompt).not.toContain("Preloaded tool result:");
     expect(historyAnalysisPrompt).not.toContain("The system already executed `summarize_task_history_context` before this session started.");
     expect(openSpy).toHaveBeenCalledWith("about:blank", "_blank");
     expect(screen.getByText("History analysis opened in a new page.")).toBeTruthy();
     openSpy.mockRestore();
+  });
+
+  it("renders saved structured history analysis from the persisted task snapshot", () => {
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-jit-saved-analysis", "Recover JIT context"),
+          columnId: "backlog",
+          assignedRole: "CRAFTER",
+          jitContextSnapshot: {
+            generatedAt: "2026-04-21T08:00:00.000Z",
+            summary: "Recovered history context for Kanban workflow.",
+            matchConfidence: "high",
+            matchReasons: ["Matched the kanban-workflow feature."],
+            warnings: [],
+            matchedFileDetails: [{
+              filePath: "crates/routa-server/src/api/kanban.rs",
+              changes: 1,
+              sessions: 3,
+              updatedAt: "2026-04-21T08:00:00.000Z",
+            }],
+            matchedSessionIds: ["session-codex"],
+            failures: [],
+            repeatedReadFiles: [],
+            sessions: [],
+            analysis: {
+              updatedAt: "2026-04-21T09:00:00.000Z",
+              summary: "Start from the Kanban API and blocked interval reconstruction before touching the dashboard.",
+              sessionLayers: {
+                seedSessions: ["session-seed"],
+                matchedSessions: ["session-codex"],
+                explanation: "The matched Codex session is file-grounded; the seed session only helped localization.",
+              },
+              issues: {
+                input: ["The first prompt was too broad."],
+                location: ["The API entry point is crates/routa-server/src/api/kanban.rs."],
+                tooling: ["An outdated tasks.rs path caused read failures."],
+              },
+              topFiles: ["crates/routa-server/src/api/kanban.rs"],
+              topSessions: [{
+                sessionId: "session-codex",
+                provider: "codex",
+                reason: "This session covered the durable flow-event implementation.",
+              }],
+              topLeads: ["Verify blocked/unblocked pairing before extending read models."],
+              contextToInject: ["Inject the flow-event model plus blocked interval read-model context."],
+              reusablePrompts: ["Check Rust and TS flow-event parity first."],
+              recommendedContextSearchSpec: {
+                query: "kanban flow event persistence",
+                featureCandidates: ["kanban-workflow"],
+                relatedFiles: ["crates/routa-server/src/api/kanban.rs"],
+              },
+              evidence: ["Matched the kanban-workflow feature and recovered the Kanban API file."],
+              inference: ["The next implementation session should start from the API layer."],
+            },
+          },
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={vi.fn(async () => createTask("task-jit-saved-analysis", "Recover JIT context"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+
+    expect(screen.getByText("Saved History Analysis")).toBeTruthy();
+    expect(screen.getByText("Start from the Kanban API and blocked interval reconstruction before touching the dashboard.")).toBeTruthy();
+    expect(screen.getByText("Session layers")).toBeTruthy();
+    expect(screen.getByText("Top follow-up leads")).toBeTruthy();
+    expect(screen.getByText("Verify blocked/unblocked pairing before extending read models.")).toBeTruthy();
+    expect(screen.getByText("Context to inject next time")).toBeTruthy();
+    expect(screen.getByText("Reusable prompts")).toBeTruthy();
   });
 
   it("loads JIT Context from search hints even when no history sessions are linked", async () => {
@@ -694,6 +796,8 @@ describe("KanbanCardDetail repository health", () => {
       throw new Error(`Unexpected desktopAwareFetch: ${url}`);
     });
 
+    const onPatchTask = vi.fn(async () => createTask("task-jit-hints", "Recover JIT context"));
+
     render(
       <KanbanCardDetail
         task={{
@@ -725,7 +829,7 @@ describe("KanbanCardDetail repository health", () => {
         worktreeCache={{}}
         sessions={[]}
         fullWidth
-        onPatchTask={vi.fn(async () => createTask("task-jit-hints", "Recover JIT context"))}
+        onPatchTask={onPatchTask}
         onRetryTrigger={vi.fn()}
         onDelete={vi.fn()}
         onRefresh={vi.fn()}
@@ -735,11 +839,25 @@ describe("KanbanCardDetail repository health", () => {
     fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
     fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
 
-    expect(await screen.findByText("Matched feature")).toBeTruthy();
-    expect(screen.getByText("Kanban Workflow")).toBeTruthy();
-    expect(await screen.findByText("Matched files")).toBeTruthy();
-    expect(screen.getByText("src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx")).toBeTruthy();
-    expect(screen.getByText("src/app/api/tasks/route.ts")).toBeTruthy();
+    await waitFor(() => {
+      expect(onPatchTask).toHaveBeenCalledWith(
+        "task-jit-hints",
+        expect.objectContaining({
+          jitContextSnapshot: expect.objectContaining({
+            featureId: "kanban-workflow",
+            featureName: "Kanban Workflow",
+            matchedFileDetails: expect.arrayContaining([
+              expect.objectContaining({
+                filePath: "src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx",
+              }),
+              expect.objectContaining({
+                filePath: "src/app/api/tasks/route.ts",
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
 
     const requestBody = JSON.parse(String(desktopAwareFetch.mock.calls[0]?.[1]?.body));
     expect(requestBody.taskAdaptiveHarness).toEqual({
@@ -776,6 +894,8 @@ describe("KanbanCardDetail repository health", () => {
       throw new Error(`Unexpected desktopAwareFetch: ${url}`);
     });
 
+    const onPatchTask = vi.fn(async () => createTask("task-jit-warnings", "Broken JIT context"));
+
     render(
       <KanbanCardDetail
         task={{
@@ -804,7 +924,7 @@ describe("KanbanCardDetail repository health", () => {
         worktreeCache={{}}
         sessions={[]}
         fullWidth
-        onPatchTask={vi.fn(async () => createTask("task-jit-warnings", "Broken JIT context"))}
+        onPatchTask={onPatchTask}
         onRetryTrigger={vi.fn()}
         onDelete={vi.fn()}
         onRefresh={vi.fn()}
@@ -814,10 +934,19 @@ describe("KanbanCardDetail repository health", () => {
     fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
     fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
 
-    expect(await screen.findByText("Warnings")).toBeTruthy();
-    expect(screen.getByText("Feature not found: missing-feature")).toBeTruthy();
-    expect(screen.getByText("No task-adaptive files could be resolved from the current request.")).toBeTruthy();
-    expect(screen.queryByText("No historical issues were recovered from the linked sessions.")).toBeNull();
+    await waitFor(() => {
+      expect(onPatchTask).toHaveBeenCalledWith(
+        "task-jit-warnings",
+        expect.objectContaining({
+          jitContextSnapshot: expect.objectContaining({
+            warnings: [
+              "Feature not found: missing-feature",
+              "No task-adaptive files could be resolved from the current request.",
+            ],
+          }),
+        }),
+      );
+    });
   });
 
   it("resets JIT Context when the task context search spec changes on the same card", async () => {
@@ -857,6 +986,8 @@ describe("KanbanCardDetail repository health", () => {
         sessions: [],
       })));
 
+    const onPatchTask = vi.fn(async () => createTask("task-jit-refresh", "Refresh JIT context"));
+
     const baseProps = {
       boardColumns: board.columns,
       availableProviders: [],
@@ -876,7 +1007,7 @@ describe("KanbanCardDetail repository health", () => {
       worktreeCache: {},
       sessions: [],
       fullWidth: true,
-      onPatchTask: vi.fn(async () => createTask("task-jit-refresh", "Refresh JIT context")),
+      onPatchTask,
       onRetryTrigger: vi.fn(),
       onDelete: vi.fn(),
       onRefresh: vi.fn(),
@@ -898,7 +1029,16 @@ describe("KanbanCardDetail repository health", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
     fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
-    expect(await screen.findByText("Feature A")).toBeTruthy();
+    await waitFor(() => {
+      expect(onPatchTask).toHaveBeenCalledWith(
+        "task-jit-refresh",
+        expect.objectContaining({
+          jitContextSnapshot: expect.objectContaining({
+            featureName: "Feature A",
+          }),
+        }),
+      );
+    });
 
     rerender(
       <KanbanCardDetail
@@ -916,7 +1056,16 @@ describe("KanbanCardDetail repository health", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
     fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
-    expect(await screen.findByText("Feature B")).toBeTruthy();
+    await waitFor(() => {
+      expect(onPatchTask).toHaveBeenCalledWith(
+        "task-jit-refresh",
+        expect.objectContaining({
+          jitContextSnapshot: expect.objectContaining({
+            featureName: "Feature B",
+          }),
+        }),
+      );
+    });
 
     const firstRequestBody = JSON.parse(String(desktopAwareFetch.mock.calls[0]?.[1]?.body));
     const secondRequestBody = JSON.parse(String(desktopAwareFetch.mock.calls[1]?.[1]?.body));

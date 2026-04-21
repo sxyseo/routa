@@ -202,7 +202,7 @@ async function startKanbanHistoryAnalysisSession(params: {
         provider: params.provider,
         specialistId: "history-summary-analyst",
         specialistLocale: params.specialistLanguage,
-        toolMode: "essential",
+        toolMode: "full",
         mcpProfile: "kanban-planning",
         allowedNativeTools: ["Skill", "Read", "Glob", "Grep"],
         taskAdaptiveHarness: params.taskAdaptiveHarness,
