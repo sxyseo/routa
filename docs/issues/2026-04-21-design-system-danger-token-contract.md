@@ -2,7 +2,7 @@
 title: "Design system danger token contract is missing between brand palette and shared components"
 date: "2026-04-21"
 kind: issue
-status: open
+status: resolved
 severity: medium
 area: "design-system"
 tags:
@@ -16,8 +16,9 @@ related_issues:
   - "2026-03-17-design-system-unified-desktop-sidebar-theme-routing.md"
   - "2026-03-17-design-system-quality-gates.md"
 github_issue: 514
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/514"
+resolved_at: "2026-04-21"
 ---
 
 # Design system danger token contract is missing between brand palette and shared components
@@ -69,6 +70,28 @@ github_url: "https://github.com/phodal/routa/issues/514"
   - and only after that by tightening stricter lint coverage.
 - 2026-04-21 phase 1 work added semantic `--danger-*` aliases, mapped them into the desktop theme contract, and migrated the shared `Button` danger variant onto the new token surface.
 - 2026-04-21 phase 2 work added a shared `src/client/components/color-system.ts` helper and migrated repeated danger surfaces / destructive affordances in `settings-panel-mcp-tab`, `repo-picker`, `schedule-panel`, and `github-webhook-panel` onto the semantic token contract.
+
+## Resolution
+
+- The semantic danger contract now exists in `src/app/globals.css` and `src/app/styles/desktop-theme.css` as shared `--danger-*` / `--dt-danger-*` aliases.
+- Shared entrypoints now consume the contract instead of raw palette classes:
+  - `src/client/components/button.tsx`
+  - `src/client/components/color-system.ts`
+  - `src/client/components/settings-panel-mcp-tab.tsx`
+  - `src/client/components/repo-picker.tsx`
+  - `src/client/components/schedule-panel.tsx`
+  - `src/client/components/github-webhook-panel.tsx`
+- Storybook and governance docs were updated so the design-system contract is visible and lint-compatible:
+  - `src/client/components/desktop-color-tokens.stories.tsx`
+  - `scripts/lint-design-system-css.mjs`
+  - `docs/fitness/design-system-quality-layers.md`
+- Verification completed:
+  - `npm run lint:color-system:strict -- ...`
+  - `npm run lint:css`
+  - `npx eslint ...`
+  - `npx vitest run src/client/components/__tests__/button.test.tsx`
+  - `entrix run --tier normal`
+
 
 ## References
 
