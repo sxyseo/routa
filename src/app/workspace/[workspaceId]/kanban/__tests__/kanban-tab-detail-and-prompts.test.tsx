@@ -280,6 +280,114 @@ describe("KanbanCardDetail repository health", () => {
     expect(screen.getByText(/403 Forbidden/i)).toBeTruthy();
   });
 
+  it("loads JIT Context lazily from history-session retrieval", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/harness/task-adaptive") {
+        return new Response(JSON.stringify({
+          summary: "history summary",
+          warnings: [],
+          selectedFiles: ["src/app/page.tsx"],
+          matchedSessionIds: ["session-trigger", "session-history"],
+          failures: [{
+            provider: "codex",
+            sessionId: "session-history",
+            message: "Operation not permitted",
+            toolName: "exec_command",
+            command: "sed -n '1,200p' src/app/page.tsx",
+          }],
+          repeatedReadFiles: ["src/app/page.tsx"],
+          sessions: [{
+            provider: "codex",
+            sessionId: "session-history",
+            updatedAt: "2026-04-21T02:03:00.000Z",
+            promptSnippet: "Investigate why page context could not be read.",
+            matchedFiles: ["src/app/page.tsx"],
+            matchedChangedFiles: ["src/app/page.tsx"],
+            matchedReadFiles: ["src/app/page.tsx"],
+            matchedWrittenFiles: [],
+            repeatedReadFiles: ["src/app/page.tsx"],
+            toolNames: ["exec_command"],
+            failedReadSignals: [],
+          }],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+    });
+
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-jit", "Recover JIT context"),
+          columnId: "backlog",
+          assignedRole: "CRAFTER",
+          triggerSessionId: "session-trigger",
+          sessionIds: ["session-history"],
+          laneSessions: [{
+            sessionId: "session-lane",
+            status: "completed",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          }],
+          codebaseIds: ["repo-a"],
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[{
+          id: "repo-a",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repo-a",
+          label: "Repo A",
+          isDefault: true,
+          sourceType: "local",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        allCodebaseIds={["repo-a"]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={vi.fn(async () => createTask("task-jit", "Recover JIT context"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(desktopAwareFetch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Execution" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+
+    expect(await screen.findByText("Historical issues")).toBeTruthy();
+    expect(screen.getByText("Operation not permitted")).toBeTruthy();
+    expect(screen.getByText("Repeated read hotspots")).toBeTruthy();
+    expect(screen.getByText("src/app/page.tsx")).toBeTruthy();
+    expect(screen.getByText("session-history")).toBeTruthy();
+    expect(screen.getByText(/Matched files: src\/app\/page\.tsx/)).toBeTruthy();
+
+    expect(desktopAwareFetch).toHaveBeenCalledWith(
+      "/api/harness/task-adaptive",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(String),
+      }),
+    );
+
+    const requestBody = JSON.parse(String(desktopAwareFetch.mock.calls[0]?.[1]?.body));
+    expect(requestBody.taskAdaptiveHarness).toEqual({
+      taskLabel: "Recover JIT context",
+      historySessionIds: ["session-trigger", "session-history", "session-lane"],
+      taskType: "planning",
+      locale: "en",
+      role: "CRAFTER",
+    });
+  });
+
   it("prefers the current override provider over a stale selected session when a rerun fails before session creation", () => {
     render(
       <KanbanCardDetail

@@ -18,6 +18,7 @@ import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-h
 import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
 import type { FlowDiagnosisReport } from "./flow-ledger-types";
 import { formatFlowGuidanceForPrompt } from "./flow-ledger";
+import { buildKanbanTaskAdaptiveHarnessOptions } from "./task-adaptive";
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -491,6 +492,11 @@ async function triggerAcpTaskAgent(params: {
         specialistId: params.task.assignedSpecialistId,
         specialistLocale: params.specialistLocale,
         name: `${params.task.title} · ${sessionLabel}`,
+        taskAdaptiveHarness: buildKanbanTaskAdaptiveHarnessOptions(params.task.title, {
+          locale: params.specialistLocale,
+          role,
+          task: params.task,
+        }),
       },
     }),
   });

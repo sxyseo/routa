@@ -1,8 +1,26 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
+import { desktopAwareFetch, toErrorMessage } from "@/client/utils/diagnostics";
 import { useTranslation } from "@/i18n";
+import type { TaskAdaptiveHarnessPack } from "@/core/harness/task-adaptive";
 import type { TaskInfo } from "../types";
+import { buildKanbanTaskAdaptiveHarnessOptions } from "./kanban-task-adaptive";
+import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
+
+function formatTimestamp(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toLocaleString();
+}
 
 function formatReadinessFieldLabel(field: string, t: ReturnType<typeof useTranslation>["t"]): string {
   switch (field) {
@@ -350,6 +368,255 @@ export function ReviewFeedbackPanel({
       ) : (
         <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
           {t.kanbanDetail.reportMissing}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function JitContextPanel({
+  task,
+  workspaceId,
+  repoPath,
+  specialistLanguage,
+  compact = false,
+}: {
+  task: TaskInfo;
+  workspaceId?: string;
+  repoPath?: string | null;
+  specialistLanguage: KanbanSpecialistLanguage;
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pack, setPack] = useState<TaskAdaptiveHarnessPack | null>(null);
+  const harnessOptions = useMemo(
+    () => buildKanbanTaskAdaptiveHarnessOptions(task.title, {
+      locale: specialistLanguage,
+      role: task.assignedRole,
+      task,
+    }),
+    [specialistLanguage, task],
+  );
+  const hasHistorySessions = (harnessOptions.historySessionIds?.length ?? 0) > 0;
+  const historicalIssueCount = (pack?.failures.length ?? 0) + (pack?.repeatedReadFiles.length ?? 0);
+  const relatedSessionCount = pack?.sessions.length ?? 0;
+  const historySessionKey = (harnessOptions.historySessionIds ?? []).join("|");
+
+  useEffect(() => {
+    setExpanded(false);
+    setLoading(false);
+    setLoaded(false);
+    setError(null);
+    setPack(null);
+  }, [historySessionKey, repoPath, specialistLanguage, task.id, workspaceId]);
+
+  const loadContext = async () => {
+    if (loading) {
+      return;
+    }
+
+    if (!workspaceId && !repoPath) {
+      setPack(null);
+      setLoaded(true);
+      setError(t.kanbanDetail.jitContextUnavailable);
+      return;
+    }
+
+    if (!hasHistorySessions) {
+      setPack(null);
+      setLoaded(true);
+      setError(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await desktopAwareFetch("/api/harness/task-adaptive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          repoPath,
+          taskAdaptiveHarness: harnessOptions,
+        }),
+      });
+      const data = await response.json().catch(() => ({})) as TaskAdaptiveHarnessPack & { error?: string; details?: string };
+      if (!response.ok) {
+        throw new Error(data.details ?? data.error ?? t.kanbanDetail.jitContextSearchFailed);
+      }
+      setPack(data);
+      setLoaded(true);
+    } catch (fetchError) {
+      setPack(null);
+      setLoaded(true);
+      setError(toErrorMessage(fetchError));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleExpanded = () => {
+    const nextExpanded = !expanded;
+    setExpanded(nextExpanded);
+    if (nextExpanded && !loaded) {
+      void loadContext();
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 ${compact ? "px-3 py-2" : "px-3.5 py-2.5"} dark:border-slate-700/70 dark:bg-slate-900/20`}>
+        <div className="space-y-1">
+          <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+            {t.kanbanDetail.jitContextHint}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            {loaded && pack ? (
+              <>
+                <span>{t.kanbanDetail.historicalIssues}: {historicalIssueCount}</span>
+                <span>{t.kanbanDetail.relatedSessions}: {relatedSessionCount}</span>
+              </>
+            ) : (
+              <span>{hasHistorySessions ? t.kanbanDetail.jitContextHint : t.kanbanDetail.jitContextNoHistorySessions}</span>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {expanded && hasHistorySessions && loaded ? (
+            <button
+              type="button"
+              onClick={() => {
+                void loadContext();
+              }}
+              className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {t.kanbanDetail.refreshJitContext}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={toggleExpanded}
+            className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-expanded={expanded}
+          >
+            {expanded ? t.kanbanDetail.hideJitContext : t.kanbanDetail.showJitContext}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="space-y-3">
+          {loading ? (
+            <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+              {t.kanbanDetail.loadingJitContext}
+            </div>
+          ) : error ? (
+            <div className="rounded-xl border border-rose-200/80 bg-rose-50/80 px-3 py-2.5 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/10 dark:text-rose-200">
+              {error}
+            </div>
+          ) : !hasHistorySessions ? (
+            <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+              {t.kanbanDetail.jitContextNoHistorySessions}
+            </div>
+          ) : !pack || (pack.failures.length === 0 && pack.repeatedReadFiles.length === 0 && pack.sessions.length === 0) ? (
+            <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+              {t.kanbanDetail.noJitContext}
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                  {t.kanbanDetail.historicalIssues}
+                </div>
+                {pack.failures.length > 0 ? (
+                  <div className="space-y-2">
+                    {pack.failures.map((failure) => (
+                      <div
+                        key={`${failure.sessionId}:${failure.toolName}:${failure.message}`}
+                        className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/40 dark:bg-amber-900/10"
+                      >
+                        <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {failure.message}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          {failure.sessionId} · {failure.toolName}
+                        </div>
+                        {failure.command ? (
+                          <div className="mt-2 rounded-md bg-white/80 px-2 py-1 font-mono text-[11px] text-slate-600 dark:bg-slate-950/60 dark:text-slate-300">
+                            {failure.command}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+                    {t.kanbanDetail.noHistoricalIssues}
+                  </div>
+                )}
+
+                {pack.repeatedReadFiles.length > 0 ? (
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/20">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                      {t.kanbanDetail.repeatedReadHotspots}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {pack.repeatedReadFiles.map((filePath) => (
+                        <span
+                          key={filePath}
+                          className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300"
+                        >
+                          {filePath}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              {pack.sessions.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                    {t.kanbanDetail.relatedSessions}
+                  </div>
+                  <div className="space-y-2">
+                    {pack.sessions.map((session) => (
+                      <div
+                        key={session.sessionId}
+                        className="rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/20"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+                          <span>{session.sessionId}</span>
+                          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                            {session.provider}
+                          </span>
+                          {formatTimestamp(session.updatedAt) ? (
+                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                              {formatTimestamp(session.updatedAt)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">
+                          {session.promptSnippet}
+                        </div>
+                        {session.matchedFiles.length > 0 ? (
+                          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            {t.kanbanDetail.matchedFiles}: {session.matchedFiles.join(", ")}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       )}
     </div>

@@ -30,7 +30,7 @@ import { KanbanCardArtifacts } from "./kanban-card-artifacts";
 import { KanbanCardProviderOverrideDropdown } from "./kanban-card-provider-override-dropdown";
 // Legacy imports - removed, functionality replaced by KanbanTaskGitWorkflowPanel
 // import { TaskFileDiffPreview, TaskCommitDiffPreview, CommitRow } from "./kanban-diff-preview";
-import { StoryReadinessPanel, EvidenceBundlePanel, ReviewFeedbackPanel } from "./kanban-detail-panels";
+import { StoryReadinessPanel, EvidenceBundlePanel, JitContextPanel, ReviewFeedbackPanel } from "./kanban-detail-panels";
 import { getKanbanSessionCopy } from "./i18n/kanban-session-copy";
 import {
   findSpecialistById,
@@ -719,6 +719,20 @@ export function KanbanCardDetail({
                 onProviderChange={onProviderChange}
                 compact={compactMode}
               />
+
+              <DetailSection
+                title={t.kanbanDetail.jitContext}
+                description={compactMode ? undefined : t.kanbanDetail.jitContextHint}
+                compact={compactMode}
+              >
+                <JitContextPanel
+                  task={task}
+                  workspaceId={resolvedWorkspaceId || undefined}
+                  repoPath={getTaskRepositoryPath()}
+                  specialistLanguage={specialistLanguage}
+                  compact={compactMode}
+                />
+              </DetailSection>
 
               <RepositoriesWorktreeRow
                 task={task}

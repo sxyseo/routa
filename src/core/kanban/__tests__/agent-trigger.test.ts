@@ -678,7 +678,8 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
     dispatchSessionPromptMock.mockResolvedValue(undefined);
 
     const eventBus = { emit: vi.fn() };
-    const task = createTask({
+    const task = {
+      ...createTask({
       id: "task-acp-success",
       title: "Run ACP task",
       objective: "Let ACP lifecycle report completion",
@@ -686,7 +687,15 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
       columnId: "dev",
       assignedProvider: "codex",
       assignedRole: "DEVELOPER",
-    });
+      triggerSessionId: "session-trigger",
+      }),
+      sessionIds: ["session-history"],
+      laneSessions: [{
+        sessionId: "session-lane",
+        status: "completed" as const,
+        startedAt: "2025-01-01T00:00:00.000Z",
+      }],
+    };
 
     const result = await triggerAssignedTaskAgent({
       origin: "http://127.0.0.1:3000",
@@ -708,6 +717,13 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
         body: expect.stringContaining("\"name\":\"Run ACP task · DEVELOPER\""),
       }),
     );
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(requestBody.params.taskAdaptiveHarness).toEqual({
+      taskLabel: "Run ACP task",
+      historySessionIds: ["session-trigger", "session-history", "session-lane"],
+      taskType: "implementation",
+      role: "DEVELOPER",
+    });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(dispatchSessionPromptMock).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: "sess-1",
