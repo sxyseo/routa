@@ -2,14 +2,15 @@
 title: "feat: Spec 页面 — 本地 Issues 可视化看板"
 date: "2026-04-16"
 kind: issue
-status: open
+status: resolved
+resolved_at: "2026-04-21"
 severity: medium
 area: ui
 tags: [spec, issues, kanban, visualization, local-issues]
 reported_by: "human"
 related_issues: []
 github_issue: 470
-github_state: open
+github_state: closed
 github_url: "https://github.com/phodal/routa/issues/470"
 ---
 
@@ -156,11 +157,22 @@ src/app/workspace/[workspaceId]/spec/
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/spec/issues?workspaceId=xxx` 正确返回解析后的 issue 列表
-- [ ] Spec 页面按 status 分列展示 issues
-- [ ] 卡片展示 title、severity、area、date、tags
-- [ ] 支持按 kind / severity / area 筛选
-- [ ] 侧边栏可跳转到 Spec 页面
-- [ ] i18n 支持中英文
-- [ ] Tauri 桌面端对应的 Axum API 实现
-- [ ] 通过 `desktopAwareFetch` 统一前端 API 调用
+- [x] `GET /api/spec/issues?workspaceId=xxx` 正确返回解析后的 issue 列表
+- [x] Spec 页面按 status 分列展示 issues
+- [x] 卡片展示 title、severity、area、date、tags
+- [x] 支持按 kind / severity / area 筛选
+- [x] 侧边栏可跳转到 Spec 页面
+- [x] i18n 支持中英文
+- [x] Tauri 桌面端对应的 Axum API 实现
+- [x] 通过 `desktopAwareFetch` 统一前端 API 调用
+
+## Resolution Update (2026-04-21)
+
+- `src/app/api/spec/issues/route.ts` 与 `crates/routa-server/src/api/spec.rs` 已对齐提供本地 issue 列表契约，支持 frontmatter 解析、状态归一化和正文返回。
+- `src/app/workspace/[workspaceId]/spec/spec-page-client.tsx` 现已提供按 `open / investigating / resolved / wontfix` 分列的状态看板，同时保留 family explorer + detail pane 以支持 issue 关系追踪。
+- 页面卡片展示 `title`、`severity`、`area`、`date`、`tags`，并支持 `kind / severity / area / status` 过滤。
+- `src/client/components/desktop-sidebar.tsx` 已注册 `Spec` 入口；现有中英文 i18n 已被消费。
+- 已验证：
+  - `npx vitest run src/client/components/__tests__/desktop-sidebar.test.tsx 'src/app/workspace/[workspaceId]/spec/__tests__/spec-page-client.test.tsx' src/app/api/spec/issues/__tests__/route.test.ts`
+  - `entrix run --tier fast`
+  - `entrix run --tier normal`
