@@ -15,8 +15,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       "kanban-dev-executor",
       "kanban-qa-frontend",
       "kanban-pr-publisher",
-      "kanban-blocked-resolver",
-      "kanban-done-reporter",
+      undefined,
       undefined,
     ]);
     expect(columns.map((column) => column.automation?.steps?.[0]?.role)).toEqual([
@@ -25,8 +24,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       "CRAFTER",
       "GATE",
       "DEVELOPER",
-      "CRAFTER",
-      "GATE",
+      undefined,
       undefined,
     ]);
     expect(columns[0].automation?.autoAdvanceOnSuccess).toBe(true);

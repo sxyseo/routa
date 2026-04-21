@@ -355,6 +355,8 @@ export function getRoutaSystem(): RoutaSystem {
     const system = g[GLOBAL_KEY] as RoutaSystem;
     const { startWorkflowOrchestrator } =
       require("./kanban/workflow-orchestrator-singleton") as typeof import("./kanban/workflow-orchestrator-singleton");
+    const { startLaneScanner } =
+      require("./kanban/kanban-lane-scanner") as typeof import("./kanban/kanban-lane-scanner");
     startWorkflowOrchestrator(system);
 
     // Start the lane scanner to auto-trigger automation for idle cards
