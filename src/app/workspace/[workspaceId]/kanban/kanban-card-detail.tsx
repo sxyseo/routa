@@ -65,6 +65,7 @@ export interface KanbanCardDetailProps {
   onSelectSession?: (sessionId: string) => void;
   jitContextSessionId?: string | null;
   onLoadJitContextIntoSession?: (sessionId: string, prompt: string) => Promise<void>;
+  onOpenJitContextHistoryAnalysis?: (prompt: string) => Promise<void>;
   isFullscreen?: boolean;
   onToggleFullscreen?: (next: boolean) => void;
   onClose?: () => void;
@@ -249,6 +250,7 @@ export function KanbanCardDetail({
   onSelectSession,
   jitContextSessionId,
   onLoadJitContextIntoSession,
+  onOpenJitContextHistoryAnalysis,
   isFullscreen = false,
   onToggleFullscreen,
   onClose,
@@ -771,6 +773,7 @@ export function KanbanCardDetail({
               specialistLanguage={specialistLanguage}
               activeSessionId={jitContextSessionId}
               onLoadIntoSession={onLoadJitContextIntoSession}
+              onOpenHistoryAnalysis={onOpenJitContextHistoryAnalysis}
               compact={compactMode}
             />
           )}

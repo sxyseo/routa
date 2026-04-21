@@ -109,6 +109,9 @@ That gives `Task-Adaptive Harness` a just-in-time seed even before the first imp
 - 2026-04-21: re-validated against `http://localhost:3001/api/harness/task-adaptive` that repo-root-only requests are still empty, even after the hint-backed retrieval work shipped
 - 2026-04-21: confirmed the contrast case: when `featureIds/routeCandidates/moduleHints` are present, the same repository returns high-confidence matches, recovered files, reusable friction profiles, and relevant history sessions
 - 2026-04-21: verified that the current Kanban/JIT product path is usable for hint-backed cards, but the original repo-root-only fallback gap remains unresolved and keeps this issue open
+- 2026-04-21: added `historySummary` to `Task-Adaptive Harness` so linked history session seeds are compressed into an overview plus top seed sessions, instead of only exposing final recovered sessions
+- 2026-04-21: added MCP tool `summarize_task_history_context` and new read-only specialist `history-summary-analyst` so future analysis can start from compressed seed evidence rather than rereading all linked transcripts
+- 2026-04-21: `JIT Context` now exposes `Open History Analysis`, which starts a dedicated `history-summary-analyst` session from the card detail instead of forcing users to inject raw linked sessions into the current implementation session
 
 ## Relevant Files
 

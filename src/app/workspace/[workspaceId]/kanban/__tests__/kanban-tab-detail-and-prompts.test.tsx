@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { KanbanTab } from "../kanban-tab";
 import { KanbanCardDetail } from "../kanban-card-detail";
-import { KanbanCardActivityPanel } from "../kanban-card-activity";
+import { KanbanCardActivityBar, KanbanCardActivityPanel } from "../kanban-card-activity";
 import { KanbanMoveBlockedModal } from "../kanban-tab-modals";
 import { buildKanbanSessionRestorePrompt } from "../kanban-tab-panels";
 import { buildKanbanMoveBlockedRemediationPrompt } from "../i18n/kanban-task-agent";
@@ -71,6 +71,7 @@ function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}
 
 beforeEach(() => {
   resetDesktopAwareFetchToGlobalFetch(desktopAwareFetch);
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
@@ -321,6 +322,22 @@ describe("KanbanCardDetail repository health", () => {
       if (url === "/api/harness/task-adaptive") {
         return new Response(JSON.stringify({
           summary: "history summary",
+          historySummary: {
+            overview: "Started from 3 linked history sessions and narrowed to 2 recovered sessions plus 1 candidate file.",
+            seedSessionCount: 3,
+            recoveredSessionCount: 2,
+            matchedFileCount: 1,
+            seedSessions: [{
+              provider: "codex",
+              sessionId: "session-trigger",
+              updatedAt: "2026-04-21T02:00:00.000Z",
+              promptSnippet: "Trace the Kanban task-adaptive loading path first.",
+              touchedFiles: ["src/app/page.tsx", "src/app/layout.tsx"],
+              repeatedReadFiles: ["src/app/page.tsx"],
+              toolNames: ["exec_command"],
+              failedReadSignals: [],
+            }],
+          },
           warnings: [],
           matchConfidence: "high",
           matchReasons: ["Started from 3 linked history sessions as retrieval seeds."],
@@ -406,6 +423,10 @@ describe("KanbanCardDetail repository health", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
 
     expect(await screen.findByText("Historical issues")).toBeTruthy();
+    expect(screen.getByText("History Summary")).toBeTruthy();
+    expect(screen.getAllByText("Seed sessions: 3").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Recovered sessions: 2").length).toBeGreaterThan(0);
+    expect(screen.getByText("Trace the Kanban task-adaptive loading path first.")).toBeTruthy();
     expect(screen.getByText("Match confidence")).toBeTruthy();
     expect(screen.getAllByText("High").length).toBeGreaterThan(0);
     expect(screen.getByText("Started from 3 linked history sessions as retrieval seeds.")).toBeTruthy();
@@ -415,7 +436,7 @@ describe("KanbanCardDetail repository health", () => {
     expect(screen.getByText("Changes: 1")).toBeTruthy();
     expect(screen.getByText("sessions: 1")).toBeTruthy();
     expect(screen.getByText("session-history")).toBeTruthy();
-    expect(screen.getByText(/Matched files: src\/app\/page\.tsx/)).toBeTruthy();
+    expect(screen.getAllByText(/Matched files: src\/app\/page\.tsx/).length).toBeGreaterThan(0);
 
     expect(desktopAwareFetch).toHaveBeenCalledWith(
       "/api/harness/task-adaptive",
@@ -434,6 +455,113 @@ describe("KanbanCardDetail repository health", () => {
       locale: "en",
       role: "CRAFTER",
     });
+  });
+
+  it("opens a dedicated history analysis flow from JIT Context", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/harness/task-adaptive") {
+        return new Response(JSON.stringify({
+          summary: "history summary",
+          historySummary: {
+            overview: "Started from 3 linked history sessions and narrowed to 2 recovered sessions plus 1 candidate file.",
+            seedSessionCount: 3,
+            recoveredSessionCount: 2,
+            matchedFileCount: 1,
+            seedSessions: [{
+              provider: "codex",
+              sessionId: "session-trigger",
+              updatedAt: "2026-04-21T02:00:00.000Z",
+              promptSnippet: "Trace the Kanban task-adaptive loading path first.",
+              touchedFiles: ["src/app/page.tsx"],
+              repeatedReadFiles: [],
+              toolNames: ["exec_command"],
+              failedReadSignals: [],
+            }],
+          },
+          warnings: ["Prefer the API route before the UI shell."],
+          matchConfidence: "high",
+          matchReasons: ["Started from 3 linked history sessions as retrieval seeds."],
+          selectedFiles: ["src/app/page.tsx"],
+          matchedFileDetails: [{
+            filePath: "src/app/page.tsx",
+            changes: 1,
+            sessions: 1,
+            updatedAt: "2026-04-21T02:03:00.000Z",
+          }],
+          matchedSessionIds: [],
+          failures: [],
+          repeatedReadFiles: [],
+          sessions: [],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+    });
+
+    const onOpenHistoryAnalysis = vi.fn(async () => {});
+
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-jit-analysis", "Recover JIT context"),
+          columnId: "backlog",
+          assignedRole: "CRAFTER",
+          triggerSessionId: "session-trigger",
+          sessionIds: ["session-history"],
+          laneSessions: [{
+            sessionId: "session-lane",
+            status: "completed",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          }],
+          codebaseIds: ["repo-a"],
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[{
+          id: "repo-a",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repo-a",
+          label: "Repo A",
+          isDefault: true,
+          sourceType: "local",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        allCodebaseIds={["repo-a"]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={vi.fn(async () => createTask("task-jit-analysis", "Recover JIT context"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+        onOpenJitContextHistoryAnalysis={onOpenHistoryAnalysis}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    await screen.findByText("History Summary");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open History Analysis" }));
+
+    await waitFor(() => {
+      expect(onOpenHistoryAnalysis).toHaveBeenCalledWith(
+        expect.stringContaining("summarize_task_history_context"),
+      );
+    });
+    expect(onOpenHistoryAnalysis).toHaveBeenCalledWith(
+      expect.stringContaining("\"repoPath\": \"/tmp/repo-a\""),
+    );
+    expect(onOpenHistoryAnalysis).toHaveBeenCalledWith(
+      expect.stringContaining("Current History Summary: Started from 3 linked history sessions"),
+    );
+    expect(screen.getByText("History analysis opened in the session pane.")).toBeTruthy();
   });
 
   it("loads JIT Context from search hints even when no history sessions are linked", async () => {
@@ -1095,6 +1223,83 @@ describe("KanbanCardDetail repository health", () => {
     expect(screen.getByText("Returned to Dev")).toBeTruthy();
     expect(screen.getByText(/AC3 failed/i)).toBeTruthy();
     expect(screen.getByText(/Editor compatibility still breaks/i)).toBeTruthy();
+  });
+});
+
+describe("KanbanCardActivityBar", () => {
+  it("renders run tabs with lane icons and numeric labels while preserving the full title in the tooltip", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/tasks/task-tabs/runs") {
+        return new Response(JSON.stringify({
+          runs: [
+            { id: "run-1", sessionId: "session-1", status: "failed", kind: "embedded_acp" },
+            { id: "run-2", sessionId: "session-2", status: "completed", kind: "embedded_acp" },
+          ],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+    });
+
+    render(
+      <KanbanCardActivityBar
+        task={createTask("task-tabs", "Compact run tabs", {
+          laneSessions: [
+            {
+              sessionId: "session-1",
+              stepName: "Backlog 梳理员",
+              columnName: "Backlog",
+              status: "failed",
+              startedAt: "2025-01-01T00:00:00.000Z",
+            },
+            {
+              sessionId: "session-2",
+              stepName: "开发执行员",
+              columnName: "Todo",
+              status: "completed",
+              startedAt: "2025-01-01T00:10:00.000Z",
+            },
+          ],
+          triggerSessionId: "session-2",
+        })}
+        sessions={[
+          {
+            sessionId: "session-1",
+            name: "Backlog 梳理员",
+            workspaceId: "workspace-1",
+            cwd: "/tmp/repo",
+            provider: "codex",
+            createdAt: "2025-01-01T00:00:00.000Z",
+          },
+          {
+            sessionId: "session-2",
+            name: "开发执行员",
+            workspaceId: "workspace-1",
+            cwd: "/tmp/repo",
+            provider: "codex",
+            createdAt: "2025-01-01T00:10:00.000Z",
+          },
+        ]}
+        currentSessionId="session-2"
+        onSelectSession={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Backlog 梳理员 · Backlog · Run 1")).toBeTruthy();
+      expect(screen.getByTitle("开发执行员 · Todo · Run 2")).toBeTruthy();
+    });
+
+    expect(screen.queryByText("BAC 梳理")).toBeNull();
+    expect(screen.queryByText("Backlog 梳理员")).toBeNull();
+    expect(screen.getByTitle("Backlog 梳理员 · Backlog · Run 1").getAttribute("title")).toBe(
+      "Backlog 梳理员 · Backlog · Run 1",
+    );
+    expect(screen.getByLabelText("Backlog")).toBeTruthy();
+    expect(screen.getByTitle("Backlog 梳理员 · Backlog · Run 1").parentElement?.className).toContain("flex-wrap");
   });
 });
 

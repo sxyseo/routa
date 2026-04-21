@@ -13,7 +13,7 @@ import {
 import { useMemo, useState, type Dispatch, type SetStateAction, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "@/i18n";
-import type { AcpProviderInfo } from "@/client/acp-client";
+import type { AcpProviderInfo, AcpTaskAdaptiveHarnessOptions } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 import { ChatPanel } from "@/client/components/chat-panel";
@@ -41,6 +41,7 @@ import {
 import type { ColumnAutomationConfig } from "./kanban-settings-modal";
 import type { KanbanBoardInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import type { KanbanRepoChanges } from "./kanban-file-changes-types";
+import { buildKanbanTaskAdaptiveHarnessOptions } from "./kanban-task-adaptive";
 import { ChevronRight as _ChevronRight, GitBranch as _GitBranch } from "lucide-react";
 import { GitLogPanel, RealGitAdapter, MockGitAdapter } from "./git-log";
 
@@ -147,6 +148,82 @@ export function buildKanbanSessionRestorePrompt(
     "",
     "Next: inspect the repo if needed, then proceed with the smallest next action for this card.",
   ].filter(Boolean).join("\n");
+}
+
+function buildKanbanHistoryAnalysisSessionName(
+  task: TaskInfo,
+  specialistLanguage: KanbanSpecialistLanguage,
+): string {
+  return specialistLanguage === "zh-CN"
+    ? `历史分析 · ${task.title}`
+    : `History Analysis · ${task.title}`;
+}
+
+function buildKanbanHistoryAnalysisCreationError(
+  payload: { error?: { message?: string } } | null,
+  fallbackMessage: string,
+): string {
+  return payload?.error?.message || fallbackMessage;
+}
+
+async function startKanbanHistoryAnalysisSession(params: {
+  acp: UseAcpState & UseAcpActions;
+  workspaceId: string;
+  task: TaskInfo;
+  repoPath?: string;
+  branch?: string;
+  provider?: string;
+  specialistLanguage: KanbanSpecialistLanguage;
+  taskAdaptiveHarness: AcpTaskAdaptiveHarnessOptions;
+  prompt: string;
+  onSessionCreated: (sessionId: string) => Promise<void>;
+  fallbackErrorMessage: string;
+}): Promise<string> {
+  const response = await desktopAwareFetch("/api/acp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: `kanban-history-analysis:${Date.now()}`,
+      method: "session/new",
+      params: {
+        workspaceId: params.workspaceId,
+        cwd: params.repoPath,
+        branch: params.branch,
+        role: "ROUTA",
+        name: buildKanbanHistoryAnalysisSessionName(params.task, params.specialistLanguage),
+        provider: params.provider,
+        specialistId: "history-summary-analyst",
+        specialistLocale: params.specialistLanguage,
+        toolMode: "essential",
+        mcpProfile: "kanban-planning",
+        allowedNativeTools: ["Skill", "Read", "Glob", "Grep"],
+        taskAdaptiveHarness: params.taskAdaptiveHarness,
+      },
+    }),
+  });
+
+  const payload = await response.json().catch(() => null) as {
+    result?: { sessionId?: string };
+    error?: { message?: string };
+  } | null;
+
+  if (!response.ok) {
+    throw new Error(buildKanbanHistoryAnalysisCreationError(payload, params.fallbackErrorMessage));
+  }
+  if (payload?.error?.message) {
+    throw new Error(payload.error.message);
+  }
+
+  const sessionId = payload?.result?.sessionId;
+  if (!sessionId) {
+    throw new Error(params.fallbackErrorMessage);
+  }
+
+  params.acp.selectSession(sessionId);
+  await params.onSessionCreated(sessionId);
+  await params.acp.promptSession(sessionId, params.prompt);
+  return sessionId;
 }
 
 async function fetchSessionTranscriptForRestore(sessionId: string): Promise<SessionRestoreTranscriptMessage[]> {
@@ -741,6 +818,7 @@ export function KanbanTaskDetailOverlay({
   onToggleTaskDetailFullscreen?: (nextFullscreen: boolean) => void;
   closeTaskDetail: () => void;
 }) {
+  const { t } = useTranslation();
   const isOverlayOpen = Boolean(activeSessionId || activeTaskId);
   const showEmptySessionPane = Boolean(
     activeTask &&
@@ -880,6 +958,51 @@ export function KanbanTaskDetailOverlay({
                       setActiveSessionId(sessionId);
                       acp.selectSession(sessionId);
                       await acp.promptSession(sessionId, prompt);
+                    }
+                    : undefined}
+                  onOpenJitContextHistoryAnalysis={acp
+                    ? async (prompt) => {
+                      const taskCodebaseIds = task.codebaseIds && task.codebaseIds.length > 0
+                        ? task.codebaseIds
+                        : allCodebaseIds;
+                      const primaryCodebase = taskCodebaseIds.length > 0
+                        ? codebases.find((codebase) => codebase.id === taskCodebaseIds[0])
+                        : null;
+                      const taskRepoPath = sessionInfo?.cwd ?? primaryCodebase?.repoPath;
+                      const taskBranch = sessionInfo?.branch ?? primaryCodebase?.branch ?? undefined;
+                      const taskAdaptiveHarness = buildKanbanTaskAdaptiveHarnessOptions(task.title, {
+                        locale: specialistLanguage,
+                        role: task.assignedRole,
+                        task,
+                      });
+
+                      const sessionId = await startKanbanHistoryAnalysisSession({
+                        acp,
+                        workspaceId,
+                        task,
+                        repoPath: taskRepoPath ?? undefined,
+                        branch: taskBranch,
+                        provider: sessionInfo?.provider ?? resolveKanbanBoardAutoProviderId(board, boardAutoProviderId) ?? acp.selectedProvider,
+                        specialistLanguage,
+                        taskAdaptiveHarness,
+                        prompt,
+                        fallbackErrorMessage: t.kanbanDetail.jitContextHistoryAnalysisFailed,
+                        onSessionCreated: async (nextSessionId) => {
+                          const nextSessionIds = [
+                            ...(task.sessionIds ?? []),
+                            nextSessionId,
+                          ].filter((sessionIdValue, index, values) => (
+                            Boolean(sessionIdValue) && values.indexOf(sessionIdValue) === index
+                          ));
+                          await patchTask(task.id, { sessionIds: nextSessionIds });
+                          setHiddenSessionPaneTaskId(null);
+                          setActiveSessionId(nextSessionId);
+                          onRefresh();
+                        },
+                      });
+
+                      setHiddenSessionPaneTaskId(null);
+                      setActiveSessionId(sessionId);
                     }
                     : undefined}
                   isFullscreen={isTaskDetailFullscreen}

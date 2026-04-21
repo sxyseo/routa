@@ -774,6 +774,10 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     loadJitContextIntoCurrentSession: string;
     loadingJitContextIntoCurrentSession: string;
     jitContextLoadedIntoCurrentSession: string;
+    openJitContextHistoryAnalysis: string;
+    openingJitContextHistoryAnalysis: string;
+    jitContextHistoryAnalysisOpened: string;
+    jitContextHistoryAnalysisFailed: string;
     loadingJitContext: string;
     matchConfidence: string;
     matchReasons: string;
@@ -784,8 +788,10 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     jitContextNoHistorySessions: string;
     jitContextSearchFailed: string;
     noJitContext: string;
+    historySummary: string;
     historicalIssues: string;
     noHistoricalIssues: string;
+    historySeedSessions: string;
     repeatedReadHotspots: string;
     relatedSessions: string;
     matchedFeature: string;
