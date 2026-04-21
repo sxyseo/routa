@@ -930,7 +930,7 @@ describe("/api/tasks/[taskId]", () => {
       canCreatePullRequest: false,
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
-      'Cannot move task to "Review": branch "issue/task-1" still has uncommitted changes (2 modified, 1 untracked). Commit, stash, or discard them before requesting review.',
+      'Cannot move task to "Review": branch "issue/task-1" still has uncommitted changes (2 modified, 1 untracked). Commit the current card\'s work, then stash or restore unrelated leftovers before requesting review.',
     );
 
     const request = new NextRequest("http://localhost/api/tasks/task-1", {
@@ -947,6 +947,7 @@ describe("/api/tasks/[taskId]", () => {
     expect(response.status).toBe(400);
     expect(data.error).toContain("uncommitted changes");
     expect(data.error).toContain("before requesting review");
+    expect(data.error).toContain("stash or restore unrelated leftovers");
     expect(data.deliveryReadiness).toMatchObject({
       checked: true,
       hasCommitsSinceBase: true,
