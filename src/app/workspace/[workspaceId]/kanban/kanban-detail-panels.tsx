@@ -106,6 +106,21 @@ function getMatchedFileDetails(pack: TaskAdaptiveHarnessPack | null): TaskAdapti
   }));
 }
 
+function formatMatchConfidenceLabel(
+  confidence: TaskAdaptiveHarnessPack["matchConfidence"] | undefined,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
+  switch (confidence) {
+    case "high":
+      return t.kanbanDetail.matchConfidenceHigh;
+    case "medium":
+      return t.kanbanDetail.matchConfidenceMedium;
+    case "low":
+    default:
+      return t.kanbanDetail.matchConfidenceLow;
+  }
+}
+
 function formatMatchedFileSeed(fileDetail: TaskAdaptiveMatchedFileDetail): string {
   const stats: string[] = [];
   if (fileDetail.changes > 0) {
@@ -527,6 +542,8 @@ export function JitContextPanel({
   const relatedSessionCount = pack?.sessions.length ?? 0;
   const matchedFileDetails = getMatchedFileDetails(pack);
   const matchedFileCount = matchedFileDetails.length;
+  const matchConfidence = pack?.matchConfidence ?? "low";
+  const matchReasons = pack?.matchReasons ?? [];
   const harnessSignature = useMemo(
     () => JSON.stringify(harnessOptions),
     [harnessOptions],
@@ -713,6 +730,27 @@ export function JitContextPanel({
             </div>
           ) : (
             <>
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/20">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                  {t.kanbanDetail.matchConfidence}
+                </div>
+                <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200">
+                  {formatMatchConfidenceLabel(matchConfidence, t)}
+                </div>
+                {matchReasons.length > 0 ? (
+                  <div className="mt-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                      {t.kanbanDetail.matchReasons}
+                    </div>
+                    <div className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
+                      {matchReasons.map((reason) => (
+                        <div key={reason}>{reason}</div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               {pack.warnings.length > 0 ? (
                 <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/40 dark:bg-amber-900/10">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">

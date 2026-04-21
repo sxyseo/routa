@@ -322,6 +322,8 @@ describe("KanbanCardDetail repository health", () => {
         return new Response(JSON.stringify({
           summary: "history summary",
           warnings: [],
+          matchConfidence: "high",
+          matchReasons: ["Started from 3 linked history sessions as retrieval seeds."],
           selectedFiles: ["src/app/page.tsx"],
           matchedFileDetails: [{
             filePath: "src/app/page.tsx",
@@ -404,6 +406,9 @@ describe("KanbanCardDetail repository health", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
 
     expect(await screen.findByText("Historical issues")).toBeTruthy();
+    expect(screen.getByText("Match confidence")).toBeTruthy();
+    expect(screen.getAllByText("High").length).toBeGreaterThan(0);
+    expect(screen.getByText("Started from 3 linked history sessions as retrieval seeds.")).toBeTruthy();
     expect(screen.getByText("Operation not permitted")).toBeTruthy();
     expect(screen.getByText("Repeated read hotspots")).toBeTruthy();
     expect(screen.getAllByText("src/app/page.tsx").length).toBeGreaterThan(0);

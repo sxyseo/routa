@@ -41,6 +41,8 @@ export interface TaskAdaptiveHarnessFailureSignal {
   command?: string;
 }
 
+export type TaskAdaptiveMatchConfidence = "high" | "medium" | "low";
+
 export interface TaskAdaptiveMatchedFileDetail {
   filePath: string;
   changes: number;
@@ -68,6 +70,8 @@ export interface TaskAdaptiveHarnessPack {
   warnings: string[];
   featureId?: string;
   featureName?: string;
+  matchConfidence: TaskAdaptiveMatchConfidence;
+  matchReasons: string[];
   selectedFiles: string[];
   matchedFileDetails: TaskAdaptiveMatchedFileDetail[];
   matchedSessionIds: string[];
@@ -161,6 +165,16 @@ type TaskAdaptiveFileSignal = {
   sessions: FileSessionSignal[];
   toolHistory: string[];
   promptHistory: string[];
+};
+
+type TaskAdaptiveInferenceSeed = {
+  featureIds: string[];
+  filePaths: string[];
+  pageFiles: string[];
+  apiFiles: string[];
+  signalFiles: string[];
+  matchedRoutes: string[];
+  matchedApis: string[];
 };
 
 const DEFAULT_MAX_FILES = 8;
@@ -1053,11 +1067,94 @@ function persistTaskAdaptiveFrictionProfilesSnapshot(
   fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), "utf8");
 }
 
+function buildTaskAdaptiveMatchDiagnostics(params: {
+  locale: string;
+  explicitFileCount: number;
+  explicitFeatureCount: number;
+  historySessionCount: number;
+  selectedFiles: string[];
+  matchedSessionIds: string[];
+  inferenceSeed: TaskAdaptiveInferenceSeed;
+  frictionProfiles: TaskAdaptiveFrictionProfile[];
+}): { confidence: TaskAdaptiveMatchConfidence; reasons: string[] } {
+  const isZh = params.locale.startsWith("zh");
+  const reasons: string[] = [];
+
+  if (params.explicitFileCount > 0) {
+    reasons.push(isZh
+      ? `从卡片已知的 relatedFiles 直接启动，包含 ${params.explicitFileCount} 个显式文件。`
+      : `Started from ${params.explicitFileCount} explicit related files on the card.`);
+  }
+
+  if (params.explicitFeatureCount > 0) {
+    reasons.push(isZh
+      ? `使用了 ${params.explicitFeatureCount} 个显式 feature 候选来扩展源码范围。`
+      : `Expanded source files from ${params.explicitFeatureCount} explicit feature candidates.`);
+  }
+
+  if (params.historySessionCount > 0) {
+    reasons.push(isZh
+      ? `复用了 ${params.historySessionCount} 个已关联 history session 作为上下文种子。`
+      : `Reused ${params.historySessionCount} linked history sessions as retrieval seeds.`);
+  }
+
+  if (params.inferenceSeed.matchedRoutes.length > 0) {
+    reasons.push(isZh
+      ? `根据路由线索命中 ${params.inferenceSeed.matchedRoutes.length} 个页面入口。`
+      : `Matched ${params.inferenceSeed.matchedRoutes.length} route hints to page entry points.`);
+  }
+
+  if (params.inferenceSeed.matchedApis.length > 0) {
+    reasons.push(isZh
+      ? `根据 API 线索命中 ${params.inferenceSeed.matchedApis.length} 个实现入口。`
+      : `Matched ${params.inferenceSeed.matchedApis.length} API hints to implementation entry points.`);
+  }
+
+  if (params.inferenceSeed.signalFiles.length > 0) {
+    reasons.push(isZh
+      ? `在 feature/file 线索不足时，根据 history-session prompt 和文件信号补回了 ${params.inferenceSeed.signalFiles.length} 个文件。`
+      : `Recovered ${params.inferenceSeed.signalFiles.length} files from history-session prompt and file signals when feature hints were weak.`);
+  }
+
+  if (params.frictionProfiles.length > 0) {
+    reasons.push(isZh
+      ? `命中了 ${params.frictionProfiles.length} 个可复用 friction profile。`
+      : `Matched ${params.frictionProfiles.length} reusable friction profiles.`);
+  }
+
+  if (params.matchedSessionIds.length > 0) {
+    reasons.push(isZh
+      ? `最终从选中文件中恢复出 ${params.matchedSessionIds.length} 个相关历史会话。`
+      : `Recovered ${params.matchedSessionIds.length} relevant history sessions from the selected files.`);
+  }
+
+  const explicitSeedStrength = params.explicitFileCount + params.explicitFeatureCount + params.historySessionCount;
+  const structuredSeedStrength = params.inferenceSeed.matchedRoutes.length + params.inferenceSeed.matchedApis.length;
+
+  let confidence: TaskAdaptiveMatchConfidence = "low";
+  if (explicitSeedStrength > 0 || params.frictionProfiles.length > 0) {
+    confidence = params.matchedSessionIds.length > 0 || params.selectedFiles.length > 0 ? "high" : "medium";
+  } else if (structuredSeedStrength > 0) {
+    confidence = params.selectedFiles.length >= 2 ? "medium" : "low";
+  } else if (params.inferenceSeed.signalFiles.length > 0) {
+    confidence = params.matchedSessionIds.length >= 2 ? "medium" : "low";
+  }
+
+  return {
+    confidence,
+    reasons,
+  };
+}
+
 function buildTaskAdaptiveHarnessPack(params: {
   locale: string;
   taskLabel?: string;
   primaryFeature?: FeatureTreeFeature;
   requestedFeatureIds: string[];
+  explicitFileCount?: number;
+  explicitFeatureCount?: number;
+  historySessionCount?: number;
+  inferenceSeed?: TaskAdaptiveInferenceSeed;
   selectedFiles: string[];
   matchedFileDetails: TaskAdaptiveMatchedFileDetail[];
   sessions: TaskAdaptiveHarnessSessionSummary[];
@@ -1077,6 +1174,24 @@ function buildTaskAdaptiveHarnessPack(params: {
   const matchedSessionIds = params.sessions.map((session) => session.sessionId);
   const recommendations = recommendTooling(params.taskType, params.role);
   const frictionProfiles = params.frictionProfiles ?? [];
+  const matchDiagnostics = buildTaskAdaptiveMatchDiagnostics({
+    locale: params.locale,
+    explicitFileCount: params.explicitFileCount ?? 0,
+    explicitFeatureCount: params.explicitFeatureCount ?? 0,
+    historySessionCount: params.historySessionCount ?? 0,
+    selectedFiles: params.selectedFiles,
+    matchedSessionIds,
+    inferenceSeed: params.inferenceSeed ?? {
+      featureIds: [],
+      filePaths: [],
+      pageFiles: [],
+      apiFiles: [],
+      signalFiles: [],
+      matchedRoutes: [],
+      matchedApis: [],
+    },
+    frictionProfiles,
+  });
 
   return {
     summary: buildHarnessSummary({
@@ -1084,6 +1199,8 @@ function buildTaskAdaptiveHarnessPack(params: {
       taskLabel: params.taskLabel,
       featureName: params.primaryFeature?.name,
       featureId: params.primaryFeature?.id ?? params.requestedFeatureIds[0],
+      matchConfidence: matchDiagnostics.confidence,
+      matchReasons: matchDiagnostics.reasons,
       selectedFiles: params.selectedFiles,
       matchedFileDetails: params.matchedFileDetails,
       matchedSessionIds,
@@ -1096,6 +1213,8 @@ function buildTaskAdaptiveHarnessPack(params: {
     warnings: params.warnings,
     featureId: params.primaryFeature?.id ?? params.requestedFeatureIds[0],
     featureName: params.primaryFeature?.name,
+    matchConfidence: matchDiagnostics.confidence,
+    matchReasons: matchDiagnostics.reasons,
     selectedFiles: params.selectedFiles,
     matchedFileDetails: params.matchedFileDetails,
     matchedSessionIds,
@@ -1171,6 +1290,10 @@ function mergeProfilesIntoTaskAdaptiveHarnessPack(
   taskLabel: string | undefined,
   primaryFeature: FeatureTreeFeature | undefined,
   requestedFeatureIds: string[],
+  inferenceSeed: TaskAdaptiveInferenceSeed,
+  explicitFileCount: number,
+  explicitFeatureCount: number,
+  historySessionCount: number,
   selectedFiles: string[],
   matchedFileDetails: TaskAdaptiveMatchedFileDetail[],
   warnings: string[],
@@ -1210,6 +1333,10 @@ function mergeProfilesIntoTaskAdaptiveHarnessPack(
     taskLabel,
     primaryFeature,
     requestedFeatureIds,
+    explicitFileCount,
+    explicitFeatureCount,
+    historySessionCount,
+    inferenceSeed,
     selectedFiles: mergedSelectedFiles,
     matchedFileDetails: mergedMatchedFileDetails,
     sessions,
@@ -1320,13 +1447,30 @@ function normalizeApiCandidate(value: string): { method?: string; path: string }
 }
 
 function splitHintTokens(values: string[]): string[] {
-  return uniqueSorted(values.flatMap((value) =>
+  const asciiTokens = values.flatMap((value) =>
     value
       .toLowerCase()
       .split(/[^a-z0-9]+/u)
       .map((token) => token.trim())
       .filter((token) => token.length >= 3 && !TASK_ADAPTIVE_HINT_STOPWORDS.has(token))
-  ));
+  );
+  const cjkTokens = values.flatMap((value) => {
+    const segments = value.match(/[\p{Script=Han}]{2,}/gu) ?? [];
+    return segments.flatMap((segment) => {
+      const tokens = new Set<string>([segment]);
+      for (let start = 0; start < segment.length; start += 1) {
+        for (let width = 2; width <= 4; width += 1) {
+          const token = segment.slice(start, start + width);
+          if (token.length >= 2) {
+            tokens.add(token);
+          }
+        }
+      }
+      return [...tokens];
+    });
+  });
+
+  return uniqueSorted([...asciiTokens, ...cjkTokens]);
 }
 
 function countTokenMatches(haystack: string, tokens: string[]): number {
@@ -1357,12 +1501,60 @@ function featureApiMatchesCandidate(featureApis: string[], candidate: { method?:
   });
 }
 
+function inferFeatureIdsFromFiles(
+  featureTreeFeatures: FeatureTreeFeature[],
+  filePaths: string[],
+): string[] {
+  const fileSet = new Set(filePaths);
+  return featureTreeFeatures
+    .filter((feature) => feature.sourceFiles.some((filePath) => fileSet.has(filePath)))
+    .map((feature) => feature.id)
+    .filter(Boolean);
+}
+
+function inferSignalBackedFiles(input: {
+  options: TaskAdaptiveHarnessOptions;
+  fileSignals: Record<string, TaskAdaptiveFileSignal>;
+  maxFiles: number;
+}): string[] {
+  const hintTokens = splitHintTokens([
+    ...(input.options.query ? [input.options.query] : []),
+    ...normalizeUniqueStringArray(input.options.moduleHints),
+    ...normalizeUniqueStringArray(input.options.symptomHints),
+  ]);
+
+  if (hintTokens.length === 0) {
+    return [];
+  }
+
+  const scored = Object.entries(input.fileSignals)
+    .map(([filePath, signal]) => {
+      const signalText = [
+        filePath,
+        ...signal.promptHistory,
+        ...signal.toolHistory,
+        ...signal.sessions.flatMap((session) => [
+          session.promptSnippet,
+          ...(session.changedFiles ?? []),
+          ...session.toolNames,
+        ]),
+      ].join(" ");
+      const score = (countTokenMatches(filePath, hintTokens) * 3) + (countTokenMatches(signalText, hintTokens) * 2);
+      return { filePath, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.filePath.localeCompare(right.filePath));
+
+  return trimTo(scored.map((entry) => entry.filePath), input.maxFiles);
+}
+
 function inferTaskAdaptiveSeed(input: {
   options: TaskAdaptiveHarnessOptions;
   featureTreeFeatures: FeatureTreeFeature[];
   surfaceIndex: FeatureSurfaceIndexResponse;
+  fileSignals: Record<string, TaskAdaptiveFileSignal>;
   maxFiles: number;
-}): { featureIds: string[]; filePaths: string[] } {
+}): TaskAdaptiveInferenceSeed {
   const routeCandidates = normalizeUniqueStringArray(input.options.routeCandidates).map(normalizeRouteCandidate).filter(Boolean);
   const apiCandidates = normalizeUniqueStringArray(input.options.apiCandidates).map(normalizeApiCandidate).filter((candidate) => candidate.path.length > 0);
   const hintTokens = splitHintTokens([
@@ -1414,6 +1606,23 @@ function inferTaskAdaptiveSeed(input: {
     }
   }
 
+  const matchedRoutes = routeCandidates.filter((route) =>
+    input.surfaceIndex.pages.some((page) => normalizeRouteCandidate(page.route) === route)
+  );
+  const matchedApis = apiCandidates
+    .filter((candidate) =>
+      input.surfaceIndex.implementationApis.some((api) => {
+        const apiPath = api.path.trim().toLowerCase();
+        const candidatePath = candidate.path.trim().toLowerCase();
+        if (!candidatePath) {
+          return false;
+        }
+        const methodMatches = !candidate.method || candidate.method === api.method.trim().toUpperCase();
+        return methodMatches && (apiPath === candidatePath || apiPath.includes(candidatePath) || candidatePath.includes(apiPath));
+      })
+    )
+    .map((candidate) => candidate.method ? `${candidate.method} ${candidate.path}` : candidate.path);
+
   const featureScores = new Map<string, number>();
   const explicitFeatureIds = new Set(normalizeUniqueStringArray(input.options.featureIds));
   for (const feature of input.featureTreeFeatures) {
@@ -1449,24 +1658,50 @@ function inferTaskAdaptiveSeed(input: {
     MAX_INFERRED_FEATURES,
   );
 
-  const inferredFiles = uniqueSorted([
-    ...[...pageScores.entries()]
-      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-      .map(([filePath]) => filePath),
-    ...[...apiFileScores.entries()]
-      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-      .map(([filePath]) => filePath),
-    ...inferredFeatureIds.flatMap((featureId) =>
+  const pageFiles = [...pageScores.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([filePath]) => filePath);
+  const apiFiles = [...apiFileScores.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([filePath]) => filePath);
+  const featureFiles = inferredFeatureIds.flatMap((featureId) =>
       collectFeatureFiles(
         input.featureTreeFeatures.find((feature) => feature.id === featureId),
         input.maxFiles,
       )
-    ),
+    );
+  const shouldUseSignalFallback = pageFiles.length === 0
+    && apiFiles.length === 0
+    && inferredFeatureIds.length === 0
+    && (input.options.filePaths?.length ?? 0) === 0
+    && (input.options.historySessionIds?.length ?? 0) === 0;
+  const signalFiles = shouldUseSignalFallback
+    ? inferSignalBackedFiles({
+      options: input.options,
+      fileSignals: input.fileSignals,
+      maxFiles: input.maxFiles,
+    })
+    : [];
+  const signalFeatureIds = inferFeatureIdsFromFiles(input.featureTreeFeatures, signalFiles);
+  const allFeatureIds = trimTo(uniqueSorted([
+    ...inferredFeatureIds,
+    ...signalFeatureIds,
+  ]), MAX_INFERRED_FEATURES);
+  const inferredFiles = uniqueSorted([
+    ...pageFiles,
+    ...apiFiles,
+    ...featureFiles,
+    ...signalFiles,
   ]);
 
   return {
-    featureIds: inferredFeatureIds,
+    featureIds: allFeatureIds,
     filePaths: trimTo(inferredFiles, input.maxFiles),
+    pageFiles: trimTo(pageFiles, input.maxFiles),
+    apiFiles: trimTo(apiFiles, input.maxFiles),
+    signalFiles: trimTo(signalFiles, input.maxFiles),
+    matchedRoutes,
+    matchedApis,
   };
 }
 
@@ -1675,6 +1910,8 @@ function buildHarnessSummary(input: {
   taskLabel?: string;
   featureName?: string;
   featureId?: string;
+  matchConfidence: TaskAdaptiveMatchConfidence;
+  matchReasons: string[];
   selectedFiles: string[];
   matchedFileDetails: TaskAdaptiveMatchedFileDetail[];
   matchedSessionIds: string[];
@@ -1743,8 +1980,12 @@ function buildHarnessSummary(input: {
     isZh ? "### 任务范围" : "### Task Scope",
     `- ${isZh ? "任务" : "Task"}: ${taskLabel}`,
     `- ${isZh ? "Feature" : "Feature"}: ${featureLabel}`,
+    `- ${isZh ? "检索置信度" : "Match confidence"}: ${input.matchConfidence}`,
     `- ${isZh ? "选中文件" : "Selected files"}: ${input.selectedFiles.length}`,
     `- ${isZh ? "匹配会话" : "Matched sessions"}: ${input.matchedSessionIds.length}`,
+    "",
+    isZh ? "### 命中原因" : "### Match Reasons",
+    formatBulletList(input.matchReasons, isZh ? "没有额外命中原因" : "No additional match reasons"),
     "",
     isZh ? "### 高优先级摩擦信号" : "### High-Priority Friction Signals",
     formatBulletList(failureLines, isZh ? "没有高信号读取失败" : "No high-signal read failures"),
@@ -1792,10 +2033,12 @@ async function assembleTaskAdaptiveHarnessRaw(
   const featureTree = {
     features: preloaded?.featureTree ?? mergeFeatureTreeFeatures(readFeatureTreeFeatures(repoRoot), surfaceIndex),
   };
+  const fileSignals = preloaded?.fileSignals ?? collectTaskAdaptiveFileSignals(repoRoot);
   const inferredSeed = inferTaskAdaptiveSeed({
     options,
     featureTreeFeatures: featureTree.features,
     surfaceIndex,
+    fileSignals,
     maxFiles,
   });
   const requestedFeatureIds = uniqueSorted([
@@ -1814,7 +2057,6 @@ async function assembleTaskAdaptiveHarnessRaw(
   }
   const primaryFeature = features[0];
 
-  const fileSignals = preloaded?.fileSignals ?? collectTaskAdaptiveFileSignals(repoRoot);
   const selectedFiles = trimTo(
     uniqueSorted([
       ...(options.filePaths ?? []),
@@ -1932,6 +2174,10 @@ async function assembleTaskAdaptiveHarnessRaw(
     taskLabel: options.taskLabel,
     primaryFeature,
     requestedFeatureIds,
+    explicitFileCount: options.filePaths?.length ?? 0,
+    explicitFeatureCount: (options.featureIds?.length ?? 0) + (options.featureId ? 1 : 0),
+    historySessionCount: options.historySessionIds?.length ?? 0,
+    inferenceSeed: inferredSeed,
     selectedFiles,
     matchedFileDetails: buildMatchedFileDetails(selectedFiles, fileSignals),
     sessions,
@@ -2038,10 +2284,12 @@ export async function assembleTaskAdaptiveHarness(
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const surfaceIndex = await readFeatureSurfaceIndex(repoRoot);
   const mergedFeatureTree = mergeFeatureTreeFeatures(readFeatureTreeFeatures(repoRoot), surfaceIndex);
+  const fileSignals = collectTaskAdaptiveFileSignals(repoRoot);
   const inferredSeed = inferTaskAdaptiveSeed({
     options,
     featureTreeFeatures: mergedFeatureTree,
     surfaceIndex,
+    fileSignals,
     maxFiles,
   });
   const requestedFeatureIds = uniqueSorted([
@@ -2074,6 +2322,10 @@ export async function assembleTaskAdaptiveHarness(
       options.taskLabel,
       features[0],
       requestedFeatureIds,
+      inferredSeed,
+      options.filePaths?.length ?? 0,
+      (options.featureIds?.length ?? 0) + (options.featureId ? 1 : 0),
+      options.historySessionIds?.length ?? 0,
       selectedFiles,
       [],
       [
@@ -2092,6 +2344,7 @@ export async function assembleTaskAdaptiveHarness(
 
   const pack = await assembleTaskAdaptiveHarnessRaw(repoRoot, options, {
     featureTree: mergedFeatureTree,
+    fileSignals,
     surfaceIndex,
   });
 
@@ -2105,6 +2358,10 @@ export async function assembleTaskAdaptiveHarness(
       options.taskLabel,
       features[0],
       requestedFeatureIds,
+      inferredSeed,
+      options.filePaths?.length ?? 0,
+      (options.featureIds?.length ?? 0) + (options.featureId ? 1 : 0),
+      options.historySessionIds?.length ?? 0,
       uniqueSorted([...selectedFiles, ...pack.selectedFiles]),
       pack.matchedFileDetails,
       pack.warnings,

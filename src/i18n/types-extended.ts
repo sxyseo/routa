@@ -775,6 +775,11 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     loadingJitContextIntoCurrentSession: string;
     jitContextLoadedIntoCurrentSession: string;
     loadingJitContext: string;
+    matchConfidence: string;
+    matchReasons: string;
+    matchConfidenceHigh: string;
+    matchConfidenceMedium: string;
+    matchConfidenceLow: string;
     jitContextUnavailable: string;
     jitContextNoHistorySessions: string;
     jitContextSearchFailed: string;

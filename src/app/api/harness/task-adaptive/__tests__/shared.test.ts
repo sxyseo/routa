@@ -183,6 +183,8 @@ describe("assembleTaskAdaptiveHarness", () => {
     });
     expect(pack.summary).toContain("High-Priority Friction Signals");
     expect(pack.summary).toContain("Operation not permitted");
+    expect(pack.matchConfidence).toBe("high");
+    expect(pack.matchReasons).toContain("Started from 1 explicit related files on the card.");
     expect(pack.matchedFileDetails).toEqual([expect.objectContaining({
       filePath: "src/app/page.tsx",
       changes: 1,
@@ -334,8 +336,131 @@ describe("assembleTaskAdaptiveHarness", () => {
     ]);
     expect(pack.warnings).not.toContain("No task-adaptive files could be resolved from the current request.");
     expect(pack.matchedSessionIds).toEqual([]);
+    expect(pack.matchConfidence).toBe("medium");
+    expect(pack.matchReasons).toEqual(expect.arrayContaining([
+      "Matched 1 route hints to page entry points.",
+      "Matched 1 API hints to implementation entry points.",
+    ]));
     expect(pack.summary).toContain("Kanban Workflow");
     expect(pack.summary).toContain("src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx");
+  });
+
+  it("falls back to history-session prompt and file signals when feature hints are too weak", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-harness-signal-fallback-"));
+    process.env.HOME = tempRoot;
+    process.env.CLAUDE_CONFIG_DIR = "";
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(
+      path.join(repoRoot, "src/core/kanban/task-flow-history.ts"),
+      "export function appendTaskFlowHistory() { return null; }\n",
+    );
+    writeFeatureSurfaceIndex(repoRoot, {
+      generatedAt: "2026-04-21T12:00:00.000Z",
+      pages: [],
+      implementationApis: [],
+      metadata: {
+        schemaVersion: 1,
+        capabilityGroups: [],
+        features: [],
+      },
+    });
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-signal.jsonl"),
+      repoRoot,
+      "session-signal",
+      [
+        {
+          timestamp: "2026-04-21T01:01:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "Implement persistent flow event model for kanban history",
+          },
+        },
+        {
+          timestamp: "2026-04-21T01:02:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: " M src/core/kanban/task-flow-history.ts\n",
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    const pack = await assembleTaskAdaptiveHarness(repoRoot, {
+      query: "persistent flow event model",
+      taskType: "analysis",
+    });
+
+    expect(pack.selectedFiles).toContain("src/core/kanban/task-flow-history.ts");
+    expect(pack.matchConfidence).toBe("low");
+    expect(pack.matchReasons).toContain(
+      "Recovered 1 files from history-session prompt and file signals when feature hints were weak.",
+    );
+  });
+
+  it("supports Chinese query hints when recovering files from history-session signals", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-harness-zh-signal-fallback-"));
+    process.env.HOME = tempRoot;
+    process.env.CLAUDE_CONFIG_DIR = "";
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(
+      path.join(repoRoot, "src/core/kanban/task-flow-history.ts"),
+      "export function appendTaskFlowHistory() { return null; }\n",
+    );
+    writeFeatureSurfaceIndex(repoRoot, {
+      generatedAt: "2026-04-21T12:00:00.000Z",
+      pages: [],
+      implementationApis: [],
+      metadata: {
+        schemaVersion: 1,
+        capabilityGroups: [],
+        features: [],
+      },
+    });
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-zh-signal.jsonl"),
+      repoRoot,
+      "session-zh-signal",
+      [
+        {
+          timestamp: "2026-04-21T01:01:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "为 Kanban 建立可持久化的流动事件模型",
+          },
+        },
+        {
+          timestamp: "2026-04-21T01:02:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: " M src/core/kanban/task-flow-history.ts\n",
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    const pack = await assembleTaskAdaptiveHarness(repoRoot, {
+      query: "为 Kanban 建立可持久化的流动事件模型",
+      locale: "zh-CN",
+      taskType: "analysis",
+    });
+
+    expect(pack.selectedFiles).toContain("src/core/kanban/task-flow-history.ts");
+    expect(pack.matchReasons).toContain(
+      "在 feature/file 线索不足时，根据 history-session prompt 和文件信号补回了 1 个文件。",
+    );
   });
 
   it("persists reusable friction profiles for hotspot files and features", async () => {
