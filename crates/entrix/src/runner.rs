@@ -97,7 +97,8 @@ impl ShellRunner {
         }
 
         let start = Instant::now();
-        let configured_timeout = Duration::from_secs(metric.timeout_seconds.unwrap_or(self.timeout));
+        let configured_timeout =
+            Duration::from_secs(metric.timeout_seconds.unwrap_or(self.timeout));
         let timeout_budget = self
             .deadline
             .as_ref()

@@ -1,8 +1,8 @@
 use crate::model::{EvidenceType, Metric, MetricResult, ResultState};
-use crate::run_deadline::RunDeadline;
 use crate::review_context::{
     analyze_impact, analyze_test_radius, ImpactOptions, ReviewBuildMode, TestRadiusOptions,
 };
+use crate::run_deadline::RunDeadline;
 use crate::runner::{ProgressCallback, ShellRunner};
 use crate::sarif::SarifRunner;
 use crate::test_mapping;
