@@ -84,6 +84,9 @@ Specifically:
 - 2026-04-21 browser validation against `http://localhost:3000/workspace/default/kanban?boardId=4e8e567c-e308-48cd-a4f6-e3d8e1d17839` confirms the `JIT CONTEXT` tab is rendered in card detail for task `8370421b-46fd-4cd3-bd98-89390b7c2006`
 - the same validation also shows a card-detail interaction bug: clicking `JIT CONTEXT` repeatedly leaves the content pane on the `Overview` body instead of switching to the JIT panel
 - this means the current empty-user-perception risk is not only retrieval quality; there is also a tab-switching/UI state problem in card detail that can hide working JIT data entirely
+- 2026-04-21 follow-up validation against `http://localhost:3001` no longer reproduces the `JIT CONTEXT` tab-switching bug when driven through Playwright against real DOM roles/selectors
+- 2026-04-21 end-to-end test now exists for this surface: create a Kanban card against the local `/Users/phodal/ai/routa-js` repo, open card detail, switch to `JIT Context`, and verify the matched feature/files render
+- 2026-04-21 the remaining gap is no longer the card-detail UI shell; it is retrieval quality for weak or repo-root-only requests, which is tracked separately in issue `#517`
 
 ## References
 

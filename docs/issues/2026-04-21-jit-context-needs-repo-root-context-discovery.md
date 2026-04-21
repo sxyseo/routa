@@ -106,6 +106,9 @@ That gives `Task-Adaptive Harness` a just-in-time seed even before the first imp
 - 2026-04-21: implementation started for task-level `contextSearchSpec` persistence and Kanban/tooling propagation
 - 2026-04-21: `Task-Adaptive Harness` now seeds file/feature inference from `query`, `routeCandidates`, `apiCandidates`, `moduleHints`, and `symptomHints` via the feature surface index
 - 2026-04-21: Kanban task-adaptive wiring now falls back to the card title as an implicit query when older cards do not yet have an explicit `contextSearchSpec.query`
+- 2026-04-21: re-validated against `http://localhost:3001/api/harness/task-adaptive` that repo-root-only requests are still empty, even after the hint-backed retrieval work shipped
+- 2026-04-21: confirmed the contrast case: when `featureIds/routeCandidates/moduleHints` are present, the same repository returns high-confidence matches, recovered files, reusable friction profiles, and relevant history sessions
+- 2026-04-21: verified that the current Kanban/JIT product path is usable for hint-backed cards, but the original repo-root-only fallback gap remains unresolved and keeps this issue open
 
 ## Relevant Files
 
