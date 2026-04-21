@@ -130,6 +130,17 @@ export class SessionWriteBuffer {
       clearTimeout(timer);
     }
     this.timers.clear();
+    this.buffers.clear();
+    this.flushPromises.clear();
+  }
+
+  /**
+   * Dispose resources for a single session. Call when a session ends.
+   */
+  disposeSession(sessionId: string): void {
+    this.clearTimer(sessionId);
+    this.buffers.delete(sessionId);
+    this.flushPromises.delete(sessionId);
   }
 
   // ─── Private ──────────────────────────────────────────────────────

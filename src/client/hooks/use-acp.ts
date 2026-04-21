@@ -251,6 +251,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   const sessionIdRef = useRef<string | null>(null);
   const tearingDownRef = useRef(false);
   const connectingRef = useRef(false);
+  const unsubHandlersRef = useRef<{ update?: () => void; issue?: () => void }>({});
   // Track if user manually cancelled the session (to suppress "process exited" errors)
   const userCancelledRef = useRef(false);
 
@@ -343,14 +344,16 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         )
       );
 
-      client.onUpdate((update) => {
-        setState((s) => ({
-          ...s,
-          updates: [...s.updates, update],
-          error: null,
-        }));
+      unsubHandlersRef.current.update = client.onUpdate((update) => {
+        setState((s) => {
+          const MAX_UPDATES = 500;
+          const next = s.updates.length >= MAX_UPDATES
+            ? [...s.updates.slice(-MAX_UPDATES + 1), update]
+            : [...s.updates, update];
+          return { ...s, updates: next, error: null };
+        });
       });
-      client.onConnectionIssue((issue) => {
+      unsubHandlersRef.current.issue = client.onConnectionIssue((issue) => {
         if (tearingDownRef.current) return;
         logRuntime("warn", "useAcp.sse", "Session stream issue", issue);
         const isRecoverableOwnershipConflict = issue.status === 409 && issue.retryable;
@@ -751,6 +754,9 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   }, []);
 
   const disconnect = useCallback(() => {
+    unsubHandlersRef.current.update?.();
+    unsubHandlersRef.current.issue?.();
+    unsubHandlersRef.current = {};
     clientRef.current?.disconnect();
     clientRef.current = null;
     sessionIdRef.current = null;

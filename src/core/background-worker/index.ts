@@ -52,6 +52,7 @@ export class BackgroundTaskWorker {
   stop(): void {
     if (this.dispatchTimer) { clearInterval(this.dispatchTimer); this.dispatchTimer = null; }
     if (this.completionTimer) { clearInterval(this.completionTimer); this.completionTimer = null; }
+    this.sessionToTask.clear();
     console.log("[BGWorker] Stopped.");
   }
 
@@ -373,6 +374,7 @@ export class BackgroundTaskWorker {
                 completedAt: new Date(),
                 resultSessionId: task.resultSessionId,
               });
+              this.sessionToTask.delete(task.resultSessionId);
               completedRecovered += 1;
               console.log(`[BGWorker] Task ${task.id} completed (DB recovery, session ${task.resultSessionId}, gone=${sessionGone}, idle=${sessionIdleAndDone}).`);
             }

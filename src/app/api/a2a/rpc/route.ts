@@ -42,7 +42,7 @@ interface JsonRpcResponse {
 export async function POST(request: NextRequest) {
   const sessionStore = getHttpSessionStore();
   const system = getRoutaSystem();
-  
+
   try {
     const body = (await request.json()) as JsonRpcRequest;
     const sessionId = request.nextUrl.searchParams.get("sessionId");
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("sessionId");
-  
+
   if (!sessionId) {
     return new NextResponse("Missing sessionId parameter", { status: 400 });
   }
@@ -143,6 +143,8 @@ export async function GET(request: NextRequest) {
 
   // Create SSE stream
   const encoder = new TextEncoder();
+  let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
       // Attach SSE controller to session
@@ -161,24 +163,30 @@ export async function GET(request: NextRequest) {
       controller.enqueue(encoder.encode(connectEvent));
 
       // Keep-alive ping every 30 seconds
-      const keepAliveInterval = setInterval(() => {
+      keepAliveInterval = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(": keep-alive\n\n"));
         } catch {
-          clearInterval(keepAliveInterval);
+          if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null; }
         }
       }, 30000);
 
       // Cleanup on close
-      request.signal.addEventListener("abort", () => {
-        clearInterval(keepAliveInterval);
+      const abortHandler = () => {
+        if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null; }
         try {
           controller.close();
         } catch {
           // Ignore errors if the controller is already closed
         }
         sessionStore.detachSse(sessionId);
-      });
+        request.signal.removeEventListener("abort", abortHandler);
+      };
+      request.signal.addEventListener("abort", abortHandler);
+    },
+    cancel() {
+      if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null; }
+      sessionStore.detachSse(sessionId);
     },
   });
 
@@ -227,7 +235,7 @@ async function handleA2aMethod(
     };
   }
 
-  // ── A2A Spec v0.3 compliant methods ──────────────────────────────────────
+  // -- A2A Spec v0.3 compliant methods --
 
   if (method === "SendMessage") {
     const p = params as Record<string, unknown>;
@@ -332,7 +340,7 @@ async function handleA2aMethod(
     return { task: cancelled };
   }
 
-  // ── End A2A spec methods ──────────────────────────────────────────────────
+  // -- End A2A spec methods --
 
   if (method === "initialize") {
     return {
@@ -383,7 +391,7 @@ async function handleSessionMethod(
 ): Promise<unknown> {
   // For now, we acknowledge the request and queue it for backend processing
   // In a full implementation, this would forward to the actual ACP process
-  
+
   sessionStore.pushNotification({
     sessionId,
     update: {
@@ -424,7 +432,7 @@ async function handleCoordinationMethod(
 
     case "create_agent": {
       const p = params as Record<string, unknown>;
-      
+
       // Validate required fields
       if (typeof p.name !== "string" || !p.name) {
         throw new Error("Invalid params: 'name' is required and must be a non-empty string");
@@ -432,7 +440,7 @@ async function handleCoordinationMethod(
       if (typeof p.role !== "string" || !p.role) {
         throw new Error("Invalid params: 'role' is required and must be a non-empty string");
       }
-      
+
       return await tools.createAgent({
         name: p.name,
         role: p.role,
@@ -442,7 +450,7 @@ async function handleCoordinationMethod(
 
     case "delegate_task": {
       const p = params as Record<string, unknown>;
-      
+
       // Validate required fields
       if (typeof p.agentId !== "string" || !p.agentId) {
         throw new Error("Invalid params: 'agentId' is required and must be a non-empty string");
@@ -453,7 +461,7 @@ async function handleCoordinationMethod(
       if (typeof p.callerAgentId !== "string" || !p.callerAgentId) {
         throw new Error("Invalid params: 'callerAgentId' is required and must be a non-empty string");
       }
-      
+
       return await tools.delegate({
         agentId: p.agentId,
         taskId: p.taskId,
@@ -463,7 +471,7 @@ async function handleCoordinationMethod(
 
     case "message_agent": {
       const p = params as Record<string, unknown>;
-      
+
       // Validate required fields
       if (typeof p.fromAgentId !== "string" || !p.fromAgentId) {
         throw new Error("Invalid params: 'fromAgentId' is required and must be a non-empty string");
@@ -474,7 +482,7 @@ async function handleCoordinationMethod(
       if (typeof p.message !== "string" || !p.message) {
         throw new Error("Invalid params: 'message' is required and must be a non-empty string");
       }
-      
+
       return await tools.messageAgent({
         fromAgentId: p.fromAgentId,
         toAgentId: p.toAgentId,

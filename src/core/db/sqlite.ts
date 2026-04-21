@@ -546,6 +546,16 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   `);
 
   db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_background_tasks_status
+    ON background_tasks (status)
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_background_tasks_workspace_id
+    ON background_tasks (workspace_id)
+  `);
+
+  db.run(sql`
     CREATE TABLE IF NOT EXISTS github_webhook_configs (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,

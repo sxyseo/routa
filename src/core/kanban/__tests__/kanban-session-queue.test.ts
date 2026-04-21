@@ -387,4 +387,49 @@ describe("KanbanSessionQueue", () => {
 
     queue.stop();
   });
+
+  it("queues new cards when orphaned running tasks fill the concurrency limit", async () => {
+    // task-1 has a running lane session but is not tracked by the queue (orphaned).
+    // This simulates the race condition where a recovery session started during
+    // an async window and the queue's in-memory map doesn't know about it.
+    await taskStore.save(createTask({
+      id: "task-1",
+      title: "Orphaned running task",
+      objective: "Orphaned running task",
+      workspaceId: "ws-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+      triggerSessionId: "session-orphaned",
+      laneSessions: [{ sessionId: "session-orphaned", columnId: "dev", columnName: "Dev", stepId: "dev-executor", stepIndex: 0, stepName: "Dev Executor", status: "running", startedAt: new Date().toISOString() }],
+    }));
+    await taskStore.save(createTask({
+      id: "task-2",
+      title: "New task",
+      objective: "New task",
+      workspaceId: "ws-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.PENDING,
+    }));
+
+    const startNew = vi.fn().mockResolvedValue({ sessionId: "session-new" });
+    const queue = new KanbanSessionQueue(eventBus, taskStore, async () => 1);
+    queue.start();
+
+    const result = await queue.enqueue({
+      cardId: "task-2",
+      cardTitle: "New task",
+      boardId: "board-1",
+      workspaceId: "ws-1",
+      columnId: "dev",
+      start: startNew,
+    });
+
+    // With concurrency limit 1 and an orphaned running task, task-2 must be queued.
+    expect(result).toEqual({ queued: true });
+    expect(startNew).not.toHaveBeenCalled();
+
+    queue.stop();
+  });
 });

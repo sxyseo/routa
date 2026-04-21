@@ -10,7 +10,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import React, { useMemo, useState, type Dispatch, type SetStateAction, type ReactNode, type RefObject } from "react";
+import React, { useCallback, useMemo, useState, type Dispatch, type SetStateAction, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
@@ -41,7 +41,7 @@ import {
 import type { ColumnAutomationConfig } from "./kanban-settings-modal";
 import type { KanbanBoardInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import type { KanbanRepoChanges } from "./kanban-file-changes-types";
-import { ChevronRight as _ChevronRight, GitBranch as _GitBranch } from "lucide-react";
+import { ChevronRight as _ChevronRight, GitBranch as _GitBranch, Archive } from "lucide-react";
 import { GitLogPanel, RealGitAdapter, MockGitAdapter } from "./git-log";
 
 interface SessionRestoreTranscriptMessage {
@@ -192,6 +192,45 @@ function KanbanDropColumn({
     >
       {children}
     </div>
+  );
+}
+
+function ArchiveColumnButton({ boardId, onRefresh }: { boardId: string; onRefresh: () => void }) {
+  const [archiving, setArchiving] = useState(false);
+  const { t } = useTranslation();
+
+  const handleClick = useCallback(async () => {
+    if (archiving) return;
+    setArchiving(true);
+    try {
+      const response = await desktopAwareFetch(`/api/kanban/boards/${boardId}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (response.ok) {
+        onRefresh();
+      } else {
+        console.error("[Kanban] Archive failed:", response.status);
+      }
+    } catch (err) {
+      console.error("[Kanban] Archive failed:", err);
+    } finally {
+      setArchiving(false);
+    }
+  }, [boardId, archiving, onRefresh]);
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={archiving}
+      className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300 disabled:opacity-50"
+      title={t.common.archive}
+    >
+      {archiving
+        ? <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+        : <Archive className="h-3 w-3" />}
+    </button>
   );
 }
 
@@ -420,10 +459,15 @@ export const KanbanBoardSurface = React.memo(function KanbanBoardSurface({
                         widthClass={widthClass}
                       >
                         <div className="mb-3 space-y-1.5">
-                          <div className="flex items-baseline justify-between gap-3">
+                          <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{column.name}</div>
-                            <div className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
-                              {columnTasks.length} {t.kanbanBoard.cards}
+                            <div className="flex items-center gap-1.5">
+                              {column.stage === "done" && columnTasks.length > 0 && (
+                                <ArchiveColumnButton boardId={board.id} onRefresh={onRefresh} />
+                              )}
+                              <div className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
+                                {columnTasks.length} {t.kanbanBoard.cards}
+                              </div>
                             </div>
                           </div>
                           <div

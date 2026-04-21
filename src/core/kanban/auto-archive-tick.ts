@@ -9,9 +9,8 @@
 
 import type { RoutaSystem } from "../routa-system";
 import type { Task, TaskLaneSession } from "../models/task";
-import { TaskStatus } from "../models/task";
 import type { KanbanBoard, KanbanColumn } from "../models/kanban";
-import { emitColumnTransition } from "./column-transition";
+import { archiveTask } from "./archive-task";
 
 /** Default number of days a card must sit in `done` before auto-archival. */
 export const DEFAULT_AUTO_ARCHIVE_DAYS = 30;
@@ -161,25 +160,17 @@ export async function runAutoArchiveTick(system: AutoArchiveSystem): Promise<Aut
             continue;
           }
 
-          // AC5: move to archived column
-          task.columnId = archivedColumn.id;
-          task.status = TaskStatus.ARCHIVED;
-          task.updatedAt = new Date();
-          await system.taskStore.save(task);
-
-          // Emit transition event so other systems react
-          emitColumnTransition(system.eventBus, {
-            cardId: task.id,
-            cardTitle: task.title,
-            boardId: board.id,
-            workspaceId: workspace.id,
-            fromColumnId: doneColumn.id,
-            toColumnId: archivedColumn.id,
-            fromColumnName: doneColumn.name,
-            toColumnName: archivedColumn.name,
-          });
-
-          summary.archived++;
+          // AC5: archive with full resource cleanup (worktree, branch, sessions)
+          const archiveResult = await archiveTask(system, task, board);
+          if (archiveResult.success) {
+            summary.archived++;
+          } else {
+            summary.skipped.push({
+              cardId: task.id,
+              title: task.title,
+              reason: archiveResult.error ?? "归档失败",
+            });
+          }
         }
       }
     }

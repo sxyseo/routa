@@ -12,7 +12,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import {
   parseGitHubUrl,
@@ -76,6 +76,9 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
   const cloneUrl = `https://github.com/${owner}/${repo}.git`;
 
+  // Declare child in outer scope so the cancel/abort handlers can terminate it
+  let child: ChildProcess | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
       const sendEvent = (data: Record<string, unknown>) => {
@@ -90,7 +93,7 @@ export async function POST(request: NextRequest) {
 
       sendEvent({ phase: "starting", percent: 0, message: "Starting clone..." });
 
-      const child = spawn("git", ["clone", "--progress", cloneUrl, targetDir], {
+      child = spawn("git", ["clone", "--progress", cloneUrl, targetDir], {
         stdio: ["pipe", "pipe", "pipe"],
         timeout: 180000, // 3 minutes
       });
@@ -162,6 +165,15 @@ export async function POST(request: NextRequest) {
         controller.close();
       });
     },
+    cancel() {
+      // Kill the spawned git process when the stream is cancelled
+      child?.kill("SIGTERM");
+    },
+  });
+
+  // Kill the git process on client disconnect (abort)
+  request.signal.addEventListener("abort", () => {
+    child?.kill("SIGTERM");
   });
 
   const monitoredStream = monitorSSEConnection(request, "/api/clone/progress", stream);

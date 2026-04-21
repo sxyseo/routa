@@ -506,6 +506,7 @@ export function KanbanCardDetail({
                 onRefresh();
               }}
             />
+            <CopyableBadge label="TaskId" value={task.id} compact={compactMode} />
             <MetaBadge label="Column" value={task.columnId ?? "backlog"} compact={compactMode} />
             {orderedSessionIds.length > 0 && (
               <MetaBadge label="Runs" value={String(orderedSessionIds.length)} compact={compactMode} />
@@ -865,6 +866,37 @@ function DetailSection({
       </div>
       {children}
     </section>
+  );
+}
+
+function CopyableBadge({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      setCopied(false);
+    });
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300 ${compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"}`}
+    >
+      <span className="uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</span>
+      <span className="font-mono" title={value}>{value}</span>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="ml-0.5 shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+        title={copied ? "Copied!" : "Copy to clipboard"}
+        aria-label={`Copy ${label}`}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </button>
+    </span>
   );
 }
 

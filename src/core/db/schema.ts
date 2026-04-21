@@ -15,6 +15,7 @@ import {
   boolean,
   primaryKey,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import type { TaskCreationSource } from "../kanban/task-creation-policy";
 import type { KanbanColumn } from "../models/kanban";
@@ -414,7 +415,11 @@ export const backgroundTasks = pgTable("background_tasks", {
   dependsOnTaskIds: jsonb("depends_on_task_ids").$type<string[]>(),
   /** JSON output from this task (for chaining to dependent tasks) */
   taskOutput: text("task_output"),
-});
+}, (table) => [
+  index("idx_background_tasks_result_session_id").on(table.resultSessionId),
+  index("idx_background_tasks_status").on(table.status),
+  index("idx_background_tasks_workspace_id").on(table.workspaceId),
+]);
 
 // ─── GitHub Webhook Configs ───────────────────────────────────────────────
 

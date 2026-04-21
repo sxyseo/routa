@@ -16,6 +16,7 @@ export type SSEConnectionRecord = {
   route: string;
   workspaceId: string;
   connectedAt: string;
+  connectedAtMs: number;
   disconnectedAt?: string;
   durationMs?: number;
 };
@@ -72,6 +73,18 @@ export class InMemoryMetricsCollector {
 
   recordSSEConnect(rec: SSEConnectionRecord): void {
     this.activeSSEConnections.set(rec.connId, rec);
+    this.cleanupStaleSSEConnections();
+  }
+
+  /** Remove SSE connection records that have been active for over 1 hour (likely leaked). */
+  private cleanupStaleSSEConnections(): void {
+    const now = Date.now();
+    const staleThreshold = 1 * 60 * 60 * 1000; // 1 hour
+    for (const [connId, rec] of this.activeSSEConnections) {
+      if (now - rec.connectedAtMs > staleThreshold) {
+        this.activeSSEConnections.delete(connId);
+      }
+    }
   }
 
   recordSSEDisconnect(connId: string): void {

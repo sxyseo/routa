@@ -35,6 +35,7 @@ type SSEController = ReadableStreamDefaultController<Uint8Array>;
 export class KanbanEventBroadcaster {
   private controllers = new Map<string, { controller: SSEController; workspaceId: string }>();
   private connectionCounter = 0;
+  private encoder = new TextEncoder();
 
   attach(workspaceId: string, controller: SSEController): string {
     const connId = `kanban-sse-${++this.connectionCounter}`;
@@ -93,9 +94,41 @@ export class KanbanEventBroadcaster {
     return this.controllers.size;
   }
 
+  /**
+   * Attempt to write a heartbeat to every controller. Remove those
+   * whose underlying stream has already closed. Returns the number
+   * of stale connections that were cleaned up.
+   */
+  closeStaleConnections(): number {
+    let cleaned = 0;
+    for (const [connId, { controller }] of this.controllers) {
+      try {
+        controller.enqueue(this.encoder.encode("\n"));
+      } catch {
+        this.detach(connId);
+        cleaned++;
+      }
+    }
+    return cleaned;
+  }
+
+  /**
+   * Close every active SSE controller and clear all internal state.
+   * Call during server shutdown to release resources.
+   */
+  dispose(): void {
+    for (const { controller } of this.controllers.values()) {
+      try {
+        controller.close();
+      } catch {
+        // controller may already be closed
+      }
+    }
+    this.controllers.clear();
+  }
+
   private writeSse(controller: SSEController, payload: unknown): void {
-    const encoder = new TextEncoder();
-    controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+    controller.enqueue(this.encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
   }
 }
 

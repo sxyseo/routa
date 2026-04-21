@@ -203,7 +203,6 @@ function SessionIdChip({
   sessionId: string;
   compact?: boolean;
 }) {
-  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = (event: MouseEvent<HTMLButtonElement>) => {
@@ -218,23 +217,21 @@ function SessionIdChip({
   };
 
   return (
-    <div className={`flex min-w-0 items-center gap-1.5 ${compact ? "max-w-[13rem]" : "max-w-[18rem]"}`}>
-      <span
-        className={`min-w-0 break-all rounded-lg bg-slate-100 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300 ${compact ? "px-1.5 py-0.5" : "px-2 py-1"}`}
-        title={sessionId}
-      >
-        {sessionId}
-      </span>
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300 ${compact ? "max-w-[14rem] px-2 py-0.5 text-[10px]" : "max-w-[18rem] px-2.5 py-1 text-[11px]"}`}
+    >
+      <span className="uppercase tracking-wide text-slate-400 dark:text-slate-500">SessionId</span>
+      <span className="min-w-0 truncate font-mono" title={sessionId}>{sessionId}</span>
       <button
         type="button"
         onClick={handleCopy}
-        className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-        title={t.common.copyToClipboard}
-        aria-label={t.common.copyToClipboard}
+        className="ml-0.5 shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+        title={copied ? "Copied!" : "Copy to clipboard"}
+        aria-label="Copy SessionId"
       >
         {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       </button>
-    </div>
+    </span>
   );
 }
 
@@ -447,8 +444,14 @@ export function KanbanCardActivityBar({
           </button>
         )}
       </div>
-      {(selectedLaneSession?.columnName || selectedStepLabel || selectedLaneSession?.status) && (
+      {(selectedLaneSession?.columnName || selectedStepLabel || selectedLaneSession?.status || selectedRunId) && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200/80 pb-1 text-[10px] dark:border-[#232736]">
+          {selectedRunId && (
+            <SessionIdChip
+              sessionId={selectedRun?.externalTaskId ?? selectedLaneSession?.externalTaskId ?? selectedRunId}
+              compact
+            />
+          )}
           {selectedLaneSession?.columnName && (
             <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
               {selectedLaneSession.columnName}

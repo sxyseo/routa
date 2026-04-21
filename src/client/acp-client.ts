@@ -166,6 +166,7 @@ export class BrowserAcpClient {
   private readonly ownershipConflictBaseDelayMs = 1200;
   private readonly ownershipConflictBackoffMultiplier = 2;
   private readonly ownershipConflictRetryState = new Map<string, number>();
+  private probeAbortController: AbortController | null = null;
 
   constructor(baseUrl: string = "") {
     this.baseUrl = baseUrl;
@@ -623,6 +624,8 @@ export class BrowserAcpClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.probeAbortController?.abort();
+    this.probeAbortController = null;
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
@@ -749,9 +752,12 @@ export class BrowserAcpClient {
   }
 
   private async probeSse(url: URL, sessionId: string): Promise<AcpConnectionIssue | null> {
+    this.probeAbortController?.abort();
+    this.probeAbortController = new AbortController();
     try {
       const response = await fetch(url.toString(), {
         headers: { Accept: "text/event-stream" },
+        signal: this.probeAbortController.signal,
       });
 
       if (response.ok) {

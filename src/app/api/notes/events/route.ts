@@ -24,6 +24,9 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       connectionId = broadcaster.attach(workspaceId, controller);
+      request.signal.addEventListener("abort", () => {
+        if (connectionId) broadcaster.detach(connectionId);
+      });
     },
     cancel() {
       if (connectionId) {

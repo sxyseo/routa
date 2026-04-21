@@ -18,6 +18,7 @@ import { clearStaleTriggerSession } from "./task-trigger-session";
 const SCAN_INTERVAL_MS = 30_000;
 
 let scanTimer: ReturnType<typeof setInterval> | null = null;
+let initialScanTimer: ReturnType<typeof setTimeout> | null = null;
 const GLOBAL_KEY = "__routa_kanban_lane_scanner__";
 
 export interface LaneScannerStats {
@@ -160,7 +161,8 @@ export function startLaneScanner(system: RoutaSystem): void {
   if (g[`${GLOBAL_KEY}_started`]) return;
 
   // Run initial scan after a short delay to let the system warm up
-  setTimeout(() => {
+  initialScanTimer = setTimeout(() => {
+    initialScanTimer = null;
     void runLaneScannerTick(system);
   }, 5_000);
 
@@ -177,6 +179,10 @@ export function startLaneScanner(system: RoutaSystem): void {
  */
 export function stopLaneScanner(): void {
   const g = globalThis as Record<string, unknown>;
+  if (initialScanTimer) {
+    clearTimeout(initialScanTimer);
+    initialScanTimer = null;
+  }
   if (scanTimer) {
     clearInterval(scanTimer);
     scanTimer = null;

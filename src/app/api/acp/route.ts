@@ -215,9 +215,16 @@ export async function GET(request: NextRequest) {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let isCleanedUp = false;
 
+  let abortHandler: (() => void) | null = null;
+
   const cleanup = (reason: string) => {
     if (isCleanedUp) return;
     isCleanedUp = true;
+
+    if (abortHandler) {
+      request.signal.removeEventListener("abort", abortHandler);
+      abortHandler = null;
+    }
 
     console.log(`[ACP Route] SSE cleanup for session ${sessionId}: ${reason}`);
 
@@ -285,7 +292,7 @@ export async function GET(request: NextRequest) {
       }, 30000); // 30 second heartbeat
 
       // ─── Cleanup on request abort (client disconnect) ───────────────────
-      const abortHandler = () => {
+      abortHandler = () => {
         cleanup("client aborted");
         try {
           controller.close();

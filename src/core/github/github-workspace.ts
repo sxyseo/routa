@@ -77,6 +77,7 @@ interface WorkspaceEntry {
  * but in dev each route bundle compiles its own copy of this file.
  */
 const REGISTRY_KEY = "__routa_gh_registry__";
+const CLEANUP_TIMER_KEY = "__routa_gh_cleanup_timer__";
 if (!(globalThis as Record<string, unknown>)[REGISTRY_KEY]) {
   (globalThis as Record<string, unknown>)[REGISTRY_KEY] = new Map<string, WorkspaceEntry>();
 }
@@ -110,6 +111,23 @@ export function cleanupExpired(): number {
     }
   }
   return cleaned;
+}
+
+/** Start periodic cleanup (every 30 minutes) */
+export function startGithubWorkspaceCleanup(): void {
+  const g = globalThis as Record<string, unknown>;
+  if (g[CLEANUP_TIMER_KEY]) return;
+  g[CLEANUP_TIMER_KEY] = setInterval(() => { cleanupExpired(); }, 30 * 60 * 1000);
+}
+
+/** Stop periodic cleanup */
+export function stopGithubWorkspaceCleanup(): void {
+  const g = globalThis as Record<string, unknown>;
+  const timer = g[CLEANUP_TIMER_KEY] as ReturnType<typeof setInterval> | undefined;
+  if (timer) {
+    clearInterval(timer);
+    g[CLEANUP_TIMER_KEY] = undefined;
+  }
 }
 
 

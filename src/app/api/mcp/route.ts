@@ -32,9 +32,22 @@ import { monitorSSEConnection } from "@/core/http/api-route-observability";
 interface McpSession {
   transport: WebStandardStreamableHTTPServerTransport;
   workspaceId: string;
+  lastActivityAt: number;
 }
 
 const sessions = new Map<string, McpSession>();
+
+const STALE_SESSION_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+
+function cleanupStaleSessions(): void {
+  const now = Date.now();
+  for (const [id, session] of sessions) {
+    if (now - session.lastActivityAt > STALE_SESSION_THRESHOLD_MS) {
+      sessions.delete(id);
+      console.log(`[MCP Route] Cleaned up stale session: ${id} (active: ${sessions.size})`);
+    }
+  }
+}
 
 function requireWorkspaceId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -96,7 +109,7 @@ async function createSession(
     // that may not send Accept: text/event-stream header (causing 406 errors).
     enableJsonResponse: true,
     onsessioninitialized: (sid: string) => {
-      sessions.set(sid, { transport, workspaceId });
+      sessions.set(sid, { transport, workspaceId, lastActivityAt: Date.now() });
       console.log(
         `[MCP Route] Session created: ${sid} workspaceId=${workspaceId} (active: ${sessions.size})`,
       );
@@ -149,6 +162,7 @@ async function getOrCreateSession(
   const existing = sessionId ? sessions.get(sessionId) : undefined;
 
   if (existing) {
+    existing.lastActivityAt = Date.now();
     return existing.transport;
   }
 
@@ -226,6 +240,7 @@ function ensureAcceptHeader(request: NextRequest, ...required: string[]): NextRe
 // ─── Route Handlers ───────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  cleanupStaleSessions();
   try {
     // Log incoming MCP request for debugging
     const sessionId = request.headers.get("mcp-session-id");
@@ -410,6 +425,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  cleanupStaleSessions();
   try {
     const sessionId = request.headers.get("mcp-session-id");
     const session = sessionId ? sessions.get(sessionId) : undefined;

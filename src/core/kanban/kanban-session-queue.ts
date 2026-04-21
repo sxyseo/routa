@@ -95,7 +95,7 @@ export class KanbanSessionQueue {
     }
 
     const limit = await this.getConcurrencyLimit(job.workspaceId, job.boardId);
-    const runningCount = this.countRunning(job.boardId);
+    const runningCount = await this.countRunning(job.boardId, job.workspaceId);
     // Capture dependencies for topological ordering
     const task = await this.taskStore.get(job.cardId);
     const entry: QueueEntry = {
@@ -223,14 +223,48 @@ export class KanbanSessionQueue {
     this.queuedByBoard.set(boardId, nextEntries);
   }
 
-  private countRunning(boardId: string): number {
+  private async countRunning(boardId: string, workspaceId?: string): Promise<number> {
     let runningCount = 0;
+    const knownRunningIds = new Set<string>();
     for (const entry of this.jobsByCardId.values()) {
       if (entry.boardId === boardId && entry.status === "running") {
         runningCount += 1;
+        knownRunningIds.add(entry.cardId);
       }
     }
+
+    // Count orphaned running sessions from the task store — tasks that have
+    // triggerSessionId set or a running lane session but are not tracked by
+    // the queue (e.g. recovery sessions started during an async race window).
+    if (workspaceId) {
+      try {
+        const tasks = await this.taskStore.listByWorkspace(workspaceId);
+        for (const task of tasks) {
+          if (task.boardId === boardId && !knownRunningIds.has(task.id) && this.taskHasRunningLaneSession(task)) {
+            runningCount += 1;
+          }
+        }
+      } catch {
+        // Query failure must not block queue operations — fall back to in-memory count.
+      }
+    }
+
     return runningCount;
+  }
+
+  /** Mirrors the Rust-side `task_has_running_lane_session` logic (kanban.rs:389-403). */
+  private taskHasRunningLaneSession(task: {
+    triggerSessionId?: string;
+    status?: string;
+    laneSessions?: Array<{ status: string }>;
+  }): boolean {
+    if (task.laneSessions?.some((session) => session.status === "running")) {
+      return true;
+    }
+    return (
+      !!task.triggerSessionId
+      && (task.status === "IN_PROGRESS" || task.status === "REVIEW_REQUIRED")
+    );
   }
 
   private pushQueuedEntry(entry: QueueEntry): void {
@@ -306,7 +340,7 @@ export class KanbanSessionQueue {
     await this.reconcileBoardEntries(boardId);
 
     const limit = await this.getConcurrencyLimit(workspaceId, boardId);
-    let runningCount = this.countRunning(boardId);
+    let runningCount = await this.countRunning(boardId, workspaceId);
     if (runningCount >= limit) return;
 
     const queue = this.queuedByBoard.get(boardId);

@@ -142,6 +142,9 @@ export async function POST(request: NextRequest) {
  */
 function handleStreamResponse(request: NextRequest, task: A2ATask) {
   const encoder = new TextEncoder();
+  let timer1: ReturnType<typeof setTimeout> | null = null;
+  let timer2: ReturnType<typeof setTimeout> | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
       const sendEvent = (data: unknown) => {
@@ -153,7 +156,7 @@ function handleStreamResponse(request: NextRequest, task: A2ATask) {
       sendEvent({ task });
 
       // Simulate a working status update after brief delay
-      setTimeout(() => {
+      timer1 = setTimeout(() => {
         sendEvent({
           statusUpdate: {
             taskId: task.id,
@@ -171,7 +174,7 @@ function handleStreamResponse(request: NextRequest, task: A2ATask) {
         });
 
         // Close the stream
-        setTimeout(() => {
+        timer2 = setTimeout(() => {
           try {
             controller.close();
           } catch {
@@ -179,6 +182,17 @@ function handleStreamResponse(request: NextRequest, task: A2ATask) {
           }
         }, 500);
       }, 200);
+
+      // Clean up timers on client disconnect
+      request.signal.addEventListener("abort", () => {
+        if (timer1) { clearTimeout(timer1); timer1 = null; }
+        if (timer2) { clearTimeout(timer2); timer2 = null; }
+        try { controller.close(); } catch { /* ignore */ }
+      });
+    },
+    cancel() {
+      if (timer1) { clearTimeout(timer1); timer1 = null; }
+      if (timer2) { clearTimeout(timer2); timer2 = null; }
     },
   });
 

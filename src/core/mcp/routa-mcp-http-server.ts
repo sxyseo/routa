@@ -347,6 +347,8 @@ export class RoutaMcpHttpServer {
 
       ws.on("close", () => {
         console.log("[RoutaMcpHttpServer] WebSocket client disconnected");
+        try { transport.close(); } catch {}
+        try { server.close(); } catch {}
       });
     } catch (err) {
       console.error(

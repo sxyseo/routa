@@ -22,6 +22,8 @@ import { getKanbanBranchRules, DEFAULT_BRANCH_RULES } from "./board-branch-rules
 const HANDLER_KEY = "kanban-pr-merge-listener";
 const CLEANUP_DELAY_MS = 30_000;
 
+let pendingTimers: ReturnType<typeof setTimeout>[] = [];
+
 export function startPrMergeListener(system: RoutaSystem): void {
   system.eventBus.on(HANDLER_KEY, async (event: AgentEvent) => {
     if (event.type !== AgentEventType.PR_MERGED) return;
@@ -77,7 +79,7 @@ export function startPrMergeListener(system: RoutaSystem): void {
 
     // 3. Schedule worktree cleanup for the merged task (driven by lifecycle rules)
     if (task.worktreeId && rules.lifecycle.removeWorktreeOnMerge) {
-      setTimeout(() => {
+      pendingTimers.push(setTimeout(() => {
         system.eventBus.emit({
           type: AgentEventType.WORKTREE_CLEANUP,
           agentId: "kanban-pr-merge-listener",
@@ -90,7 +92,7 @@ export function startPrMergeListener(system: RoutaSystem): void {
           },
           timestamp: new Date(),
         });
-      }, CLEANUP_DELAY_MS);
+      }, CLEANUP_DELAY_MS));
     }
 
     // 4. Fetch latest on the main codebase so future worktrees use the updated base
@@ -252,4 +254,10 @@ async function attemptDownstreamRebase(
       err,
     );
   }
+}
+
+export function stopPrMergeListener(eventBus: { off: (key: string) => void }): void {
+  for (const t of pendingTimers) clearTimeout(t);
+  pendingTimers = [];
+  eventBus.off(HANDLER_KEY);
 }

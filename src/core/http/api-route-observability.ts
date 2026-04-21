@@ -109,10 +109,12 @@ export function monitorSSEConnection(
   stream: ReadableStream,
 ): ReadableStream {
   const connId = `sse-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const now = Date.now();
   const record: SSEConnectionRecord = {
     connId,
     route,
-    connectedAt: new Date().toISOString(),
+    connectedAt: new Date(now).toISOString(),
+    connectedAtMs: now,
     workspaceId: new URL(request.url).searchParams.get("workspaceId") ?? "*",
   };
   metricsCollector.recordSSEConnect(record);

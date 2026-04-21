@@ -242,6 +242,7 @@ export type ExecuteAutoPrCreation = (params: {
 export class KanbanWorkflowOrchestrator {
   private handlerKey = "kanban-workflow-orchestrator";
   private activeAutomations = new Map<string, ActiveAutomation>();
+  private pendingTimers: ReturnType<typeof setTimeout>[] = [];
   private started = false;
   private cleanupCardSession?: CleanupCardSession;
   private resolveDevSessionSupervision?: ResolveDevSessionSupervision;
@@ -295,6 +296,8 @@ export class KanbanWorkflowOrchestrator {
     }
     this.eventBus.off(this.handlerKey);
     this.activeAutomations.clear();
+    for (const t of this.pendingTimers) clearTimeout(t);
+    this.pendingTimers = [];
     if (this.watchdogTimer) {
       clearInterval(this.watchdogTimer);
       this.watchdogTimer = undefined;
@@ -786,11 +789,11 @@ export class KanbanWorkflowOrchestrator {
       }
 
       const completedAutomation = automation;
-      setTimeout(() => {
+      this.pendingTimers.push(setTimeout(() => {
         if (this.activeAutomations.get(cardId) === completedAutomation) {
           this.activeAutomations.delete(cardId);
         }
-      }, COMPLETED_AUTOMATION_CLEANUP_DELAY_MS);
+      }, COMPLETED_AUTOMATION_CLEANUP_DELAY_MS));
       return;
     }
   }
@@ -1354,7 +1357,7 @@ export class KanbanWorkflowOrchestrator {
     cardId: string,
     automation: ActiveAutomation,
   ): void {
-    setTimeout(async () => {
+    this.pendingTimers.push(setTimeout(async () => {
       try {
         const task = await this.taskStore.get(cardId);
         if (!task?.worktreeId) return;
@@ -1397,7 +1400,7 @@ export class KanbanWorkflowOrchestrator {
           err,
         );
       }
-    }, KanbanWorkflowOrchestrator.WORKTREE_CLEANUP_DELAY_MS);
+    }, KanbanWorkflowOrchestrator.WORKTREE_CLEANUP_DELAY_MS));
   }
 
   private async autoAdvanceCard(

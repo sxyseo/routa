@@ -21,6 +21,7 @@ import type { WorkspaceAgentEvent } from "./agent-event-bridge";
 import type { NormalizedSessionUpdate } from "./provider-adapter/types";
 import { getRoutaSystem } from "../routa-system";
 import type { BackgroundTaskStore } from "../store/background-task-store";
+import { BackgroundTaskProgressBuffer } from "./background-task-progress-buffer";
 import { EventBus, AgentEventType } from "../events/event-bus";
 import type { McpServerProfile } from "../mcp/mcp-server-profiles";
 
@@ -212,6 +213,15 @@ class HttpSessionStore {
   private nonBackgroundSessions = new Set<string>();
   /** Cache: sessionId → BackgroundTask for progress updates (avoids repeated DB lookups). */
   private backgroundTaskCache = new Map<string, NonNullable<Awaited<ReturnType<BackgroundTaskStore["findBySessionId"]>>>>();
+  private progressBuffer = new BackgroundTaskProgressBuffer();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    // Start periodic cleanup (every 5 minutes)
+    this.cleanupTimer = setInterval(() => {
+      this.maybeCleanup();
+    }, HttpSessionStore.CLEANUP_INTERVAL_MS);
+  }
 
   enterStreamingMode(sessionId: string): void {
     this.streamingSessionIds.add(sessionId);
@@ -283,6 +293,9 @@ class HttpSessionStore {
   }
 
   deleteSession(sessionId: string): boolean {
+    // Flush pending progress before cleanup
+    void this.progressBuffer.flush(sessionId);
+    this.progressBuffer.dispose(sessionId);
     // Clean up TraceRecorder buffers for this session
     this.traceRecorder.cleanupSession(sessionId);
     this.messageHistory.delete(sessionId);
@@ -566,7 +579,7 @@ class HttpSessionStore {
         jsonrpc: "2.0",
         method: "session/update",
         params: enriched,
-      });
+      }, sessionId);
       return;
     }
 
@@ -616,7 +629,7 @@ class HttpSessionStore {
           content: { type: "text", text: "Connected to ACP session." },
         },
       },
-    });
+    }, sessionId);
   }
 
   private flushPending(sessionId: string) {
@@ -631,7 +644,7 @@ class HttpSessionStore {
         jsonrpc: "2.0",
         method: "session/update",
         params: n,
-      });
+      }, sessionId);
     }
     this.pendingNotifications.delete(sessionId);
   }
@@ -715,14 +728,17 @@ class HttpSessionStore {
     }
   }
 
-  private writeSse(controller: Controller, payload: unknown) {
+  private writeSse(controller: Controller, payload: unknown, sessionId?: string) {
     const encoder = new TextEncoder();
     const id = this.extractSseEventId(payload);
     const event = `${id ? `id: ${id}\n` : ""}data: ${JSON.stringify(payload)}\n\n`;
     try {
       controller.enqueue(encoder.encode(event));
     } catch {
-      // controller closed - drop silently
+      // controller closed - detach if sessionId is known
+      if (sessionId) {
+        this.detachSse(sessionId);
+      }
     }
   }
 
@@ -933,6 +949,34 @@ class HttpSessionStore {
   }
 
   /**
+   * Dispose all state. Call during graceful shutdown.
+   */
+  dispose(): void {
+    // Stop periodic cleanup timer
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    // Flush all pending progress
+    this.progressBuffer.flushAll();
+    // Close all SSE controllers
+    for (const controller of this.sseControllers.values()) {
+      try { controller.close(); } catch {}
+    }
+    this.sseControllers.clear();
+    // Delete all sessions
+    for (const sessionId of Array.from(this.sessions.keys())) {
+      this.deleteSession(sessionId);
+    }
+    // Dispose trace recorder
+    this.traceRecorder.dispose();
+    // Clear remaining caches
+    this.nonBackgroundSessions.clear();
+    this.backgroundTaskCache.clear();
+    this.lastAccessTime.clear();
+  }
+
+  /**
    * Get memory usage statistics for monitoring.
    * Returns counts of stored items and buffer sizes.
    */
@@ -1118,24 +1162,26 @@ class HttpSessionStore {
         }
       }
 
-      if (latestOutput !== (task.taskOutput ?? "")) {
-        await system.backgroundTaskStore.updateTaskOutput(task.id, latestOutput);
-      }
-
-      // Update progress in the store
-      await system.backgroundTaskStore.updateProgress(task.id, {
-        lastActivity: new Date(),
-        currentActivity,
-        toolCallCount,
-        inputTokens,
-        outputTokens,
-      });
-
-      // Sync cache with the latest accumulated values so the next notification
-      // starts from the correct base instead of the stale first-lookup values.
       if (didComplete) {
+        // Task completion: flush any pending progress then clean up buffer.
+        // Mark session as non-background first to prevent any new accumulate()
+        // calls from writing stale data during the async flush window.
+        this.nonBackgroundSessions.add(sessionId);
+        await this.progressBuffer.flush(sessionId);
+        this.progressBuffer.dispose(sessionId);
         this.backgroundTaskCache.delete(sessionId);
       } else {
+        // In-progress: defer DB writes via progress buffer (debounced)
+        // Cache updates happen immediately for UI responsiveness
+        const outputChanged = latestOutput !== (task.taskOutput ?? "");
+        this.progressBuffer.accumulate(sessionId, task.id, {
+          taskOutput: latestOutput,
+          outputDirty: outputChanged,
+          currentActivity,
+          toolCallCount,
+          inputTokens,
+          outputTokens,
+        });
         this.backgroundTaskCache.set(sessionId, {
           ...task,
           taskOutput: latestOutput,

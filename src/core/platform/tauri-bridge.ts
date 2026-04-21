@@ -190,6 +190,13 @@ class TauriProcessHandle implements IProcessHandle {
       this._errorHandlers.push(handler as (err: Error) => void);
     }
   }
+
+  removeAllListeners(): void {
+    this._exitHandlers = [];
+    this._errorHandlers = [];
+    this._stdoutHandlers = [];
+    this._stderrHandlers = [];
+  }
 }
 
 class TauriProcess implements IPlatformProcess {

@@ -13,6 +13,7 @@ function createProcessHandle(ready?: Promise<void>): IProcessHandle {
     ready,
     kill: () => {},
     on: () => {},
+    removeAllListeners: () => {},
   };
 }
 
