@@ -14,7 +14,9 @@ import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
 import {
   assembleTaskAdaptiveHarnessFromToolArgs,
+  summarizeTaskHistoryContextFromToolArgs,
   TASK_ADAPTIVE_HARNESS_TOOL_NAME,
+  TASK_HISTORY_SUMMARY_TOOL_NAME,
 } from "../harness/task-adaptive-tool";
 import { readCanvasSdkResource } from "../canvas/sdk-resource-contract";
 import { readFeatureTreeSpecResource } from "../spec/feature-tree-spec-resource-contract";
@@ -166,6 +168,7 @@ export class RoutaMcpToolManager {
       register("capture_screenshot", () => this.registerCaptureScreenshot(server));
       register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
       register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => this.registerAssembleTaskAdaptiveHarness(server));
+      register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => this.registerSummarizeTaskHistoryContext(server));
       return;
     }
 
@@ -233,6 +236,7 @@ export class RoutaMcpToolManager {
     register("read_canvas_sdk_resource", () => this.registerReadCanvasSdkResource(server));
     register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
     register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => this.registerAssembleTaskAdaptiveHarness(server));
+    register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => this.registerSummarizeTaskHistoryContext(server));
   }
 
   private shouldRegisterTool(toolName: string): boolean {
@@ -1479,8 +1483,13 @@ Can be in response to a request or proactively provided.`,
         taskLabel: z.string().optional().describe("Short label for the current task or request."),
         locale: z.string().optional().describe("Optional locale hint, e.g. en or zh-CN."),
         featureId: z.string().optional().describe("Optional Feature Explorer feature ID."),
+        featureIds: z.array(z.string()).optional().describe("Optional ordered candidate Feature Tree IDs."),
         filePaths: z.array(z.string()).optional().describe("Optional repository-relative file paths already known to be relevant."),
+        routeCandidates: z.array(z.string()).optional().describe("Optional route hints for file inference."),
+        apiCandidates: z.array(z.string()).optional().describe("Optional API hints for file inference."),
         historySessionIds: z.array(z.string()).optional().describe("Optional history session IDs to prioritize."),
+        moduleHints: z.array(z.string()).optional().describe("Optional module or subsystem hints."),
+        symptomHints: z.array(z.string()).optional().describe("Optional user-visible symptom hints."),
         taskType: z.enum(["implementation", "planning", "analysis", "review"]).optional()
           .describe("Task type hint used for recommendation heuristics."),
         maxFiles: z.number().int().positive().optional().describe("Maximum number of files to include."),
@@ -1490,6 +1499,47 @@ Can be in response to a request or proactively provided.`,
       async (params) => {
         try {
           const result = await assembleTaskAdaptiveHarnessFromToolArgs(params, this.workspaceId);
+          return this.toMcpResult({
+            success: true,
+            data: result,
+          });
+        } catch (error) {
+          return this.toMcpResult({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    );
+  }
+
+  private registerSummarizeTaskHistoryContext(server: McpServer) {
+    server.tool(
+      TASK_HISTORY_SUMMARY_TOOL_NAME,
+      "Compress linked history sessions into a History Summary so analysts can start from seeds and friction signals instead of rereading every transcript.",
+      {
+        workspaceId: z.string().optional().describe("Workspace ID override. Uses the current MCP session workspace when omitted."),
+        codebaseId: z.string().optional().describe("Optional codebase ID override."),
+        repoPath: z.string().optional().describe("Optional repository path override."),
+        taskLabel: z.string().optional().describe("Short label for the current task or request."),
+        locale: z.string().optional().describe("Optional locale hint, e.g. en or zh-CN."),
+        featureId: z.string().optional().describe("Optional Feature Explorer feature ID."),
+        featureIds: z.array(z.string()).optional().describe("Optional ordered candidate Feature Tree IDs."),
+        filePaths: z.array(z.string()).optional().describe("Optional repository-relative file paths already known to be relevant."),
+        routeCandidates: z.array(z.string()).optional().describe("Optional route hints for file inference."),
+        apiCandidates: z.array(z.string()).optional().describe("Optional API hints for file inference."),
+        historySessionIds: z.array(z.string()).optional().describe("Optional linked history session IDs to summarize."),
+        moduleHints: z.array(z.string()).optional().describe("Optional module or subsystem hints."),
+        symptomHints: z.array(z.string()).optional().describe("Optional user-visible symptom hints."),
+        taskType: z.enum(["implementation", "planning", "analysis", "review"]).optional()
+          .describe("Task type hint used for retrieval heuristics."),
+        maxFiles: z.number().int().positive().optional().describe("Maximum number of files to include."),
+        maxSessions: z.number().int().positive().optional().describe("Maximum number of history seed sessions to summarize."),
+        role: z.string().optional().describe("Optional agent role hint, e.g. ROUTA or CRAFTER."),
+      },
+      async (params) => {
+        try {
+          const result = await summarizeTaskHistoryContextFromToolArgs(params, this.workspaceId);
           return this.toMcpResult({
             success: true,
             data: result,

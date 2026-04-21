@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { assembleTaskAdaptiveHarnessFromToolArgs } = vi.hoisted(() => ({
+const { assembleTaskAdaptiveHarnessFromToolArgs, summarizeTaskHistoryContextFromToolArgs } = vi.hoisted(() => ({
   assembleTaskAdaptiveHarnessFromToolArgs: vi.fn(async () => ({
     summary: "Recovered history-session context for the current task.",
     warnings: [],
@@ -16,11 +16,26 @@ const { assembleTaskAdaptiveHarnessFromToolArgs } = vi.hoisted(() => ({
     repeatedReadFiles: [],
     sessions: [],
   })),
+  summarizeTaskHistoryContextFromToolArgs: vi.fn(async () => ({
+    historySummary: {
+      overview: "Started from 2 linked history sessions and narrowed to 1 recovered session.",
+      seedSessionCount: 2,
+      recoveredSessionCount: 1,
+      matchedFileCount: 1,
+      seedSessions: [],
+    },
+    selectedFiles: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+    matchedFileDetails: [],
+    matchedSessionIds: ["session-123"],
+    warnings: [],
+  })),
 }));
 
 vi.mock("@/core/harness/task-adaptive-tool", () => ({
   TASK_ADAPTIVE_HARNESS_TOOL_NAME: "assemble_task_adaptive_harness",
+  TASK_HISTORY_SUMMARY_TOOL_NAME: "summarize_task_history_context",
   assembleTaskAdaptiveHarnessFromToolArgs,
+  summarizeTaskHistoryContextFromToolArgs,
 }));
 
 import { RoutaMcpToolManager } from "../routa-mcp-tool-manager";
@@ -131,6 +146,7 @@ describe("RoutaMcpToolManager", () => {
     expect(registrations.some((entry) => entry.name === "read_canvas_sdk_resource")).toBe(true);
     expect(registrations.some((entry) => entry.name === "read_specialist_spec_resource")).toBe(true);
     expect(registrations.some((entry) => entry.name === "assemble_task_adaptive_harness")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "summarize_task_history_context")).toBe(true);
 
     const createTaskTool = registrations.find((entry) => entry.name === "create_task");
     const noteTool = registrations.find((entry) => entry.name === "create_note");
@@ -138,12 +154,14 @@ describe("RoutaMcpToolManager", () => {
     const canvasSdkTool = registrations.find((entry) => entry.name === "read_canvas_sdk_resource");
     const specialistSpecTool = registrations.find((entry) => entry.name === "read_specialist_spec_resource");
     const taskAdaptiveHarnessTool = registrations.find((entry) => entry.name === "assemble_task_adaptive_harness");
+    const historySummaryTool = registrations.find((entry) => entry.name === "summarize_task_history_context");
     expect(createTaskTool).toBeDefined();
     expect(noteTool).toBeDefined();
     expect(delegateTool).toBeDefined();
     expect(canvasSdkTool).toBeDefined();
     expect(specialistSpecTool).toBeDefined();
     expect(taskAdaptiveHarnessTool).toBeDefined();
+    expect(historySummaryTool).toBeDefined();
 
     await createTaskTool!.handler({
       title: "Task",
@@ -226,6 +244,19 @@ describe("RoutaMcpToolManager", () => {
       historySessionIds: ["session-123"],
     }, "ws-1");
     expect(taskAdaptiveHarnessResult).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
+
+    const historySummaryResult = await historySummaryTool!.handler({
+      taskLabel: "Summarize linked history",
+      historySessionIds: ["session-1", "session-2"],
+    });
+    expect(summarizeTaskHistoryContextFromToolArgs).toHaveBeenCalledWith({
+      taskLabel: "Summarize linked history",
+      historySessionIds: ["session-1", "session-2"],
+    }, "ws-1");
+    expect(historySummaryResult).toMatchObject({
       content: [{ type: "text" }],
       isError: false,
     });

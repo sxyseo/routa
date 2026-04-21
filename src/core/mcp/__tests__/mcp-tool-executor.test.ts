@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { assembleTaskAdaptiveHarnessFromToolArgs } = vi.hoisted(() => ({
+const { assembleTaskAdaptiveHarnessFromToolArgs, summarizeTaskHistoryContextFromToolArgs } = vi.hoisted(() => ({
   assembleTaskAdaptiveHarnessFromToolArgs: vi.fn(async () => ({
     summary: "Recovered read failures and repeated path lookups from history.",
     warnings: [],
@@ -16,11 +16,26 @@ const { assembleTaskAdaptiveHarnessFromToolArgs } = vi.hoisted(() => ({
     repeatedReadFiles: [],
     sessions: [],
   })),
+  summarizeTaskHistoryContextFromToolArgs: vi.fn(async () => ({
+    historySummary: {
+      overview: "Started from 2 linked history sessions and narrowed to 1 recovered session.",
+      seedSessionCount: 2,
+      recoveredSessionCount: 1,
+      matchedFileCount: 1,
+      seedSessions: [],
+    },
+    selectedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+    matchedFileDetails: [],
+    matchedSessionIds: ["session-123"],
+    warnings: [],
+  })),
 }));
 
 vi.mock("@/core/harness/task-adaptive-tool", () => ({
   TASK_ADAPTIVE_HARNESS_TOOL_NAME: "assemble_task_adaptive_harness",
+  TASK_HISTORY_SUMMARY_TOOL_NAME: "summarize_task_history_context",
   assembleTaskAdaptiveHarnessFromToolArgs,
+  summarizeTaskHistoryContextFromToolArgs,
 }));
 
 import { executeMcpTool, getMcpToolDefinitions } from "../mcp-tool-executor";
@@ -79,5 +94,33 @@ describe("executeMcpTool", () => {
     expect(
       getMcpToolDefinitions("essential", "team-coordination").some((tool) => tool.name === "assemble_task_adaptive_harness"),
     ).toBe(true);
+    expect(
+      getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "summarize_task_history_context"),
+    ).toBe(true);
+  });
+
+  it("builds compressed history summaries from MCP args", async () => {
+    const result = await executeMcpTool(
+      {} as never,
+      "summarize_task_history_context",
+      {
+        workspaceId: "workspace-1",
+        taskLabel: "Summarize Kanban history",
+        historySessionIds: ["session-1", "session-2"],
+      },
+    );
+
+    expect(summarizeTaskHistoryContextFromToolArgs).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      taskLabel: "Summarize Kanban history",
+      historySessionIds: ["session-1", "session-2"],
+    }, "workspace-1");
+    expect(result).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
+    expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"historySummary": {',
+    );
   });
 });
