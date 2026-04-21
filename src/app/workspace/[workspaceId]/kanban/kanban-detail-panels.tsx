@@ -160,6 +160,22 @@ function buildTranscriptHints(sessionIds: string[]): string[] {
   return uniquePreserveOrder(sessionIds.map((sessionId) => `~/.codex/sessions/**/${sessionId}*.jsonl`));
 }
 
+function uniqueFailureSignals(failures: TaskAdaptiveHarnessPack["failures"]): TaskAdaptiveHarnessPack["failures"] {
+  const seen = new Set<string>();
+  const result: TaskAdaptiveHarnessPack["failures"] = [];
+
+  for (const failure of failures) {
+    const key = [failure.sessionId, failure.toolName, failure.command ?? "", failure.message].join("\u0000");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(failure);
+  }
+
+  return result;
+}
+
 function resolveHistoryAnalysisSessionIds(
   pack: TaskAdaptiveHarnessPack,
   fallback: string[] | undefined,
@@ -862,14 +878,29 @@ export function JitContextPanel({
     [specialistLanguage, task],
   );
   const canLoadContext = hasTaskAdaptiveSearchHints(harnessOptions);
-  const historicalIssueCount = (pack?.failures.length ?? 0) + (pack?.repeatedReadFiles.length ?? 0);
+  const uniqueFailures = useMemo(
+    () => uniqueFailureSignals(pack?.failures ?? []),
+    [pack?.failures],
+  );
+  const uniqueRepeatedReadFiles = useMemo(
+    () => uniquePreserveOrder(pack?.repeatedReadFiles ?? []),
+    [pack?.repeatedReadFiles],
+  );
+  const uniqueWarnings = useMemo(
+    () => uniquePreserveOrder(pack?.warnings ?? []),
+    [pack?.warnings],
+  );
+  const uniqueMatchReasons = useMemo(
+    () => uniquePreserveOrder(pack?.matchReasons ?? []),
+    [pack?.matchReasons],
+  );
+  const historicalIssueCount = uniqueFailures.length + uniqueRepeatedReadFiles.length;
   const historySummary = pack?.historySummary ?? null;
   const historySeedSessionCount = historySummary?.seedSessionCount ?? 0;
   const recoveredSessionCount = pack?.sessions.length ?? 0;
   const matchedFileDetails = getMatchedFileDetails(pack);
   const matchedFileCount = matchedFileDetails.length;
   const matchConfidence = pack?.matchConfidence ?? "low";
-  const matchReasons = pack?.matchReasons ?? [];
   const harnessSignature = useMemo(
     () => JSON.stringify(harnessOptions),
     [harnessOptions],
@@ -1152,7 +1183,7 @@ export function JitContextPanel({
             <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
               {t.kanbanDetail.jitContextNoHistorySessions}
             </div>
-          ) : !pack || (pack.failures.length === 0 && pack.repeatedReadFiles.length === 0 && pack.sessions.length === 0 && matchedFileDetails.length === 0 && pack.warnings.length === 0 && !pack.historySummary) ? (
+          ) : !pack || (uniqueFailures.length === 0 && uniqueRepeatedReadFiles.length === 0 && pack.sessions.length === 0 && matchedFileDetails.length === 0 && uniqueWarnings.length === 0 && !pack.historySummary) ? (
             <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
               {t.kanbanDetail.noJitContext}
             </div>
@@ -1181,14 +1212,14 @@ export function JitContextPanel({
                 <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200">
                   {formatMatchConfidenceLabel(matchConfidence, t)}
                 </div>
-                {matchReasons.length > 0 ? (
+                {uniqueMatchReasons.length > 0 ? (
                   <div className="mt-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                       {t.kanbanDetail.matchReasons}
                     </div>
                     <div className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
-                      {matchReasons.map((reason) => (
-                        <div key={reason}>{reason}</div>
+                      {uniqueMatchReasons.map((reason, index) => (
+                        <div key={`${reason}:${index}`}>{reason}</div>
                       ))}
                     </div>
                   </div>
@@ -1287,14 +1318,14 @@ export function JitContextPanel({
                 </div>
               ) : null}
 
-              {pack.warnings.length > 0 ? (
+              {uniqueWarnings.length > 0 ? (
                 <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/40 dark:bg-amber-900/10">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">
                     {t.kanbanDetail.warnings}
                   </div>
                   <div className="mt-2 space-y-1 text-sm text-amber-800 dark:text-amber-100">
-                    {pack.warnings.map((warning) => (
-                      <div key={warning}>{warning}</div>
+                    {uniqueWarnings.map((warning, index) => (
+                      <div key={`${warning}:${index}`}>{warning}</div>
                     ))}
                   </div>
                 </div>
@@ -1304,11 +1335,11 @@ export function JitContextPanel({
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                   {t.kanbanDetail.historicalIssues}
                 </div>
-                {pack.failures.length > 0 ? (
+                {uniqueFailures.length > 0 ? (
                   <div className="space-y-2">
-                    {pack.failures.map((failure) => (
+                    {uniqueFailures.map((failure, index) => (
                       <div
-                        key={`${failure.sessionId}:${failure.toolName}:${failure.message}`}
+                        key={`${failure.sessionId}:${failure.toolName}:${failure.command ?? ""}:${failure.message}:${index}`}
                         className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/40 dark:bg-amber-900/10"
                       >
                         <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
@@ -1331,15 +1362,15 @@ export function JitContextPanel({
                   </div>
                 )}
 
-                {pack.repeatedReadFiles.length > 0 ? (
+                {uniqueRepeatedReadFiles.length > 0 ? (
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/20">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                       {t.kanbanDetail.repeatedReadHotspots}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {pack.repeatedReadFiles.map((filePath) => (
+                      {uniqueRepeatedReadFiles.map((filePath, index) => (
                         <span
-                          key={filePath}
+                          key={`${filePath}:${index}`}
                           className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300"
                         >
                           {filePath}

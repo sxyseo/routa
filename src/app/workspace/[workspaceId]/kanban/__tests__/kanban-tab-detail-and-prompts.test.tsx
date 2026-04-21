@@ -363,9 +363,12 @@ describe("KanbanCardDetail repository health", () => {
               failedReadSignals: [],
             }],
           },
-          warnings: [],
+          warnings: ["Prefer the API route before the UI shell.", "Prefer the API route before the UI shell."],
           matchConfidence: "high",
-          matchReasons: ["Started from 3 linked history sessions as retrieval seeds."],
+          matchReasons: [
+            "Started from 3 linked history sessions as retrieval seeds.",
+            "Started from 3 linked history sessions as retrieval seeds.",
+          ],
           selectedFiles: ["src/app/page.tsx"],
           matchedFileDetails: [{
             filePath: "src/app/page.tsx",
@@ -380,8 +383,14 @@ describe("KanbanCardDetail repository health", () => {
             message: "Operation not permitted",
             toolName: "exec_command",
             command: "sed -n '1,200p' src/app/page.tsx",
+          }, {
+            provider: "codex",
+            sessionId: "session-history",
+            message: "Operation not permitted",
+            toolName: "exec_command",
+            command: "sed -n '1,200p' src/app/page.tsx",
           }],
-          repeatedReadFiles: ["src/app/page.tsx"],
+          repeatedReadFiles: ["src/app/page.tsx", "src/app/page.tsx"],
           sessions: [{
             provider: "codex",
             sessionId: "session-history",
@@ -454,8 +463,9 @@ describe("KanbanCardDetail repository health", () => {
     expect(screen.getByText("Trace the Kanban task-adaptive loading path first.")).toBeTruthy();
     expect(screen.getByText("Match confidence")).toBeTruthy();
     expect(screen.getAllByText("High").length).toBeGreaterThan(0);
-    expect(screen.getByText("Started from 3 linked history sessions as retrieval seeds.")).toBeTruthy();
-    expect(screen.getByText("Operation not permitted")).toBeTruthy();
+    expect(screen.getAllByText("Started from 3 linked history sessions as retrieval seeds.")).toHaveLength(1);
+    expect(screen.getAllByText("Operation not permitted")).toHaveLength(1);
+    expect(screen.getAllByText("Prefer the API route before the UI shell.")).toHaveLength(1);
     expect(screen.getByText("Repeated read hotspots")).toBeTruthy();
     expect(screen.getAllByText("src/app/page.tsx").length).toBeGreaterThan(0);
     expect(screen.getByText("Changes: 1")).toBeTruthy();
