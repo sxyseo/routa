@@ -16,14 +16,17 @@ export async function GET() {
   }
 
   const detector = getDockerDetector();
-  const status = await detector.checkAvailability();
   const image = DEFAULT_DOCKER_AGENT_IMAGE;
-  const imageAvailable = status.available ? await detector.isImageAvailable(image) : false;
+
+  const [status, imageAvailable] = await Promise.all([
+    detector.checkAvailability(),
+    detector.isImageAvailable(image),
+  ]);
 
   return NextResponse.json({
     ...status,
     checkedAt: new Date().toISOString(),
     image,
-    imageAvailable,
+    imageAvailable: status.available ? imageAvailable : false,
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Copy, Maximize2, Minimize2, X } from "lucide-react";
+import { Archive, Check, Copy, Maximize2, Minimize2, X } from "lucide-react";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { Select } from "@/client/components/select";
@@ -334,6 +334,7 @@ export function KanbanCardDetail({
   const displayedObjective = isDescriptionEditing ? editObjective : (task.objective ?? "");
   const displayedTestCases = isTestCasesEditing ? editTestCases : (task.testCases ?? []).join("\n");
   const displayedPriority = task.priority ?? editPriority;
+  const showArchiveButton = task.columnId === "done";
   const resolvedWorkspaceId = codebases[0]?.workspaceId ?? "";
 
   const getTaskRepositoryPath = (): string | null => {
@@ -819,6 +820,18 @@ export function KanbanCardDetail({
         </div>
 
         <div className={`mt-auto border-t border-slate-200 dark:border-slate-700 ${compactMode ? "pt-2" : "pt-3"}`}>
+          {showArchiveButton && (
+            <button
+              onClick={() => {
+                void onPatchTask(task.id, { columnId: "archived" }).then(() => onClose?.());
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-slate-100"
+            >
+              <Archive className="h-4 w-4" />
+              {t.kanbanDetail.archiveCard}
+            </button>
+          )}
+          {showArchiveButton && <div className={compactMode ? "mt-1.5" : "mt-2"} />}
           <button
             onClick={onDelete}
             className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20"

@@ -25,13 +25,14 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const [loading, setLoading] = useState(true);
   const fetchedRef = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await desktopAwareFetch("/api/acp/docker/status", { cache: "no-store" });
+      const res = await desktopAwareFetch("/api/acp/docker/status", { cache: "no-store", signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setStatus((await res.json()) as DockerStatusResponse);
     } catch {
+      if (signal?.aborted) return;
       setStatus({
         available: false,
         daemonRunning: false,
@@ -48,7 +49,10 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
     // Only fetch once, even when locale causes re-renders
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    void refresh();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    void refresh(controller.signal).finally(() => clearTimeout(timer));
+    return () => { controller.abort(); clearTimeout(timer); };
   }, [refresh]);
 
   const available = !!status?.available;

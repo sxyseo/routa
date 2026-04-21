@@ -451,7 +451,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     boardSettings: "设置",
     queued: "排队中",
     starting: "启动中",
-    live: "在线",
+    live: "运行中",
     failed: "失败",
     idle: "空闲",
     syncIssue: "同步问题",
@@ -939,6 +939,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     addFallbackAgent: "添加备选 Agent",
     enableAutomaticFallback: "失败时自动尝试下一个备选 Agent",
     fallbackProviderDefault: "默认提供商",
+    archiveCard: "归档",
   },
 
   kanbanModals: {

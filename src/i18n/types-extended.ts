@@ -943,6 +943,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     addFallbackAgent: string;
     enableAutomaticFallback: string;
     fallbackProviderDefault: string;
+    archiveCard: string;
   };
 
   // Kanban modal dialogs

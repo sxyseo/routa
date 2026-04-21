@@ -939,6 +939,7 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     addFallbackAgent: "Add fallback agent",
     enableAutomaticFallback: "Automatically try next fallback agent on failure",
     fallbackProviderDefault: "Default provider",
+    archiveCard: "Archive",
   },
 
   kanbanModals: {
