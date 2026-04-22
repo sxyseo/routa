@@ -1063,6 +1063,7 @@ export function ColumnAutomationWorkspace({
                   })}
                 </div>
               </div>
+              {column.stage !== "done" && column.stage !== "archived" && (
               <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
                 <input
                   type="checkbox"
@@ -1077,6 +1078,7 @@ export function ColumnAutomationWorkspace({
                   </span>
                 </span>
               </label>
+              )}
               <div className="space-y-2">
                 <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
                   <input
