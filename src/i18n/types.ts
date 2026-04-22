@@ -391,6 +391,12 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     frictionProfilesReady: string;
     frictionProfilesMissing: string;
     frictionProfilesError: string;
+    retrospectiveHistoryTitle: string;
+    retrospectiveHistoryLoading: string;
+    retrospectiveHistoryEmpty: string;
+    retrospectiveHistoryError: string;
+    retrospectiveHistoryFeature: string;
+    retrospectiveHistoryFile: string;
   };
 
   // Settings panel

@@ -385,6 +385,12 @@ const en: TranslationDictionary = {
     frictionProfilesReady: "Friction profile ready",
     frictionProfilesMissing: "No friction profile yet",
     frictionProfilesError: "Friction profile refresh failed",
+    retrospectiveHistoryTitle: "Saved history",
+    retrospectiveHistoryLoading: "Loading saved history…",
+    retrospectiveHistoryEmpty: "No saved history yet",
+    retrospectiveHistoryError: "Saved history failed to load",
+    retrospectiveHistoryFeature: "Feature",
+    retrospectiveHistoryFile: "File",
   },
 
   settings: {

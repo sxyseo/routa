@@ -384,6 +384,12 @@ const zh: TranslationDictionary = {
     frictionProfilesReady: "摩擦画像已就绪",
     frictionProfilesMissing: "尚无摩擦画像",
     frictionProfilesError: "刷新摩擦画像失败",
+    retrospectiveHistoryTitle: "已保存历史",
+    retrospectiveHistoryLoading: "正在加载已保存历史…",
+    retrospectiveHistoryEmpty: "尚无已保存历史",
+    retrospectiveHistoryError: "加载已保存历史失败",
+    retrospectiveHistoryFeature: "Feature",
+    retrospectiveHistoryFile: "文件",
   },
 
   settings: {

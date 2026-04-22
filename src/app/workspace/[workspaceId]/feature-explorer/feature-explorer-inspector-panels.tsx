@@ -16,6 +16,7 @@ import type {
   AggregatedSelectionSession,
   ApiDetail,
   FeatureDetail,
+  RetrospectiveMemoryEntry,
 } from "./types";
 import {
   type ExplorerSurfaceItem,
@@ -153,12 +154,24 @@ function InlineMetricPill({ label, value }: { label: string; value: string }) {
   );
 }
 
+function describeRetrospectiveScope(
+  entry: RetrospectiveMemoryEntry,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
+  return entry.scope === "feature"
+    ? t.featureExplorer.retrospectiveHistoryFeature
+    : t.featureExplorer.retrospectiveHistoryFile;
+}
+
 export function ContextPanel({
   featureDetail,
   selectedFileCount,
   selectedScopeSessions,
   selectedSurface,
   selectedSurfaceFeatureNames,
+  retrospectiveMemories,
+  retrospectiveMemoryLoading,
+  retrospectiveMemoryError,
   onOpenSessionAnalysis,
   t,
 }: {
@@ -167,6 +180,9 @@ export function ContextPanel({
   selectedScopeSessions: AggregatedSelectionSession[];
   selectedSurface: ExplorerSurfaceItem | null;
   selectedSurfaceFeatureNames: string[];
+  retrospectiveMemories: RetrospectiveMemoryEntry[];
+  retrospectiveMemoryLoading: boolean;
+  retrospectiveMemoryError: string | null;
   onOpenSessionAnalysis?: () => void;
   t: ReturnType<typeof useTranslation>["t"];
 }) {
@@ -193,6 +209,13 @@ export function ContextPanel({
   const canOpenSessionAnalysis = selectedFileCount > 0
     && selectedScopeSessions.length > 0
     && typeof onOpenSessionAnalysis === "function";
+  const displayedRetrospectiveMemories = [...retrospectiveMemories].sort((left, right) => {
+    if (left.scope !== right.scope) {
+      return left.scope === "feature" ? -1 : 1;
+    }
+
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
 
   return (
     <div className="space-y-2">
@@ -245,6 +268,46 @@ export function ContextPanel({
           </div>
         </ContextSection>
       ) : null}
+
+      <ContextSection title={t.featureExplorer.retrospectiveHistoryTitle}>
+        {retrospectiveMemoryLoading ? (
+          <SignalEmptyState message={t.featureExplorer.retrospectiveHistoryLoading} />
+        ) : retrospectiveMemoryError ? (
+          <SignalEmptyState message={retrospectiveMemoryError || t.featureExplorer.retrospectiveHistoryError} />
+        ) : displayedRetrospectiveMemories.length > 0 ? (
+          <div className="space-y-1.5">
+            {displayedRetrospectiveMemories.map((entry) => (
+              <div
+                key={`${entry.scope}:${entry.targetId}`}
+                className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-desktop-text-secondary">
+                        {describeRetrospectiveScope(entry, t)}
+                      </span>
+                      <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-desktop-text-primary">
+                        {entry.scope === "feature"
+                          ? entry.featureName ?? entry.featureId ?? entry.targetId
+                          : entry.targetId}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[10px] text-desktop-text-secondary">
+                    {formatShortDate(entry.updatedAt)}
+                  </span>
+                </div>
+                <div className="mt-1.5 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1.5 text-[11px] leading-5 text-desktop-text-secondary">
+                  {entry.summary}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <SignalEmptyState message={t.featureExplorer.retrospectiveHistoryEmpty} />
+        )}
+      </ContextSection>
 
       <ContextSection title={t.featureExplorer.selectedFileSignals}>
         {selectedFileCount > 0 ? (
