@@ -32,6 +32,7 @@
     "targets": "all",
     "resources": [
       "frontend/**/*",
+      "bundled/feature-tree/**/*",
       "../../../resources/specialists/**/*"
     ],
     "icon": [

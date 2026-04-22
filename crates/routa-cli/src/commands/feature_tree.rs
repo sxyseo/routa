@@ -5,9 +5,7 @@
 
 use std::path::PathBuf;
 
-use routa_server::feature_tree::{
-    ensure_feature_tree_success, run_feature_tree_script, workspace_root,
-};
+use routa_server::feature_tree::{ensure_feature_tree_success, run_feature_tree_script};
 
 fn repo_root(repo_path: Option<&str>) -> Result<PathBuf, String> {
     let resolved = repo_path
@@ -42,7 +40,7 @@ pub fn preflight(repo_path: Option<&str>, json_output: bool) -> Result<(), Strin
         repo_root.to_string_lossy().to_string(),
     ];
 
-    let output = run_feature_tree_script(&args, &workspace_root())?;
+    let output = run_feature_tree_script(&args, &repo_root)?;
     ensure_feature_tree_success(&output, "Feature tree preflight failed")?;
 
     if json_output {
@@ -100,7 +98,7 @@ pub fn generate(
         eprintln!("🌳 Generating feature tree…");
     }
 
-    let output = run_feature_tree_script(&args, &workspace_root())?;
+    let output = run_feature_tree_script(&args, &repo_root)?;
     ensure_feature_tree_success(&output, "Feature tree generation failed")?;
 
     if json_output || dry_run {
@@ -143,7 +141,7 @@ pub fn commit(
         args.push(metadata_path.to_string_lossy().to_string());
     }
 
-    let output = run_feature_tree_script(&args, &workspace_root())?;
+    let output = run_feature_tree_script(&args, &repo_root)?;
     ensure_feature_tree_success(&output, "Feature tree commit failed")?;
 
     if json_output {
@@ -217,8 +215,8 @@ pub fn inspect(repo_path: Option<&str>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::workspace_root;
     use routa_server::feature_tree::feature_tree_script_path;
+    use routa_server::feature_tree::workspace_root;
 
     #[test]
     fn resolves_workspace_root_to_repo_root() {
