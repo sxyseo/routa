@@ -30,13 +30,6 @@ export function startWorktreeCleanupListener(system: RoutaSystem): void {
       );
       await worktreeService.removeWorktree(worktreeId, { deleteBranch });
 
-      const task = await system.taskStore.get(taskId);
-      if (task && task.worktreeId === worktreeId) {
-        task.worktreeId = undefined;
-        task.updatedAt = new Date();
-        await system.taskStore.save(task);
-      }
-
       console.log(
         `[WorktreeCleanup] Cleaned up worktree ${worktreeId} for task ${taskId}.`,
       );
@@ -45,6 +38,22 @@ export function startWorktreeCleanupListener(system: RoutaSystem): void {
         `[WorktreeCleanup] Failed to clean up worktree ${worktreeId}:`,
         err,
       );
+
+      // Remove stale DB record so it stops showing up in the UI
+      try {
+        await system.worktreeStore.remove(worktreeId);
+      } catch { /* already gone */ }
+    } finally {
+      // Always clear task.worktreeId — if cleanup succeeded it's redundant,
+      // if it failed the dangling reference causes endless 404s
+      try {
+        const task = await system.taskStore.get(taskId);
+        if (task && task.worktreeId === worktreeId) {
+          task.worktreeId = undefined;
+          task.updatedAt = new Date();
+          await system.taskStore.save(task);
+        }
+      } catch { /* task may be gone */ }
     }
   });
 }
