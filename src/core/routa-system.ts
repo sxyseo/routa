@@ -37,6 +37,7 @@ import { startLaneScanner } from "./kanban/kanban-lane-scanner";
 import { getKanbanEventBroadcaster } from "./kanban/kanban-event-broadcaster";
 import { AgentEventType } from "./events/event-bus";
 import { decorateSystemWithTiming } from "./http/store-timing-proxy";
+import { decorateSystemWithDedup } from "./http/store-dedup-proxy";
 
 export interface RoutaSystem {
   agentStore: AgentStore;
@@ -366,6 +367,11 @@ export function getRoutaSystem(): RoutaSystem {
 
   // Always apply timing decoration (idempotent: returns original if ROUTA_STORE_TIMING!=1)
   g[GLOBAL_KEY] = decorateSystemWithTiming(g[GLOBAL_KEY] as RoutaSystem);
+
+  // Apply dedup decoration AFTER timing so timing still measures real DB latency.
+  // Coalesces concurrent identical reads within a 2-3s TTL window.
+  // Disable with ROUTA_STORE_DEDUP=0.
+  g[GLOBAL_KEY] = decorateSystemWithDedup(g[GLOBAL_KEY] as RoutaSystem);
 
   return g[GLOBAL_KEY] as RoutaSystem;
 }

@@ -213,6 +213,8 @@ class HttpSessionStore {
   private nonBackgroundSessions = new Set<string>();
   /** Cache: sessionId → BackgroundTask for progress updates (avoids repeated DB lookups). */
   private backgroundTaskCache = new Map<string, NonNullable<Awaited<ReturnType<BackgroundTaskStore["findBySessionId"]>>>>();
+  /** In-flight findBySessionId promises to prevent cache stampede. */
+  private backgroundTaskPending = new Map<string, Promise<NonNullable<Awaited<ReturnType<BackgroundTaskStore["findBySessionId"]>>> | undefined>>();
   private progressBuffer = new BackgroundTaskProgressBuffer();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -304,6 +306,7 @@ class HttpSessionStore {
     this.sessionAssistantOutput.delete(sessionId);
     this.nonBackgroundSessions.delete(sessionId);
     this.backgroundTaskCache.delete(sessionId);
+    this.backgroundTaskPending.delete(sessionId);
     // Clean up AgentEventBridge
     this.agentEventBridges.get(sessionId)?.cleanup();
     this.agentEventBridges.delete(sessionId);
@@ -973,6 +976,7 @@ class HttpSessionStore {
     // Clear remaining caches
     this.nonBackgroundSessions.clear();
     this.backgroundTaskCache.clear();
+    this.backgroundTaskPending.clear();
     this.lastAccessTime.clear();
   }
 
@@ -1079,7 +1083,15 @@ class HttpSessionStore {
       // as initial values — they get overwritten by accumulated deltas from `updates`.
       let task = this.backgroundTaskCache.get(sessionId);
       if (!task) {
-        const found = await system.backgroundTaskStore.findBySessionId(sessionId);
+        // Dedup in-flight lookups to prevent cache stampede: concurrent pushNotification
+        // calls for the same session share one DB query instead of each firing its own.
+        let pending = this.backgroundTaskPending.get(sessionId);
+        if (!pending) {
+          pending = system.backgroundTaskStore.findBySessionId(sessionId);
+          this.backgroundTaskPending.set(sessionId, pending);
+        }
+        const found = await pending;
+        this.backgroundTaskPending.delete(sessionId);
         if (!found) {
           this.nonBackgroundSessions.add(sessionId);
           return;
