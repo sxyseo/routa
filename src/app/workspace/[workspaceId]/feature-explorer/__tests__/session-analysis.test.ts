@@ -89,7 +89,8 @@ describe("session-analysis", () => {
       ],
     });
 
-    expect(prompt).toContain("Kanban Workflow");
+    expect(prompt).toContain("Feature ID: kanban-workflow");
+    expect(prompt).toContain("Feature Name: Kanban Workflow");
     expect(prompt).toContain("crates/routa-server/src/api/kanban.rs");
     expect(prompt).toContain("019d-kanban-analysis");
     expect(prompt).toContain("~/.codex/sessions/**/019d-kanban-analysis*.jsonl");
@@ -99,6 +100,7 @@ describe("session-analysis", () => {
     expect(prompt).toContain("可直接复用的提示词模板");
     expect(prompt).toContain("load_feature_retrospective_memory");
     expect(prompt).toContain("save_feature_retrospective_memory");
+    expect(prompt).toContain("feature 级保存时，必须传上下文里的精确 `featureId`");
     expect(prompt).toContain("Scope: file:<path> | feature:<id>");
     expect(prompt).toContain("Next ask: <one sentence>");
     expect(prompt).toContain("Must include: <4-6 comma-separated fields>");
@@ -179,6 +181,9 @@ describe("session-analysis", () => {
     expect(prompt).toContain("scripts/harness/inspect-transcript-turns.ts");
     expect(prompt).toContain("load_feature_retrospective_memory");
     expect(prompt).toContain("save_feature_retrospective_memory");
+    expect(prompt).toContain("Feature ID: feature-explorer");
+    expect(prompt).toContain("Feature Name: Feature Explorer");
+    expect(prompt).toContain("feature 级保存时，必须传上下文里的精确 `featureId`");
     expect(prompt).toContain("Scope: file:<path> | feature:<id>");
     expect(prompt).toContain("Next ask: <one sentence>");
     expect(prompt).toContain("Must include: <4-6 comma-separated fields>");

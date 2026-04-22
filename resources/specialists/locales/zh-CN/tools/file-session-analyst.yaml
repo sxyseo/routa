@@ -47,6 +47,7 @@ system_prompt: |
   - 提供 2-4 个可复用的提示模板。
   - 说明下次一开始就应该补充哪些上下文。
   - 如果 `save_feature_retrospective_memory` 可用，请为最强的文件目标保存一条简短、可直接注入下次 prompt 的 summary；如果模式明显超出单文件，也顺手保存一条 feature 级 summary。
+  - 做 feature 级保存时，必须传上下文里的精确 `featureId`；`featureName` 只能用于显示，不能替代 `featureId`。
   - 保存 memory 时不要自由发挥，统一使用下面这 5 行英文标签骨架：
     Scope: file:<path> | feature:<id>
     Next ask: <one sentence>
