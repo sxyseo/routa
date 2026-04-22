@@ -17,6 +17,7 @@ export interface FeatureRetrospectiveMemoryEntry {
 export interface LoadFeatureRetrospectiveMemoryParams {
   filePaths?: string[];
   featureId?: string;
+  featureIds?: string[];
 }
 
 export interface SaveFeatureRetrospectiveMemoryInput {
@@ -162,10 +163,15 @@ export function loadMatchingFeatureRetrospectiveMemories(
     }
   }
 
-  if (params.featureId) {
+  const featureIds = uniquePreserveOrder([
+    ...(params.featureIds ?? []),
+    ...(params.featureId ? [params.featureId] : []),
+  ]);
+
+  for (const featureId of featureIds) {
     const featureEntry = loadFeatureRetrospectiveMemoryEntry(repoRoot, {
       scope: "feature",
-      featureId: params.featureId,
+      featureId,
     });
     if (featureEntry) {
       matchedMemories.push(featureEntry);

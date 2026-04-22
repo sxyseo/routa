@@ -609,7 +609,7 @@ describe("FeatureExplorerPageClient", () => {
     });
   });
 
-  it("shows saved retrospective history when opening a feature page", async () => {
+  it("shows saved retrospective history from top feature candidates on entry", async () => {
     useFeatureExplorerData.mockReturnValue({
       loading: false,
       error: null,
@@ -627,6 +627,19 @@ describe("FeatureExplorerPageClient", () => {
           sourceFileCount: 1,
           pageCount: 1,
           apiCount: 0,
+        },
+        {
+          id: "workspace-overview",
+          name: "Workspace Overview",
+          group: "workspace",
+          summary: "Review the workspace shell",
+          status: "active",
+          sessionCount: 5,
+          changedFiles: 3,
+          updatedAt: "2026-04-21T11:05:00.000Z",
+          sourceFileCount: 3,
+          pageCount: 2,
+          apiCount: 1,
         },
       ],
       surfaceIndex: {
@@ -682,17 +695,11 @@ describe("FeatureExplorerPageClient", () => {
           matchedMemories: [
             {
               scope: "feature",
-              targetId: "feature-explorer",
-              featureId: "feature-explorer",
-              featureName: "Feature Explorer",
+              targetId: "workspace-overview",
+              featureId: "workspace-overview",
+              featureName: "Workspace Overview",
               updatedAt: "2026-04-21T11:30:00.000Z",
-              summary: "Start with the selected test file and keep the scope read-only.",
-            },
-            {
-              scope: "file",
-              targetId: "src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx",
-              updatedAt: "2026-04-21T11:20:00.000Z",
-              summary: "Most sessions pair this page client with its test file.",
+              summary: "Start from the workspace shell, then narrow to a single feature file.",
             },
           ],
         });
@@ -708,10 +715,9 @@ describe("FeatureExplorerPageClient", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Saved history")).toBeTruthy();
-      expect(screen.getByText("Start with the selected test file and keep the scope read-only.")).toBeTruthy();
-      expect(screen.getByText("Most sessions pair this page client with its test file.")).toBeTruthy();
+      expect(screen.getByText("Start from the workspace shell, then narrow to a single feature file.")).toBeTruthy();
+      expect(screen.getAllByText("Workspace Overview").length).toBeGreaterThan(0);
       expect(screen.getByText("Feature")).toBeTruthy();
-      expect(screen.getByText("File")).toBeTruthy();
     });
 
     expect(
@@ -719,6 +725,7 @@ describe("FeatureExplorerPageClient", () => {
         typeof input === "string"
         && input.includes("/feature-explorer/retrospectives?")
         && input.includes("featureId=feature-explorer")
+        && input.includes("featureId=workspace-overview")
         && input.includes("filePath=src%2Fapp%2Fworkspace%2F%5BworkspaceId%5D%2Ffeature-explorer%2Ffeature-explorer-page-client.tsx"),
       ),
     ).toBe(true);

@@ -21,6 +21,7 @@ import { useTranslation } from "@/i18n";
 import type {
   AggregatedSelectionSession,
   FeatureDetail,
+  FeatureSummary,
   FrictionProfileSnapshot,
   RetrospectiveMemoryResponse,
 } from "./types";
@@ -60,6 +61,50 @@ function emptyRetrospectiveMemoryResponse(): RetrospectiveMemoryResponse {
     storageRoot: "",
     matchedMemories: [],
   };
+}
+
+function compareRetrospectiveFeatureCandidates(left: FeatureSummary, right: FeatureSummary): number {
+  const leftIsInferred = left.status === "inferred";
+  const rightIsInferred = right.status === "inferred";
+  if (leftIsInferred !== rightIsInferred) {
+    return leftIsInferred ? 1 : -1;
+  }
+
+  if (right.sessionCount !== left.sessionCount) {
+    return right.sessionCount - left.sessionCount;
+  }
+
+  if (right.changedFiles !== left.changedFiles) {
+    return right.changedFiles - left.changedFiles;
+  }
+
+  const leftSurfaceCount = left.sourceFileCount + left.pageCount + left.apiCount;
+  const rightSurfaceCount = right.sourceFileCount + right.pageCount + right.apiCount;
+  if (rightSurfaceCount !== leftSurfaceCount) {
+    return rightSurfaceCount - leftSurfaceCount;
+  }
+
+  if (left.updatedAt !== right.updatedAt) {
+    return right.updatedAt.localeCompare(left.updatedAt);
+  }
+
+  return left.name.localeCompare(right.name);
+}
+
+function deriveRetrospectiveFeatureIds(
+  features: FeatureSummary[],
+  prioritizedFeatureId: string,
+  limit = 4,
+): string[] {
+  const rankedIds = [...features]
+    .filter((feature) => Boolean(feature.id))
+    .sort(compareRetrospectiveFeatureCandidates)
+    .map((feature) => feature.id);
+
+  return [...new Set([
+    ...(prioritizedFeatureId ? [prioritizedFeatureId] : []),
+    ...rankedIds,
+  ])].slice(0, limit);
 }
 
 export function FeatureExplorerPageClient({
@@ -320,7 +365,14 @@ export function FeatureExplorerPageClient({
     }, {}),
     [capabilityTreeNodes],
   );
-  const retrospectiveFeatureId = (surfaceOnlySelection ? null : resolvedFeatureDetail)?.id ?? "";
+  const prioritizedRetrospectiveFeatureId = surfaceOnlySelection
+    ? ""
+    : (resolvedFeatureDetail?.id ?? activeFeature?.id ?? effectiveFeatureId);
+  const retrospectiveFeatureIds = useMemo(
+    () => deriveRetrospectiveFeatureIds(features, prioritizedRetrospectiveFeatureId),
+    [features, prioritizedRetrospectiveFeatureId],
+  );
+  const retrospectiveFeatureKey = retrospectiveFeatureIds.join("|");
   const retrospectiveFileKey = selectedFilePaths.join("|");
 
   useEffect(() => {
@@ -334,7 +386,7 @@ export function FeatureExplorerPageClient({
         return;
       }
 
-      if (!retrospectiveFeatureId && selectedFilePaths.length === 0) {
+      if (retrospectiveFeatureIds.length === 0 && selectedFilePaths.length === 0) {
         setRetrospectiveMemoryResponse(emptyRetrospectiveMemoryResponse());
         setRetrospectiveMemoryError(null);
         setIsLoadingRetrospectiveMemory(false);
@@ -348,8 +400,8 @@ export function FeatureExplorerPageClient({
           workspaceId,
           repoPath: effectiveRepoSelection.path,
         });
-        if (retrospectiveFeatureId) {
-          params.set("featureId", retrospectiveFeatureId);
+        for (const featureId of retrospectiveFeatureIds) {
+          params.append("featureId", featureId);
         }
         for (const filePath of selectedFilePaths) {
           params.append("filePath", filePath);
@@ -389,7 +441,8 @@ export function FeatureExplorerPageClient({
     };
   }, [
     effectiveRepoSelection?.path,
-    retrospectiveFeatureId,
+    retrospectiveFeatureKey,
+    retrospectiveFeatureIds,
     retrospectiveFileKey,
     selectedFilePaths,
     t.featureExplorer.retrospectiveHistoryError,

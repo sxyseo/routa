@@ -188,8 +188,11 @@ export function ContextPanel({
 }) {
   const [copiedResumeCommand, setCopiedResumeCommand] = useState("");
   const [expandedPromptSessions, setExpandedPromptSessions] = useState<Record<string, boolean>>({});
+  const hasRetrospectiveContent = retrospectiveMemoryLoading
+    || Boolean(retrospectiveMemoryError)
+    || retrospectiveMemories.length > 0;
 
-  if (!featureDetail && !selectedSurface) {
+  if (!featureDetail && !selectedSurface && !hasRetrospectiveContent) {
     return (
       <div className="space-y-3 py-4">
         <div className="text-[13px] font-semibold text-desktop-text-primary">

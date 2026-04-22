@@ -27,7 +27,7 @@ describe("/api/feature-explorer/retrospectives GET", () => {
     sharedMocks.isContextError.mockReturnValue(false);
   });
 
-  it("returns matched retrospective memories for the selected feature and files", async () => {
+  it("returns matched retrospective memories for the selected features and files", async () => {
     retrospectiveMemoryMocks.loadMatchingFeatureRetrospectiveMemories.mockReturnValue({
       storageRoot: "/tmp/routa-retrospectives",
       matchedMemories: [
@@ -43,7 +43,7 @@ describe("/api/feature-explorer/retrospectives GET", () => {
     });
 
     const response = await GET(new NextRequest(
-      "http://localhost/api/feature-explorer/retrospectives?workspaceId=default&repoPath=%2Frepo%2Fdefault&featureId=feature-explorer&filePath=src%2Fapp%2Fpage.tsx&filePath=src%2Fapp%2Flayout.tsx",
+      "http://localhost/api/feature-explorer/retrospectives?workspaceId=default&repoPath=%2Frepo%2Fdefault&featureId=feature-explorer&featureId=workspace-overview&filePath=src%2Fapp%2Fpage.tsx&filePath=src%2Fapp%2Flayout.tsx",
     ));
     const data = await response.json();
 
@@ -56,7 +56,7 @@ describe("/api/feature-explorer/retrospectives GET", () => {
     expect(retrospectiveMemoryMocks.loadMatchingFeatureRetrospectiveMemories).toHaveBeenCalledWith(
       "/repo/default",
       {
-        featureId: "feature-explorer",
+        featureIds: ["feature-explorer", "workspace-overview"],
         filePaths: ["src/app/page.tsx", "src/app/layout.tsx"],
       },
     );

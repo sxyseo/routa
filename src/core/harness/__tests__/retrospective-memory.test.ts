@@ -91,6 +91,12 @@ describe("retrospective-memory", () => {
       featureName: "Feature Explorer",
       summary: "Mention the target file first, then the feature, and say whether transcript rereads are allowed.",
     });
+    saveFeatureRetrospectiveMemory(repoRoot, {
+      scope: "feature",
+      featureId: "workspace-overview",
+      featureName: "Workspace Overview",
+      summary: "Call out the main page before expanding to adjacent routes.",
+    });
 
     expect(result.storagePath).toBe(
       path.join(
@@ -106,13 +112,18 @@ describe("retrospective-memory", () => {
     );
 
     const loaded = loadMatchingFeatureRetrospectiveMemories(repoRoot, {
-      featureId: "feature-explorer",
+      featureIds: ["feature-explorer", "workspace-overview"],
     });
     expect(loaded.matchedMemories).toEqual([
       expect.objectContaining({
         scope: "feature",
         targetId: "feature-explorer",
         summary: "Mention the target file first, then the feature, and say whether transcript rereads are allowed.",
+      }),
+      expect.objectContaining({
+        scope: "feature",
+        targetId: "workspace-overview",
+        summary: "Call out the main page before expanding to adjacent routes.",
       }),
     ]);
   });

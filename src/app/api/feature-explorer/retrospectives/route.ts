@@ -18,14 +18,17 @@ export async function GET(request: NextRequest) {
   try {
     const context = parseContext(request.nextUrl.searchParams);
     const repoRoot = await resolveRepoRoot(context);
-    const featureId = request.nextUrl.searchParams.get("featureId")?.trim() || undefined;
+    const featureIds = request.nextUrl.searchParams
+      .getAll("featureId")
+      .map((value) => value.trim())
+      .filter(Boolean);
     const filePaths = request.nextUrl.searchParams
       .getAll("filePath")
       .map((value) => value.trim())
       .filter(Boolean);
 
     return NextResponse.json(loadMatchingFeatureRetrospectiveMemories(repoRoot, {
-      featureId,
+      featureIds,
       filePaths,
     }));
   } catch (error) {
