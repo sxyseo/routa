@@ -665,7 +665,11 @@ describe("KanbanCardDetail repository health", () => {
     expect(historyAnalysisPrompt).toContain("### Final Matched Codex Or Claude Sessions");
     expect(historyAnalysisPrompt).toContain("Inspect the Kanban API route before touching the UI shell.");
     expect(historyAnalysisPrompt).toContain("Call `save_history_memory_context`");
+    expect(historyAnalysisPrompt).toContain("Save action:");
+    expect(historyAnalysisPrompt).toContain("Use `taskId=task-jit-analysis` in the tool call.");
     expect(historyAnalysisPrompt).not.toContain("\"jitContextAnalysis\"");
+    expect(historyAnalysisPrompt).not.toContain("Required JSON payload:");
+    expect(historyAnalysisPrompt).not.toContain("```json");
     expect(historyAnalysisPrompt).not.toContain("Preloaded tool result:");
     expect(historyAnalysisPrompt).not.toContain("The system already executed `summarize_task_history_context` before this session started.");
     expect(openSpy).toHaveBeenCalledWith("about:blank", "_blank");

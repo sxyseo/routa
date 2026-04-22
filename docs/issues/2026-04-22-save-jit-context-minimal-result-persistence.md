@@ -97,6 +97,15 @@ Process-oriented data such as matched files, warnings, failures, and history sum
 - session history confirmed a real `save_history_memory_context` MCP tool call
 - `GET /api/tasks/bc897ba8-b85f-49ce-9564-81acde182001` then showed `task.jitContextSnapshot.analysis` persisted with `summary`, `topFiles`, `topSessions`, `reusablePrompts`, and `recommendedContextSearchSpec`
 - reopening the card detail and expanding `JIT Context` showed `Saved History Analysis` in the UI, including the saved summary, top files, top sessions, and reusable prompts
+- 2026-04-22: follow-up prompt audit found that `Open History Analysis` still embedded a full JSON example in the generated prompt, which pulled the analyst back toward echoing payloads in chat instead of treating `save_history_memory_context` as the primary save path
+- fixed by simplifying the generated prompt to:
+  - require the tool call explicitly
+  - name the tool fields that matter
+  - forbid dumping the payload back into chat
+- regression coverage:
+  - `npx vitest run 'src/app/workspace/[workspaceId]/kanban/__tests__/kanban-tab-detail-and-prompts.test.tsx'`
+  - `npx tsc --noEmit`
+  - `npx eslint 'src/app/workspace/[workspaceId]/kanban/kanban-detail-panels.tsx' 'src/app/workspace/[workspaceId]/kanban/__tests__/kanban-tab-detail-and-prompts.test.tsx'`
 
 ## References
 
