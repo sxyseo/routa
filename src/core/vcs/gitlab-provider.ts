@@ -147,16 +147,18 @@ export class GitLabProvider implements IVCSProvider {
 
   async getPRFiles(opts: { repo: string; prNumber: number; token?: string }): Promise<VCSFileChange[]> {
     const encodedPath = this.encodeProjectPath(opts.repo);
-    const data = await this.gitlabApi<Array<{
-      new_path: string;
-      old_path: string;
-      new_file: boolean;
-      renamed_file: boolean;
-      deleted_file: boolean;
-      diff: string;
-    }>>(`/projects/${encodedPath}/merge_requests/${opts.prNumber}/changes`, { token: opts.token });
+    const response = await this.gitlabApi<{
+      changes: Array<{
+        new_path: string;
+        old_path: string;
+        new_file: boolean;
+        renamed_file: boolean;
+        deleted_file: boolean;
+        diff: string;
+      }>;
+    }>(`/projects/${encodedPath}/merge_requests/${opts.prNumber}/changes`, { token: opts.token });
 
-    return data.map((file) => {
+    return (response.changes ?? []).map((file) => {
       let status = "modified";
       if (file.new_file) status = "added";
       else if (file.deleted_file) status = "removed";

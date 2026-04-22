@@ -5,6 +5,9 @@
  * Supports GitHub and GitLab with a common interface.
  */
 
+import { GitHubProvider } from "./github-provider";
+import { GitLabProvider } from "./gitlab-provider";
+
 // ─── Common Types ─────────────────────────────────────────────────────────────
 
 export type VCSPlatform = "github" | "gitlab";
@@ -243,10 +246,8 @@ export function getVCSProvider(): IVCSProvider {
   const platform = (process.env.PLATFORM ?? "github").toLowerCase() as VCSPlatform;
 
   if (platform === "gitlab") {
-    const { GitLabProvider } = require("./gitlab-provider");
     cachedProvider = new GitLabProvider();
   } else {
-    const { GitHubProvider } = require("./github-provider");
     cachedProvider = new GitHubProvider();
   }
 

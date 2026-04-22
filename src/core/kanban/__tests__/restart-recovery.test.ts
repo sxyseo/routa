@@ -109,41 +109,39 @@ describe("kanban restart recovery", () => {
     }));
   });
 
-  it("re-enqueues the next review step when recovery resumes a multi-step lane", async () => {
-    const reviewBoard = {
+  it("re-enqueues the next step when recovery resumes a multi-step lane", async () => {
+    const devBoard = {
       id: "board-1",
       columns: [{
-        id: "review",
-        name: "Review",
+        id: "dev",
+        name: "Dev",
         position: 0,
-        stage: "review",
+        stage: "dev",
         automation: {
           enabled: true,
           transitionType: "entry",
           steps: [
-            { id: "qa-frontend", role: "GATE", specialistId: "kanban-qa-frontend", specialistName: "QA Frontend" },
-            { id: "review-guard", role: "GATE", specialistId: "kanban-review-guard", specialistName: "Review Guard" },
+            { id: "dev-planner", role: "CRAFTER", specialistId: "dev-planner", specialistName: "Dev Planner" },
+            { id: "dev-executor", role: "CRAFTER", specialistId: "dev-executor", specialistName: "Dev Executor" },
           ],
         },
       }],
     };
-    kanbanBoardStore.get.mockResolvedValue(reviewBoard);
+    kanbanBoardStore.get.mockResolvedValue(devBoard);
     taskStore.listByWorkspace.mockResolvedValue([{
       ...createTaskWithRunningSession({
-        title: "Approved review story",
-        objective: "Review story",
-        columnId: "review",
-        status: TaskStatus.REVIEW_REQUIRED,
-        verificationVerdict: VerificationVerdict.APPROVED,
-        verificationReport: "looks good",
+        title: "In-progress dev story",
+        objective: "Dev story",
+        columnId: "dev",
+        status: TaskStatus.IN_PROGRESS,
       }),
       laneSessions: [{
         sessionId: "session-1",
-        columnId: "review",
+        columnId: "dev",
         status: "running",
-        stepId: "qa-frontend",
+        stepId: "dev-planner",
         stepIndex: 0,
-        stepName: "QA Frontend",
+        stepName: "Dev Planner",
         startedAt: "2025-01-01T00:00:00.000Z",
       }],
     }]);
@@ -154,10 +152,10 @@ describe("kanban restart recovery", () => {
     });
 
     expect(enqueueKanbanTaskSession).toHaveBeenCalledWith(system, expect.objectContaining({
-      expectedColumnId: "review",
+      expectedColumnId: "dev",
       ignoreExistingTrigger: true,
       stepIndex: 1,
-      step: expect.objectContaining({ id: "review-guard" }),
+      step: expect.objectContaining({ id: "dev-executor" }),
     }));
     expect(processKanbanColumnTransition).not.toHaveBeenCalled();
   });
@@ -220,7 +218,6 @@ describe("kanban restart recovery", () => {
             enabled: true,
             transitionType: "entry",
             steps: [
-              { id: "qa-frontend", role: "GATE" },
               { id: "review-guard", role: "GATE" },
             ],
           },
@@ -250,7 +247,7 @@ describe("kanban restart recovery", () => {
         columnId: "review",
         status: "completed",
         stepId: "review-guard",
-        stepIndex: 1,
+        stepIndex: 0,
         stepName: "Review Guard",
         startedAt: "2025-01-01T00:00:00.000Z",
       }],
@@ -291,7 +288,6 @@ describe("kanban restart recovery", () => {
             enabled: true,
             transitionType: "entry",
             steps: [
-              { id: "qa-frontend", role: "GATE" },
               { id: "review-guard", role: "GATE" },
             ],
           },
@@ -326,7 +322,7 @@ describe("kanban restart recovery", () => {
         columnId: "review",
         status: "completed",
         stepId: "review-guard",
-        stepIndex: 1,
+        stepIndex: 0,
         stepName: "Review Guard",
         startedAt: "2025-01-01T00:00:00.000Z",
       }],

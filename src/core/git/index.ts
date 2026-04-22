@@ -36,7 +36,7 @@ export {
   validateRepoInput,
   validateBranchName,
   sanitizeBranchName,
-  type ParsedGitHubUrl,
+  type ParsedVCSUrl,
   type RepoBranchInfo,
   type RepoStatus,
   type RepoChanges,

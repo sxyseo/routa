@@ -273,7 +273,6 @@ describe("/api/kanban/boards GET", () => {
           enabled: true,
           transitionType: "entry",
           steps: [
-            { id: "qa-frontend", role: "GATE", specialistId: "kanban-qa-frontend", specialistName: "QA Frontend" },
             { id: "review-guard", role: "GATE", specialistId: "kanban-review-guard", specialistName: "Review Guard" },
           ],
         },
@@ -297,9 +296,9 @@ describe("/api/kanban/boards GET", () => {
           sessionId: "session-1",
           columnId: "review",
           status: "running",
-          stepId: "qa-frontend",
+          stepId: "review-guard",
           stepIndex: 0,
-          stepName: "QA Frontend",
+          stepName: "Review Guard",
           startedAt: "2025-01-01T00:00:00.000Z",
         }],
       },
@@ -344,7 +343,6 @@ describe("/api/kanban/boards GET", () => {
             enabled: true,
             transitionType: "entry",
             steps: [
-              { id: "qa-frontend", role: "GATE", specialistId: "kanban-qa-frontend", specialistName: "QA Frontend" },
               { id: "review-guard", role: "GATE", specialistId: "kanban-review-guard", specialistName: "Review Guard" },
             ],
           },

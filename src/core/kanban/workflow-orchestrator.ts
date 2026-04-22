@@ -397,23 +397,8 @@ export class KanbanWorkflowOrchestrator {
         }
       }
 
-      // When autoMergeAfterPR is enabled, dynamically inject the Auto Merger step
-      // before done-reporter so it runs after PR creation.
-      const deliveryRules = automation.deliveryRules;
-      if (deliveryRules?.autoMergeAfterPR) {
-        const reporterIndex = steps.findIndex(s => s.specialistId === "kanban-done-reporter");
-        const autoMergerStep: KanbanAutomationStep = {
-          id: "auto-merger",
-          role: "DEVELOPER",
-          specialistId: "kanban-auto-merger",
-          specialistName: "Auto Merger",
-        };
-        if (reporterIndex >= 0) {
-          steps.splice(reporterIndex, 0, autoMergerStep);
-        } else {
-          steps.unshift(autoMergerStep);
-        }
-      }
+      // Auto-merger is no longer injected as a default done-lane step.
+      // If needed, it should be added explicitly via board automation config.
     }
 
     // Append fallback agent chain steps if enabled
@@ -733,7 +718,7 @@ export class KanbanWorkflowOrchestrator {
 
       // NOTE: Auto PR creation now happens BEFORE done-lane automation steps
       // (in handleColumnTransitionData), not as a post-automation event.
-      // This ensures auto-merger and done-reporter see pullRequestUrl.
+      // This ensures done-reporter sees pullRequestUrl.
 
       // Save lane-session updates BEFORE autoAdvanceCard, which reloads the task
       // and emits a synchronous COLUMN_TRANSITION. Saving after would overwrite the

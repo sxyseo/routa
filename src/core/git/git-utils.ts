@@ -33,7 +33,7 @@ const SIMPLE_OWNER_REPO = /^([a-zA-Z0-9\-_]+)\/([a-zA-Z0-9\-_.]+)$/;
 const MAX_UNTRACKED_FILES_WITH_SYNTHETIC_STATS = 25;
 const MAX_CHANGED_FILES_WITH_DETAILED_STATS = 500; // Global limit for all file types
 
-export interface ParsedGitHubUrl {
+export interface ParsedVCSUrl {
   owner: string;
   repo: string;
 }
@@ -51,7 +51,7 @@ export function isGitHubUrl(url: string): boolean {
 /**
  * Parse a GitHub URL into owner and repo.
  */
-export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
+export function parseGitHubUrl(url: string): ParsedVCSUrl | null {
   const trimmed = url.trim();
 
   for (const pattern of GITHUB_URL_PATTERNS) {
@@ -81,7 +81,7 @@ const GITLAB_URL_PATTERNS = [
  * Parse a VCS URL (GitHub or GitLab) into owner and repo.
  * Falls back to simple owner/repo format.
  */
-export function parseVCSUrl(url: string): ParsedGitHubUrl | null {
+export function parseVCSUrl(url: string): ParsedVCSUrl | null {
   const trimmed = url.trim();
 
   // Try GitHub patterns
@@ -1421,7 +1421,7 @@ export interface ValidationResult {
   suggestion?: string;
   warning?: string;
   isGitHub?: boolean;
-  parsed?: ParsedGitHubUrl;
+  parsed?: ParsedVCSUrl;
 }
 
 /**

@@ -385,12 +385,6 @@ describe("/api/tasks/[taskId]", () => {
             enabled: true,
             steps: [
               {
-                id: "qa-frontend",
-                role: "GATE",
-                specialistId: "kanban-qa-frontend",
-                specialistName: "QA Frontend",
-              },
-              {
                 id: "review-guard",
                 role: "GATE",
                 specialistId: "kanban-review-guard",
@@ -1192,12 +1186,6 @@ describe("/api/tasks/[taskId]", () => {
           automation: {
             enabled: true,
             steps: [
-              {
-                id: "qa-frontend",
-                role: "GATE",
-                specialistId: "kanban-qa-frontend",
-                specialistName: "QA Frontend",
-              },
               {
                 id: "review-guard",
                 role: "GATE",

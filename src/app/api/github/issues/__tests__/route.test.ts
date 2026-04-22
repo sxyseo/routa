@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const listGitHubIssues = vi.fn();
+const mockListIssues = vi.fn();
 const resolveGitHubRepo = vi.fn();
 
 const codebaseStore = {
@@ -15,8 +15,11 @@ vi.mock("@/core/routa-system", () => ({
   getRoutaSystem: () => ({ codebaseStore, kanbanBoardStore }),
 }));
 
+vi.mock("@/core/vcs", () => ({
+  getVCSProvider: () => ({ listIssues: mockListIssues }),
+}));
+
 vi.mock("@/core/kanban/github-issues", () => ({
-  listGitHubIssues: (repo: string, options?: unknown) => listGitHubIssues(repo, options),
   resolveGitHubRepo: (sourceUrl?: string, repoPath?: string) => resolveGitHubRepo(sourceUrl, repoPath),
 }));
 
@@ -37,7 +40,7 @@ describe("GET /api/github/issues", () => {
     ]);
     kanbanBoardStore.get.mockResolvedValue(undefined);
     resolveGitHubRepo.mockReturnValue("acme/platform");
-    listGitHubIssues.mockResolvedValue([
+    mockListIssues.mockResolvedValue([
       {
         id: "1001",
         number: 12,
@@ -58,14 +61,14 @@ describe("GET /api/github/issues", () => {
     expect(data).toEqual({ error: "workspaceId is required" });
   });
 
-  it("lists issues for the selected workspace codebase", async () => {
+  it("lists issues for the selected workspace codebase via VCS provider", async () => {
     const response = await GET(new NextRequest("http://localhost/api/github/issues?workspaceId=workspace-1"));
     const data = await response.json();
 
     expect(response.status).toBe(200);
     expect(codebaseStore.listByWorkspace).toHaveBeenCalledWith("workspace-1");
     expect(resolveGitHubRepo).toHaveBeenCalledWith("https://github.com/acme/platform", "/repos/acme/platform");
-    expect(listGitHubIssues).toHaveBeenCalledWith("acme/platform", { state: "open" });
+    expect(mockListIssues).toHaveBeenCalledWith({ repo: "acme/platform", state: "open", token: undefined });
     expect(data).toMatchObject({
       repo: "acme/platform",
       codebase: {
@@ -81,15 +84,15 @@ describe("GET /api/github/issues", () => {
     });
   });
 
-  it("rejects non-GitHub codebases", async () => {
+  it("rejects codebases not linked to a VCS repository", async () => {
     resolveGitHubRepo.mockReturnValue(undefined);
 
     const response = await GET(new NextRequest("http://localhost/api/github/issues?workspaceId=workspace-1"));
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error).toContain("not linked to a GitHub repository");
-    expect(listGitHubIssues).not.toHaveBeenCalled();
+    expect(data.error).toContain("not linked to a VCS repository");
+    expect(mockListIssues).not.toHaveBeenCalled();
   });
 
   it("prefers the board token when boardId is provided", async () => {
@@ -104,7 +107,8 @@ describe("GET /api/github/issues", () => {
 
     expect(response.status).toBe(200);
     expect(kanbanBoardStore.get).toHaveBeenCalledWith("board-1");
-    expect(listGitHubIssues).toHaveBeenCalledWith("acme/platform", {
+    expect(mockListIssues).toHaveBeenCalledWith({
+      repo: "acme/platform",
       state: "open",
       token: "board-token",
     });

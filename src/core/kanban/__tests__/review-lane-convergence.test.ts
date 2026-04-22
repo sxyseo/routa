@@ -24,12 +24,6 @@ describe("review lane convergence", () => {
             enabled: true,
             steps: [
               {
-                id: "qa-frontend",
-                role: "GATE",
-                specialistId: "kanban-qa-frontend",
-                specialistName: "QA Frontend",
-              },
-              {
                 id: "review-guard",
                 role: "GATE",
                 specialistId: "kanban-review-guard",
@@ -58,7 +52,7 @@ describe("review lane convergence", () => {
     expect(resolveReviewLaneConvergenceTarget(task, board.columns)).toBe("done");
   });
 
-  it("does not converge while the review lane still has a pending next step", () => {
+  it("sends not-approved verdicts back to dev", () => {
     const board = createKanbanBoard({
       id: "board-review-2",
       workspaceId: "default",
@@ -74,12 +68,6 @@ describe("review lane convergence", () => {
             enabled: true,
             steps: [
               {
-                id: "qa-frontend",
-                role: "GATE",
-                specialistId: "kanban-qa-frontend",
-                specialistName: "QA Frontend",
-              },
-              {
                 id: "review-guard",
                 role: "GATE",
                 specialistId: "kanban-review-guard",
@@ -94,16 +82,16 @@ describe("review lane convergence", () => {
 
     const task = createTask({
       id: "task-review-2",
-      title: "Fail intermediate QA",
-      objective: "Keep review lane alive while Review Guard is still pending",
+      title: "Fail review",
+      objective: "Send back to dev when review guard rejects",
       workspaceId: "default",
       boardId: board.id,
       columnId: "review",
     });
-    task.assignedSpecialistId = "kanban-qa-frontend";
-    task.assignedSpecialistName = "QA Frontend";
+    task.assignedSpecialistId = "kanban-review-guard";
+    task.assignedSpecialistName = "Review Guard";
     task.verificationVerdict = VerificationVerdict.NOT_APPROVED;
 
-    expect(resolveReviewLaneConvergenceTarget(task, board.columns)).toBeUndefined();
+    expect(resolveReviewLaneConvergenceTarget(task, board.columns)).toBe("dev");
   });
 });

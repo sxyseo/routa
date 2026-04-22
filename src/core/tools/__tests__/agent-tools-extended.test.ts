@@ -217,13 +217,7 @@ describe("AgentTools extended coverage", () => {
           automation: {
             enabled: true,
             steps: [
-              {
-                id: "qa-frontend",
-                role: "GATE",
-                specialistId: "kanban-qa-frontend",
-                specialistName: "QA Frontend",
-              },
-              {
+                            {
                 id: "review-guard",
                 role: "GATE",
                 specialistId: "kanban-review-guard",
@@ -280,13 +274,7 @@ describe("AgentTools extended coverage", () => {
           automation: {
             enabled: true,
             steps: [
-              {
-                id: "qa-frontend",
-                role: "GATE",
-                specialistId: "kanban-qa-frontend",
-                specialistName: "QA Frontend",
-              },
-              {
+                            {
                 id: "review-guard",
                 role: "GATE",
                 specialistId: "kanban-review-guard",

@@ -18,7 +18,11 @@ export function useColumnVirtualScroll(pageSize = DEFAULT_PAGE_SIZE) {
     (columnId: string, total: number, stage?: string): number => {
       if (!stage || !VIRTUAL_COLUMNS.has(stage)) return total;
       const existing = visibleCounts[columnId];
-      if (existing !== undefined) return existing;
+      if (existing !== undefined) {
+        // If total grew beyond current visible count, expand to include new cards
+        if (total > existing) return total;
+        return existing;
+      }
       // Default: show first page
       return Math.min(pageSize, total);
     },
