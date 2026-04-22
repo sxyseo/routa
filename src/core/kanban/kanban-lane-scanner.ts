@@ -21,6 +21,7 @@ const MAX_STEP_RESUME_ATTEMPTS = 3;
 
 let scanTimer: ReturnType<typeof setInterval> | null = null;
 let initialScanTimer: ReturnType<typeof setTimeout> | null = null;
+let isScanning = false;
 const GLOBAL_KEY = "__routa_kanban_lane_scanner__";
 
 export interface LaneScannerStats {
@@ -55,6 +56,13 @@ function getScannerState(): LaneScannerState {
  */
 export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScannerStats> {
   const state = getScannerState();
+
+  // Prevent re-entry: if previous tick is still running, skip this one
+  if (isScanning) {
+    return state.stats;
+  }
+  isScanning = true;
+
   let scannedTasks = 0;
   let triggeredTasks = 0;
   let errors = 0;
@@ -190,6 +198,8 @@ export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScann
   } catch (err) {
     errors++;
     console.error("[LaneScanner] Scan tick failed:", err instanceof Error ? err.message : err);
+  } finally {
+    isScanning = false;
   }
 
   state.stats = {

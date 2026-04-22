@@ -41,6 +41,8 @@ export class BackgroundTaskWorker {
   private completionTimer: ReturnType<typeof setInterval> | null = null;
   /** sessionId → backgroundTaskId */
   private sessionToTask = new Map<string, string>();
+  private isDispatching = false;
+  private isCheckingCompletions = false;
 
   start(): void {
     if (this.dispatchTimer) return; // already running
@@ -63,6 +65,9 @@ export class BackgroundTaskWorker {
    * Only runs up to MAX_CONCURRENT_TASKS at a time.
    */
   async dispatchPending(): Promise<void> {
+    if (this.isDispatching) return;
+    this.isDispatching = true;
+    try {
     await runWithSpan(
       "routa.background_task.dispatch_pending",
       {
@@ -113,6 +118,9 @@ export class BackgroundTaskWorker {
         }
       },
     );
+    } finally {
+      this.isDispatching = false;
+    }
   }
 
   async dispatchTask(task: BackgroundTask): Promise<void> {
@@ -319,6 +327,9 @@ export class BackgroundTaskWorker {
    * 2. Database query (robust path for tasks that survived HMR/restart)
    */
   async checkCompletions(): Promise<void> {
+    if (this.isCheckingCompletions) return;
+    this.isCheckingCompletions = true;
+    try {
     await runWithSpan(
       "routa.background_task.check_completions",
       {
@@ -429,6 +440,9 @@ export class BackgroundTaskWorker {
         span.setAttribute("routa.background_task.failed_stale", failedStale);
       },
     );
+    } finally {
+      this.isCheckingCompletions = false;
+    }
   }
 }
 

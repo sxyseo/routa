@@ -1313,24 +1313,47 @@ export class SqliteBackgroundTaskStore implements BackgroundTaskStore {
         asc(sqliteSchema.backgroundTasks.createdAt)
       );
 
-    // Filter to tasks whose dependencies are all COMPLETED
+    // Collect all unique dependency IDs across all pending tasks
+    const allDepIds = new Set<string>();
+    const tasksWithDeps: Array<{ row: typeof pending[number]; task: BackgroundTask; depIds: string[] }> = [];
     const ready: BackgroundTask[] = [];
+
     for (const row of pending) {
       const task = this.toModel(row);
       if (!task.dependsOnTaskIds || task.dependsOnTaskIds.length === 0) {
         ready.push(task);
         continue;
       }
-      // Check all dependencies - SQLite doesn't have ANY(), use IN()
-      const deps = await this.db
-        .select()
-        .from(sqliteSchema.backgroundTasks)
-        .where(sql`${sqliteSchema.backgroundTasks.id} IN (${sql.join(task.dependsOnTaskIds.map(id => sql`${id}`), sql`, `)})`);
-      const allCompleted = deps.length === task.dependsOnTaskIds.length && deps.every((d) => d.status === "COMPLETED");
+      for (const id of task.dependsOnTaskIds) {
+        allDepIds.add(id);
+      }
+      tasksWithDeps.push({ row, task, depIds: task.dependsOnTaskIds });
+    }
+
+    if (tasksWithDeps.length === 0) {
+      return ready;
+    }
+
+    // Single batch query for ALL dependency statuses
+    const depRows = await this.db
+      .select({
+        id: sqliteSchema.backgroundTasks.id,
+        status: sqliteSchema.backgroundTasks.status,
+      })
+      .from(sqliteSchema.backgroundTasks)
+      .where(sql`${sqliteSchema.backgroundTasks.id} IN (${sql.join([...allDepIds].map(id => sql`${id}`), sql`, `)})`);
+
+    const depStatusMap = new Map(depRows.map((d) => [d.id, d.status as string]));
+
+    // Check each task's dependencies against the batch result
+    for (const { task, depIds } of tasksWithDeps) {
+      const allCompleted = depIds.length > 0
+        && depIds.every((id) => depStatusMap.get(id) === "COMPLETED");
       if (allCompleted) {
         ready.push(task);
       }
     }
+
     return ready;
   }
 
