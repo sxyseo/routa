@@ -61,6 +61,8 @@ import {
   PermissionUrgency,
 } from './permission-store';
 import { getTaskLaneSession } from "../kanban/task-lane-history";
+import { filterBacklogContextSearchSpec } from "../kanban/backlog-context-confirmation";
+import { hasConfirmedKanbanTaskAdaptiveContext } from "../kanban/task-adaptive";
 
 function extractSandboxId(options?: PermissionRequestOptions): string | undefined {
   const sandboxId = options?.sandboxId;
@@ -863,8 +865,9 @@ export class AgentTools {
       jitContextAnalysis?: import("../models/task").TaskJitContextAnalysis | null;
     };
     agentId: string;
+    sessionId?: string;
   }): Promise<ToolResult> {
-    const { taskId, expectedVersion, updates, agentId } = params;
+    const { taskId, expectedVersion, updates, agentId, sessionId } = params;
 
     const task = await this.taskStore.get(taskId);
     if (!task) {
@@ -883,6 +886,7 @@ export class AgentTools {
 
     const oldStatus = task.status;
     const originalColumnId = task.columnId;
+    const warnings = new Set<string>();
     if (updates.title) task.title = updates.title;
     if (updates.objective) task.objective = updates.objective;
     if (updates.scope !== undefined) task.scope = updates.scope;
@@ -900,7 +904,16 @@ export class AgentTools {
     if (updates.verificationCommands !== undefined) task.verificationCommands = updates.verificationCommands;
     if (updates.testCases !== undefined) task.testCases = updates.testCases;
     if (updates.contextSearchSpec !== undefined) {
-      task.contextSearchSpec = normalizeTaskContextSearchSpec(updates.contextSearchSpec);
+      const filteredContextSearchSpec = await filterBacklogContextSearchSpec({
+        contextSearchSpec: normalizeTaskContextSearchSpec(updates.contextSearchSpec),
+        columnId: task.columnId,
+        sessionId,
+        hasExistingConfirmedContext: hasConfirmedKanbanTaskAdaptiveContext(task),
+      });
+      task.contextSearchSpec = filteredContextSearchSpec.contextSearchSpec;
+      if (filteredContextSearchSpec.warning) {
+        warnings.add(filteredContextSearchSpec.warning);
+      }
     }
     if (updates.jitContextAnalysis !== undefined) {
       task.jitContextSnapshot = mergeTaskJitContextAnalysis(
@@ -972,6 +985,7 @@ export class AgentTools {
         (k) => updates[k as keyof typeof updates] !== undefined
       ),
       updatedAt: task.updatedAt.toISOString(),
+      warnings: [...warnings],
     });
   }
 

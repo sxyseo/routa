@@ -45,7 +45,7 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Do NOT create or sync GitHub issues during backlog planning.");
     expect(prompt).toContain("You may use read-only native tools such as Read, Grep, and Glob for limited repo inspection");
     expect(prompt).toContain("If Relevant History Memory or Relevant Feature Tree Context is provided");
-    expect(prompt).toContain("write those hints back through contextSearchSpec");
+    expect(prompt).toContain("Only write contextSearchSpec after repo inspection or load_feature_tree_context confirms the feature/files");
     expect(prompt).toContain("decompose_tasks");
     expect(prompt).not.toContain("Complete the work assigned to this column stage");
   });

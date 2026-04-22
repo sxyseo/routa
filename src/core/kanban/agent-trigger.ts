@@ -178,7 +178,7 @@ export function buildTaskPrompt(
         "4. You may use read-only native tools such as Read, Grep, and Glob for limited repo inspection; do not use Bash, Write, or Edit in backlog planning.",
         "5. Do not use GitHub CLI commands such as gh issue create",
         "6. Do not start implementation work in this column",
-        "7. When you confirm likely feature owners or files, write those hints back through contextSearchSpec.",
+        "7. Only write contextSearchSpec after repo inspection or load_feature_tree_context confirms the feature/files; otherwise leave it empty and keep searching.",
         "8. Report what backlog story or stories were created or refined",
         `9. ${moveInstruction}`,
         "10. If the next transition is artifact-gated, create the required artifacts before calling `move_card`.",

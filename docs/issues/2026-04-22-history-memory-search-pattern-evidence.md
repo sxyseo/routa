@@ -2,7 +2,7 @@
 title: "Backlog/history memory retrieval lacks evidence from real Codex search behavior"
 date: "2026-04-22"
 kind: issue
-status: open
+status: resolved
 severity: medium
 area: kanban
 tags:
@@ -15,7 +15,7 @@ related_issues:
   - "2026-04-21-task-adaptive-harness-kanban-backlog-refine-and-card-detail.md"
   - "2026-04-21-jit-context-needs-repo-root-context-discovery.md"
 github_issue: 523
-github_state: open
+github_state: closed
 github_url: "https://github.com/phodal/routa/issues/523"
 ---
 
@@ -119,6 +119,11 @@ These results support changing Kanban backlog refinement in a more explicit way:
 - 2026-04-22: real scan run:
   - `npx tsx scripts/harness/analyze-search-tool-usage.ts --cwd-contains routa-js --max-items 25`
 - The repo-filtered output is the evidence source for the counts listed above
+- 2026-04-22: implemented backlog confirmation gating so speculative `contextSearchSpec` is stripped unless the current backlog session has already inspected the repo or called `load_feature_tree_context`
+- 2026-04-22: updated Kanban backlog prompts and MCP tool descriptions to require confirmed retrieval hints before persisting `contextSearchSpec`
+- 2026-04-22: `npx vitest run src/core/kanban/__tests__/backlog-context-confirmation.test.ts src/core/tools/__tests__/kanban-tools.test.ts src/core/tools/__tests__/agent-tools.test.ts 'src/app/workspace/[workspaceId]/kanban/__tests__/kanban-agent-input.test.ts' src/core/kanban/__tests__/agent-trigger.test.ts` passed (`53` tests, `2` skipped)
+- 2026-04-22: `npx tsc --noEmit` passed
+- 2026-04-22: `entrix run --tier fast` passed (`100.0%`)
 
 ## References
 

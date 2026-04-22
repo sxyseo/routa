@@ -290,6 +290,7 @@ export async function executeMcpTool(
           taskId: args.taskId as string,
           expectedVersion: args.expectedVersion as number | undefined,
           agentId: (args.agentId as string | undefined) ?? "system",
+          sessionId: args.sessionId as string | undefined,
           updates: {
             title: args.title as string | undefined,
             objective: args.objective as string | undefined,
@@ -657,6 +658,7 @@ export async function executeMcpTool(
           title: args.title as string,
           description: args.description as string | undefined,
           contextSearchSpec: args.contextSearchSpec as Record<string, unknown> | undefined,
+          sessionId: args.sessionId as string | undefined,
           columnId: (args.columnId as string | undefined) ?? (args.column as string | undefined) ?? "backlog",
           priority: args.priority as "low" | "medium" | "high" | "urgent" | undefined,
           labels: args.labels as string[] | undefined,
@@ -726,6 +728,7 @@ export async function executeMcpTool(
             assignedProvider: (task.assignedProvider as string | undefined) ?? defaultAssignedProvider,
           })),
           columnId: (args.columnId as string | undefined) ?? (args.column as string | undefined),
+          sessionId: args.sessionId as string | undefined,
         })
       );
       }
@@ -1325,7 +1328,7 @@ export function getMcpToolDefinitions(
     },
     {
       name: "update_task",
-      description: "Atomically update structured task fields with optimistic locking. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions.",
+      description: "Atomically update structured task fields with optimistic locking. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions. In backlog planning, only persist contextSearchSpec after repo inspection or feature-tree lookup confirms the feature/files.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1620,7 +1623,7 @@ export function getMcpToolDefinitions(
           description: { type: "string", description: "Card description" },
           contextSearchSpec: {
             ...TASK_CONTEXT_SEARCH_SPEC_SCHEMA,
-            description: "Structured retrieval hints to help JIT Context recover relevant history and Feature Tree context.",
+            description: "Confirmed retrieval hints to help JIT Context recover relevant history and Feature Tree context. In backlog planning, omit this until repo inspection or load_feature_tree_context confirms the feature/files.",
           },
           assignedProvider: { type: "string", description: "Provider override for the created card; defaults to the current session provider when available" },
           columnId: { type: "string", description: "Target column ID" },
@@ -1699,7 +1702,7 @@ export function getMcpToolDefinitions(
     },
     {
       name: "decompose_tasks",
-      description: "Create multiple Kanban cards from a list of decomposed tasks.",
+      description: "Create multiple Kanban cards from a list of decomposed tasks. In backlog planning, only include contextSearchSpec after repo inspection or load_feature_tree_context confirms the feature/files.",
       inputSchema: {
         type: "object",
         properties: {
