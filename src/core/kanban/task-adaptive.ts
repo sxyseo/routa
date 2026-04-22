@@ -92,6 +92,19 @@ export function shouldEnableKanbanTaskAdaptiveHarness(
   return task.columnId !== "backlog" || hasConfirmedKanbanTaskAdaptiveContext(task);
 }
 
+export function stripSpeculativeKanbanTaskAdaptiveSnapshot<T extends TaskAdaptiveSource>(
+  task: T,
+): T {
+  if (task.columnId === "backlog" && !hasConfirmedKanbanTaskAdaptiveContext(task)) {
+    return {
+      ...task,
+      jitContextSnapshot: undefined,
+    };
+  }
+
+  return task;
+}
+
 function mergeTaskHintArrays(
   primary: string[] | undefined,
   fallback: string[] | undefined,

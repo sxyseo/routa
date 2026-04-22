@@ -61,10 +61,12 @@ import {
   resolveCurrentOrNextContractGate,
 } from "@/core/kanban/task-contract-readiness";
 import { resolveTaskWorktreeTruth } from "@/core/kanban/task-worktree-truth";
+import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "@/core/kanban/task-adaptive";
 
 export const dynamic = "force-dynamic";
 
 async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSystem>) {
+  task = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
   const evidenceSummary = await buildTaskEvidenceSummary(task, system);
   const storyReadiness = await buildTaskStoryReadiness(task, system);
   const investValidation = buildTaskInvestValidation(task);
@@ -83,6 +85,12 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
   };
+}
+
+function applyTaskAdaptivePersistenceGuards(task: Task): Task {
+  const sanitized = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
+  task.jitContextSnapshot = sanitized.jitContextSnapshot;
+  return task;
 }
 
 function sanitizeLabels(value: unknown): string[] | undefined {
@@ -158,8 +166,9 @@ async function recordTaskContractGateFailure(
     return;
   }
 
+  const sanitizedTask = applyTaskAdaptivePersistenceGuards(task);
   task.updatedAt = new Date();
-  await system.taskStore.save(task);
+  await system.taskStore.save({ ...sanitizedTask, updatedAt: task.updatedAt });
   getKanbanEventBroadcaster().notify({
     workspaceId: task.workspaceId,
     entity: "task",
@@ -565,6 +574,7 @@ export async function PATCH(
         nextTask.status = TaskStatus.BLOCKED;
         nextTask.columnId = "blocked";
         nextTask.lastSyncError = `Worktree creation failed: ${msg}`;
+        applyTaskAdaptivePersistenceGuards(nextTask);
         await system.taskStore.save(nextTask);
         getKanbanEventBroadcaster().notify({
           workspaceId: nextTask.workspaceId,
@@ -598,6 +608,7 @@ export async function PATCH(
     }
   }
 
+  applyTaskAdaptivePersistenceGuards(nextTask);
   await system.taskStore.save(nextTask);
   getKanbanEventBroadcaster().notify({
     workspaceId: nextTask.workspaceId,

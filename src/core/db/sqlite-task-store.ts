@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as sqliteSchema from "./sqlite-schema";
 import { normalizeTaskCreationSource } from "../kanban/task-creation-policy";
+import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "../kanban/task-adaptive";
 import { hydrateTaskComments, type Task, type TaskStatus } from "../models/task";
 import type { TaskStore } from "../store/task-store";
 
@@ -11,6 +12,7 @@ export class SqliteTaskStore implements TaskStore {
   constructor(private db: SqliteDb) {}
 
   async save(task: Task): Promise<void> {
+    task = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
     const version = (task as Task & { version?: number }).version ?? 1;
     await this.db
       .insert(sqliteSchema.tasks)
@@ -226,7 +228,7 @@ export class SqliteTaskStore implements TaskStore {
       row.comment ?? undefined,
     );
 
-    return {
+    return stripSpeculativeKanbanTaskAdaptiveSnapshot({
       id: row.id,
       title: row.title,
       objective: row.objective,
@@ -280,6 +282,6 @@ export class SqliteTaskStore implements TaskStore {
       verificationReport: row.verificationReport ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    };
+    });
   }
 }

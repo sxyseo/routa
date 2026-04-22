@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildKanbanTaskAdaptiveHarnessOptions } from "../task-adaptive";
+import { buildKanbanTaskAdaptiveHarnessOptions, stripSpeculativeKanbanTaskAdaptiveSnapshot } from "../task-adaptive";
 
 describe("buildKanbanTaskAdaptiveHarnessOptions", () => {
   it("does not emit task-adaptive hints for fresh backlog cards without confirmed context", () => {
@@ -75,5 +75,27 @@ describe("buildKanbanTaskAdaptiveHarnessOptions", () => {
       query: "Fix Kanban card detail JIT context",
       taskType: "planning",
     });
+  });
+
+  it("strips speculative backlog snapshots until context is confirmed", () => {
+    const sanitized = stripSpeculativeKanbanTaskAdaptiveSnapshot({
+      id: "task-3",
+      title: "Backlog issue import",
+      columnId: "backlog",
+      jitContextSnapshot: {
+        generatedAt: "2026-04-22T08:00:00.000Z",
+        summary: "Speculative snapshot",
+        matchConfidence: "high" as const,
+        matchReasons: ["Matched a weak feature candidate"],
+        warnings: [],
+        matchedFileDetails: [],
+        matchedSessionIds: ["session-1"],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+      },
+    });
+
+    expect(sanitized.jitContextSnapshot).toBeUndefined();
   });
 });

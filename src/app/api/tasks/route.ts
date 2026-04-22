@@ -44,6 +44,7 @@ import {
   buildTaskStoryReadiness,
 } from "./task-evidence-summary";
 import { buildTaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
+import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "@/core/kanban/task-adaptive";
 
 export const dynamic = "force-dynamic";
 
@@ -407,7 +408,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const task = createTask({
+  const task = stripSpeculativeKanbanTaskAdaptiveSnapshot(createTask({
     id: uuidv4(),
     title: normalizedTitle,
     objective: normalizedObjective,
@@ -442,7 +443,7 @@ export async function POST(request: NextRequest) {
     codebaseIds: normalizedCodebaseIds,
     contextSearchSpec: normalizedContextSearchSpec,
     jitContextSnapshot: normalizedJitContextSnapshot,
-  });
+  }));
 
   await system.taskStore.save(task);
   getKanbanEventBroadcaster().notify({
@@ -514,6 +515,7 @@ async function serializeTask(
   system: TaskSerializationSystem,
   options: SerializeTaskOptions = { includeDeliveryReadiness: true },
 ) {
+  task = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
   const evidenceSummary = await buildTaskEvidenceSummary(task, system);
   const storyReadiness = await buildTaskStoryReadiness(task, system);
   const investValidation = buildTaskInvestValidation(task);

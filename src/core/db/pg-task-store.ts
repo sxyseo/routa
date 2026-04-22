@@ -8,6 +8,7 @@ import { eq, and, sql } from "drizzle-orm";
 import type { Database } from "./index";
 import { tasks } from "./schema";
 import { normalizeTaskCreationSource } from "../kanban/task-creation-policy";
+import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "../kanban/task-adaptive";
 import { hydrateTaskComments, type Task, type TaskStatus } from "../models/task";
 import type { TaskStore } from "../store/task-store";
 
@@ -15,6 +16,7 @@ export class PgTaskStore implements TaskStore {
   constructor(private db: Database) {}
 
   async save(task: Task): Promise<void> {
+    task = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
     const version = (task as Task & { version?: number }).version ?? 1;
     await this.db
       .insert(tasks)
@@ -219,7 +221,7 @@ export class PgTaskStore implements TaskStore {
       row.comment ?? undefined,
     );
 
-    return {
+    return stripSpeculativeKanbanTaskAdaptiveSnapshot({
       id: row.id,
       title: row.title,
       objective: row.objective,
@@ -273,6 +275,6 @@ export class PgTaskStore implements TaskStore {
       verificationReport: row.verificationReport ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    };
+    });
   }
 }
