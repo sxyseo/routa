@@ -97,6 +97,8 @@ describe("session-analysis", () => {
     expect(prompt).toContain("### 选中文件证据");
     expect(prompt).toContain("直接改动了选中文件");
     expect(prompt).toContain("可直接复用的提示词模板");
+    expect(prompt).toContain("load_feature_retrospective_memory");
+    expect(prompt).toContain("save_feature_retrospective_memory");
     expect(prompt).toContain("### 选中文件重复读取");
     expect(prompt).not.toContain("git status --short");
     expect(prompt).not.toContain("Operation not permitted");
@@ -168,6 +170,8 @@ describe("session-analysis", () => {
     expect(prompt).toContain("为避免 prompt 过长，这里不再内联逐条 session 证据块");
     expect(prompt).toContain("先走现成 tool / script");
     expect(prompt).toContain("scripts/harness/inspect-transcript-turns.ts");
+    expect(prompt).toContain("load_feature_retrospective_memory");
+    expect(prompt).toContain("save_feature_retrospective_memory");
     expect(prompt).toContain("已从 Transcript Hints 中省略明显是在调当前复盘 / prompt / JSONL 流程本身的元会话");
     expect(prompt).toContain("只提取真实用户 turns");
     expect(prompt).toContain("不要用 rg/grep 按关键字扫描整行 JSONL 再回显整段对象");
