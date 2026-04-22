@@ -2,6 +2,21 @@ import { describe, expect, it } from "vitest";
 import { buildKanbanTaskAdaptiveHarnessOptions } from "../task-adaptive";
 
 describe("buildKanbanTaskAdaptiveHarnessOptions", () => {
+  it("does not emit task-adaptive hints for fresh backlog cards without confirmed context", () => {
+    const options = buildKanbanTaskAdaptiveHarnessOptions("Fallback prompt", {
+      locale: "en",
+      role: "CRAFTER",
+      task: {
+        id: "task-backlog-fresh",
+        title: "Investigate new feature request",
+        columnId: "backlog",
+        triggerSessionId: "session-1",
+      },
+    });
+
+    expect(options).toBeUndefined();
+  });
+
   it("forwards task context search spec into task-adaptive harness hints", () => {
     const options = buildKanbanTaskAdaptiveHarnessOptions("Fallback prompt", {
       locale: "en",

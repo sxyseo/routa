@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AcpTaskAdaptiveHarnessOptions } from "@/client/acp-client";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import { desktopAwareFetch, toErrorMessage } from "@/client/utils/diagnostics";
@@ -17,7 +17,10 @@ import {
   type TaskJitContextSnapshot,
 } from "@/core/models/task";
 import type { TaskInfo } from "../types";
-import { buildKanbanTaskAdaptiveHarnessOptions } from "./kanban-task-adaptive";
+import {
+  buildKanbanTaskAdaptiveHarnessOptions,
+  hasConfirmedKanbanTaskAdaptiveContext,
+} from "./kanban-task-adaptive";
 import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
 
 function formatTimestamp(value: string | undefined): string | null {
@@ -85,7 +88,11 @@ function formatVerificationVerdictLabel(
   }
 }
 
-function hasTaskAdaptiveSearchHints(options: AcpTaskAdaptiveHarnessOptions): boolean {
+function hasTaskAdaptiveSearchHints(options: AcpTaskAdaptiveHarnessOptions | undefined): boolean {
+  if (!options) {
+    return false;
+  }
+
   return Boolean(
     options.query?.trim()
     || options.featureId?.trim()
@@ -1020,12 +1027,17 @@ export function JitContextPanel({
   showTitle?: boolean;
 }) {
   const { t } = useTranslation();
-  const persistedPack = useMemo(
-    () => packFromTaskJitContextSnapshot(task.jitContextSnapshot),
-    [task.jitContextSnapshot],
+  const hasConfirmedTaskAdaptiveContext = useMemo(
+    () => hasConfirmedKanbanTaskAdaptiveContext(task),
+    [task],
   );
   const savedAnalysis = task.jitContextSnapshot?.analysis;
   const hasSavedAnalysis = Boolean(savedAnalysis);
+  const backlogNeedsRefinementFirst = task.columnId === "backlog" && !hasConfirmedTaskAdaptiveContext && !hasSavedAnalysis;
+  const persistedPack = useMemo(
+    () => (backlogNeedsRefinementFirst ? null : packFromTaskJitContextSnapshot(task.jitContextSnapshot)),
+    [backlogNeedsRefinementFirst, task.jitContextSnapshot],
+  );
   const [expanded, setExpanded] = useState(hasSavedAnalysis);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(Boolean(persistedPack));
@@ -1037,6 +1049,7 @@ export function JitContextPanel({
   const [openingAnalysis, setOpeningAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisSuccess, setAnalysisSuccess] = useState(false);
+  const clearedSnapshotRef = useRef<string | null>(null);
   const harnessOptions = useMemo(
     () => buildKanbanTaskAdaptiveHarnessOptions(task.title, {
       locale: specialistLanguage,
@@ -1045,7 +1058,7 @@ export function JitContextPanel({
     }),
     [specialistLanguage, task],
   );
-  const canLoadContext = hasTaskAdaptiveSearchHints(harnessOptions);
+  const canLoadContext = !backlogNeedsRefinementFirst && hasTaskAdaptiveSearchHints(harnessOptions);
   const uniqueFailures = useMemo(
     () => uniqueFailureSignals(pack?.failures ?? []),
     [pack?.failures],
@@ -1087,6 +1100,27 @@ export function JitContextPanel({
     setAnalysisError(null);
     setAnalysisSuccess(false);
   }, [hasSavedAnalysis, harnessSignature, persistedPack, repoPath, workspaceId]);
+
+  useEffect(() => {
+    const staleSnapshotSignature = backlogNeedsRefinementFirst && task.jitContextSnapshot
+      ? `${task.id}:${task.jitContextSnapshot.generatedAt ?? "unknown"}`
+      : null;
+
+    if (!staleSnapshotSignature) {
+      clearedSnapshotRef.current = null;
+      return;
+    }
+    if (!onPatchTask || clearedSnapshotRef.current === staleSnapshotSignature) {
+      return;
+    }
+
+    clearedSnapshotRef.current = staleSnapshotSignature;
+    void onPatchTask(task.id, { jitContextSnapshot: null }).catch(() => {
+      if (clearedSnapshotRef.current === staleSnapshotSignature) {
+        clearedSnapshotRef.current = null;
+      }
+    });
+  }, [backlogNeedsRefinementFirst, onPatchTask, task.id, task.jitContextSnapshot]);
 
   const loadContext = async () => {
     if (loading) {
@@ -1130,7 +1164,7 @@ export function JitContextPanel({
       }
       setPack(data);
       setLoaded(true);
-      if (onPatchTask) {
+      if (onPatchTask && !backlogNeedsRefinementFirst && harnessOptions) {
         const nextSnapshot = buildTaskJitContextSnapshot(task, repoPath, harnessOptions, data);
         const currentSnapshot = task.jitContextSnapshot;
         const nextSignature = JSON.stringify(nextSnapshot);
@@ -1181,7 +1215,7 @@ export function JitContextPanel({
   };
 
   const handleOpenHistoryAnalysis = async () => {
-    if (!pack || !onOpenHistoryAnalysis || openingAnalysis) {
+    if (!pack || !harnessOptions || !onOpenHistoryAnalysis || openingAnalysis) {
       return;
     }
 
@@ -1279,7 +1313,7 @@ export function JitContextPanel({
                 <span>{t.kanbanDetail.analysisTopSessions}: {savedAnalysis.topSessions.length}</span>
               </>
             ) : (
-              <span>{canLoadContext ? t.kanbanDetail.jitContextHint : t.kanbanDetail.jitContextNoHistorySessions}</span>
+              <span>{backlogNeedsRefinementFirst ? t.kanbanDetail.jitContextNeedsRefinement : canLoadContext ? t.kanbanDetail.jitContextHint : t.kanbanDetail.jitContextNoHistorySessions}</span>
             )}
           </div>
         </div>
@@ -1445,6 +1479,10 @@ export function JitContextPanel({
           ) : !hasSavedAnalysis && error ? (
             <div className="rounded-xl border border-rose-200/80 bg-rose-50/80 px-3 py-2.5 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/10 dark:text-rose-200">
               {error}
+            </div>
+          ) : !hasSavedAnalysis && backlogNeedsRefinementFirst ? (
+            <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+              {t.kanbanDetail.jitContextNeedsRefinement}
             </div>
           ) : !hasSavedAnalysis && !canLoadContext ? (
             <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">

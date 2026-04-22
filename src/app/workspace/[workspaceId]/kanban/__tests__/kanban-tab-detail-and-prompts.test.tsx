@@ -420,6 +420,11 @@ describe("KanbanCardDetail repository health", () => {
           ...createTask("task-jit", "Recover JIT context"),
           columnId: "backlog",
           assignedRole: "CRAFTER",
+          contextSearchSpec: {
+            query: "recover jit context",
+            featureCandidates: ["kanban-workflow"],
+            relatedFiles: ["src/app/page.tsx"],
+          },
           triggerSessionId: "session-trigger",
           sessionIds: ["session-history"],
           laneSessions: [{
@@ -487,7 +492,7 @@ describe("KanbanCardDetail repository health", () => {
     expect(requestBody.taskAdaptiveHarness).toEqual(expect.objectContaining({
       taskId: "task-jit",
       taskLabel: "Recover JIT context",
-      query: "Recover JIT context",
+      query: "recover jit context",
       historySessionIds: ["session-trigger", "session-history", "session-lane"],
       taskType: "planning",
       locale: "en",
@@ -500,7 +505,7 @@ describe("KanbanCardDetail repository health", () => {
           jitContextSnapshot: expect.objectContaining({
             summary: "history summary",
             recommendedContextSearchSpec: expect.objectContaining({
-              query: "Recover JIT context",
+              query: "recover jit context",
               relatedFiles: ["src/app/page.tsx"],
             }),
           }),
@@ -603,6 +608,11 @@ describe("KanbanCardDetail repository health", () => {
           ...createTask("task-jit-analysis", "Recover JIT context"),
           columnId: "backlog",
           assignedRole: "CRAFTER",
+          contextSearchSpec: {
+            query: "recover jit context",
+            featureCandidates: ["kanban-workflow"],
+            relatedFiles: ["src/app/page.tsx"],
+          },
           triggerSessionId: "session-trigger",
           sessionIds: ["session-history"],
           laneSessions: [{
@@ -743,6 +753,71 @@ describe("KanbanCardDetail repository health", () => {
     expect(screen.getByText("Top sessions")).toBeTruthy();
     expect(screen.getByText("Reusable prompts")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Hide History Memory" })).toBeTruthy();
+  });
+
+  it("does not load or show speculative history memory for a fresh backlog card before refinement confirms context", async () => {
+    const onPatchTask = vi.fn(async () => createTask("task-backlog-unconfirmed", "Investigate feature memory"));
+
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-backlog-unconfirmed", "[Feature] Investigate feature memory", {
+            columnId: "backlog",
+            assignedRole: "CRAFTER",
+            jitContextSnapshot: {
+              generatedAt: "2026-04-22T08:00:00.000Z",
+              summary: "Speculative feature-explorer history memory.",
+              featureId: "feature-explorer",
+              featureName: "Feature Explorer",
+              matchConfidence: "high",
+              matchReasons: ["Matched a speculative feature seed."],
+              warnings: [],
+              matchedFileDetails: [{
+                filePath: "src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx",
+                changes: 4,
+                sessions: 3,
+                updatedAt: "2026-04-22T08:00:00.000Z",
+              }],
+              matchedSessionIds: ["session-speculative"],
+              failures: [],
+              repeatedReadFiles: [],
+              sessions: [],
+              recommendedContextSearchSpec: {
+                query: "feature explorer",
+                featureCandidates: ["feature-explorer"],
+                relatedFiles: ["src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx"],
+              },
+            },
+          }),
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={onPatchTask}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
+
+    expect(screen.getByText("History memory becomes available after backlog refinement confirms feature or file hints for this card.")).toBeTruthy();
+    expect(screen.queryByText("Speculative feature-explorer history memory.")).toBeNull();
+    expect(screen.queryByText("Feature Explorer")).toBeNull();
+    expect(desktopAwareFetch).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(onPatchTask).toHaveBeenCalledWith("task-backlog-unconfirmed", {
+        jitContextSnapshot: null,
+      });
+    });
   });
 
   it("loads JIT Context from search hints even when no history sessions are linked", async () => {

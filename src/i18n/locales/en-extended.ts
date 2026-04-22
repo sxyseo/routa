@@ -782,6 +782,7 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     matchConfidenceLow: "Low",
     jitContextUnavailable: "History memory is unavailable because this card has no repository or workspace context.",
     jitContextNoHistorySessions: "No linked history sessions are available for this card yet.",
+    jitContextNeedsRefinement: "History memory becomes available after backlog refinement confirms feature or file hints for this card.",
     jitContextSearchFailed: "Failed to load History Memory",
     noJitContext: "No historical issues were recovered from the linked sessions.",
     historySummary: "History Summary",

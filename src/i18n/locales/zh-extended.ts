@@ -782,6 +782,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     matchConfidenceLow: "低",
     jitContextUnavailable: "当前卡片缺少仓库或工作区上下文，无法加载历史记忆。",
     jitContextNoHistorySessions: "当前卡片还没有可用的历史 session 关联。",
+    jitContextNeedsRefinement: "需要先经过 backlog 梳理并确认 feature 或相关文件线索，历史记忆才会对这张卡生效。",
     jitContextSearchFailed: "加载历史记忆失败",
     noJitContext: "未从关联的历史 session 中恢复出历史问题。",
     historySummary: "历史摘要",

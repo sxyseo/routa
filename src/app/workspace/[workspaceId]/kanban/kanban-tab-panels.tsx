@@ -1013,6 +1013,9 @@ export function KanbanTaskDetailOverlay({
                         role: task.assignedRole,
                         task,
                       });
+                      if (!taskAdaptiveHarness) {
+                        throw new Error(t.kanbanDetail.jitContextNeedsRefinement);
+                      }
 
                       await startKanbanHistoryAnalysisSession({
                         workspaceId,

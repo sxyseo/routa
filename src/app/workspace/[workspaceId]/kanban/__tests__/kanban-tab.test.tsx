@@ -517,13 +517,7 @@ describe("KanbanTab drag and drop", () => {
       mcpProfile: "kanban-planning",
       toolMode: "full",
       allowedNativeTools: ["Read", "Grep", "Glob"],
-      taskAdaptiveHarness: expect.objectContaining({
-        taskLabel: "Story One",
-        taskType: "planning",
-        locale: "en",
-        role: "CRAFTER",
-        historySessionIds: ["session-trigger", "session-history", "session-lane"],
-      }),
+      taskAdaptiveHarness: undefined,
     });
 
     await waitFor(() => {
@@ -2918,6 +2912,11 @@ describe("KanbanTab JIT Context session hydration", () => {
           codebaseIds: ["repo-a"],
           triggerSessionId: "session-123",
           assignedRole: "DEVELOPER",
+          contextSearchSpec: {
+            query: "kanban workflow seed",
+            featureCandidates: ["kanban-workflow"],
+            relatedFiles: ["src/app/page.tsx"],
+          },
         })]}
         sessions={[{
           sessionId: "session-123",

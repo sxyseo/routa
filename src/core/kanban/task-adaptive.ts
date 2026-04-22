@@ -75,6 +75,23 @@ function resolveRecommendedContextSearchSpec(
   );
 }
 
+export function hasConfirmedKanbanTaskAdaptiveContext(
+  task: TaskAdaptiveSource | null | undefined,
+): boolean {
+  return Boolean(normalizeTaskContextSearchSpec(task?.contextSearchSpec))
+    || Boolean(task?.jitContextSnapshot?.analysis);
+}
+
+export function shouldEnableKanbanTaskAdaptiveHarness(
+  task: TaskAdaptiveSource | null | undefined,
+): boolean {
+  if (!task) {
+    return true;
+  }
+
+  return task.columnId !== "backlog" || hasConfirmedKanbanTaskAdaptiveContext(task);
+}
+
 function mergeTaskHintArrays(
   primary: string[] | undefined,
   fallback: string[] | undefined,
@@ -179,7 +196,11 @@ export function buildKanbanTaskAdaptiveHarnessOptions(
     taskType?: TaskAdaptiveHarnessTaskType;
     task?: TaskAdaptiveSource | null;
   },
-): KanbanTaskAdaptiveHarnessOptions {
+): KanbanTaskAdaptiveHarnessOptions | undefined {
+  if (options.task && !shouldEnableKanbanTaskAdaptiveHarness(options.task)) {
+    return undefined;
+  }
+
   return {
     taskId: options.task?.id,
     taskLabel: options.task?.title ?? promptLabel.trim(),
