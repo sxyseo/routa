@@ -1329,6 +1329,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     cards: string;
     manualLane: string;
     manualLaneOnly: string;
+    loadMore: string;
   };
 
   // Sessions

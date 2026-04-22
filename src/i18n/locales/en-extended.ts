@@ -1316,6 +1316,7 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     cards: "cards",
     manualLane: "Manual lane",
     manualLaneOnly: "Manual lane only",
+    loadMore: "Load more",
   },
 
   sessions: {

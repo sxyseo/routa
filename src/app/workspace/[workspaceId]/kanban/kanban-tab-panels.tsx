@@ -27,6 +27,7 @@ import type { KanbanTaskAgentCopy } from "./i18n/kanban-task-agent";
 import { KanbanCreateModal, type TaskDraft } from "../kanban-create-modal";
 import { KanbanCardActivityPanel, KanbanEmptySessionPane } from "./kanban-card-activity";
 import { formatSessionTimestamp } from "./kanban-card-session-utils";
+import { useColumnVirtualScroll } from "./hooks/use-column-virtual-scroll";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
@@ -336,6 +337,7 @@ export const KanbanBoardSurface = React.memo(function KanbanBoardSurface({
   const [gitLogRepoPath, setGitLogRepoPath] = useState<string | null>(null);
   const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
   const [activeDragCardWidth, setActiveDragCardWidth] = useState<number | null>(null);
+  const { getVisibleCount, loadMore } = useColumnVirtualScroll();
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: { distance: 3 },
@@ -450,6 +452,9 @@ export const KanbanBoardSurface = React.memo(function KanbanBoardSurface({
                     const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
                     const laneAutomation = columnAutomation[column.id] ?? column.automation;
                     const widthClass = column.width === "compact" ? "w-[14rem]" : column.width === "wide" ? "w-[24rem]" : "w-[18rem]";
+                    const visibleCount = getVisibleCount(column.id, columnTasks.length, column.stage);
+                    const visibleTasks = columnTasks.slice(0, visibleCount);
+                    const hasMore = visibleCount < columnTasks.length;
 
                     return (
                       <KanbanDropColumn
@@ -490,7 +495,7 @@ export const KanbanBoardSurface = React.memo(function KanbanBoardSurface({
                         </div>
 
                         <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
-                          {columnTasks.map((task) => (
+                          {visibleTasks.map((task) => (
                             <KanbanCard
                               key={task.id}
                               task={task}
@@ -512,6 +517,15 @@ export const KanbanBoardSurface = React.memo(function KanbanBoardSurface({
                               onRefresh={onRefresh}
                             />
                           ))}
+                          {hasMore && (
+                            <button
+                              type="button"
+                              onClick={() => loadMore(column.id, visibleCount, columnTasks.length)}
+                              className="w-full rounded border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-600 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                            >
+                              {t.kanbanBoard.loadMore} ({columnTasks.length - visibleCount} {t.kanbanBoard.cards})
+                            </button>
+                          )}
                         </div>
                       </KanbanDropColumn>
                     );

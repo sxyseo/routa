@@ -1316,6 +1316,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     cards: "张卡片",
     manualLane: "手动泳道",
     manualLaneOnly: "仅手动泳道",
+    loadMore: "加载更多",
   },
 
   sessions: {
