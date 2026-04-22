@@ -433,6 +433,8 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     db.run(sql.raw(statement));
   });
 
+  try { db.run(sql`ALTER TABLE worktrees ADD COLUMN base_commit_sha TEXT`); } catch { /* column already exists */ }
+
   db.run(sql`
     CREATE TABLE IF NOT EXISTS kanban_boards (
       id TEXT PRIMARY KEY,
