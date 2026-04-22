@@ -1,0 +1,53 @@
+# Docker Compose for Routa 本地开发/服务环境
+#
+# 用途：与本地 npm run dev（端口 3000）隔离的 Docker 服务环境
+# 端口：宿主机 3001 → 容器 3000（避免与本地 dev 冲突）
+# 数据：独立 volume routa_dev_data，SQLite 数据持久化
+#
+# 使用方式：
+#   npm run docker:dev          # 构建并启动（前台）
+#   npm run docker:dev:build    # 仅构建镜像
+#   npm run docker:dev:down     # 停止并移除容器
+#   npm run docker:dev:logs     # 查看实时日志
+#   npm run docker:dev:ps       # 查看容器状态
+
+services:
+  app:
+    container_name: routa-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      # ── SQLite 配置（默认驱动） ──────────────────────────────────────────
+      ROUTA_DB_DRIVER: ${ROUTA_DB_DRIVER:-sqlite}
+      ROUTA_DB_PATH: /app/data/routa.db
+      # ── LLM 认证（必填，从 .env.docker 读取） ───────────────────────────
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:?请在 .env.docker 中设置 ANTHROPIC_AUTH_TOKEN}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      # ── 平台选择 ────────────────────────────────────────────────────────
+      PLATFORM: ${PLATFORM:-github}
+      # ── GitHub 集成（可选） ─────────────────────────────────────────────
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      GITHUB_POLLING_ENABLED: ${GITHUB_POLLING_ENABLED:-false}
+      GITHUB_POLLING_INTERVAL: ${GITHUB_POLLING_INTERVAL:-30}
+      # ── 模型配置（可选） ────────────────────────────────────────────────
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      ANTHROPIC_SMALL_FAST_MODEL: ${ANTHROPIC_SMALL_FAST_MODEL:-}
+      # ── 运行时配置 ──────────────────────────────────────────────────────
+      NODE_ENV: production
+    volumes:
+      - routa_dev_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  routa_dev_data:
+    name: routa_dev_data
