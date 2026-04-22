@@ -43,8 +43,11 @@ export interface SearchToolUsageReport {
   patternCategoryBreakdown: Record<SearchPatternCategory, number>;
   topPatterns: Array<{ value: string; count: number; familyBreakdown: Partial<Record<SearchToolFamily, number>> }>;
   topGlobs: Array<{ value: string; count: number }>;
+  topActionableGlobs: Array<{ value: string; count: number }>;
   topPathRoots: Array<{ value: string; count: number }>;
+  topActionablePathRoots: Array<{ value: string; count: number }>;
   topCommands: Array<{ value: string; count: number }>;
+  topEnumerationCommands: Array<{ value: string; count: number }>;
   exampleSessions: TranscriptSearchStats[];
 }
 
@@ -73,6 +76,33 @@ const PATTERN_CATEGORY_KEYS: SearchPatternCategory[] = [
   "natural_language",
   "other",
 ];
+
+const GENERIC_GLOBS = new Set([
+  "*",
+  "*.ts",
+  "*.tsx",
+  "*.rs",
+  "*.js",
+  "*.md",
+  "*.json",
+  "*.yaml",
+  "*.yml",
+  "*.py",
+  "*.d.ts",
+]);
+
+const NOISY_ROOTS = new Set([
+  "/",
+  ".",
+  "~",
+  "**",
+  "node_modules",
+  ".next",
+  ".git",
+  "$f",
+  "2>",
+  "2",
+]);
 
 function stringifyCommand(value: unknown): string | undefined {
   if (typeof value === "string") {
@@ -669,6 +699,52 @@ function summarizeTopCounters(
     .map(([value, count]) => ({ value, count }));
 }
 
+export function isActionableGlob(value: string): boolean {
+  const normalized = normalizeGlob(value);
+  if (!normalized || normalized.startsWith("!")) {
+    return false;
+  }
+
+  if (GENERIC_GLOBS.has(normalized)) {
+    return false;
+  }
+
+  return normalized.includes("test")
+    || normalized.includes("spec")
+    || normalized.includes("__tests__")
+    || normalized.includes("route.")
+    || normalized.includes("jsonl")
+    || normalized === "Cargo.toml"
+    || normalized === "package.json";
+}
+
+export function isActionablePathRoot(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized || NOISY_ROOTS.has(normalized)) {
+    return false;
+  }
+
+  return normalized === "src"
+    || normalized === "crates"
+    || normalized === "resources"
+    || normalized === "scripts"
+    || normalized === "tools"
+    || normalized === "apps"
+    || normalized === "docs";
+}
+
+export function isActionableEnumerationCommand(value: string): boolean {
+  const normalized = value.trim();
+  if (normalized.startsWith("rg --files ")) {
+    return normalized !== "rg --files ." && normalized !== "rg --files /";
+  }
+
+  return normalized.startsWith("find ")
+    && normalized.includes("-type f")
+    && !normalized.includes("node_modules")
+    && !normalized.includes(".next");
+}
+
 function analyzeTranscriptFile(
   transcriptPath: string,
   options: Options,
@@ -840,8 +916,17 @@ export function analyzeSearchToolUsage(options: Options): SearchToolUsageReport 
     patternCategoryBreakdown,
     topPatterns,
     topGlobs: summarizeTopCounters(globCounts, options.maxItems),
+    topActionableGlobs: summarizeTopCounters(globCounts, options.maxItems * 4)
+      .filter((entry) => isActionableGlob(entry.value))
+      .slice(0, options.maxItems),
     topPathRoots: summarizeTopCounters(pathRootCounts, options.maxItems),
+    topActionablePathRoots: summarizeTopCounters(pathRootCounts, options.maxItems * 4)
+      .filter((entry) => isActionablePathRoot(entry.value))
+      .slice(0, options.maxItems),
     topCommands: summarizeTopCounters(commandCounts, options.maxItems),
+    topEnumerationCommands: summarizeTopCounters(commandCounts, options.maxItems * 4)
+      .filter((entry) => isActionableEnumerationCommand(entry.value))
+      .slice(0, options.maxItems),
     exampleSessions: [...sessionStats]
       .sort((left, right) => right.searchCount - left.searchCount || left.sessionId.localeCompare(right.sessionId))
       .slice(0, Math.min(options.maxItems, 10)),

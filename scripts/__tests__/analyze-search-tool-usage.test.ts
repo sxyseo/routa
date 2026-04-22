@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isActionableEnumerationCommand,
+  isActionableGlob,
+  isActionablePathRoot,
   parseArgs,
   parseSearchCommandSegment,
   splitShellCommandSegments,
@@ -82,7 +85,30 @@ describe("analyze-search-tool-usage", () => {
         family: "custom_glob",
         rawCommand: "src/**/*.tsx",
         globs: ["src/**/*.tsx"],
-        pathTargets: [],
-      });
+      pathTargets: [],
+    });
+  });
+
+  it("filters out overly generic globs and keeps actionable ones", () => {
+    expect(isActionableGlob("*.ts")).toBe(false);
+    expect(isActionableGlob("*.rs")).toBe(false);
+    expect(isActionableGlob("route.ts")).toBe(true);
+    expect(isActionableGlob("*.test.tsx")).toBe(true);
+    expect(isActionableGlob("Cargo.toml")).toBe(true);
+  });
+
+  it("filters noisy roots and keeps code-surface roots", () => {
+    expect(isActionablePathRoot("src")).toBe(true);
+    expect(isActionablePathRoot("crates")).toBe(true);
+    expect(isActionablePathRoot("resources")).toBe(true);
+    expect(isActionablePathRoot(".")).toBe(false);
+    expect(isActionablePathRoot("node_modules")).toBe(false);
+  });
+
+  it("keeps root-first enumeration commands and drops generic ones", () => {
+    expect(isActionableEnumerationCommand("rg --files src/app")).toBe(true);
+    expect(isActionableEnumerationCommand("find resources/specialists -maxdepth 3 -type f")).toBe(true);
+    expect(isActionableEnumerationCommand("rg --files .")).toBe(false);
+    expect(isActionableEnumerationCommand("grep -v grep")).toBe(false);
   });
 });

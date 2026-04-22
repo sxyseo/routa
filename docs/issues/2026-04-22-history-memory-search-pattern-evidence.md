@@ -111,6 +111,14 @@ These results support changing Kanban backlog refinement in a more explicit way:
    - `symptomHints`
 4. This also suggests that automatic preload for fresh backlog cards should stay conservative; the higher-value moment to persist retrieval hints is after the agent has run `rg --files` / `rg -n` against the repo.
 
+One caveat became clear during verification: raw top globs such as `*.ts`, `*.tsx`, and `*.rs` are too generic to use directly as backlog retrieval seeds. They are still useful as evidence that agents search code surfaces broadly, but the more actionable signals are:
+
+- root-first enumeration commands such as `rg --files src/app`, `rg --files crates/routa-server/src`, `rg --files src/core`, `find resources/specialists -maxdepth 3 -type f`
+- narrowed structural globs such as `route.ts`, `*.test.ts`, `*.test.tsx`, `Cargo.toml`, `package.json`, `*.jsonl`
+- stable code-surface roots: `src`, `crates`, `resources`, `tools`, `scripts`, `apps`
+
+The analysis script now emits these as `topEnumerationCommands`, `topActionableGlobs`, and `topActionablePathRoots` so future backlog-refiner work can consume higher-signal seeds instead of generic file extensions.
+
 ## Verification
 
 - 2026-04-22: added `scripts/harness/analyze-search-tool-usage.ts`
@@ -124,6 +132,8 @@ These results support changing Kanban backlog refinement in a more explicit way:
 - 2026-04-22: `npx vitest run src/core/kanban/__tests__/backlog-context-confirmation.test.ts src/core/tools/__tests__/kanban-tools.test.ts src/core/tools/__tests__/agent-tools.test.ts 'src/app/workspace/[workspaceId]/kanban/__tests__/kanban-agent-input.test.ts' src/core/kanban/__tests__/agent-trigger.test.ts` passed (`53` tests, `2` skipped)
 - 2026-04-22: `npx tsc --noEmit` passed
 - 2026-04-22: `entrix run --tier fast` passed (`100.0%`)
+- 2026-04-22: refined `analyze-search-tool-usage.ts` to emit `topActionableGlobs`, `topActionablePathRoots`, and `topEnumerationCommands`, explicitly downgrading generic globs like `*.ts` / `*.rs`
+- 2026-04-22: `npx vitest run scripts/__tests__/analyze-search-tool-usage.test.ts` passed (`10` tests)
 
 ## References
 
