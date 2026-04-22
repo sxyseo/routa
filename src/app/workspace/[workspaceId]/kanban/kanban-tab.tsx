@@ -851,6 +851,8 @@ export function KanbanTab({
     }
     return Array.from(ids);
   }, [boardTasks, sessionMap]);
+  const activeLiveSessionIdsRef = useRef(activeLiveSessionIds);
+  activeLiveSessionIdsRef.current = activeLiveSessionIds;
   const agentSession = agentSessionId ? sessionMap.get(agentSessionId) : undefined;
   const kanbanRepoSelection = useMemo<RepoSelection | null>(() => {
     if (!defaultCodebase) return null;
@@ -1044,13 +1046,19 @@ export function KanbanTab({
   }, [agentPanelOpen, agentSessionId, onRefresh]);
 
   useEffect(() => {
-    if (activeLiveSessionIds.length === 0) {
+    // Use a serialised snapshot so the effect only re-enters when the
+    // *set* of live session IDs actually changes, not on every sessionMap
+    // reference update.  This prevents the polling loop from being torn
+    // down and recreated (and firing an extra immediate poll) every time
+    // the parent data-refresh cycle produces a new sessionMap object.
+    const liveIds = activeLiveSessionIdsRef.current;
+    if (liveIds.length === 0) {
       setLiveSessionTails((previous) => (Object.keys(previous).length > 0 ? {} : previous));
       return;
     }
     if (!isPageVisible) return;
 
-    const activeIdSet = new Set(activeLiveSessionIds);
+    const activeIdSet = new Set(liveIds);
     let disposed = false;
     let inFlight = false;
 
@@ -1059,7 +1067,12 @@ export function KanbanTab({
       if (disposed || inFlight) return;
       inFlight = true;
 
-      const updates = await Promise.all(activeLiveSessionIds.map(async (sessionId) => {
+      // Always read the latest IDs from the ref so polls pick up
+      // additions/removals without re-entering the effect.
+      const currentIds = activeLiveSessionIdsRef.current;
+      const currentIdSet = new Set(currentIds);
+
+      const updates = await Promise.all(currentIds.map(async (sessionId) => {
         try {
           const response = await desktopAwareFetch(`/api/sessions/${encodeURIComponent(sessionId)}/history?consolidated=true`,
             { cache: "no-store" },
@@ -1081,13 +1094,13 @@ export function KanbanTab({
         let changed = false;
 
         for (const [sessionId, tail] of updates) {
-          if (!activeIdSet.has(sessionId) || !tail) continue;
+          if (!currentIdSet.has(sessionId) || !tail) continue;
           next[sessionId] = tail;
           if (previous[sessionId] !== tail) changed = true;
         }
 
         for (const sessionId of Object.keys(previous)) {
-          if (!activeIdSet.has(sessionId)) {
+          if (!currentIdSet.has(sessionId)) {
             changed = true;
             continue;
           }
@@ -1107,7 +1120,11 @@ export function KanbanTab({
       disposed = true;
       window.clearInterval(timerId);
     };
-  }, [activeLiveSessionIds, isPageVisible]);
+  // Deliberately depend on a serialised key so the effect re-enters
+  // only when the *membership* of activeLiveSessionIds changes, not on
+  // every sessionMap reference update that produces an equivalent array.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLiveSessionIds.join(","), isPageVisible]);
 
   // Codebase edit handlers - use RepoPicker for re-selecting/cloning
   const handleStartEditCodebase = useCallback(() => {
