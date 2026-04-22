@@ -2875,8 +2875,8 @@ describe("KanbanTab JIT Context session hydration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
     await screen.findByText("Card Detail");
 
-    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
     await screen.findByText("Matched feature");
 
     fireEvent.click(screen.getByRole("button", { name: "Load into current session" }));
@@ -2891,7 +2891,7 @@ describe("KanbanTab JIT Context session hydration", () => {
       "session-123",
       expect.stringContaining("src/app/page.tsx (changes 2, sessions 1)"),
     );
-    expect(screen.getByText("JIT Context was queued in the current session.")).toBeTruthy();
+    expect(screen.getByText("History memory was queued in the current session.")).toBeTruthy();
   });
 });
 

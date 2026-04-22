@@ -455,8 +455,8 @@ describe("KanbanCardDetail repository health", () => {
     );
 
     expect(desktopAwareFetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
 
     expect(await screen.findByText("Historical issues")).toBeTruthy();
     expect(screen.getByText("History Summary")).toBeTruthy();
@@ -637,8 +637,8 @@ describe("KanbanCardDetail repository health", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
     await screen.findByText("History Summary");
 
     fireEvent.click(screen.getByRole("button", { name: "Open History Analysis" }));
@@ -730,10 +730,10 @@ describe("KanbanCardDetail repository health", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
 
-    expect(screen.getByText("Saved History Analysis")).toBeTruthy();
+    expect(screen.getByText("Saved History Memory")).toBeTruthy();
     expect(screen.getByText("Start from the Kanban API and blocked interval reconstruction before touching the dashboard.")).toBeTruthy();
     expect(screen.getByText("Top files")).toBeTruthy();
     expect(screen.getByText("Top sessions")).toBeTruthy();
@@ -820,8 +820,8 @@ describe("KanbanCardDetail repository health", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
 
     await waitFor(() => {
       expect(onPatchTask).toHaveBeenCalledWith(
@@ -915,8 +915,8 @@ describe("KanbanCardDetail repository health", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
 
     await waitFor(() => {
       expect(onPatchTask).toHaveBeenCalledWith(
@@ -1011,8 +1011,8 @@ describe("KanbanCardDetail repository health", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
     await waitFor(() => {
       expect(onPatchTask).toHaveBeenCalledWith(
         "task-jit-refresh",
@@ -1038,8 +1038,8 @@ describe("KanbanCardDetail repository health", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "JIT Context" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
     await waitFor(() => {
       expect(onPatchTask).toHaveBeenCalledWith(
         "task-jit-refresh",
