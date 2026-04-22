@@ -116,6 +116,15 @@ export class GitWorktreeService {
     // Fetch base branch ref before creating worktree to ensure up-to-date baseline
     await execGit(["fetch", "origin", baseBranch], repoPath).catch(() => {});
 
+    // Capture the current HEAD commit SHA as baseCommitSha
+    let baseCommitSha: string | undefined;
+    try {
+      const { stdout } = await execGit(["rev-parse", "HEAD"], repoPath);
+      baseCommitSha = stdout.trim();
+    } catch {
+      // Capture failure should not block worktree creation
+    }
+
     // Generate branch name if not provided
     const shortId = crypto.randomUUID().slice(0, 8);
     const branch =
@@ -167,6 +176,7 @@ export class GitWorktreeService {
         worktreePath,
         branch,
         baseBranch,
+        baseCommitSha,
         label: options.label,
       });
       await this.worktreeStore.add(worktree);

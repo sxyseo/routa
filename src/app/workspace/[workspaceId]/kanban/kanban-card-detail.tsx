@@ -1766,7 +1766,12 @@ function RepositoriesWorktreeRow({
           )}
           {worktree && (
             <div data-testid="worktree-detail" className="truncate font-mono text-xs text-slate-500 dark:text-slate-500" title={worktree.worktreePath}>
-              {worktree.worktreePath}
+              {worktree.baseCommitSha ? (
+                <span className="text-slate-600 dark:text-slate-400">Base {worktree.baseCommitSha.slice(0, 7)} ({worktree.baseBranch})</span>
+              ) : (
+                <span className="text-slate-600 dark:text-slate-400">Base {worktree.baseBranch}</span>
+              )}
+              <div className="mt-0.5 truncate" title={worktree.worktreePath}>{worktree.worktreePath}</div>
               {worktree.errorMessage && (
                 <div className="mt-0.5 text-red-600 dark:text-red-400">{worktree.errorMessage}</div>
               )}

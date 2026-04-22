@@ -665,7 +665,7 @@ export function KanbanCodebaseModal({
                                       {worktree.status}
                                     </span>
                                     <span className="font-mono text-[11px] text-desktop-text-primary">{worktree.branch}</span>
-                                    <span className="text-[10px] text-desktop-text-secondary">{t.kanban.baseLabel} {worktree.baseBranch}</span>
+                                    <span className="text-[10px] text-desktop-text-secondary" title={worktree.baseCommitSha ?? undefined}>{t.kanban.baseLabel} {worktree.baseCommitSha ? `${worktree.baseCommitSha.slice(0, 7)} (${worktree.baseBranch})` : worktree.baseBranch}</span>
                                     {linkedTasks.length > 0 ? (
                                       <span className="rounded-sm border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">
                                         {linkedTasks.length} {t.kanbanModals.linkedTasks}{linkedTasks.length > 1 ? "s" : ""}

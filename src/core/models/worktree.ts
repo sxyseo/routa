@@ -15,6 +15,7 @@ export interface Worktree {
   worktreePath: string;
   branch: string;
   baseBranch: string;
+  baseCommitSha?: string;
   status: WorktreeStatus;
   sessionId?: string;
   label?: string;
@@ -30,6 +31,7 @@ export function createWorktree(params: {
   worktreePath: string;
   branch: string;
   baseBranch: string;
+  baseCommitSha?: string;
   label?: string;
 }): Worktree {
   const now = new Date();
@@ -40,6 +42,7 @@ export function createWorktree(params: {
     worktreePath: params.worktreePath,
     branch: params.branch,
     baseBranch: params.baseBranch,
+    baseCommitSha: params.baseCommitSha,
     status: "creating",
     label: params.label,
     createdAt: now,

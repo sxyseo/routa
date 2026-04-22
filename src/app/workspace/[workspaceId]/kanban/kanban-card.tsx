@@ -592,7 +592,7 @@ function WorktreeBadge({ task, worktreeCache, onOpenDetail, stopCardInteraction 
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${wtDotColor}`} />
       <span className="truncate">
-        worktree {wt.status} · {wt.branch}
+        worktree {wt.status} · {wt.branch}{wt.baseCommitSha ? ` (${wt.baseCommitSha.slice(0, 7)})` : ""}
       </span>
     </button>
   );

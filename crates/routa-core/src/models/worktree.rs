@@ -10,6 +10,8 @@ pub struct Worktree {
     pub worktree_path: String,
     pub branch: String,
     pub base_branch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_commit_sha: Option<String>,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
@@ -39,6 +41,7 @@ impl Worktree {
             worktree_path,
             branch,
             base_branch,
+            base_commit_sha: None,
             status: "creating".to_string(),
             session_id: None,
             label,

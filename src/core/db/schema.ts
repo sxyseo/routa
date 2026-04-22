@@ -556,6 +556,7 @@ export const worktrees = pgTable("worktrees", {
   worktreePath: text("worktree_path").notNull(),
   branch: text("branch").notNull(),
   baseBranch: text("base_branch").notNull(),
+  baseCommitSha: text("base_commit_sha"),
   status: text("status").notNull().default("creating"), // creating | active | error | removing
   sessionId: text("session_id"),
   label: text("label"),

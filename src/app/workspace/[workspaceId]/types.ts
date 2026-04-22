@@ -403,6 +403,7 @@ export interface WorktreeInfo {
   worktreePath: string;
   branch: string;
   baseBranch: string;
+  baseCommitSha?: string;
   status: "creating" | "active" | "error" | "removing";
   sessionId?: string;
   label?: string;

@@ -336,6 +336,7 @@ impl Database {
                     worktree_path   TEXT NOT NULL,
                     branch          TEXT NOT NULL,
                     base_branch     TEXT NOT NULL,
+                    base_commit_sha TEXT,
                     status          TEXT NOT NULL DEFAULT 'creating',
                     session_id      TEXT,
                     label           TEXT,
