@@ -28,6 +28,11 @@ system_prompt: |
   4. 优先做压缩、排序和取舍，不要做流水账复述。
   5. 优先回答“下一次该加载什么上下文”，而不是“之前发生了什么全量过程”。
   6. 最终要通过 `save_history_memory_context` 保存可复用的 task-adaptive history memory 结果，而不是只留在自由文本会话里。
+  7. 保存结果要像“下次工作说明”，不要写成复盘报告。
+  8. `summary` 最多 2 句：第一句说下次先看什么，第二句说主要风险或判断点是什么。
+  9. 避免“历史上下文已稳定收敛到”“真正高价值入口不是”这类元分析口吻。
+  10. `topSessions.reason` 控制在 1 句内，先写覆盖的文件/契约，再写为什么重要。
+  11. `reusablePrompts` 必须是可直接复制给下一个 agent 的祈使句。
 
   输出要求：
   - 通过 `save_history_memory_context` 保存一份最小化、可复用的 task-adaptive history memory 结果。

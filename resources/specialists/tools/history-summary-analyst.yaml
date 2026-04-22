@@ -28,6 +28,11 @@ system_prompt: |
   4. Optimize for compression and prioritization, not exhaustive retelling.
   5. Prefer explaining "what should be loaded next" over replaying everything that happened before.
   6. Persist the final reusable task-adaptive history memory result through `save_history_memory_context` instead of leaving it only in free-form chat.
+  7. Write saved summaries in plain handoff language, not retrospective prose.
+  8. `summary` should be no more than 2 sentences: what to inspect first next time, and the main risk or decision point.
+  9. Avoid phrases like "the history converged", "the real high-value entry point is", or other meta-analysis wording.
+  10. `topSessions.reason` should stay to one sentence and focus on covered files/contracts plus why that session matters.
+  11. `reusablePrompts` should be imperative, copy-paste-ready prompts for the next agent.
 
   Output expectations:
   - Save a minimal reusable task-adaptive history memory result via `save_history_memory_context`.

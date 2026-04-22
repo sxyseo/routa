@@ -570,16 +570,16 @@ function buildJitHistoryAnalysisPrompt(
       "```json",
       JSON.stringify({
         taskId: task.id,
-        summary: "一句压缩后的总判断",
+        summary: "用 2 句以内说明：下次先看哪里，主要风险是什么",
         topFiles: ["repo-relative/path.ts"],
         topSessions: [
           {
             sessionId: "019d...",
             provider: "codex",
-            reason: "为什么这条会话值得优先看",
+            reason: "一句话说明这条会话覆盖哪些文件/契约，以及为什么值得先看",
           },
         ],
-        reusablePrompts: ["可直接复用的后续提示词"],
+        reusablePrompts: ["可直接复用、可直接粘贴的下一轮提示词"],
         recommendedContextSearchSpec: {
           query: "可复用的检索 query",
           featureCandidates: ["feature-id"],
@@ -593,7 +593,11 @@ function buildJitHistoryAnalysisPrompt(
       "```",
       "",
       "补充规则：",
+      "- `summary` 最多 2 句：第一句说“下次先看什么”，第二句说“主要风险或判断点是什么”。",
+      "- `summary` 不要写成复盘报告，不要用“历史上下文已稳定收敛到”“真正高价值入口不是”“不要重扫整个仓库”这类过重表述。",
       "- `topSessions` 优先放最终命中的 Codex/Claude 会话，而不是泛泛的 ACP 会话。",
+      "- `topSessions.reason` 控制在 1 句内，先说覆盖的文件/契约，再说用途。",
+      "- `reusablePrompts` 必须是可以直接粘贴给下一轮 agent 的祈使句，不要写解释性 prose。",
       "- `recommendedContextSearchSpec` 只保留下一次 JIT 检索真正需要复用的高信号 hints。",
       "- 如果某个字段没有内容，用空数组；不要保存过程性问题分类、证据列表或推理链。",
       "",
@@ -655,16 +659,16 @@ function buildJitHistoryAnalysisPrompt(
     "```json",
     JSON.stringify({
       taskId: task.id,
-      summary: "One compressed conclusion",
+      summary: "In 2 sentences max: what to inspect first next time, and what risk or decision matters most",
       topFiles: ["repo-relative/path.ts"],
       topSessions: [
         {
           sessionId: "019d...",
           provider: "codex",
-          reason: "Why this matched session is worth inspecting first",
+          reason: "One sentence: which files or contracts this session covers, and why it should be inspected first",
         },
       ],
-      reusablePrompts: ["Reusable follow-up prompt"],
+      reusablePrompts: ["Reusable, copy-paste-ready follow-up prompt"],
       recommendedContextSearchSpec: {
         query: "Reusable retrieval query",
         featureCandidates: ["feature-id"],
@@ -678,7 +682,11 @@ function buildJitHistoryAnalysisPrompt(
     "```",
     "",
     "Extra rules:",
+    "- Keep `summary` to 2 sentences max: sentence one says what to inspect first next time, sentence two says the main risk or decision point.",
+    "- Do not write `summary` like a retrospective report. Avoid meta phrasing such as \"the history converged\", \"the real high-value entry point is\", or \"do not rescan the repo\".",
     "- Prefer final matched Codex/Claude sessions in `topSessions` instead of generic ACP sessions.",
+    "- Keep `topSessions.reason` to one sentence: covered files/contracts first, then why it matters.",
+    "- Make `reusablePrompts` imperative and immediately reusable by the next agent.",
     "- Keep `recommendedContextSearchSpec` focused on the small set of hints that should survive into the next JIT retrieval.",
     "- If a field has no content, send an empty array instead of removing the field entirely.",
     "- Do not save process-only categories, evidence lists, or reasoning traces.",
