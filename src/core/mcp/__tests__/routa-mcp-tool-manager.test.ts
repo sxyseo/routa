@@ -154,6 +154,7 @@ function createToolsMock() {
     listTasks: vi.fn(async (workspaceId) => ({ success: true, data: [{ workspaceId }] })),
     updateTaskStatus: vi.fn(async (params) => ({ success: true, data: params })),
     updateTask: vi.fn(async (params) => ({ success: true, data: params })),
+    saveJitContext: vi.fn(async (params) => ({ success: true, data: params })),
     requestArtifact: vi.fn(async (params) => ({ success: true, data: params })),
     provideArtifact: vi.fn(async (params) => ({ success: true, data: params })),
     listArtifacts: vi.fn(async (params) => ({ success: true, data: params })),
@@ -222,6 +223,7 @@ describe("RoutaMcpToolManager", () => {
     expect(registrations.some((entry) => entry.name === "summarize_task_history_context")).toBe(true);
     expect(registrations.some((entry) => entry.name === "summarize_file_session_context")).toBe(true);
     expect(registrations.some((entry) => entry.name === "inspect_transcript_turns")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "save_history_memory_context")).toBe(true);
     expect(registrations.some((entry) => entry.name === "load_feature_retrospective_memory")).toBe(true);
     expect(registrations.some((entry) => entry.name === "save_feature_retrospective_memory")).toBe(true);
 
@@ -234,6 +236,7 @@ describe("RoutaMcpToolManager", () => {
     const historySummaryTool = registrations.find((entry) => entry.name === "summarize_task_history_context");
     const fileSessionContextTool = registrations.find((entry) => entry.name === "summarize_file_session_context");
     const transcriptTurnInspectionTool = registrations.find((entry) => entry.name === "inspect_transcript_turns");
+    const saveHistoryMemoryTool = registrations.find((entry) => entry.name === "save_history_memory_context");
     const loadRetrospectiveMemoryTool = registrations.find((entry) => entry.name === "load_feature_retrospective_memory");
     const saveRetrospectiveMemoryTool = registrations.find((entry) => entry.name === "save_feature_retrospective_memory");
     expect(createTaskTool).toBeDefined();
@@ -245,6 +248,7 @@ describe("RoutaMcpToolManager", () => {
     expect(historySummaryTool).toBeDefined();
     expect(fileSessionContextTool).toBeDefined();
     expect(transcriptTurnInspectionTool).toBeDefined();
+    expect(saveHistoryMemoryTool).toBeDefined();
     expect(loadRetrospectiveMemoryTool).toBeDefined();
     expect(saveRetrospectiveMemoryTool).toBeDefined();
 
@@ -374,6 +378,25 @@ describe("RoutaMcpToolManager", () => {
     expect((transcriptTurnInspectionResult as { content: Array<{ text: string }> }).content[0]?.text).toContain(
       '"transcriptPath": "/tmp/session-123.jsonl"',
     );
+
+    await saveHistoryMemoryTool!.handler({
+      taskId: "task-1",
+      summary: "Start from the MCP manager and executor pair before scanning unrelated runtime code.",
+      topFiles: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+      reusablePrompts: ["Check the task-adaptive history memory tool registration first."],
+    });
+    expect(tools.saveJitContext).toHaveBeenCalledWith({
+      taskId: "task-1",
+      result: {
+        updatedAt: undefined,
+        summary: "Start from the MCP manager and executor pair before scanning unrelated runtime code.",
+        topFiles: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+        topSessions: [],
+        reusablePrompts: ["Check the task-adaptive history memory tool registration first."],
+        recommendedContextSearchSpec: undefined,
+      },
+      agentId: "system",
+    });
 
     const loadRetrospectiveMemoryResult = await loadRetrospectiveMemoryTool!.handler({
       repoPath: "/repo/default",

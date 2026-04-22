@@ -192,6 +192,7 @@ export class RoutaMcpToolManager {
       register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => this.registerSummarizeTaskHistoryContext(server));
       register(FILE_SESSION_CONTEXT_TOOL_NAME, () => this.registerSummarizeFileSessionContext(server));
       register(TRANSCRIPT_TURN_INSPECTION_TOOL_NAME, () => this.registerInspectTranscriptTurns(server));
+      register("save_history_memory_context", () => this.registerSaveJitContext(server));
       register(LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME, () => this.registerLoadRetrospectiveMemory(server));
       register(SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME, () => this.registerSaveRetrospectiveMemory(server));
       return;
@@ -374,12 +375,12 @@ export class RoutaMcpToolManager {
   private registerSaveJitContext(server: McpServer) {
     server.tool(
       "save_history_memory_context",
-      "Persist the minimal reusable history memory result for a task so later sessions can load it directly.",
+      "Persist the minimal task-adaptive history memory result for a task so later sessions can load it directly.",
       {
         taskId: z.string().describe("ID of the task to update"),
         agentId: z.string().optional().describe("ID of the agent performing the save (optional in Kanban sessions)"),
         updatedAt: z.string().optional().describe("ISO timestamp for when the result was produced."),
-        summary: z.string().describe("Compressed reusable history-analysis conclusion for the task."),
+        summary: z.string().describe("Compressed reusable task-adaptive history memory conclusion for the task."),
         topFiles: z.array(z.string()).optional().describe("Highest-priority files to inspect first next time."),
         topSessions: z.array(z.object({
           sessionId: z.string().describe("Matched Codex/Claude session ID."),

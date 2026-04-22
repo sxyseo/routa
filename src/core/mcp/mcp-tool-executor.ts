@@ -159,6 +159,7 @@ const ESSENTIAL_TOOL_NAMES = new Set([
   TASK_HISTORY_SUMMARY_TOOL_NAME,
   FILE_SESSION_CONTEXT_TOOL_NAME,
   TRANSCRIPT_TURN_INSPECTION_TOOL_NAME,
+  "save_history_memory_context",
   LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
 ]);
@@ -1342,14 +1343,14 @@ export function getMcpToolDefinitions(
     },
     {
       name: "save_history_memory_context",
-      description: "Persist the minimal reusable history memory result for a task so later sessions can load it directly.",
+      description: "Persist the minimal task-adaptive history memory result for a task so later sessions can load it directly.",
       inputSchema: {
         type: "object",
         properties: {
           taskId: { type: "string", description: "Task ID" },
           agentId: { type: "string", description: "Agent performing the save (optional in Kanban sessions)" },
           updatedAt: { type: "string", description: "Optional ISO timestamp for when the saved result was produced." },
-          summary: { type: "string", description: "Compressed reusable history-analysis summary." },
+          summary: { type: "string", description: "Compressed reusable task-adaptive history memory summary." },
           topFiles: { type: "array", items: { type: "string" } },
           topSessions: {
             type: "array",

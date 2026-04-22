@@ -349,31 +349,20 @@ describe("AgentTools extended coverage", () => {
     });
     await taskStore.save(task);
 
-    const result = await tools.updateTask({
+    const result = await tools.saveJitContext({
       taskId: "task-jit-analysis",
-      updates: {
-        jitContextAnalysis: {
-          summary: "Start from the Kanban API and blocked interval reconstruction.",
-          issues: {
-            input: ["The first task label was too broad."],
-            location: ["The API entry point is crates/routa-server/src/api/kanban.rs."],
-            tooling: ["A stale tasks.rs path caused read failures."],
-          },
-          topFiles: ["crates/routa-server/src/api/kanban.rs"],
-          topSessions: [{
-            sessionId: "session-codex",
-            provider: "codex",
-            reason: "This session touched the durable flow-event path directly.",
-          }],
-          topLeads: ["Verify blocked/unblocked pairing first."],
-          contextToInject: ["Inject the flow-event model and blocked interval read-model context."],
-          reusablePrompts: ["Check Rust and TS flow-event parity first."],
-          recommendedContextSearchSpec: {
-            query: "kanban flow event persistence",
-            featureCandidates: ["kanban-workflow"],
-          },
-          evidence: ["Recovered session-codex from the selected files."],
-          inference: ["The next implementation session should start from the API layer."],
+      result: {
+        summary: "Start from the Kanban API and blocked interval reconstruction.",
+        topFiles: ["crates/routa-server/src/api/kanban.rs"],
+        topSessions: [{
+          sessionId: "session-codex",
+          provider: "codex",
+          reason: "This session touched the durable flow-event path directly.",
+        }],
+        reusablePrompts: ["Check Rust and TS flow-event parity first."],
+        recommendedContextSearchSpec: {
+          query: "kanban flow event persistence",
+          featureCandidates: ["kanban-workflow"],
         },
       },
       agentId: "agent-1",

@@ -266,11 +266,6 @@ describe("/api/tasks/[taskId]", () => {
       body: JSON.stringify({
         jitContextAnalysis: {
           summary: "Focus next on the Kanban API and blocked interval read model.",
-          issues: {
-            input: ["The story title alone was too broad on the first pass."],
-            location: ["The API entry point is in crates/routa-server/src/api/kanban.rs."],
-            tooling: ["A stale tasks.rs path caused read failures."],
-          },
           topFiles: ["crates/routa-server/src/api/kanban.rs"],
           topSessions: [
             {
@@ -279,16 +274,12 @@ describe("/api/tasks/[taskId]", () => {
               reason: "This session touched the durable flow-event implementation directly.",
             },
           ],
-          topLeads: ["Verify blocked/unblocked pairing before extending dashboard reads."],
-          contextToInject: ["Inject the flow-event model and blocked interval read-model context."],
           reusablePrompts: ["Check Rust and TS flow-event parity first."],
           recommendedContextSearchSpec: {
             query: "kanban flow event persistence",
             featureCandidates: ["kanban-workflow"],
             relatedFiles: ["crates/routa-server/src/api/kanban.rs"],
           },
-          evidence: ["Recovered session-codex plus kanban-card-detail.tsx as the matched surface."],
-          inference: ["The next implementation session should start from the API layer rather than the UI shell."],
         },
       }),
       headers: { "Content-Type": "application/json" },

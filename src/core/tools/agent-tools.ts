@@ -975,6 +975,44 @@ export class AgentTools {
     });
   }
 
+  async saveJitContext(params: {
+    taskId: string;
+    result: import("../models/task").TaskJitContextAnalysis;
+    agentId: string;
+  }): Promise<ToolResult> {
+    const { taskId, result } = params;
+    const task = await this.taskStore.get(taskId);
+    if (!task) {
+      return errorResult(`Task not found: ${taskId}`);
+    }
+
+    task.jitContextSnapshot = mergeTaskJitContextAnalysis(
+      task.jitContextSnapshot,
+      result,
+    );
+    task.updatedAt = new Date();
+
+    await this.taskStore.save(task);
+
+    getKanbanEventBroadcaster().notify({
+      workspaceId: task.workspaceId,
+      entity: "task",
+      action: "updated",
+      resourceId: taskId,
+      source: "agent",
+    });
+
+    return successResult({
+      taskId,
+      saved: true,
+      updatedAt: task.updatedAt.toISOString(),
+      summary: task.jitContextSnapshot?.analysis?.summary,
+      topFiles: task.jitContextSnapshot?.analysis?.topFiles ?? [],
+      topSessions: task.jitContextSnapshot?.analysis?.topSessions ?? [],
+      reusablePrompts: task.jitContextSnapshot?.analysis?.reusablePrompts ?? [],
+    });
+  }
+
   // ─── Internal: Drain Pending Events ─────────────────────────────────
 
   drainPendingEvents(agentId: string): ToolResult {

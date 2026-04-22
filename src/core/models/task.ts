@@ -274,29 +274,13 @@ export interface TaskJitContextAnalysisSessionLead {
   reason: string;
 }
 
-export interface TaskJitContextAnalysisIssues {
-  input: string[];
-  location: string[];
-  tooling: string[];
-}
-
 export interface TaskJitContextAnalysis {
   updatedAt?: string;
   summary: string;
-  sessionLayers?: {
-    seedSessions: string[];
-    matchedSessions: string[];
-    explanation?: string;
-  };
-  issues: TaskJitContextAnalysisIssues;
   topFiles: string[];
   topSessions: TaskJitContextAnalysisSessionLead[];
-  topLeads: string[];
-  contextToInject: string[];
   reusablePrompts: string[];
   recommendedContextSearchSpec?: TaskContextSearchSpec;
-  evidence: string[];
-  inference: string[];
 }
 
 export interface TaskJitContextSnapshot {
@@ -550,16 +534,6 @@ function normalizeTaskJitContextAnalysisSessionLead(
   };
 }
 
-function normalizeTaskJitContextAnalysisIssues(
-  value: TaskJitContextAnalysisIssues | null | undefined,
-): TaskJitContextAnalysisIssues {
-  return {
-    input: normalizeTaskContextSearchItems(value?.input) ?? [],
-    location: normalizeTaskContextSearchItems(value?.location) ?? [],
-    tooling: normalizeTaskContextSearchItems(value?.tooling) ?? [],
-  };
-}
-
 export function normalizeTaskJitContextAnalysis(
   value: TaskJitContextAnalysis | null | undefined,
 ): TaskJitContextAnalysis | undefined {
@@ -573,34 +547,15 @@ export function normalizeTaskJitContextAnalysis(
   }
 
   const updatedAt = normalizeTaskContextSearchText(value.updatedAt) ?? new Date().toISOString();
-  const sessionLayerExplanation = normalizeTaskContextSearchText(value.sessionLayers?.explanation);
-  const sessionLayers = (
-    (value.sessionLayers?.seedSessions?.length ?? 0) > 0
-      || (value.sessionLayers?.matchedSessions?.length ?? 0) > 0
-      || Boolean(sessionLayerExplanation)
-  )
-    ? {
-        seedSessions: normalizeTaskContextSearchItems(value.sessionLayers?.seedSessions) ?? [],
-        matchedSessions: normalizeTaskContextSearchItems(value.sessionLayers?.matchedSessions) ?? [],
-        explanation: sessionLayerExplanation,
-      }
-    : undefined;
-
   return {
     updatedAt,
     summary,
-    sessionLayers,
-    issues: normalizeTaskJitContextAnalysisIssues(value.issues),
     topFiles: normalizeTaskContextSearchItems(value.topFiles) ?? [],
     topSessions: (value.topSessions ?? [])
       .map((entry) => normalizeTaskJitContextAnalysisSessionLead(entry))
       .filter((entry): entry is TaskJitContextAnalysisSessionLead => Boolean(entry)),
-    topLeads: normalizeTaskContextSearchItems(value.topLeads) ?? [],
-    contextToInject: normalizeTaskContextSearchItems(value.contextToInject) ?? [],
     reusablePrompts: normalizeTaskContextSearchItems(value.reusablePrompts) ?? [],
     recommendedContextSearchSpec: normalizeTaskContextSearchSpec(value.recommendedContextSearchSpec),
-    evidence: normalizeTaskContextSearchItems(value.evidence) ?? [],
-    inference: normalizeTaskContextSearchItems(value.inference) ?? [],
   };
 }
 
@@ -660,54 +615,16 @@ export function parseTaskJitContextAnalysis(value: unknown): TaskJitContextAnaly
   return normalizeTaskJitContextAnalysis({
     updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : "",
     summary: typeof candidate.summary === "string" ? candidate.summary : "",
-    sessionLayers: candidate.sessionLayers && typeof candidate.sessionLayers === "object" && !Array.isArray(candidate.sessionLayers)
-      ? {
-          seedSessions: Array.isArray((candidate.sessionLayers as Record<string, unknown>).seedSessions)
-            ? ((candidate.sessionLayers as Record<string, unknown>).seedSessions as unknown[]).filter((item): item is string => typeof item === "string")
-            : [],
-          matchedSessions: Array.isArray((candidate.sessionLayers as Record<string, unknown>).matchedSessions)
-            ? ((candidate.sessionLayers as Record<string, unknown>).matchedSessions as unknown[]).filter((item): item is string => typeof item === "string")
-            : [],
-          explanation: typeof (candidate.sessionLayers as Record<string, unknown>).explanation === "string"
-            ? (candidate.sessionLayers as Record<string, unknown>).explanation as string
-            : undefined,
-        }
-      : undefined,
-    issues: candidate.issues && typeof candidate.issues === "object" && !Array.isArray(candidate.issues)
-      ? {
-          input: Array.isArray((candidate.issues as Record<string, unknown>).input)
-            ? ((candidate.issues as Record<string, unknown>).input as unknown[]).filter((item): item is string => typeof item === "string")
-            : [],
-          location: Array.isArray((candidate.issues as Record<string, unknown>).location)
-            ? ((candidate.issues as Record<string, unknown>).location as unknown[]).filter((item): item is string => typeof item === "string")
-            : [],
-          tooling: Array.isArray((candidate.issues as Record<string, unknown>).tooling)
-            ? ((candidate.issues as Record<string, unknown>).tooling as unknown[]).filter((item): item is string => typeof item === "string")
-            : [],
-        }
-      : { input: [], location: [], tooling: [] },
     topFiles: Array.isArray(candidate.topFiles)
       ? candidate.topFiles.filter((item): item is string => typeof item === "string")
       : [],
     topSessions: Array.isArray(candidate.topSessions)
       ? candidate.topSessions as TaskJitContextAnalysisSessionLead[]
       : [],
-    topLeads: Array.isArray(candidate.topLeads)
-      ? candidate.topLeads.filter((item): item is string => typeof item === "string")
-      : [],
-    contextToInject: Array.isArray(candidate.contextToInject)
-      ? candidate.contextToInject.filter((item): item is string => typeof item === "string")
-      : [],
     reusablePrompts: Array.isArray(candidate.reusablePrompts)
       ? candidate.reusablePrompts.filter((item): item is string => typeof item === "string")
       : [],
     recommendedContextSearchSpec: parseTaskContextSearchSpec(candidate.recommendedContextSearchSpec),
-    evidence: Array.isArray(candidate.evidence)
-      ? candidate.evidence.filter((item): item is string => typeof item === "string")
-      : [],
-    inference: Array.isArray(candidate.inference)
-      ? candidate.inference.filter((item): item is string => typeof item === "string")
-      : [],
   });
 }
 

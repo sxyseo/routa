@@ -182,6 +182,9 @@ describe("executeMcpTool", () => {
     expect(
       getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "save_feature_retrospective_memory"),
     ).toBe(true);
+    expect(
+      getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "save_history_memory_context"),
+    ).toBe(true);
   });
 
   it("builds compressed history summaries from MCP args", async () => {
@@ -302,6 +305,70 @@ describe("executeMcpTool", () => {
     }, "workspace-1");
     expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
       '"storagePath":',
+    );
+  });
+
+  it("saves task-adaptive history memory through MCP args", async () => {
+    const tools = {
+      saveJitContext: vi.fn(async (params) => ({
+        success: true,
+        data: {
+          taskId: params.taskId,
+          saved: true,
+          summary: params.result.summary,
+          topFiles: params.result.topFiles,
+          topSessions: params.result.topSessions,
+          reusablePrompts: params.result.reusablePrompts,
+        },
+      })),
+    } as never;
+
+    const result = await executeMcpTool(
+      tools,
+      "save_history_memory_context",
+      {
+        workspaceId: "workspace-1",
+        taskId: "task-1",
+        summary: "Start from the Kanban API and blocked interval reconstruction.",
+        topFiles: ["crates/routa-server/src/api/kanban.rs"],
+        topSessions: [
+          {
+            sessionId: "session-123",
+            provider: "codex",
+            reason: "Touched the durable flow-event implementation directly.",
+          },
+        ],
+        reusablePrompts: ["Check Rust and TS flow-event parity first."],
+        recommendedContextSearchSpec: {
+          query: "kanban flow event persistence",
+          featureCandidates: ["kanban-workflow"],
+        },
+      },
+    );
+
+    expect((tools as { saveJitContext: ReturnType<typeof vi.fn> }).saveJitContext).toHaveBeenCalledWith({
+      taskId: "task-1",
+      result: {
+        updatedAt: expect.any(String),
+        summary: "Start from the Kanban API and blocked interval reconstruction.",
+        topFiles: ["crates/routa-server/src/api/kanban.rs"],
+        topSessions: [
+          {
+            sessionId: "session-123",
+            provider: "codex",
+            reason: "Touched the durable flow-event implementation directly.",
+          },
+        ],
+        reusablePrompts: ["Check Rust and TS flow-event parity first."],
+        recommendedContextSearchSpec: {
+          query: "kanban flow event persistence",
+          featureCandidates: ["kanban-workflow"],
+        },
+      },
+      agentId: "system",
+    });
+    expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"saved": true',
     );
   });
 });
