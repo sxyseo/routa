@@ -79,7 +79,7 @@ export async function executeAutoPrCreation(
       return undefined;
     }
 
-    // 2. Push the branch to origin (best-effort — may already be pushed)
+    // 2. Push the branch to origin
     try {
       await execCommand(
         `git push -u origin ${shellQuote(branch)}`,
@@ -90,9 +90,43 @@ export async function executeAutoPrCreation(
         `[PrAutoCreate] Pushed branch ${branch} for task ${cardId}.`,
       );
     } catch (pushErr) {
+      const msg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      console.error(
+        `[PrAutoCreate] Push failed for task ${cardId}:`,
+        msg,
+      );
+      const task = await taskStore.get(cardId);
+      if (task) {
+        task.lastSyncError = `Auto PR creation failed: git push failed — ${msg}`;
+        task.updatedAt = new Date();
+        await taskStore.save(task);
+      }
+      return undefined;
+    }
+
+    // 2b. Verify the branch exists on the remote
+    try {
+      const lsResult = await execCommand(
+        `git ls-remote --heads origin ${shellQuote(branch)}`,
+        cwd,
+        30_000,
+      );
+      if (!lsResult.stdout.trim()) {
+        console.error(
+          `[PrAutoCreate] Branch ${branch} not found on remote after push for task ${cardId}.`,
+        );
+        const task = await taskStore.get(cardId);
+        if (task) {
+          task.lastSyncError = `Auto PR creation failed: branch ${branch} not found on remote after push.`;
+          task.updatedAt = new Date();
+          await taskStore.save(task);
+        }
+        return undefined;
+      }
+    } catch (verifyErr) {
       console.warn(
-        `[PrAutoCreate] Push warning for task ${cardId}:`,
-        pushErr instanceof Error ? pushErr.message : pushErr,
+        `[PrAutoCreate] Remote verification skipped for task ${cardId}:`,
+        verifyErr instanceof Error ? verifyErr.message : verifyErr,
       );
     }
 

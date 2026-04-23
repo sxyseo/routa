@@ -110,7 +110,7 @@ describe("/api/tasks/[taskId]/pr-run", () => {
       ignoreExistingTrigger: true,
       bypassQueue: true,
       step: expect.objectContaining({
-        specialistId: "kanban-pr-publisher",
+        specialistId: "kanban-done-finalizer",
         specialistLocale: "zh-CN",
       }),
     }));

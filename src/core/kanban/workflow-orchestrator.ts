@@ -393,7 +393,7 @@ export class KanbanWorkflowOrchestrator {
               err,
             );
             // Continue automation — PR creation failure is not fatal.
-            // The done-reporter will correctly note the missing PR link.
+            // The done-finalizer will correctly note the missing PR link.
           }
         }
       }
@@ -719,7 +719,7 @@ export class KanbanWorkflowOrchestrator {
 
       // NOTE: Auto PR creation now happens BEFORE done-lane automation steps
       // (in handleColumnTransitionData), not as a post-automation event.
-      // This ensures done-reporter sees pullRequestUrl.
+      // This ensures done-finalizer sees pullRequestUrl.
 
       // Save lane-session updates BEFORE autoAdvanceCard, which reloads the task
       // and emits a synchronous COLUMN_TRANSITION. Saving after would overwrite the

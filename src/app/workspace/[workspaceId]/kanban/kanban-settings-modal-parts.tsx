@@ -42,10 +42,8 @@ export interface SpecialistOption {
 }
 
 export type ColumnAutomationConfig = KanbanColumnAutomation;
-const DONE_REPORTER_SPECIALIST_ID = "kanban-done-reporter";
-const DONE_REPORTER_SPECIALIST_NAME = "Done Reporter";
-const DONE_PR_PUBLISHER_SPECIALIST_ID = "kanban-pr-publisher";
-const DONE_PR_PUBLISHER_SPECIALIST_NAME = "PR Publisher";
+const DONE_FINALIZER_SPECIALIST_ID = "kanban-done-finalizer";
+const DONE_FINALIZER_SPECIALIST_NAME = "Done Finalizer";
 
 export const DEFAULT_DEV_SESSION_SUPERVISION: KanbanDevSessionSupervisionInfo = {
   mode: "watchdog_retry",
@@ -64,21 +62,7 @@ export function createEmptyAutomationStep(index: number): KanbanAutomationStep {
   };
 }
 
-function createDoneReporterStep(
-  specialistLanguage?: KanbanSpecialistLanguage,
-  index = 0,
-): KanbanAutomationStep {
-  return {
-    id: `step-${index + 1}`,
-    transport: "acp",
-    role: "GATE",
-    specialistId: DONE_REPORTER_SPECIALIST_ID,
-    specialistName: DONE_REPORTER_SPECIALIST_NAME,
-    specialistLocale: specialistLanguage,
-  };
-}
-
-function createDonePrPublisherStep(
+function createDoneFinalizerStep(
   specialistLanguage?: KanbanSpecialistLanguage,
   index = 0,
 ): KanbanAutomationStep {
@@ -86,18 +70,10 @@ function createDonePrPublisherStep(
     id: `step-${index + 1}`,
     transport: "acp",
     role: "DEVELOPER",
-    specialistId: DONE_PR_PUBLISHER_SPECIALIST_ID,
-    specialistName: DONE_PR_PUBLISHER_SPECIALIST_NAME,
+    specialistId: DONE_FINALIZER_SPECIALIST_ID,
+    specialistName: DONE_FINALIZER_SPECIALIST_NAME,
     specialistLocale: specialistLanguage,
   };
-}
-
-function isDonePrPublisherStep(step?: KanbanAutomationStep): boolean {
-  return step?.specialistId === DONE_PR_PUBLISHER_SPECIALIST_ID;
-}
-
-function isDoneReporterStep(step?: KanbanAutomationStep): boolean {
-  return step?.specialistId === DONE_REPORTER_SPECIALIST_ID;
 }
 
 export function getStageTypeOptions(t: TranslationDictionary) {
@@ -280,7 +256,7 @@ export function getDefaultAutomationForStage(
         enabled: true,
         transitionType: "entry",
         requiredArtifacts: ["code_diff"],
-        steps: [createDoneReporterStep(specialistLanguage)],
+        steps: [createDoneFinalizerStep(specialistLanguage)],
       });
     case "dev":
       return syncAutomationPrimaryStep({
@@ -435,31 +411,29 @@ export function updateAutomationSteps(
   });
 }
 
-export function isDonePrPublisherEnabled(
+export function isDoneFinalizerEnabled(
   automation: ColumnAutomationConfig,
 ): boolean {
-  return getEditableAutomationSteps(automation).some((step) => isDonePrPublisherStep(step));
+  return getEditableAutomationSteps(automation).some(
+    (step) => step.specialistId === DONE_FINALIZER_SPECIALIST_ID,
+  );
 }
 
-export function setDonePrPublisherEnabled(
+export function setDoneFinalizerEnabled(
   automation: ColumnAutomationConfig,
   enabled: boolean,
   specialistLanguage?: KanbanSpecialistLanguage,
 ): ColumnAutomationConfig {
   const existingSteps = getEditableAutomationSteps(automation);
-  const stepsWithoutPrPublisher = existingSteps.filter((step) => !isDonePrPublisherStep(step));
-
-  const baseSteps = stepsWithoutPrPublisher.length > 0
-    ? stepsWithoutPrPublisher
-    : [createDoneReporterStep(specialistLanguage)];
-  const hasDoneReporter = baseSteps.some((step) => isDoneReporterStep(step));
-  const normalizedBaseSteps = hasDoneReporter
-    ? baseSteps
-    : [...baseSteps, createDoneReporterStep(specialistLanguage, baseSteps.length)];
+  const stepsWithoutFinalizer = existingSteps.filter(
+    (step) => step.specialistId !== DONE_FINALIZER_SPECIALIST_ID,
+  );
 
   const nextSteps = enabled
-    ? [createDonePrPublisherStep(specialistLanguage), ...normalizedBaseSteps]
-    : normalizedBaseSteps;
+    ? [createDoneFinalizerStep(specialistLanguage), ...stepsWithoutFinalizer]
+    : stepsWithoutFinalizer.length > 0
+      ? stepsWithoutFinalizer
+      : [{ id: "step-1", transport: "acp" as const, role: "DEVELOPER" as const }];
 
   return syncAutomationPrimaryStep({
     ...automation,
@@ -643,8 +617,8 @@ export function ColumnAutomationWorkspace({
     () => getEditableAutomationSteps(automation),
     [automation],
   );
-  const donePrPublisherEnabled = useMemo(
-    () => column.stage === "done" && isDonePrPublisherEnabled(automation),
+  const doneFinalizerEnabled = useMemo(
+    () => column.stage === "done" && isDoneFinalizerEnabled(automation),
     [automation, column.stage],
   );
   const filteredSpecialists = useMemo(() => {
@@ -802,9 +776,9 @@ export function ColumnAutomationWorkspace({
                   <input
                     type="checkbox"
                     className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400 dark:border-slate-600"
-                    checked={donePrPublisherEnabled}
+                    checked={doneFinalizerEnabled}
                     aria-label={t.kanban.doneAutoOpenPrSession}
-                    onChange={(event) => onUpdate(setDonePrPublisherEnabled(
+                    onChange={(event) => onUpdate(setDoneFinalizerEnabled(
                       automation,
                       event.target.checked,
                       specialistLanguage,
@@ -1079,6 +1053,7 @@ export function ColumnAutomationWorkspace({
                 </span>
               </label>
               )}
+              {column.stage === "done" && (
               <div className="space-y-2">
                 <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
                   <input
@@ -1122,6 +1097,7 @@ export function ColumnAutomationWorkspace({
                   </div>
                 ) : null}
               </div>
+              )}
             </div>
             ) : null}
           </section>

@@ -895,6 +895,67 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
     return session?.messageHistory ?? [];
   }
 
+  /**
+   * Append a batch of consolidated notifications to `session_messages` and
+   * touch `updated_at` on the parent session row — without rewriting the
+   * full `message_history` JSON column.  This avoids the O(history_size)
+   * SQLite write that is the main bottleneck at high concurrency.
+   *
+   * Falls back to the full-replace `save()` path when `session_messages`
+   * has no existing rows for the session (first write after a migration
+   * or a cold start from an older DB).
+   */
+  async appendHistoryBatch(
+    sessionId: string,
+    notifications: AcpSessionNotification[],
+  ): Promise<void> {
+    if (notifications.length === 0) return;
+
+    // Find the current max messageIndex in one query
+    const topRows = await this.db
+      .select({ messageIndex: sqliteSchema.sessionMessages.messageIndex })
+      .from(sqliteSchema.sessionMessages)
+      .where(eq(sqliteSchema.sessionMessages.sessionId, sessionId))
+      .orderBy(desc(sqliteSchema.sessionMessages.messageIndex))
+      .limit(1);
+
+    let nextIndex = topRows.length > 0 ? topRows[0].messageIndex + 1 : 0;
+
+    // If session_messages is empty for this session, do a one-time full
+    // save so the `message_history` JSON column stays populated for cold
+    // starts that don't yet check session_messages.
+    if (topRows.length === 0) {
+      const session = await this.get(sessionId);
+      if (!session) return;
+      await this.save({ ...session, messageHistory: notifications, updatedAt: new Date() });
+      return;
+    }
+
+    const values = notifications.map((n) => {
+      const eventType = String(
+        (n.update as Record<string, unknown> | undefined)?.sessionUpdate ?? "notification",
+      );
+      const eventId = typeof n.eventId === "string" && n.eventId.length > 0
+        ? n.eventId
+        : `${sessionId}-${nextIndex}`;
+      return {
+        id: eventId,
+        sessionId,
+        messageIndex: nextIndex++,
+        eventType,
+        payload: n as typeof sqliteSchema.sessionMessages.$inferInsert.payload,
+      };
+    });
+
+    await this.db.insert(sqliteSchema.sessionMessages).values(values);
+
+    // Touch updated_at without touching message_history
+    await this.db
+      .update(sqliteSchema.acpSessions)
+      .set({ updatedAt: new Date() })
+      .where(eq(sqliteSchema.acpSessions.id, sessionId));
+  }
+
   async markFirstPromptSent(sessionId: string): Promise<void> {
     await this.db
       .update(sqliteSchema.acpSessions)

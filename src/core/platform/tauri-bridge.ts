@@ -199,6 +199,20 @@ class TauriProcessHandle implements IProcessHandle {
   }
 }
 
+/**
+ * Split a shell command string into argv, respecting double/single quotes.
+ * e.g. `git push -u origin "my branch"` → ["git", "push", "-u", "origin", "my branch"]
+ */
+function splitShellCommand(command: string): string[] {
+  const parts: string[] = [];
+  const regex = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(command)) !== null) {
+    parts.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return parts;
+}
+
 class TauriProcess implements IPlatformProcess {
   isAvailable(): boolean {
     return true;
@@ -249,8 +263,7 @@ class TauriProcess implements IPlatformProcess {
 
   async exec(command: string, options?: ExecOptions): Promise<{ stdout: string; stderr: string }> {
     const shell = await getTauriShell();
-    // Split command into program and args
-    const parts = command.split(/\s+/);
+    const parts = splitShellCommand(command);
     const program = parts[0];
     const args = parts.slice(1);
 

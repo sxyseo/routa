@@ -232,6 +232,10 @@ function registerSignalHandlers(): void {
 // ---------------------------------------------------------------------------
 
 export async function register() {
+  // Mirror all console output to log/ directory (per-day rotation)
+  const { installConsoleFileLogger } = await import("./core/logging/file-logger");
+  installConsoleFileLogger();
+
   // Install HTTP server-level observer for full API route coverage
   await installHttpServerObserver();
 

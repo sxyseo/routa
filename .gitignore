@@ -79,6 +79,7 @@ Thumbs.db
 
 # Logs
 logs
+log/
 *.log
 
 # Optional npm cache directory

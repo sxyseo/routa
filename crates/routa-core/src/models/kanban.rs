@@ -437,8 +437,7 @@ fn recommended_automation_for_stage(stage: &str) -> Option<KanbanColumnAutomatio
         }),
         "done" => Some(build_recommended_automation(
             vec![
-                recommended_step("pr-publisher", "DEVELOPER", "PR Publisher"),
-                recommended_step("done-reporter", "GATE", "Done Reporter"),
+                recommended_step("done-finalizer", "DEVELOPER", "Done Finalizer"),
             ],
             false,
         )),

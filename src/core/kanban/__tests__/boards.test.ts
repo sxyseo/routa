@@ -14,7 +14,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       "kanban-todo-orchestrator",
       "kanban-dev-executor",
       "kanban-review-guard",
-      "kanban-done-reporter",
+      "kanban-done-finalizer",
       undefined,
       undefined,
     ]);
@@ -24,6 +24,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       "CRAFTER",
       "GATE",
       "GATE",
+      "DEVELOPER",
       undefined,
       undefined,
     ]);
@@ -47,7 +48,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       mergeStrategy: undefined,
     });
     expect(columns[4]?.automation?.steps?.map((step) => step.specialistId)).toEqual([
-      "kanban-done-reporter",
+      "kanban-done-finalizer",
     ]);
     expect(columns[3]?.automation?.steps?.map((step) => step.specialistId)).toEqual([
       "kanban-review-guard",

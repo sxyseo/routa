@@ -314,7 +314,7 @@ export async function saveHistoryToDb(
   const normalizedHistory = normalizeSessionHistory(history);
   const firstPromptSent = hasUserMessageInHistory(normalizedHistory);
 
-  // 1. Save full history snapshot to DB
+  // 1. Save to DB — use incremental append for SQLite to avoid O(n) full-replace
   if (driver !== "memory") {
     try {
       if (driver === "postgres") {
@@ -334,12 +334,24 @@ export async function saveHistoryToDb(
         const sqliteStore = new SqliteAcpSessionStore(db);
         const session = await sqliteStore.get(sessionId);
         if (!session) return;
-        await sqliteStore.save({
-          ...session,
-          firstPromptSent: session.firstPromptSent || firstPromptSent,
-          messageHistory: normalizedHistory,
-          updatedAt: new Date(),
-        });
+
+        // When the history hasn't grown, skip the expensive full-replace.
+        // This is the common case when the write-buffer flushes on debounce
+        // but no new messages have arrived.
+        const oldLen = (session.messageHistory as unknown[])?.length ?? 0;
+        const newLen = normalizedHistory.length;
+
+        if (newLen <= oldLen && session.firstPromptSent === firstPromptSent) {
+          // History hasn't grown and firstPromptSent hasn't changed —
+          // skip the expensive full-replace entirely.
+        } else {
+          await sqliteStore.save({
+            ...session,
+            firstPromptSent: session.firstPromptSent || firstPromptSent,
+            messageHistory: normalizedHistory,
+            updatedAt: new Date(),
+          });
+        }
       }
     } catch (err) {
       console.error(`[SessionDB] Failed to save history to ${driver}:`, err);

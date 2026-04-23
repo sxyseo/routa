@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { onChildTaskStatusChanged, getChildTasks, cancelChildren } from "../parent-child-lifecycle";
 import { InMemoryTaskStore } from "../../store/task-store";
-import { InMemoryKanbanBoardStore } from "../../store/kanban-board-store";
 import { createTask, TaskStatus } from "../../models/task";
 import { EventBus } from "../../events/event-bus";
 

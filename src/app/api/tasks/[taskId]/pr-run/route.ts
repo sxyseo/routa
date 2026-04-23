@@ -113,8 +113,8 @@ export async function POST(
     step: {
       id: `manual-pr-${platform}`,
       role: "DEVELOPER",
-      specialistId: "kanban-pr-publisher",
-      specialistName: "PR Publisher",
+      specialistId: "kanban-done-finalizer",
+      specialistName: "Done Finalizer",
       specialistLocale: locale,
     },
   });

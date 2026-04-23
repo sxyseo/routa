@@ -37,7 +37,6 @@ import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanRepoChanges } from "./kanban-file-changes-types";
 import {
   canSelectTaskSessionInAcp,
-  extractSessionLiveTail,
   getPreferredTaskSessionId,
   isA2ATaskSession,
   resolveKanbanBoardAutoProviderId,
@@ -1058,7 +1057,6 @@ export function KanbanTab({
     }
     if (!isPageVisible) return;
 
-    const activeIdSet = new Set(liveIds);
     let disposed = false;
     let inFlight = false;
 
@@ -1072,20 +1070,23 @@ export function KanbanTab({
       const currentIds = activeLiveSessionIdsRef.current;
       const currentIdSet = new Set(currentIds);
 
-      const updates = await Promise.all(currentIds.map(async (sessionId) => {
-        try {
-          const response = await desktopAwareFetch(`/api/sessions/${encodeURIComponent(sessionId)}/history?consolidated=true`,
-            { cache: "no-store" },
-          );
-          if (!response.ok) return [sessionId, null] as const;
-          const payload = await response.json();
-          return [sessionId, extractSessionLiveTail(payload?.history)] as const;
-        } catch {
-          return [sessionId, null] as const;
-        }
-      })).finally(() => {
+      let entries: Array<{ sessionId: string; tail: string | null }>;
+      try {
+        const response = await desktopAwareFetch("/api/sessions/live-tails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionIds: currentIds }),
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error(`live-tails returned ${response.status}`);
+        const payload = await response.json();
+        entries = Array.isArray(payload?.tails) ? payload.tails : [];
+      } catch {
+        // On network failure, keep existing tails — don't wipe previews.
+        return;
+      } finally {
         inFlight = false;
-      });
+      }
 
       if (disposed) return;
 
@@ -1093,7 +1094,7 @@ export function KanbanTab({
         const next: Record<string, string> = {};
         let changed = false;
 
-        for (const [sessionId, tail] of updates) {
+        for (const { sessionId, tail } of entries) {
           if (!currentIdSet.has(sessionId) || !tail) continue;
           next[sessionId] = tail;
           if (previous[sessionId] !== tail) changed = true;
