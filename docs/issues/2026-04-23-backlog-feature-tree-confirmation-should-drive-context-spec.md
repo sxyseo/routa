@@ -2,7 +2,7 @@
 title: "Backlog refiner should confirm feature-tree context before persisting retrieval hints"
 date: "2026-04-23"
 kind: issue
-status: resolved
+status: open
 severity: medium
 area: kanban
 tags:
