@@ -4,7 +4,6 @@ import type { TaskContextSearchSpec } from "@/core/models/task";
 
 const CONFIRMING_TOOL_NAMES = [
   "load_feature_tree_context",
-  "confirm_feature_tree_story_context",
   "read",
   "read_file",
   "glob",
@@ -28,11 +27,69 @@ const CONFIRMING_SHELL_PREFIXES = new Set([
   "fd",
 ]);
 
+const FEATURE_TREE_STORY_CONFIRMATION_TOOL_NAME = "confirm_feature_tree_story_context";
+
 const STRIP_WARNING =
   "Ignored contextSearchSpec for this backlog card because the current session has not yet confirmed retrieval hints through repo inspection or feature-tree lookup.";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null ? value as Record<string, unknown> : undefined;
+}
+
+function parseJsonRecord(value: string): Record<string, unknown> | undefined {
+  try {
+    return asRecord(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
+
+function collectOutputRecords(value: unknown, records: Record<string, unknown>[], depth = 0): void {
+  if (value == null || depth > 4) {
+    return;
+  }
+
+  if (typeof value === "string") {
+    const parsed = parseJsonRecord(value);
+    if (parsed) {
+      collectOutputRecords(parsed, records, depth + 1);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectOutputRecords(item, records, depth + 1);
+    }
+    return;
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return;
+  }
+
+  records.push(record);
+  for (const key of ["data", "result", "rawOutput", "output", "content", "text"]) {
+    collectOutputRecords(record[key], records, depth + 1);
+  }
+}
+
+function hasConfirmedFeatureTreeContext(record: Record<string, unknown>): boolean {
+  return Boolean(
+    asRecord(record.confirmedContextSearchSpec)
+    || asRecord(record.selectedFeature)
+    || (typeof record.featureTreeYamlBlock === "string" && record.featureTreeYamlBlock.trim().length > 0),
+  );
+}
+
+function featureTreeStoryConfirmationHasEvidence(update: Record<string, unknown>): boolean {
+  const records: Record<string, unknown>[] = [];
+  for (const key of ["rawOutput", "output", "result", "content"]) {
+    collectOutputRecords(update[key], records);
+  }
+
+  return records.some(hasConfirmedFeatureTreeContext);
 }
 
 function extractRawInput(update: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -72,6 +129,10 @@ function notificationConfirmsBacklogContext(notification: AcpSessionNotification
   }
 
   const toolName = getToolEventName(update)?.toLowerCase();
+  if (toolName?.includes(FEATURE_TREE_STORY_CONFIRMATION_TOOL_NAME)) {
+    return featureTreeStoryConfirmationHasEvidence(update);
+  }
+
   if (toolName && CONFIRMING_TOOL_NAMES.some((candidate) => toolName.includes(candidate))) {
     return true;
   }

@@ -13,6 +13,7 @@ function seedSessionHistory(params: {
   kind?: string;
   title?: string;
   rawInput?: Record<string, unknown>;
+  rawOutput?: unknown;
 }) {
   const store = getHttpSessionStore();
   store.upsertSession({
@@ -29,6 +30,7 @@ function seedSessionHistory(params: {
       kind: params.kind,
       title: params.title,
       rawInput: params.rawInput,
+      rawOutput: params.rawOutput,
     },
   });
 }
@@ -51,9 +53,39 @@ describe("backlog context confirmation", () => {
       sessionId,
       tool: "confirm_feature_tree_story_context",
       kind: "task",
+      rawOutput: {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            confirmedContextSearchSpec: {
+              featureCandidates: ["kanban-workflow"],
+              relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+            },
+          }),
+        }],
+      },
     });
 
     await expect(hasConfirmedBacklogContextInspection(sessionId)).resolves.toBe(true);
+  });
+
+  it("does not treat empty feature-tree story confirmation output as confirmed", async () => {
+    const sessionId = `session-feature-tree-empty-${Date.now()}`;
+    seedSessionHistory({
+      sessionId,
+      tool: "confirm_feature_tree_story_context",
+      kind: "task",
+      rawOutput: {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            warnings: ["No matching feature tree entry found."],
+          }),
+        }],
+      },
+    });
+
+    await expect(hasConfirmedBacklogContextInspection(sessionId)).resolves.toBe(false);
   });
 
   it("treats shell rg commands as confirming backlog inspection", async () => {
