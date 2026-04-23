@@ -9,6 +9,7 @@ import {
   KanbanWorkflowOrchestrator,
   type AutomationSessionSupervisionContext,
   CIRCUIT_BREAKER_MARKER,
+  parseCbResetCount,
 } from "./workflow-orchestrator";
 import type { RoutaSystem } from "../routa-system";
 import type {
@@ -61,11 +62,41 @@ const ORCHESTRATOR_VERSION = 2;
 
 const FAILURES_KEY = "__routa_session_failure_counts__";
 const SESSION_RETRY_LIMIT = parseInt(process.env.ROUTA_SESSION_RETRY_LIMIT ?? "3", 10);
+const SESSION_RETRY_RESET_MS = parseInt(process.env.ROUTA_SESSION_RETRY_RESET_MS ?? `${5 * 60 * 1000}`, 10);
 
-function getSessionFailures(): Map<string, number> {
+interface FailureRecord {
+  count: number;
+  lastFailureAt: number;
+}
+
+function getSessionFailures(): Map<string, FailureRecord> {
   const g = globalThis as Record<string, unknown>;
-  if (!g[FAILURES_KEY]) g[FAILURES_KEY] = new Map<string, number>();
-  return g[FAILURES_KEY] as Map<string, number>;
+  if (!g[FAILURES_KEY]) g[FAILURES_KEY] = new Map<string, FailureRecord>();
+  return g[FAILURES_KEY] as Map<string, FailureRecord>;
+}
+
+// Errors caused by transient API rate limits — should NOT consume circuit-breaker quota.
+const RATE_LIMIT_INDICATORS = ["429", "rate limit", "速率限制"];
+
+function isRateLimitError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return RATE_LIMIT_INDICATORS.some(ind => lower.includes(ind));
+}
+
+// Failures that are structural/data issues — not session creation failures.
+const SKIP_CIRCUIT_BREAKER_PATTERNS = [
+  "missing board",
+  "task moved",
+  "no longer in column",
+  "blocked by",
+  "already active",
+  "task no longer exists",
+];
+
+function shouldSkipCircuitBreaker(error: string | undefined): boolean {
+  if (!error) return false;
+  const lower = error.toLowerCase();
+  return SKIP_CIRCUIT_BREAKER_PATTERNS.some(p => lower.includes(p));
 }
 
 function resolveKanbanSpecialist(
@@ -96,21 +127,34 @@ async function createAutomationSession(
     supervision?: AutomationSessionSupervisionContext;
   },
 ): Promise<string | null> {
-  // Circuit breaker: skip cards that exceeded consecutive session creation failures.
-  // This runs inside the createSession callback which is refreshed on every HMR cycle,
-  // so it works even if the orchestrator singleton wasn't recreated.
+  // Circuit breaker with TTL: skip cards that exceeded consecutive session
+  // creation failures, but auto-reset after SESSION_RETRY_RESET_MS cooldown.
   const failures = getSessionFailures();
-  const failCount = failures.get(params.cardId) ?? 0;
-  if (failCount >= SESSION_RETRY_LIMIT) {
-    console.warn(
-      `[createAutomationSession] Circuit breaker: skipping card ${params.cardId} ` +
-      `(${failCount}/${SESSION_RETRY_LIMIT} consecutive failures).`,
-    );
-    return null;
+  const record = failures.get(params.cardId);
+  const now = Date.now();
+
+  if (record) {
+    const isCooldownExpired = (now - record.lastFailureAt) >= SESSION_RETRY_RESET_MS;
+    if (isCooldownExpired) {
+      failures.delete(params.cardId);
+    } else if (record.count >= SESSION_RETRY_LIMIT) {
+      console.warn(
+        `[createAutomationSession] Circuit breaker: skipping card ${params.cardId} ` +
+        `(${record.count}/${SESSION_RETRY_LIMIT} consecutive failures). ` +
+        `Resets at ${new Date(record.lastFailureAt + SESSION_RETRY_RESET_MS).toISOString()}.`,
+      );
+      return null;
+    }
   }
 
   const task = await system.taskStore.get(params.cardId);
-  if (!task?.boardId) return null;
+  if (!task?.boardId) {
+    console.warn(
+      `[createAutomationSession] No task or missing boardId for card ${params.cardId}. ` +
+      `task=${task ? "exists" : "null"}, boardId=${task?.boardId ?? "undefined"}`,
+    );
+    return null;
+  }
   const result = await enqueueKanbanTaskSession(system, {
     task,
     expectedColumnId: params.columnId,
@@ -128,11 +172,46 @@ async function createAutomationSession(
       await system.taskStore.save(task);
     }
   } else {
-    const newCount = failCount + 1;
-    failures.set(params.cardId, newCount);
+    // Rate-limit errors are transient — don't consume circuit-breaker quota.
+    if (isRateLimitError(result.error ?? "")) {
+      console.warn(
+        `[createAutomationSession] Rate-limited for card ${params.cardId}, not counting towards circuit breaker.`,
+      );
+      if (task) {
+        task.lastSyncError = `[rate-limited] ${result.error}`;
+        task.updatedAt = new Date();
+        await system.taskStore.save(task);
+      }
+      return null;
+    }
+
+    // Structural/data issues should not count either.
+    if (shouldSkipCircuitBreaker(result.error)) {
+      console.warn(
+        `[createAutomationSession] Structural skip for card ${params.cardId}: ${result.error}`,
+      );
+      return null;
+    }
+
+    // Queued jobs are pending, not failed — don't consume circuit-breaker quota.
+    if (result.queued) {
+      console.log(
+        `[createAutomationSession] Session queued for card ${params.cardId}. Not counting as failure.`,
+      );
+      return null;
+    }
+
+    const prevCount = failures.get(params.cardId)?.count ?? 0;
+    console.warn(
+      `[createAutomationSession] Session creation failed for card ${params.cardId} ` +
+      `(column: ${params.columnName ?? params.columnId}): ${result.error ?? "unknown error"}`,
+    );
+    const newCount = prevCount + 1;
+    failures.set(params.cardId, { count: newCount, lastFailureAt: now });
     // Write circuit breaker marker to task when limit exceeded
-    if (newCount >= SESSION_RETRY_LIMIT) {
-      task.lastSyncError = `${CIRCUIT_BREAKER_MARKER} Session creation failed ${newCount} times. Retry after cooldown.`;
+    if (newCount >= SESSION_RETRY_LIMIT && task) {
+      const prevResets = parseCbResetCount(task.lastSyncError);
+      task.lastSyncError = `[circuit-breaker:reset=${prevResets}] Session creation failed ${newCount} times. Retry after cooldown.`;
       task.updatedAt = new Date();
       await system.taskStore.save(task);
     }
@@ -233,7 +312,7 @@ async function startKanbanTaskSession(
     }
   }
   if (params.expectedColumnId && task.columnId !== params.expectedColumnId) {
-    return { error: `Task is no longer in column ${params.expectedColumnId}.` };
+    return { error: `Task is no longer in column ${params.expectedColumnId} (now in ${task.columnId}).` };
   }
   if (task.triggerSessionId && !params.ignoreExistingTrigger) {
     const cleaned = await clearStaleTriggerSession(task, getHttpSessionStore(), system.taskStore);
@@ -396,8 +475,12 @@ async function startKanbanTaskSession(
     if (nextTask.worktreeId) {
       await system.worktreeStore.assignSession(nextTask.worktreeId, triggerResult.sessionId);
     }
-  } else if (triggerResult.error) {
-    nextTask.lastSyncError = triggerResult.error;
+  } else {
+    const errDetail = triggerResult.error ?? "unknown (triggerResult returned no sessionId and no error)";
+    console.error(
+      `[startKanbanTaskSession] triggerAssignedTaskAgent failed for task ${nextTask.id}: ${errDetail}`,
+    );
+    nextTask.lastSyncError = errDetail;
   }
 
   await system.taskStore.save(nextTask);

@@ -89,8 +89,13 @@ export async function monitorApiRoute(
       thresholdMs,
     };
 
-    console.warn("[api:slow]", record);
-    enqueueSlowApiRecord(record);
+    const isSlow = durationMs >= thresholdMs;
+    if (isSlow) {
+      console.warn("[api:slow]", record);
+      enqueueSlowApiRecord(record);
+    } else {
+      console.log("[api:timing]", record);
+    }
     metricsCollector.recordRequest(record);
   }
 

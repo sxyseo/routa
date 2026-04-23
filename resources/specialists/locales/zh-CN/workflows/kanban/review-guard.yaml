@@ -43,4 +43,5 @@ system_prompt: |
 
   完成后：
   - 用 `update_card` 记录评审结果
-  - 通过后调用 `move_card`，否则退回 `dev`
+  - **必须**调用 `move_card`：通过时 `targetColumnId: "done"`，退回时 `targetColumnId: "dev"`
+  - 这是强制操作 — 如果不调用 `move_card`，卡片将被系统自动推进，可能导致错误流转

@@ -256,9 +256,22 @@ export class KanbanSessionQueue {
   private taskHasRunningLaneSession(task: {
     triggerSessionId?: string;
     status?: string;
-    laneSessions?: Array<{ status: string }>;
+    laneSessions?: Array<{ status: string; startedAt?: string }>;
   }): boolean {
-    if (task.laneSessions?.some((session) => session.status === "running")) {
+    if (task.laneSessions?.some((session) => {
+      if (session.status !== "running") return false;
+      // Stale guard: a running session that started over 2 hours ago is almost
+      // certainly dead (agent process exited, HMR restarted, etc.).  Treating
+      // it as running would permanently block the queue for this board because
+      // the concurrency limit would never drop below the limit.
+      if (session.startedAt) {
+        const startedAtMs = new Date(session.startedAt).getTime();
+        if (Date.now() - startedAtMs > 2 * 60 * 60 * 1000) {
+          return false;
+        }
+      }
+      return true;
+    })) {
       return true;
     }
     return (

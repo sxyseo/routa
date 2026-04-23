@@ -27,6 +27,7 @@ import { getDefaultKanbanDevSessionSupervision } from "./board-session-supervisi
 import { markTaskLaneSessionStatus, upsertTaskLaneSession } from "./task-lane-history";
 import { checkDependencyGate } from "./dependency-gate";
 import { type KanbanBranchRules } from "./board-branch-rules";
+import { PR_FAILURE_PREFIX } from "./pr-auto-create";
 import { getTaskDevServerRegistry } from "./task-dev-server-registry";
 import { onChildTaskStatusChanged } from "./parent-child-lifecycle";
 
@@ -36,7 +37,30 @@ const STALE_QUEUED_THRESHOLD_MS = 60_000;
 const MAX_AUTOMATION_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
 const SESSION_RETRY_LIMIT = parseInt(process.env.ROUTA_SESSION_RETRY_LIMIT ?? "3", 10);
 const SESSION_RETRY_RESET_MS = parseInt(process.env.ROUTA_SESSION_RETRY_RESET_MS ?? `${5 * 60 * 1000}`, 10);
+/** Max cooldown resets before a card is permanently skipped. Prevents infinite circuit-breaker loops. */
+const CIRCUIT_BREAKER_MAX_COOLDOWN_RESETS = parseInt(process.env.ROUTA_CB_MAX_COOLDOWN_RESETS ?? "5", 10);
 export const CIRCUIT_BREAKER_MARKER = "[circuit-breaker]";
+export const RATE_LIMITED_MARKER = "[rate-limited]";
+
+/** Parse the cooldown reset count from a circuit-breaker lastSyncError string.
+ *  Format: "[circuit-breaker:reset=N] ..." or legacy "[circuit-breaker] ..." */
+export function parseCbResetCount(lastSyncError: string | undefined): number {
+  if (!lastSyncError) return 0;
+  const match = lastSyncError.match(/\[circuit-breaker:reset=(\d+)\]/);
+  return match ? parseInt(match[1], 10) : (lastSyncError.startsWith(CIRCUIT_BREAKER_MARKER) ? 0 : 0);
+}
+
+/** Build a circuit-breaker marker string with embedded reset count. */
+function buildCbMarker(resetCount: number, message: string): string {
+  return `[circuit-breaker:reset=${resetCount}] ${message}`;
+}
+
+const RATE_LIMIT_KEYWORDS = ["429", "rate limit", "速率限制"];
+
+function isRateLimitErrorMessage(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return RATE_LIMIT_KEYWORDS.some(k => lower.includes(k));
+}
 
 interface RecoveryNotificationParams {
   workspaceId: string;
@@ -405,6 +429,26 @@ export class KanbanWorkflowOrchestrator {
         }
       }
 
+      // Done-lane early exit: if the card already has a PR URL and all done-lane
+      // steps have been completed, skip session creation. This prevents the
+      // recurring createSession-null loop for cards that are genuinely done.
+      const freshTask = task ? await this.taskStore.get(data.cardId) : undefined;
+      if (freshTask?.pullRequestUrl) {
+        const doneLaneSessions = (freshTask.laneSessions ?? []).filter(
+          (s) => s.columnId === targetColumn.id,
+        );
+        const hasCompletedSession = doneLaneSessions.some(
+          (s) => s.status === "completed" || s.status === "transitioned",
+        );
+        if (hasCompletedSession || doneLaneSessions.length >= 1) {
+          console.log(
+            `[WorkflowOrchestrator] Done-lane early exit for card ${data.cardId}: ` +
+            `PR exists (${freshTask.pullRequestUrl}) and ${doneLaneSessions.length} lane session(s) recorded. Skipping createSession.`,
+          );
+          return;
+        }
+      }
+
       // Auto-merger is no longer injected as a default done-lane step.
       // If needed, it should be added explicitly via board automation config.
     }
@@ -611,33 +655,70 @@ export class KanbanWorkflowOrchestrator {
           }
         } else {
           automationEntry.status = "failed";
-          const newCount = (this.sessionFailureCounts.get(data.cardId) ?? 0) + 1;
-          this.sessionFailureCounts.set(data.cardId, newCount);
-          console.error(
-            `[WorkflowOrchestrator] createSession returned null for card ${data.cardId} in column ${targetColumn.id}. ` +
-            `Consecutive failures: ${newCount}/${SESSION_RETRY_LIMIT}.`,
-          );
-          // Write circuit breaker marker to task when limit exceeded
-          if (newCount >= SESSION_RETRY_LIMIT) {
-            this.circuitBreakerLastLogAt.set(data.cardId, Date.now());
-            if (task) {
-              task.lastSyncError = `${CIRCUIT_BREAKER_MARKER} Session creation failed ${newCount} times. Retry after cooldown.`;
-              task.updatedAt = new Date();
-              await this.taskStore.save(task);
+          // Record a failed laneSession so that hasExceededNonDevAutomationRepeatLimit
+          // counts this attempt for non-dev columns (done/review/blocked).
+          // Without this, createSession-null never increments laneSessions,
+          // so the repeat limit guard never triggers.
+          if (task && targetColumn.stage !== "dev") {
+            upsertTaskLaneSession(task, {
+              sessionId: `failed-${data.cardId}-${Date.now()}`,
+              columnId: targetColumn.id,
+              stepId: steps[startStepIndex]?.id,
+              stepIndex: startStepIndex,
+              status: "failed",
+            });
+            await this.taskStore.save(task);
+          }
+          // Rate-limit errors are transient — don't consume circuit-breaker quota
+          const lastErr = task?.lastSyncError ?? "";
+          if (lastErr.startsWith(RATE_LIMITED_MARKER) || isRateLimitErrorMessage(lastErr)) {
+            console.warn(
+              `[WorkflowOrchestrator] Rate-limited for card ${data.cardId}, not counting towards circuit breaker.`,
+            );
+          } else {
+            const newCount = (this.sessionFailureCounts.get(data.cardId) ?? 0) + 1;
+            this.sessionFailureCounts.set(data.cardId, newCount);
+            console.error(
+              `[WorkflowOrchestrator] createSession returned null for card ${data.cardId} in column ${targetColumn.id}. ` +
+              `Consecutive failures: ${newCount}/${SESSION_RETRY_LIMIT}.`,
+            );
+            if (newCount >= SESSION_RETRY_LIMIT) {
+              this.circuitBreakerLastLogAt.set(data.cardId, Date.now());
+              if (task) {
+                const prevResets = parseCbResetCount(task.lastSyncError);
+                const prError = task.lastSyncError?.startsWith(PR_FAILURE_PREFIX) ? ` | prev: ${task.lastSyncError}` : "";
+                task.lastSyncError = buildCbMarker(prevResets, `Session creation failed ${newCount} times. Retry after cooldown.${prError}`);
+                task.updatedAt = new Date();
+                await this.taskStore.save(task);
+              }
             }
           }
         }
       } catch (err) {
         automationEntry.status = "failed";
-        const newCount = (this.sessionFailureCounts.get(data.cardId) ?? 0) + 1;
-        this.sessionFailureCounts.set(data.cardId, newCount);
-        console.error("[WorkflowOrchestrator] Failed to create session:", err);
-        if (newCount >= SESSION_RETRY_LIMIT) {
-          this.circuitBreakerLastLogAt.set(data.cardId, Date.now());
+        const errMsg = err instanceof Error ? err.message : String(err);
+        // Rate-limit errors are transient — don't consume circuit-breaker quota
+        if (isRateLimitErrorMessage(errMsg)) {
+          console.warn(
+            `[WorkflowOrchestrator] Rate-limited for card ${data.cardId}, not counting towards circuit breaker.`,
+          );
           if (task) {
-            task.lastSyncError = `${CIRCUIT_BREAKER_MARKER} Session creation failed ${newCount} times. Retry after cooldown.`;
+            task.lastSyncError = `${RATE_LIMITED_MARKER} ${errMsg}`;
             task.updatedAt = new Date();
             await this.taskStore.save(task);
+          }
+        } else {
+          const newCount = (this.sessionFailureCounts.get(data.cardId) ?? 0) + 1;
+          this.sessionFailureCounts.set(data.cardId, newCount);
+          console.error("[WorkflowOrchestrator] Failed to create session:", err);
+          if (newCount >= SESSION_RETRY_LIMIT) {
+            this.circuitBreakerLastLogAt.set(data.cardId, Date.now());
+            if (task) {
+              const prevResets = parseCbResetCount(task.lastSyncError);
+              task.lastSyncError = buildCbMarker(prevResets, `Session creation failed ${newCount} times. Retry after cooldown.`);
+              task.updatedAt = new Date();
+              await this.taskStore.save(task);
+            }
           }
         }
       }

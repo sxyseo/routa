@@ -23,7 +23,7 @@ import { shellQuote } from "../git/git-utils";
 
 const HANDLER_KEY = "kanban-pr-auto-create";
 const PR_RETRY_LIMIT = parseInt(process.env.ROUTA_PR_RETRY_LIMIT ?? "3", 10);
-const PR_FAILURE_PREFIX = "Auto PR creation failed";
+export const PR_FAILURE_PREFIX = "Auto PR creation failed";
 
 async function execCommand(
   command: string,
@@ -66,10 +66,11 @@ export async function executeAutoPrCreation(
     return preCheck.pullRequestUrl;
   }
 
-  // Pre-flight: check retry limit
-  if (preCheck?.lastSyncError?.startsWith(PR_FAILURE_PREFIX)) {
-    const match = preCheck.lastSyncError.match(/\(attempt (\d+)\/\d+\)/);
-    const attempts = match ? parseInt(match[1], 10) : 1;
+  // Pre-flight: check retry limit (check both direct prefix and embedded in circuit-breaker marker)
+  const lastErr = preCheck?.lastSyncError ?? "";
+  const prAttemptMatch = lastErr.match(/\(attempt (\d+)\/\d+\)/);
+  if (lastErr.includes(PR_FAILURE_PREFIX) && prAttemptMatch) {
+    const attempts = parseInt(prAttemptMatch[1], 10);
     if (attempts >= PR_RETRY_LIMIT) {
       console.warn(
         `[PrAutoCreate] Task ${cardId} exceeded ${PR_RETRY_LIMIT} PR creation attempts. Skipping.`,
@@ -102,7 +103,26 @@ export async function executeAutoPrCreation(
       return undefined;
     }
 
-    // 2. Push the branch to origin
+    // 2. Check if branch already exists on remote — skip push if so
+    let branchAlreadyOnRemote = false;
+    try {
+      const lsResult = await execCommand(
+        `git ls-remote --heads origin ${shellQuote(branch)}`,
+        cwd,
+        30_000,
+      );
+      if (lsResult.stdout.trim()) {
+        branchAlreadyOnRemote = true;
+        console.log(
+          `[PrAutoCreate] Branch ${branch} already exists on remote for task ${cardId}. Skipping push.`,
+        );
+      }
+    } catch {
+      // ls-remote failure is not fatal — proceed with push
+    }
+
+    // 3. Push the branch to origin (only if not already present)
+    if (!branchAlreadyOnRemote) {
     try {
       await execCommand(
         `git push -u origin ${shellQuote(branch)}`,
@@ -120,8 +140,8 @@ export async function executeAutoPrCreation(
       );
       const task = await taskStore.get(cardId);
       if (task) {
-        const prevAttempts = task.lastSyncError?.startsWith(PR_FAILURE_PREFIX)
-          ? (task.lastSyncError.match(/\(attempt (\d+)\/\d+\)/)?.[1] ?? "0")
+        const prevAttempts = (task.lastSyncError ?? "").includes(PR_FAILURE_PREFIX)
+          ? ((task.lastSyncError ?? "").match(/\(attempt (\d+)\/\d+\)/)?.[1] ?? "0")
           : "0";
         const attempt = parseInt(prevAttempts, 10) + 1;
         task.lastSyncError = `${PR_FAILURE_PREFIX}: git push failed — ${msg} (attempt ${attempt}/${PR_RETRY_LIMIT})`;
@@ -130,8 +150,9 @@ export async function executeAutoPrCreation(
       }
       return undefined;
     }
+    } // end if (!branchAlreadyOnRemote)
 
-    // 2b. Verify the branch exists on the remote
+    // 3b. Verify the branch exists on the remote
     try {
       const lsResult = await execCommand(
         `git ls-remote --heads origin ${shellQuote(branch)}`,
@@ -252,8 +273,8 @@ export async function executeAutoPrCreation(
     try {
       const task = await taskStore.get(cardId);
       if (task) {
-        const prevAttempts = task.lastSyncError?.startsWith(PR_FAILURE_PREFIX)
-          ? (task.lastSyncError.match(/\(attempt (\d+)\/\d+\)/)?.[1] ?? "0")
+        const prevAttempts = (task.lastSyncError ?? "").includes(PR_FAILURE_PREFIX)
+          ? ((task.lastSyncError ?? "").match(/\(attempt (\d+)\/\d+\)/)?.[1] ?? "0")
           : "0";
         const attempt = parseInt(prevAttempts, 10) + 1;
         task.lastSyncError = `${PR_FAILURE_PREFIX}: ${

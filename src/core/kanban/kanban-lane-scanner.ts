@@ -10,11 +10,12 @@
  */
 
 import type { RoutaSystem } from "../routa-system";
-import { hasExceededNonDevAutomationRepeatLimit, CIRCUIT_BREAKER_MARKER } from "./workflow-orchestrator";
+import { hasExceededNonDevAutomationRepeatLimit, CIRCUIT_BREAKER_MARKER, RATE_LIMITED_MARKER, parseCbResetCount } from "./workflow-orchestrator";
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { clearStaleTriggerSession } from "./task-trigger-session";
 import { getKanbanAutomationSteps, type KanbanColumnStage } from "../models/kanban";
 import { AgentEventType } from "../events/event-bus";
+import { PR_FAILURE_PREFIX } from "./pr-auto-create";
 
 const SCAN_INTERVAL_MS = 30_000;
 const MAX_STEP_RESUME_ATTEMPTS = 3;
@@ -111,9 +112,49 @@ export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScann
         }
         // Skip completed/blocked tasks
         if (task.status === "COMPLETED" || task.status === "BLOCKED") continue;
-        // Skip circuit-broken tasks (session creation failed too many times)
-        // The orchestrator will reset the marker after cooldown period
-        if (task.lastSyncError?.startsWith(CIRCUIT_BREAKER_MARKER)) continue;
+        // Circuit-breaker / rate-limit: skip cards marked as failed, but auto-recover
+        // after the cooldown period (SESSION_RETRY_RESET_MS, default 5 min).
+        if (task.lastSyncError?.startsWith(CIRCUIT_BREAKER_MARKER) ||
+            task.lastSyncError?.startsWith(RATE_LIMITED_MARKER)) {
+          const updatedAt = task.updatedAt instanceof Date
+            ? task.updatedAt.getTime()
+            : new Date(task.updatedAt as string | number).getTime();
+          const cooldownMs = parseInt(
+            process.env.ROUTA_SESSION_RETRY_RESET_MS ?? `${5 * 60 * 1000}`, 10,
+          );
+          if (Date.now() - updatedAt < cooldownMs) continue;
+          // Check if this card has exceeded the max cooldown reset count
+          const isCb = task.lastSyncError.startsWith(CIRCUIT_BREAKER_MARKER);
+          if (isCb) {
+            const resetCount = parseCbResetCount(task.lastSyncError);
+            const maxResets = parseInt(process.env.ROUTA_CB_MAX_COOLDOWN_RESETS ?? "5", 10);
+            if (resetCount >= maxResets) {
+              continue; // Permanently skip — too many cooldown resets
+            }
+            // Increment reset count in the marker for next cycle
+            const newResetCount = resetCount + 1;
+            console.log(
+              `[LaneScanner] Cooldown expired for card ${task.id}, ` +
+              `clearing circuit-breaker marker (reset ${newResetCount}/${maxResets}).`,
+            );
+            // Preserve PR failure info if embedded in the previous lastSyncError
+            const prMatch = task.lastSyncError?.match(new RegExp(`\\| prev: (${PR_FAILURE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.+)`));
+            const prFallback = task.lastSyncError?.includes(PR_FAILURE_PREFIX) ? task.lastSyncError : undefined;
+            task.lastSyncError = `[circuit-breaker:reset=${newResetCount}] pending retry.`;
+            if (prMatch?.[1]) {
+              task.lastSyncError += ` | prev: ${prMatch[1]}`;
+            } else if (prFallback) {
+              task.lastSyncError += ` | prev: ${prFallback}`;
+            }
+          } else {
+            console.log(
+              `[LaneScanner] Cooldown expired for card ${task.id}, clearing rate-limit marker.`,
+            );
+            task.lastSyncError = undefined;
+          }
+          task.updatedAt = new Date();
+          await system.taskStore.save(task);
+        }
         // Skip creation-source sessions (auto-generated from agent runs)
         if (task.creationSource === "session") continue;
         // Skip tasks whose lane automation already completed successfully —
