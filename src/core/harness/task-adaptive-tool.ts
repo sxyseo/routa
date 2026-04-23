@@ -3,6 +3,7 @@ import {
   resolveRepoRoot,
   type HarnessContext,
 } from "@/core/harness/context-resolution";
+import { getRoutaSystem } from "@/core/routa-system";
 import {
   assembleTaskAdaptiveHarness,
   parseTaskAdaptiveHarnessOptions,
@@ -22,8 +23,11 @@ import {
 } from "@/core/harness/retrospective-memory";
 import {
   buildFeatureTreeRetrievalHints,
+  confirmFeatureTreeStoryContext,
   loadRelevantFeatureTreeContext,
 } from "@/core/kanban/context-preload";
+import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
+import { normalizeTaskContextSearchSpec } from "@/core/models/task";
 
 export const TASK_ADAPTIVE_HARNESS_TOOL_NAME = "assemble_task_adaptive_harness";
 export const TASK_HISTORY_SUMMARY_TOOL_NAME = "summarize_task_history_context";
@@ -32,6 +36,7 @@ export const TRANSCRIPT_TURN_INSPECTION_TOOL_NAME = "inspect_transcript_turns";
 export const LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME = "load_feature_retrospective_memory";
 export const SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME = "save_feature_retrospective_memory";
 export const LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME = "load_feature_tree_context";
+export const CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME = "confirm_feature_tree_story_context";
 
 function normalizeStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
@@ -185,6 +190,87 @@ export async function loadFeatureTreeContextFromToolArgs(
     }),
     maxEntries: normalizePositiveInteger(args.maxFeatures),
   });
+}
+
+export async function confirmFeatureTreeStoryContextFromToolArgs(
+  args: Record<string, unknown>,
+  fallbackWorkspaceId?: string,
+): Promise<Awaited<ReturnType<typeof confirmFeatureTreeStoryContext>>> {
+  const context: HarnessContext = {
+    workspaceId: normalizeContextValue(args.workspaceId) ?? fallbackWorkspaceId,
+    codebaseId: normalizeContextValue(args.codebaseId),
+    repoPath: normalizeContextValue(args.repoPath),
+  };
+  const repoRoot = await resolveRepoRoot(context);
+  const options = parseTaskAdaptiveHarnessOptions(args) ?? {};
+
+  const result = await confirmFeatureTreeStoryContext({
+    repoPath: repoRoot,
+    hints: buildFeatureTreeRetrievalHints({
+      featureIds: normalizeStringArray(args.featureIds) ?? options.featureIds,
+      query: normalizeContextValue(args.query) ?? options.query ?? options.taskLabel,
+      filePaths: normalizeStringArray(args.filePaths) ?? options.filePaths,
+      routeCandidates: normalizeStringArray(args.routeCandidates) ?? options.routeCandidates,
+      apiCandidates: normalizeStringArray(args.apiCandidates) ?? options.apiCandidates,
+      moduleHints: normalizeStringArray(args.moduleHints) ?? options.moduleHints,
+      symptomHints: normalizeStringArray(args.symptomHints) ?? options.symptomHints,
+    }),
+    maxEntries: normalizePositiveInteger(args.maxFeatures),
+  });
+
+  const taskId = normalizeContextValue(args.taskId);
+  if (!taskId || !result.confirmedContextSearchSpec) {
+    return result;
+  }
+
+  const system = getRoutaSystem();
+  const task = await system.taskStore.get(taskId);
+  if (!task) {
+    throw new Error(`Task not found: ${taskId}`);
+  }
+
+  task.contextSearchSpec = normalizeTaskContextSearchSpec({
+    query: result.confirmedContextSearchSpec.query ?? task.contextSearchSpec?.query,
+    featureCandidates: [
+      ...(task.contextSearchSpec?.featureCandidates ?? []),
+      ...(result.confirmedContextSearchSpec.featureCandidates ?? []),
+    ],
+    relatedFiles: [
+      ...(task.contextSearchSpec?.relatedFiles ?? []),
+      ...(result.confirmedContextSearchSpec.relatedFiles ?? []),
+    ],
+    routeCandidates: [
+      ...(task.contextSearchSpec?.routeCandidates ?? []),
+      ...(result.confirmedContextSearchSpec.routeCandidates ?? []),
+    ],
+    apiCandidates: [
+      ...(task.contextSearchSpec?.apiCandidates ?? []),
+      ...(result.confirmedContextSearchSpec.apiCandidates ?? []),
+    ],
+    moduleHints: [
+      ...(task.contextSearchSpec?.moduleHints ?? []),
+      ...(result.confirmedContextSearchSpec.moduleHints ?? []),
+    ],
+    symptomHints: [
+      ...(task.contextSearchSpec?.symptomHints ?? []),
+      ...(result.confirmedContextSearchSpec.symptomHints ?? []),
+    ],
+  });
+  task.updatedAt = new Date();
+  await system.taskStore.save(task);
+
+  getKanbanEventBroadcaster().notify({
+    workspaceId: task.workspaceId,
+    entity: "task",
+    action: "updated",
+    resourceId: taskId,
+    source: "agent",
+  });
+
+  return {
+    ...result,
+    confirmedContextSearchSpec: task.contextSearchSpec,
+  };
 }
 
 export async function saveFeatureRetrospectiveMemoryFromToolArgs(

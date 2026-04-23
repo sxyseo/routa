@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const {
   assembleTaskAdaptiveHarnessFromToolArgs,
+  confirmFeatureTreeStoryContextFromToolArgs,
   inspectTranscriptTurnsFromToolArgs,
   loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
@@ -109,6 +110,26 @@ const {
       score: 40,
     }],
   })),
+  confirmFeatureTreeStoryContextFromToolArgs: vi.fn(async () => ({
+    warnings: [],
+    selectedFeature: {
+      id: "feature-explorer",
+      name: "Feature Explorer",
+      summary: "Feature explorer pages, APIs, and session analysis surfaces.",
+      pages: ["/workspace/:workspaceId/feature-explorer"],
+      apis: ["GET /api/feature-explorer"],
+      sourceFiles: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+      relatedFeatures: ["spec"],
+      matchReasons: ["Explicit feature candidate: feature-explorer"],
+      score: 40,
+    },
+    confirmedContextSearchSpec: {
+      query: "feature explorer",
+      featureCandidates: ["feature-explorer"],
+      relatedFiles: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+    },
+    featureTreeYamlBlock: "feature_tree:\n  feature_id: \"feature-explorer\"",
+  })),
 }));
 
 vi.mock("@/core/harness/task-adaptive-tool", () => ({
@@ -119,7 +140,9 @@ vi.mock("@/core/harness/task-adaptive-tool", () => ({
   LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME: "load_feature_retrospective_memory",
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME: "save_feature_retrospective_memory",
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME: "load_feature_tree_context",
+  CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME: "confirm_feature_tree_story_context",
   assembleTaskAdaptiveHarnessFromToolArgs,
+  confirmFeatureTreeStoryContextFromToolArgs,
   inspectTranscriptTurnsFromToolArgs,
   loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
@@ -243,6 +266,7 @@ describe("RoutaMcpToolManager", () => {
     expect(registrations.some((entry) => entry.name === "save_history_memory_context")).toBe(true);
     expect(registrations.some((entry) => entry.name === "load_feature_retrospective_memory")).toBe(true);
     expect(registrations.some((entry) => entry.name === "load_feature_tree_context")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "confirm_feature_tree_story_context")).toBe(true);
     expect(registrations.some((entry) => entry.name === "save_feature_retrospective_memory")).toBe(true);
 
     const createTaskTool = registrations.find((entry) => entry.name === "create_task");
@@ -257,6 +281,7 @@ describe("RoutaMcpToolManager", () => {
     const saveHistoryMemoryTool = registrations.find((entry) => entry.name === "save_history_memory_context");
     const loadRetrospectiveMemoryTool = registrations.find((entry) => entry.name === "load_feature_retrospective_memory");
     const loadFeatureTreeContextTool = registrations.find((entry) => entry.name === "load_feature_tree_context");
+    const confirmFeatureTreeStoryContextTool = registrations.find((entry) => entry.name === "confirm_feature_tree_story_context");
     const saveRetrospectiveMemoryTool = registrations.find((entry) => entry.name === "save_feature_retrospective_memory");
     expect(createTaskTool).toBeDefined();
     expect(noteTool).toBeDefined();
@@ -270,6 +295,7 @@ describe("RoutaMcpToolManager", () => {
     expect(saveHistoryMemoryTool).toBeDefined();
     expect(loadRetrospectiveMemoryTool).toBeDefined();
     expect(loadFeatureTreeContextTool).toBeDefined();
+    expect(confirmFeatureTreeStoryContextTool).toBeDefined();
     expect(saveRetrospectiveMemoryTool).toBeDefined();
 
     await createTaskTool!.handler({
@@ -343,6 +369,20 @@ describe("RoutaMcpToolManager", () => {
       (specialistSpecResult as { content: Array<{ text: string }> }).content[0]?.text ?? "{}",
     ) as { text?: string };
     expect(specialistSpecPayload.text).toContain('"baseRulesInPrompt"');
+
+    const confirmFeatureTreeResult = await confirmFeatureTreeStoryContextTool!.handler({
+      query: "feature explorer",
+    });
+    expect(confirmFeatureTreeStoryContextFromToolArgs).toHaveBeenCalledWith({
+      query: "feature explorer",
+    }, "ws-1");
+    expect(confirmFeatureTreeResult).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
+    expect((confirmFeatureTreeResult as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"featureTreeYamlBlock":',
+    );
 
     const taskAdaptiveHarnessResult = await taskAdaptiveHarnessTool!.handler({
       taskLabel: "Investigate history-session loading",

@@ -45,6 +45,17 @@ describe("backlog context confirmation", () => {
     await expect(hasConfirmedBacklogContextInspection(sessionId)).resolves.toBe(true);
   });
 
+  it("treats feature-tree story confirmation as confirming backlog inspection", async () => {
+    const sessionId = `session-feature-tree-${Date.now()}`;
+    seedSessionHistory({
+      sessionId,
+      tool: "confirm_feature_tree_story_context",
+      kind: "task",
+    });
+
+    await expect(hasConfirmedBacklogContextInspection(sessionId)).resolves.toBe(true);
+  });
+
   it("treats shell rg commands as confirming backlog inspection", async () => {
     const sessionId = `session-rg-${Date.now()}`;
     seedSessionHistory({

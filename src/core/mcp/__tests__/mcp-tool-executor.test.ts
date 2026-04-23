@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const {
   assembleTaskAdaptiveHarnessFromToolArgs,
+  confirmFeatureTreeStoryContextFromToolArgs,
   inspectTranscriptTurnsFromToolArgs,
   loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
@@ -109,6 +110,28 @@ const {
       score: 42,
     }],
   })),
+  confirmFeatureTreeStoryContextFromToolArgs: vi.fn(async () => ({
+    warnings: [],
+    selectedFeature: {
+      id: "kanban-workflow",
+      name: "Kanban Workflow",
+      summary: "Board flow, automation, and event persistence surfaces.",
+      pages: ["/workspace/:workspaceId/kanban"],
+      apis: ["POST /api/kanban/events"],
+      sourceFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+      relatedFeatures: ["tasks"],
+      matchReasons: ["Explicit feature candidate: kanban-workflow"],
+      score: 42,
+    },
+    confirmedContextSearchSpec: {
+      query: "kanban workflow",
+      featureCandidates: ["kanban-workflow"],
+      relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+      routeCandidates: ["/workspace/:workspaceId/kanban"],
+      apiCandidates: ["POST /api/kanban/events"],
+    },
+    featureTreeYamlBlock: "feature_tree:\n  feature_id: \"kanban-workflow\"",
+  })),
 }));
 
 vi.mock("@/core/harness/task-adaptive-tool", () => ({
@@ -119,7 +142,9 @@ vi.mock("@/core/harness/task-adaptive-tool", () => ({
   LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME: "load_feature_retrospective_memory",
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME: "save_feature_retrospective_memory",
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME: "load_feature_tree_context",
+  CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME: "confirm_feature_tree_story_context",
   assembleTaskAdaptiveHarnessFromToolArgs,
+  confirmFeatureTreeStoryContextFromToolArgs,
   inspectTranscriptTurnsFromToolArgs,
   loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
@@ -203,6 +228,9 @@ describe("executeMcpTool", () => {
       getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "load_feature_tree_context"),
     ).toBe(true);
     expect(
+      getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "confirm_feature_tree_story_context"),
+    ).toBe(true);
+    expect(
       getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "save_history_memory_context"),
     ).toBe(true);
   });
@@ -229,6 +257,29 @@ describe("executeMcpTool", () => {
     });
     expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
       '"kanban-workflow"',
+    );
+  });
+
+  it("confirms prompt-ready feature tree story context from MCP args", async () => {
+    const result = await executeMcpTool(
+      {} as never,
+      "confirm_feature_tree_story_context",
+      {
+        workspaceId: "workspace-1",
+        query: "kanban workflow",
+      },
+    );
+
+    expect(confirmFeatureTreeStoryContextFromToolArgs).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      query: "kanban workflow",
+    }, "workspace-1");
+    expect(result).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
+    expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"featureTreeYamlBlock":',
     );
   });
 

@@ -1,10 +1,10 @@
-import { loadSessionHistory } from "@/core/session-history";
 import { getToolEventName, normalizeToolKind } from "@/core/tool-call-name";
 import type { AcpSessionNotification } from "@/core/store/acp-session-store";
 import type { TaskContextSearchSpec } from "@/core/models/task";
 
 const CONFIRMING_TOOL_NAMES = [
   "load_feature_tree_context",
+  "confirm_feature_tree_story_context",
   "read",
   "read_file",
   "glob",
@@ -90,7 +90,8 @@ export async function hasConfirmedBacklogContextInspection(sessionId: string | u
     return false;
   }
 
-  const history = await loadSessionHistory(sessionId);
+  const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
+  const history = getHttpSessionStore().getHistory(sessionId);
   return history.some(notificationConfirmsBacklogContext);
 }
 

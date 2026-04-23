@@ -14,11 +14,11 @@ import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
 import {
   assembleTaskAdaptiveHarnessFromToolArgs,
+  CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
   FILE_SESSION_CONTEXT_TOOL_NAME,
   inspectTranscriptTurnsFromToolArgs,
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
   LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
-  loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
   saveFeatureRetrospectiveMemoryFromToolArgs,
@@ -30,6 +30,10 @@ import {
 } from "../harness/task-adaptive-tool";
 import { readCanvasSdkResource } from "../canvas/sdk-resource-contract";
 import { readFeatureTreeSpecResource } from "../spec/feature-tree-spec-resource-contract";
+import {
+  registerConfirmFeatureTreeStoryContextTool,
+  registerLoadFeatureTreeContextTool,
+} from "./feature-tree-context-tools";
 
 /**
  * Tool registration mode for MCP server.
@@ -196,6 +200,7 @@ export class RoutaMcpToolManager {
       register(TRANSCRIPT_TURN_INSPECTION_TOOL_NAME, () => this.registerInspectTranscriptTurns(server));
       register("save_history_memory_context", () => this.registerSaveJitContext(server));
       register(LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME, () => this.registerLoadFeatureTreeContext(server));
+      register(CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME, () => this.registerConfirmFeatureTreeStoryContext(server));
       register(LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME, () => this.registerLoadRetrospectiveMemory(server));
       register(SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME, () => this.registerSaveRetrospectiveMemory(server));
       return;
@@ -209,6 +214,7 @@ export class RoutaMcpToolManager {
     register("update_task", () => this.registerUpdateTask(server));
     register("save_history_memory_context", () => this.registerSaveJitContext(server));
     register(LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME, () => this.registerLoadFeatureTreeContext(server));
+    register(CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME, () => this.registerConfirmFeatureTreeStoryContext(server));
     // Agent tools
     register("list_agents", () => this.registerListAgents(server));
     register("read_agent_conversation", () => this.registerReadAgentConversation(server));
@@ -414,29 +420,19 @@ export class RoutaMcpToolManager {
   }
 
   private registerLoadFeatureTreeContext(server: McpServer) {
-    server.tool(
-      LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
-      "Load prompt-ready feature tree context for likely feature candidates so planning/execution sessions can bind the task to pages, APIs, and source files.",
-      {
-        workspaceId: z.string().optional().describe("Workspace ID. Uses the current MCP session workspace when omitted."),
-        codebaseId: z.string().optional().describe("Optional codebase ID override for repository resolution."),
-        repoPath: z.string().optional().describe("Optional repository path override for repository resolution."),
-        featureIds: z.array(z.string()).optional().describe("Ordered candidate Feature Tree IDs to load directly."),
-        query: z.string().optional().describe("Story/query text used to rank likely feature matches."),
-        filePaths: z.array(z.string()).optional().describe("Repository-relative files already believed to be relevant."),
-        routeCandidates: z.array(z.string()).optional().describe("Candidate routes/pages used to rank likely features."),
-        apiCandidates: z.array(z.string()).optional().describe("Candidate APIs used to rank likely features."),
-        moduleHints: z.array(z.string()).optional().describe("Module or subsystem hints used to rank likely features."),
-        symptomHints: z.array(z.string()).optional().describe("User-visible symptom hints used to rank likely features."),
-        maxFeatures: z.number().int().positive().optional().describe("Maximum number of feature candidates to return."),
-      },
-      async (params) => {
-        return this.toMcpResult({
-          success: true,
-          data: await loadFeatureTreeContextFromToolArgs(params, this.workspaceId),
-        });
-      },
-    );
+    registerLoadFeatureTreeContextTool({
+      server,
+      workspaceId: this.workspaceId,
+      toMcpResult: (result) => this.toMcpResult(result as ToolResult),
+    });
+  }
+
+  private registerConfirmFeatureTreeStoryContext(server: McpServer) {
+    registerConfirmFeatureTreeStoryContextTool({
+      server,
+      workspaceId: this.workspaceId,
+      toMcpResult: (result) => this.toMcpResult(result as ToolResult),
+    });
   }
 
   /**

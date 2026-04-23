@@ -12,7 +12,9 @@ import { KanbanTools } from "@/core/tools/kanban-tools";
 import { getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import {
   assembleTaskAdaptiveHarnessFromToolArgs,
+  CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
   FILE_SESSION_CONTEXT_TOOL_NAME,
+  confirmFeatureTreeStoryContextFromToolArgs,
   inspectTranscriptTurnsFromToolArgs,
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
   LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
@@ -30,6 +32,12 @@ import { readFeatureTreeSpecResource } from "@/core/spec/feature-tree-spec-resou
 import { ToolMode } from "./routa-mcp-tool-manager";
 import { getMcpProfileToolAllowlist, type McpServerProfile } from "./mcp-server-profiles";
 import { parseTaskJitContextAnalysis } from "../models/task";
+import {
+  CONFIRM_FEATURE_TREE_STORY_CONTEXT_DESCRIPTION,
+  CONFIRM_FEATURE_TREE_STORY_CONTEXT_INPUT_SCHEMA,
+  LOAD_FEATURE_TREE_CONTEXT_DESCRIPTION,
+  LOAD_FEATURE_TREE_CONTEXT_INPUT_SCHEMA,
+} from "./feature-tree-context-tools";
 
 async function resolveSessionProvider(sessionId: string | undefined): Promise<string | undefined> {
   if (!sessionId) return undefined;
@@ -165,6 +173,7 @@ const ESSENTIAL_TOOL_NAMES = new Set([
   LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
+  CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
 ]);
 
 export async function executeMcpTool(
@@ -334,6 +343,11 @@ export async function executeMcpTool(
       return formatResult({
         success: true,
         data: await loadFeatureTreeContextFromToolArgs(args, workspace),
+      });
+    case CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME:
+      return formatResult({
+        success: true,
+        data: await confirmFeatureTreeStoryContextFromToolArgs(args, workspace),
       });
 
     // ── Enhanced delegation with process spawning ─────────────────────
@@ -1776,47 +1790,13 @@ export function getMcpToolDefinitions(
     },
     {
       name: LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
-      description: "Load prompt-ready feature tree context for likely feature candidates so backlog and task sessions can bind the request to pages, APIs, and source files before broader scanning.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
-          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
-          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
-          featureIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional ordered candidate Feature Tree IDs to load directly.",
-          },
-          query: { type: "string", description: "Optional story/query text used to rank likely feature matches." },
-          filePaths: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional repository-relative files already believed to be relevant.",
-          },
-          routeCandidates: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional routes/pages used to rank likely features.",
-          },
-          apiCandidates: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional APIs used to rank likely features.",
-          },
-          moduleHints: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional module or subsystem hints used to rank likely features.",
-          },
-          symptomHints: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional symptom hints used to rank likely features.",
-          },
-          maxFeatures: { type: "number", minimum: 1, description: "Maximum number of feature candidates to return." },
-        },
-      },
+      description: LOAD_FEATURE_TREE_CONTEXT_DESCRIPTION,
+      inputSchema: LOAD_FEATURE_TREE_CONTEXT_INPUT_SCHEMA,
+    },
+    {
+      name: CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
+      description: CONFIRM_FEATURE_TREE_STORY_CONTEXT_DESCRIPTION,
+      inputSchema: CONFIRM_FEATURE_TREE_STORY_CONTEXT_INPUT_SCHEMA,
     },
     {
       name: SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,

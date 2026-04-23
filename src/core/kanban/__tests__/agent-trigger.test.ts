@@ -43,9 +43,12 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Treat backlog as planning and refinement, not implementation");
     expect(prompt).toContain("move_card");
     expect(prompt).toContain("Do NOT create or sync GitHub issues during backlog planning.");
-    expect(prompt).toContain("You may use read-only native tools such as Read, Grep, and Glob for limited repo inspection");
+    expect(prompt).toContain("Prefer feature-tree confirmation first");
+    expect(prompt).toContain("You may use read-only native tools such as Read, Grep, and Glob for limited repo inspection only after feature-tree evidence is still weak or ambiguous");
     expect(prompt).toContain("If Relevant History Memory or Relevant Feature Tree Context is provided");
-    expect(prompt).toContain("Only write contextSearchSpec after repo inspection or load_feature_tree_context confirms the feature/files");
+    expect(prompt).toContain("confirm_feature_tree_story_context");
+    expect(prompt).toContain("Only write contextSearchSpec after feature-tree confirmation or repo inspection confirms the feature/files");
+    expect(prompt).toContain("include an optional `feature_tree` block");
     expect(prompt).toContain("decompose_tasks");
     expect(prompt).not.toContain("Complete the work assigned to this column stage");
   });

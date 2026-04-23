@@ -2,11 +2,12 @@ import * as path from "path";
 
 import { getRoutaSystem } from "@/core/routa-system";
 import { readFeatureSurfaceIndex, type FeatureSurfaceMetadataItem } from "@/core/spec/feature-surface-index";
-import type {
-  Task,
-  TaskContextSearchSpec,
-  TaskJitContextAnalysis,
-  TaskJitContextAnalysisSessionLead,
+import {
+  normalizeTaskContextSearchSpec,
+  type Task,
+  type TaskContextSearchSpec,
+  type TaskJitContextAnalysis,
+  type TaskJitContextAnalysisSessionLead,
 } from "@/core/models/task";
 
 export interface RelevantHistoryMemoryEntry {
@@ -32,6 +33,13 @@ export interface RelevantFeatureTreeContextEntry {
   relatedFeatures: string[];
   matchReasons: string[];
   score: number;
+}
+
+export interface ConfirmedFeatureTreeStoryContext {
+  selectedFeature?: RelevantFeatureTreeContextEntry;
+  confirmedContextSearchSpec?: TaskContextSearchSpec;
+  featureTreeYamlBlock?: string;
+  warnings: string[];
 }
 
 interface HistoryMemoryRetrievalHints {
@@ -460,6 +468,70 @@ export async function loadRelevantFeatureTreeContext(params: {
 
 function trimList(values: string[], maxEntries: number): string[] {
   return values.slice(0, maxEntries);
+}
+
+function yamlQuote(value: string): string {
+  return `"${value.replace(/\\/gu, "\\\\").replace(/"/gu, "\\\"")}"`;
+}
+
+function buildFeatureTreeYamlBlock(entry: RelevantFeatureTreeContextEntry): string {
+  const lines = [
+    "feature_tree:",
+    `  feature_id: ${yamlQuote(entry.id)}`,
+    `  feature_name: ${yamlQuote(entry.name)}`,
+  ];
+
+  if (entry.pages.length > 0) {
+    lines.push("  pages:");
+    entry.pages.slice(0, 6).forEach((page) => {
+      lines.push(`    - ${yamlQuote(page)}`);
+    });
+  }
+
+  if (entry.apis.length > 0) {
+    lines.push("  apis:");
+    entry.apis.slice(0, 6).forEach((api) => {
+      lines.push(`    - ${yamlQuote(api)}`);
+    });
+  }
+
+  if (entry.sourceFiles.length > 0) {
+    lines.push("  source_files:");
+    entry.sourceFiles.slice(0, 8).forEach((filePath) => {
+      lines.push(`    - ${yamlQuote(filePath)}`);
+    });
+  }
+
+  return lines.join("\n");
+}
+
+export async function confirmFeatureTreeStoryContext(params: {
+  repoPath: string;
+  hints: FeatureTreeRetrievalHints;
+  maxEntries?: number;
+}): Promise<ConfirmedFeatureTreeStoryContext> {
+  const { features, warnings } = await loadRelevantFeatureTreeContext(params);
+  const selectedFeature = features[0];
+  if (!selectedFeature) {
+    return { warnings: [...warnings] };
+  }
+
+  const confirmedContextSearchSpec = normalizeTaskContextSearchSpec({
+    query: params.hints.query,
+    featureCandidates: [selectedFeature.id],
+    relatedFiles: selectedFeature.sourceFiles,
+    routeCandidates: selectedFeature.pages,
+    apiCandidates: selectedFeature.apis,
+    moduleHints: params.hints.moduleHints,
+    symptomHints: params.hints.symptomHints,
+  });
+
+  return {
+    selectedFeature,
+    confirmedContextSearchSpec,
+    featureTreeYamlBlock: buildFeatureTreeYamlBlock(selectedFeature),
+    warnings: [...warnings],
+  };
 }
 
 export function buildRelevantHistoryMemoryPromptSection(
