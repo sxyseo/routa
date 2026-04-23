@@ -502,7 +502,7 @@ export class KanbanWorkflowOrchestrator {
         task.updatedAt = new Date();
         await this.taskStore.save(task);
       }
-      console.warn(
+      console.log(
         `[WorkflowOrchestrator] Stopped repeated non-dev automation for card ${data.cardId} in column ${targetColumn.id}.`,
       );
       return;

@@ -15,7 +15,8 @@
 import { randomUUID } from "node:crypto";
 import { getProviderAdapter } from "./provider-adapter";
 import { TraceRecorder } from "./provider-adapter/trace-recorder";
-import { appendSessionNotificationEvent, hydrateSessionsFromDb } from "./session-db-persister";
+import { appendSessionNotificationEvent, hydrateSessionsFromDb, updateSessionExecutionBindingInDb } from "./session-db-persister";
+import { getAcpInstanceId, isExecutionLeaseActive } from "./execution-backend";
 import { AgentEventBridge, makeStartedEvent } from "./agent-event-bridge";
 import type { WorkspaceAgentEvent } from "./agent-event-bridge";
 import type { NormalizedSessionUpdate } from "./provider-adapter/types";
@@ -1040,31 +1041,76 @@ class HttpSessionStore {
   async hydrateFromDb(): Promise<void> {
     if (this.hydrated) return;
 
+    const currentInstance = getAcpInstanceId();
     const dbSessions = await hydrateSessionsFromDb();
+    const staleSessionIds: string[] = [];
+
     for (const s of dbSessions) {
       if (!this.sessions.has(s.id)) {
-        this.upsertSession({
-          sessionId: s.id,
-          name: s.name,
-          cwd: s.cwd,
-          branch: s.branch,
-          workspaceId: s.workspaceId,
-          routaAgentId: s.routaAgentId,
-          provider: s.provider,
-          role: s.role,
-          modeId: s.modeId,
-          parentSessionId: s.parentSessionId,
-          executionMode: s.executionMode,
-          ownerInstanceId: s.ownerInstanceId,
-          leaseExpiresAt: s.leaseExpiresAt,
-          createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
-        });
+        const isStaleBinding = s.executionMode === "embedded"
+          && !!s.ownerInstanceId
+          && s.ownerInstanceId !== currentInstance
+          && !isExecutionLeaseActive(s.leaseExpiresAt);
+
+        if (isStaleBinding) {
+          staleSessionIds.push(s.id);
+          this.upsertSession({
+            sessionId: s.id,
+            name: s.name,
+            cwd: s.cwd,
+            branch: s.branch,
+            workspaceId: s.workspaceId,
+            routaAgentId: s.routaAgentId,
+            provider: s.provider,
+            role: s.role,
+            modeId: s.modeId,
+            parentSessionId: s.parentSessionId,
+            executionMode: undefined,
+            ownerInstanceId: undefined,
+            leaseExpiresAt: undefined,
+            createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
+          });
+        } else {
+          this.upsertSession({
+            sessionId: s.id,
+            name: s.name,
+            cwd: s.cwd,
+            branch: s.branch,
+            workspaceId: s.workspaceId,
+            routaAgentId: s.routaAgentId,
+            provider: s.provider,
+            role: s.role,
+            modeId: s.modeId,
+            parentSessionId: s.parentSessionId,
+            executionMode: s.executionMode,
+            ownerInstanceId: s.ownerInstanceId,
+            leaseExpiresAt: s.leaseExpiresAt,
+            createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
+          });
+        }
       }
     }
     if (dbSessions.length > 0) {
       console.log(`[HttpSessionStore] Hydrated ${dbSessions.length} sessions from database`);
     }
+    if (staleSessionIds.length > 0) {
+      console.log(
+        `[HttpSessionStore] Cleared stale execution bindings for ${staleSessionIds.length} sessions from previous instances`,
+      );
+      void this.clearStaleBindingsInDb(staleSessionIds);
+    }
     this.hydrated = true;
+  }
+
+  private async clearStaleBindingsInDb(sessionIds: string[]): Promise<void> {
+    const clearBinding = { executionMode: undefined, ownerInstanceId: undefined, leaseExpiresAt: undefined };
+    for (const id of sessionIds) {
+      try {
+        await updateSessionExecutionBindingInDb(id, clearBinding);
+      } catch {
+        // Non-critical: in-memory state is already correct
+      }
+    }
   }
 
   /**

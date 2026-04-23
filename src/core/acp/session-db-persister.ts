@@ -281,9 +281,9 @@ export async function updateSessionExecutionBindingInDb(
       if (!session) return;
       await store.save({
         ...session,
-        executionMode: binding.executionMode ?? session.executionMode,
-        ownerInstanceId: binding.ownerInstanceId ?? session.ownerInstanceId,
-        leaseExpiresAt: binding.leaseExpiresAt ?? session.leaseExpiresAt,
+        executionMode: "executionMode" in binding ? binding.executionMode : session.executionMode,
+        ownerInstanceId: "ownerInstanceId" in binding ? binding.ownerInstanceId : session.ownerInstanceId,
+        leaseExpiresAt: "leaseExpiresAt" in binding ? binding.leaseExpiresAt : session.leaseExpiresAt,
         updatedAt: new Date(),
       });
       return;
@@ -296,9 +296,9 @@ export async function updateSessionExecutionBindingInDb(
     if (!session) return;
     await store.save({
       ...session,
-      executionMode: binding.executionMode ?? session.executionMode,
-      ownerInstanceId: binding.ownerInstanceId ?? session.ownerInstanceId,
-      leaseExpiresAt: binding.leaseExpiresAt ?? session.leaseExpiresAt,
+      executionMode: "executionMode" in binding ? binding.executionMode : session.executionMode,
+      ownerInstanceId: "ownerInstanceId" in binding ? binding.ownerInstanceId : session.ownerInstanceId,
+      leaseExpiresAt: "leaseExpiresAt" in binding ? binding.leaseExpiresAt : session.leaseExpiresAt,
       updatedAt: new Date(),
     });
   } catch (err) {
