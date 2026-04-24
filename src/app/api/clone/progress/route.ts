@@ -15,7 +15,8 @@ import { NextRequest } from "next/server";
 import { spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import {
-  parseGitHubUrl,
+  parseVCSUrl,
+  buildCloneUrl,
   getCloneBaseDir,
   repoToDirName,
   getBranchInfo,
@@ -34,10 +35,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const parsed = parseGitHubUrl(url);
+  const parsed = parseVCSUrl(url);
   if (!parsed) {
     return new Response(
-      JSON.stringify({ error: "Invalid GitHub URL" }),
+      JSON.stringify({ error: "Invalid repository URL" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
 
   // Stream clone progress via SSE
   const encoder = new TextEncoder();
-  const cloneUrl = `https://github.com/${owner}/${repo}.git`;
+  const cloneUrl = buildCloneUrl(parsed);
 
   // Declare child in outer scope so the cancel/abort handlers can terminate it
   let child: ChildProcess | null = null;

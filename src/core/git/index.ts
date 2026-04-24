@@ -1,6 +1,10 @@
 export {
   isGitHubUrl,
   parseGitHubUrl,
+  isGitLabUrl,
+  isVCSUrl,
+  parseVCSUrl,
+  buildCloneUrl,
   isGitRepository,
   isBareGitRepository,
   getCurrentBranch,

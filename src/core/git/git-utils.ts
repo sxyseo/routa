@@ -36,6 +36,8 @@ const MAX_CHANGED_FILES_WITH_DETAILED_STATS = 500; // Global limit for all file 
 export interface ParsedVCSUrl {
   owner: string;
   repo: string;
+  host?: string;
+  platform?: "github" | "gitlab" | "other";
 }
 
 /**
@@ -78,8 +80,31 @@ const GITLAB_URL_PATTERNS = [
 ];
 
 /**
- * Parse a VCS URL (GitHub or GitLab) into owner and repo.
- * Falls back to simple owner/repo format.
+ * Check if a string looks like a GitLab URL.
+ */
+export function isGitLabUrl(url: string): boolean {
+  const trimmed = url.trim();
+  return GITLAB_URL_PATTERNS.some((p) => p.test(trimmed));
+}
+
+/**
+ * Check if a string looks like a VCS URL (GitHub or GitLab) or owner/repo format.
+ */
+export function isVCSUrl(url: string): boolean {
+  return isGitHubUrl(url) || isGitLabUrl(url);
+}
+
+/**
+ * Build a clone URL from a parsed VCS URL.
+ */
+export function buildCloneUrl(parsed: ParsedVCSUrl): string {
+  const host = parsed.host || "github.com";
+  return `https://${host}/${parsed.owner}/${parsed.repo}.git`;
+}
+
+/**
+ * Parse a VCS URL (GitHub or GitLab) into owner, repo, host, and platform.
+ * Falls back to simple owner/repo format (assumes GitHub).
  */
 export function parseVCSUrl(url: string): ParsedVCSUrl | null {
   const trimmed = url.trim();
@@ -88,7 +113,7 @@ export function parseVCSUrl(url: string): ParsedVCSUrl | null {
   for (const pattern of GITHUB_URL_PATTERNS) {
     const match = trimmed.match(pattern);
     if (match) {
-      return { owner: match[1], repo: match[2].replace(/\.git$/, "") };
+      return { owner: match[1], repo: match[2].replace(/\.git$/, ""), host: "github.com", platform: "github" };
     }
   }
 
@@ -96,20 +121,20 @@ export function parseVCSUrl(url: string): ParsedVCSUrl | null {
   for (const pattern of GITLAB_URL_PATTERNS) {
     const match = trimmed.match(pattern);
     if (match) {
-      return { owner: match[1], repo: match[2].replace(/\.git$/, "") };
+      return { owner: match[1], repo: match[2].replace(/\.git$/, ""), host: "gitlab.com", platform: "gitlab" };
     }
   }
 
-  // Try custom GitLab instance URL (any domain with /owner/repo pattern)
-  const genericMatch = trimmed.match(/^https?:\/\/[^/]+\/([^/]+)\/([^/\s#?.]+)/);
+  // Try generic HTTPS URL (any domain with /owner/repo pattern)
+  const genericMatch = trimmed.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/\s#?.]+)/);
   if (genericMatch) {
-    return { owner: genericMatch[1], repo: genericMatch[2].replace(/\.git$/, "") };
+    return { owner: genericMatch[2], repo: genericMatch[3].replace(/\.git$/, ""), host: genericMatch[1], platform: "other" };
   }
 
-  // Simple owner/repo format
+  // Simple owner/repo format (assume GitHub for backward compat)
   const simpleMatch = trimmed.match(SIMPLE_OWNER_REPO);
   if (simpleMatch && !trimmed.includes("\\") && !trimmed.includes(":")) {
-    return { owner: simpleMatch[1], repo: simpleMatch[2] };
+    return { owner: simpleMatch[1], repo: simpleMatch[2], host: "github.com", platform: "github" };
   }
 
   return null;
@@ -1421,6 +1446,7 @@ export interface ValidationResult {
   suggestion?: string;
   warning?: string;
   isGitHub?: boolean;
+  isRemote?: boolean;
   parsed?: ParsedVCSUrl;
 }
 
@@ -1451,14 +1477,14 @@ export function normalizeLocalRepoPath(input: string): string {
 }
 
 /**
- * Validate a repository path or GitHub URL.
+ * Validate a repository path or VCS URL (GitHub / GitLab).
  */
 export function validateRepoInput(input: string): ValidationResult {
   if (!input || input.trim().length === 0) {
     return {
       valid: false,
       error: "Repository path or URL is required",
-      suggestion: "Enter a GitHub URL (e.g. https://github.com/owner/repo) or owner/repo",
+      suggestion: "Enter a repository URL (e.g. https://github.com/owner/repo, https://gitlab.com/owner/repo) or owner/repo",
     };
   }
 
@@ -1477,6 +1503,24 @@ export function validateRepoInput(input: string): ValidationResult {
     return {
       valid: true,
       isGitHub: true,
+      isRemote: true,
+      parsed,
+    };
+  }
+
+  // Check if it's a GitLab URL
+  if (isGitLabUrl(trimmed)) {
+    const parsed = parseVCSUrl(trimmed);
+    if (!parsed) {
+      return {
+        valid: false,
+        error: "Invalid GitLab URL format",
+        suggestion: "Use format: https://gitlab.com/owner/repo",
+      };
+    }
+    return {
+      valid: true,
+      isRemote: true,
       parsed,
     };
   }
@@ -1497,7 +1541,7 @@ export function validateRepoInput(input: string): ValidationResult {
 
   return {
     valid: false,
-    error: "Path not found and not a recognized GitHub URL",
-    suggestion: "Enter a GitHub URL or an existing local path",
+    error: "Path not found and not a recognized repository URL",
+    suggestion: "Enter a repository URL (GitHub / GitLab) or an existing local path",
   };
 }
