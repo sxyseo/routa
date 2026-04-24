@@ -855,9 +855,18 @@ export class KanbanWorkflowOrchestrator {
       // Review Guard) is responsible for the final APPROVED/REJECTED decision, so a
       // failed upstream QA check should not prevent it from running.
       const currentStepRole = automation.steps[automation.currentStepIndex]?.role?.toUpperCase();
+      const currentSpecialistId = automation.steps[automation.currentStepIndex]?.specialistId;
       const canSoftGateAdvance = !successEvent
         && currentStepRole === "GATE"
         && nextStepIndex < automation.steps.length;
+      // Done-lane auto-merger fallback: when auto-merger fails in the done lane
+      // but the next step is conflict-resolver, advance to give it a chance to
+      // resolve merge conflicts. This is the "independent conflict resolution phase".
+      const nextStepIsConflictResolver = automation.steps[nextStepIndex]?.specialistId === "kanban-conflict-resolver";
+      const canAdvanceToConflictResolver = !successEvent
+        && currentSpecialistId === "kanban-auto-merger"
+        && automation.stage === "done"
+        && nextStepIsConflictResolver;
       let failedToAdvanceWithinLane = false;
 
       if (task && hasNextStep) {
@@ -879,6 +888,20 @@ export class KanbanWorkflowOrchestrator {
         }
         const startedNextStep = await this.startNextAutomationStep(cardId, automation, task, nextStepIndex);
         if (startedNextStep) {
+          automation.signaledSessionIds.add(eventSessionId);
+          return;
+        }
+        failedToAdvanceWithinLane = true;
+      }
+
+      // Done-lane conflict-resolver advancement: auto-merger failed, try conflict-resolver
+      if (task && !hasNextStep && canAdvanceToConflictResolver && !shouldRecover) {
+        console.log(
+          `[WorkflowOrchestrator] Auto-merger failed for card ${cardId} in done lane. ` +
+          `Advancing to conflict-resolver as independent resolution phase.`,
+        );
+        const startedConflictResolve = await this.startNextAutomationStep(cardId, automation, task, nextStepIndex);
+        if (startedConflictResolve) {
           automation.signaledSessionIds.add(eventSessionId);
           return;
         }

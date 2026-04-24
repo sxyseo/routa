@@ -469,6 +469,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     diag_stale_session: string;
     diag_watchdog_recovery: string;
     diag_unknown_error: string;
+    diag_done_lane_stuck: string;
+    diag_conflict_detected: string;
     // Card labels
     deleteTask: string;
     openCard: string;
@@ -965,6 +967,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     diagCooldownRemaining: string;
     diagCbResetsUsed: string;
     diagPermanentSkip: string;
+    mergeStrategy: string;
+    fanInRetry: string;
   };
 
   // Kanban modal dialogs

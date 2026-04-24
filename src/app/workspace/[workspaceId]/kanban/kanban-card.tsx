@@ -138,8 +138,16 @@ function getSyncTone(
   return "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
 }
 
+/** Categories that should always be visible, even on completed terminal cards. */
+const ALWAYS_VISIBLE_DIAGNOSTICS = new Set<TaskDiagnosticCategory>([
+  "done_lane_stuck",
+  "conflict_detected",
+]);
+
 function isCompletedTerminal(task: TaskInfo, boardColumns: KanbanColumnInfo[]): boolean {
   if (task.status !== "COMPLETED") return false;
+  // Always show diagnostics for done-lane stuck / conflict categories
+  if (task.diagnostic && ALWAYS_VISIBLE_DIAGNOSTICS.has(task.diagnostic.category)) return false;
   const col = boardColumns.find((c) => c.id === task.columnId);
   return col?.stage === "done" || col?.stage === "archived";
 }
@@ -154,6 +162,10 @@ function getDiagnosticTone(category: TaskDiagnosticCategory): string {
     case "stale_session":
     case "watchdog_recovery":
       return "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-900/40";
+    case "done_lane_stuck":
+      return "bg-yellow-100 text-yellow-800 ring-1 ring-inset ring-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:ring-yellow-800/40";
+    case "conflict_detected":
+      return "bg-red-100 text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-900/20 dark:text-red-300 dark:ring-red-900/40";
     default:
       return "bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:ring-rose-900/40";
   }
@@ -403,10 +415,13 @@ function KanbanCardSurface({
             </span>
             {task.diagnostic && !isCompletedTerminal(task, boardColumns) ? (
               <span
-                className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${getDiagnosticTone(task.diagnostic.category)}`}
+                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${getDiagnosticTone(task.diagnostic.category)}`}
                 title={task.diagnostic.message}
                 data-testid="kanban-card-diagnostic-badge"
               >
+                {!task.diagnostic.autoRecoverable ? (
+                  <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707L2.137 13.131a.25.25 0 0 0 .22.369h13.286a.25.25 0 0 0 .22-.369L8.78 1.754a.25.25 0 0 0-.44 0ZM8 5a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-1.5 0v-2.5A.75.75 0 0 1 8 5m0 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/></svg>
+                ) : null}
                 {(t.kanban as Record<string, string>)[`diag_${task.diagnostic.category}`] ?? task.diagnostic.shortLabel}
               </span>
             ) : !isCompletedTerminal(task, boardColumns) ? (

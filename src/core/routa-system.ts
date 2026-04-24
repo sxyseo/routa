@@ -34,6 +34,7 @@ import { InMemoryArtifactStore, ArtifactStore } from "./store/artifact-store";
 import { PermissionStore } from "./tools/permission-store";
 import { startWorkflowOrchestrator } from "./kanban/workflow-orchestrator-singleton";
 import { startLaneScanner } from "./kanban/kanban-lane-scanner";
+import { startSchedulerService } from "./scheduling/scheduler-service";
 import { getKanbanEventBroadcaster } from "./kanban/kanban-event-broadcaster";
 import { AgentEventType } from "./events/event-bus";
 import { decorateSystemWithTiming } from "./http/store-timing-proxy";
@@ -367,6 +368,10 @@ export function getRoutaSystem(): RoutaSystem {
 
     // Start the lane scanner to auto-trigger automation for idle cards
     startLaneScanner(system);
+
+    // Start the scheduler service (cron ticks: schedule dispatcher, auto-archive, done-lane recovery)
+    // Placed here instead of instrumentation.node.ts to guarantee startup on all platforms.
+    startSchedulerService();
 
     // Set up EventBus → KanbanEventBroadcaster bridge for file changes
     setupFileChangeBridge(system);

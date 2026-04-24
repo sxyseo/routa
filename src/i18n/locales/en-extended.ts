@@ -465,6 +465,8 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     diag_fan_in_conflict: "Merge conflict",
     diag_stale_session: "Stale session",
     diag_watchdog_recovery: "Recovered",
+    diag_done_lane_stuck: "Awaiting merge",
+    diag_conflict_detected: "Merge conflict",
     diag_unknown_error: "Error",
     deleteTask: "Delete task",
     openCard: "Open",

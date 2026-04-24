@@ -465,6 +465,8 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     diag_fan_in_conflict: "合并冲突",
     diag_stale_session: "会话过期",
     diag_watchdog_recovery: "已恢复",
+    diag_done_lane_stuck: "等待合并",
+    diag_conflict_detected: "合并冲突",
     diag_unknown_error: "错误",
     deleteTask: "删除任务",
     openCard: "打开",

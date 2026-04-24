@@ -135,6 +135,12 @@ export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScann
               if (resetCount >= maxResets) {
                 continue; // Skip — done-lane recovery tick will handle this
               }
+              // Also check the orchestrator's non-dev repeat limit. If the card has
+              // already been through the full pipeline N times, stop zombie-reviving it —
+              // the recovery tick handles stale PR verification instead.
+              if (hasExceededNonDevAutomationRepeatLimit(task, task.columnId!, "done")) {
+                continue; // Skip — too many automation attempts already
+              }
               console.log(
                 `[LaneScanner] Done-lane zombie recovery: card ${task.id} is COMPLETED ` +
                 `but PR not merged and autoMergeAfterPR is true. Resetting to trigger auto-merge.`,
