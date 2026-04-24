@@ -287,6 +287,28 @@ function DiagnosticSection({ diagnostic, compact, t }: {
           ))}
         </ul>
       )}
+      {diagnostic.aiInsight && (
+        <div className="mt-2 rounded border border-dashed border-slate-300 bg-white/50 px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800/30">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+            <span>AI</span>
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
+              diagnostic.aiInsight.severity === "high"
+                ? "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                : diagnostic.aiInsight.severity === "medium"
+                  ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                  : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+            }`}>
+              {diagnostic.aiInsight.severity}
+            </span>
+          </div>
+          <div className="mt-0.5 text-xs text-slate-700 dark:text-slate-300">
+            {diagnostic.aiInsight.rootCause}
+          </div>
+          <div className="mt-0.5 text-[10px] text-blue-600 dark:text-blue-400">
+            {diagnostic.aiInsight.actionHint}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

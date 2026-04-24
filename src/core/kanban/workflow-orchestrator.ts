@@ -495,6 +495,18 @@ export class KanbanWorkflowOrchestrator {
             specialistName: "Auto Merger",
           });
         }
+        // Inject conflict-resolver after auto-merger for rebase-based conflict resolution.
+        const hasConflictResolver = steps.some(
+          (s) => s.specialistId === "kanban-conflict-resolver",
+        );
+        if (!hasConflictResolver) {
+          steps.push({
+            id: "conflict-resolver",
+            role: "DEVELOPER",
+            specialistId: "kanban-conflict-resolver",
+            specialistName: "Conflict Resolver",
+          });
+        }
       }
     }
 
@@ -1001,6 +1013,36 @@ export class KanbanWorkflowOrchestrator {
               }
             }
           }
+        }
+      }
+
+      // Done-lane failure diagnostic: when automation fails in the done lane,
+      // record a diagnostic error instead of overwriting the task status.
+      // This prevents the zombie-recovery loop (COMPLETED → IN_PROGRESS → fail → COMPLETED)
+      // while still providing observability for the recovery tick.
+      if (automation.status === "failed" && task && automation.stage === "done") {
+        try {
+          const freshTask = await this.taskStore.get(cardId);
+          if (freshTask && freshTask.columnId === automation.columnId) {
+            const hasRealPR = Boolean(freshTask.pullRequestUrl)
+              && freshTask.pullRequestUrl !== "manual"
+              && freshTask.pullRequestUrl !== "already-merged";
+            const prMerged = Boolean(freshTask.pullRequestMergedAt);
+            if (hasRealPR && !prMerged && !freshTask.lastSyncError) {
+              freshTask.lastSyncError = `[done-lane-stuck] Done-lane automation failed. PR awaiting merge: ${freshTask.pullRequestUrl}`;
+              freshTask.updatedAt = new Date();
+              await this.taskStore.save(freshTask);
+              console.log(
+                `[WorkflowOrchestrator] Done-lane failure diagnostic set for ${cardId}: ` +
+                `PR not merged (${freshTask.pullRequestUrl}). Recovery tick will handle.`,
+              );
+            }
+          }
+        } catch (diagErr) {
+          console.warn(
+            `[WorkflowOrchestrator] Failed to set done-lane failure diagnostic for ${cardId}:`,
+            diagErr,
+          );
         }
       }
 

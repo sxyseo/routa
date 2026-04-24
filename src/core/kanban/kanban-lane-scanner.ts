@@ -16,9 +16,12 @@ import { clearStaleTriggerSession } from "./task-trigger-session";
 import { getKanbanAutomationSteps, type KanbanColumnStage } from "../models/kanban";
 import { AgentEventType } from "../events/event-bus";
 import { PR_FAILURE_PREFIX } from "./pr-auto-create";
+import { verifyPrMergeStatus } from "./pr-status-verifier";
 
 const SCAN_INTERVAL_MS = 30_000;
 const MAX_STEP_RESUME_ATTEMPTS = 3;
+/** Minimum age (ms) before verifying PR merge status via GitHub API. */
+const PR_VERIFICATION_MIN_AGE_MS = 5 * 60 * 1000;
 
 let scanTimer: ReturnType<typeof setInterval> | null = null;
 let initialScanTimer: ReturnType<typeof setTimeout> | null = null;
@@ -124,6 +127,14 @@ export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScann
               && task.pullRequestUrl !== "already-merged";
             const prNotMerged = !task.pullRequestMergedAt;
             if (colStage === "done" && deliveryRules?.autoMergeAfterPR && hasRealPR && prNotMerged) {
+              // Circuit-breaker exhausted check: if the card has already been through
+              // max cooldown resets, do NOT blindly recover — the recovery tick will
+              // verify PR status via GitHub API and handle it.
+              const resetCount = parseCbResetCount(task.lastSyncError ?? "");
+              const maxResets = parseInt(process.env.ROUTA_CB_MAX_COOLDOWN_RESETS ?? "5", 10);
+              if (resetCount >= maxResets) {
+                continue; // Skip — done-lane recovery tick will handle this
+              }
               console.log(
                 `[LaneScanner] Done-lane zombie recovery: card ${task.id} is COMPLETED ` +
                 `but PR not merged and autoMergeAfterPR is true. Resetting to trigger auto-merge.`,
@@ -155,7 +166,32 @@ export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScann
           );
           const wantsAutoMerge = (col as { automation?: { deliveryRules?: { autoMergeAfterPR?: boolean } } })
             ?.automation?.deliveryRules?.autoMergeAfterPR;
-          if (!wantsAutoMerge) continue;
+          if (!wantsAutoMerge) {
+            // Even though auto-merge is disabled, verify PR merge status via GitHub API
+            // to catch webhook-lost merges. Only check tasks that have been in done for
+            // at least PR_VERIFICATION_MIN_AGE_MS to avoid unnecessary API calls.
+            const taskAge = task.updatedAt instanceof Date
+              ? task.updatedAt.getTime()
+              : new Date(task.updatedAt as string | number).getTime();
+            if (Date.now() - taskAge > PR_VERIFICATION_MIN_AGE_MS) {
+              try {
+                const verification = await verifyPrMergeStatus(task.pullRequestUrl);
+                if (verification.verified && verification.merged) {
+                  console.log(
+                    `[LaneScanner] Settled guard: PR actually merged on GitHub for card ${task.id}. ` +
+                    `Syncing pullRequestMergedAt.`,
+                  );
+                  task.pullRequestMergedAt = verification.mergedAt ? new Date(verification.mergedAt) : new Date();
+                  task.lastSyncError = undefined;
+                  task.updatedAt = new Date();
+                  await system.taskStore.save(task);
+                }
+              } catch {
+                // Verification failed silently — skip this card for now.
+              }
+            }
+            continue;
+          }
         }
         // Circuit-breaker / rate-limit: skip cards marked as failed, but auto-recover
         // after the cooldown period (SESSION_RETRY_RESET_MS, default 5 min).

@@ -53,6 +53,7 @@ import {
 import { resolveTaskWorktreeTruth } from "@/core/kanban/task-worktree-truth";
 import { checkDependencyGate, updateDependencyRelations, applyDependencyStatus, validateParentAssignment, detectParentCycle } from "@/core/kanban/dependency-gate";
 import { parseTaskDiagnostic } from "@/core/kanban/task-diagnostic";
+import { enhanceDiagnosticWithAi, shouldEnhanceWithAi } from "@/core/kanban/ai-error-diagnostic";
 
 export const dynamic = "force-dynamic";
 
@@ -74,18 +75,31 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
       columnId: t.columnId,
     }));
 
+  let diagnostic = task.lastSyncError
+    ? parseTaskDiagnostic({
+        lastSyncError: task.lastSyncError,
+        triggerSessionId: task.triggerSessionId,
+        dependencyStatus: task.dependencyStatus,
+        updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
+        columnId: task.columnId,
+      })
+    : undefined;
+
+  if (diagnostic && shouldEnhanceWithAi(diagnostic.category)) {
+    const aiResult = await enhanceDiagnosticWithAi({
+      lastSyncError: task.lastSyncError!,
+      taskTitle: task.title,
+      columnId: task.columnId,
+      laneSessions: (task.laneSessions ?? []) as import("@/core/models/task").TaskLaneSession[],
+      category: diagnostic.category,
+    });
+    if (aiResult) diagnostic = { ...diagnostic, aiInsight: aiResult };
+  }
+
   return {
     ...task,
     comments,
-    diagnostic: task.lastSyncError
-      ? parseTaskDiagnostic({
-          lastSyncError: task.lastSyncError,
-          triggerSessionId: task.triggerSessionId,
-          dependencyStatus: task.dependencyStatus,
-          updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
-          columnId: task.columnId,
-        })
-      : undefined,
+    diagnostic,
     artifactSummary: evidenceSummary.artifact,
     evidenceSummary,
     storyReadiness,

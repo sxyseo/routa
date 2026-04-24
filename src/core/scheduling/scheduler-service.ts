@@ -17,10 +17,12 @@ import type { ScheduledTask } from "node-cron";
 import { getRoutaSystem } from "../routa-system";
 import { runScheduleTick } from "./run-schedule-tick";
 import { runAutoArchiveTick } from "../kanban/auto-archive-tick";
+import { runDoneLaneRecoveryTick } from "../kanban/done-lane-recovery-tick";
 import { runWithSpan } from "../telemetry/tracing";
 
 let schedulerTask: ScheduledTask | null = null;
 let autoArchiveTask: ScheduledTask | null = null;
+let doneLaneRecoveryTask: ScheduledTask | null = null;
 let isStarted = false;
 
 export function startSchedulerService(): void {
@@ -70,13 +72,33 @@ export function startSchedulerService(): void {
     });
   });
 
+  // Done-lane recovery tick runs every 10 minutes to detect and recover
+  // stuck tasks (webhook-lost merges, CB-exhausted PRs, orphan sessions).
+  doneLaneRecoveryTask = nodeCron.schedule("*/10 * * * *", () => {
+    void runWithSpan(
+      "routa.scheduler.done_lane_recovery_tick",
+      {},
+      async (span) => {
+        const result = await runDoneLaneRecoveryTick(getRoutaSystem());
+        span.setAttribute("routa.done_lane_recovery.examined", result.examined);
+        span.setAttribute("routa.done_lane_recovery.recovered", result.recovered);
+        span.setAttribute("routa.done_lane_recovery.conflicts", result.conflictResolved);
+        span.setAttribute("routa.done_lane_recovery.stuck", result.stuckMarked);
+      },
+    ).catch((error) => {
+      console.error("[Scheduler] Done-lane recovery tick failed:", error);
+    });
+  });
+
   isStarted = true;
 }
 
 export function stopSchedulerService(): void {
   schedulerTask?.stop();
   autoArchiveTask?.stop();
+  doneLaneRecoveryTask?.stop();
   schedulerTask = null;
   autoArchiveTask = null;
+  doneLaneRecoveryTask = null;
   isStarted = false;
 }

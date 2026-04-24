@@ -19,7 +19,15 @@ export type TaskDiagnosticCategory =
   | "fan_in_conflict"
   | "stale_session"
   | "watchdog_recovery"
+  | "done_lane_stuck"
+  | "conflict_detected"
   | "unknown_error";
+
+export interface AiErrorInsight {
+  rootCause: string;
+  severity: "low" | "medium" | "high";
+  actionHint: string;
+}
 
 export interface TaskDiagnostic {
   category: TaskDiagnosticCategory;
@@ -29,6 +37,7 @@ export interface TaskDiagnostic {
   autoRecoverable: boolean;
   recoveryHint?: string;
   suggestions: string[];
+  aiInsight?: AiErrorInsight;
   meta?: {
     resetCount?: number;
     maxResets?: number;
@@ -216,7 +225,39 @@ export function parseTaskDiagnostic(
     };
   }
 
-  // 9. Fallback
+  // 9. Done-lane stuck (recovery tick diagnostic)
+  if (lastSyncError.startsWith("[done-lane-stuck]")) {
+    return {
+      category: "done_lane_stuck",
+      shortLabel: "Done stuck",
+      message: lastSyncError.replace("[done-lane-stuck] ", ""),
+      rawError: lastSyncError,
+      autoRecoverable: true,
+      recoveryHint: "恢复 tick 将在下次运行时验证 PR 状态并尝试恢复（每 10 分钟）",
+      suggestions: [
+        "等待恢复 tick 自动处理（约 10 分钟）",
+        "手动合并 PR 后系统会自动同步状态",
+      ],
+    };
+  }
+
+  // 10. Merge conflict detected
+  if (lastSyncError.includes("Merge conflicts") || lastSyncError.includes("conflict")) {
+    return {
+      category: "conflict_detected",
+      shortLabel: "Merge conflict",
+      message: lastSyncError,
+      rawError: lastSyncError,
+      autoRecoverable: true,
+      recoveryHint: "冲突解决 specialist 将自动尝试 rebase",
+      suggestions: [
+        "等待 conflict-resolver 自动尝试 rebase",
+        "如果自动解决失败，手动在 PR 分支解决冲突后推送",
+      ],
+    };
+  }
+
+  // 11. Fallback
   return {
     category: "unknown_error",
     shortLabel: "Error",
