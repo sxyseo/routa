@@ -329,37 +329,6 @@ export function createSqliteSystem(): RoutaSystem {
 
 const GLOBAL_KEY = "__routa_system__";
 
-type WorkflowOrchestratorSingletonModule =
-  typeof import("./kanban/workflow-orchestrator-singleton");
-
-function resolveWorkflowOrchestratorSingletonModule(
-  value: unknown,
-): WorkflowOrchestratorSingletonModule {
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if (typeof record.startWorkflowOrchestrator === "function") {
-      return record as WorkflowOrchestratorSingletonModule;
-    }
-
-    const defaultExport = record.default;
-    if (defaultExport && typeof defaultExport === "object") {
-      const defaultRecord = defaultExport as Record<string, unknown>;
-      if (typeof defaultRecord.startWorkflowOrchestrator === "function") {
-        return defaultRecord as WorkflowOrchestratorSingletonModule;
-      }
-    }
-
-    const moduleExports = record["module.exports"];
-    if (moduleExports && typeof moduleExports === "object") {
-      const moduleExportsRecord = moduleExports as Record<string, unknown>;
-      if (typeof moduleExportsRecord.startWorkflowOrchestrator === "function") {
-        return moduleExportsRecord as WorkflowOrchestratorSingletonModule;
-      }
-    }
-  }
-
-  throw new TypeError("startWorkflowOrchestrator is not a function");
-}
 
 export function getRoutaSystem(): RoutaSystem {
   const g = globalThis as Record<string, unknown>;
@@ -382,12 +351,27 @@ export function getRoutaSystem(): RoutaSystem {
         break;
     }
 
-    // Start the workflow orchestrator to listen for column transitions
+    // Start the workflow orchestrator to listen for column transitions.
+    // Uses dynamic import for better Turbopack module resolution (avoids first-request
+    // require() cache misses that can leave exports undefined).
     const system = g[GLOBAL_KEY] as RoutaSystem;
-    const { startWorkflowOrchestrator } = resolveWorkflowOrchestratorSingletonModule(
-      require("./kanban/workflow-orchestrator-singleton"),
-    );
-    startWorkflowOrchestrator(system);
+    queueMicrotask(async () => {
+      try {
+        const mod = await import("./kanban/workflow-orchestrator-singleton") as unknown as Record<string, unknown>;
+        const startFn = typeof mod.startWorkflowOrchestrator === "function"
+          ? mod.startWorkflowOrchestrator
+          : typeof (mod.default as Record<string, unknown>)?.startWorkflowOrchestrator === "function"
+            ? (mod.default as Record<string, unknown>).startWorkflowOrchestrator
+            : null;
+        if (startFn) {
+          (startFn as (s: RoutaSystem) => void)(system);
+        } else {
+          console.warn("[RoutaSystem] startWorkflowOrchestrator not found in module — skipping");
+        }
+      } catch (err) {
+        console.warn("[RoutaSystem] Failed to start workflow orchestrator (non-fatal):", err);
+      }
+    });
 
     // Set up EventBus → KanbanEventBroadcaster bridge for file changes
     setupFileChangeBridge(system);
