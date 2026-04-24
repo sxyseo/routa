@@ -723,11 +723,11 @@ describe("KanbanTab GitHub import", () => {
           objective: "Imported from GitHub",
           labels: ["bug"],
           codebaseIds: ["codebase-1"],
-          githubId: "issue-1",
-          githubNumber: 161,
-          githubUrl: "https://github.com/phodal/routa-js/issues/161",
-          githubRepo: "phodal/routa-js",
-          githubState: "open",
+          vcsId: "issue-1",
+          vcsNumber: 161,
+          vcsUrl: "https://github.com/phodal/routa-js/issues/161",
+          vcsRepo: "phodal/routa-js",
+          vcsState: "open",
         }),
       });
     });
@@ -1201,7 +1201,7 @@ describe("KanbanCardDetail changes tab", () => {
     render(
       <KanbanCardDetail
         task={createTask("task-1", "Story One", {
-          githubNumber: 378,
+          vcsNumber: 378,
           deliveryReadiness: {
             checked: true,
             repoPath: "/tmp/repos/main",

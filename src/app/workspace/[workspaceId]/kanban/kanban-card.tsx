@@ -124,7 +124,7 @@ function getSyncTone(
   sessionStatus: "connecting" | "ready" | "error" | undefined,
   queuePosition: number | undefined,
   hasSyncError: boolean,
-  githubSyncedAt?: string,
+  vcsSyncedAt?: string,
 ) {
   if (sessionStatus === "connecting" || queuePosition) {
     return "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-900/40";
@@ -132,7 +132,7 @@ function getSyncTone(
   if (sessionStatus === "error" || hasSyncError) {
     return "bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:ring-rose-900/40";
   }
-  if (githubSyncedAt) {
+  if (vcsSyncedAt) {
     return "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40";
   }
   return "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
@@ -175,12 +175,12 @@ function getSyncLabel(
   sessionStatus: "connecting" | "ready" | "error" | undefined,
   queuePosition: number | undefined,
   hasSyncError: boolean,
-  githubSyncedAt?: string,
+  vcsSyncedAt?: string,
 ) {
   if (sessionStatus === "connecting") return "starting";
   if (queuePosition) return `queued`;
   if (sessionStatus === "error" || hasSyncError) return "syncIssue";
-  if (githubSyncedAt) return "synced";
+  if (vcsSyncedAt) return "synced";
   return "notSynced";
 }
 
@@ -301,11 +301,11 @@ function KanbanCardSurface({
     (task.codebaseIds && task.codebaseIds.length > 0 ? task.codebaseIds.length : allCodebaseIds.length) - visibleCodebaseIds.length,
     0,
   );
-  const syncLabelKey = getSyncLabel(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
+  const syncLabelKey = getSyncLabel(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.vcsSyncedAt);
   const resolvedSyncLabel = syncLabelKey === "queued"
     ? `${t.kanban.queued} #${queuePosition}`
     : (t.kanban as Record<string, string>)[syncLabelKey] ?? syncLabelKey;
-  const syncTone = getSyncTone(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
+  const syncTone = getSyncTone(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.vcsSyncedAt);
   const objectiveText = buildCardSummary(task, task.objective?.trim() || t.kanban.noObjective);
   const transitionArtifacts = resolveKanbanTransitionArtifacts(boardColumns, task.columnId);
   const missingNextArtifacts = transitionArtifacts.nextRequiredArtifacts.filter(
@@ -396,9 +396,9 @@ function KanbanCardSurface({
       <div className="flex items-start justify-between gap-3 pl-7 pr-6">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1">
-            {task.githubNumber ? (
+            {task.vcsNumber ? (
               <a
-                href={task.githubUrl}
+                href={task.vcsUrl}
                 target="_blank"
                 rel="noreferrer"
                 onClick={stopCardInteraction}
@@ -407,7 +407,7 @@ function KanbanCardSurface({
                   : "bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40"
                 }`}
               >
-                {task.isPullRequest ? `PR #${task.githubNumber}` : `Issue #${task.githubNumber}`}
+                {task.isPullRequest ? `PR #${task.vcsNumber}` : `Issue #${task.vcsNumber}`}
               </a>
             ) : null}
             <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${sessionTone}`}>

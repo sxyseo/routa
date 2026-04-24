@@ -279,11 +279,11 @@ export async function POST(request: NextRequest) {
     creationSource,
     repoPath,
     codebaseIds,
-    githubId,
-    githubNumber,
-    githubUrl,
-    githubRepo,
-    githubState,
+    vcsId,
+    vcsNumber,
+    vcsUrl,
+    vcsRepo,
+    vcsState,
     isPullRequest,
   } = body;
 
@@ -321,20 +321,20 @@ export async function POST(request: NextRequest) {
   const requestedCodebaseIds = Array.isArray(codebaseIds)
     ? codebaseIds.filter((id): id is string => typeof id === "string")
     : [];
-  const normalizedGitHubId = typeof githubId === "string" && githubId.trim()
-    ? githubId.trim()
+  const normalizedGitHubId = typeof vcsId === "string" && vcsId.trim()
+    ? vcsId.trim()
     : undefined;
-  const normalizedGitHubNumber = typeof githubNumber === "number" && Number.isFinite(githubNumber)
-    ? githubNumber
+  const normalizedGitHubNumber = typeof vcsNumber === "number" && Number.isFinite(vcsNumber)
+    ? vcsNumber
     : undefined;
-  const normalizedGitHubUrl = typeof githubUrl === "string" && githubUrl.trim()
-    ? githubUrl.trim()
+  const normalizedGitHubUrl = typeof vcsUrl === "string" && vcsUrl.trim()
+    ? vcsUrl.trim()
     : undefined;
-  const normalizedGitHubRepo = typeof githubRepo === "string" && githubRepo.trim()
-    ? githubRepo.trim()
+  const normalizedGitHubRepo = typeof vcsRepo === "string" && vcsRepo.trim()
+    ? vcsRepo.trim()
     : undefined;
-  const normalizedGitHubState = typeof githubState === "string" && githubState.trim()
-    ? githubState.trim()
+  const normalizedGitHubState = typeof vcsState === "string" && vcsState.trim()
+    ? vcsState.trim()
     : undefined;
   const normalizedIsPullRequest = isPullRequest === true ? true : undefined;
   const hasImportedGitHubIssue = Boolean(normalizedGitHubRepo && normalizedGitHubNumber !== undefined);
@@ -365,7 +365,7 @@ export async function POST(request: NextRequest) {
 
   if (hasImportedGitHubIssue) {
     const existingTask = (await system.taskStore.listByWorkspace(normalizedWorkspaceId)).find((task) =>
-      task.githubRepo === normalizedGitHubRepo && task.githubNumber === normalizedGitHubNumber
+      task.vcsRepo === normalizedGitHubRepo && task.vcsNumber === normalizedGitHubNumber
     );
     if (existingTask) {
       return NextResponse.json(
@@ -388,7 +388,7 @@ export async function POST(request: NextRequest) {
   let nextGitHubUrl: string | undefined = normalizedGitHubUrl;
   let nextGitHubRepo: string | undefined = normalizedGitHubRepo;
   let nextGitHubState: string | undefined = normalizedGitHubState;
-  let githubSyncedAt: Date | undefined = hasImportedGitHubIssue ? new Date() : undefined;
+  let vcsSyncedAt: Date | undefined = hasImportedGitHubIssue ? new Date() : undefined;
   let lastSyncError: string | undefined;
 
   if (normalizedCreateGitHubIssue && !hasImportedGitHubIssue) {
@@ -424,7 +424,7 @@ export async function POST(request: NextRequest) {
         nextGitHubUrl = issue.url;
         nextGitHubRepo = issue.repo;
         nextGitHubState = issue.state;
-        githubSyncedAt = new Date();
+        vcsSyncedAt = new Date();
       } catch (error) {
         lastSyncError = error instanceof Error ? error.message : "GitHub issue create failed";
       }
@@ -454,12 +454,12 @@ export async function POST(request: NextRequest) {
     assignedRole: normalizedAssignedRole,
     assignedSpecialistId: normalizedAssignedSpecialistId,
     assignedSpecialistName: normalizedAssignedSpecialistName,
-    githubId: nextGitHubId,
-    githubNumber: nextGitHubNumber,
-    githubUrl: nextGitHubUrl,
-    githubRepo: nextGitHubRepo,
-    githubState: nextGitHubState,
-    githubSyncedAt,
+    vcsId: nextGitHubId,
+    vcsNumber: nextGitHubNumber,
+    vcsUrl: nextGitHubUrl,
+    vcsRepo: nextGitHubRepo,
+    vcsState: nextGitHubState,
+    vcsSyncedAt,
     lastSyncError,
     isPullRequest: normalizedIsPullRequest,
     creationSource: normalizedCreationSource,
@@ -570,12 +570,12 @@ async function serializeTask(
     sessionIds: task.sessionIds ?? [],
     laneSessions: task.laneSessions ?? [],
     laneHandoffs: task.laneHandoffs ?? [],
-    githubId: task.githubId,
-    githubNumber: task.githubNumber,
-    githubUrl: task.githubUrl,
-    githubRepo: task.githubRepo,
-    githubState: task.githubState,
-    githubSyncedAt: task.githubSyncedAt?.toISOString(),
+    vcsId: task.vcsId,
+    vcsNumber: task.vcsNumber,
+    vcsUrl: task.vcsUrl,
+    vcsRepo: task.vcsRepo,
+    vcsState: task.vcsState,
+    vcsSyncedAt: task.vcsSyncedAt?.toISOString(),
     lastSyncError: task.lastSyncError,
     diagnostic: task.lastSyncError
       ? parseTaskDiagnostic({

@@ -98,7 +98,7 @@ export class InMemoryTaskStore implements TaskStore {
 
   async findByPullRequestUrl(url: string): Promise<Task | undefined> {
     for (const task of this.tasks.values()) {
-      if (task.pullRequestUrl === url || task.githubUrl === url) {
+      if (task.pullRequestUrl === url || task.vcsUrl === url) {
         return this.hydrateTask(task);
       }
     }

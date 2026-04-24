@@ -153,8 +153,8 @@ export function KanbanGitHubImportModal({
   const importedIssueKeys = useMemo(
     () => new Set(
       tasks
-        .filter((task) => task.githubRepo && task.githubNumber !== undefined && !task.isPullRequest)
-        .map((task) => `${task.githubRepo}#${task.githubNumber}`),
+        .filter((task) => task.vcsRepo && task.vcsNumber !== undefined && !task.isPullRequest)
+        .map((task) => `${task.vcsRepo}#${task.vcsNumber}`),
     ),
     [tasks],
   );
@@ -162,8 +162,8 @@ export function KanbanGitHubImportModal({
   const importedPRKeys = useMemo(
     () => new Set(
       tasks
-        .filter((task) => task.githubRepo && task.githubNumber !== undefined && task.isPullRequest)
-        .map((task) => `${task.githubRepo}#${task.githubNumber}`),
+        .filter((task) => task.vcsRepo && task.vcsNumber !== undefined && task.isPullRequest)
+        .map((task) => `${task.vcsRepo}#${task.vcsNumber}`),
     ),
     [tasks],
   );

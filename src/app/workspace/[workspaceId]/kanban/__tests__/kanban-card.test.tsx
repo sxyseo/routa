@@ -158,8 +158,8 @@ describe("KanbanCard artifact gate status", () => {
     render(
       <KanbanCard
         task={buildTask({
-          githubNumber: 289,
-          githubUrl: "https://github.com/acme/platform/pull/289",
+          vcsNumber: 289,
+          vcsUrl: "https://github.com/acme/platform/pull/289",
           isPullRequest: true,
         })}
         boardColumns={boardColumns}

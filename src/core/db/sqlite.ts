@@ -225,12 +225,12 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       session_ids TEXT DEFAULT '[]',
       lane_sessions TEXT DEFAULT '[]',
       lane_handoffs TEXT DEFAULT '[]',
-      github_id TEXT,
-      github_number INTEGER,
-      github_url TEXT,
-      github_repo TEXT,
-      github_state TEXT,
-      github_synced_at INTEGER,
+      vcs_id TEXT,
+      vcs_number INTEGER,
+      vcs_url TEXT,
+      vcs_repo TEXT,
+      vcs_state TEXT,
+      vcs_synced_at INTEGER,
       last_sync_error TEXT,
       is_pull_request INTEGER,
       dependencies TEXT DEFAULT '[]',
@@ -264,12 +264,12 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN enable_automatic_fallback INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN max_fallback_attempts INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN trigger_session_id TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_id TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_number INTEGER`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_url TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_repo TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_state TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_synced_at INTEGER`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_number INTEGER`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_url TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_repo TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_state TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_synced_at INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN last_sync_error TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN is_pull_request INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN test_cases TEXT`);
@@ -608,6 +608,26 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
     )
   `);
+
+  // ─── VCS column rename migration (github_* → vcs_*) ──────────────────
+  // SQLite 3.25.0+ supports ALTER TABLE RENAME COLUMN.
+  // Each rename is idempotent: if the old column no longer exists (already
+  // renamed) the statement errors and is silently swallowed by the try/catch.
+  const vcsColumnRenames: [string, string][] = [
+    ["github_id", "vcs_id"],
+    ["github_number", "vcs_number"],
+    ["github_url", "vcs_url"],
+    ["github_repo", "vcs_repo"],
+    ["github_state", "vcs_state"],
+    ["github_synced_at", "vcs_synced_at"],
+  ];
+  for (const [oldCol, newCol] of vcsColumnRenames) {
+    try {
+      db.run(sql.raw(`ALTER TABLE tasks RENAME COLUMN "${oldCol}" TO "${newCol}"`));
+    } catch {
+      // Column already renamed or doesn't exist — safe to ignore
+    }
+  }
 
   console.log("[SQLite] Tables initialized");
 }

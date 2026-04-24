@@ -106,7 +106,7 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     investValidation,
     deliveryReadiness,
     childTasks: childTasks.length > 0 ? childTasks : undefined,
-    githubSyncedAt: task.githubSyncedAt?.toISOString(),
+    vcsSyncedAt: task.vcsSyncedAt?.toISOString(),
     pullRequestMergedAt: task.pullRequestMergedAt instanceof Date
       ? task.pullRequestMergedAt.toISOString()
       : task.pullRequestMergedAt,
@@ -619,11 +619,11 @@ export async function PATCH(
   if (body.enableAutomaticFallback !== undefined) nextTask.enableAutomaticFallback = body.enableAutomaticFallback;
   if (body.maxFallbackAttempts !== undefined) nextTask.maxFallbackAttempts = body.maxFallbackAttempts;
   if (body.triggerSessionId !== undefined) nextTask.triggerSessionId = body.triggerSessionId;
-  if (body.githubId !== undefined) nextTask.githubId = body.githubId;
-  if (body.githubNumber !== undefined) nextTask.githubNumber = body.githubNumber;
-  if (body.githubUrl !== undefined) nextTask.githubUrl = body.githubUrl;
-  if (body.githubRepo !== undefined) nextTask.githubRepo = body.githubRepo;
-  if (body.githubState !== undefined) nextTask.githubState = body.githubState;
+  if (body.vcsId !== undefined) nextTask.vcsId = body.vcsId;
+  if (body.vcsNumber !== undefined) nextTask.vcsNumber = body.vcsNumber;
+  if (body.vcsUrl !== undefined) nextTask.vcsUrl = body.vcsUrl;
+  if (body.vcsRepo !== undefined) nextTask.vcsRepo = body.vcsRepo;
+  if (body.vcsState !== undefined) nextTask.vcsState = body.vcsState;
   if (body.lastSyncError !== undefined) nextTask.lastSyncError = body.lastSyncError;
   if (body.isPullRequest !== undefined) nextTask.isPullRequest = body.isPullRequest === true ? true : undefined;
   if (body.dependencies !== undefined) {
@@ -657,17 +657,17 @@ export async function PATCH(
     }
   }
 
-  if (body.syncToGitHub !== false && nextTask.githubRepo && nextTask.githubNumber) {
+  if (body.syncToGitHub !== false && nextTask.vcsRepo && nextTask.vcsNumber) {
     try {
-      await updateGitHubIssue(nextTask.githubRepo, nextTask.githubNumber, {
+      await updateGitHubIssue(nextTask.vcsRepo, nextTask.vcsNumber, {
         title: nextTask.title,
         body: buildTaskGitHubIssueBody(nextTask.objective, nextTask.testCases),
         labels: nextTask.labels,
         state: nextTask.status === "COMPLETED" ? "closed" : "open",
         assignees: nextTask.assignee ? [nextTask.assignee] : undefined,
       });
-      nextTask.githubState = nextTask.status === "COMPLETED" ? "closed" : "open";
-      nextTask.githubSyncedAt = new Date();
+      nextTask.vcsState = nextTask.status === "COMPLETED" ? "closed" : "open";
+      nextTask.vcsSyncedAt = new Date();
       nextTask.lastSyncError = undefined;
     } catch (error) {
       nextTask.lastSyncError = error instanceof Error ? error.message : "GitHub sync failed";

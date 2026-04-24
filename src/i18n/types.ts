@@ -975,7 +975,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     selectIssueBody: string;
     noIssues: string;
     failedToLoad: string;
-    githubStateUnknown: string;
+    vcsStateUnknown: string;
     families: string;
     members: string;
     relations: string;

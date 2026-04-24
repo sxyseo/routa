@@ -251,7 +251,7 @@ function SkillCatalogModal({
   const { t } = useTranslation();
   const [catalogType, setCatalogType] = useState<CatalogType>("skillssh");
   const [query, setQuery] = useState("");
-  const [githubRepo, setGithubRepo] = useState("openai/skills");
+  const [catalogRepo, setCatalogRepo] = useState("openai/skills");
   const [githubPath, setGithubPath] = useState("skills/.curated");
   const [gitlabRepo, setGitlabRepo] = useState("");
   const [gitlabPath, setGitlabPath] = useState("skills");
@@ -278,13 +278,13 @@ function SkillCatalogModal({
     setGithubSelected(new Set());
     setGitlabSelected(new Set());
     if (type === "github") {
-      listGithubCatalog(githubRepo, githubPath);
+      listGithubCatalog(catalogRepo, githubPath);
     } else if (type === "gitlab") {
       if (gitlabRepo.trim()) {
         listGitlabCatalog(gitlabRepo, gitlabPath);
       }
     }
-  }, [listGithubCatalog, listGitlabCatalog, githubRepo, githubPath, gitlabRepo, gitlabPath]);
+  }, [listGithubCatalog, listGitlabCatalog, catalogRepo, githubPath, gitlabRepo, gitlabPath]);
 
   const handleSearch = useCallback(
     (value: string) => {
@@ -323,7 +323,7 @@ function SkillCatalogModal({
     } else if (catalogType === "github") {
       if (githubSelected.size === 0) return;
       const skills = Array.from(githubSelected);
-      const result = (await installFromGithubCatalog(skills, githubRepo, githubPath)) as {
+      const result = (await installFromGithubCatalog(skills, catalogRepo, githubPath)) as {
         installed: string[];
         errors: string[];
       } | null;
@@ -347,7 +347,7 @@ function SkillCatalogModal({
         if (result.installed.length > 0) onInstalled();
       }
     }
-  }, [catalogType, selected, githubSelected, gitlabSelected, installFromCatalog, installFromGithubCatalog, installFromGitlabCatalog, githubRepo, githubPath, gitlabRepo, gitlabPath, onInstalled]);
+  }, [catalogType, selected, githubSelected, gitlabSelected, installFromCatalog, installFromGithubCatalog, installFromGitlabCatalog, catalogRepo, githubPath, gitlabRepo, gitlabPath, onInstalled]);
 
   const toggleSkill = useCallback((skill: SkillsShSkill) => {
     setSelected((prev) => {
@@ -482,19 +482,19 @@ function SkillCatalogModal({
                   <span className="pl-2.5 text-[10px] text-slate-400 font-mono shrink-0">repo:</span>
                   <input
                     type="text"
-                    value={githubRepo}
-                    onChange={(e) => setGithubRepo(e.target.value)}
+                    value={catalogRepo}
+                    onChange={(e) => setCatalogRepo(e.target.value)}
                     placeholder="owner/repo"
                     className="flex-1 px-1.5 py-2 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none font-mono"
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") listGithubCatalog(githubRepo, githubPath);
+                      if (e.key === "Enter") listGithubCatalog(catalogRepo, githubPath);
                       if (e.key === "Escape") onClose();
                     }}
                   />
                 </div>
                 <button
-                  onClick={() => listGithubCatalog(githubRepo, githubPath)}
-                  disabled={catalogLoading || !githubRepo.trim()}
+                  onClick={() => listGithubCatalog(catalogRepo, githubPath)}
+                  disabled={catalogLoading || !catalogRepo.trim()}
                   className="px-3 py-2 text-xs font-medium text-white bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
                 >
                   {catalogLoading ? (
@@ -514,11 +514,11 @@ function SkillCatalogModal({
                   <button
                     key={`${preset.repo}/${preset.path}`}
                     onClick={() => {
-                      setGithubRepo(preset.repo);
+                      setCatalogRepo(preset.repo);
                       setGithubPath(preset.path);
                       listGithubCatalog(preset.repo, preset.path);
                     }}
-                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${githubRepo === preset.repo && githubPath === preset.path
+                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${catalogRepo === preset.repo && githubPath === preset.path
                       ? "text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/30"
                       : "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
                       }`}

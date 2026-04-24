@@ -138,9 +138,9 @@ area: ${quoteYamlString(area)}
 tags: ${renderYamlArray(tags)}
 reported_by: ${quoteYamlString(issue.author || "unknown")}
 related_issues: ${renderYamlArray([issue.url])}
-github_issue: ${issue.number}
-github_state: ${quoteYamlString(issue.state)}
-github_url: ${quoteYamlString(issue.url)}
+vcs_issue: ${issue.number}
+vcs_state: ${quoteYamlString(issue.state)}
+vcs_url: ${quoteYamlString(issue.url)}
 ---
 
 # ${title}

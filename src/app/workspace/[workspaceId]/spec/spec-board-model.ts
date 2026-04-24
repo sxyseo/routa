@@ -16,8 +16,8 @@ export type SpecIssue = {
   reportedBy: string;
   relatedIssues: string[];
   githubIssue: number | null;
-  githubState: string | null;
-  githubUrl: string | null;
+  vcsState: string | null;
+  vcsUrl: string | null;
   body: string;
 };
 
@@ -394,15 +394,15 @@ function resolveIssueRelation(
     };
   }
 
-  const githubUrl = normalizeGitHubIssueUrl(raw);
-  if (githubUrl) {
-    const targetIssue = issueByGitHubUrl.get(githubUrl);
+  const vcsUrl = normalizeGitHubIssueUrl(raw);
+  if (vcsUrl) {
+    const targetIssue = issueByGitHubUrl.get(vcsUrl);
     return {
       raw,
-      key: targetIssue ? `local:${targetIssue.filename}` : `github:${githubUrl}`,
-      label: targetIssue?.title || formatGitHubIssueLabel(githubUrl),
+      key: targetIssue ? `local:${targetIssue.filename}` : `github:${vcsUrl}`,
+      label: targetIssue?.title || formatGitHubIssueLabel(vcsUrl),
       kind: "github",
-      href: githubUrl,
+      href: vcsUrl,
       targetFilename: targetIssue?.filename ?? null,
     };
   }
@@ -692,7 +692,7 @@ export function buildSpecBoardModel(
   const issueByGitHubUrl = new Map<string, SpecIssue>();
 
   for (const issue of sortedIssues) {
-    const normalizedUrl = issue.githubUrl ? normalizeGitHubIssueUrl(issue.githubUrl) : null;
+    const normalizedUrl = issue.vcsUrl ? normalizeGitHubIssueUrl(issue.vcsUrl) : null;
     if (normalizedUrl) {
       issueByGitHubUrl.set(normalizedUrl, issue);
     }

@@ -28,8 +28,8 @@ type SpecIssue = {
   reportedBy: string;
   relatedIssues: string[];
   githubIssue: number | null;
-  githubState: string | null;
-  githubUrl: string | null;
+  vcsState: string | null;
+  vcsUrl: string | null;
   body: string;
 };
 
@@ -134,9 +134,9 @@ export async function GET(request: NextRequest) {
         tags: toStringArray(data.tags),
         reportedBy: normalizeScalar(data.reported_by),
         relatedIssues: toStringArray(data.related_issues),
-        githubIssue: toNullableNumber(data.github_issue),
-        githubState: toNullableString(data.github_state),
-        githubUrl: toNullableString(data.github_url),
+        githubIssue: toNullableNumber(data.vcs_issue ?? data.github_issue),
+        vcsState: toNullableString(data.vcs_state ?? data.github_state),
+        vcsUrl: toNullableString(data.vcs_url ?? data.github_url),
         body: content.trim(),
       });
     } catch {

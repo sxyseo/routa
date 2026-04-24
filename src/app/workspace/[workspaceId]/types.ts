@@ -185,12 +185,12 @@ export interface TaskInfo {
     respondedAt?: string;
     responseSummary?: string;
   }>;
-  githubId?: string;
-  githubNumber?: number;
-  githubUrl?: string;
-  githubRepo?: string;
-  githubState?: string;
-  githubSyncedAt?: string;
+  vcsId?: string;
+  vcsNumber?: number;
+  vcsUrl?: string;
+  vcsRepo?: string;
+  vcsState?: string;
+  vcsSyncedAt?: string;
   lastSyncError?: string;
   diagnostic?: TaskDiagnostic;
   isPullRequest?: boolean;

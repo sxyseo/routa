@@ -963,7 +963,7 @@ const zh: TranslationDictionary = {
     selectIssueBody: "选中一条记录后，可以在这里查看它的 GitHub tracker、关联 issue 和本地上下文。",
     noIssues: "暂无记录",
     failedToLoad: "加载本地问题规格失败",
-    githubStateUnknown: "未知",
+    vcsStateUnknown: "未知",
     families: "关系簇",
     members: "条",
     relations: "链接",

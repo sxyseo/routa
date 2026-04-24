@@ -240,6 +240,7 @@ export const enTail: TailTranslationDictionarySections = {
     newWebhookTrigger: "New Webhook Trigger",
     nameLabel: "Name",
     namePlaceholder: "e.g. Issue Handler — data-mesh-spike",
+    vcsRepository: "Repository",
     githubRepository: "GitHub Repository",
     repoFormatHint: "(owner/repo)",
     githubToken: "GitHub Token",

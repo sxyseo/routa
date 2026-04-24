@@ -234,6 +234,7 @@ export const zhTail: TailTranslationDictionarySections = {
     newWebhookTrigger: "新建 Webhook 触发器",
     nameLabel: "名称",
     namePlaceholder: "例如：Issue Handler — data-mesh-spike",
+    vcsRepository: "代码仓库",
     githubRepository: "GitHub 仓库",
     repoFormatHint: "（owner/repo）",
     githubToken: "GitHub Token",

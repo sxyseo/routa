@@ -968,7 +968,7 @@ const en: TranslationDictionary = {
     selectIssueBody: "Choose a record to inspect its GitHub tracker, linked issues, and local context.",
     noIssues: "No issues",
     failedToLoad: "Failed to load local issue specs",
-    githubStateUnknown: "unknown",
+    vcsStateUnknown: "unknown",
     families: "Families",
     members: "issues",
     relations: "links",

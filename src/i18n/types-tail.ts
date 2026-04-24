@@ -239,7 +239,7 @@ export interface TailTranslationDictionarySections {
     newWebhookTrigger: string;
     nameLabel: string;
     namePlaceholder: string;
-    githubRepository: string;
+    vcsRepository: string;
     repoFormatHint: string;
     githubToken: string;
     tokenKeepHint: string;
@@ -313,6 +313,8 @@ export interface TailTranslationDictionarySections {
     platformSwitcherLabel: string;
     platformGithub: string;
     platformGitlab: string;
+    // GitHub-specific fields
+    githubRepository: string;
     // GitLab-specific fields
     gitlabRepository: string;
     gitlabToken: string;

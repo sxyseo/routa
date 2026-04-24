@@ -264,7 +264,7 @@ export function KanbanCardActivityPanel({
   const tabs: Array<{ id: ActivityTabId; label: string; count?: number }> = [
     { id: "runs", label: copy.runs, count: runs?.length ?? getOrderedSessionIds(task).length },
     ...((task.laneHandoffs?.length ?? 0) > 0 ? [{ id: "handoffs" as const, label: copy.handoffs, count: task.laneHandoffs?.length }] : []),
-    ...(task.githubNumber ? [{ id: "github" as const, label: "GitHub" }] : []),
+    ...(task.vcsNumber ? [{ id: "github" as const, label: "GitHub" }] : []),
   ];
   const [activeTab, setActiveTab] = useState<ActivityTabId>(tabs[0]?.id ?? "runs");
   const visibleTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : (tabs[0]?.id ?? "runs");
@@ -751,7 +751,7 @@ function HandoffPanel({ task, compact = false }: { task: TaskInfo; compact?: boo
 
 function GitHubPanel({ task, compact = false }: { task: TaskInfo; compact?: boolean }) {
   const { t } = useTranslation();
-  if (!task.githubNumber) {
+  if (!task.vcsNumber) {
     return null;
   }
 
@@ -760,23 +760,23 @@ function GitHubPanel({ task, compact = false }: { task: TaskInfo; compact?: bool
       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">GitHub</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-          {task.githubState ?? t.kanban.linkedLabel}
+          {task.vcsState ?? t.kanban.linkedLabel}
         </span>
-        {task.githubRepo && (
-          <span className="text-xs text-slate-500 dark:text-slate-400">{task.githubRepo}</span>
+        {task.vcsRepo && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">{task.vcsRepo}</span>
         )}
       </div>
       <a
-        href={task.githubUrl}
+        href={task.vcsUrl}
         target="_blank"
         rel="noreferrer"
         className={`mt-3 inline-flex text-amber-600 hover:underline dark:text-amber-400 ${compact ? "text-[13px]" : "text-sm"}`}
       >
-        #{task.githubNumber}
+        #{task.vcsNumber}
       </a>
-      {task.githubSyncedAt && (
+      {task.vcsSyncedAt && (
         <div className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-          {t.kanban.syncedAt} {formatSessionTimestamp(task.githubSyncedAt)}
+          {t.kanban.syncedAt} {formatSessionTimestamp(task.vcsSyncedAt)}
         </div>
       )}
     </div>

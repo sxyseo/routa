@@ -1,0 +1,2 @@
+{"timestamp":"2026-04-17T01:51:41.963Z","type":"session_meta","payload":{"id":"noisy-session","timestamp":"2026-04-17T01:50:56.919Z","cwd":"E:\\AI\\routa\\bfded06a-71f5-41a4-8a75-b15d85f97985\\9e1e22b3-d616-42e2-804c-e1bc4bb61201\\issue-p1-vcs-githuburl-vcsurl-b7852beb-moarfy69\\.tmp-jest\\feature-explorer-noisy-path-KCT6Vv\\repo","source":"cli","model_provider":"openai"}}
+{"timestamp":"2026-04-17T02:31:10.000Z","type":"response_item","payload":{"type":"function_call","name":"write_result","path":"src/app/page.tsx (3 tests) 3ms\","}}

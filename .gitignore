@@ -134,3 +134,6 @@ tools/ppt-template/node_modules/
 /people/
 .trae/
 /.claude/scheduled_tasks.lock
+.tmp-jest/
+vcs-sm.jpg
+vcs-tiny.jpg

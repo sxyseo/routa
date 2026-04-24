@@ -605,8 +605,8 @@ export function KanbanCardDetail({
             {evidenceValue && (
               <MetaBadge label={t.kanbanDetail.evidenceBundle} value={evidenceValue} compact={compactMode} />
             )}
-            {task.githubNumber && (
-              <MetaBadge label="GitHub" value={`#${task.githubNumber}`} compact={compactMode} />
+            {task.vcsNumber && (
+              <MetaBadge label="GitHub" value={`#${task.vcsNumber}`} compact={compactMode} />
             )}
             {task.deliveryReadiness?.hasCommitsSinceBase && task.deliveryReadiness.commitsSinceBase > 0 && (
               <MetaBadge

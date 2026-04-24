@@ -257,12 +257,12 @@ export interface Task {
   laneSessions: TaskLaneSession[];
   /** Adjacent-lane handoff requests and responses */
   laneHandoffs: TaskLaneHandoff[];
-  githubId?: string;
-  githubNumber?: number;
-  githubUrl?: string;
-  githubRepo?: string;
-  githubState?: string;
-  githubSyncedAt?: Date;
+  vcsId?: string;
+  vcsNumber?: number;
+  vcsUrl?: string;
+  vcsRepo?: string;
+  vcsState?: string;
+  vcsSyncedAt?: Date;
   lastSyncError?: string;
   isPullRequest?: boolean;
   dependencies: string[];
@@ -340,12 +340,12 @@ export function createTask(params: {
   fallbackAgentChain?: FallbackAgent[];
   enableAutomaticFallback?: boolean;
   maxFallbackAttempts?: number;
-  githubId?: string;
-  githubNumber?: number;
-  githubUrl?: string;
-  githubRepo?: string;
-  githubState?: string;
-  githubSyncedAt?: Date;
+  vcsId?: string;
+  vcsNumber?: number;
+  vcsUrl?: string;
+  vcsRepo?: string;
+  vcsState?: string;
+  vcsSyncedAt?: Date;
   lastSyncError?: string;
   isPullRequest?: boolean;
   status?: TaskStatus;
@@ -382,12 +382,12 @@ export function createTask(params: {
     sessionIds: [],
     laneSessions: [],
     laneHandoffs: [],
-    githubId: params.githubId,
-    githubNumber: params.githubNumber,
-    githubUrl: params.githubUrl,
-    githubRepo: params.githubRepo,
-    githubState: params.githubState,
-    githubSyncedAt: params.githubSyncedAt,
+    vcsId: params.vcsId,
+    vcsNumber: params.vcsNumber,
+    vcsUrl: params.vcsUrl,
+    vcsRepo: params.vcsRepo,
+    vcsState: params.vcsState,
+    vcsSyncedAt: params.vcsSyncedAt,
     lastSyncError: params.lastSyncError,
     isPullRequest: params.isPullRequest,
     dependencies: params.dependencies ?? [],

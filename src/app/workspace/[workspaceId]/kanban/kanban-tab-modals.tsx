@@ -1117,9 +1117,9 @@ export function KanbanDeleteTaskModal({
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
                 {t.kanbanModals.deleteTaskConfirm} <span className="font-medium text-slate-900 dark:text-slate-100">&quot;{deleteConfirmTask.title}&quot;</span>?
               </p>
-              {deleteConfirmTask.githubNumber && (
+              {deleteConfirmTask.vcsNumber && (
                 <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  {t.kanbanModals.deleteTaskGithubNote} #{deleteConfirmTask.githubNumber} will remain unchanged.
+                  {t.kanbanModals.deleteTaskGithubNote} #{deleteConfirmTask.vcsNumber} will remain unchanged.
                 </p>
               )}
             </div>

@@ -401,7 +401,7 @@ export function buildTaskPrompt(
     nextColumnId ? `**Next Column ID:** ${nextColumnId}` : "**Next Column ID:** none",
     `**Priority:** ${task.priority ?? "medium"}`,
     labels,
-    task.githubUrl ? `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** ${task.githubUrl}` : `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** local-only`,
+    task.vcsUrl ? `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** ${task.vcsUrl}` : `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** local-only`,
     ...(options?.branch ? [`**Base Branch:** ${options.branch}`] : []),
     "",
     "## Objective",
