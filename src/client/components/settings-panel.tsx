@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useId } from "react";
+import { useRouter } from "next/navigation";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { GitHubWebhookPanel } from "./github-webhook-panel";
 import { AgentInstallPanel } from "./agent-install-panel";
 import { SettingsCenterNav } from "./settings-center-nav";
+import { setActiveWorkspaceIdGlobal } from "../contexts/workspace-context";
 import {
   loadCustomAcpProviders,
   saveCustomAcpProviders,
@@ -130,7 +132,7 @@ function SystemInfoFooter() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { queueMicrotask(() => startTransition(() => fetchData())); }, [fetchData]);
 
   return (
     <div className="border-t border-slate-200 dark:border-slate-700 shrink-0">
@@ -924,6 +926,7 @@ function WorkspaceDangerZonePanel({
   workspaceTitle?: string;
 }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [confirmText, setConfirmText] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -941,9 +944,12 @@ function WorkspaceDangerZonePanel({
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
       setStatus("success");
+      // Clear active workspace before navigating so WorkspaceProvider picks up
+      // the null state immediately (no full reload = no stale-ID race condition).
+      setActiveWorkspaceIdGlobal(null);
       setTimeout(() => {
-        window.location.href = "/";
-      }, 1500);
+        router.push("/");
+      }, 500);
     } catch (err) {
       setStatus("error");
       setErrorMsg(err instanceof Error ? err.message : String(err));

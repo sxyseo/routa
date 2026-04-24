@@ -5,7 +5,7 @@
  * Workspace-first landing page for selecting a workspace, connecting providers, and entering recent sessions or team runs.
  */
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, startTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -100,7 +100,7 @@ function HomePageContent() {
   const [accessibleCodebasePaths, setAccessibleCodebasePaths] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setHydrated(true);
+    queueMicrotask(() => startTransition(() => setHydrated(true)));
   }, []);
 
   useEffect(() => {
@@ -129,8 +129,10 @@ function HomePageContent() {
       return;
     }
 
-    setOnboardingCompleted(window.localStorage.getItem(ONBOARDING_COMPLETED_KEY) === "true");
-    setPreferredMode(parseOnboardingMode(window.localStorage.getItem(ONBOARDING_MODE_KEY)));
+    queueMicrotask(() => startTransition(() => {
+      setOnboardingCompleted(window.localStorage.getItem(ONBOARDING_COMPLETED_KEY) === "true");
+      setPreferredMode(parseOnboardingMode(window.localStorage.getItem(ONBOARDING_MODE_KEY)));
+    }));
   }, []);
 
   useEffect(() => {
@@ -139,7 +141,7 @@ function HomePageContent() {
     }
 
     let cancelled = false;
-    setRecentSessionsLoading(true);
+    queueMicrotask(() => startTransition(() => setRecentSessionsLoading(true)));
 
     (async () => {
       try {

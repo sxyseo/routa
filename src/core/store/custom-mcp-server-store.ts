@@ -293,8 +293,13 @@ export function getCustomMcpServerStore(driver = getDatabaseDriver()): CustomMcp
     case "postgres":
       return new PostgresCustomMcpServerStore(getDatabase());
     case "sqlite": {
-      const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
-      return new SqliteCustomMcpServerStore(getSqliteDatabase());
+      try {
+        const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
+        return new SqliteCustomMcpServerStore(getSqliteDatabase());
+      } catch {
+        // better-sqlite3 native addon unavailable (not compiled, no Python, etc.)
+        return null;
+      }
     }
     default:
       return null;

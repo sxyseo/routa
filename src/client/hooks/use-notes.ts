@@ -10,7 +10,7 @@
  * - Automatic reconnection on SSE drop
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, startTransition } from "react";
 import {
   desktopAwareFetch,
   getDesktopApiBaseUrl,
@@ -322,14 +322,17 @@ export function useNotes(workspaceId: string, sessionId?: string): UseNotesRetur
 
       // Reconnect after 3s
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      // eslint-disable-next-line react-hooks/immutability -- self-referential setTimeout is intentional for reconnect
       reconnectTimerRef.current = setTimeout(() => connectSSE(), 3000);
     };
   }, [workspaceId, shouldIncludeNote, fetchNotes]);
 
   // Clear notes when workspaceId or sessionId changes to avoid showing stale data
   useEffect(() => {
-    setNotes([]);
-    setConnected(false);
+    queueMicrotask(() => startTransition(() => {
+      setNotes([]);
+      setConnected(false);
+    }));
   }, [workspaceId, sessionId]);
 
   // Connect SSE and fetch initial notes
@@ -339,8 +342,10 @@ export function useNotes(workspaceId: string, sessionId?: string): UseNotesRetur
 
     tearingDownRef.current = false;
 
-    fetchNotes();
-    connectSSE();
+    queueMicrotask(() => startTransition(() => {
+      fetchNotes();
+      connectSSE();
+    }));
 
     return () => {
       tearingDownRef.current = true;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, startTransition } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 
 export interface WorkspaceData {
@@ -81,7 +81,7 @@ export function useWorkspaces(): UseWorkspacesReturn {
   }, [fetchWorkspaces]);
 
   useEffect(() => {
-    fetchWorkspaces();
+    queueMicrotask(() => startTransition(() => fetchWorkspaces()));
   }, [fetchWorkspaces]);
 
   return { workspaces, loading, fetchWorkspaces, createWorkspace, archiveWorkspace };
