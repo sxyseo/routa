@@ -14,6 +14,7 @@ import type {
   VCSBranch,
   VCSComment,
   VCSFileChange,
+  VCSIssue,
   VCSIssueListItem,
   VCSAccessStatus,
 } from "./vcs-provider";
@@ -557,6 +558,49 @@ export class GitLabProvider implements IVCSProvider {
       assignees: (item.assignees ?? []).map((a) => a.username ?? "").filter(Boolean),
       updatedAt: item.updated_at,
     }));
+  }
+
+  async createIssue(opts: {
+    repo: string;
+    title: string;
+    body?: string;
+    labels?: string[];
+    assignees?: string[];
+    token?: string;
+  }): Promise<VCSIssue> {
+    const encodedPath = this.encodeProjectPath(opts.repo);
+    const data = await this.gitlabApi<{
+      id: number;
+      iid: number;
+      title: string;
+      description?: string | null;
+      web_url: string;
+      state: string;
+      labels?: string | string[];
+      assignees?: Array<{ username?: string }>;
+    }>(`/projects/${encodedPath}/issues`, {
+      method: "POST",
+      token: opts.token,
+      body: {
+        title: opts.title,
+        description: opts.body,
+        labels: opts.labels?.join(","),
+        assignee_ids: undefined, // GitLab uses assignee_ids, skip for now
+      },
+    });
+
+    return {
+      id: String(data.id),
+      number: data.iid,
+      title: data.title,
+      body: data.description ?? undefined,
+      url: data.web_url,
+      state: data.state === "opened" ? "open" : "closed",
+      labels: Array.isArray(data.labels)
+        ? data.labels
+        : typeof data.labels === "string" ? data.labels.split(",").map((l: string) => l.trim()) : [],
+      assignees: (data.assignees ?? []).map((a: { username?: string }) => a.username ?? "").filter(Boolean),
+    };
   }
 
   getAccessStatus(opts?: { boardToken?: string }): VCSAccessStatus {

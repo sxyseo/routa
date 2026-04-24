@@ -197,6 +197,16 @@ export interface IVCSProvider {
     token?: string;
   }): Promise<VCSIssueListItem[]>;
 
+  /** Create an issue */
+  createIssue(opts: {
+    repo: string;
+    title: string;
+    body?: string;
+    labels?: string[];
+    assignees?: string[];
+    token?: string;
+  }): Promise<VCSIssue>;
+
   /** Get access status for the current platform */
   getAccessStatus(opts?: { boardToken?: string }): VCSAccessStatus;
 

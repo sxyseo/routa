@@ -9,7 +9,7 @@
  *   - "github": repoPath points to extracted temp dir, sourceUrl has the GitHub origin
  */
 
-export type CodebaseSourceType = "local" | "github";
+export type CodebaseSourceType = "local" | "github" | "gitlab";
 
 export interface Codebase {
   id: string;

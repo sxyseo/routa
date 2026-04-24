@@ -20,6 +20,7 @@ import { ensureDefaultBoard } from "@/core/kanban/boards";
 import {
   buildTaskGitHubIssueBody,
   createGitHubIssue,
+  createVcsIssue,
   resolveGitHubRepo,
 } from "@/core/kanban/github-issues";
 import {
@@ -392,7 +393,24 @@ export async function POST(request: NextRequest) {
 
   if (normalizedCreateGitHubIssue && !hasImportedGitHubIssue) {
     if (!repo) {
-      lastSyncError = "Selected codebase is not linked to a GitHub repository.";
+      lastSyncError = "Selected codebase is not linked to a VCS repository.";
+    } else if (codebase?.sourceType === "gitlab") {
+      try {
+        const issue = await createVcsIssue(repo, codebase.sourceType, {
+          title: normalizedTitle,
+          body: buildTaskGitHubIssueBody(normalizedObjective, normalizedTestCases),
+          labels: normalizedLabels,
+          assignees: normalizedAssignee ? [normalizedAssignee] : undefined,
+        });
+        nextGitHubId = issue.id;
+        nextGitHubNumber = issue.number;
+        nextGitHubUrl = issue.url;
+        nextGitHubRepo = repo;
+        nextGitHubState = issue.state;
+        githubSyncedAt = new Date();
+      } catch (error) {
+        lastSyncError = error instanceof Error ? error.message : "GitLab issue create failed";
+      }
     } else {
       try {
         const issue = await createGitHubIssue(repo, {

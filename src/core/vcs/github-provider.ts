@@ -14,6 +14,7 @@ import type {
   VCSBranch,
   VCSComment,
   VCSFileChange,
+  VCSIssue,
   VCSIssueListItem,
   VCSAccessStatus,
 } from "./vcs-provider";
@@ -407,6 +408,46 @@ export class GitHubProvider implements IVCSProvider {
         assignees: (item.assignees ?? []).map((a) => a.login?.trim()).filter((s): s is string => Boolean(s)),
         updatedAt: item.updated_at,
       }));
+  }
+
+  async createIssue(opts: {
+    repo: string;
+    title: string;
+    body?: string;
+    labels?: string[];
+    assignees?: string[];
+    token?: string;
+  }): Promise<VCSIssue> {
+    const data = await this.githubApi<{
+      id: number;
+      number: number;
+      title: string;
+      body?: string | null;
+      html_url: string;
+      state: string;
+      labels?: Array<{ name?: string | null }>;
+      assignees?: Array<{ login?: string | null }>;
+    }>(`/repos/${opts.repo}/issues`, {
+      method: "POST",
+      token: opts.token,
+      body: {
+        title: opts.title,
+        body: opts.body,
+        labels: opts.labels,
+        assignees: opts.assignees,
+      },
+    });
+
+    return {
+      id: String(data.id),
+      number: data.number,
+      title: data.title,
+      body: data.body ?? undefined,
+      url: data.html_url,
+      state: data.state as "open" | "closed",
+      labels: (data.labels ?? []).map((l) => l.name?.trim()).filter((s): s is string => Boolean(s)),
+      assignees: (data.assignees ?? []).map((a) => a.login?.trim()).filter((s): s is string => Boolean(s)),
+    };
   }
 
   getAccessStatus(opts?: { boardToken?: string }): VCSAccessStatus {

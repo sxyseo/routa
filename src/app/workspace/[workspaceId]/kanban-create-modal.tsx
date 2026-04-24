@@ -13,10 +13,13 @@ export type TaskDraft = {
   testCases: string;
   priority: string;
   labels: string;
-  createGitHubIssue: boolean;
+  createVcsIssue: boolean;
   codebaseIds: string[];
   dependencies: string[];
 };
+
+/** @deprecated Use TaskDraft with createVcsIssue instead */
+export type TaskDraftLegacy = TaskDraft & { createGitHubIssue?: boolean };
 
 export const EMPTY_DRAFT: TaskDraft = {
   title: "",
@@ -24,7 +27,7 @@ export const EMPTY_DRAFT: TaskDraft = {
   testCases: "",
   priority: "medium",
   labels: "",
-  createGitHubIssue: false,
+  createVcsIssue: false,
   codebaseIds: [],
   dependencies: [],
 };
@@ -34,7 +37,7 @@ interface KanbanCreateModalProps {
   setDraft: React.Dispatch<React.SetStateAction<TaskDraft>>;
   onClose: () => void;
   onCreate: () => void;
-  githubAvailable: boolean;
+  vcsAvailable: boolean;
   codebases: CodebaseData[];
   allCodebaseIds: string[];
   boardTasks?: Array<{ id: string; title: string }>;
@@ -124,7 +127,7 @@ export function KanbanCreateModal({
   setDraft,
   onClose,
   onCreate,
-  githubAvailable,
+  vcsAvailable,
   codebases,
   allCodebaseIds: _allCodebaseIds,
   boardTasks = [],
@@ -200,15 +203,15 @@ export function KanbanCreateModal({
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
-              checked={draft.createGitHubIssue}
-              disabled={!githubAvailable}
-              onChange={(e) => setDraft((d) => ({ ...d, createGitHubIssue: e.target.checked }))}
+              checked={draft.createVcsIssue}
+              disabled={!vcsAvailable}
+              onChange={(e) => setDraft((d) => ({ ...d, createVcsIssue: e.target.checked }))}
             />
-            {t.kanbanCreate.createLinkedGithubIssue}
+            {t.kanbanCreate.createLinkedVcsIssue}
           </label>
-          {!githubAvailable && (
+          {!vcsAvailable && (
             <div className="text-xs text-slate-400 dark:text-slate-500">
-              {t.kanbanCreate.noGithubLinked}
+              {t.kanbanCreate.noVcsLinked}
             </div>
           )}
 
@@ -236,7 +239,7 @@ export function KanbanCreateModal({
                         }`}
                     >
                       <span
-                        className={`h-1.5 w-1.5 rounded-full ${cb.sourceType === "github" ? "bg-blue-500" : "bg-emerald-500"}`}
+                        className={`h-1.5 w-1.5 rounded-full ${cb.sourceType === "github" ? "bg-blue-500" : cb.sourceType === "gitlab" ? "bg-orange-500" : "bg-emerald-500"}`}
                       />
                       {cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}
                       {cb.isDefault && !selected && <span className="text-[10px] text-slate-400">(default)</span>}

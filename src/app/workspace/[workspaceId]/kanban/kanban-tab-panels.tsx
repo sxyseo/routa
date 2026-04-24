@@ -621,7 +621,8 @@ export function KanbanCreateTaskModal({
   setDraft,
   onClose,
   onCreate,
-  githubAvailable,
+  githubAvailable: _githubAvailable,
+  vcsAvailable,
   codebases,
   allCodebaseIds,
   boardTasks,
@@ -631,7 +632,8 @@ export function KanbanCreateTaskModal({
   setDraft: Dispatch<SetStateAction<TaskDraft>>;
   onClose: () => void;
   onCreate: () => void;
-  githubAvailable: boolean;
+  githubAvailable?: boolean;
+  vcsAvailable: boolean;
   codebases: CodebaseData[];
   allCodebaseIds: string[];
   boardTasks?: Array<{ id: string; title: string }>;
@@ -644,7 +646,7 @@ export function KanbanCreateTaskModal({
       setDraft={setDraft}
       onClose={onClose}
       onCreate={onCreate}
-      githubAvailable={githubAvailable}
+      vcsAvailable={vcsAvailable}
       codebases={codebases}
       allCodebaseIds={allCodebaseIds}
       boardTasks={boardTasks}

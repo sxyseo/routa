@@ -90,6 +90,13 @@ function isLikelyGitHubCodebase(codebase: CodebaseData | null | undefined): bool
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(codebase.label?.trim() ?? "");
 }
 
+function isLikelyVcsCodebase(codebase: CodebaseData | null | undefined): boolean {
+  if (!codebase) return false;
+  if (codebase.sourceType === "github" || codebase.sourceType === "gitlab") return true;
+  if (codebase.sourceUrl?.includes("github.com") || codebase.sourceUrl?.includes("gitlab.com")) return true;
+  return false;
+}
+
 const KANBAN_DETAIL_SPLIT_RATIO_KEY = "routa:kanban-detail-split-ratio";
 const KANBAN_BOARD_QUERY_KEY = "boardId";
 const KANBAN_DETAIL_TASK_QUERY_KEY = "taskId";
@@ -212,6 +219,7 @@ export function KanbanTab({
     [codebases],
   );
   const githubAvailable = isLikelyGitHubCodebase(defaultCodebase);
+  const vcsAvailable = isLikelyVcsCodebase(defaultCodebase);
 
   const [selectedBoardId, setSelectedBoardId] = useState<string | null>(() => {
     const initialUrlState = getKanbanUrlState();
@@ -225,7 +233,7 @@ export function KanbanTab({
   const [githubAccessSource, setGitHubAccessSource] = useState<"board" | "env" | "gh" | "none">("none");
   const [draft, setDraft] = useState<TaskDraft>({
     ...EMPTY_DRAFT,
-    createGitHubIssue: false,
+    createVcsIssue: false,
   });
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view;
@@ -1569,7 +1577,7 @@ export function KanbanTab({
         testCases: draft.testCases.split("\n").map((item) => item.trim()).filter(Boolean),
         priority: draft.priority,
         labels: draft.labels.split(",").map((label) => label.trim()).filter(Boolean),
-        createGitHubIssue: draft.createGitHubIssue,
+        createGitHubIssue: draft.createVcsIssue,
         creationSource: "manual",
         dependencies: draft.dependencies,
         repoPath: effectiveCodebaseIds.length > 0
@@ -1583,7 +1591,7 @@ export function KanbanTab({
       throw new Error(data.error ?? "Failed to create task");
     }
     setLocalTasks((current) => [...current, data.task as TaskInfo]);
-    setDraft({ ...EMPTY_DRAFT, objectiveHtml: "", createGitHubIssue: false });
+    setDraft({ ...EMPTY_DRAFT, objectiveHtml: "", createVcsIssue: false });
     setShowCreateModal(false);
     onRefresh();
   }
@@ -2149,7 +2157,7 @@ export function KanbanTab({
     onCreate: () => {
       void createTaskCard();
     },
-    githubAvailable,
+    vcsAvailable: vcsAvailable,
     codebases,
     allCodebaseIds,
     boardTasks: localTasks.map((task) => ({ id: task.id, title: task.title })),
