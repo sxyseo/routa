@@ -460,6 +460,14 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     syncIssue: string;
     synced: string;
     notSynced: string;
+    diag_circuit_breaker: string;
+    diag_rate_limited: string;
+    diag_dependency_blocked: string;
+    diag_retry_limit: string;
+    diag_pr_failure: string;
+    diag_fan_in_conflict: string;
+    diag_stale_session: string;
+    diag_unknown_error: string;
     // Card labels
     deleteTask: string;
     openCard: string;
@@ -944,6 +952,18 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     enableAutomaticFallback: string;
     fallbackProviderDefault: string;
     archiveCard: string;
+    diagAutoRecoverable: string;
+    diagRecoveryHint: string;
+    diagSuggestionRetry: string;
+    diagSuggestionCheckDeps: string;
+    diagSuggestionManualPR: string;
+    diagSuggestionResolveConflicts: string;
+    diagSuggestionCheckProvider: string;
+    diagSuggestionMoveBack: string;
+    diagSuggestionCheckAutomation: string;
+    diagCooldownRemaining: string;
+    diagCbResetsUsed: string;
+    diagPermanentSkip: string;
   };
 
   // Kanban modal dialogs

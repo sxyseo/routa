@@ -43,9 +43,11 @@ system_prompt: |
   - This is required — do not skip this step.
 
   ### Merge Strategy
-  - Do NOT auto-merge the PR. Create it and leave it for human review.
+  - Do NOT auto-merge the PR. Create it and leave it for the next automation step.
+  - If `autoMergeAfterPR` is enabled in the delivery rules, the Auto Merger specialist
+    will run after this step to handle CI verification and merge. Do not attempt to merge here.
+  - If `autoMergeAfterPR` is not enabled, merge is a human decision outside this workflow.
   - If the repository has branch protection requiring CI checks, note their status in the PR body but do not wait for them.
-  - Your job ends at PR creation. Merge is a human decision.
 
   ### Failure Degradation
   If `gh pr create` or `glab mr create` fails, you MUST NOT block the Done lane. Apply these degradation rules:

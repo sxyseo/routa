@@ -250,6 +250,47 @@ function isExpiredEmbeddedSessionFailure(message: string | null | undefined): bo
   return message.includes("embedded ACP processes cannot be resumed on a different instance");
 }
 
+function DiagnosticSection({ diagnostic, compact, t }: {
+  diagnostic: NonNullable<TaskInfo["diagnostic"]>;
+  compact: boolean;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  const tone = diagnostic.autoRecoverable
+    ? "border-amber-300/80 bg-amber-50/80 text-amber-800 dark:border-amber-700/70 dark:bg-amber-900/15 dark:text-amber-200"
+    : "border-rose-300/80 bg-rose-50/80 text-rose-800 dark:border-rose-700/70 dark:bg-rose-900/15 dark:text-rose-200";
+
+  const categoryLabel = (t.kanban as Record<string, string>)[`diag_${diagnostic.category}`]
+    ?? diagnostic.shortLabel;
+
+  return (
+    <div className={`mt-2 rounded-lg border px-3 py-2 ${tone}`} data-testid="kanban-card-diagnostic-section">
+      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+        <span>{categoryLabel}</span>
+        {diagnostic.autoRecoverable && (
+          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-normal text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            {t.kanbanDetail.diagAutoRecoverable}
+          </span>
+        )}
+      </div>
+      <div className={`mt-1 text-xs ${compact ? "leading-[1.125rem]" : "leading-[1.3]"}`}>
+        {diagnostic.message}
+      </div>
+      {diagnostic.recoveryHint && (
+        <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+          {diagnostic.recoveryHint}
+        </div>
+      )}
+      {diagnostic.suggestions.length > 0 && (
+        <ul className="mt-1.5 space-y-0.5">
+          {diagnostic.suggestions.map((s, i) => (
+            <li key={i} className="text-[10px] text-slate-600 dark:text-slate-400">- {s}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function formatAutomationStepSummary(
   step: KanbanAutomationStep,
   availableProviders: AcpProviderInfo[],
@@ -1219,7 +1260,9 @@ function ExecutionSection({
           {manualRunTarget}
         </div>
       )}
-      {failureMessage && (
+      {task.diagnostic ? (
+        <DiagnosticSection diagnostic={task.diagnostic} compact={compact} t={t} />
+      ) : failureMessage ? (
         <div className={`mt-2 border-l-2 border-rose-300/80 px-3 py-2 text-xs text-rose-800 dark:border-rose-700/70 dark:text-rose-200 ${compact ? "leading-[1.125rem]" : "leading-[1.2rem]"}`}>
           Current run failed on {failedRunLabel}: {failureMessage}
           {" "}
@@ -1229,7 +1272,7 @@ function ExecutionSection({
               ? t.kanbanDetail.recoverLiveRunHint
               : "Reset the override or switch providers before rerunning if this looks like a provider authorization or runtime issue."}
         </div>
-      )}
+      ) : null}
       {transitionArtifacts.nextRequiredArtifacts.length > 0 && (
         <div className={`mt-2 border-l-2 border-amber-300/80 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/70 dark:text-amber-300 ${compact ? "leading-[1.125rem]" : "leading-5"}`}>
           Moving this card to {transitionArtifacts.nextColumn?.name ?? "the next stage"} requires {formatArtifactSummary(transitionArtifacts.nextRequiredArtifacts)}.

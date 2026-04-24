@@ -3,6 +3,7 @@
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import type { KanbanRequiredTaskField } from "@/core/models/kanban";
 import type { TaskAnalysisStatus } from "@/core/models/task";
+import type { TaskDiagnostic } from "@/core/kanban/task-diagnostic";
 import type { TaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
 
 export interface SessionInfo {
@@ -191,6 +192,7 @@ export interface TaskInfo {
   githubState?: string;
   githubSyncedAt?: string;
   lastSyncError?: string;
+  diagnostic?: TaskDiagnostic;
   isPullRequest?: boolean;
   sessionId?: string;
   dependencies?: string[];

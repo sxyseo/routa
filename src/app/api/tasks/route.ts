@@ -36,6 +36,7 @@ import {
   buildTaskStoryReadiness,
 } from "./task-evidence-summary";
 import { buildTaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
+import { parseTaskDiagnostic } from "@/core/kanban/task-diagnostic";
 
 export const dynamic = "force-dynamic";
 
@@ -558,6 +559,15 @@ async function serializeTask(
     githubState: task.githubState,
     githubSyncedAt: task.githubSyncedAt?.toISOString(),
     lastSyncError: task.lastSyncError,
+    diagnostic: task.lastSyncError
+      ? parseTaskDiagnostic({
+          lastSyncError: task.lastSyncError,
+          triggerSessionId: task.triggerSessionId,
+          dependencyStatus: task.dependencyStatus,
+          updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
+          columnId: task.columnId,
+        })
+      : undefined,
     isPullRequest: task.isPullRequest,
     dependencies: task.dependencies,
     parallelGroup: task.parallelGroup,

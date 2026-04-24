@@ -52,6 +52,7 @@ import {
 } from "@/core/kanban/task-contract-readiness";
 import { resolveTaskWorktreeTruth } from "@/core/kanban/task-worktree-truth";
 import { checkDependencyGate, updateDependencyRelations, applyDependencyStatus, validateParentAssignment, detectParentCycle } from "@/core/kanban/dependency-gate";
+import { parseTaskDiagnostic } from "@/core/kanban/task-diagnostic";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,15 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
   return {
     ...task,
     comments,
+    diagnostic: task.lastSyncError
+      ? parseTaskDiagnostic({
+          lastSyncError: task.lastSyncError,
+          triggerSessionId: task.triggerSessionId,
+          dependencyStatus: task.dependencyStatus,
+          updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
+          columnId: task.columnId,
+        })
+      : undefined,
     artifactSummary: evidenceSummary.artifact,
     evidenceSummary,
     storyReadiness,

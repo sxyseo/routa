@@ -436,36 +436,64 @@ export class KanbanWorkflowOrchestrator {
         }
       }
 
-      // Done-lane early exit: if the card already has a PR URL, it is genuinely done.
-      // Skip session creation entirely — requiring laneSessions was too strict and
-      // caused cards with existing PRs to re-enter automation every scan cycle.
+      // Done-lane early exit: if the card already has a PR URL, decide whether
+      // it is genuinely done or needs auto-merge processing.
       const freshTask = task ? await this.taskStore.get(data.cardId) : undefined;
       if (freshTask?.pullRequestUrl) {
-        // Mark COMPLETED so LaneScanner skips this card on future ticks.
-        if (freshTask.status !== "COMPLETED") {
-          if (freshTask.version !== undefined && this.taskStore.atomicUpdate) {
-            await this.taskStore.atomicUpdate(data.cardId, freshTask.version, {
-              status: "COMPLETED" as TaskStatus,
-            });
-          } else {
-            freshTask.status = "COMPLETED" as TaskStatus;
-            freshTask.updatedAt = new Date();
-            await this.taskStore.save(freshTask);
+        const deliveryRules = resolved.automation?.deliveryRules;
+        const wantsAutoMerge = deliveryRules?.autoMergeAfterPR === true;
+        const prAlreadyMerged = Boolean(freshTask.pullRequestMergedAt);
+        const prIsPlaceholder = freshTask.pullRequestUrl === "manual"
+          || freshTask.pullRequestUrl === "already-merged";
+
+        const isFullyDone = prAlreadyMerged || !wantsAutoMerge || prIsPlaceholder;
+
+        if (isFullyDone) {
+          if (freshTask.status !== "COMPLETED") {
+            if (freshTask.version !== undefined && this.taskStore.atomicUpdate) {
+              await this.taskStore.atomicUpdate(data.cardId, freshTask.version, {
+                status: "COMPLETED" as TaskStatus,
+              });
+            } else {
+              freshTask.status = "COMPLETED" as TaskStatus;
+              freshTask.updatedAt = new Date();
+              await this.taskStore.save(freshTask);
+            }
+            console.log(
+              `[WorkflowOrchestrator] Done-lane terminal guard: card ${data.cardId} ` +
+              `${prAlreadyMerged ? "PR merged" : `has PR (${freshTask.pullRequestUrl})`}. Marked COMPLETED.`,
+            );
           }
           console.log(
-            `[WorkflowOrchestrator] Done-lane terminal guard: card ${data.cardId} ` +
-            `has PR (${freshTask.pullRequestUrl}). Marked COMPLETED.`,
+            `[WorkflowOrchestrator] Done-lane early exit for card ${data.cardId}: ` +
+            `PR exists (${freshTask.pullRequestUrl}). Skipping automation.`,
           );
+          return;
         }
+
+        // autoMergeAfterPR is true and PR is not yet merged — fall through
+        // to allow the automation pipeline (with auto-merger) to run.
         console.log(
-          `[WorkflowOrchestrator] Done-lane early exit for card ${data.cardId}: ` +
-          `PR exists (${freshTask.pullRequestUrl}). Skipping automation.`,
+          `[WorkflowOrchestrator] Done-lane continuing for card ${data.cardId}: ` +
+          `auto-merge requested, PR not yet merged (${freshTask.pullRequestUrl}).`,
         );
-        return;
       }
 
-      // Auto-merger is no longer injected as a default done-lane step.
-      // If needed, it should be added explicitly via board automation config.
+      // Conditionally inject auto-merger step when deliveryRules.autoMergeAfterPR is true.
+      const doneDeliveryRules = resolved.automation?.deliveryRules;
+      if (doneDeliveryRules?.autoMergeAfterPR) {
+        const hasAutoMerger = steps.some(
+          (s) => s.specialistId === "kanban-auto-merger",
+        );
+        if (!hasAutoMerger) {
+          steps.push({
+            id: "auto-merger",
+            role: "DEVELOPER",
+            specialistId: "kanban-auto-merger",
+            specialistName: "Auto Merger",
+          });
+        }
+      }
     }
 
     // Append fallback agent chain steps if enabled

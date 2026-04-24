@@ -8,6 +8,7 @@ import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
 import { parseCanonicalStory } from "@/core/kanban/canonical-story";
 import { formatArtifactLabel, resolveKanbanTransitionArtifacts } from "@/core/kanban/transition-artifacts";
+import type { TaskDiagnosticCategory } from "@/core/kanban/task-diagnostic";
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import { type KanbanSpecialistLanguage } from "./kanban-specialist-language";
 import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
@@ -135,6 +136,20 @@ function getSyncTone(
     return "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40";
   }
   return "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
+}
+
+function getDiagnosticTone(category: TaskDiagnosticCategory): string {
+  switch (category) {
+    case "circuit_breaker":
+    case "rate_limited":
+      return "bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40";
+    case "dependency_blocked":
+      return "bg-orange-100 text-orange-700 ring-1 ring-inset ring-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:ring-orange-900/40";
+    case "stale_session":
+      return "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-900/40";
+    default:
+      return "bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:ring-rose-900/40";
+  }
 }
 
 function getSyncLabel(
@@ -370,9 +385,19 @@ function KanbanCardSurface({
             <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${sessionTone}`}>
               {resolvedStatusLabel}
             </span>
-            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${syncTone}`}>
-              {resolvedSyncLabel}
-            </span>
+            {task.diagnostic ? (
+              <span
+                className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${getDiagnosticTone(task.diagnostic.category)}`}
+                title={task.diagnostic.message}
+                data-testid="kanban-card-diagnostic-badge"
+              >
+                {(t.kanban as Record<string, string>)[`diag_${task.diagnostic.category}`] ?? task.diagnostic.shortLabel}
+              </span>
+            ) : (
+              <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${syncTone}`}>
+                {resolvedSyncLabel}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
