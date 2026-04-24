@@ -556,6 +556,12 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
         hooks: string;
         cicd: string;
       };
+      gitlabCi: {
+        loading: string;
+        retry: string;
+        noCiFile: string;
+        noStages: string;
+      };
     };
     backToHome: string;
     fluencyDescription: string;

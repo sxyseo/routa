@@ -399,6 +399,12 @@ export const enExtended: ExtendedTranslationDictionarySections = {
         external: "External",
       },
     },
+    gitlabCi: {
+      loading: "Loading GitLab CI pipeline...",
+      retry: "Retry",
+      noCiFile: 'No ".gitlab-ci.yml" file found for this repository.',
+      noStages: "No stages or jobs defined in the pipeline.",
+    },
     supportState: {
       invalidRepoPath: "The current repository path is invalid or inaccessible; this view cannot be rendered.",
     },

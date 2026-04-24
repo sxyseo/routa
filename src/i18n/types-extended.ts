@@ -398,6 +398,12 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
         external: string;
       };
     };
+    gitlabCi: {
+      loading: string;
+      retry: string;
+      noCiFile: string;
+      noStages: string;
+    };
     supportState: {
       invalidRepoPath: string;
     };

@@ -381,6 +381,10 @@ type ArchitectureRefreshState = {
   token: number;
 };
 
+type GitLabCIRefreshState = {
+  token: number;
+};
+
 function buildHarnessQuery(workspaceId?: string, codebaseId?: string, repoPath?: string) {
   const query = new URLSearchParams();
   if (workspaceId) {
@@ -794,14 +798,15 @@ export function useHarnessSettingsData({
   const [hooksState, setHooksState] = useState<QueryState<HooksResponse>>(emptyQueryState);
   const [instructionsState, setInstructionsState] = useState<QueryState<InstructionsResponse>>(emptyQueryState);
   const [githubActionsState, setGithubActionsState] = useState<QueryState<GitHubActionsFlowsResponse>>(emptyQueryState);
+  const [gitlabCiState, setGitlabCiState] = useState<QueryState<GitLabCIResponse>>(emptyQueryState);
   const [agentHooksState, setAgentHooksState] = useState<QueryState<AgentHooksResponse>>(emptyQueryState);
   const [specSourcesState, setSpecSourcesState] = useState<QueryState<SpecDetectionResponse>>(emptyQueryState);
   const [designDecisionsState, setDesignDecisionsState] = useState<QueryState<DesignDecisionResponse>>(emptyQueryState);
   const [codeownersState, setCodeownersState] = useState<QueryState<CodeownersResponse>>(emptyQueryState);
   const [automationsState, setAutomationsState] = useState<QueryState<HarnessAutomationResponse>>(emptyQueryState);
-  const [gitlabCiState, setGitlabCiState] = useState<QueryState<GitLabCIResponse>>(emptyQueryState);
   const [instructionsRefreshState, setInstructionsRefreshState] = useState<InstructionRefreshState>({ contextKey: "", token: 0 });
   const [architectureRefreshState, setArchitectureRefreshState] = useState<ArchitectureRefreshState>({ contextKey: "", token: 0 });
+  const [gitlabCiRefreshState, setGitlabCiRefreshState] = useState<GitLabCIRefreshState>({ token: 0 });
   const instructionsContextKey = baseQuery?.toString() ?? "";
   const architectureContextKey = architectureQuery?.toString() ?? "";
   useEffect(() => { setArchitectureState(emptyQueryState()); }, [architectureContextKey]);
@@ -1061,6 +1066,45 @@ export function useHarnessSettingsData({
 
   useEffect(() => {
     if (!baseQuery) {
+      setGitlabCiState(emptyQueryState());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchGitlabCI = async () => {
+      setGitlabCiState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await desktopAwareFetch(`/api/harness/gitlab-ci?${baseQuery.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load GitLab CI pipeline");
+        }
+        if (!cancelled) {
+          setGitlabCiState({
+            loading: false,
+            error: null,
+            data: normalizeGitLabCIResponse(payload as Partial<GitLabCIResponse>),
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setGitlabCiState({
+            loading: false,
+            error: error instanceof Error ? error.message : String(error),
+            data: null,
+          });
+        }
+      }
+    };
+
+    void fetchGitlabCI();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseQuery, gitlabCiRefreshState.token]);
+
+  useEffect(() => {
+    if (!baseQuery) {
       setAgentHooksState(emptyQueryState());
       return;
     }
@@ -1111,6 +1155,10 @@ export function useHarnessSettingsData({
       token: current.contextKey === architectureContextKey ? current.token + 1 : 1,
     }));
   }, [architectureContextKey]);
+
+  const reloadGitlabCI = useCallback(() => {
+    setGitlabCiRefreshState((current) => ({ token: current.token + 1 }));
+  }, []);
 
   useEffect(() => {
     if (!baseQuery) {
@@ -1268,45 +1316,6 @@ export function useHarnessSettingsData({
     };
   }, [baseQuery]);
 
-  useEffect(() => {
-    if (!baseQuery) {
-      setGitlabCiState(emptyQueryState());
-      return;
-    }
-
-    let cancelled = false;
-    const fetchGitLabCI = async () => {
-      setGitlabCiState((current) => ({ ...current, loading: true, error: null }));
-      try {
-        const response = await desktopAwareFetch(`/api/harness/gitlab-ci?${baseQuery.toString()}`);
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load GitLab CI config");
-        }
-        if (!cancelled) {
-          setGitlabCiState({
-            loading: false,
-            error: null,
-            data: normalizeGitLabCIResponse(payload as Partial<GitLabCIResponse>),
-          });
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setGitlabCiState({
-            loading: false,
-            error: error instanceof Error ? error.message : String(error),
-            data: null,
-          });
-        }
-      }
-    };
-
-    void fetchGitLabCI();
-    return () => {
-      cancelled = true;
-    };
-  }, [baseQuery]);
-
   return {
     specsState,
     planState,
@@ -1321,6 +1330,7 @@ export function useHarnessSettingsData({
     codeownersState,
     automationsState,
     reloadArchitecture,
+    reloadGitlabCI,
     reloadInstructions,
   };
 }

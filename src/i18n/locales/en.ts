@@ -554,6 +554,12 @@ const en: TranslationDictionary = {
         hooks: "Hook Systems",
         cicd: "CI/CD",
       },
+      gitlabCi: {
+        loading: "Loading GitLab CI pipeline...",
+        retry: "Retry",
+        noCiFile: 'No ".gitlab-ci.yml" file found for this repository.',
+        noStages: "No stages or jobs defined in the pipeline.",
+      },
     },
     backToHome: "Back to Home",
     fluencyDescription: "Analyze repository fluency, blockers, and next actions across the default profiles.",

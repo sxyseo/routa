@@ -550,6 +550,12 @@ const zh: TranslationDictionary = {
         hooks: "Hook 系统",
         cicd: "CI/CD",
       },
+      gitlabCi: {
+        loading: "正在加载 GitLab CI 流水线...",
+        retry: "重试",
+        noCiFile: "未找到该仓库的 \".gitlab-ci.yml\" 文件。",
+        noStages: "流水线中未定义 stages 或 jobs。",
+      },
     },
     backToHome: "返回首页",
     fluencyDescription: "分析仓库流畅度、阻碍因素和默认配置文件中的下一步行动。",

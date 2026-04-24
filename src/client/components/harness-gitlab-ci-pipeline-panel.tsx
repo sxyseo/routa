@@ -59,6 +59,7 @@ type HarnessGitLabCIPipelinePanelProps = {
   data?: GitLabCIResponse | null;
   loading?: boolean;
   error?: string | null;
+  onRetry?: () => void;
   variant?: "full" | "compact";
   hideHeader?: boolean;
 };
@@ -336,6 +337,7 @@ export function HarnessGitLabCIPipelinePanel({
   data,
   loading,
   error,
+  onRetry,
   variant = "full",
   hideHeader = false,
 }: HarnessGitLabCIPipelinePanelProps) {
@@ -453,7 +455,20 @@ export function HarnessGitLabCIPipelinePanel({
         actions={stateBadge}
         variant={variant}
       >
-        <HarnessSectionStateFrame tone="error">{resolvedState.error}</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame tone="error">
+          <div className="flex items-center justify-between gap-3">
+            <span>{resolvedState.error}</span>
+            {onRetry ? (
+              <button
+                type="button"
+                className="desktop-btn desktop-btn-secondary shrink-0 text-[10px]"
+                onClick={onRetry}
+              >
+                {t.settings.harness.gitlabCi?.retry ?? "Retry"}
+              </button>
+            ) : null}
+          </div>
+        </HarnessSectionStateFrame>
       </HarnessSectionCard>
     );
   }

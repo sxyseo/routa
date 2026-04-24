@@ -399,6 +399,12 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
         external: "外部",
       },
     },
+    gitlabCi: {
+      loading: "正在加载 GitLab CI 流水线...",
+      retry: "重试",
+      noCiFile: "未找到该仓库的 \".gitlab-ci.yml\" 文件。",
+      noStages: "流水线中未定义阶段或作业。",
+    },
     supportState: {
       invalidRepoPath: "当前仓库路径无效或不可访问，无法渲染该视图。",
     },
