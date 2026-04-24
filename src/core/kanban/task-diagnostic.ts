@@ -18,6 +18,7 @@ export type TaskDiagnosticCategory =
   | "pr_failure"
   | "fan_in_conflict"
   | "stale_session"
+  | "watchdog_recovery"
   | "unknown_error";
 
 export interface TaskDiagnostic {
@@ -197,7 +198,25 @@ export function parseTaskDiagnostic(
     };
   }
 
-  // 8. Fallback
+  // 8. Watchdog recovery (session recovered after inactivity / failure)
+  if (lastSyncError.includes("recovered after session")) {
+    const attemptMatch = lastSyncError.match(/Attempt (\d+)\/(\d+)/);
+    return {
+      category: "watchdog_recovery",
+      shortLabel: "Recovered",
+      message: lastSyncError,
+      rawError: lastSyncError,
+      autoRecoverable: true,
+      recoveryHint: "会话已自动恢复，继续执行中",
+      suggestions: ["恢复是自动进行的，无需手动干预", "如果反复恢复，检查代理配置"],
+      meta: {
+        resetCount: attemptMatch?.[1] ? parseInt(attemptMatch[1], 10) : undefined,
+        maxResets: attemptMatch?.[2] ? parseInt(attemptMatch[2], 10) : undefined,
+      },
+    };
+  }
+
+  // 9. Fallback
   return {
     category: "unknown_error",
     shortLabel: "Error",

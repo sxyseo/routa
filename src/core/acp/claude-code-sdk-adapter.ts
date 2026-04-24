@@ -919,12 +919,20 @@ export class ClaudeCodeSdkAdapter {
 
       case "result": {
         if (msg.is_error || msg.subtype !== "success") {
-          const errorText =
-            msg.subtype === "error_max_turns"
-              ? "Max turns reached"
-              : msg.subtype === "error_max_budget_usd"
-              ? "Budget limit exceeded"
-              : "Agent execution error";
+          let errorText: string;
+          switch (msg.subtype) {
+            case "error_max_turns": errorText = "Max turns reached"; break;
+            case "error_max_budget_usd": errorText = "Budget limit exceeded"; break;
+            case "error_max_structured_output_retries": errorText = "Max structured output retries"; break;
+            case "error_during_execution": errorText = "Error during execution"; break;
+            default: errorText = "Agent execution error";
+          }
+          const sdkErrors = msg.is_error && "errors" in msg
+            ? (msg as { errors: string[] }).errors
+            : undefined;
+          if (sdkErrors && sdkErrors.length > 0) {
+            errorText += `: ${sdkErrors.join("; ")}`;
+          }
           return createNotification("session/update", {
             sessionId,
             type: "error",

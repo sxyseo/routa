@@ -453,9 +453,11 @@ export class KanbanWorkflowOrchestrator {
             if (freshTask.version !== undefined && this.taskStore.atomicUpdate) {
               await this.taskStore.atomicUpdate(data.cardId, freshTask.version, {
                 status: "COMPLETED" as TaskStatus,
+                lastSyncError: undefined,
               });
             } else {
               freshTask.status = "COMPLETED" as TaskStatus;
+              freshTask.lastSyncError = undefined;
               freshTask.updatedAt = new Date();
               await this.taskStore.save(freshTask);
             }
@@ -521,7 +523,7 @@ export class KanbanWorkflowOrchestrator {
         `despite repeat limit (recovery routing).`,
       );
     } else if (hasExceededNonDevAutomationRepeatLimit(task, targetColumn.id, targetColumn.stage)) {
-      if (task) {
+      if (task && task.status !== "COMPLETED") {
         task.lastSyncError = buildNonDevAutomationRepeatLimitMessage(
           targetColumn.name,
           getNonDevAutomationRunCount(task, targetColumn.id, targetColumn.stage),
@@ -983,6 +985,7 @@ export class KanbanWorkflowOrchestrator {
               if (freshTask.version !== undefined && this.taskStore.atomicUpdate) {
                 const ok = await this.taskStore.atomicUpdate(cardId, freshTask.version, {
                   status: "COMPLETED" as import("../models/task").TaskStatus,
+                  lastSyncError: undefined,
                 });
                 if (!ok) {
                   console.log(
@@ -992,6 +995,7 @@ export class KanbanWorkflowOrchestrator {
                 }
               } else {
                 freshTask.status = "COMPLETED" as import("../models/task").TaskStatus;
+                freshTask.lastSyncError = undefined;
                 freshTask.updatedAt = new Date();
                 await this.taskStore.save(freshTask);
               }

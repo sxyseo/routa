@@ -464,6 +464,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     diag_pr_failure: "PR 失败",
     diag_fan_in_conflict: "合并冲突",
     diag_stale_session: "会话过期",
+    diag_watchdog_recovery: "已恢复",
     diag_unknown_error: "错误",
     deleteTask: "删除任务",
     openCard: "打开",

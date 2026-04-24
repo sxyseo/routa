@@ -569,6 +569,10 @@ async function serializeTask(
         })
       : undefined,
     isPullRequest: task.isPullRequest,
+    pullRequestUrl: task.pullRequestUrl,
+    pullRequestMergedAt: task.pullRequestMergedAt instanceof Date
+      ? task.pullRequestMergedAt.toISOString()
+      : task.pullRequestMergedAt,
     dependencies: task.dependencies,
     parallelGroup: task.parallelGroup,
     workspaceId: task.workspaceId,

@@ -194,6 +194,8 @@ export interface TaskInfo {
   lastSyncError?: string;
   diagnostic?: TaskDiagnostic;
   isPullRequest?: boolean;
+  pullRequestUrl?: string;
+  pullRequestMergedAt?: string;
   sessionId?: string;
   dependencies?: string[];
   dependencyStatus?: "clear" | "blocked";

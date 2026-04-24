@@ -93,6 +93,9 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     deliveryReadiness,
     childTasks: childTasks.length > 0 ? childTasks : undefined,
     githubSyncedAt: task.githubSyncedAt?.toISOString(),
+    pullRequestMergedAt: task.pullRequestMergedAt instanceof Date
+      ? task.pullRequestMergedAt.toISOString()
+      : task.pullRequestMergedAt,
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
   };
@@ -430,6 +433,10 @@ export async function PATCH(
     archiveActiveTaskSession(nextTask);
     nextTask.triggerSessionId = undefined;
     nextTask.lastSyncError = undefined;
+    // Reset COMPLETED status so the terminal guard can re-settle after rerun
+    if (nextTask.status === "COMPLETED") {
+      nextTask.status = TaskStatus.IN_PROGRESS;
+    }
     getKanbanSessionQueue(system).removeCardJob(taskId);
   }
 

@@ -1035,6 +1035,14 @@ function ExecutionSection({
     autoProviderId: selectedProvider ?? undefined,
   });
   const canRunTask = effectiveAutomation.canRun && task.columnId !== "done";
+  const canRerunDoneTask = effectiveAutomation.canRun
+    && task.columnId === "done"
+    && !task.triggerSessionId
+    && (
+      Boolean(task.lastSyncError)
+      || (Boolean(task.pullRequestUrl) && !task.pullRequestMergedAt)
+      || sessionInfo?.acpStatus === "error"
+    );
   const hasCardOverride = effectiveAutomation.source === "card";
   const overrideProviderValue = hasCardOverride ? task.assignedProvider ?? "" : "";
   const overrideRoleValue = hasCardOverride ? task.assignedRole ?? "DEVELOPER" : "DEVELOPER";
@@ -1147,7 +1155,7 @@ function ExecutionSection({
           />
         )}
       </div>
-      {canRunTask && !hasRecordedRuns && (
+      {(canRunTask || canRerunDoneTask) && !hasRecordedRuns && (
         <div className={`mt-2 border-l-2 border-sky-300/70 px-3 py-2 text-xs text-sky-800 dark:border-sky-700/70 dark:text-sky-200 ${compact ? "leading-[1.125rem]" : "leading-5"}`}>
           {sessionCopy.emptyPaneDescription}
           {" "}
@@ -1253,7 +1261,7 @@ function ExecutionSection({
           onPatchTask={onPatchTask}
         />
       )}
-      {canRunTask && (usesSelectedProvider || manualRunTarget !== lanePipeline || hasCardOverride) && (
+      {(canRunTask || canRerunDoneTask) && (usesSelectedProvider || manualRunTarget !== lanePipeline || hasCardOverride) && (
         <div className={`mt-2 border-l-2 border-sky-300/80 px-3 py-2 text-xs text-sky-800 dark:border-sky-700/70 dark:text-sky-200 ${compact ? "leading-[1.125rem]" : "leading-[1.2rem]"}`}>
           Manual {hasRecordedRuns ? "reruns" : "runs"} use {manualRunSourceLabel}:
           {" "}
@@ -1297,7 +1305,7 @@ function ExecutionSection({
             {t.kanbanDetail.resetOverride}
           </button>
         )}
-        {canRunTask && (
+        {(canRunTask || canRerunDoneTask) && (
           <button
             onClick={async () => {
               await onRetryTrigger(task.id);

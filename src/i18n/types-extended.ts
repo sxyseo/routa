@@ -467,6 +467,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     diag_pr_failure: string;
     diag_fan_in_conflict: string;
     diag_stale_session: string;
+    diag_watchdog_recovery: string;
     diag_unknown_error: string;
     // Card labels
     deleteTask: string;
