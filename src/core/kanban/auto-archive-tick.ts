@@ -41,34 +41,52 @@ export function resolveAutoArchiveDays(metadata?: Record<string, string>): numbe
 
 /**
  * Check whether a task has been sitting in the done column long enough.
- * Merged cards (pullRequestMergedAt set) use the shorter POST_MERGE_ARCHIVE_MS
- * threshold; non-PR cards use the configured archiveDays.
+ *
+ * Uses POST_MERGE_ARCHIVE_MS (1 hour) as the threshold when any of:
+ *   - pullRequestMergedAt is set (PR merged)
+ *   - pullRequestUrl is "manual" or "already-merged" (no real PR needed)
+ *   - No pullRequestUrl at all (no PR was created)
+ *
+ * All these mean the card is fully done — the only remaining question is
+ * whether enough time has passed for the team to review before archiving.
+ *
+ * The configured archiveDays is only used as fallback for edge cases.
  *
  * Note: hasPendingAutomation() and hasOpenPR() are checked separately in the
- * tick loop, so by the time a merged card passes the age check + those guards,
- * the pipeline is guaranteed to be complete.
+ * tick loop, so the pipeline is guaranteed to be complete before archiving.
  */
 export function isCardOldEnough(task: Task, archiveDays: number, now: Date = new Date()): boolean {
-  // Merged cards: eligible after POST_MERGE_ARCHIVE_MS (default 1 hour)
+  // Determine the start time for the archive countdown
+  let anchorTime: number | undefined;
+
   if (task.pullRequestMergedAt) {
-    const mergedAt = task.pullRequestMergedAt instanceof Date
+    // PR merged → countdown from merge time
+    anchorTime = task.pullRequestMergedAt instanceof Date
       ? task.pullRequestMergedAt.getTime()
       : new Date(task.pullRequestMergedAt as string | number).getTime();
-    return now.getTime() - mergedAt >= POST_MERGE_ARCHIVE_MS;
-  }
-  // Use the latest lane session entry for the done column to determine when
-  // the card entered done. Fall back to updatedAt.
-  const doneSessions = (task.laneSessions ?? []).filter(
-    (s: TaskLaneSession) => s.columnId === task.columnId || s.columnId === "done",
-  );
-  const latestDoneSession = doneSessions[doneSessions.length - 1];
-  const enteredAt = latestDoneSession?.startedAt
-    ? new Date(latestDoneSession.startedAt)
-    : task.updatedAt;
+  } else {
+    // No real PR (manual, already-merged, or never created) → countdown from
+    // when the card entered the done column
+    const doneSessions = (task.laneSessions ?? []).filter(
+      (s: TaskLaneSession) => s.columnId === task.columnId || s.columnId === "done",
+    );
+    const latestDoneSession = doneSessions[doneSessions.length - 1];
+    const enteredAt = latestDoneSession?.startedAt
+      ? new Date(latestDoneSession.startedAt)
+      : task.updatedAt;
 
-  if (!enteredAt) return false;
-  const elapsedMs = now.getTime() - enteredAt.getTime();
-  return elapsedMs >= archiveDays * 24 * 60 * 60 * 1000;
+    if (enteredAt) {
+      anchorTime = enteredAt instanceof Date
+        ? enteredAt.getTime()
+        : new Date(enteredAt as string | number).getTime();
+    }
+  }
+
+  if (anchorTime !== undefined) {
+    return now.getTime() - anchorTime >= POST_MERGE_ARCHIVE_MS;
+  }
+
+  return false;
 }
 
 /**
@@ -88,10 +106,15 @@ export function hasPendingAutomation(task: Task): boolean {
 
 /**
  * Check whether a task has an open (non-merged) PR.
- * A PR is considered open if `pullRequestUrl` is set but `pullRequestMergedAt` is not.
+ * A PR is considered open if `pullRequestUrl` is set to a real URL (not a
+ * sentinel value like "manual" or "already-merged") and `pullRequestMergedAt`
+ * is not set.
  */
+const PR_SENTINELS = new Set(["manual", "already-merged"]);
+
 export function hasOpenPR(task: Task): boolean {
-  return Boolean(task.pullRequestUrl && !task.pullRequestMergedAt);
+  if (!task.pullRequestUrl || task.pullRequestMergedAt) return false;
+  return !PR_SENTINELS.has(task.pullRequestUrl);
 }
 
 /**
