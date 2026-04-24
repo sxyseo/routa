@@ -19,6 +19,7 @@ import { HarnessFitnessFilesDashboard } from "@/client/components/harness-fitnes
 import { HarnessGovernanceLoopGraph } from "@/client/components/harness-governance-loop-graph";
 import { HarnessLifecycleView } from "@/client/components/harness-lifecycle-view";
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
+import { HarnessGitLabCIPipelinePanel } from "@/client/components/harness-gitlab-ci-pipeline-panel";
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
 import { HarnessAgentHookPanel } from "@/client/components/harness-agent-hook-panel";
 import { HarnessRepoSignalsPanel } from "@/client/components/harness-repo-signals-panel";
@@ -229,6 +230,7 @@ export default function HarnessConsolePage() {
     agentHooksState,
     instructionsState,
     githubActionsState,
+    gitlabCiState,
     specSourcesState,
     designDecisionsState,
     codeownersState,
@@ -409,7 +411,9 @@ export default function HarnessConsolePage() {
         }
       : null);
     map.set("entrix-fitness", specFiles.length > 0 ? { label: `${dimensionSpecs.length}d / ${planState.data?.metricCount ?? 0}m` } : null);
-    map.set("ci-cd", workflowCount > 0 ? { label: `${workflowCount} flows` } : null);
+    map.set("ci-cd", workflowCount > 0 || (gitlabCiState.data?.pipeline?.totalJobs ?? 0) > 0
+      ? { label: `${workflowCount + (gitlabCiState.data?.pipeline?.totalJobs ?? 0)} items` }
+      : null);
     return map;
   }, [
     automationsState.data,
@@ -424,6 +428,7 @@ export default function HarnessConsolePage() {
     resolvedCodeownersState.data,
     specFiles.length,
     specSourcesState.data,
+    gitlabCiState.data?.pipeline?.totalJobs,
     workflowCount,
   ]);
 
@@ -487,7 +492,12 @@ export default function HarnessConsolePage() {
       case "test":
         return <HarnessRepoSignalsPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...props} mode="test" variant="compact" />;
       case "release":
-        return <HarnessGitHubActionsFlowPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...props} data={githubActionsState.data} loading={githubActionsState.loading} error={githubActionsState.error} variant="compact" initialCategory="Release" />;
+        return (
+          <div className="space-y-3">
+            <HarnessGitHubActionsFlowPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...props} data={githubActionsState.data} loading={githubActionsState.loading} error={githubActionsState.error} variant="compact" initialCategory="Release" />
+            <HarnessGitLabCIPipelinePanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} repoLabel={selectedRepoLabel} data={gitlabCiState.data} loading={gitlabCiState.loading} error={gitlabCiState.error} variant="compact" />
+          </div>
+        );
       case "review":
         return (
           <div className="space-y-3">
@@ -498,7 +508,12 @@ export default function HarnessConsolePage() {
         );
       case "commit":
       case "post-commit":
-        return <HarnessGitHubActionsFlowPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...props} data={githubActionsState.data} loading={githubActionsState.loading} error={githubActionsState.error} variant="compact" />;
+        return (
+          <div className="space-y-3">
+            <HarnessGitHubActionsFlowPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...props} data={githubActionsState.data} loading={githubActionsState.loading} error={githubActionsState.error} variant="compact" />
+            <HarnessGitLabCIPipelinePanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} repoLabel={selectedRepoLabel} data={gitlabCiState.data} loading={gitlabCiState.loading} error={gitlabCiState.error} variant="compact" />
+          </div>
+        );
       default:
         return <div className="p-3 text-[11px] text-desktop-text-secondary">选择 Lifecycle 节点查看对应组件的上下文视图。</div>;
     }
@@ -509,6 +524,9 @@ export default function HarnessConsolePage() {
     githubActionsState.data,
     githubActionsState.error,
     githubActionsState.loading,
+    gitlabCiState.data,
+    gitlabCiState.error,
+    gitlabCiState.loading,
     hooksState.data,
     hooksState.error,
     hooksState.loading,
@@ -918,7 +936,12 @@ export default function HarnessConsolePage() {
           </div>
         );
       case "ci-cd":
-        return <HarnessGitHubActionsFlowPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...sharedProps} data={githubActionsState.data} loading={githubActionsState.loading} error={githubActionsState.error} hideHeader />;
+        return (
+          <div className="space-y-4">
+            <HarnessGitHubActionsFlowPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...sharedProps} data={githubActionsState.data} loading={githubActionsState.loading} error={githubActionsState.error} hideHeader />
+            <HarnessGitLabCIPipelinePanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} repoLabel={selectedRepoLabel} data={gitlabCiState.data} loading={gitlabCiState.loading} error={gitlabCiState.error} hideHeader />
+          </div>
+        );
       default:
         return null;
     }

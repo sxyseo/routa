@@ -231,6 +231,42 @@ export type GitHubActionsFlowsResponse = {
   warnings: string[];
 };
 
+export type GitLabCIJob = {
+  id: string;
+  name: string;
+  stage: string;
+  image: string | null;
+  kind: "build" | "test" | "deploy" | "security" | "review";
+  scriptCount: number;
+  needs: string[];
+  dependencies: string[];
+  tags: string[];
+  allowFailure: boolean;
+  when: string;
+};
+
+export type GitLabCIStage = {
+  name: string;
+  jobs: GitLabCIJob[];
+};
+
+export type GitLabCIPipeline = {
+  yaml: string;
+  stages: GitLabCIStage[];
+  jobs: GitLabCIJob[];
+  defaultImage: string | null;
+  totalStages: number;
+  totalJobs: number;
+};
+
+export type GitLabCIResponse = {
+  generatedAt: string;
+  repoRoot: string;
+  ciFilePath: string | null;
+  pipeline: GitLabCIPipeline | null;
+  warnings: string[];
+};
+
 export type { CodeownersResponse };
 
 export type ArchitectureSuiteName = "boundaries" | "cycles";
@@ -598,6 +634,41 @@ function normalizeGitHubActionsFlowsResponse(
   };
 }
 
+function normalizeGitLabCIResponse(
+  payload: Partial<GitLabCIResponse> | null | undefined,
+): GitLabCIResponse {
+  const pipeline = payload?.pipeline;
+  return {
+    generatedAt: payload?.generatedAt ?? "",
+    repoRoot: payload?.repoRoot ?? "",
+    ciFilePath: payload?.ciFilePath ?? null,
+    pipeline: pipeline
+      ? {
+        yaml: pipeline.yaml ?? "",
+        stages: safeArray(pipeline.stages).map((stage) => ({
+          name: stage?.name ?? "",
+          jobs: safeArray(stage?.jobs).map((job) => ({
+            ...job,
+            needs: safeArray(job?.needs),
+            dependencies: safeArray(job?.dependencies),
+            tags: safeArray(job?.tags),
+          })),
+        })),
+        jobs: safeArray(pipeline.jobs).map((job) => ({
+          ...job,
+          needs: safeArray(job?.needs),
+          dependencies: safeArray(job?.dependencies),
+          tags: safeArray(job?.tags),
+        })),
+        defaultImage: pipeline.defaultImage ?? null,
+        totalStages: pipeline.totalStages ?? 0,
+        totalJobs: pipeline.totalJobs ?? 0,
+      }
+      : null,
+    warnings: safeArray(payload?.warnings),
+  };
+}
+
 function normalizeAgentHooksResponse(
   payload: Partial<AgentHooksResponse> | null | undefined,
 ): AgentHooksResponse {
@@ -728,6 +799,7 @@ export function useHarnessSettingsData({
   const [designDecisionsState, setDesignDecisionsState] = useState<QueryState<DesignDecisionResponse>>(emptyQueryState);
   const [codeownersState, setCodeownersState] = useState<QueryState<CodeownersResponse>>(emptyQueryState);
   const [automationsState, setAutomationsState] = useState<QueryState<HarnessAutomationResponse>>(emptyQueryState);
+  const [gitlabCiState, setGitlabCiState] = useState<QueryState<GitLabCIResponse>>(emptyQueryState);
   const [instructionsRefreshState, setInstructionsRefreshState] = useState<InstructionRefreshState>({ contextKey: "", token: 0 });
   const [architectureRefreshState, setArchitectureRefreshState] = useState<ArchitectureRefreshState>({ contextKey: "", token: 0 });
   const instructionsContextKey = baseQuery?.toString() ?? "";
@@ -1196,6 +1268,45 @@ export function useHarnessSettingsData({
     };
   }, [baseQuery]);
 
+  useEffect(() => {
+    if (!baseQuery) {
+      setGitlabCiState(emptyQueryState());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchGitLabCI = async () => {
+      setGitlabCiState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await desktopAwareFetch(`/api/harness/gitlab-ci?${baseQuery.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load GitLab CI config");
+        }
+        if (!cancelled) {
+          setGitlabCiState({
+            loading: false,
+            error: null,
+            data: normalizeGitLabCIResponse(payload as Partial<GitLabCIResponse>),
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setGitlabCiState({
+            loading: false,
+            error: error instanceof Error ? error.message : String(error),
+            data: null,
+          });
+        }
+      }
+    };
+
+    void fetchGitLabCI();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseQuery]);
+
   return {
     specsState,
     planState,
@@ -1204,6 +1315,7 @@ export function useHarnessSettingsData({
     agentHooksState,
     instructionsState,
     githubActionsState,
+    gitlabCiState,
     specSourcesState,
     designDecisionsState,
     codeownersState,
