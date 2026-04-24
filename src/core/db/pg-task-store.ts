@@ -55,6 +55,8 @@ export class PgTaskStore implements TaskStore {
         vcsSyncedAt: task.vcsSyncedAt,
         lastSyncError: task.lastSyncError,
         isPullRequest: task.isPullRequest,
+        pullRequestUrl: task.pullRequestUrl ?? null,
+        pullRequestMergedAt: task.pullRequestMergedAt ?? null,
         dependencies: task.dependencies,
         blocking: task.blocking ?? [],
         dependencyStatus: task.dependencyStatus,
@@ -111,6 +113,8 @@ export class PgTaskStore implements TaskStore {
           vcsSyncedAt: task.vcsSyncedAt,
           lastSyncError: task.lastSyncError,
           isPullRequest: task.isPullRequest,
+          pullRequestUrl: task.pullRequestUrl ?? null,
+          pullRequestMergedAt: task.pullRequestMergedAt ?? null,
           dependencies: task.dependencies,
           blocking: task.blocking ?? [],
           dependencyStatus: task.dependencyStatus,
@@ -199,7 +203,7 @@ export class PgTaskStore implements TaskStore {
   async atomicUpdate(
     taskId: string,
     expectedVersion: number,
-    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError">>
+    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "pullRequestUrl" | "pullRequestMergedAt">>
   ): Promise<boolean> {
     const result = await this.db
       .update(tasks)
@@ -258,6 +262,8 @@ export class PgTaskStore implements TaskStore {
       vcsSyncedAt: row.vcsSyncedAt ?? undefined,
       lastSyncError: row.lastSyncError ?? undefined,
       isPullRequest: row.isPullRequest ?? undefined,
+      pullRequestUrl: row.pullRequestUrl ?? undefined,
+      pullRequestMergedAt: row.pullRequestMergedAt ?? undefined,
       dependencies: (row.dependencies as string[]) ?? [],
       blocking: (row.blocking as string[]) ?? [],
       dependencyStatus: (row.dependencyStatus as "clear" | "blocked") ?? undefined,

@@ -655,6 +655,22 @@ export function startWorkflowOrchestrator(system: RoutaSystem): void {
     params,
   ));
   orchestrator.setWorktreeStore(system.worktreeStore);
+  orchestrator.setTriggerStandaloneConflictResolver(async ({ cardId }) => {
+    const task = await system.taskStore.get(cardId);
+    if (!task) return { error: "Task not found" };
+    return enqueueKanbanTaskSession(system, {
+      task,
+      ignoreExistingTrigger: true,
+      bypassDependencyGate: true,
+      step: {
+        id: "conflict-resolver",
+        role: "DEVELOPER",
+        specialistId: "kanban-conflict-resolver",
+        specialistName: "Conflict Resolver",
+      },
+      stepIndex: 0,
+    });
+  });
   orchestrator.start();
   queue.start();
   startWorktreeCleanupListener(system);

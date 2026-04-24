@@ -99,6 +99,21 @@ export function detectStuckPatterns(
   const hasPR = isRealPR(task);
   const prMerged = Boolean(task.pullRequestMergedAt);
 
+  // Skip if conflict-resolver/auto-merger is already in progress (idempotency guard).
+  // Allow re-detection if the pending marker is stale (> 30 min).
+  if (task.lastSyncError?.startsWith("[conflict-resolver-pending]")
+      || task.lastSyncError?.startsWith("[auto-merger-pending]")) {
+    const match = task.lastSyncError.match(/Triggered at (.+?)[.\s]/);
+    if (match) {
+      const pendingAt = new Date(match[1]).getTime();
+      if (Date.now() - pendingAt < 30 * 60 * 1000) {
+        return patterns;
+      }
+    } else {
+      return patterns;
+    }
+  }
+
   // Pattern: circuit-breaker exhausted + PR actually merged on GitHub
   if (cbExhausted && hasPR && !prMerged) {
     patterns.push({ pattern: "cb_exhausted_pr_unmerged", task });
@@ -115,14 +130,23 @@ export function detectStuckPatterns(
     patterns.push({ pattern: "no_pr_completed", task });
   }
 
-  // Pattern: orphan IN_PROGRESS in done with no active session
-  if (task.status === "IN_PROGRESS" && !hasActiveSession(task) && ageMs > ORPHAN_AGE_MS) {
+  // Pattern: orphan IN_PROGRESS in done with no active session and NO real PR
+  // (IN_PROGRESS + PR is handled by webhook_missed/cb_exhausted patterns above)
+  if (task.status === "IN_PROGRESS" && !hasActiveSession(task) && !hasPR && ageMs > ORPHAN_AGE_MS) {
     patterns.push({ pattern: "orphan_in_progress", task });
   }
 
   // Pattern: COMPLETED with no PR and old enough — likely passed all steps
   if (task.status === "COMPLETED" && !hasPR && !task.worktreeId && ageMs > ORPHAN_AGE_MS) {
     patterns.push({ pattern: "no_pr_completed", task });
+  }
+
+  // Pattern: COMPLETED with [done-lane-stuck] diagnostic + real PR — needs conflict-resolver
+  if (hasPR && !prMerged
+      && task.status === "COMPLETED"
+      && task.lastSyncError?.startsWith("[done-lane-stuck]")
+      && ageMs > PR_VERIFICATION_MIN_AGE_MS) {
+    patterns.push({ pattern: "conflict_detected", task });
   }
 
   return patterns;
@@ -176,12 +200,22 @@ async function recoverWebhookMissed(
       task.updatedAt = new Date();
       await system.taskStore.save(task);
       await triggerConflictResolver(task, system);
-    } else {
-      // Open PR, no conflicts — needs human merge
+    } else if (verification.mergeable === true) {
+      // Open PR, mergeable — trigger independent auto-merger session
       console.log(
-        `[DoneLaneRecovery] Card ${task.id} PR open but not merged. Setting diagnostic.`,
+        `[DoneLaneRecovery] Card ${task.id} PR mergeable but not merged. Triggering auto-merger.`,
       );
-      task.lastSyncError = `[done-lane-stuck] PR open, awaiting merge: ${task.pullRequestUrl}`;
+      task.lastSyncError = `[auto-merger-pending] Triggered at ${new Date().toISOString()}. PR: ${task.pullRequestUrl}`;
+      task.triggerSessionId = undefined;
+      task.updatedAt = new Date();
+      await system.taskStore.save(task);
+      await triggerAutoMerger(task, system);
+    } else {
+      // mergeable=UNKNOWN or undefined — GitHub still calculating, set diagnostic
+      console.log(
+        `[DoneLaneRecovery] Card ${task.id} PR mergeability unknown. Setting diagnostic.`,
+      );
+      task.lastSyncError = `[done-lane-stuck] PR mergeability unknown, will retry: ${task.pullRequestUrl}`;
       task.updatedAt = new Date();
       await system.taskStore.save(task);
     }
@@ -236,7 +270,19 @@ async function recoverCbExhausted(
     return "conflict";
   }
 
-  // PR is still open and unmerged — set diagnostic
+  // PR is still open — trigger auto-merger if mergeable
+  if (verification.verified && verification.mergeable === true) {
+    console.log(
+      `[DoneLaneRecovery] CB-exhausted card ${task.id} PR mergeable. Triggering auto-merger.`,
+    );
+    task.lastSyncError = `[auto-merger-pending] Triggered at ${new Date().toISOString()}. PR: ${task.pullRequestUrl}`;
+    task.triggerSessionId = undefined;
+    task.updatedAt = new Date();
+    await system.taskStore.save(task);
+    await triggerAutoMerger(task, system);
+    return "unmerged";
+  }
+
   console.log(
     `[DoneLaneRecovery] CB-exhausted card ${task.id} PR still unmerged. ` +
     `Setting diagnostic.`,
@@ -249,7 +295,7 @@ async function recoverCbExhausted(
 
 /**
  * Trigger conflict-resolver specialist as an independent automation step.
- * Shared by recoverWebhookMissed and recoverCbExhausted.
+ * Shared by recoverWebhookMissed, recoverCbExhausted, and conflict_detected handler.
  */
 async function triggerConflictResolver(
   task: Task,
@@ -257,32 +303,132 @@ async function triggerConflictResolver(
 ): Promise<void> {
   try {
     const freshTask = await system.taskStore.get(task.id);
-    if (freshTask) {
-      const result = await enqueueKanbanTaskSession(system as RoutaSystem, {
-        task: freshTask,
-        ignoreExistingTrigger: true,
-        bypassDependencyGate: true,
-        step: {
-          id: "conflict-resolver",
-          role: "DEVELOPER",
-          specialistId: "kanban-conflict-resolver",
-          specialistName: "Conflict Resolver",
-        },
-        stepIndex: 0,
-      });
-      if (result.sessionId) {
+    if (!freshTask) return;
+
+    // Idempotency: skip if there's already an active trigger or conflict-resolver pending
+    if (freshTask.triggerSessionId) {
+      console.log(
+        `[DoneLaneRecovery] Skipping conflict-resolver for card ${task.id}: ` +
+        `already has active session ${freshTask.triggerSessionId}.`,
+      );
+      return;
+    }
+    if (freshTask.lastSyncError?.startsWith("[conflict-resolver-pending]")) {
+      // Check if the pending marker is stale (> 30 min)
+      const match = freshTask.lastSyncError.match(/Triggered at (.+)\./);
+      if (match) {
+        const pendingAt = new Date(match[1]).getTime();
+        if (Date.now() - pendingAt < 30 * 60 * 1000) {
+          console.log(
+            `[DoneLaneRecovery] Skipping conflict-resolver for card ${task.id}: already pending.`,
+          );
+          return;
+        }
         console.log(
-          `[DoneLaneRecovery] Conflict-resolver session ${result.sessionId} started for card ${task.id}.`,
-        );
-      } else {
-        console.warn(
-          `[DoneLaneRecovery] Failed to start conflict-resolver for card ${task.id}: ${result.error}`,
+          `[DoneLaneRecovery] Stale conflict-resolver-pending marker for card ${task.id}. Re-triggering.`,
         );
       }
+    }
+
+    // Set pending marker before triggering to prevent duplicates
+    freshTask.lastSyncError = `[conflict-resolver-pending] Triggered at ${new Date().toISOString()}. PR: ${freshTask.pullRequestUrl}`;
+    freshTask.updatedAt = new Date();
+    await system.taskStore.save(freshTask);
+
+    const result = await enqueueKanbanTaskSession(system as RoutaSystem, {
+      task: freshTask,
+      ignoreExistingTrigger: true,
+      bypassDependencyGate: true,
+      step: {
+        id: "conflict-resolver",
+        role: "DEVELOPER",
+        specialistId: "kanban-conflict-resolver",
+        specialistName: "Conflict Resolver",
+      },
+      stepIndex: 0,
+    });
+    if (result.sessionId) {
+      console.log(
+        `[DoneLaneRecovery] Conflict-resolver session ${result.sessionId} started for card ${task.id}.`,
+      );
+    } else {
+      console.warn(
+        `[DoneLaneRecovery] Failed to start conflict-resolver for card ${task.id}: ${result.error}`,
+      );
     }
   } catch (err) {
     console.error(
       `[DoneLaneRecovery] Error triggering conflict-resolver for card ${task.id}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * Trigger auto-merger specialist as an independent automation step.
+ * Used when recovery tick detects a mergeable but unmerged PR.
+ */
+async function triggerAutoMerger(
+  task: Task,
+  system: RecoverySystem,
+): Promise<void> {
+  try {
+    const freshTask = await system.taskStore.get(task.id);
+    if (!freshTask) return;
+
+    // Idempotency: skip if there's already an active trigger
+    if (freshTask.triggerSessionId) {
+      console.log(
+        `[DoneLaneRecovery] Skipping auto-merger for card ${task.id}: ` +
+        `already has active session ${freshTask.triggerSessionId}.`,
+      );
+      return;
+    }
+    if (freshTask.lastSyncError?.startsWith("[auto-merger-pending]")) {
+      const match = freshTask.lastSyncError.match(/Triggered at (.+)\./);
+      if (match) {
+        const pendingAt = new Date(match[1]).getTime();
+        if (Date.now() - pendingAt < 30 * 60 * 1000) {
+          console.log(
+            `[DoneLaneRecovery] Skipping auto-merger for card ${task.id}: already pending.`,
+          );
+          return;
+        }
+        console.log(
+          `[DoneLaneRecovery] Stale auto-merger-pending marker for card ${task.id}. Re-triggering.`,
+        );
+      }
+    }
+
+    // Set pending marker before triggering
+    freshTask.lastSyncError = `[auto-merger-pending] Triggered at ${new Date().toISOString()}. PR: ${freshTask.pullRequestUrl}`;
+    freshTask.updatedAt = new Date();
+    await system.taskStore.save(freshTask);
+
+    const result = await enqueueKanbanTaskSession(system as RoutaSystem, {
+      task: freshTask,
+      ignoreExistingTrigger: true,
+      bypassDependencyGate: true,
+      step: {
+        id: "auto-merger",
+        role: "DEVELOPER",
+        specialistId: "kanban-auto-merger",
+        specialistName: "Auto Merger",
+      },
+      stepIndex: 0,
+    });
+    if (result.sessionId) {
+      console.log(
+        `[DoneLaneRecovery] Auto-merger session ${result.sessionId} started for card ${task.id}.`,
+      );
+    } else {
+      console.warn(
+        `[DoneLaneRecovery] Failed to start auto-merger for card ${task.id}: ${result.error}`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[DoneLaneRecovery] Error triggering auto-merger for card ${task.id}:`,
       err instanceof Error ? err.message : err,
     );
   }
@@ -303,12 +449,61 @@ async function recoverOrphanInProgress(
   return true;
 }
 
+// ── Merge queue ordering ─────────────────────────────────────────────────────
+
+/**
+ * Sort stuck items for the merge queue.
+ *
+ * Priority:
+ * 1. conflict-detected items (conflict-resolver can run in parallel)
+ * 2. auto-merge candidates ordered by dependency readiness:
+ *    - Tasks whose dependencies are all merged → higher priority
+ *    - Tasks with no dependencies → ordered by updatedAt (FIFO)
+ * 3. Non-merge items (orphan, no_pr) — order doesn't matter
+ */
+function sortMergeCandidates(items: DetectedStuck[], taskMap: Map<string, Task>): DetectedStuck[] {
+  return items.sort((a, b) => {
+    // conflict-detected items first (conflict-resolver runs in parallel, no merge)
+    const aIsConflict = a.pattern === "conflict_detected" ? 0 : 1;
+    const bIsConflict = b.pattern === "conflict_detected" ? 0 : 1;
+    if (aIsConflict !== bIsConflict) return aIsConflict - bIsConflict;
+
+    // For merge-related patterns, sort by dependency readiness
+    const aTask = a.task;
+    const bTask = b.task;
+    const aDepsReady = areDepsMerged(aTask, taskMap);
+    const bDepsReady = areDepsMerged(bTask, taskMap);
+    if (aDepsReady !== bDepsReady) return aDepsReady ? -1 : 1;
+
+    // Same readiness → FIFO by updatedAt
+    const aTime = aTask.updatedAt instanceof Date ? aTask.updatedAt.getTime() : new Date(aTask.updatedAt as string | number).getTime();
+    const bTime = bTask.updatedAt instanceof Date ? bTask.updatedAt.getTime() : new Date(bTask.updatedAt as string | number).getTime();
+    return aTime - bTime;
+  });
+}
+
+/**
+ * Check if all of a task's dependencies are merged (or it has no dependencies).
+ * Tasks without dependencies are always "ready".
+ */
+function areDepsMerged(task: Task, taskMap: Map<string, Task>): boolean {
+  if (!task.dependencies || task.dependencies.length === 0) return true;
+  for (const depId of task.dependencies) {
+    const dep = taskMap.get(depId);
+    if (!dep) continue;
+    if (!dep.pullRequestMergedAt) return false;
+  }
+  return true;
+}
+
 // ── Main tick ──────────────────────────────────────────────────────────────
 
 /**
  * Run a single done-lane recovery tick across all workspaces.
  *
  * Scans done columns for stuck tasks and applies recovery actions.
+ * Auto-merger triggers are limited to ONE per tick to prevent cascading
+ * conflicts when multiple PRs target the same base branch.
  */
 export async function runDoneLaneRecoveryTick(
   system: RecoverySystem,
@@ -329,6 +524,10 @@ export async function runDoneLaneRecoveryTick(
       const boards = await system.kanbanBoardStore.listByWorkspace(workspace.id);
       const allTasks = await system.taskStore.listByWorkspace(workspace.id);
 
+      // Build task lookup map for dependency resolution
+      const taskMap = new Map<string, Task>();
+      for (const t of allTasks) taskMap.set(t.id, t);
+
       for (const board of boards) {
         const doneColumns = board.columns.filter(
           (col) => col.stage === "done" || col.stage === "archived" || col.id === "done",
@@ -339,47 +538,81 @@ export async function runDoneLaneRecoveryTick(
           (t) => t.columnId && doneColumnIds.has(t.columnId),
         );
 
+        // Collect all stuck items across done tasks
+        const allStuckItems: DetectedStuck[] = [];
         for (const task of doneTasks) {
           summary.examined++;
           const stuckItems = detectStuckPatterns(task, board);
+          allStuckItems.push(...stuckItems);
+        }
 
-          for (const stuck of stuckItems) {
-            try {
-              switch (stuck.pattern) {
-                case "webhook_missed": {
-                  const ok = await recoverWebhookMissed(task, system);
-                  if (ok) summary.recovered++;
+        // Sort: conflict-resolvers first, then merge candidates by dependency readiness
+        const sorted = sortMergeCandidates(allStuckItems, taskMap);
+
+        let autoMergerTriggered = false;
+
+        for (const stuck of sorted) {
+          try {
+            switch (stuck.pattern) {
+              case "webhook_missed": {
+                if (autoMergerTriggered) {
+                  // Only one auto-merger per tick to prevent cascading conflicts
+                  console.log(
+                    `[DoneLaneRecovery] Deferring auto-merger for card ${stuck.task.id}: ` +
+                    `already triggered one this tick.`,
+                  );
                   break;
                 }
-                case "cb_exhausted_pr_unmerged": {
-                  const result = await recoverCbExhausted(task, system);
-                  if (result === "merged") summary.recovered++;
-                  else if (result === "conflict") summary.conflictResolved++;
-                  else summary.stuckMarked++;
-                  break;
+                const ok = await recoverWebhookMissed(stuck.task, system);
+                if (ok) {
+                  summary.recovered++;
+                  autoMergerTriggered = true;
                 }
-                case "conflict_detected": {
-                  summary.conflictResolved++;
-                  break;
-                }
-                case "orphan_in_progress": {
-                  const ok = await recoverOrphanInProgress(task, system);
-                  if (ok) summary.completed++;
-                  break;
-                }
-                case "no_pr_completed": {
-                  // Already COMPLETED — no action needed
-                  break;
-                }
+                break;
               }
-            } catch (err) {
-              summary.errors++;
-              console.error(
-                `[DoneLaneRecovery] Error recovering task ${task.id} ` +
-                `(pattern=${stuck.pattern}):`,
-                err instanceof Error ? err.message : err,
-              );
+              case "cb_exhausted_pr_unmerged": {
+                if (autoMergerTriggered) {
+                  console.log(
+                    `[DoneLaneRecovery] Deferring CB-exhausted merge for card ${stuck.task.id}: ` +
+                    `already triggered one this tick.`,
+                  );
+                  summary.stuckMarked++;
+                  break;
+                }
+                const result = await recoverCbExhausted(stuck.task, system);
+                if (result === "merged") {
+                  summary.recovered++;
+                  autoMergerTriggered = true;
+                } else if (result === "conflict") {
+                  summary.conflictResolved++;
+                } else {
+                  summary.stuckMarked++;
+                }
+                break;
+              }
+              case "conflict_detected": {
+                // Conflict-resolvers can run in parallel — no serial limit
+                await triggerConflictResolver(stuck.task, system);
+                summary.conflictResolved++;
+                break;
+              }
+              case "orphan_in_progress": {
+                const ok = await recoverOrphanInProgress(stuck.task, system);
+                if (ok) summary.completed++;
+                break;
+              }
+              case "no_pr_completed": {
+                // Already COMPLETED — no action needed
+                break;
+              }
             }
+          } catch (err) {
+            summary.errors++;
+            console.error(
+              `[DoneLaneRecovery] Error recovering task ${stuck.task.id} ` +
+              `(pattern=${stuck.pattern}):`,
+              err instanceof Error ? err.message : err,
+            );
           }
         }
       }
@@ -400,4 +633,54 @@ export async function runDoneLaneRecoveryTick(
   );
 
   return summary;
+}
+
+/**
+ * Cleanup orphan pending markers on server startup.
+ *
+ * When the server restarts during an active auto-merger or conflict-resolver
+ * session, the session is lost but the [auto-merger-pending] /
+ * [conflict-resolver-pending] marker remains in lastSyncError. The recovery
+ * tick's idempotency guard would skip these cards for 30 minutes.
+ *
+ * This function clears markers that have no active triggerSessionId,
+ * allowing the next recovery tick to immediately re-detect and re-trigger.
+ */
+export async function cleanupOrphanPendingMarkers(
+  system: RecoverySystem,
+): Promise<number> {
+  let cleaned = 0;
+  try {
+    const workspaces = await system.workspaceStore.list();
+    for (const ws of workspaces) {
+      const tasks = await system.taskStore.listByWorkspace(ws.id);
+      for (const task of tasks) {
+        const err = task.lastSyncError ?? "";
+        if (!err.startsWith("[auto-merger-pending]")
+            && !err.startsWith("[conflict-resolver-pending]")) {
+          continue;
+        }
+        if (task.triggerSessionId) continue;
+
+        console.log(
+          `[DoneLaneRecovery] Cleaning orphan marker for card ${task.id}: ${err.slice(0, 40)}...`,
+        );
+        task.lastSyncError = undefined;
+        task.updatedAt = new Date();
+        await system.taskStore.save(task);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      console.log(
+        `[DoneLaneRecovery] Startup cleanup: cleared ${cleaned} orphan pending marker(s).`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[DoneLaneRecovery] Startup cleanup failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return cleaned;
 }

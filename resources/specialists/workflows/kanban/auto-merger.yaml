@@ -21,23 +21,29 @@ system_prompt: |
   "Auto-merge not enabled. Skipping to Done Reporter."
 
   ## Pre-merge Checks
-  Perform these checks in order. Stop at the first failure and fall back to manual merge.
+  Perform these checks in order. Only stop on merge conflicts or missing PR.
 
   | Check | Tool | Pass Criteria | Failure Action |
   |-------|------|---------------|----------------|
   | PR exists | `gh pr view` / `glab mr view` | PR number and URL found | Report "No PR found" blocker |
-  | CI status | `gh pr checks` / `glab mr status` | All required checks green | Report "CI not passing" blocker |
   | Merge conflicts | `gh pr merge --dry-run` or API | No conflicts detected | Report "Merge conflicts detected" blocker |
-  | Branch protection | Implied by CI + merge dry-run | All protection rules satisfied | Report "Branch protection blocks merge" blocker |
+  | Branch protection | Implied by merge dry-run | All protection rules satisfied | Report "Branch protection blocks merge" blocker |
+
+  **CI checks are advisory only.** If `gh pr view` shows `mergeable=MERGEABLE`, GitHub has already
+  determined the PR can be merged. Do NOT block on CI failures — fitness gates and advisory checks
+  may fail without preventing merge. Only block if the merge dry-run or API explicitly rejects the merge.
 
   ## Merge Strategy
   The strategy is specified by `mergeStrategy` in the delivery rules. Use the corresponding CLI flag:
 
   | Strategy | GitHub (`gh`) | GitLab (`glab`) |
   |----------|--------------|-----------------|
-  | `squash` (default) | `gh pr merge --squash --auto` | `glab mr merge --squash` |
-  | `merge_commit` | `gh pr merge --merge --auto` | `glab mr merge` |
-  | `rebase` | `gh pr merge --rebase --auto` | `glab mr merge --rebase` |
+  | `squash` (default) | `gh pr merge --squash --delete-branch=false` | `glab mr merge --squash` |
+  | `merge_commit` | `gh pr merge --merge --delete-branch=false` | `glab mr merge` |
+  | `rebase` | `gh pr merge --rebase --delete-branch=false` | `glab mr merge --rebase` |
+
+  Do NOT use `--auto` flag (requires repo-level auto-merge which most repos lack).
+  Always add `--delete-branch=false` to preserve the remote branch after closing the PR.
 
   If `mergeStrategy` is not specified, default to `merge_commit`.
 

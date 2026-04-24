@@ -51,7 +51,12 @@ export class SqliteTaskStore implements TaskStore {
         vcsSyncedAt: task.vcsSyncedAt,
         lastSyncError: task.lastSyncError,
         isPullRequest: task.isPullRequest,
+        pullRequestUrl: task.pullRequestUrl ?? null,
+        pullRequestMergedAt: task.pullRequestMergedAt ?? null,
         dependencies: task.dependencies,
+        blocking: task.blocking ?? [],
+        dependencyStatus: task.dependencyStatus,
+        parentTaskId: task.parentTaskId,
         parallelGroup: task.parallelGroup,
         workspaceId: task.workspaceId,
         sessionId: task.sessionId,
@@ -104,7 +109,12 @@ export class SqliteTaskStore implements TaskStore {
           vcsSyncedAt: task.vcsSyncedAt,
           lastSyncError: task.lastSyncError,
           isPullRequest: task.isPullRequest,
+          pullRequestUrl: task.pullRequestUrl ?? null,
+          pullRequestMergedAt: task.pullRequestMergedAt ?? null,
           dependencies: task.dependencies,
+          blocking: task.blocking ?? [],
+          dependencyStatus: task.dependencyStatus,
+          parentTaskId: task.parentTaskId,
           parallelGroup: task.parallelGroup,
           sessionId: task.sessionId,
           creationSource: task.creationSource,
@@ -203,6 +213,8 @@ export class SqliteTaskStore implements TaskStore {
         | "verificationReport"
         | "assignedTo"
         | "lastSyncError"
+        | "pullRequestUrl"
+        | "pullRequestMergedAt"
       >
     >,
   ): Promise<boolean> {
@@ -262,6 +274,8 @@ export class SqliteTaskStore implements TaskStore {
       vcsSyncedAt: row.vcsSyncedAt ?? undefined,
       lastSyncError: row.lastSyncError ?? undefined,
       isPullRequest: row.isPullRequest ?? undefined,
+      pullRequestUrl: row.pullRequestUrl ?? undefined,
+      pullRequestMergedAt: row.pullRequestMergedAt ?? undefined,
       dependencies: (row.dependencies as string[]) ?? [],
       blocking: (row.blocking as string[]) ?? [],
       dependencyStatus: (row.dependencyStatus as "clear" | "blocked") ?? undefined,

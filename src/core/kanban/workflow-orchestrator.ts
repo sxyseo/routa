@@ -379,6 +379,15 @@ export class KanbanWorkflowOrchestrator {
     this.worktreeStore = store;
   }
 
+  /** Callback to spawn a standalone conflict-resolver session (independent of the pipeline) */
+  private triggerStandaloneConflictResolver?: (params: { cardId: string }) => Promise<{ sessionId?: string; error?: string }>;
+
+  setTriggerStandaloneConflictResolver(
+    fn: (params: { cardId: string }) => Promise<{ sessionId?: string; error?: string }>,
+  ): void {
+    this.triggerStandaloneConflictResolver = fn;
+  }
+
   /** Get all active automations */
   getActiveAutomations(): ActiveAutomation[] {
     return Array.from(this.activeAutomations.values());
@@ -493,18 +502,6 @@ export class KanbanWorkflowOrchestrator {
             role: "DEVELOPER",
             specialistId: "kanban-auto-merger",
             specialistName: "Auto Merger",
-          });
-        }
-        // Inject conflict-resolver after auto-merger for rebase-based conflict resolution.
-        const hasConflictResolver = steps.some(
-          (s) => s.specialistId === "kanban-conflict-resolver",
-        );
-        if (!hasConflictResolver) {
-          steps.push({
-            id: "conflict-resolver",
-            role: "DEVELOPER",
-            specialistId: "kanban-conflict-resolver",
-            specialistName: "Conflict Resolver",
           });
         }
       }
@@ -859,14 +856,6 @@ export class KanbanWorkflowOrchestrator {
       const canSoftGateAdvance = !successEvent
         && currentStepRole === "GATE"
         && nextStepIndex < automation.steps.length;
-      // Done-lane auto-merger fallback: when auto-merger fails in the done lane
-      // but the next step is conflict-resolver, advance to give it a chance to
-      // resolve merge conflicts. This is the "independent conflict resolution phase".
-      const nextStepIsConflictResolver = automation.steps[nextStepIndex]?.specialistId === "kanban-conflict-resolver";
-      const canAdvanceToConflictResolver = !successEvent
-        && currentSpecialistId === "kanban-auto-merger"
-        && automation.stage === "done"
-        && nextStepIsConflictResolver;
       let failedToAdvanceWithinLane = false;
 
       if (task && hasNextStep) {
@@ -888,20 +877,6 @@ export class KanbanWorkflowOrchestrator {
         }
         const startedNextStep = await this.startNextAutomationStep(cardId, automation, task, nextStepIndex);
         if (startedNextStep) {
-          automation.signaledSessionIds.add(eventSessionId);
-          return;
-        }
-        failedToAdvanceWithinLane = true;
-      }
-
-      // Done-lane conflict-resolver advancement: auto-merger failed, try conflict-resolver
-      if (task && !hasNextStep && canAdvanceToConflictResolver && !shouldRecover) {
-        console.log(
-          `[WorkflowOrchestrator] Auto-merger failed for card ${cardId} in done lane. ` +
-          `Advancing to conflict-resolver as independent resolution phase.`,
-        );
-        const startedConflictResolve = await this.startNextAutomationStep(cardId, automation, task, nextStepIndex);
-        if (startedConflictResolve) {
           automation.signaledSessionIds.add(eventSessionId);
           return;
         }
@@ -1093,6 +1068,39 @@ export class KanbanWorkflowOrchestrator {
             `[WorkflowOrchestrator] Parent-child lifecycle error for card ${cardId}:`,
             lifecycleErr,
           );
+        }
+      }
+
+      // Done-lane auto-merger failure: spawn standalone conflict-resolver session.
+      // Conflict resolution is decoupled from the pipeline — it runs as an independent
+      // agent session, not subject to the pipeline's repeat limit.
+      if (automation.status === "failed" && task && automation.stage === "done"
+          && this.triggerStandaloneConflictResolver) {
+        const currentSpecialist = automation.steps[automation.currentStepIndex]?.specialistId;
+        if (currentSpecialist === "kanban-auto-merger" && task.pullRequestUrl
+            && task.pullRequestUrl !== "manual" && task.pullRequestUrl !== "already-merged"
+            && !task.pullRequestMergedAt) {
+          try {
+            console.log(
+              `[WorkflowOrchestrator] Auto-merger failed for card ${cardId}. ` +
+              `Spawning standalone conflict-resolver session.`,
+            );
+            const result = await this.triggerStandaloneConflictResolver({ cardId });
+            if (result.sessionId) {
+              console.log(
+                `[WorkflowOrchestrator] Standalone conflict-resolver session ${result.sessionId} started for card ${cardId}.`,
+              );
+            } else {
+              console.warn(
+                `[WorkflowOrchestrator] Failed to start standalone conflict-resolver for card ${cardId}: ${result.error}`,
+              );
+            }
+          } catch (triggerErr) {
+            console.warn(
+              `[WorkflowOrchestrator] Error triggering standalone conflict-resolver for ${cardId}:`,
+              triggerErr instanceof Error ? triggerErr.message : triggerErr,
+            );
+          }
         }
       }
 

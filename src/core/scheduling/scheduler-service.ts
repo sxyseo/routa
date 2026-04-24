@@ -17,7 +17,7 @@ import type { ScheduledTask } from "node-cron";
 import { getRoutaSystem } from "../routa-system";
 import { runScheduleTick } from "./run-schedule-tick";
 import { runAutoArchiveTick } from "../kanban/auto-archive-tick";
-import { runDoneLaneRecoveryTick } from "../kanban/done-lane-recovery-tick";
+import { runDoneLaneRecoveryTick, cleanupOrphanPendingMarkers } from "../kanban/done-lane-recovery-tick";
 import { runWithSpan } from "../telemetry/tracing";
 
 let schedulerTask: ScheduledTask | null = null;
@@ -88,6 +88,18 @@ export function startSchedulerService(): void {
     ).catch((error) => {
       console.error("[Scheduler] Done-lane recovery tick failed:", error);
     });
+  });
+
+  // Startup cleanup: clear orphan pending markers from interrupted sessions
+  // so the first recovery tick can immediately re-detect stuck cards.
+  void runWithSpan(
+    "routa.scheduler.startup_cleanup",
+    {},
+    async () => {
+      await cleanupOrphanPendingMarkers(getRoutaSystem());
+    },
+  ).catch((error) => {
+    console.error("[Scheduler] Startup cleanup failed:", error);
   });
 
   isStarted = true;

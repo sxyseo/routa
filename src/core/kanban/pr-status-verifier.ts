@@ -87,7 +87,7 @@ export async function verifyPrMergeStatus(
 
   try {
     const { stdout } = await execCommand(
-      `gh pr view ${prNumber} --repo ${owner}/${repo} --json state,mergedAt,mergeable --jq "."`,
+      `gh pr view ${prNumber} --repo ${owner}/${repo} --json state,mergedAt,mergeable,mergeStateStatus --jq "."`,
       cwd,
       timeout,
     );
@@ -96,11 +96,17 @@ export async function verifyPrMergeStatus(
 
     const merged = data.state === "MERGED" || Boolean(data.mergedAt);
     const mergedAt = data.mergedAt ?? undefined;
-    const mergeable = data.mergeable === true
-      ? true
-      : data.mergeable === false
-        ? false
-        : undefined;
+
+    // gh returns mergeable as string: "MERGEABLE" | "CONFLICTING" | "UNKNOWN"
+    // and mergeStateStatus as: "CLEAN" | "DIRTY" | "UNSTABLE" | "BLOCKED" | ...
+    const rawMergeable = String(data.mergeable ?? "").toUpperCase();
+    const rawMergeState = String(data.mergeStateStatus ?? "").toUpperCase();
+    const mergeable =
+      rawMergeable === "MERGEABLE" || rawMergeState === "CLEAN"
+        ? true
+        : rawMergeable === "CONFLICTING" || rawMergeState === "DIRTY"
+          ? false
+          : undefined;
 
     return {
       merged,

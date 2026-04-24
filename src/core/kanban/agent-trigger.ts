@@ -222,11 +222,20 @@ export function buildTaskPrompt(
     "",
   ];
 
-  const deliveryGateSection = transitionArtifacts.nextColumn?.automation?.deliveryRules
+  // For terminal stages (done/archived), fall back to current column's delivery rules
+  // so auto-merger and conflict-resolver specialists can see autoMergeAfterPR config.
+  const effectiveDeliveryRules = transitionArtifacts.nextColumn?.automation?.deliveryRules
+    ?? (isTerminalStage
+      ? boardColumns.find((c) => c.id === currentColumnId)?.automation?.deliveryRules
+      : undefined);
+  const deliveryGateLabel = transitionArtifacts.nextColumn
+    ? `Moving this card to ${transitionArtifacts.nextColumn.name ?? nextColumnId ?? "the next column"} also requires`
+    : `This card's delivery rules specify`;
+  const deliveryGateSection = effectiveDeliveryRules
     ? [
         "## Delivery Gates",
         "",
-        `Moving this card to ${transitionArtifacts.nextColumn.name ?? nextColumnId ?? "the next column"} also requires: ${formatDeliveryRules(transitionArtifacts.nextColumn.automation.deliveryRules)}.`,
+        `${deliveryGateLabel}: ${formatDeliveryRules(effectiveDeliveryRules)}.`,
         "Do not call `move_card` until those delivery conditions are satisfied. If the move is rejected, record the blocker clearly in `update_card` and resolve it before retrying.",
         "",
       ]
@@ -402,6 +411,9 @@ export function buildTaskPrompt(
     `**Priority:** ${task.priority ?? "medium"}`,
     labels,
     task.vcsUrl ? `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** ${task.vcsUrl}` : `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** local-only`,
+    ...(task.pullRequestUrl && task.pullRequestUrl !== "manual" && task.pullRequestUrl !== "already-merged"
+      ? [`**Pull Request:** ${task.pullRequestUrl}${task.pullRequestMergedAt ? " (merged)" : ""}`]
+      : []),
     ...(options?.branch ? [`**Base Branch:** ${options.branch}`] : []),
     "",
     "## Objective",

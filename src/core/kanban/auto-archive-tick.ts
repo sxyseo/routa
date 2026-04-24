@@ -15,6 +15,9 @@ import { archiveTask } from "./archive-task";
 /** Default number of days a card must sit in `done` before auto-archival. */
 export const DEFAULT_AUTO_ARCHIVE_DAYS = 30;
 
+/** Time (ms) after PR merge before a merged card becomes eligible for auto-archive. */
+export const POST_MERGE_ARCHIVE_MS = 60 * 60 * 1000; // 1 hour
+
 export interface AutoArchiveSummary {
   /** Number of cards successfully archived. */
   archived: number;
@@ -38,8 +41,21 @@ export function resolveAutoArchiveDays(metadata?: Record<string, string>): numbe
 
 /**
  * Check whether a task has been sitting in the done column long enough.
+ * Merged cards (pullRequestMergedAt set) use the shorter POST_MERGE_ARCHIVE_MS
+ * threshold; non-PR cards use the configured archiveDays.
+ *
+ * Note: hasPendingAutomation() and hasOpenPR() are checked separately in the
+ * tick loop, so by the time a merged card passes the age check + those guards,
+ * the pipeline is guaranteed to be complete.
  */
 export function isCardOldEnough(task: Task, archiveDays: number, now: Date = new Date()): boolean {
+  // Merged cards: eligible after POST_MERGE_ARCHIVE_MS (default 1 hour)
+  if (task.pullRequestMergedAt) {
+    const mergedAt = task.pullRequestMergedAt instanceof Date
+      ? task.pullRequestMergedAt.getTime()
+      : new Date(task.pullRequestMergedAt as string | number).getTime();
+    return now.getTime() - mergedAt >= POST_MERGE_ARCHIVE_MS;
+  }
   // Use the latest lane session entry for the done column to determine when
   // the card entered done. Fall back to updatedAt.
   const doneSessions = (task.laneSessions ?? []).filter(

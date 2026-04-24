@@ -113,49 +113,13 @@ export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScann
           const cleaned = await clearStaleTriggerSession(task, getHttpSessionStore(), system.taskStore);
           if (!cleaned) continue;
         }
-        // Skip completed/blocked tasks — unless the task is a done-lane zombie
-        // (COMPLETED + real PR URL + PR not merged + autoMergeAfterPR enabled).
+        // Skip completed/blocked tasks.
+        // Done-lane COMPLETED cards with a real PR that isn't merged are handled
+        // exclusively by the done-lane recovery tick (standalone conflict-resolver
+        // sessions). The lane scanner must NOT reset them to IN_PROGRESS — doing
+        // so creates a zombie loop: COMPLETED → IN_PROGRESS → pipeline → fail → COMPLETED → repeat.
         if (task.status === "COMPLETED" || task.status === "BLOCKED") {
-          if (task.status === "COMPLETED") {
-            const colStage = columnStageMap.get(task.columnId ?? "");
-            const col = automatedColumns.find(
-              (c: { id: string }) => c.id === task.columnId,
-            );
-            const deliveryRules = (col as { automation?: { deliveryRules?: { autoMergeAfterPR?: boolean } } })?.automation?.deliveryRules;
-            const hasRealPR = task.pullRequestUrl
-              && task.pullRequestUrl !== "manual"
-              && task.pullRequestUrl !== "already-merged";
-            const prNotMerged = !task.pullRequestMergedAt;
-            if (colStage === "done" && deliveryRules?.autoMergeAfterPR && hasRealPR && prNotMerged) {
-              // Circuit-breaker exhausted check: if the card has already been through
-              // max cooldown resets, do NOT blindly recover — the recovery tick will
-              // verify PR status via GitHub API and handle it.
-              const resetCount = parseCbResetCount(task.lastSyncError ?? "");
-              const maxResets = parseInt(process.env.ROUTA_CB_MAX_COOLDOWN_RESETS ?? "5", 10);
-              if (resetCount >= maxResets) {
-                continue; // Skip — done-lane recovery tick will handle this
-              }
-              // Also check the orchestrator's non-dev repeat limit. If the card has
-              // already been through the full pipeline N times, stop zombie-reviving it —
-              // the recovery tick handles stale PR verification instead.
-              if (hasExceededNonDevAutomationRepeatLimit(task, task.columnId!, "done")) {
-                continue; // Skip — too many automation attempts already
-              }
-              console.log(
-                `[LaneScanner] Done-lane zombie recovery: card ${task.id} is COMPLETED ` +
-                `but PR not merged and autoMergeAfterPR is true. Resetting to trigger auto-merge.`,
-              );
-              task.status = "IN_PROGRESS" as typeof task.status;
-              task.triggerSessionId = undefined;
-              task.updatedAt = new Date();
-              await system.taskStore.save(task);
-              // Fall through to normal automation trigger below
-            } else {
-              continue;
-            }
-          } else {
-            continue;
-          }
+          continue;
         }
         // Done-lane PR-settled guard: cards in done-stage columns that already
         // have a real PR URL are considered settled unless auto-merge is needed.
