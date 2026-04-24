@@ -19,6 +19,7 @@ import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
 import { getTaskDevServerRegistry } from "./task-dev-server-registry";
 import type { FlowDiagnosisReport } from "./flow-ledger-types";
 import { formatFlowGuidanceForPrompt } from "./flow-ledger";
+import { isGitLab } from "../vcs/vcs-provider";
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -179,7 +180,7 @@ export function buildTaskPrompt(
         "1. Treat backlog as planning and refinement, not implementation",
         "2. Clarify or decompose the work into backlog-ready stories when needed. When using `decompose_tasks`, provide scope, acceptanceCriteria, and verificationCommands or testCases for each sub-task so they can pass story-readiness gates without an extra update cycle",
         "3. Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep in backlog planning",
-        "4. Do not use GitHub CLI commands such as gh issue create",
+        "4. Do not use VCS CLI commands such as gh issue create or glab issue create",
         "5. Do not start implementation work in this column",
         "6. Report what backlog story or stories were created or refined",
         `7. ${moveInstruction}`,
@@ -389,8 +390,8 @@ export function buildTaskPrompt(
     "## Context",
     "",
     "**IMPORTANT**: You are working in Kanban context. Use MCP tools (update_card, move_card, etc.) to manage this card.",
-    "Do NOT create or sync GitHub issues during backlog planning.",
-    "Do NOT use `gh issue create` or other GitHub CLI commands — those are for GitHub issue context only.",
+    "Do NOT create or sync VCS issues (GitHub/GitLab) during backlog planning.",
+    "Do NOT use platform CLI commands such as `gh issue create` or `glab issue create` — those are for VCS issue context only.",
     "",
     "## Task Details",
     "",
@@ -400,7 +401,7 @@ export function buildTaskPrompt(
     nextColumnId ? `**Next Column ID:** ${nextColumnId}` : "**Next Column ID:** none",
     `**Priority:** ${task.priority ?? "medium"}`,
     labels,
-    task.githubUrl ? `**GitHub Issue:** ${task.githubUrl}` : "**GitHub Issue:** local-only",
+    task.githubUrl ? `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** ${task.githubUrl}` : `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** local-only`,
     ...(options?.branch ? [`**Base Branch:** ${options.branch}`] : []),
     "",
     "## Objective",

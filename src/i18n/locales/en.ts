@@ -942,7 +942,7 @@ const en: TranslationDictionary = {
     githubCatalog: "GitHub Catalog",
     imported: "Imported",
     invalidZipFile: "Invalid zip file. Please check the file format.",
-    repoPlaceholder: "e.g., https://github.com/user/repo",
+    repoPlaceholder: "e.g., https://github.com/user/repo or https://gitlab.com/user/repo",
     repoUrlLabel: "Repository URL",
     searchExamples: "Search examples...",
     skillsShCatalog: "Skills.sh Catalog",

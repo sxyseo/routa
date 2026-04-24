@@ -19,8 +19,8 @@ describe("buildKanbanTaskAgentPrompt", () => {
     expect(prompt).toContain("Do not create follow-up agents.");
     expect(prompt).toContain("Do not move cards out of backlog.");
     expect(prompt).toContain("Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep");
-    expect(prompt).toContain("Do not create or sync GitHub issues in this flow.");
-    expect(prompt).toContain("Do not use GitHub CLI commands such as gh issue create.");
+    expect(prompt).toContain("Do not create or sync VCS issues (GitHub/GitLab) in this flow.");
+    expect(prompt).toContain("Do not use VCS CLI commands such as gh issue create or glab issue create.");
     expect(prompt).toContain("If the request is a single task, create exactly one backlog card and keep the title close to the user's wording.");
     expect(prompt).toContain("Only avoid creating a new card when an exact duplicate already exists");
     expect(prompt).toContain("call create_card with title plus columnId: \"backlog\"");

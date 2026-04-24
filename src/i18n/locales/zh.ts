@@ -937,7 +937,7 @@ const zh: TranslationDictionary = {
     githubCatalog: "GitHub 目录",
     imported: "已导入",
     invalidZipFile: "无效的 zip 文件，请检查文件格式。",
-    repoPlaceholder: "例如：https://github.com/user/repo",
+    repoPlaceholder: "例如：https://github.com/user/repo 或 https://gitlab.com/user/repo",
     repoUrlLabel: "仓库地址",
     searchExamples: "搜索示例...",
     skillsShCatalog: "Skills.sh 目录",

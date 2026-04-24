@@ -84,8 +84,8 @@ export function buildKanbanTaskAgentPrompt(params: {
 3. 不要创建后续执行 agent。
 4. 不要把卡片移出 backlog。
 5. 不要在这个流程里使用 Bash、Read、Write、Edit、Glob、Grep 等原生工具。
-6. 不要在这个流程里创建或同步 GitHub issue。
-7. 不要使用 gh issue create 之类的 GitHub CLI 命令。
+6. 不要在这个流程里创建或同步 VCS issue（GitHub/GitLab）。
+7. 不要使用 gh issue create、glab issue create 之类的 VCS CLI 命令。
 8. 如果请求包含多个彼此独立的任务，优先使用 decompose_tasks。
 9. 如果请求本质上是单个任务，就只创建一张 backlog 卡，标题尽量贴近用户原始表述。
 10. 只有在 backlog 或进行中的工作里已经存在完全重复的卡片时，才不要新建卡片。
@@ -172,8 +172,8 @@ Hard rules:
 3. Do not create follow-up agents.
 4. Do not move cards out of backlog.
 5. Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep for this flow.
-6. Do not create or sync GitHub issues in this flow.
-7. Do not use GitHub CLI commands such as gh issue create.
+6. Do not create or sync VCS issues (GitHub/GitLab) in this flow.
+7. Do not use VCS CLI commands such as gh issue create or glab issue create.
 8. Prefer decompose_tasks when the request contains multiple independent tasks.
 9. If the request is a single task, create exactly one backlog card and keep the title close to the user's wording.
 10. Only avoid creating a new card when an exact duplicate already exists in backlog or active work.
