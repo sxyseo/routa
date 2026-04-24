@@ -97,6 +97,7 @@ describe("task delivery readiness", () => {
       hasUncommittedChanges: false,
       remoteUrl: "git@github.com:acme/platform.git",
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: true,
       isMergedIntoBase: false,
     });
@@ -167,6 +168,7 @@ describe("task delivery readiness", () => {
       hasCommitsSinceBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       isMergedIntoBase: false,
     }, "Review", "review");
@@ -183,6 +185,7 @@ describe("task delivery readiness", () => {
       hasCommitsSinceBase: true,
       hasUncommittedChanges: true,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       isMergedIntoBase: false,
     }, "Review", "review");
@@ -199,6 +202,7 @@ describe("task delivery readiness", () => {
       hasCommitsSinceBase: true,
       hasUncommittedChanges: true,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       isMergedIntoBase: false,
     }, "Done", "done");
@@ -223,6 +227,7 @@ describe("task delivery readiness", () => {
       hasCommitsSinceBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       isMergedIntoBase: false,
     }, "QA Gate", {
@@ -243,6 +248,7 @@ describe("task delivery readiness", () => {
       hasCommitsSinceBase: true,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       isMergedIntoBase: false,
     }, "Release", {
@@ -252,6 +258,6 @@ describe("task delivery readiness", () => {
     });
 
     expect(reviewLikeError).toContain("no committed changes detected");
-    expect(doneLikeError).toContain("GitHub repo is not PR-ready yet");
+    expect(doneLikeError).toContain("GitHub repo is not PR/MR-ready yet");
   });
 });

@@ -122,7 +122,7 @@ export function GitLabWebhookPanel() {
       setLoading(true);
       const [cfgRes, logRes, specRes] = await Promise.all([
         desktopAwareFetch("/api/webhooks/gitlab/configs"),
-        desktopAwareFetch("/api/webhooks/webhook-logs?limit=50"),
+        desktopAwareFetch("/api/webhooks/webhook-logs?limit=50&platform=gitlab"),
         desktopAwareFetch("/api/specialists"),
       ]);
       if (cfgRes.ok) {

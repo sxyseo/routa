@@ -407,7 +407,7 @@ export async function POST(request: NextRequest) {
         nextGitHubUrl = issue.url;
         nextGitHubRepo = repo;
         nextGitHubState = issue.state;
-        githubSyncedAt = new Date();
+        vcsSyncedAt = new Date();
       } catch (error) {
         lastSyncError = error instanceof Error ? error.message : "GitLab issue create failed";
       }

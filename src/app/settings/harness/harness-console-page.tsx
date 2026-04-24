@@ -236,6 +236,7 @@ export default function HarnessConsolePage() {
     codeownersState,
     automationsState,
     reloadArchitecture,
+    reloadGitlabCI,
     reloadInstructions,
   } = useHarnessSettingsData({
     workspaceId,
@@ -292,6 +293,7 @@ export default function HarnessConsolePage() {
     () => gitlabCiState.data?.pipeline?.totalStages ?? 0,
     [gitlabCiState.data?.pipeline?.totalStages],
   );
+  const vcsProvider = activeCodebase?.sourceType ?? "github";
   const automationRuleCount = useMemo(
     () => automationsState.data?.definitions?.length ?? 0,
     [automationsState.data?.definitions?.length],

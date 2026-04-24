@@ -1,17 +1,19 @@
 /**
- * PR Auto-Create
+ * PR/MR Auto-Create
  *
- * Creates a Pull Request for a completed kanban task by pushing the
- * worktree branch to origin and invoking `gh pr create`.
+ * Creates a Pull Request (GitHub) or Merge Request (GitLab) for a completed
+ * kanban task by pushing the worktree branch to origin and invoking the
+ * appropriate CLI tool (`gh` for GitHub, `glab` for GitLab) or VCS API.
  *
  * Can be called directly (synchronous, pre-automation) or via the
  * PR_CREATE_REQUESTED event listener (backward compatibility).
  *
  * Steps:
  *   1. Resolve worktree path and current branch
- *   2. Push the branch to origin (if not already pushed)
- *   3. Create a Pull Request via gh CLI (--body-file for safe multi-line body)
- *   4. Update the task with the PR URL
+ *   2. Detect platform from remote URL or env (GitHub vs GitLab)
+ *   3. Push the branch to origin (if not already pushed)
+ *   4. Create a PR/MR via platform CLI or VCS API
+ *   5. Update the task with the PR/MR URL
  */
 
 import { AgentEvent, AgentEventType } from "../events/event-bus";
@@ -19,7 +21,8 @@ import { getServerBridge } from "../platform";
 import type { RoutaSystem } from "../routa-system";
 import type { TaskStore } from "../store/task-store";
 import type { WorktreeStore } from "../db/pg-worktree-store";
-import { shellQuote } from "../git/git-utils";
+import { shellQuote, isGitLabUrl, isGitHubUrl } from "../git/git-utils";
+import { getVCSProvider, getPlatform } from "../vcs";
 
 const HANDLER_KEY = "kanban-pr-auto-create";
 const PR_RETRY_LIMIT = parseInt(process.env.ROUTA_PR_RETRY_LIMIT ?? "3", 10);
@@ -181,9 +184,20 @@ export async function executeAutoPrCreation(
     // 3. Get the task for PR title/body
     const task = await taskStore.get(cardId);
 
-    // 4. Create PR via gh CLI
+    // 3a. Detect platform from remote URL or env
+    let remoteUrl = "";
+    try {
+      const remoteResult = await execCommand("git remote get-url origin", cwd, 10_000);
+      remoteUrl = remoteResult.stdout.trim();
+    } catch { /* ignore */ }
+
+    const isGitLab = getPlatform() === "gitlab"
+      || isGitLabUrl(remoteUrl)
+      || Boolean(process.env.GITLAB_URL && remoteUrl.includes(new URL(process.env.GITLAB_URL).host));
+
+    // 4. Create PR/MR via platform-appropriate method
     const prTitle = task?.title ?? cardTitle;
-    const prBody = task?.objective ?? "Auto-created PR from kanban done-lane.";
+    const prBody = task?.objective ?? "Auto-created PR/MR from kanban done-lane.";
     const baseBranch = worktree.baseBranch;
 
     // Use --body-file to avoid shell injection and multi-line issues.
@@ -194,56 +208,21 @@ export async function executeAutoPrCreation(
     await fs.writeFile(tmpFile, prBody, "utf-8");
 
     try {
-      const ghArgs = [
-        "pr", "create",
-        "--title", shellQuote(prTitle),
-        "--body-file", shellQuote(tmpFile),
-        "--head", shellQuote(branch),
-        ...(baseBranch ? ["--base", shellQuote(baseBranch)] : []),
-      ];
-      const ghCommand = ["gh", ...ghArgs].join(" ");
+      let prUrl: string | undefined;
 
-      let ghResult: { stdout: string; stderr: string };
-      try {
-        ghResult = await execCommand(ghCommand, cwd, 60_000);
-      } catch (ghErr: unknown) {
-        // Handle "already exists" — extract PR URL from error message
-        const errMsg = ghErr instanceof Error ? ghErr.message : String(ghErr);
-        const existingUrlMatch = errMsg.match(/already exists:\s*\n?(https:\/\/[^\s]+)/i);
-        if (existingUrlMatch) {
-          const existingUrl = existingUrlMatch[1].trim();
-          console.log(
-            `[PrAutoCreate] PR already exists for task ${cardId}: ${existingUrl}.`,
-          );
-          if (task) {
-            task.pullRequestUrl = existingUrl;
-            task.isPullRequest = true;
-            task.lastSyncError = undefined;
-            task.updatedAt = new Date();
-            await taskStore.save(task);
-          }
-          return existingUrl;
-        }
-        throw ghErr;
+      if (isGitLab) {
+        // GitLab: try glab CLI first, then fall back to VCS API
+        prUrl = await createGitLabMR({
+          cwd, branch, prTitle, tmpFile, baseBranch, cardId, task, taskStore,
+        });
+      } else {
+        // GitHub: use gh CLI
+        prUrl = await createGitHubPR({
+          cwd, branch, prTitle, tmpFile, baseBranch, cardId, task, taskStore,
+        });
       }
 
-      // gh pr create outputs the PR URL on success
-      const prUrl = ghResult.stdout.trim().split("\n").pop()?.trim();
-
-      if (!prUrl || !prUrl.startsWith("http")) {
-        console.error(
-          `[PrAutoCreate] Unexpected gh pr create output for task ${cardId}:`,
-          ghResult.stdout,
-          ghResult.stderr,
-        );
-
-        if (task) {
-          task.lastSyncError = `${PR_FAILURE_PREFIX}: ${
-            ghResult.stderr?.trim() || "unexpected output"
-          }`;
-          task.updatedAt = new Date();
-          await taskStore.save(task);
-        }
+      if (!prUrl) {
         return undefined;
       }
 
@@ -311,4 +290,168 @@ export function startPrAutoCreateListener(system: RoutaSystem): void {
       worktreeId,
     });
   });
+}
+
+// ─── Platform-specific PR/MR creation helpers ──────────────────────────────
+
+interface PrCreationContext {
+  cwd: string;
+  branch: string;
+  prTitle: string;
+  tmpFile: string;
+  baseBranch?: string;
+  cardId: string;
+  task: Awaited<ReturnType<TaskStore["get"]>>;
+  taskStore: TaskStore;
+}
+
+/** Create a GitHub Pull Request via `gh` CLI */
+async function createGitHubPR(ctx: PrCreationContext): Promise<string | undefined> {
+  const { cwd, branch, prTitle, tmpFile, baseBranch, cardId, task, taskStore } = ctx;
+
+  const ghArgs = [
+    "pr", "create",
+    "--title", shellQuote(prTitle),
+    "--body-file", shellQuote(tmpFile),
+    "--head", shellQuote(branch),
+    ...(baseBranch ? ["--base", shellQuote(baseBranch)] : []),
+  ];
+  const ghCommand = ["gh", ...ghArgs].join(" ");
+
+  let ghResult: { stdout: string; stderr: string };
+  try {
+    ghResult = await execCommand(ghCommand, cwd, 60_000);
+  } catch (ghErr: unknown) {
+    const errMsg = ghErr instanceof Error ? ghErr.message : String(ghErr);
+    const existingUrlMatch = errMsg.match(/already exists:\s*\n?(https:\/\/[^\s]+)/i);
+    if (existingUrlMatch) {
+      const existingUrl = existingUrlMatch[1].trim();
+      console.log(`[PrAutoCreate] PR already exists for task ${cardId}: ${existingUrl}.`);
+      if (task) {
+        task.pullRequestUrl = existingUrl;
+        task.isPullRequest = true;
+        task.lastSyncError = undefined;
+        task.updatedAt = new Date();
+        await taskStore.save(task);
+      }
+      return existingUrl;
+    }
+    throw ghErr;
+  }
+
+  const prUrl = ghResult.stdout.trim().split("\n").pop()?.trim();
+  if (!prUrl || !prUrl.startsWith("http")) {
+    console.error(`[PrAutoCreate] Unexpected gh output for task ${cardId}:`, ghResult.stdout, ghResult.stderr);
+    if (task) {
+      task.lastSyncError = `${PR_FAILURE_PREFIX}: ${ghResult.stderr?.trim() || "unexpected output"}`;
+      task.updatedAt = new Date();
+      await taskStore.save(task);
+    }
+    return undefined;
+  }
+
+  // Update task with PR URL
+  if (task) {
+    task.pullRequestUrl = prUrl;
+    task.isPullRequest = true;
+    task.lastSyncError = undefined;
+    task.updatedAt = new Date();
+    await taskStore.save(task);
+  }
+  return prUrl;
+}
+
+/** Create a GitLab Merge Request via `glab` CLI or VCS Provider API */
+async function createGitLabMR(ctx: PrCreationContext): Promise<string | undefined> {
+  const { cwd, branch, prTitle, tmpFile, baseBranch, cardId, task, taskStore } = ctx;
+
+  // Strategy 1: Try glab CLI
+  try {
+    const glabArgs = [
+      "mr", "create",
+      "--title", shellQuote(prTitle),
+      "--description-file", shellQuote(tmpFile),
+      "--source-branch", shellQuote(branch),
+      "--target-branch", shellQuote(baseBranch ?? "main"),
+      "--yes", // skip interactive prompt
+      "--no-editor",
+    ];
+    const glabCommand = ["glab", ...glabArgs].join(" ");
+    const glabResult = await execCommand(glabCommand, cwd, 60_000);
+
+    // glab outputs the MR URL
+    const mrUrl = glabResult.stdout.trim().split("\n").pop()?.trim();
+    if (mrUrl && mrUrl.startsWith("http")) {
+      if (task) {
+        task.pullRequestUrl = mrUrl;
+        task.isPullRequest = true;
+        task.lastSyncError = undefined;
+        task.updatedAt = new Date();
+        await taskStore.save(task);
+      }
+      return mrUrl;
+    }
+  } catch (glabErr) {
+    const errMsg = glabErr instanceof Error ? glabErr.message : String(glabErr);
+    // Check for "already exists" pattern from glab
+    const existingUrlMatch = errMsg.match(/already exists:?\s*\n?(https?:\/\/[^\s]+)/i)
+      ?? errMsg.match(/(https?:\/\/[^\s]*\/\-\/merge_requests\/\d+)/i);
+    if (existingUrlMatch) {
+      const existingUrl = existingUrlMatch[1].trim();
+      console.log(`[PrAutoCreate] MR already exists for task ${cardId}: ${existingUrl}.`);
+      if (task) {
+        task.pullRequestUrl = existingUrl;
+        task.isPullRequest = true;
+        task.lastSyncError = undefined;
+        task.updatedAt = new Date();
+        await taskStore.save(task);
+      }
+      return existingUrl;
+    }
+    console.warn(`[PrAutoCreate] glab CLI failed for task ${cardId}, falling back to VCS API:`, errMsg);
+  }
+
+  // Strategy 2: Fall back to VCS Provider API
+  try {
+    // Resolve repo from remote URL
+    const remoteResult = await execCommand("git remote get-url origin", cwd, 10_000);
+    const remoteUrlStr = remoteResult.stdout.trim();
+
+    // Parse owner/repo from remote URL
+    const repoMatch = remoteUrlStr.match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+    if (!repoMatch) {
+      throw new Error(`Cannot parse repo from remote URL: ${remoteUrlStr}`);
+    }
+    const repo = repoMatch[1];
+
+    const provider = getVCSProvider();
+    const mr = await provider.createPR({
+      repo,
+      title: prTitle,
+      body: task?.objective ?? "Auto-created MR from kanban done-lane.",
+      head: branch,
+      base: baseBranch ?? "main",
+    });
+
+    const mrUrl = mr.html_url;
+    if (task) {
+      task.pullRequestUrl = mrUrl;
+      task.isPullRequest = true;
+      task.lastSyncError = undefined;
+      task.updatedAt = new Date();
+      await taskStore.save(task);
+    }
+
+    console.log(`[PrAutoCreate] Created MR via API for task ${cardId}: ${mrUrl}`);
+    return mrUrl;
+  } catch (apiErr) {
+    const errMsg = apiErr instanceof Error ? apiErr.message : String(apiErr);
+    console.error(`[PrAutoCreate] Both glab CLI and VCS API failed for task ${cardId}:`, errMsg);
+    if (task) {
+      task.lastSyncError = `${PR_FAILURE_PREFIX}: ${errMsg}`;
+      task.updatedAt = new Date();
+      await taskStore.save(task);
+    }
+    return undefined;
+  }
 }

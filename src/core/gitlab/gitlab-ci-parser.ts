@@ -1,4 +1,4 @@
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 
 // ── Public types ────────────────────────────────────────────────────────────
 
@@ -256,7 +256,7 @@ export function parseGitLabCI(source: string): GitLabCIParseResult {
 
   let parsed: RawPipeline;
   try {
-    const loaded = yaml.load(source, { schema: yaml.DEFAULT_SCHEMA });
+    const loaded = (yaml.load as (input: string, opts?: Record<string, unknown>) => unknown)(source, { schema: (yaml as Record<string, unknown>).DEFAULT_SCHEMA });
     if (!loaded || typeof loaded !== "object" || Array.isArray(loaded)) {
       return {
         pipeline: emptyPipeline(),
@@ -302,7 +302,7 @@ export function parseGitLabCI(source: string): GitLabCIParseResult {
       warnings.push(`Job "${jobId}" 引用了未定义的 stage "${stage}"`);
     }
 
-    return {
+    const job: GitLabCIJob = {
       id: jobId,
       name: jobId,
       stage,
@@ -314,10 +314,11 @@ export function parseGitLabCI(source: string): GitLabCIParseResult {
       allowFailure: normalizeAllowFailure(raw.allow_failure),
       needs: extractNeeds(raw.needs),
       extends: extractExtends(raw.extends),
-      ...(raw.artifacts !== undefined ? { artifacts: raw.artifacts } : {}),
-      ...(raw.cache !== undefined ? { cache: raw.cache } : {}),
-      ...(raw.services !== undefined ? { services: raw.services } : {}),
     };
+    if (raw.artifacts !== undefined) job.artifacts = raw.artifacts;
+    if (raw.cache !== undefined) job.cache = raw.cache;
+    if (raw.services !== undefined) job.services = raw.services as unknown[];
+    return job;
   });
 
   // Build stages with their job assignments

@@ -96,7 +96,7 @@ export function getEffortBandConfig(
 export function setEffortBandConfig(
   metadata: Record<string, string> | undefined,
   boardId: string,
-  config: Partial<EffortBandConfig>,
+  config: { weights?: Partial<EffortBandWeights>; thresholds?: Partial<EffortBandThresholds> },
 ): Record<string, string> {
   const normalized: EffortBandConfig = {
     weights: { ...DEFAULT_EFFORT_BAND_WEIGHTS, ...config.weights },

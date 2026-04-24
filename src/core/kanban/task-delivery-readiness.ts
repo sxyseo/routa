@@ -37,6 +37,7 @@ export interface TaskDeliveryReadiness {
   isMergedIntoBase: boolean;
   hasUncommittedChanges: boolean;
   isGitHubRepo: boolean;
+  isGitLabRepo: boolean;
   canCreatePullRequest: boolean;
   reason?: string;
 }
@@ -84,6 +85,7 @@ function mapReadiness(
     isMergedIntoBase: deliveryStatus.isMergedIntoBase,
     hasUncommittedChanges: deliveryStatus.hasUncommittedChanges,
     isGitHubRepo: deliveryStatus.isGitHubRepo,
+    isGitLabRepo: deliveryStatus.isGitLabRepo,
     canCreatePullRequest: deliveryStatus.canCreatePullRequest,
   };
 }
@@ -105,6 +107,7 @@ export async function buildTaskDeliveryReadiness(
       isMergedIntoBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: false,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       reason: "Task has no linked repository or worktree.",
     };
@@ -123,6 +126,7 @@ export async function buildTaskDeliveryReadiness(
       isMergedIntoBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: false,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       reason: "Linked repository is missing or is not a git repository.",
     };
@@ -141,6 +145,7 @@ export async function buildTaskDeliveryReadiness(
       isMergedIntoBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: false,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       reason: "Linked repository is a bare git repo. Attach a task worktree before checking delivery readiness.",
     };
@@ -211,9 +216,10 @@ export function buildTaskDeliveryTransitionErrorFromRules(
     return `Cannot move task to "${targetColumnName}": branch "${readiness.branch ?? "unknown"}" still has uncommitted changes (${readiness.modified} modified, ${readiness.untracked} untracked). Commit, stash, or discard them before ${transitionAction}.`;
   }
 
-  if (rules.requirePullRequestReady && readiness.isGitHubRepo && !readiness.canCreatePullRequest && !readiness.isMergedIntoBase) {
+  if (rules.requirePullRequestReady && (readiness.isGitHubRepo || readiness.isGitLabRepo) && !readiness.canCreatePullRequest && !readiness.isMergedIntoBase) {
     const baseBranch = readiness.baseBranch ?? "the base branch";
-    return `Cannot move task to "${targetColumnName}": GitHub repo is not PR-ready yet. Use a feature branch instead of "${baseBranch}" so this task can open a pull request cleanly.`;
+    const platformLabel = readiness.isGitLabRepo ? "GitLab" : "GitHub";
+    return `Cannot move task to "${targetColumnName}": ${platformLabel} repo is not PR/MR-ready yet. Use a feature branch instead of "${baseBranch}" so this task can open a pull/merge request cleanly.`;
   }
 
   return null;

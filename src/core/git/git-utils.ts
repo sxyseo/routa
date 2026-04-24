@@ -80,11 +80,48 @@ const GITLAB_URL_PATTERNS = [
 ];
 
 /**
+ * Get custom GitLab host from GITLAB_URL env var.
+ * Returns the hostname (e.g., "localhost:8080") or null.
+ */
+function getCustomGitLabHost(): string | null {
+  const gitlabUrl = process.env.GITLAB_URL?.trim().replace(/\/+$/, "");
+  if (!gitlabUrl) return null;
+  try {
+    const parsed = new URL(gitlabUrl);
+    const host = parsed.host; // includes port if present
+    return host || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build URL patterns for a custom GitLab host (self-hosted instance).
+ */
+function buildCustomGitLabPatterns(host: string): RegExp[] {
+  const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [
+    new RegExp(`^https?:\\/\\/([^/@]+@)?${escaped}\\/([^/]+)\\/([^/\\s#?.]+)`, "i"),
+    new RegExp(`^git@${escaped}:([^/]+)\\/([^/\\s#?.]+)`, "i"),
+  ];
+}
+
+/**
  * Check if a string looks like a GitLab URL.
+ * Supports gitlab.com and custom GITLAB_URL instances.
  */
 export function isGitLabUrl(url: string): boolean {
   const trimmed = url.trim();
-  return GITLAB_URL_PATTERNS.some((p) => p.test(trimmed));
+  if (GITLAB_URL_PATTERNS.some((p) => p.test(trimmed))) return true;
+
+  // Check against custom GITLAB_URL host
+  const customHost = getCustomGitLabHost();
+  if (customHost) {
+    const customPatterns = buildCustomGitLabPatterns(customHost);
+    if (customPatterns.some((p) => p.test(trimmed))) return true;
+  }
+
+  return false;
 }
 
 /**
@@ -96,8 +133,36 @@ export function isVCSUrl(url: string): boolean {
 
 /**
  * Build a clone URL from a parsed VCS URL.
+ * For GitLab with custom GITLAB_URL, embed token for private repos.
+ * For GitHub, embed GITHUB_TOKEN for private repos.
  */
 export function buildCloneUrl(parsed: ParsedVCSUrl): string {
+  // GitLab: embed token for authentication
+  if (parsed.platform === "gitlab") {
+    const gitlabUrl = process.env.GITLAB_URL?.trim().replace(/\/+$/, "");
+    const token = process.env.GITLAB_TOKEN;
+    if (gitlabUrl) {
+      if (token) {
+        // Embed token for private repo clone: http://oauth2:<token>@host/path.git
+        try {
+          const urlObj = new URL(gitlabUrl);
+          return `${urlObj.protocol}//oauth2:${token}@${urlObj.host}/${parsed.owner}/${parsed.repo}.git`;
+        } catch {
+          return `${gitlabUrl}/${parsed.owner}/${parsed.repo}.git`;
+        }
+      }
+      return `${gitlabUrl}/${parsed.owner}/${parsed.repo}.git`;
+    }
+  }
+
+  // GitHub: embed token for authentication
+  if (parsed.platform === "github") {
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (token) {
+      return `https://${token}@github.com/${parsed.owner}/${parsed.repo}.git`;
+    }
+  }
+
   const host = parsed.host || "github.com";
   return `https://${host}/${parsed.owner}/${parsed.repo}.git`;
 }
@@ -117,7 +182,7 @@ export function parseVCSUrl(url: string): ParsedVCSUrl | null {
     }
   }
 
-  // Try GitLab patterns
+  // Try GitLab.com patterns
   for (const pattern of GITLAB_URL_PATTERNS) {
     const match = trimmed.match(pattern);
     if (match) {
@@ -125,10 +190,24 @@ export function parseVCSUrl(url: string): ParsedVCSUrl | null {
     }
   }
 
+  // Try custom GitLab instance patterns (from GITLAB_URL env var)
+  const customGitLabHost = getCustomGitLabHost();
+  if (customGitLabHost) {
+    const customPatterns = buildCustomGitLabPatterns(customGitLabHost);
+    for (const pattern of customPatterns) {
+      const match = trimmed.match(pattern);
+      if (match) {
+        return { owner: match[1], repo: match[2].replace(/\.git$/, ""), host: customGitLabHost, platform: "gitlab" };
+      }
+    }
+  }
+
   // Try generic HTTPS URL (any domain with /owner/repo pattern)
   const genericMatch = trimmed.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/\s#?.]+)/);
   if (genericMatch) {
-    return { owner: genericMatch[2], repo: genericMatch[3].replace(/\.git$/, ""), host: genericMatch[1], platform: "other" };
+    // If PLATFORM=gitlab and no specific match, treat generic URL as gitlab
+    const detectedPlatform = process.env.PLATFORM === "gitlab" ? "gitlab" : "other";
+    return { owner: genericMatch[2], repo: genericMatch[3].replace(/\.git$/, ""), host: genericMatch[1], platform: detectedPlatform };
   }
 
   // Simple owner/repo format (assume GitHub for backward compat)
@@ -279,6 +358,7 @@ export interface RepoDeliveryStatus {
   hasUncommittedChanges: boolean;
   remoteUrl: string | null;
   isGitHubRepo: boolean;
+  isGitLabRepo: boolean;
   canCreatePullRequest: boolean;
 }
 
@@ -1041,8 +1121,12 @@ export function getRepoDeliveryStatus(
   const isGitHubRepo = options?.sourceType === "github"
     || Boolean(options?.sourceUrl && isGitHubUrl(options.sourceUrl))
     || Boolean(remoteUrl && isGitHubUrl(remoteUrl));
+  const isGitLabRepo = options?.sourceType === "gitlab"
+    || Boolean(options?.sourceUrl && isGitLabUrl(options.sourceUrl))
+    || Boolean(remoteUrl && isGitLabUrl(remoteUrl));
+  const isVCSRepo = isGitHubRepo || isGitLabRepo;
   const hasCommitsSinceBase = commitsSinceBase > 0;
-  const canCreatePullRequest = isGitHubRepo
+  const canCreatePullRequest = isVCSRepo
     && hasCommitsSinceBase
     && !hasUncommittedChanges
     && Boolean(branch)
@@ -1073,6 +1157,7 @@ export function getRepoDeliveryStatus(
     hasUncommittedChanges,
     remoteUrl,
     isGitHubRepo,
+    isGitLabRepo,
     canCreatePullRequest,
   };
 }

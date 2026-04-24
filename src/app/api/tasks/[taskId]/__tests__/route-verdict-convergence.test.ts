@@ -144,6 +144,7 @@ describe("/api/tasks/[taskId] verdict convergence gates", () => {
       hasCommitsSinceBase: true,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       isMergedIntoBase: false,
     });

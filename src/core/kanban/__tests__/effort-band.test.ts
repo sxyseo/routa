@@ -12,6 +12,8 @@ import {
   getDefaultEffortBandConfig,
   DEFAULT_EFFORT_BAND_WEIGHTS,
   DEFAULT_EFFORT_BAND_THRESHOLDS,
+  type EffortBandWeights,
+  type EffortBandThresholds,
 } from "../effort-band-config";
 
 // ─── computeEffortScore ────────────────────────────────────────────────
@@ -147,7 +149,7 @@ describe("computeEffortBand", () => {
       dependenciesCount: 0,
     };
     const result = computeEffortBand(input, {
-      weights: { acceptanceCriteria: 5.0 },
+      weights: { acceptanceCriteria: 5.0 } as Partial<EffortBandWeights>,
     });
     expect(result.score).toBeCloseTo(5.0);
     expect(result.band).toBe("S");
@@ -218,8 +220,8 @@ describe("EffortBandConfig", () => {
 
   it("round-trips through set/get", () => {
     const metadata = setEffortBandConfig({}, "board-1", {
-      weights: { acceptanceCriteria: 1.2 },
-      thresholds: { S_MAX: 8.0 },
+      weights: { acceptanceCriteria: 1.2 } as Partial<EffortBandWeights>,
+      thresholds: { S_MAX: 8.0 } as Partial<EffortBandThresholds>,
     });
     const config = getEffortBandConfig(metadata, "board-1");
     expect(config.weights.acceptanceCriteria).toBe(1.2);
@@ -232,7 +234,7 @@ describe("EffortBandConfig", () => {
   it("preserves existing metadata keys", () => {
     const existing = { otherConfig: "preserve-me" };
     const updated = setEffortBandConfig(existing, "board-1", {
-      weights: { dependencies: 2.0 },
+      weights: { dependencies: 2.0 } as Partial<EffortBandWeights>,
     });
     expect(updated.otherConfig).toBe("preserve-me");
     expect(updated["effortBandConfig:board-1"]).toBeDefined();

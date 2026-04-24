@@ -80,15 +80,19 @@ export class GitLabProvider implements IVCSProvider {
       web_url: string;
       http_url_to_repo: string;
       default_branch: string | null;
-      repository: { visibility: string };
+      visibility?: string;
+      repository?: { visibility?: string };
     }>(`/projects/${encodedPath}`, { token: opts.token });
+
+    // GitLab may return visibility at top level or nested under repository
+    const visibility = data.visibility ?? data.repository?.visibility ?? "private";
 
     return {
       full_name: data.path_with_namespace,
       html_url: data.web_url,
       clone_url: data.http_url_to_repo,
       default_branch: data.default_branch ?? "main",
-      private: data.repository.visibility !== "public",
+      private: visibility !== "public",
     };
   }
 

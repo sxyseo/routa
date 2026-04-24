@@ -7,13 +7,11 @@
  * PUT    /api/webhooks/gitlab/configs                  → Update an existing config
  * DELETE /api/webhooks/gitlab/configs?id=<id>          → Delete a config
  *
- * Reuses the existing GitHubWebhookStore with platform="gitlab" discriminator.
- * GitLab-specific fields (gitlabServerUrl, gitlabProjectId) are stored alongside
- * standard webhook config fields.
+ * Uses the dedicated GitLabWebhookStore for all operations.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getGitHubWebhookStore } from "@/core/webhooks/webhook-store-factory";
+import { getGitLabWebhookStore } from "@/core/webhooks/gitlab-webhook-store-factory";
 
 export const dynamic = "force-dynamic";
 
@@ -24,19 +22,17 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
-    const store = getGitHubWebhookStore();
+    const store = getGitLabWebhookStore();
 
     if (id) {
       const config = await store.getConfig(id);
       if (!config) {
         return NextResponse.json({ error: "GitLab webhook config not found" }, { status: 404 });
       }
-      return NextResponse.json(maskToken(config));
+      return NextResponse.json({ config: maskToken(config) });
     }
 
     const allConfigs = await store.listConfigs(undefined);
-    // Filter to only GitLab configs (identified by naming convention or metadata)
-    // Since the store is shared, we return all configs; the frontend filters by platform
     return NextResponse.json({ configs: allConfigs.map(maskToken) });
   } catch (err) {
     console.error("[GitLabWebhookConfigs] GET error:", err);
@@ -56,7 +52,6 @@ export async function POST(request: NextRequest) {
     const {
       name, repo, gitlabToken, webhookSecret, eventTypes, labelFilter,
       triggerAgentId, workflowId, workspaceId, enabled, promptTemplate,
-      gitlabServerUrl, gitlabProjectId,
     } = body;
 
     if (!name || !repo || !gitlabToken || !triggerAgentId || !Array.isArray(eventTypes) || eventTypes.length === 0) {
@@ -66,11 +61,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const store = getGitHubWebhookStore();
+    const store = getGitLabWebhookStore();
     const config = await store.createConfig({
       name,
       repo,
-      githubToken: gitlabToken, // reuse the token field
+      gitlabToken,
       webhookSecret: webhookSecret ?? "",
       eventTypes,
       labelFilter: labelFilter ?? [],
@@ -82,11 +77,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      config: {
-        ...maskToken(config),
-        gitlabServerUrl: gitlabServerUrl ?? "https://gitlab.com",
-        gitlabProjectId: gitlabProjectId ?? repo,
-      },
+      config: maskToken(config),
     }, { status: 201 });
   } catch (err) {
     console.error("[GitLabWebhookConfigs] POST error:", err);
@@ -103,28 +94,13 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Request body must include id" }, { status: 400 });
     }
 
-    // Map gitlabToken → githubToken for store compatibility
-    const storePayload = { ...body };
-    if (storePayload.gitlabToken) {
-      storePayload.githubToken = storePayload.gitlabToken;
-      delete storePayload.gitlabToken;
-    }
-    delete storePayload.gitlabServerUrl;
-    delete storePayload.gitlabProjectId;
-
-    const store = getGitHubWebhookStore();
-    const updated = await store.updateConfig(storePayload);
+    const store = getGitLabWebhookStore();
+    const updated = await store.updateConfig(body);
     if (!updated) {
       return NextResponse.json({ error: "GitLab webhook config not found" }, { status: 404 });
     }
 
-    return NextResponse.json({
-      config: {
-        ...maskToken(updated),
-        gitlabServerUrl: body.gitlabServerUrl ?? "https://gitlab.com",
-        gitlabProjectId: body.gitlabProjectId ?? updated.repo,
-      },
-    });
+    return NextResponse.json({ config: maskToken(updated) });
   } catch (err) {
     console.error("[GitLabWebhookConfigs] PUT error:", err);
     return NextResponse.json({ error: "Failed to update GitLab webhook config", details: String(err) }, { status: 500 });
@@ -141,7 +117,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Missing required query param: id" }, { status: 400 });
     }
 
-    const store = getGitHubWebhookStore();
+    const store = getGitLabWebhookStore();
     await store.deleteConfig(id);
     return NextResponse.json({ success: true });
   } catch (err) {
@@ -152,12 +128,12 @@ export async function DELETE(request: NextRequest) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function maskToken<T extends { githubToken?: string }>(config: T): T {
-  if (!config.githubToken) return config;
+function maskToken<T extends { gitlabToken?: string }>(config: T): T {
+  if (!config.gitlabToken) return config;
   return {
     ...config,
-    githubToken: config.githubToken.length > 8
-      ? `${config.githubToken.slice(0, 4)}...${config.githubToken.slice(-4)}`
+    gitlabToken: config.gitlabToken.length > 8
+      ? `${config.gitlabToken.slice(0, 4)}...${config.gitlabToken.slice(-4)}`
       : "***",
   };
 }

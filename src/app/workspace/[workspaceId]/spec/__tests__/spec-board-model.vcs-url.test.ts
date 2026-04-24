@@ -33,8 +33,8 @@ function resolveViaModel(relatedIssues: string[], existingGithubUrl?: string) {
       reportedBy: "test",
       relatedIssues,
       githubIssue: null,
-      githubState: null,
-      githubUrl: null,
+      vcsState: null,
+      vcsUrl: null,
       body: "",
     },
   ];
@@ -52,8 +52,8 @@ function resolveViaModel(relatedIssues: string[], existingGithubUrl?: string) {
       reportedBy: "test",
       relatedIssues: [],
       githubIssue: 1,
-      githubState: "open",
-      githubUrl: existingGithubUrl,
+      vcsState: "open",
+      vcsUrl: existingGithubUrl,
       body: "",
     });
   }

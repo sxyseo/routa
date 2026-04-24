@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { describe, expect, it } from "vitest";
 import { parseGitLabCI, ParseError } from "../gitlab-ci-parser";
 
 // ─── Helper: minimal valid .gitlab-ci.yml ──────────────────────────────────

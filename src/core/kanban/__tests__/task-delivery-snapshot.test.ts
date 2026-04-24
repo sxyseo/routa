@@ -52,6 +52,7 @@ describe("task delivery snapshot", () => {
       hasCommitsSinceBase: true,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: true,
       isMergedIntoBase: false,
     }, {
@@ -111,6 +112,7 @@ describe("task delivery snapshot", () => {
       hasCommitsSinceBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
       isMergedIntoBase: false,
     }, {

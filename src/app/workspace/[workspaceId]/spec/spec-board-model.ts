@@ -373,6 +373,33 @@ function normalizeVcsIssueUrl(value: string): VcsIssueRef | null {
       }
     }
 
+    // Self-hosted GitLab: custom host with /owner/repo/-/issues/N pattern
+    const gitlabUrl = process.env.GITLAB_URL?.trim().replace(/\/+$/, "");
+    if (gitlabUrl) {
+      try {
+        const customParsed = new URL(gitlabUrl);
+        const customHost = customParsed.hostname;
+        const customPort = customParsed.port;
+        const matchesHost = customPort
+          ? parsed.host === `${customHost}:${customPort}`
+          : parsed.hostname === customHost;
+        if (matchesHost) {
+          const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/-\/issues\/(\d+)\/?$/u);
+          if (match) {
+            return {
+              platform: "gitlab",
+              owner: match[1],
+              repo: match[2],
+              number: match[3],
+              url: `${gitlabUrl}/${match[1]}/${match[2]}/-/issues/${match[3]}`,
+            };
+          }
+        }
+      } catch {
+        // Invalid GITLAB_URL, skip
+      }
+    }
+
     return null;
   } catch {
     return null;

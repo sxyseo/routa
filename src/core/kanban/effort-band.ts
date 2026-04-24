@@ -82,7 +82,7 @@ export function mapScoreToBand(
 
 export function computeEffortBand(
   input: EffortSignalInput,
-  config?: Partial<EffortBandConfig>,
+  config?: { weights?: Partial<EffortBandWeights>; thresholds?: Partial<EffortBandThresholds> },
 ): EffortBandResult {
   const weights = { ...DEFAULT_EFFORT_BAND_WEIGHTS, ...config?.weights };
   const thresholds = { ...DEFAULT_EFFORT_BAND_THRESHOLDS, ...config?.thresholds };
