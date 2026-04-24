@@ -55,6 +55,7 @@ describe("publish-task-adaptive-issue-summary", () => {
       },
       topFailureCategories: [],
       topFeatures: [],
+      recommendedFollowUpFiles: [],
       topFiles: [],
       warnings: [],
     });
@@ -114,6 +115,7 @@ describe("publish-task-adaptive-issue-summary", () => {
       },
       topFailureCategories: [],
       topFeatures: [],
+      recommendedFollowUpFiles: [],
       topFiles: [],
       warnings: [],
     });

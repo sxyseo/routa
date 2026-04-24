@@ -35,6 +35,16 @@ export interface TaskAdaptiveIssueFileSummary {
   failureCategories: TaskAdaptiveIssueFailureCategoryCount[];
 }
 
+export type TaskAdaptiveIssueFollowUpConfidence = "high" | "medium" | "low";
+
+export interface TaskAdaptiveIssueFollowUpFile {
+  filePath: string;
+  featureIds: string[];
+  confidence: TaskAdaptiveIssueFollowUpConfidence;
+  rationale: string;
+  failureCategories: TaskAdaptiveIssueFailureCategoryCount[];
+}
+
 export interface TaskAdaptiveIssueSummary {
   generatedAt: string;
   source: TaskAdaptiveIssueSummarySource;
@@ -54,6 +64,7 @@ export interface TaskAdaptiveIssueSummary {
   };
   topFailureCategories: TaskAdaptiveIssueFailureCategoryCount[];
   topFeatures: TaskAdaptiveIssueFeatureSummary[];
+  recommendedFollowUpFiles: TaskAdaptiveIssueFollowUpFile[];
   topFiles: TaskAdaptiveIssueFileSummary[];
   warnings: string[];
 }
@@ -67,6 +78,34 @@ export interface BuildTaskAdaptiveIssueSummaryOptions {
 const DEFAULT_MAX_FEATURES = 8;
 const DEFAULT_MAX_FILES = 12;
 const MAX_TOP_FILES_PER_FEATURE = 5;
+const MAX_RECOMMENDED_FOLLOW_UP_FILES = 5;
+
+type TaskAdaptiveIssueFileCategory = "product_source" | "supporting_code" | "repo_docs" | "repo_tracker";
+
+interface RankedTaskAdaptiveIssueFileSummary {
+  summary: TaskAdaptiveIssueFileSummary;
+  category: TaskAdaptiveIssueFileCategory;
+  failureCount: number;
+  failureScore: number;
+  priorityScore: number;
+}
+
+const FILE_CATEGORY_PRIORITY: Record<TaskAdaptiveIssueFileCategory, number> = {
+  product_source: 70,
+  supporting_code: 25,
+  repo_docs: -10,
+  repo_tracker: -45,
+};
+
+const FAILURE_CATEGORY_PRIORITY: Record<string, number> = {
+  service_unavailable: 18,
+  permission_or_worktree: 16,
+  missing_dependency: 14,
+  missing_installation: 12,
+  missing_file_or_path: 8,
+  tooling_failure: 6,
+  shell_glob_path: 4,
+};
 
 function trimTo<T>(values: T[], max: number): T[] {
   return values.slice(0, Math.max(0, max));
@@ -89,6 +128,17 @@ function collectFailureCategories(
   return [...counts.entries()]
     .map(([category, count]) => ({ category, count }))
     .sort((left, right) => right.count - left.count || left.category.localeCompare(right.category));
+}
+
+function countFailures(categories: TaskAdaptiveIssueFailureCategoryCount[]): number {
+  return categories.reduce((total, category) => total + category.count, 0);
+}
+
+function scoreFailures(categories: TaskAdaptiveIssueFailureCategoryCount[]): number {
+  return categories.reduce(
+    (total, category) => total + ((FAILURE_CATEGORY_PRIORITY[category.category] ?? 5) * category.count),
+    0,
+  );
 }
 
 function categorizeFailure(message: string, command?: string): string {
@@ -195,6 +245,147 @@ function summarizeFileProfile(
   };
 }
 
+function categorizeIssueFilePath(filePath: string): TaskAdaptiveIssueFileCategory {
+  if (filePath.startsWith("docs/issues/")) {
+    return "repo_tracker";
+  }
+
+  if (
+    filePath.startsWith("src/")
+    || filePath.startsWith("crates/")
+    || filePath.startsWith("apps/")
+  ) {
+    return "product_source";
+  }
+
+  if (
+    filePath.startsWith("scripts/")
+    || filePath.startsWith("tools/")
+    || filePath.startsWith("tests/")
+    || filePath.startsWith("e2e/")
+    || filePath.startsWith("resources/")
+    || [
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "Cargo.toml",
+      "Cargo.lock",
+      "api-contract.yaml",
+    ].includes(filePath)
+  ) {
+    return "supporting_code";
+  }
+
+  if (
+    filePath.startsWith("docs/")
+    || filePath.startsWith(".github/")
+    || filePath.startsWith(".agents/")
+    || filePath.startsWith(".kiro/")
+    || filePath === "README.md"
+    || filePath.endsWith("/README.md")
+  ) {
+    return "repo_docs";
+  }
+
+  return "supporting_code";
+}
+
+function rankFileSummary(summary: TaskAdaptiveIssueFileSummary): RankedTaskAdaptiveIssueFileSummary {
+  const category = categorizeIssueFilePath(summary.filePath);
+  const failureScore = scoreFailures(summary.failureCategories);
+  const failureCount = countFailures(summary.failureCategories);
+  const featureLinkScore = summary.featureIds.length > 0
+    ? Math.min(24, 12 + ((summary.featureIds.length - 1) * 4))
+    : 0;
+  const priorityScore = (summary.sessionCount * 40)
+    + failureScore
+    + featureLinkScore
+    + FILE_CATEGORY_PRIORITY[category];
+
+  return {
+    summary,
+    category,
+    failureCount,
+    failureScore,
+    priorityScore,
+  };
+}
+
+function compareRankedFiles(left: RankedTaskAdaptiveIssueFileSummary, right: RankedTaskAdaptiveIssueFileSummary): number {
+  return right.priorityScore - left.priorityScore
+    || right.summary.sessionCount - left.summary.sessionCount
+    || right.failureScore - left.failureScore
+    || right.summary.updatedAt.localeCompare(left.summary.updatedAt)
+    || left.summary.filePath.localeCompare(right.summary.filePath);
+}
+
+function deriveFollowUpConfidence(file: RankedTaskAdaptiveIssueFileSummary): TaskAdaptiveIssueFollowUpConfidence {
+  if (
+    (file.category === "product_source" || file.category === "supporting_code")
+    && file.summary.sessionCount >= 2
+    && (file.summary.featureIds.length > 0 || file.failureCount >= 2 || file.priorityScore >= 180)
+  ) {
+    return "high";
+  }
+
+  if (file.summary.sessionCount >= 2 || file.summary.featureIds.length > 0 || file.failureCount >= 2) {
+    return "medium";
+  }
+
+  return "low";
+}
+
+function buildFollowUpRationale(file: RankedTaskAdaptiveIssueFileSummary): string {
+  const fragments: string[] = [];
+
+  if (file.category === "product_source") {
+    fragments.push("product-facing source hotspot");
+  } else if (file.category === "supporting_code") {
+    fragments.push("supporting implementation hotspot");
+  } else if (file.category === "repo_tracker") {
+    fragments.push("repo-maintenance hotspot");
+  } else {
+    fragments.push("repo-doc hotspot");
+  }
+
+  if (file.summary.featureIds.length > 0) {
+    fragments.push(
+      file.summary.featureIds.length === 1
+        ? `linked to feature \`${file.summary.featureIds[0]}\``
+        : `linked to ${file.summary.featureIds.length} features`,
+    );
+  }
+
+  if (file.summary.failureCategories.length > 0) {
+    fragments.push(`shows ${formatFailureCategories(file.summary.failureCategories)}`);
+  }
+
+  fragments.push(
+    `seen in ${file.summary.sessionCount} session${file.summary.sessionCount === 1 ? "" : "s"}`,
+  );
+
+  return fragments.join("; ");
+}
+
+function buildRecommendedFollowUpFiles(
+  rankedFiles: RankedTaskAdaptiveIssueFileSummary[],
+  maxFiles: number,
+): TaskAdaptiveIssueFollowUpFile[] {
+  const preferred = rankedFiles.filter(
+    (file) => file.category === "product_source" || file.category === "supporting_code",
+  );
+  const candidates = preferred.length > 0 ? preferred : rankedFiles;
+
+  return trimTo(candidates, Math.min(MAX_RECOMMENDED_FOLLOW_UP_FILES, maxFiles))
+    .map((file) => ({
+      filePath: file.summary.filePath,
+      featureIds: [...file.summary.featureIds],
+      confidence: deriveFollowUpConfidence(file),
+      rationale: buildFollowUpRationale(file),
+      failureCategories: [...file.summary.failureCategories],
+    }));
+}
+
 function aggregateTopFailureCategories(snapshot: TaskAdaptiveFrictionProfileSnapshot): TaskAdaptiveIssueFailureCategoryCount[] {
   const counts = new Map<string, number>();
 
@@ -277,13 +468,12 @@ export async function buildTaskAdaptiveIssueSummary(
   const topFiles = trimTo(
     Object.values(snapshot.fileProfiles)
       .map((profile) => summarizeFileProfile(profile, profileFeatureIdsByFile, surfaceFeatureIdsByFile))
-      .sort((left, right) =>
-        right.sessionCount - left.sessionCount
-        || right.updatedAt.localeCompare(left.updatedAt)
-        || left.filePath.localeCompare(right.filePath),
-      ),
+      .map(rankFileSummary)
+      .sort(compareRankedFiles)
+      .map((entry) => entry.summary),
     maxFiles,
   );
+  const rankedTopFiles = topFiles.map(rankFileSummary);
 
   return {
     generatedAt: snapshot.generatedAt,
@@ -304,6 +494,7 @@ export async function buildTaskAdaptiveIssueSummary(
     },
     topFailureCategories: aggregateTopFailureCategories(snapshot),
     topFeatures,
+    recommendedFollowUpFiles: buildRecommendedFollowUpFiles(rankedTopFiles, maxFiles),
     topFiles,
     warnings: [...surfaceIndex.warnings],
   };
@@ -361,6 +552,19 @@ export function formatTaskAdaptiveIssueSummaryMarkdown(summary: TaskAdaptiveIssu
       lines.push(`  - sessions: ${feature.sessionCount}, files: ${feature.fileCount}, updated: \`${feature.updatedAt || "unknown"}\``);
       lines.push(`  - top files: ${formatList(feature.topFiles)}`);
       lines.push(`  - failure categories: ${formatFailureCategories(feature.failureCategories)}`);
+    }
+  }
+
+  lines.push("", "### Recommended Follow-Up Files");
+  if (summary.recommendedFollowUpFiles.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const file of summary.recommendedFollowUpFiles) {
+      lines.push(`- \`${file.filePath}\``);
+      lines.push(`  - confidence: ${file.confidence}`);
+      lines.push(`  - feature ids: ${formatList(file.featureIds)}`);
+      lines.push(`  - failure categories: ${formatFailureCategories(file.failureCategories)}`);
+      lines.push(`  - why: ${file.rationale}`);
     }
   }
 
