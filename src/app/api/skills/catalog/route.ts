@@ -4,6 +4,7 @@
  * Supports multiple catalog sources:
  *   1. skills.sh (default) — Search-based catalog from https://skills.sh
  *   2. github — Directory-based catalog from GitHub repos (e.g. openai/skills)
+ *   3. gitlab — Directory-based catalog from GitLab repos
  *
  * GET /api/skills/catalog?type=skillssh&q=react&limit=20
  *   Search skills from skills.sh
@@ -13,9 +14,13 @@
  *   List skills from a GitHub repo directory
  *   Returns: { type, skills: GithubCatalogSkill[], repo, path }
  *
+ * GET /api/skills/catalog?type=gitlab&repo=owner/repo&path=skills&ref=main
+ *   List skills from a GitLab repo directory
+ *   Returns: { type, skills: GitlabCatalogSkill[], repo, path, ref }
+ *
  * POST /api/skills/catalog
  *   Install skill(s) from a source
- *   Body: { type: "skillssh"|"github", ... }
+ *   Body: { type: "skillssh"|"github"|"gitlab", ... }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -63,6 +68,19 @@ interface GithubCatalogSkill {
 interface GitHubContentsEntry {
   name: string;
   type: "file" | "dir" | "symlink";
+}
+
+interface GitlabCatalogSkill {
+  name: string;
+  installed: boolean;
+}
+
+interface GitlabTreeEntry {
+  id: string;
+  name: string;
+  type: "tree" | "blob";
+  path: string;
+  mode: string;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -132,6 +150,50 @@ async function githubFetch(url: string): Promise<Response> {
   return fetch(url, { headers });
 }
 
+// ── GitLab helpers ──────────────────────────────────────────────────────
+
+function getGitlabToken(): string | undefined {
+  return process.env.GITLAB_TOKEN;
+}
+
+function getGitlabApiBaseUrl(): string {
+  const customUrl = process.env.GITLAB_URL?.replace(/\/$/, "");
+  return customUrl ? `${customUrl}/api/v4` : "https://gitlab.com/api/v4";
+}
+
+function encodeGitlabProjectPath(repo: string): string {
+  return repo.replace(/\//g, "%2F");
+}
+
+async function gitlabFetch(endpoint: string): Promise<Response> {
+  const url = `${getGitlabApiBaseUrl()}${endpoint}`;
+  const headers: Record<string, string> = {
+    "User-Agent": "routa-skill-catalog",
+  };
+  const token = getGitlabToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return fetch(url, { headers });
+}
+
+async function gitlabDownloadArchive(repo: string, ref: string): Promise<Buffer> {
+  const encodedPath = encodeGitlabProjectPath(repo);
+  const url = `${getGitlabApiBaseUrl()}/projects/${encodedPath}/repository/archive.zip?sha=${ref}`;
+  const headers: Record<string, string> = {
+    "User-Agent": "routa-skill-catalog",
+  };
+  const token = getGitlabToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    throw new Error(`GitLab archive download failed: HTTP ${response.status}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
 function getInstalledSkillNamesFromFs(): Set<string> {
   const installed = new Set<string>();
   const skillDirs = getInstalledSkillDirs();
@@ -195,10 +257,12 @@ export async function GET(request: NextRequest) {
     return handleSkillsShSearch(request);
   } else if (catalogType === "github") {
     return handleGithubList(request);
+  } else if (catalogType === "gitlab") {
+    return handleGitlabList(request);
   }
 
   return NextResponse.json(
-    { error: `Unknown catalog type: ${catalogType}. Use "skillssh" or "github".` },
+    { error: `Unknown catalog type: ${catalogType}. Use "skillssh", "github", or "gitlab".` },
     { status: 400 }
   );
 }
@@ -326,6 +390,69 @@ async function handleGithubList(request: NextRequest) {
   }
 }
 
+/** List skills from a GitLab repo directory */
+async function handleGitlabList(request: NextRequest) {
+  const repo = request.nextUrl.searchParams.get("repo");
+  if (!repo) {
+    return NextResponse.json({ error: "Missing 'repo' parameter" }, { status: 400 });
+  }
+  const catalogPath = request.nextUrl.searchParams.get("path") || "skills";
+  const ref = request.nextUrl.searchParams.get("ref") || DEFAULT_REF;
+
+  const encodedPath = encodeGitlabProjectPath(repo);
+  const apiUrl = `/projects/${encodedPath}/repository/tree?path=${encodeURIComponent(catalogPath)}&ref=${encodeURIComponent(ref)}&per_page=100`;
+
+  try {
+    const response = await gitlabFetch(apiUrl);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return NextResponse.json(
+          { error: `Catalog not found in GitLab repo: ${repo}/${catalogPath} (ref: ${ref})` },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json(
+        { error: `GitLab API error: HTTP ${response.status}` },
+        { status: response.status }
+      );
+    }
+
+    const data = (await response.json()) as GitlabTreeEntry[];
+
+    if (!Array.isArray(data)) {
+      return NextResponse.json(
+        { error: "Unexpected response from GitLab API" },
+        { status: 500 }
+      );
+    }
+
+    const installed = await getInstalledSkillNames();
+
+    const skills: GitlabCatalogSkill[] = data
+      .filter((entry) => entry.type === "tree")
+      .map((entry) => ({
+        name: entry.name,
+        installed: installed.has(entry.name),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return NextResponse.json({
+      type: "gitlab",
+      skills,
+      repo,
+      path: catalogPath,
+      ref,
+    });
+  } catch (err) {
+    console.error("[skills/catalog] GitLab list failed:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to fetch GitLab catalog" },
+      { status: 500 }
+    );
+  }
+}
+
 // ── POST ────────────────────────────────────────────────────────────────
 
 /**
@@ -360,6 +487,8 @@ export async function POST(request: NextRequest) {
         return handleSkillsShInstallToDb(body);
       } else if (catalogType === "github") {
         return handleGithubInstallToDb(body);
+      } else if (catalogType === "gitlab") {
+        return handleGitlabInstallToDb(body);
       }
     } else {
       // Use filesystem storage for local/self-hosted
@@ -367,6 +496,8 @@ export async function POST(request: NextRequest) {
         return handleSkillsShInstall(body);
       } else if (catalogType === "github") {
         return handleGithubInstall(body);
+      } else if (catalogType === "gitlab") {
+        return handleGitlabInstall(body);
       }
     }
 
@@ -901,5 +1032,195 @@ async function handleGithubInstallToDb(body: {
     return NextResponse.json({ success: installed.length > 0, installed, errors, dest: "database" });
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+// ── GitLab Install (filesystem) ─────────────────────────────────────────
+
+/**
+ * Install skills from a GitLab repo directory catalog.
+ */
+async function handleGitlabInstall(body: {
+  repo?: string;
+  path?: string;
+  ref?: string;
+  skills: string[];
+}) {
+  const {
+    repo,
+    path: catalogPath = "skills",
+    ref = DEFAULT_REF,
+    skills: skillNames,
+  } = body;
+
+  if (!repo) {
+    return NextResponse.json({ error: "Missing 'repo' parameter" }, { status: 400 });
+  }
+  if (!Array.isArray(skillNames) || skillNames.length === 0) {
+    return NextResponse.json({ error: "Missing 'skills' array" }, { status: 400 });
+  }
+
+  try {
+    const zipBuffer = await gitlabDownloadArchive(repo, ref);
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-catalog-"));
+
+    try {
+      const AdmZip = (await import("adm-zip")).default;
+      const zip = new AdmZip(zipBuffer);
+      zip.extractAllTo(tmpDir, true);
+
+      const topDirs = fs.readdirSync(tmpDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+      if (topDirs.length !== 1) {
+        return NextResponse.json({ error: "Unexpected archive layout" }, { status: 500 });
+      }
+
+      const repoRoot = path.join(tmpDir, topDirs[0].name);
+      const destBase = getSkillsDestDir();
+      try {
+        fs.mkdirSync(destBase, { recursive: true });
+      } catch (err) {
+        return NextResponse.json(
+          { error: `Cannot create skills directory: ${err instanceof Error ? err.message : String(err)}` },
+          { status: 500 }
+        );
+      }
+
+      const installed: string[] = [];
+      const errors: string[] = [];
+
+      for (const skillName of skillNames) {
+        try {
+          const skillSrc = resolveFsPath(repoRoot, catalogPath, skillName);
+          if (!fs.existsSync(skillSrc) || !fs.statSync(skillSrc).isDirectory()) {
+            errors.push(`Skill not found in catalog: ${skillName}`);
+            continue;
+          }
+          if (!fs.existsSync(resolveFsPath(skillSrc, "SKILL.md"))) {
+            errors.push(`No SKILL.md in ${skillName}`);
+            continue;
+          }
+          const destDir = path.join(destBase, skillName);
+          if (fs.existsSync(destDir)) {
+            errors.push(`Already installed: ${skillName}`);
+            continue;
+          }
+          copyDirRecursive(skillSrc, destDir);
+          installed.push(skillName);
+        } catch (err) {
+          errors.push(`Failed to install ${skillName}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      return NextResponse.json({
+        success: installed.length > 0,
+        installed,
+        errors,
+        dest: destBase,
+      });
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  } catch (err) {
+    console.error("[skills/catalog] GitLab install failed:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to install from GitLab" },
+      { status: 500 }
+    );
+  }
+}
+
+// ── GitLab Install (database / serverless) ──────────────────────────────
+
+/**
+ * Install skills from GitLab catalog to database (serverless mode).
+ */
+async function handleGitlabInstallToDb(body: {
+  repo?: string;
+  path?: string;
+  ref?: string;
+  skills: string[];
+}) {
+  const {
+    repo,
+    path: catalogPath = "skills",
+    ref = DEFAULT_REF,
+    skills: skillNames,
+  } = body;
+
+  if (!repo) {
+    return NextResponse.json({ error: "Missing 'repo' parameter" }, { status: 400 });
+  }
+  if (!Array.isArray(skillNames) || skillNames.length === 0) {
+    return NextResponse.json({ error: "Missing 'skills' array" }, { status: 400 });
+  }
+
+  try {
+    const zipBuffer = await gitlabDownloadArchive(repo, ref);
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-catalog-db-"));
+
+    try {
+      const AdmZip = (await import("adm-zip")).default;
+      const zip = new AdmZip(zipBuffer);
+      zip.extractAllTo(tmpDir, true);
+
+      const topDirs = fs.readdirSync(tmpDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+      if (topDirs.length !== 1) {
+        return NextResponse.json({ error: "Unexpected archive layout" }, { status: 500 });
+      }
+
+      const repoRoot = path.join(tmpDir, topDirs[0].name);
+      const db = getDatabase();
+      const skillStore = new PgSkillStore(db);
+
+      const installed: string[] = [];
+      const errors: string[] = [];
+
+      for (const skillName of skillNames) {
+        try {
+          const existing = await skillStore.get(skillName);
+          if (existing) {
+            errors.push(`Already installed: ${skillName}`);
+            continue;
+          }
+
+          const skillSrc = resolveFsPath(repoRoot, catalogPath, skillName);
+          if (!fs.existsSync(skillSrc) || !fs.statSync(skillSrc).isDirectory()) {
+            errors.push(`Skill not found in catalog: ${skillName}`);
+            continue;
+          }
+          if (!fs.existsSync(resolveFsPath(skillSrc, "SKILL.md"))) {
+            errors.push(`No SKILL.md in ${skillName}`);
+            continue;
+          }
+
+          const files = readDirAsFileEntries(skillSrc);
+          const skillMdFile = files.find(f => f.path === "SKILL.md");
+          const description = skillMdFile ? extractSkillDescription(skillMdFile.content) : "";
+
+          await skillStore.save({
+            id: skillName,
+            name: skillName,
+            description,
+            source: repo,
+            catalogType: "gitlab",
+            files,
+          });
+
+          installed.push(skillName);
+        } catch (err) {
+          errors.push(`Failed to install ${skillName}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      return NextResponse.json({ success: installed.length > 0, installed, errors, dest: "database" });
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  } catch (err) {
+    console.error("[skills/catalog] GitLab install-to-db failed:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to install from GitLab" },
+      { status: 500 }
+    );
   }
 }
