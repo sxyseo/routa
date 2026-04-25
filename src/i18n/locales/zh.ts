@@ -619,6 +619,8 @@ const zh: TranslationDictionary = {
     selectCloneOrLoad: "选择、克隆或加载仓库...",
     repositories: "仓库",
     cloneFromGitHub: "从 GitHub 克隆",
+    cloneFromGitLab: "从 GitLab 克隆",
+    cloneFromUrl: "从 URL 克隆",
     localProject: "本地项目",
     searchPlaceholder: "搜索仓库、粘贴 GitHub URL 或输入本地路径...",
     noRepositoriesYet: "暂无仓库。切换到「从 GitHub 克隆」或「本地项目」以添加仓库。",

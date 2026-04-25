@@ -623,6 +623,8 @@ const en: TranslationDictionary = {
     selectCloneOrLoad: "Select, clone, or load a repository...",
     repositories: "Repositories",
     cloneFromGitHub: "Clone from GitHub",
+    cloneFromGitLab: "Clone from GitLab",
+    cloneFromUrl: "Clone from URL",
     localProject: "Local Project",
     searchPlaceholder: "Search repositories, paste GitHub URL, or enter local path...",
     noRepositoriesYet: "No repositories yet. Switch to \"Clone from GitHub\" or \"Local Project\" to add one.",

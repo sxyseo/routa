@@ -625,6 +625,8 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     selectCloneOrLoad: string;
     repositories: string;
     cloneFromGitHub: string;
+    cloneFromGitLab: string;
+    cloneFromUrl: string;
     localProject: string;
     searchPlaceholder: string;
     noRepositoriesYet: string;

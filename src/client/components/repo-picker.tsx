@@ -3,9 +3,9 @@
  * RepoPicker - Inline repo selector and cloner
  *
  * Consistent with intent-source RepoSelector:
- *   - Tab-like modes: Existing repos, Clone from GitHub
+ *   - Tab-like modes: Existing repos, Clone from GitHub/GitLab/URL
  *   - Search/filter existing repos
- *   - GitHub URL input with clone progress (SSE)
+ *   - GitHub/GitLab URL input with clone progress (SSE)
  *   - Git error handling and user-friendly messages
  *   - Clone status: progress phases, percent
  */
@@ -109,14 +109,53 @@ function buildRepoHoverTitle(selection: RepoSelection): string {
   return `${selection.name}\n${selection.path}`;
 }
 
-function isGitHubInput(text: string): boolean {
+/** Detected git platform from user input */
+export type GitPlatform = "github" | "gitlab" | "unknown";
+
+function isGitInput(text: string): boolean {
+  return detectPlatform(text) !== "unknown";
+}
+
+export function detectPlatform(text: string): GitPlatform {
   const t = text.trim();
-  return (
+  // GitLab URL patterns
+  if (
+    /^https?:\/\/gitlab\.com\//i.test(t) ||
+    /^git@gitlab\.com:/i.test(t) ||
+    /^gitlab\.com\//i.test(t)
+  ) {
+    return "gitlab";
+  }
+  // GitHub URL patterns
+  if (
     /^https?:\/\/github\.com\//i.test(t) ||
     /^git@github\.com:/i.test(t) ||
-    /^github\.com\//i.test(t) ||
-    /^[a-zA-Z0-9\-_]+\/[a-zA-Z0-9\-_.]+$/.test(t)
-  );
+    /^github\.com\//i.test(t)
+  ) {
+    return "github";
+  }
+  // Bare owner/repo (no domain) defaults to GitHub for backward compat
+  if (/^[a-zA-Z0-9\-_]+\/[a-zA-Z0-9\-_.]+$/.test(t)) {
+    return "github";
+  }
+  return "unknown";
+}
+
+function getPlatformPrefix(platform: GitPlatform): string {
+  switch (platform) {
+    case "github":
+      return "github.com/";
+    case "gitlab":
+      return "gitlab.com/";
+    default:
+      return "";
+  }
+}
+
+function stripUrlPrefix(url: string): string {
+  return url
+    .replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "")
+    .replace(/^(https?:\/\/)?(www\.)?gitlab\.com\//i, "");
 }
 
 function isLikelyLocalPath(text: string): boolean {
@@ -235,10 +274,10 @@ export function RepoPicker({
     setShowDropdown(true);
   }, []);
 
-  // ── Auto-detect GitHub URL in search → switch to clone tab ─────────
+  // ── Auto-detect Git URL in search → switch to clone tab ─────────
 
   useEffect(() => {
-    if (allowClone && searchQuery && isGitHubInput(searchQuery)) {
+    if (allowClone && searchQuery && isGitInput(searchQuery)) {
       setActiveTab("clone");
       setCloneUrl(searchQuery);
     } else if (searchQuery && isLikelyLocalPath(searchQuery)) {
@@ -246,6 +285,9 @@ export function RepoPicker({
       setLocalPath(searchQuery);
     }
   }, [allowClone, searchQuery]);
+
+  // ── Detected platform from clone URL (for dynamic labels) ─────────
+  const detectedPlatform = useMemo(() => detectPlatform(cloneUrl), [cloneUrl]);
 
   // ── Clone with progress (SSE) ──────────────────────────────────────
 
@@ -578,7 +620,11 @@ export function RepoPicker({
                 }}
               >
                 <Download className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
-                {t.repoPicker.cloneFromGitHub}
+                {detectedPlatform === "gitlab"
+                  ? t.repoPicker.cloneFromGitLab
+                  : detectedPlatform === "github"
+                    ? t.repoPicker.cloneFromGitHub
+                    : t.repoPicker.cloneFromUrl}
               </TabButton>
             ) : null}
             <TabButton
@@ -652,29 +698,24 @@ export function RepoPicker({
                 <div className="flex items-center gap-1.5">
                   <div className="flex-1 flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] overflow-hidden">
                     <span className="pl-2.5 text-[10px] text-slate-400 dark:text-slate-500 font-mono whitespace-nowrap">
-                      github.com/
+                      {detectedPlatform !== "unknown"
+                        ? getPlatformPrefix(detectedPlatform)
+                        : ""}
                     </span>
                     <input
                       ref={cloneInputRef}
                       type="text"
-                      value={cloneUrl.replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "")}
+                      value={stripUrlPrefix(cloneUrl)}
                       onChange={(e) => {
                         const v = e.target.value;
-                        // Accept both "owner/repo" and full URL forms
-                        setCloneUrl(
-                          v.includes("github.com") ? v : v
-                        );
+                        setCloneUrl(v);
                         setCloneError(null);
                       }}
                       placeholder={clonePlaceholder ?? t.repoPicker.ownerRepo}
                       className="flex-1 px-1.5 py-2 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none font-mono"
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && cloneUrl.trim()) {
-                          handleClone(
-                            cloneUrl.includes("github.com")
-                              ? cloneUrl
-                              : cloneUrl
-                          );
+                          handleClone(cloneUrl);
                         }
                         if (e.key === "Escape") setShowDropdown(false);
                       }}
@@ -717,11 +758,7 @@ export function RepoPicker({
               <button
                 type="button"
                 onClick={() =>
-                  handleClone(
-                    cloneUrl.includes("github.com")
-                      ? cloneUrl
-                      : cloneUrl
-                  )
+                  handleClone(cloneUrl)
                 }
                 disabled={cloning || !cloneUrl.trim()}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
