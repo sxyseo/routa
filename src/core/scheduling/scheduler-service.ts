@@ -19,6 +19,7 @@ import { runScheduleTick } from "./run-schedule-tick";
 import { runAutoArchiveTick } from "../kanban/auto-archive-tick";
 import { runDoneLaneRecoveryTick, cleanupOrphanPendingMarkers } from "../kanban/done-lane-recovery-tick";
 import { runWithSpan } from "../telemetry/tracing";
+import { withHeartbeat } from "./system-heartbeat-registry";
 
 let schedulerTask: ScheduledTask | null = null;
 let autoArchiveTask: ScheduledTask | null = null;
@@ -43,13 +44,15 @@ export function startSchedulerService(): void {
       "routa.scheduler.tick_cycle",
       {},
       async (span) => {
-        const result = await runScheduleTick(getRoutaSystem());
-        span.setAttribute("routa.schedule.due_count", result.dueCount);
-        span.setAttribute("routa.schedules.fired_count", result.fired);
+        await withHeartbeat("schedule-tick", async () => {
+          const result = await runScheduleTick(getRoutaSystem());
+          span.setAttribute("routa.schedule.due_count", result.dueCount);
+          span.setAttribute("routa.schedules.fired_count", result.fired);
 
-        if (result.fired > 0) {
-          console.log(`[Scheduler] Tick fired ${result.fired} schedule(s): ${result.scheduleIds.join(", ")}`);
-        }
+          if (result.fired > 0) {
+            console.log(`[Scheduler] Tick fired ${result.fired} schedule(s): ${result.scheduleIds.join(", ")}`);
+          }
+        });
       },
     ).catch((error) => {
       console.error("[Scheduler] Tick failed:", error);
@@ -62,10 +65,12 @@ export function startSchedulerService(): void {
       "routa.scheduler.auto_archive_tick",
       {},
       async (span) => {
-        const result = await runAutoArchiveTick(getRoutaSystem());
-        span.setAttribute("routa.auto_archive.examined", result.examined);
-        span.setAttribute("routa.auto_archive.archived", result.archived);
-        span.setAttribute("routa.auto_archive.skipped", result.skipped.length);
+        await withHeartbeat("auto-archive-tick", async () => {
+          const result = await runAutoArchiveTick(getRoutaSystem());
+          span.setAttribute("routa.auto_archive.examined", result.examined);
+          span.setAttribute("routa.auto_archive.archived", result.archived);
+          span.setAttribute("routa.auto_archive.skipped", result.skipped.length);
+        });
       },
     ).catch((error) => {
       console.error("[Scheduler] Auto-archive tick failed:", error);
@@ -79,11 +84,13 @@ export function startSchedulerService(): void {
       "routa.scheduler.done_lane_recovery_tick",
       {},
       async (span) => {
-        const result = await runDoneLaneRecoveryTick(getRoutaSystem());
-        span.setAttribute("routa.done_lane_recovery.examined", result.examined);
-        span.setAttribute("routa.done_lane_recovery.recovered", result.recovered);
-        span.setAttribute("routa.done_lane_recovery.conflicts", result.conflictResolved);
-        span.setAttribute("routa.done_lane_recovery.stuck", result.stuckMarked);
+        await withHeartbeat("done-lane-recovery-tick", async () => {
+          const result = await runDoneLaneRecoveryTick(getRoutaSystem());
+          span.setAttribute("routa.done_lane_recovery.examined", result.examined);
+          span.setAttribute("routa.done_lane_recovery.recovered", result.recovered);
+          span.setAttribute("routa.done_lane_recovery.conflicts", result.conflictResolved);
+          span.setAttribute("routa.done_lane_recovery.stuck", result.stuckMarked);
+        });
       },
     ).catch((error) => {
       console.error("[Scheduler] Done-lane recovery tick failed:", error);

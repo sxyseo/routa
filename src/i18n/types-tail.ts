@@ -377,4 +377,22 @@ export interface TailTranslationDictionarySections {
     parents: string;
     files: string;
   };
+
+  // System Jobs
+  systemJobs: {
+    title: string;
+    subtitle: string;
+    description: string;
+    navLabel: string;
+    refresh: string;
+    groupScheduler: string;
+    groupKanban: string;
+    lastRun: string;
+    duration: string;
+    status: string;
+    statusIdle: string;
+    statusRunning: string;
+    statusSuccess: string;
+    statusError: string;
+  };
 }

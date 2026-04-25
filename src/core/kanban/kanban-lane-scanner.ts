@@ -26,6 +26,7 @@ import {
   buildCircuitBreakerError,
   buildAdvanceRecoveryError,
 } from "./sync-error-writer";
+import { withHeartbeat } from "../scheduling/system-heartbeat-registry";
 
 const SCAN_INTERVAL_MS = 30_000;
 const MAX_STEP_RESUME_ATTEMPTS = 3;
@@ -89,6 +90,10 @@ function getScannerState(): LaneScannerState {
  * enabled lane automation but no triggerSessionId.
  */
 export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScannerStats> {
+  return withHeartbeat("kanban-lane-scanner", () => runLaneScannerTickInner(system));
+}
+
+async function runLaneScannerTickInner(system: RoutaSystem): Promise<LaneScannerStats> {
   const state = getScannerState();
 
   // Memory guard: skip tick if heap memory is approaching the limit

@@ -371,4 +371,22 @@ export const zhTail: TailTranslationDictionarySections = {
     parents: "父提交",
     files: "个文件",
   },
+
+  // 系统任务
+  systemJobs: {
+    title: "系统任务",
+    subtitle: "监控系统后台任务的健康状态。",
+    description: "这些任务在后台自动运行，确保看板、定时任务和自动化流程正常工作。",
+    navLabel: "系统任务",
+    refresh: "刷新",
+    groupScheduler: "调度任务",
+    groupKanban: "看板任务",
+    lastRun: "上次执行",
+    duration: "耗时",
+    status: "状态",
+    statusIdle: "空闲",
+    statusRunning: "运行中",
+    statusSuccess: "成功",
+    statusError: "错误",
+  },
 };

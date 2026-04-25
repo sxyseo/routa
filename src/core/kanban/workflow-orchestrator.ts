@@ -32,6 +32,7 @@ import { getTaskDevServerRegistry } from "./task-dev-server-registry";
 import type { WorktreeStore } from "../db/pg-worktree-store";
 import { onChildTaskStatusChanged } from "./parent-child-lifecycle";
 import { shouldSkipTickForMemory } from "./memory-guard";
+import { withHeartbeat } from "../scheduling/system-heartbeat-registry";
 import {
   parseCbResetCount,
   buildCircuitBreakerError,
@@ -334,7 +335,7 @@ export class KanbanWorkflowOrchestrator {
       }
     });
     this.watchdogTimer = setInterval(() => {
-      void this.scanForInactiveSessions();
+      void withHeartbeat("watchdog-scanner", () => this.scanForInactiveSessions());
     }, WATCHDOG_SCAN_INTERVAL_MS);
     (this.watchdogTimer as ReturnType<typeof setInterval> & { unref?: () => void }).unref?.();
     this.started = true;
