@@ -633,6 +633,35 @@ export const artifacts = pgTable("artifacts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── Notification Preferences ─────────────────────────────────────────────
+
+import type { NotificationEventType } from "../store/notification-store";
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  workspaceId: text("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  senderEmail: text("sender_email").notNull().default(""),
+  recipients: jsonb("recipients").$type<string[]>().notNull().default([]),
+  enabledEvents: jsonb("enabled_events").$type<NotificationEventType[]>().notNull().default([]),
+  throttleSeconds: integer("throttle_seconds").notNull().default(300),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Notification Logs ────────────────────────────────────────────────────
+
+export const notificationLogs = pgTable("notification_logs", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  recipients: jsonb("recipients").$type<string[]>().notNull().default([]),
+  subject: text("subject").notNull().default(""),
+  status: text("status").notNull().default("sent"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Artifact Requests (pending artifact requests) ───────────────────────
 
 export const artifactRequests = pgTable("artifact_requests", {

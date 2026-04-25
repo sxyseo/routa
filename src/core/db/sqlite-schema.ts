@@ -519,6 +519,35 @@ export const specialists = sqliteTable("specialists", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// ─── Notification Preferences ─────────────────────────────────────────────
+
+import type { NotificationEventType } from "../store/notification-store";
+
+export const notificationPreferences = sqliteTable("notification_preferences", {
+  workspaceId: text("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  senderEmail: text("sender_email").notNull().default(""),
+  recipients: text("recipients", { mode: "json" }).$type<string[]>().notNull().default([]),
+  enabledEvents: text("enabled_events", { mode: "json" }).$type<NotificationEventType[]>().notNull().default([]),
+  throttleSeconds: integer("throttle_seconds").notNull().default(300),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// ─── Notification Logs ────────────────────────────────────────────────────
+
+export const notificationLogs = sqliteTable("notification_logs", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  recipients: text("recipients", { mode: "json" }).$type<string[]>().notNull().default([]),
+  subject: text("subject").notNull().default(""),
+  status: text("status").notNull().default("sent"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 // ─── Artifacts (agent-to-agent communication) ───────────────────────────
 
 export const artifacts = sqliteTable("artifacts", {

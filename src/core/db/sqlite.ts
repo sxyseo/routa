@@ -629,6 +629,42 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     }
   }
 
+  // ─── Notification Preferences ──────────────────────────────────────────
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      sender_email TEXT NOT NULL DEFAULT '',
+      recipients TEXT NOT NULL DEFAULT '[]',
+      enabled_events TEXT NOT NULL DEFAULT '[]',
+      throttle_seconds INTEGER NOT NULL DEFAULT 300,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  // ─── Notification Logs ──────────────────────────────────────────────────
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS notification_logs (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      recipients TEXT NOT NULL DEFAULT '[]',
+      subject TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'sent',
+      error_message TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_notification_logs_workspace_id
+    ON notification_logs (workspace_id)
+  `);
+
   console.log("[SQLite] Tables initialized");
 }
 
