@@ -701,11 +701,15 @@ export class KanbanWorkflowOrchestrator {
           automationEntry.status = "running";
           automationEntry.sessionId = sessionId;
           this.sessionFailureCounts.delete(data.cardId);
-          // Clear circuit breaker marker on success
+          // Clear circuit breaker marker on success — reload to avoid overwriting
+          // fields (triggerSessionId, laneSessions) modified by startKanbanTaskSession.
           if (task?.lastSyncError?.startsWith(CIRCUIT_BREAKER_MARKER)) {
-            task.lastSyncError = undefined;
-            task.updatedAt = new Date();
-            await this.taskStore.save(task);
+            const freshTask = await this.taskStore.get(data.cardId);
+            if (freshTask) {
+              freshTask.lastSyncError = undefined;
+              freshTask.updatedAt = new Date();
+              await this.taskStore.save(freshTask);
+            }
           }
         } else {
           automationEntry.status = "failed";
@@ -713,17 +717,24 @@ export class KanbanWorkflowOrchestrator {
           // counts this attempt for non-dev columns (done/review/blocked).
           // Without this, createSession-null never increments laneSessions,
           // so the repeat limit guard never triggers.
-          if (task && targetColumn.stage !== "dev") {
-            upsertTaskLaneSession(task, {
-              sessionId: `failed-${data.cardId}-${Date.now()}`,
-              columnId: targetColumn.id,
-              stepId: steps[startStepIndex]?.id,
-              stepIndex: startStepIndex,
-              status: "failed",
-            });
-            await this.taskStore.save(task);
+          // Reload task to avoid overwriting fields (e.g. lastSyncError) modified
+          // by startKanbanTaskSession during the failed session creation attempt.
+          if (targetColumn.stage !== "dev") {
+            const freshTask = await this.taskStore.get(data.cardId);
+            if (freshTask) {
+              upsertTaskLaneSession(freshTask, {
+                sessionId: `failed-${data.cardId}-${Date.now()}`,
+                columnId: targetColumn.id,
+                stepId: steps[startStepIndex]?.id,
+                stepIndex: startStepIndex,
+                status: "failed",
+              });
+              await this.taskStore.save(freshTask);
+            }
           }
-          // Rate-limit errors are transient — don't consume circuit-breaker quota
+          // Rate-limit errors are transient — don't consume circuit-breaker quota.
+          // Reload task before writing lastSyncError to avoid overwriting fields
+          // (triggerSessionId, laneSessions) modified by startKanbanTaskSession.
           const lastErr = task?.lastSyncError ?? "";
           if (lastErr.startsWith(RATE_LIMITED_MARKER) || isRateLimitErrorMessage(lastErr)) {
             console.warn(
@@ -738,12 +749,13 @@ export class KanbanWorkflowOrchestrator {
             );
             if (newCount >= SESSION_RETRY_LIMIT) {
               this.circuitBreakerLastLogAt.set(data.cardId, Date.now());
-              if (task) {
-                const prevResets = parseCbResetCount(task.lastSyncError);
-                const prError = task.lastSyncError?.startsWith(PR_FAILURE_PREFIX) ? ` | prev: ${task.lastSyncError}` : "";
-                task.lastSyncError = buildCbMarker(prevResets, `Session creation failed ${newCount} times. Retry after cooldown.${prError}`);
-                task.updatedAt = new Date();
-                await this.taskStore.save(task);
+              const cbTask = await this.taskStore.get(data.cardId);
+              if (cbTask) {
+                const prevResets = parseCbResetCount(cbTask.lastSyncError);
+                const prError = cbTask.lastSyncError?.startsWith(PR_FAILURE_PREFIX) ? ` | prev: ${cbTask.lastSyncError}` : "";
+                cbTask.lastSyncError = buildCbMarker(prevResets, `Session creation failed ${newCount} times. Retry after cooldown.${prError}`);
+                cbTask.updatedAt = new Date();
+                await this.taskStore.save(cbTask);
               }
             }
           }
@@ -764,10 +776,11 @@ export class KanbanWorkflowOrchestrator {
           console.warn(
             `[WorkflowOrchestrator] Rate-limited for card ${data.cardId}, not counting towards circuit breaker.`,
           );
-          if (task) {
-            task.lastSyncError = `${RATE_LIMITED_MARKER} ${errMsg}`;
-            task.updatedAt = new Date();
-            await this.taskStore.save(task);
+          const rlTask = await this.taskStore.get(data.cardId);
+          if (rlTask) {
+            rlTask.lastSyncError = `${RATE_LIMITED_MARKER} ${errMsg}`;
+            rlTask.updatedAt = new Date();
+            await this.taskStore.save(rlTask);
           }
         } else {
           const newCount = (this.sessionFailureCounts.get(data.cardId) ?? 0) + 1;
@@ -775,11 +788,12 @@ export class KanbanWorkflowOrchestrator {
           console.error("[WorkflowOrchestrator] Failed to create session:", err);
           if (newCount >= SESSION_RETRY_LIMIT) {
             this.circuitBreakerLastLogAt.set(data.cardId, Date.now());
-            if (task) {
-              const prevResets = parseCbResetCount(task.lastSyncError);
-              task.lastSyncError = buildCbMarker(prevResets, `Session creation failed ${newCount} times. Retry after cooldown.`);
-              task.updatedAt = new Date();
-              await this.taskStore.save(task);
+            const exTask = await this.taskStore.get(data.cardId);
+            if (exTask) {
+              const prevResets = parseCbResetCount(exTask.lastSyncError);
+              exTask.lastSyncError = buildCbMarker(prevResets, `Session creation failed ${newCount} times. Retry after cooldown.`);
+              exTask.updatedAt = new Date();
+              await this.taskStore.save(exTask);
             }
           }
         }

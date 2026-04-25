@@ -220,24 +220,65 @@ export async function runLaneScannerTick(system: RoutaSystem): Promise<LaneScann
         const steps = getKanbanAutomationSteps(currentColumn?.automation);
         const lastCompletedStepIndex = findLastCompletedStepIndex(laneSessions, task.columnId!);
 
-        // All steps completed → check for stale error state before skipping
+        // All steps completed → check for stale error state or failed advance before skipping
         const allStepsCompleted = steps.length > 0 && lastCompletedStepIndex >= steps.length - 1;
         if (allStepsCompleted) {
           if (!task.lastSyncError) {
-            continue;
+            // Check for failed advance: the card completed all steps in the current
+            // column but has failed/timed_out lane sessions in OTHER columns. This
+            // indicates an auto-advance was attempted but the downstream automation
+            // failed, leaving the card stranded (e.g. backlog refiner completed,
+            // auto-advance to todo triggered, but todo orchestrator session failed).
+            const hasFailedAdvance = laneSessions.some(
+              (s: { columnId?: string; status: string }) =>
+                s.columnId !== task.columnId
+                && (s.status === "failed" || s.status === "timed_out"),
+            );
+
+            if (!hasFailedAdvance) {
+              continue; // No error and no cross-column failures — genuinely done
+            }
+
+            // Recovery: clear orphaned failed sessions from other columns and
+            // re-trigger the current column's automation. The autoAdvance mechanism
+            // will retry the push to the next column.
+            const advanceRecoveryAttempts = countStepAttempts(laneSessions, task.columnId!, 0);
+            if (advanceRecoveryAttempts >= MAX_STEP_RESUME_ATTEMPTS) {
+              task.lastSyncError = `[advance-recovery] Max retries (${MAX_STEP_RESUME_ATTEMPTS}) reached. ` +
+                `Card completed in "${currentColumn?.name}" but failed to advance.`;
+              task.updatedAt = new Date();
+              await system.taskStore.save(task);
+              continue;
+            }
+
+            console.log(
+              `[LaneScanner] Detected failed advance for card ${task.id} in column ${task.columnId}. ` +
+              `Clearing orphan sessions and re-triggering.`,
+            );
+
+            // Remove failed sessions from other columns — they're stale evidence
+            // of previous failed advance attempts.
+            task.laneSessions = laneSessions.filter(
+              (s: { columnId?: string; status: string }) =>
+                !(s.columnId !== task.columnId && (s.status === "failed" || s.status === "timed_out")),
+            );
+            task.updatedAt = new Date();
+            await system.taskStore.save(task);
+            // Fall through — re-trigger current column automation (autoAdvance will push again)
+          } else {
+            // Stale-state recovery: lastSyncError set + all current-column steps
+            // "transitioned"/"completed" means the card was returned to this column
+            // after a downstream failure (e.g. worktree creation failed). Re-trigger
+            // from step 0 with bounded retries.
+            const recoveryAttempts = countStepAttempts(laneSessions, task.columnId!, 0);
+            if (recoveryAttempts >= MAX_STEP_RESUME_ATTEMPTS) {
+              continue;
+            }
+            task.lastSyncError = undefined;
+            task.updatedAt = new Date();
+            await system.taskStore.save(task);
+            // Fall through — resumeStepIndex stays undefined → step 0
           }
-          // Stale-state recovery: lastSyncError set + all current-column steps
-          // "transitioned"/"completed" means the card was returned to this column
-          // after a downstream failure (e.g. worktree creation failed). Re-trigger
-          // from step 0 with bounded retries.
-          const recoveryAttempts = countStepAttempts(laneSessions, task.columnId!, 0);
-          if (recoveryAttempts >= MAX_STEP_RESUME_ATTEMPTS) {
-            continue;
-          }
-          task.lastSyncError = undefined;
-          task.updatedAt = new Date();
-          await system.taskStore.save(task);
-          // Fall through — resumeStepIndex stays undefined → step 0
         }
 
         // For multi-step resume: check per-step attempt limit to prevent
