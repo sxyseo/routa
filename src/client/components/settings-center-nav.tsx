@@ -15,7 +15,8 @@ export type SettingsNavItem =
   | "specialists"
   | "mcp"
   | "workflows"
-  | "schedules";
+  | "schedules"
+  | "system-jobs";
 
 function appendWorkspaceId(href: string, workspaceId: string | null | undefined): string {
   if (!workspaceId) return href;
@@ -37,6 +38,7 @@ export function SettingsCenterNav({ activeItem, workspaceId }: SettingsCenterNav
     { key: "mcp", label: t.nav.mcpServers, href: appendWorkspaceId("/settings/mcp", workspaceId) },
     { key: "workflows", label: t.nav.workflows, href: appendWorkspaceId("/settings/workflows", workspaceId) },
     { key: "schedules", label: t.nav.schedules, href: appendWorkspaceId("/settings/schedules", workspaceId) },
+    { key: "system-jobs", label: t.systemJobs.navLabel, href: appendWorkspaceId("/settings/system-jobs", workspaceId) },
   ];
 
   return (

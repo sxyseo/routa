@@ -377,4 +377,22 @@ export const enTail: TailTranslationDictionarySections = {
     parents: "Parents",
     files: "files",
   },
+
+  // System Jobs
+  systemJobs: {
+    title: "System Jobs",
+    subtitle: "Monitor the health of system background tasks.",
+    description: "These tasks run automatically in the background to keep your boards, schedules, and automations running smoothly.",
+    navLabel: "System Jobs",
+    refresh: "Refresh",
+    groupScheduler: "Scheduler Tasks",
+    groupKanban: "Kanban Tasks",
+    lastRun: "Last Run",
+    duration: "Duration",
+    status: "Status",
+    statusIdle: "Idle",
+    statusRunning: "Running",
+    statusSuccess: "Success",
+    statusError: "Error",
+  },
 };
