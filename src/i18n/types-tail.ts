@@ -309,6 +309,12 @@ export interface TailTranslationDictionarySections {
     loading: string;
     disable: string;
     enable: string;
+    // Webhook triggers panel
+    webhookTriggersTitle: string;
+    webhookTriggerAutoDesc: string;
+    webhookUrlLabel: string;
+    webhookPointHint: string;
+    manageWebhookTriggers: string;
     // Platform switcher
     platformSwitcherLabel: string;
     platformGithub: string;

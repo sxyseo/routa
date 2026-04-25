@@ -305,6 +305,12 @@ export const zhTail: TailTranslationDictionarySections = {
     loading: "加载中…",
     disable: "禁用",
     enable: "启用",
+    // Webhook 触发器面板
+    webhookTriggersTitle: "Webhook 触发器",
+    webhookTriggerAutoDesc: "当 {platform} 事件发生时自动触发智能体 — Issue 创建、{prType} 打开、CI 完成等。",
+    webhookUrlLabel: "Webhook URL：",
+    webhookPointHint: "将你的 {platform} {repoType} Webhook 指向此 URL 以开始接收事件。",
+    manageWebhookTriggers: "管理 Webhook 触发器",
     // 平台切换
     platformSwitcherLabel: "平台",
     platformGithub: "GitHub",

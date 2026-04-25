@@ -135,7 +135,7 @@ export function KanbanTaskChangesTab({
     ? codebases.find((codebase) => codebase.id === taskCodebaseIds[0])
     : codebases[0];
   const prPlatform = detectPrPlatform(taskChanges, primaryCodebase);
-  const platformLabel = prPlatform === "gitlab" ? "GitLab" : "GitHub";
+  const platformLabel = prPlatform === "gitlab" ? t.kanbanDetail.platformGitLab : t.kanbanDetail.platformGitHub;
   const canRunPullRequest = Boolean(prPlatform && onRunPullRequest);
   const selectedCommit = useMemo(
     () => commits.find((commit) => commit.sha === activeCommitSha) ?? null,

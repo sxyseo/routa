@@ -73,6 +73,69 @@ export class GitLabProvider implements IVCSProvider {
     return response.json() as Promise<T>;
   }
 
+  /** Make a GitLab API request that returns response alongside parsed body (for pagination headers) */
+  private async gitlabApiWithResponse<T>(
+    endpoint: string,
+    options: {
+      method?: string;
+      token?: string;
+      body?: unknown;
+    } = {}
+  ): Promise<{ data: T; response: Response }> {
+    const { method = "GET", token, body } = options;
+    const url = `${this.getApiBaseUrl()}${endpoint}`;
+
+    const headers: Record<string, string> = {
+      Authorization: this.getAuthHeader(token),
+      "Content-Type": "application/json",
+    };
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`GitLab API error ${response.status}: ${errorBody}`);
+    }
+
+    const data = await response.json() as T;
+    return { data, response };
+  }
+
+  /** Paginate through a GitLab list endpoint, collecting all pages */
+  private async gitlabPaginate<T>(
+    endpoint: string,
+    options: {
+      token?: string;
+      perPage?: number;
+      maxPages?: number;
+    } = {}
+  ): Promise<T[]> {
+    const { token, perPage = 100, maxPages = 50 } = options;
+    const allItems: T[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore && page <= maxPages) {
+      const separator = endpoint.includes("?") ? "&" : "?";
+      const pageEndpoint = `${endpoint}${separator}per_page=${perPage}&page=${page}`;
+
+      const { data, response } = await this.gitlabApiWithResponse<T[]>(pageEndpoint, { token });
+
+      allItems.push(...data);
+
+      // GitLab signals more pages via x-next-page header
+      const nextPage = response.headers.get("x-next-page");
+      hasMore = nextPage !== null && nextPage !== "" && data.length > 0;
+      page++;
+    }
+
+    return allItems;
+  }
+
   async getRepo(opts: { repo: string; token?: string }): Promise<VCSRepository> {
     const encodedPath = this.encodeProjectPath(opts.repo);
     const data = await this.gitlabApi<{
@@ -469,7 +532,7 @@ export class GitLabProvider implements IVCSProvider {
   }): Promise<VCSPullRequestListItem[]> {
     const encodedPath = this.encodeProjectPath(opts.repo);
     const state = opts.state ?? "open";
-    const perPage = Math.max(1, Math.min(opts.perPage ?? 50, 100));
+    const perPage = Math.max(1, Math.min(opts.perPage ?? 100, 100));
 
     // Map GitHub state to GitLab state
     const gitlabState = state === "all" ? undefined
@@ -478,11 +541,11 @@ export class GitLabProvider implements IVCSProvider {
     const params = new URLSearchParams({
       sort: "updated_at",
       order_by: "desc",
-      per_page: String(perPage),
     });
     if (gitlabState) params.set("state", gitlabState);
 
-    const data = await this.gitlabApi<Array<{
+    const endpoint = `/projects/${encodedPath}/merge_requests?${params.toString()}`;
+    const data = await this.gitlabPaginate<{
       id: number;
       iid: number;
       title: string;
@@ -496,7 +559,7 @@ export class GitLabProvider implements IVCSProvider {
       assignees?: Array<{ username?: string }>;
       source_branch: string;
       target_branch: string;
-    }>>(`/projects/${encodedPath}/merge_requests?${params.toString()}`, { token: opts.token });
+    }>(endpoint, { token: opts.token, perPage });
 
     return data.map((item) => ({
       id: String(item.id),
@@ -525,7 +588,7 @@ export class GitLabProvider implements IVCSProvider {
   }): Promise<VCSIssueListItem[]> {
     const encodedPath = this.encodeProjectPath(opts.repo);
     const state = opts.state ?? "open";
-    const perPage = Math.max(1, Math.min(opts.perPage ?? 50, 100));
+    const perPage = Math.max(1, Math.min(opts.perPage ?? 100, 100));
 
     const gitlabState = state === "all" ? undefined
       : state === "closed" ? "closed" : "opened";
@@ -533,11 +596,11 @@ export class GitLabProvider implements IVCSProvider {
     const params = new URLSearchParams({
       sort: "updated_at",
       order_by: "desc",
-      per_page: String(perPage),
     });
     if (gitlabState) params.set("state", gitlabState);
 
-    const data = await this.gitlabApi<Array<{
+    const endpoint = `/projects/${encodedPath}/issues?${params.toString()}`;
+    const data = await this.gitlabPaginate<{
       id: number;
       iid: number;
       title: string;
@@ -547,7 +610,7 @@ export class GitLabProvider implements IVCSProvider {
       updated_at?: string;
       labels?: string | string[];
       assignees?: Array<{ username?: string }>;
-    }>>(`/projects/${encodedPath}/issues?${params.toString()}`, { token: opts.token });
+    }>(endpoint, { token: opts.token, perPage });
 
     return data.map((item) => ({
       id: String(item.id),

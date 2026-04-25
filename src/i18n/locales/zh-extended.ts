@@ -830,6 +830,8 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     baseComparison: "显示相对于 {baseRef} 的已提交变更。",
     worktreeSource: "工作树",
     repoSource: "仓库",
+    platformGitHub: "GitHub",
+    platformGitLab: "GitLab",
     dirty: "有变更",
     clean: "干净",
     evidenceBundle: "证据摘要",

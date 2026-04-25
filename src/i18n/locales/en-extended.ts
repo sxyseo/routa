@@ -830,6 +830,8 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     baseComparison: "Showing committed changes relative to {baseRef}.",
     worktreeSource: "Worktree",
     repoSource: "Repo",
+    platformGitHub: "GitHub",
+    platformGitLab: "GitLab",
     dirty: "Dirty",
     clean: "Clean",
     evidenceBundle: "Evidence Bundle",

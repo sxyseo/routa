@@ -311,6 +311,12 @@ export const enTail: TailTranslationDictionarySections = {
     loading: "Loading…",
     disable: "Disable",
     enable: "Enable",
+    // Webhook triggers panel
+    webhookTriggersTitle: "Webhook Triggers",
+    webhookTriggerAutoDesc: "Automatically trigger agents when {platform} events occur — issue created, {prType} opened, CI completed, and more.",
+    webhookUrlLabel: "Webhook URL:",
+    webhookPointHint: "Point your {platform} {repoType} webhook at this URL to start receiving events.",
+    manageWebhookTriggers: "Manage Webhook Triggers",
     // Platform switcher
     platformSwitcherLabel: "Platform",
     platformGithub: "GitHub",

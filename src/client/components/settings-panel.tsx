@@ -591,7 +591,7 @@ function WebhooksTab() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              {webhookPlatform === "github" ? "GitHub" : "GitLab"} Webhook Triggers
+              {wt.webhookTriggersTitle.replace("{platform}", webhookPlatform === "github" ? wt.platformGithub : wt.platformGitlab)}
             </h3>
             <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
               <button
@@ -636,7 +636,7 @@ function WebhooksTab() {
       <div>
         <div className="flex items-center gap-3 mb-1">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Webhook Triggers
+            {wt.webhookTriggersTitle}
           </h3>
           <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
             <button
@@ -662,8 +662,9 @@ function WebhooksTab() {
           </div>
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-          Automatically trigger agents when {webhookPlatform === "github" ? "GitHub" : "GitLab"} events occur
-          — issue created, {webhookPlatform === "github" ? "PR opened" : "MR opened"}, CI completed, and more.
+          {wt.webhookTriggerAutoDesc
+            .replace("{platform}", webhookPlatform === "github" ? wt.platformGithub : wt.platformGitlab)
+            .replace("{prType}", webhookPlatform === "github" ? "PR" : "MR")}
         </p>
         <div className={`rounded-lg px-3 py-2.5 mb-3 ${
           webhookPlatform === "github"
@@ -671,7 +672,7 @@ function WebhooksTab() {
             : "bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800/50"
         }`}>
           <p className={`text-xs ${webhookPlatform === "github" ? "text-blue-700 dark:text-blue-300" : "text-orange-700 dark:text-orange-300"}`}>
-            <span className="font-semibold">Webhook URL:</span>{" "}
+            <span className="font-semibold">{wt.webhookUrlLabel}</span>{" "}
             <code className={`font-mono px-1 rounded ${
               webhookPlatform === "github" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-orange-100 dark:bg-orange-900/30"
             }`}>
@@ -679,7 +680,9 @@ function WebhooksTab() {
             </code>
           </p>
           <p className={`text-xs mt-1 ${webhookPlatform === "github" ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`}>
-            Point your {webhookPlatform === "github" ? "GitHub" : "GitLab"} {webhookPlatform === "github" ? "repository" : "project"} webhook at this URL to start receiving events.
+            {wt.webhookPointHint
+              .replace("{platform}", webhookPlatform === "github" ? wt.platformGithub : wt.platformGitlab)
+              .replace("{repoType}", webhookPlatform === "github" ? "repository" : "project")}
           </p>
         </div>
         {isTauriEnv ? (
@@ -691,7 +694,7 @@ function WebhooksTab() {
                 : "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300"
             }`}
           >
-            Manage Webhook Triggers
+            {wt.manageWebhookTriggers}
           </button>
         ) : (
           <a
@@ -704,7 +707,7 @@ function WebhooksTab() {
                 : "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300"
             }`}
           >
-            Manage Webhook Triggers
+            {wt.manageWebhookTriggers}
           </a>
         )}
       </div>
