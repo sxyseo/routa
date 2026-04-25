@@ -22,8 +22,8 @@
   "imports": {
     "allowedModules": [
       "react",
-      "cursor/canvas",
-      "cursor/canvas/*",
+      "routa/canvas",
+      "routa/canvas/*",
       "@canvas-sdk",
       "@canvas-sdk/*"
     ],

@@ -123,17 +123,17 @@ async function main() {
 
   const manifest = {
     generatedAt: new Date().toISOString(),
-    moduleSpecifier: "cursor/canvas",
+    moduleSpecifier: "routa/canvas",
     sourceBarrel: "src/client/canvas-sdk/index.ts",
     definitionsDir: "resources/canvas/sdk",
     indexDefinitionPath: "resources/canvas/sdk/index.d.ts",
     importExamples: [
-      "import { Stack, H1, Text, Card, CardBody, Table, Stat } from 'cursor/canvas';",
-      "import { useHostTheme, useCanvasState } from 'cursor/canvas';",
-      "import { BarChart, LineChart, PieChart } from 'cursor/canvas';",
+      "import { Stack, H1, Text, Card, CardBody, Table, Stat } from 'routa/canvas';",
+      "import { useHostTheme, useCanvasState } from 'routa/canvas';",
+      "import { BarChart, LineChart, PieChart } from 'routa/canvas';",
     ],
     promptRules: [
-      "Import only from cursor/canvas or react. Legacy @canvas-sdk imports still compile, but new canvases should use cursor/canvas.",
+      "Import only from routa/canvas or react. Legacy cursor/canvas and @canvas-sdk imports still compile, but new canvases should use routa/canvas.",
       "Prefer SDK primitives over raw div/span markup when possible.",
       "Use useHostTheme() tokens instead of hardcoded colors.",
       "If a symbol is not present in the generated SDK surface below, do not invent it.",

@@ -3,7 +3,7 @@
  *
  * Compiles agent-generated TSX source into a React component using sucrase,
  * then evaluates it inside a restricted module scope where the only available
- * import is `cursor/canvas` (plus the legacy `@canvas-sdk` alias).
+ * import is `routa/canvas` (plus legacy compatibility aliases).
  *
  * Security boundaries:
  *  - Only the Canvas SDK aliases are resolvable; any other import throws.
@@ -44,11 +44,15 @@ export type CompileOutcome = CompileResult | CompileError;
  */
 const MODULE_WHITELIST: Record<string, unknown> = {
   react: React,
+  "routa/canvas": CanvasSDK,
   "cursor/canvas": CanvasSDK,
   "@canvas-sdk": CanvasSDK,
 };
 
 function normalizeCanvasModuleSpecifier(specifier: string): string {
+  if (specifier.startsWith("routa/canvas/")) {
+    return "routa/canvas";
+  }
   if (specifier.startsWith("cursor/canvas/")) {
     return "cursor/canvas";
   }
@@ -60,10 +64,10 @@ function normalizeCanvasModuleSpecifier(specifier: string): string {
 
   for (const prefix of sdkPrefixes) {
     if (specifier === prefix) {
-      return "cursor/canvas";
+      return "routa/canvas";
     }
     if (specifier.startsWith(`${prefix}/`)) {
-      return "cursor/canvas";
+      return "routa/canvas";
     }
   }
 
@@ -82,7 +86,7 @@ function normalizeCanvasModuleSpecifier(specifier: string): string {
  *
  * Example source:
  * ```tsx
- * import { Stack, H1, Text, BarChart } from "cursor/canvas";
+ * import { Stack, H1, Text, BarChart } from "routa/canvas";
  *
  * export default function MyCanvas() {
  *   return (

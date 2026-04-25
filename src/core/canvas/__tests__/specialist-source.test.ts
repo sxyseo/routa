@@ -12,7 +12,7 @@ describe("canvas specialist source helpers", () => {
 
     expect(prompt).toContain("Return only the TSX source");
     expect(prompt).toContain("fake shell chrome");
-    expect(prompt).toContain("cursor/canvas");
+    expect(prompt).toContain("routa/canvas");
     expect(prompt).toContain("Create a status card.");
   });
 

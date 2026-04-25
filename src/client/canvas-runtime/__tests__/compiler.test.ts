@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 import { compileCanvasTsx } from "../compiler";
 
 describe("compileCanvasTsx", () => {
-  it("compiles valid TSX with cursor/canvas imports", () => {
+  it("compiles valid TSX with routa/canvas imports", () => {
     const source = `
 import React from "react";
-import { Stack, H1, Text } from "cursor/canvas";
+import { Stack, H1, Text } from "routa/canvas";
 
 export default function MyCanvas() {
   return (
@@ -26,6 +26,18 @@ export default function MyCanvas() {
     }
   });
 
+  it("keeps legacy cursor/canvas imports working", () => {
+    const source = `
+import { Stack, H1, Text } from "cursor/canvas";
+
+export default function CursorCompatCanvas() {
+  return <Stack><H1>Cursor compat</H1><Text>Still supported</Text></Stack>;
+}
+`;
+    const result = compileCanvasTsx(source);
+    expect(result.ok).toBe(true);
+  });
+
   it("keeps legacy @canvas-sdk imports working", () => {
     const source = `
 import { Stack, H1, Text } from "@canvas-sdk";
@@ -40,7 +52,7 @@ export default function LegacyCanvas() {
 
   it("compiles Cursor-compatible hooks, forms, and charts", () => {
     const source = `
-import { Stack, TextInput, LineChart, useCanvasState } from "cursor/canvas";
+import { Stack, TextInput, LineChart, useCanvasState } from "routa/canvas";
 
 export default function MyCanvas() {
   const [query, setQuery] = useCanvasState("query", "");
