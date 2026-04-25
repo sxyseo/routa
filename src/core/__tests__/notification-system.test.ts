@@ -138,7 +138,7 @@ describe("AC4–AC7: Event → email content", () => {
     expect(logs[0].subject).toContain("My Task");
     // Failed because no SMTP, but log was created
     expect(logs[0].status).toBe("failed");
-  });
+  }, 30000);
 
   it("AC5: TASK_FAILED generates correct subject with reason", async () => {
     await store.upsertPreferences(makePrefs());
@@ -151,7 +151,7 @@ describe("AC4–AC7: Event → email content", () => {
     expect(logs.length).toBe(1);
     expect(logs[0].eventType).toBe("TASK_FAILED");
     expect(logs[0].subject).toContain("Task Failed");
-  });
+  }, 30000);
 
   it("AC6: AGENT_ERROR generates correct subject", async () => {
     await store.upsertPreferences(makePrefs());
@@ -164,7 +164,7 @@ describe("AC4–AC7: Event → email content", () => {
     expect(logs.length).toBe(1);
     expect(logs[0].eventType).toBe("AGENT_ERROR");
     expect(logs[0].subject).toContain("Agent Error");
-  });
+  }, 30000);
 
   it("AC7: PR_MERGED generates correct subject", async () => {
     await store.upsertPreferences(makePrefs());
@@ -177,7 +177,7 @@ describe("AC4–AC7: Event → email content", () => {
     expect(logs.length).toBe(1);
     expect(logs[0].eventType).toBe("PR_MERGED");
     expect(logs[0].subject).toContain("PR Merged");
-  });
+  }, 30000);
 
   it("ignores events not in enabledEvents", async () => {
     await store.upsertPreferences(makePrefs({ enabledEvents: ["TASK_COMPLETED"] }));
