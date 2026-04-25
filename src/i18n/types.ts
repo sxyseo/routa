@@ -561,6 +561,17 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
         retry: string;
         noCiFile: string;
         noStages: string;
+        dependencyGraph: string;
+        noExplicitDeps: string;
+        upstream: string;
+        downstream: string;
+        depChainEmpty: string;
+        depChainEmptyHint: string;
+        hoverHighlight: string;
+        selectedJob: string;
+        pipelineDetail: string;
+        jobDetail: string;
+        depCount: string;
       };
     };
     backToHome: string;
