@@ -4,7 +4,7 @@
 
 # Routa
 
-**Workspace-first multi-agent coordination platform for AI development, with shared Specs, Kanban orchestration, and MCP/ACP/ A2A support across web and desktop.**
+**Workspace-first multi-agent coordination platform for software delivery**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16.2-black.svg)](https://nextjs.org/)
@@ -20,7 +20,7 @@
 
 ---
 
-Routa is a workspace-first multi-agent coordination platform for AI development, with shared Specs, Kanban orchestration, and MCP/ACP/ A2A support across web and desktop. It keeps goals, tasks, sessions, traces, evidence, and review state visible on a board instead of burying them inside a single chat thread.
+Routa is a workspace-first multi-agent coordination platform for software delivery. It keeps goals, tasks, sessions, traces, evidence, and review state visible on a board instead of burying them inside a single chat thread.
 
 [Releases](https://github.com/phodal/routa/releases) · [Architecture](docs/ARCHITECTURE.md) · [Feature Tree](docs/product-specs/FEATURE_TREE.md) · [Quick Start](docs/quick-start.md) · [Docs Site](https://phodal.github.io/routa/) · [Slack](https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg) · [Contributing](CONTRIBUTING.md)
 
