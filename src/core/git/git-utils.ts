@@ -545,8 +545,9 @@ export function deleteBranch(repoPath: string, branch: string): { success: boole
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
 
-    // Branch is checked out by a worktree — detach it first, then retry
-    if (msg.includes("worktree")) {
+    // Branch is checked out by a worktree — detach it first, then retry.
+    // Git 2.x emits "checked out at '<path>'" (not always "worktree").
+    if (msg.includes("worktree") || msg.includes("checked out at")) {
       const wtPath = findWorktreePathForBranch(repoPath, branch);
       if (wtPath) {
         try {
