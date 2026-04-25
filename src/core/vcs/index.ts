@@ -27,6 +27,7 @@ export {
 
 export {
   getVCSProvider,
+  getVCSProviderForSource,
   resetVCSProvider,
   getPlatform,
   isGitLab,

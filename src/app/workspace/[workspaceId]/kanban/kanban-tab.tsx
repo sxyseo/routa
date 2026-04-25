@@ -495,8 +495,9 @@ export function KanbanTab({
         if (selectedBoardId) {
           searchParams.set("boardId", selectedBoardId);
         }
+        searchParams.set("platform", vcsPlatform);
         const response = await desktopAwareFetch(
-          `/api/github/access${searchParams.size > 0 ? `?${searchParams.toString()}` : ""}`,
+          `/api/github/access?${searchParams.toString()}`,
           { cache: "no-store" },
         );
         const payload = await response.json().catch(() => ({}));
@@ -520,7 +521,7 @@ export function KanbanTab({
     return () => {
       cancelled = true;
     };
-  }, [hasVcsCodebase, selectedBoardId]);
+  }, [hasVcsCodebase, selectedBoardId, vcsPlatform]);
 
   useEffect(() => {
     setLocalBoards(boards);
