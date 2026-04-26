@@ -12,6 +12,8 @@ import type { TaskDiagnosticCategory } from "@/core/kanban/task-diagnostic";
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import { type KanbanSpecialistLanguage } from "./kanban-specialist-language";
 import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
+import { getPullRequestShort } from "@/core/vcs/platform-terminology";
+import type { VCSPlatform } from "@/core/vcs/vcs-provider";
 import { GripVertical, Trash2, Link2, ShieldAlert } from "lucide-react";
 
 
@@ -285,6 +287,12 @@ function KanbanCardSurface({
     );
   const priorityTone = getPriorityTone(task.priority);
   const prioritySizeLabel = getPrioritySizeLabel(task.priority);
+  const primaryCodebasePlatform = (task.codebaseIds?.[0]
+    ? codebases.find((c) => c.id === task.codebaseIds![0])?.sourceType
+    : undefined) as VCSPlatform | undefined;
+  const prBadge = task.isPullRequest
+    ? `${getPullRequestShort(primaryCodebasePlatform)} #${task.vcsNumber}`
+    : `Issue #${task.vcsNumber}`;
   const sessionTone = isTerminalCard
     ? "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40"
     : getSessionTone(sessionStatus, queuePosition);
@@ -407,7 +415,7 @@ function KanbanCardSurface({
                   : "bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40"
                 }`}
               >
-                {task.isPullRequest ? `PR #${task.vcsNumber}` : `Issue #${task.vcsNumber}`}
+                {prBadge}
               </a>
             ) : null}
             <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${sessionTone}`}>

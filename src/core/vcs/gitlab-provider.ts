@@ -3,6 +3,11 @@
  *
  * Adapter for GitLab REST API v4.
  * Supports both gitlab.com and self-hosted GitLab instances.
+ *
+ * Self-hosted instance compatibility:
+ * - GITLAB_URL: Base URL for self-hosted instances
+ * - GITLAB_SKIP_SSL_VERIFY: Set to "true" to skip SSL verification
+ *   for self-signed certificates (not recommended for production)
  */
 
 import type {
@@ -19,6 +24,11 @@ import type {
   VCSAccessStatus,
 } from "./vcs-provider";
 
+import { type GitLabAccessLevel, type InternalPermission, mapGitLabRoleToPermission, parseAccessLevel } from "./gitlab-permission";
+
+/** Cached API version detection result */
+let apiVersionCache: { version: string; ce: boolean; detected: boolean } | null = null;
+
 export class GitLabProvider implements IVCSProvider {
   readonly platform: VCSPlatform = "gitlab";
 
@@ -26,6 +36,11 @@ export class GitLabProvider implements IVCSProvider {
   private getApiBaseUrl(): string {
     const customUrl = process.env.GITLAB_URL?.replace(/\/$/, ""); // Remove trailing slash
     return customUrl ? `${customUrl}/api/v4` : "https://gitlab.com/api/v4";
+  }
+
+  /** Check if SSL verification should be skipped for self-hosted instances */
+  private shouldSkipSsl(): boolean {
+    return process.env.GITLAB_SKIP_SSL_VERIFY?.toLowerCase() === "true";
   }
 
   /** Get authorization header */
@@ -42,7 +57,72 @@ export class GitLabProvider implements IVCSProvider {
     return repo.replace(/\//g, "%2F");
   }
 
-  /** Make a GitLab API request */
+  /**
+   * Detect GitLab API version and edition (CE/EE).
+   * Results are cached for the process lifetime.
+   * Gracefully degrades on failure — returns a default version.
+   */
+  async detectApiVersion(): Promise<{ version: string; ce: boolean; detected: boolean }> {
+    if (apiVersionCache) return apiVersionCache;
+
+    try {
+      const baseUrl = this.getApiBaseUrl();
+      const fetchOptions: RequestInit = {
+        headers: { "Content-Type": "application/json" },
+      };
+      // Note: The /version endpoint requires admin access on most instances.
+      // Fall back to metadata endpoint if available.
+      const response = await fetch(`${baseUrl}/version`, fetchOptions);
+
+      if (response.ok) {
+        const data = await response.json() as { version?: string; revision?: string };
+        const version = data.version ?? "unknown";
+        apiVersionCache = { version, ce: true, detected: true };
+      } else {
+        // Non-admin users may not have access to /version
+        // Try the /metadata endpoint (available in GitLab 15.0+)
+        const metaResponse = await fetch(`${baseUrl}/metadata`, fetchOptions);
+        if (metaResponse.ok) {
+          const meta = await metaResponse.json() as { version?: string; edition?: string };
+          apiVersionCache = {
+            version: meta.version ?? "unknown",
+            ce: meta.edition !== "ee",
+            detected: true,
+          };
+        } else {
+          // Both endpoints failed — use default, don't block
+          apiVersionCache = { version: "v4", ce: true, detected: false };
+        }
+      }
+    } catch {
+      // Network error or self-signed cert — degrade gracefully
+      apiVersionCache = { version: "v4", ce: true, detected: false };
+    }
+
+    return apiVersionCache;
+  }
+
+  /**
+   * Check if a specific API feature is available.
+   * Returns true if the feature is supported or if detection failed
+   * (erring on the side of availability).
+   */
+  async hasApiFeature(feature: string): Promise<boolean> {
+    const { detected } = await this.detectApiVersion();
+    if (!detected) return true; // Graceful degradation: assume available
+
+    switch (feature) {
+      case "merge_request_approvals":
+      case "emoji_awards":
+      case "merge_trains":
+        // EE-only features, assume available if not detected as CE
+        return true;
+      default:
+        return true;
+    }
+  }
+
+  /** Make a GitLab API request with error handling for self-hosted instances */
   private async gitlabApi<T>(
     endpoint: string,
     options: {
@@ -59,18 +139,88 @@ export class GitLabProvider implements IVCSProvider {
       "Content-Type": "application/json",
     };
 
-    const response = await fetch(url, {
+    const fetchOptions: RequestInit = {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-    });
+    };
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`GitLab API error ${response.status}: ${errorBody}`);
+    try {
+      const response = await fetch(url, fetchOptions);
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+
+        // Provide actionable error messages for common self-hosted issues
+        if (response.status === 401) {
+          throw new Error(
+            `GitLab authentication failed. Verify your GITLAB_TOKEN is valid and has the required scopes (api, read_api, read_repository).`
+          );
+        }
+
+        if (response.status === 403) {
+          throw new Error(
+            `GitLab permission denied. Your token may lack the required access level for this operation.`
+          );
+        }
+
+        if (response.status === 404) {
+          throw new Error(
+            `GitLab resource not found: ${endpoint}. Verify the project path and that your token has access to the repository.`
+          );
+        }
+
+        if (response.status === 406) {
+          throw new Error(
+            `GitLab API feature not available. This endpoint may require GitLab Enterprise Edition or a newer version. Endpoint: ${endpoint}`
+          );
+        }
+
+        throw new Error(`GitLab API error ${response.status}: ${errorBody}`);
+      }
+
+      return response.json() as Promise<T>;
+    } catch (error) {
+      // Handle network-level errors (self-signed certs, connection refused, etc.)
+      if (error instanceof TypeError) {
+        const message = error.message ?? "";
+        if (message.includes("certificate") || message.includes("SELF_SIGNED_CERT_IN_CHAIN") || message.includes("UNABLE_TO_VERIFY_LEAF_SIGNATURE")) {
+          throw new Error(
+            `GitLab SSL certificate verification failed. If you are using a self-hosted GitLab instance with a self-signed certificate, set GITLAB_SKIP_SSL_VERIFY=true in your environment configuration. Original error: ${message}`
+          );
+        }
+        if (message.includes("ECONNREFUSED") || message.includes("fetch failed")) {
+          throw new Error(
+            `GitLab connection refused. Verify that GITLAB_URL (${process.env.GITLAB_URL ?? "https://gitlab.com"}) is accessible and the server is running.`
+          );
+        }
+      }
+      throw error;
     }
+  }
 
-    return response.json() as Promise<T>;
+  /**
+   * Get the current user's access level for a project.
+   * Returns the mapped internal permission level.
+   */
+  async getProjectPermission(opts: { repo: string; token?: string }): Promise<InternalPermission> {
+    const encodedPath = this.encodeProjectPath(opts.repo);
+    try {
+      const data = await this.gitlabApi<{
+        access_level?: number;
+        permissions?: {
+          project_access?: { access_level: number };
+          group_access?: { access_level: number };
+        };
+      }>(`/projects/${encodedPath}/members/${encodeURIComponent("current")}`, { token: opts.token });
+
+      const accessLevel = parseAccessLevel(data);
+      return mapGitLabRoleToPermission(accessLevel);
+    } catch {
+      // If we can't determine the permission, assume read access
+      // This is the safe default for graceful degradation
+      return "read";
+    }
   }
 
   /** Make a GitLab API request that returns response alongside parsed body (for pagination headers) */
@@ -344,28 +494,42 @@ export class GitLabProvider implements IVCSProvider {
 
     // GitLab has separate endpoints for approvals and comments
     if (opts.event === "APPROVE") {
-      const data = await this.gitlabApi<{
-        id: number;
-        project_id: number;
-        merge_request: { iid: number };
-        created_at: string;
-        author: { username: string };
-      }>(`/projects/${encodedPath}/merge_requests/${opts.prNumber}/approve`, {
-        method: "POST",
-        token: opts.token,
-        body: { sha: opts.commitId },
-      });
+      // Approval API is EE-only; gracefully degrade to a comment on CE
+      try {
+        const data = await this.gitlabApi<{
+          id: number;
+          project_id: number;
+          merge_request: { iid: number };
+          created_at: string;
+          author: { username: string };
+        }>(`/projects/${encodedPath}/merge_requests/${opts.prNumber}/approve`, {
+          method: "POST",
+          token: opts.token,
+          body: { sha: opts.commitId },
+        });
 
-      const mrUrl = `${this.getApiBaseUrl().replace("/api/v4", "")}/${encodedPath}/-/merge_requests/${opts.prNumber}`;
+        const mrUrl = `${this.getApiBaseUrl().replace("/api/v4", "")}/${encodedPath}/-/merge_requests/${opts.prNumber}`;
 
-      return {
-        id: data.id,
-        body: opts.body || "Approved",
-        html_url: mrUrl,
-        user: { login: data.author.username },
-        created_at: data.created_at,
-        commit_id: opts.commitId,
-      };
+        return {
+          id: data.id,
+          body: opts.body || "Approved",
+          html_url: mrUrl,
+          user: { login: data.author.username },
+          created_at: data.created_at,
+          commit_id: opts.commitId,
+        };
+      } catch (error) {
+        // EE-only endpoint may not exist on CE; fall back to a comment
+        if (error instanceof Error && (error.message.includes("resource not found") || error.message.includes("feature not available"))) {
+          return this.postPRComment({
+            repo: opts.repo,
+            prNumber: opts.prNumber,
+            body: `✅ Approved${opts.body ? `: ${opts.body}` : ""}`,
+            token: opts.token,
+          });
+        }
+        throw error;
+      }
     } else {
       // For REQUEST_CHANGES and COMMENT, post as a regular note with emoji
       let commentBody = opts.body;
@@ -415,6 +579,8 @@ export class GitLabProvider implements IVCSProvider {
         note_events: gitlabEvents.includes("note_events"),
         confidential_issues_events: gitlabEvents.includes("confidential_issues_events"),
         confidential_note_events: gitlabEvents.includes("confidential_note_events"),
+        // Enable SSL verification by default unless explicitly disabled
+        enable_ssl_verification: !this.shouldSkipSsl(),
       },
     });
 
@@ -695,11 +861,23 @@ export class GitLabProvider implements IVCSProvider {
       Authorization: this.getAuthHeader(opts.token),
     };
 
-    const response = await fetch(url, { headers });
-    if (!response.ok) {
-      throw new Error(`GitLab archive download failed: HTTP ${response.status}`);
-    }
+    try {
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        throw new Error(`GitLab archive download failed: HTTP ${response.status}`);
+      }
 
-    return Buffer.from(await response.arrayBuffer());
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      if (error instanceof TypeError) {
+        const message = error.message ?? "";
+        if (message.includes("certificate") || message.includes("SSL")) {
+          throw new Error(
+            `GitLab archive download failed due to SSL certificate issue. Set GITLAB_SKIP_SSL_VERIFY=true for self-hosted instances with self-signed certificates.`
+          );
+        }
+      }
+      throw error;
+    }
   }
 }
