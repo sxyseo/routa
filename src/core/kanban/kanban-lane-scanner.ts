@@ -561,10 +561,15 @@ function countStepAttempts(
 ): number {
   let count = 0;
   for (const entry of laneSessions) {
+    // Only count failed/timed_out attempts — completed sessions where auto-advance
+    // subsequently failed should NOT consume the retry budget, because the specialist
+    // step itself succeeded. The version-conflict retry in autoAdvanceCard handles
+    // transient races independently.
     if (
       entry.columnId === columnId
       && typeof entry.stepIndex === "number"
       && entry.stepIndex === stepIndex
+      && entry.status !== "completed"
     ) {
       count++;
     }
