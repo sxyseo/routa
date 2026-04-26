@@ -455,6 +455,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     planBacklogDescription: "显式启动 backlog 规划，把需求写入当前看板对应的 planning session。",
     importGithubIssues: "导入 Issues",
     importVcsIssues: "导入议题",
+    importVcsIssuesGitlab: "导入 GitLab 议题",
     boardSettings: "设置",
     queued: "排队中",
     starting: "启动中",

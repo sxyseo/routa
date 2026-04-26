@@ -1969,6 +1969,7 @@ export function KanbanTab({
     onRefresh,
     onOpenSettings: board ? () => setShowSettings(true) : undefined,
     onOpenArchive: board ? () => setArchiveOpen(true) : undefined,
+    vcsPlatform,
   };
 
   const kanbanTabHeaderActionProps = {

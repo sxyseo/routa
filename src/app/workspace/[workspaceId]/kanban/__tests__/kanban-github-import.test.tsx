@@ -287,3 +287,81 @@ describe("KanbanTab GitHub import merge mode", () => {
     });
   });
 });
+
+describe("KanbanTab VCS import with GitLab codebase", () => {
+  it("shows GitLab-specific modal title and Merge Requests tab for gitlab codebase", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/github/access?") && url.includes("platform=gitlab")) {
+        return {
+          ok: true,
+          json: async () => ({ available: true, source: "env" }),
+        } as Response;
+      }
+      if (url.includes("/api/github/issues?") && url.includes("codebaseId=gitlab-codebase-1")) {
+        return {
+          ok: true,
+          json: async () => ({
+            repo: "phodal/routa-gitlab",
+            codebase: { id: "gitlab-codebase-1", label: "routa-gitlab" },
+            issues: [
+              {
+                id: "gl-issue-1",
+                number: 42,
+                title: "GitLab issue one",
+                body: "GitLab issue summary.",
+                url: "https://gitlab.com/phodal/routa-gitlab/-/issues/42",
+                state: "open",
+                labels: ["bug"],
+                assignees: [],
+                updatedAt: "2025-01-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        } as Response;
+      }
+      return fetch(input, init);
+    });
+
+    vi.stubGlobal("fetch", vi.fn());
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[{
+          id: "gitlab-codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/Users/phodal/repos/routa-gitlab",
+          sourceUrl: "https://gitlab.com/phodal/routa-gitlab",
+          sourceType: "gitlab",
+          isDefault: true,
+          label: "routa-gitlab",
+          branch: "main",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    // The import button should appear (VCS access is available) — text is "Import GitLab Issues"
+    const importButton = await screen.findByRole("button", { name: /import.*issues/i });
+    expect(importButton).toBeTruthy();
+
+    fireEvent.click(importButton);
+
+    // Modal should show GitLab-specific title
+    expect(await screen.findByText(/import gitlab issues/i)).toBeTruthy();
+
+    // Modal should show "Merge Requests" tab instead of "Pull Requests"
+    expect(screen.getByRole("button", { name: /merge requests/i })).toBeTruthy();
+
+    // Issues should load from the GitLab codebase
+    expect(await screen.findByRole("link", { name: /gitlab issue one/i })).toBeTruthy();
+  });
+});

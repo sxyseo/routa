@@ -1,6 +1,7 @@
 import { useTranslation } from "@/i18n";
 import { Select } from "@/client/components/select";
 import type { KanbanBoardInfo } from "../types";
+import type { VCSPlatform } from "@/core/vcs/vcs-provider";
 import type { ReactNode } from "react";
 import { Archive, Columns2, Download, RefreshCw, Settings } from "lucide-react";
 
@@ -22,6 +23,7 @@ interface KanbanTabHeaderProps {
   onOpenSettings?: () => void;
   onOpenArchive?: () => void;
   actionSlot?: ReactNode;
+  vcsPlatform?: VCSPlatform;
 }
 
 export function KanbanTabHeader({
@@ -39,8 +41,11 @@ export function KanbanTabHeader({
   onOpenSettings,
   onOpenArchive,
   actionSlot,
+  vcsPlatform = "github",
 }: KanbanTabHeaderProps) {
   const { t } = useTranslation();
+  const isGitLab = vcsPlatform === "gitlab";
+  const importButtonLabel = isGitLab ? t.kanban.importVcsIssuesGitlab : t.kanban.importVcsIssues;
   const importVisible = vcsImportVisible || _legacyGithubImportVisible;
   const onOpenImport = onOpenVcsImport ?? _legacyOnOpenGitHubImport;
   return (
@@ -81,10 +86,10 @@ export function KanbanTabHeader({
             <button
               onClick={onOpenImport}
               className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-300 dark:hover:bg-[#191c28]"
-              title={t.kanban.importVcsIssues}
+              title={importButtonLabel}
             >
               <Download className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-              {t.kanban.importVcsIssues}
+              {importButtonLabel}
             </button>
           ) : null}
           {onOpenArchive && (

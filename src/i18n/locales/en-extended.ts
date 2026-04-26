@@ -455,6 +455,7 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     planBacklogDescription: "Start an explicit backlog-planning run and write the result into the current board's planning session.",
     importGithubIssues: "Import Issues",
     importVcsIssues: "Import Issues",
+    importVcsIssuesGitlab: "Import GitLab Issues",
     boardSettings: "Settings",
     queued: "Queued",
     starting: "Starting",

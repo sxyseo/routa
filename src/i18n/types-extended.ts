@@ -457,6 +457,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     planBacklogDescription: string;
     importGithubIssues: string;
     importVcsIssues: string;
+    importVcsIssuesGitlab: string;
     boardSettings: string;
     // Card status
     queued: string;
