@@ -9,8 +9,8 @@ import {
   resolveEffectiveTaskAutomation,
 } from "@/core/kanban/effective-task-automation";
 import type {
-  GitHubIssueListItemInfo,
-  GitHubPRListItemInfo,
+  VCSIssueListItemInfo,
+  VCSPullRequestListItemInfo,
   KanbanAgentPromptHandler,
   KanbanBoardInfo,
   KanbanDevSessionSupervisionInfo,
@@ -45,8 +45,8 @@ import {
   taskOwnsSession,
 } from "./kanban-tab-helpers";
 import {
-  importGitHubItems,
-} from "./kanban-github-import";
+  importVCSItems,
+} from "./kanban-vcs-import";
 import { getKanbanFileChangesSummary } from "./kanban-file-changes-panel";
 import { KanbanTabContent } from "./kanban-tab-content";
 import { useRuntimeFitnessStatus } from "./use-runtime-fitness-status";
@@ -1603,12 +1603,12 @@ export function KanbanTab({
 
   async function importGitHubIssues(
     codebaseId: string,
-    issues: GitHubIssueListItemInfo[],
+    issues: VCSIssueListItemInfo[],
     repo: string,
     mergeAsSingleCard: boolean,
   ) {
     await ensureBoardAutoProviderPersisted();
-    const importedTasks = await importGitHubItems({
+    const importedTasks = await importVCSItems({
       workspaceId,
       boardId: selectedBoardId ?? defaultBoardId,
       codebaseId,
@@ -1651,12 +1651,12 @@ export function KanbanTab({
 
   async function importGitHubPulls(
     codebaseId: string,
-    pulls: GitHubPRListItemInfo[],
+    pulls: VCSPullRequestListItemInfo[],
     repo: string,
     mergeAsSingleCard: boolean,
   ) {
     await ensureBoardAutoProviderPersisted();
-    const importedTasks = await importGitHubItems({
+    const importedTasks = await importVCSItems({
       workspaceId,
       boardId: selectedBoardId ?? defaultBoardId,
       codebaseId,

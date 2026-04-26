@@ -224,7 +224,7 @@ describe("KanbanTab GitHub import merge mode", () => {
           workspaceId: "workspace-1",
           boardId: "board-1",
           columnId: "backlog",
-          title: "Merged GitHub issues",
+          title: "Merged issues",
           objective: [
             "Source links",
             "- #161 Imported issue one",

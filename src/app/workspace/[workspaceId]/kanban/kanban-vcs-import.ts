@@ -1,7 +1,19 @@
-import type { GitHubIssueListItemInfo, GitHubPRListItemInfo, TaskInfo } from "../types";
+/**
+ * VCS-agnostic import utility functions for the Kanban board.
+ *
+ * Previously named `kanban-github-import.ts`; all types now resolve
+ * through the IVCSProvider abstraction so the same functions work
+ * for GitHub, GitLab, or any future VCS provider.
+ */
+
+import type { VCSIssueListItem, VCSPullRequestListItem } from "@/core/vcs";
+import type { TaskInfo } from "../types";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
-export type GitHubImportItem = GitHubIssueListItemInfo | GitHubPRListItemInfo;
+export type VCSImportItem = VCSIssueListItem | VCSPullRequestListItem;
+
+/** @deprecated Use VCSImportItem instead. */
+export type GitHubImportItem = VCSImportItem;
 
 function summarizeImportedBody(body?: string): string | null {
   if (!body) return null;
@@ -11,7 +23,7 @@ function summarizeImportedBody(body?: string): string | null {
 }
 
 export function buildMergedImportObjective(
-  items: GitHubImportItem[],
+  items: VCSImportItem[],
   labels: { heading: string; summary: string },
 ): string {
   const lines: string[] = [labels.heading];
@@ -27,7 +39,7 @@ export function buildMergedImportObjective(
   return lines.join("\n").trim();
 }
 
-export function collectMergedImportLabels(items: GitHubImportItem[]): string[] {
+export function collectMergedImportLabels(items: VCSImportItem[]): string[] {
   return Array.from(new Set(items.flatMap((item) => item.labels)));
 }
 
@@ -47,7 +59,7 @@ export async function createImportedTask(
   return data.task as TaskInfo;
 }
 
-interface ImportGitHubItemsOptions<TItem extends GitHubImportItem> {
+interface ImportVCSItemsOptions<TItem extends VCSImportItem> {
   workspaceId: string;
   boardId: string | null;
   codebaseId: string;
@@ -60,8 +72,8 @@ interface ImportGitHubItemsOptions<TItem extends GitHubImportItem> {
   createItemFallbackMessage: (item: TItem) => string;
 }
 
-export async function importGitHubItems<TItem extends GitHubImportItem>(
-  options: ImportGitHubItemsOptions<TItem>,
+export async function importVCSItems<TItem extends VCSImportItem>(
+  options: ImportVCSItemsOptions<TItem>,
 ): Promise<TaskInfo[]> {
   const {
     workspaceId,
@@ -92,3 +104,6 @@ export async function importGitHubItems<TItem extends GitHubImportItem>(
     createImportedTask(createItemPayload(item), createItemFallbackMessage(item))
   ));
 }
+
+/** @deprecated Use importVCSItems instead. */
+export const importGitHubItems = importVCSItems;

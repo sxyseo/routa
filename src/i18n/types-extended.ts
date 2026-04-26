@@ -1293,7 +1293,9 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
 
   kanbanImport: {
     title: string;
+    titleGitlab: string;
     description: string;
+    descriptionGitlab: string;
     repository: string;
     loading: string;
     loadFailed: string;

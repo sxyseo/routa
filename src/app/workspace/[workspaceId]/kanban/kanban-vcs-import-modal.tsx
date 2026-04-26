@@ -1,33 +1,42 @@
 "use client";
 
+/**
+ * VCS-agnostic Kanban import modal.
+ *
+ * Renders Issues / Merge Requests (GitLab) or Pull Requests (GitHub)
+ * depending on the `platform` prop.  All data is fetched through the
+ * existing `/api/github/issues` and `/api/github/pulls` routes which
+ * already delegate to IVCSProvider internally.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { useTranslation } from "@/i18n";
-import type { GitHubIssueListItemInfo, GitHubPRListItemInfo, TaskInfo } from "../types";
+import type { VCSIssueListItemInfo, VCSPullRequestListItemInfo } from "../types";
 import type { VCSPlatform } from "@/core/vcs/vcs-provider";
 
 type ImportTab = "issues" | "pulls";
 
-interface GitHubIssuesResponse {
+interface VCSIssuesResponse {
   repo: string;
   codebase?: {
     id: string;
     label: string;
   };
-  issues: GitHubIssueListItemInfo[];
+  issues: VCSIssueListItemInfo[];
 }
 
-interface GitHubPullsResponse {
+interface VCSPullsResponse {
   repo: string;
   codebase?: {
     id: string;
     label: string;
   };
-  pulls: GitHubPRListItemInfo[];
+  pulls: VCSPullRequestListItemInfo[];
 }
 
-interface KanbanGitHubImportModalProps {
+export interface KanbanVCSImportModalProps {
   show: boolean;
   workspaceId: string;
   boardId?: string | null;
@@ -35,9 +44,15 @@ interface KanbanGitHubImportModalProps {
   tasks: TaskInfo[];
   platform?: VCSPlatform;
   onClose: () => void;
-  onImport: (codebaseId: string, issues: GitHubIssueListItemInfo[], repo: string, mergeAsSingleCard: boolean) => Promise<void>;
-  onImportPulls: (codebaseId: string, pulls: GitHubPRListItemInfo[], repo: string, mergeAsSingleCard: boolean) => Promise<void>;
+  onImport: (codebaseId: string, issues: VCSIssueListItemInfo[], repo: string, mergeAsSingleCard: boolean) => Promise<void>;
+  onImportPulls: (codebaseId: string, pulls: VCSPullRequestListItemInfo[], repo: string, mergeAsSingleCard: boolean) => Promise<void>;
 }
+
+/** @deprecated Use KanbanVCSImportModalProps instead. */
+export type KanbanGitHubImportModalProps = KanbanVCSImportModalProps;
+
+// Need TaskInfo for the tasks prop
+import type { TaskInfo } from "../types";
 
 function formatIssueTimestamp(value?: string): string | null {
   if (!value) return null;
@@ -46,7 +61,7 @@ function formatIssueTimestamp(value?: string): string | null {
   return date.toLocaleString();
 }
 
-export function KanbanGitHubImportModal({
+export function KanbanVCSImportModal({
   show,
   workspaceId,
   boardId,
@@ -56,13 +71,13 @@ export function KanbanGitHubImportModal({
   onClose,
   onImport,
   onImportPulls,
-}: KanbanGitHubImportModalProps) {
+}: KanbanVCSImportModalProps) {
   const { t } = useTranslation();
   const isGitLab = platform === "gitlab";
   const [activeTab, setActiveTab] = useState<ImportTab>("issues");
   const [selectedCodebaseId, setSelectedCodebaseId] = useState<string>("");
-  const [issuesPayload, setIssuesPayload] = useState<GitHubIssuesResponse | null>(null);
-  const [pullsPayload, setPullsPayload] = useState<GitHubPullsResponse | null>(null);
+  const [issuesPayload, setIssuesPayload] = useState<VCSIssuesResponse | null>(null);
+  const [pullsPayload, setPullsPayload] = useState<VCSPullsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -115,7 +130,7 @@ export function KanbanGitHubImportModal({
           setIssuesPayload({
             repo: typeof data?.repo === "string" ? data.repo : "",
             codebase: data?.codebase,
-            issues: Array.isArray(data?.issues) ? data.issues as GitHubIssueListItemInfo[] : [],
+            issues: Array.isArray(data?.issues) ? data.issues as VCSIssueListItemInfo[] : [],
           });
         } else {
           const response = await desktopAwareFetch(
@@ -130,7 +145,7 @@ export function KanbanGitHubImportModal({
           setPullsPayload({
             repo: typeof data?.repo === "string" ? data.repo : "",
             codebase: data?.codebase,
-            pulls: Array.isArray(data?.pulls) ? data.pulls as GitHubPRListItemInfo[] : [],
+            pulls: Array.isArray(data?.pulls) ? data.pulls as VCSPullRequestListItemInfo[] : [],
           });
         }
         setSelectedItemIds([]);
@@ -205,6 +220,10 @@ export function KanbanGitHubImportModal({
   const currentNoItemsText = activeTab === "issues" ? t.kanbanImport.noIssues : (isGitLab ? t.kanbanImport.noMergeRequests : t.kanbanImport.noPulls);
   const currentItemsLoadedText = activeTab === "issues" ? t.kanbanImport.issuesLoaded : (isGitLab ? t.kanbanImport.mergeRequestsLoaded : t.kanbanImport.pullsLoaded);
 
+  // Platform-aware modal title
+  const modalTitle = isGitLab ? t.kanbanImport.titleGitlab : t.kanbanImport.title;
+  const modalDescription = isGitLab ? t.kanbanImport.descriptionGitlab : t.kanbanImport.description;
+
   if (!show) return null;
 
   const canImport = Boolean(selectedItemIds.length > 0 && selectedCodebaseId && currentRepo);
@@ -214,8 +233,8 @@ export function KanbanGitHubImportModal({
       <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t.kanbanImport.title}</h3>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t.kanbanImport.description}</p>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{modalTitle}</h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{modalDescription}</p>
           </div>
           <button onClick={onClose} className="text-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
             {t.common.close}
@@ -535,3 +554,6 @@ export function KanbanGitHubImportModal({
     </div>
   );
 }
+
+/** @deprecated Use KanbanVCSImportModal instead. */
+export const KanbanGitHubImportModal = KanbanVCSImportModal;
