@@ -34,6 +34,24 @@ export {
 } from "./vcs-provider";
 
 export {
+  getPlatformTerminology,
+  getPullRequestShort,
+  getPullRequestTerm,
+  type PlatformTerminology,
+} from "./platform-terminology";
+
+export {
+  mapGitLabRoleToPermission,
+  hasPermission,
+  canCreateMergeRequest,
+  canMergeToProtected,
+  parseAccessLevel,
+  GITLAB_ROLE_LABELS,
+  type GitLabAccessLevel,
+  type InternalPermission,
+} from "./gitlab-permission";
+
+export {
   importVCSRepo,
   getCachedWorkspace,
   cleanupExpired,

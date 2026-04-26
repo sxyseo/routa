@@ -19,6 +19,7 @@ import type {
   WorktreeInfo,
 } from "../types";
 import type { VCSPlatform } from "@/core/vcs/vcs-provider";
+import { getPullRequestShort } from "@/core/vcs/platform-terminology";
 import { EMPTY_DRAFT, type TaskDraft } from "../kanban-create-modal";
 import { type ColumnAutomationConfig, type KanbanSettingsModalProps } from "./kanban-settings-modal";
 import type { UseWorkspacesReturn } from "@/client/hooks/use-workspaces";
@@ -1679,7 +1680,10 @@ export function KanbanTab({
         vcsState: pull.state,
         isPullRequest: true,
       }),
-      createItemFallbackMessage: (pull) => `Failed to import pull request #${pull.number}`,
+      createItemFallbackMessage: (pull) => {
+        const short = getPullRequestShort(vcsPlatform);
+        return `Failed to import ${short} #${pull.number}`;
+      },
     });
 
     if (importedTasks.length > 0) {
