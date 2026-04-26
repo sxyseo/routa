@@ -33,7 +33,7 @@ describe("canvas-sdk diff and DAG helpers", () => {
   });
 
   it("renders structured diff lines with inferred language metadata", () => {
-    render(
+    const { container } = render(
       <CanvasHost applyBodyTheme={false}>
         <DiffView
           path="src/core/example.ts"
@@ -48,7 +48,24 @@ describe("canvas-sdk diff and DAG helpers", () => {
 
     const diff = screen.getByLabelText("Diff for src/core/example.ts");
     expect(diff.getAttribute("data-language")).toBe("typescript");
-    expect(screen.getByText("return nextValue;")).toBeTruthy();
+    expect(diff.textContent).toContain("return nextValue;");
+    expect(container.innerHTML).toContain("hljs-keyword");
+  });
+
+  it("escapes highlighted diff content instead of injecting raw HTML", () => {
+    const { container } = render(
+      <CanvasHost applyBodyTheme={false}>
+        <DiffView
+          language="ts"
+          lines={[
+            { type: "added", content: "const value = \"<script>alert(1)</script>\";", lineNumber: 1 },
+          ]}
+        />
+      </CanvasHost>,
+    );
+
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.innerHTML).toContain("&lt;script&gt;");
   });
 
   it("computes rank-based DAG layout and marks back edges", () => {
