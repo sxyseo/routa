@@ -84,6 +84,53 @@ describe("buildTaskPrompt", () => {
     expect(prompt).not.toContain("Tool: report_to_parent");
   });
 
+  it("injects saved per-lane experience memory into automation prompts", () => {
+    const task = createTask({
+      id: "task-lane-memory-prompt",
+      title: "Continue review fix",
+      objective: "Use prior review evidence",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+    task.jitContextSnapshot = {
+      generatedAt: "2026-04-23T08:00:00.000Z",
+      summary: "Recovered history context.",
+      matchConfidence: "medium",
+      matchReasons: [],
+      warnings: [],
+      matchedFileDetails: [],
+      matchedSessionIds: [],
+      failures: [],
+      repeatedReadFiles: [],
+      sessions: [],
+      perLaneAnalysis: {
+        review: {
+          columnId: "review",
+          columnName: "Review",
+          synthesizedAt: "2026-04-23T08:10:00.000Z",
+          sessionCount: 2,
+          latestSessionId: "review-2",
+          latestStatus: "running",
+          completedSessions: 1,
+          failedSessions: 1,
+          recoveredSessions: 1,
+          summary: "Review has 2 lane session(s): 1 completed or transitioned, 1 failed or timed out, 1 recovered. Latest session review-2 is running.",
+          learnedPatterns: ["Recovery has been needed 1 time(s), most often for completion_criteria_not_met."],
+          topFailures: ["review-1 ended as failed, recovery reason: completion_criteria_not_met."],
+          recommendedActions: ["Review review-1 before retrying this lane to avoid repeating the same failure."],
+          flowGuidance: [],
+        },
+      },
+    };
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).toContain("## Lane Experience Memory");
+    expect(prompt).toContain("Review has 2 lane session");
+    expect(prompt).toContain("Review review-1 before retrying this lane");
+  });
+
   it("does not invent a placeholder board id when the task has no board", () => {
     const task = createTask({
       id: "task-3",

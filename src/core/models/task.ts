@@ -283,6 +283,32 @@ export interface TaskJitContextAnalysis {
   recommendedContextSearchSpec?: TaskContextSearchSpec;
 }
 
+export interface TaskJitContextLaneFlowGuidance {
+  category: string;
+  severity: "info" | "warning" | "critical";
+  summary: string;
+  recommendation: string;
+  affectedColumns: string[];
+}
+
+export interface TaskJitContextLaneAnalysis {
+  columnId: string;
+  columnName?: string;
+  synthesizedAt: string;
+  sessionCount: number;
+  latestSessionId?: string;
+  latestStatus?: TaskLaneSessionStatus;
+  completedSessions: number;
+  failedSessions: number;
+  recoveredSessions: number;
+  summary: string;
+  learnedPatterns: string[];
+  topFailures: string[];
+  recommendedActions: string[];
+  contextHints?: TaskContextSearchSpec;
+  flowGuidance: TaskJitContextLaneFlowGuidance[];
+}
+
 export interface TaskJitContextSnapshot {
   generatedAt: string;
   repoPath?: string;
@@ -300,6 +326,7 @@ export interface TaskJitContextSnapshot {
   historySummary?: TaskJitContextHistorySummary;
   recommendedContextSearchSpec?: TaskContextSearchSpec;
   analysis?: TaskJitContextAnalysis;
+  perLaneAnalysis?: Record<string, TaskJitContextLaneAnalysis>;
 }
 
 function normalizeTaskContextSearchText(value: string | undefined | null): string | undefined {
@@ -559,6 +586,104 @@ export function normalizeTaskJitContextAnalysis(
   };
 }
 
+function normalizeTaskJitContextLaneStatus(
+  value: TaskLaneSessionStatus | undefined,
+): TaskLaneSessionStatus | undefined {
+  return value === "running"
+    || value === "completed"
+    || value === "failed"
+    || value === "timed_out"
+    || value === "transitioned"
+    ? value
+    : undefined;
+}
+
+function normalizeTaskJitContextCount(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
+function normalizeTaskJitContextLaneFlowGuidance(
+  value: TaskJitContextLaneFlowGuidance | null | undefined,
+): TaskJitContextLaneFlowGuidance | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const category = normalizeTaskContextSearchText(value.category);
+  const severity = value.severity === "critical" || value.severity === "warning" || value.severity === "info"
+    ? value.severity
+    : undefined;
+  const summary = normalizeTaskContextSearchText(value.summary);
+  const recommendation = normalizeTaskContextSearchText(value.recommendation);
+  if (!category || !severity || !summary || !recommendation) {
+    return undefined;
+  }
+
+  return {
+    category,
+    severity,
+    summary,
+    recommendation,
+    affectedColumns: normalizeTaskContextSearchItems(value.affectedColumns) ?? [],
+  };
+}
+
+function normalizeTaskJitContextLaneAnalysis(
+  value: TaskJitContextLaneAnalysis | null | undefined,
+): TaskJitContextLaneAnalysis | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const columnId = normalizeTaskContextSearchText(value.columnId);
+  const synthesizedAt = normalizeTaskContextSearchText(value.synthesizedAt);
+  const summary = normalizeTaskContextSearchText(value.summary);
+  if (!columnId || !synthesizedAt || !summary) {
+    return undefined;
+  }
+
+  return {
+    columnId,
+    columnName: normalizeTaskContextSearchText(value.columnName),
+    synthesizedAt,
+    sessionCount: normalizeTaskJitContextCount(value.sessionCount),
+    latestSessionId: normalizeTaskContextSearchText(value.latestSessionId),
+    latestStatus: normalizeTaskJitContextLaneStatus(value.latestStatus),
+    completedSessions: normalizeTaskJitContextCount(value.completedSessions),
+    failedSessions: normalizeTaskJitContextCount(value.failedSessions),
+    recoveredSessions: normalizeTaskJitContextCount(value.recoveredSessions),
+    summary,
+    learnedPatterns: normalizeTaskContextSearchItems(value.learnedPatterns) ?? [],
+    topFailures: normalizeTaskContextSearchItems(value.topFailures) ?? [],
+    recommendedActions: normalizeTaskContextSearchItems(value.recommendedActions) ?? [],
+    contextHints: normalizeTaskContextSearchSpec(value.contextHints),
+    flowGuidance: (Array.isArray(value.flowGuidance) ? value.flowGuidance : [])
+      .map((entry) => normalizeTaskJitContextLaneFlowGuidance(entry))
+      .filter((entry): entry is TaskJitContextLaneFlowGuidance => Boolean(entry)),
+  };
+}
+
+function normalizeTaskJitContextPerLaneAnalysis(
+  value: Record<string, TaskJitContextLaneAnalysis> | null | undefined,
+): Record<string, TaskJitContextLaneAnalysis> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalizedEntries = Object.entries(value)
+    .map(([key, entry]) => {
+      const normalized = normalizeTaskJitContextLaneAnalysis(entry);
+      return normalized ? [normalized.columnId || key, normalized] as const : undefined;
+    })
+    .filter((entry): entry is readonly [string, TaskJitContextLaneAnalysis] => Boolean(entry));
+
+  return normalizedEntries.length > 0
+    ? Object.fromEntries(normalizedEntries)
+    : undefined;
+}
+
 export function normalizeTaskJitContextSnapshot(
   value: TaskJitContextSnapshot | null | undefined,
 ): TaskJitContextSnapshot | undefined {
@@ -601,6 +726,7 @@ export function normalizeTaskJitContextSnapshot(
     historySummary: normalizeTaskJitContextHistorySummary(value.historySummary),
     recommendedContextSearchSpec: normalizeTaskContextSearchSpec(value.recommendedContextSearchSpec),
     analysis: normalizeTaskJitContextAnalysis(value.analysis),
+    perLaneAnalysis: normalizeTaskJitContextPerLaneAnalysis(value.perLaneAnalysis),
   };
 
   return normalized;
@@ -665,6 +791,7 @@ export function parseTaskJitContextSnapshot(value: unknown): TaskJitContextSnaps
     historySummary: candidate.historySummary as TaskJitContextHistorySummary | undefined,
     recommendedContextSearchSpec: parseTaskContextSearchSpec(candidate.recommendedContextSearchSpec),
     analysis: parseTaskJitContextAnalysis(candidate.analysis),
+    perLaneAnalysis: candidate.perLaneAnalysis as Record<string, TaskJitContextLaneAnalysis> | undefined,
   });
 }
 

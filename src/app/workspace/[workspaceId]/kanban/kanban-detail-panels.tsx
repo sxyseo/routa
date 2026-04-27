@@ -21,6 +21,7 @@ import {
   buildKanbanTaskAdaptiveHarnessOptions,
   hasConfirmedKanbanTaskAdaptiveContext,
 } from "./kanban-task-adaptive";
+import { mergeTaskLaneExperienceIntoJitSnapshot } from "@/core/kanban/task-lane-experience";
 import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
 
 function formatTimestamp(value: string | undefined): string | null {
@@ -212,7 +213,7 @@ function buildTaskJitContextSnapshot(
   const repeatedReadFiles = uniquePreserveOrder(pack.repeatedReadFiles ?? []);
   const sessions = pack.sessions ?? [];
 
-  return {
+  const snapshot: TaskJitContextSnapshot = {
     generatedAt: new Date().toISOString(),
     repoPath: repoPath ?? undefined,
     featureId: pack.featureId,
@@ -259,7 +260,19 @@ function buildTaskJitContextSnapshot(
       : undefined,
     recommendedContextSearchSpec: buildRecommendedContextSearchSpec(task, harnessOptions, pack),
     analysis: normalizeTaskJitContextAnalysis(task.jitContextSnapshot?.analysis),
+    perLaneAnalysis: task.jitContextSnapshot?.perLaneAnalysis,
   };
+
+  return mergeTaskLaneExperienceIntoJitSnapshot({
+    laneSessions: task.laneSessions ?? [],
+    laneHandoffs: task.laneHandoffs ?? [],
+    id: task.id,
+    title: task.title,
+    objective: task.objective,
+    columnId: task.columnId,
+    contextSearchSpec: task.contextSearchSpec,
+    jitContextSnapshot: snapshot,
+  }) ?? snapshot;
 }
 
 function formatMatchConfidenceLabel(

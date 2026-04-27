@@ -1,5 +1,10 @@
 import type { TaskAdaptiveHarnessTaskType } from "@/core/harness/task-adaptive";
-import { normalizeTaskContextSearchSpec, type TaskContextSearchSpec, type TaskJitContextSnapshot } from "@/core/models/task";
+import {
+  normalizeTaskContextSearchSpec,
+  normalizeTaskJitContextSnapshot,
+  type TaskContextSearchSpec,
+  type TaskJitContextSnapshot,
+} from "@/core/models/task";
 
 type TaskAdaptiveSource = {
   id?: string;
@@ -78,8 +83,10 @@ function resolveRecommendedContextSearchSpec(
 export function hasConfirmedKanbanTaskAdaptiveContext(
   task: TaskAdaptiveSource | null | undefined,
 ): boolean {
+  const hasLaneExperience = Boolean(normalizeTaskJitContextSnapshot(task?.jitContextSnapshot)?.perLaneAnalysis);
   return Boolean(normalizeTaskContextSearchSpec(task?.contextSearchSpec))
-    || Boolean(task?.jitContextSnapshot?.analysis);
+    || Boolean(task?.jitContextSnapshot?.analysis)
+    || hasLaneExperience;
 }
 
 export function shouldEnableKanbanTaskAdaptiveHarness(

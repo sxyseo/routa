@@ -20,6 +20,7 @@ import type { FlowDiagnosisReport } from "./flow-ledger-types";
 import { formatFlowGuidanceForPrompt } from "./flow-ledger";
 import { buildKanbanTaskAdaptiveHarnessOptions } from "./task-adaptive";
 import { buildSavedHistoryMemoryPromptSection } from "./context-preload";
+import { buildLaneExperiencePromptSection } from "./task-lane-experience";
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -358,6 +359,10 @@ export function buildTaskPrompt(
   const savedHistoryMemorySection = savedHistoryMemoryPrompt
     ? [savedHistoryMemoryPrompt]
     : [];
+  const laneExperiencePrompt = buildLaneExperiencePromptSection(task);
+  const laneExperienceSection = laneExperiencePrompt
+    ? [laneExperiencePrompt]
+    : [];
 
   return [
     `You are assigned to Kanban task: ${task.title}`,
@@ -389,6 +394,7 @@ export function buildTaskPrompt(
     ...deliveryGateSection,
     ...evidenceBundleSection,
     ...savedHistoryMemorySection,
+    ...laneExperienceSection,
     ...laneRunHistorySection,
     ...laneHandoffSection,
     ...devVerificationSection,
