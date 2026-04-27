@@ -544,7 +544,7 @@ describe("KanbanTab GitHub import", () => {
   it("shows import issues when the default codebase is labeled as owner/repo", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/github/access?boardId=board-1") {
+      if (url.startsWith("/api/github/access?") && url.includes("boardId=board-1")) {
         return {
           ok: true,
           json: async () => ({
@@ -586,7 +586,7 @@ describe("KanbanTab GitHub import", () => {
   it("imports backlog issues without creating a task-level provider override", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/github/access?boardId=board-1") {
+      if (url.startsWith("/api/github/access?") && url.includes("boardId=board-1")) {
         return {
           ok: true,
           json: async () => ({

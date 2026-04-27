@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
-import { getVCSProvider } from "@/core/vcs";
+import { getVCSProviderForSource } from "@/core/vcs";
 import { resolveGitHubRepo } from "@/core/kanban/github-issues";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const provider = getVCSProvider();
+    const provider = getVCSProviderForSource(codebase.sourceType);
     const pulls = await provider.listPRs({
       repo,
       state,

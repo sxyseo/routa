@@ -273,6 +273,21 @@ export function resetVCSProvider(): void {
 }
 
 /**
+ * Get a VCS provider based on a codebase's sourceType.
+ * Falls back to the global PLATFORM env var when sourceType is ambiguous.
+ */
+export function getVCSProviderForSource(sourceType?: string): IVCSProvider {
+  if (sourceType === "gitlab") {
+    return new GitLabProvider();
+  }
+  if (sourceType === "github") {
+    return new GitHubProvider();
+  }
+  // Ambiguous or missing sourceType — delegate to global config
+  return getVCSProvider();
+}
+
+/**
  * Get the current platform from environment.
  */
 export function getPlatform(): VCSPlatform {

@@ -468,6 +468,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     planBacklogDescription: string;
     importGithubIssues: string;
     importVcsIssues: string;
+    importVcsIssuesGitlab: string;
     boardSettings: string;
     // Card status
     queued: string;
@@ -1306,7 +1307,9 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
 
   kanbanImport: {
     title: string;
+    titleGitlab: string;
     description: string;
+    descriptionGitlab: string;
     repository: string;
     loading: string;
     loadFailed: string;

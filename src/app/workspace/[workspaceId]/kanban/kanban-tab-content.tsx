@@ -6,7 +6,7 @@ import { AcpProviderDropdown } from "@/client/components/acp-provider-dropdown";
 import type { KanbanAgentPromptHandler, KanbanBoardInfo } from "../types";
 import { KanbanTabHeader } from "./kanban-tab-header";
 import { KanbanStatusBar } from "./kanban-status-bar";
-import { KanbanGitHubImportModal } from "./kanban-github-import-modal";
+import { KanbanVCSImportModal } from "./kanban-vcs-import-modal";
 import { KanbanBoardSurface, KanbanCreateTaskModal, KanbanTaskDetailOverlay } from "./kanban-tab-panels";
 import { KanbanSettingsModal } from "./kanban-settings-modal";
 import { KanbanFitnessWorkbenchModal } from "./kanban-fitness-workbench-modal";
@@ -25,7 +25,7 @@ import type { KanbanTaskAgentCopy } from "./i18n/kanban-task-agent";
 type KanbanTabHeaderProps = Omit<ComponentProps<typeof KanbanTabHeader>, "actionSlot">;
 type BoardSurfaceProps = ComponentProps<typeof KanbanBoardSurface>;
 type CreateTaskModalProps = ComponentProps<typeof KanbanCreateTaskModal>;
-type GitHubImportModalProps = ComponentProps<typeof KanbanGitHubImportModal>;
+type VCSImportModalProps = ComponentProps<typeof KanbanVCSImportModal>;
 type TaskDetailOverlayProps = ComponentProps<typeof KanbanTaskDetailOverlay>;
 type SettingsModalProps = ComponentProps<typeof KanbanSettingsModal>;
 type DeleteCodebaseModalProps = ComponentProps<typeof KanbanDeleteCodebaseModal> & { show: boolean };
@@ -57,7 +57,7 @@ export interface KanbanTabContentProps {
   headerActionProps: KanbanTabHeaderActionProps;
   boardSurfaceProps?: BoardSurfaceProps;
   createTaskModalProps: CreateTaskModalProps;
-  githubImportModalProps: GitHubImportModalProps;
+  githubImportModalProps: VCSImportModalProps;
   taskDetailOverlayProps?: TaskDetailOverlayProps;
   showSettingsModal?: boolean;
   settingsModalProps?: SettingsModalProps;
@@ -215,7 +215,7 @@ export function KanbanTabContent({
       <KanbanTabHeader {...headerProps} actionSlot={headerActionSlot}/>
       <KanbanBoardSurface {...boardSurfaceProps}/>
       <KanbanCreateTaskModal {...createTaskModalProps}/>
-      <KanbanGitHubImportModal {...githubImportModalProps}/>
+      <KanbanVCSImportModal {...githubImportModalProps}/>
       <KanbanTaskDetailOverlay {...taskDetailOverlayProps}/>
 
       {/* Settings Modal */}

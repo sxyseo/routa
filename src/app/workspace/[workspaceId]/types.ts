@@ -260,33 +260,17 @@ export interface TaskInfo {
   updatedAt?: string;
 }
 
-export interface GitHubIssueListItemInfo {
-  id: string;
-  number: number;
-  title: string;
-  body?: string;
-  url: string;
-  state: "open" | "closed";
-  labels: string[];
-  assignees: string[];
-  updatedAt?: string;
-}
+/**
+ * VCS-agnostic list item types for the Kanban import flow.
+ * Aliased from the canonical IVCSProvider types in @/core/vcs.
+ */
+export type { VCSIssueListItem as VCSIssueListItemInfo, VCSPullRequestListItem as VCSPullRequestListItemInfo } from "@/core/vcs";
 
-export interface GitHubPRListItemInfo {
-  id: string;
-  number: number;
-  title: string;
-  body?: string;
-  url: string;
-  state: "open" | "closed";
-  labels: string[];
-  assignees: string[];
-  updatedAt?: string;
-  draft: boolean;
-  mergedAt?: string;
-  headRef: string;
-  baseRef: string;
-}
+/** @deprecated Use VCSIssueListItemInfo instead. */
+export type GitHubIssueListItemInfo = import("@/core/vcs").VCSIssueListItem;
+
+/** @deprecated Use VCSPullRequestListItemInfo instead. */
+export type GitHubPRListItemInfo = import("@/core/vcs").VCSPullRequestListItem;
 
 export interface KanbanColumnAutomationInfo {
   enabled: boolean;
