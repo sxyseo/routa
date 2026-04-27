@@ -11,7 +11,7 @@
 import type { Task } from "../models/task";
 import type { Codebase } from "../models/codebase";
 import type { KanbanBranchRules } from "./board-branch-rules";
-import { GIT_DEFAULT_BRANCH } from "../git/git-defaults";
+import { GIT_DEFAULT_BRANCH, remoteBranchExists } from "../git/git-defaults";
 import type { WorktreeStore } from "../db/pg-worktree-store";
 import type { TaskStore } from "../store/task-store";
 
@@ -248,6 +248,56 @@ export async function resolveDependencyBaseBranch(
   }
 
   return undefined;
+}
+
+// ─── Effective base branch resolver (async, remote-verified) ──────────
+
+/**
+ * Resolve the effective base branch for an existing worktree, with
+ * full fallback chain and remote verification.
+ *
+ * Waterfall: worktree.baseBranch → codebase.branch → GIT_DEFAULT_BRANCH
+ * Each candidate is verified against the remote before use.
+ * Returns the first candidate that exists on the remote.
+ * If none exist, returns the best non-empty candidate with a warning.
+ */
+export async function resolveEffectiveBaseBranch(deps: {
+  worktree: { baseBranch?: string };
+  codebase: { branch?: string; repoPath: string };
+}): Promise<string> {
+  const candidates = [
+    deps.worktree.baseBranch,
+    deps.codebase.branch,
+    GIT_DEFAULT_BRANCH,
+  ].filter((b): b is string => Boolean(b?.trim()));
+
+  // Deduplicate while preserving priority order
+  const seen = new Set<string>();
+  const unique = candidates.filter((c) => {
+    if (seen.has(c)) return false;
+    seen.add(c);
+    return true;
+  });
+
+  for (const candidate of unique) {
+    const exists = await remoteBranchExists(deps.codebase.repoPath, candidate);
+    if (exists) {
+      if (candidate !== deps.worktree.baseBranch) {
+        console.log(
+          `[BranchPlan] Base branch "${deps.worktree.baseBranch}" not found on remote. ` +
+          `Fell back to "${candidate}".`,
+        );
+      }
+      return candidate;
+    }
+  }
+
+  // All candidates failed remote check — return the best non-empty candidate
+  console.warn(
+    `[BranchPlan] None of the base branch candidates [${unique.join(", ")}] exist on remote. ` +
+    `Falling back to "${unique[0] ?? GIT_DEFAULT_BRANCH}".`,
+  );
+  return unique[0] ?? GIT_DEFAULT_BRANCH;
 }
 
 // ─── Collision suffix generator ─────────────────────────────────────

@@ -25,6 +25,7 @@ import type {
 } from "./vcs-provider";
 
 import { type GitLabAccessLevel, type InternalPermission, mapGitLabRoleToPermission, parseAccessLevel } from "./gitlab-permission";
+import { GIT_DEFAULT_BRANCH } from "../git/git-defaults";
 
 /** Cached API version detection result */
 let apiVersionCache: { version: string; ce: boolean; detected: boolean } | null = null;
@@ -304,7 +305,7 @@ export class GitLabProvider implements IVCSProvider {
       full_name: data.path_with_namespace,
       html_url: data.web_url,
       clone_url: data.http_url_to_repo,
-      default_branch: data.default_branch ?? "main",
+      default_branch: data.default_branch ?? GIT_DEFAULT_BRANCH,
       private: visibility !== "public",
     };
   }

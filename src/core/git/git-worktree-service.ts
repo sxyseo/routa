@@ -66,6 +66,39 @@ export class GitWorktreeService {
   ) {}
 
   /**
+   * Verify a base branch exists on remote, falling back through
+   * codebase.branch → GIT_DEFAULT_BRANCH if not found.
+   */
+  private async resolveBaseBranchWithFallback(
+    preferredBase: string,
+    codebase: { branch?: string; repoPath: string },
+  ): Promise<string> {
+    const { remoteBranchExists } = await import("./git-defaults");
+    const candidates = [
+      preferredBase,
+      codebase.branch,
+      GIT_DEFAULT_BRANCH,
+    ].filter((b): b is string => Boolean(b?.trim()));
+    const seen = new Set<string>();
+    const unique = candidates.filter((c) => {
+      if (seen.has(c)) return false;
+      seen.add(c);
+      return true;
+    });
+    for (const candidate of unique) {
+      if (await remoteBranchExists(codebase.repoPath, candidate)) {
+        if (candidate !== preferredBase) {
+          console.warn(
+            `[GitWorktreeService] Base branch "${preferredBase}" not on remote, fell back to "${candidate}".`,
+          );
+        }
+        return candidate;
+      }
+    }
+    return unique[0] ?? GIT_DEFAULT_BRANCH;
+  }
+
+  /**
    * Acquire a per-repo lock. Operations on the same repo are serialized
    * to prevent .git/worktrees directory corruption.
    */
@@ -391,6 +424,9 @@ export class GitWorktreeService {
     const cwd = worktree.worktreePath;
     const repoPath = codebase.repoPath;
 
+    // Verify the base branch exists on remote; fall back if stale
+    const resolvedBase = await this.resolveBaseBranchWithFallback(base, codebase);
+
     await this.withRepoLock(repoPath, async () => {
       // Fetch latest from remote
       await execGit(["fetch", "origin"], cwd).catch(() => {});
@@ -399,7 +435,7 @@ export class GitWorktreeService {
       await execGit(["clean", "-fd"], cwd).catch(() => {});
 
       // Hard reset to base branch
-      await execGit(["reset", "--hard", `origin/${base}`], cwd);
+      await execGit(["reset", "--hard", `origin/${resolvedBase}`], cwd);
     });
   }
 

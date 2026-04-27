@@ -1,6 +1,8 @@
 import type { Codebase } from "../models/codebase";
 import type { Task } from "../models/task";
 import type { Worktree } from "../models/worktree";
+import { resolveEffectiveBaseBranch } from "./branch-plan";
+import { GIT_DEFAULT_BRANCH } from "../git/git-defaults";
 
 interface TaskWorktreeTruthSystem {
   codebaseStore: {
@@ -89,4 +91,22 @@ export async function resolveTaskWorktreeTruth(
     branch: defaultCodebase.branch,
     baseBranch: defaultCodebase.branch,
   };
+}
+
+/**
+ * Async verification of a TaskWorktreeTruth's base branch against the remote.
+ *
+ * Uses the full fallback chain: worktree.baseBranch → codebase.branch → GIT_DEFAULT_BRANCH.
+ * Returns the first candidate that exists on the remote.
+ */
+export async function resolveVerifiedBaseBranch(
+  truth: TaskWorktreeTruth,
+): Promise<string> {
+  if (!truth.codebase?.repoPath) {
+    return truth.baseBranch ?? GIT_DEFAULT_BRANCH;
+  }
+  return resolveEffectiveBaseBranch({
+    worktree: { baseBranch: truth.baseBranch },
+    codebase: { branch: truth.codebase.branch, repoPath: truth.codebase.repoPath },
+  });
 }

@@ -264,11 +264,18 @@ export function getRepoRefSha(repoPath: string, ref: string): string | null {
   }
 }
 
-function resolveBaseRef(repoPath: string, baseBranch?: string | null): string | undefined {
+function resolveBaseRef(
+  repoPath: string,
+  baseBranch?: string | null,
+  codebaseDefaultBranch?: string | null,
+): string | undefined {
   const normalizedBaseBranch = baseBranch?.trim();
+  const normalizedCodebaseBranch = codebaseDefaultBranch?.trim();
   const candidates = Array.from(new Set([
     normalizedBaseBranch ? `origin/${normalizedBaseBranch}` : null,
     normalizedBaseBranch ?? null,
+    normalizedCodebaseBranch ? `origin/${normalizedCodebaseBranch}` : null,
+    normalizedCodebaseBranch ?? null,
     "origin/main",
     "main",
     "origin/master",
@@ -1096,6 +1103,7 @@ export function getRepoDeliveryStatus(
   repoPath: string,
   options?: {
     baseBranch?: string | null;
+    codebaseDefaultBranch?: string | null;
     sourceType?: "local" | "github" | "gitlab";
     sourceUrl?: string | null;
   },
@@ -1103,7 +1111,7 @@ export function getRepoDeliveryStatus(
   const branch = getCurrentBranch(repoPath) ?? "unknown";
   const status = getRepoStatus(repoPath);
   const remoteUrl = getRemoteUrl(repoPath);
-  const baseRef = resolveBaseRef(repoPath, options?.baseBranch);
+  const baseRef = resolveBaseRef(repoPath, options?.baseBranch, options?.codebaseDefaultBranch);
   const normalizedBaseBranch = options?.baseBranch?.trim() || baseRef?.replace(/^origin\//, "");
   let commitsSinceBase = status.ahead;
 

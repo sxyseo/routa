@@ -21,9 +21,12 @@ import { getServerBridge } from "../platform";
 import type { RoutaSystem } from "../routa-system";
 import type { TaskStore } from "../store/task-store";
 import type { WorktreeStore } from "../db/pg-worktree-store";
+import type { CodebaseStore } from "../db/pg-codebase-store";
 import { shellQuote, isGitLabUrl, isGitHubUrl } from "../git/git-utils";
 import { getVCSProvider, getPlatform } from "../vcs";
 import { getKanbanConfig } from "./kanban-config";
+import { resolveEffectiveBaseBranch } from "./branch-plan";
+import { GIT_DEFAULT_BRANCH } from "../git/git-defaults";
 
 const HANDLER_KEY = "kanban-pr-auto-create";
 const PR_RETRY_LIMIT = getKanbanConfig().prRetryLimit;
@@ -52,6 +55,7 @@ async function execCommand(
 export async function executeAutoPrCreation(
   worktreeStore: WorktreeStore,
   taskStore: TaskStore,
+  codebaseStore: CodebaseStore,
   params: {
     cardId: string;
     cardTitle: string;
@@ -199,7 +203,26 @@ export async function executeAutoPrCreation(
     // 4. Create PR/MR via platform-appropriate method
     const prTitle = task?.title ?? cardTitle;
     const prBody = task?.objective ?? "Auto-created PR/MR from kanban done-lane.";
-    const baseBranch = worktree.baseBranch;
+
+    // Resolve base branch with remote-verified fallback chain:
+    // worktree.baseBranch → codebase.branch → GIT_DEFAULT_BRANCH
+    let baseBranch = worktree.baseBranch ?? GIT_DEFAULT_BRANCH;
+    try {
+      const codebase = worktree.codebaseId
+        ? await codebaseStore.get(worktree.codebaseId)
+        : undefined;
+      if (codebase) {
+        baseBranch = await resolveEffectiveBaseBranch({
+          worktree: { baseBranch: worktree.baseBranch },
+          codebase: { branch: codebase.branch, repoPath: codebase.repoPath },
+        });
+      }
+    } catch (resolveErr) {
+      console.warn(
+        `[PrAutoCreate] Base branch resolution failed for task ${cardId}, using worktree base:`,
+        resolveErr instanceof Error ? resolveErr.message : resolveErr,
+      );
+    }
 
     // Use --body-file to avoid shell injection and multi-line issues.
     const fs = await import("fs/promises");
@@ -284,7 +307,7 @@ export function startPrAutoCreateListener(system: RoutaSystem): void {
       worktreeId: string;
     };
 
-    await executeAutoPrCreation(system.worktreeStore, system.taskStore, {
+    await executeAutoPrCreation(system.worktreeStore, system.taskStore, system.codebaseStore, {
       cardId,
       cardTitle,
       boardId,
@@ -315,7 +338,7 @@ async function createGitHubPR(ctx: PrCreationContext): Promise<string | undefine
     "--title", shellQuote(prTitle),
     "--body-file", shellQuote(tmpFile),
     "--head", shellQuote(branch),
-    ...(baseBranch ? ["--base", shellQuote(baseBranch)] : []),
+    "--base", shellQuote(baseBranch ?? GIT_DEFAULT_BRANCH),
   ];
   const ghCommand = ["gh", ...ghArgs].join(" ");
 
@@ -373,7 +396,7 @@ async function createGitLabMR(ctx: PrCreationContext): Promise<string | undefine
       "--title", shellQuote(prTitle),
       "--description-file", shellQuote(tmpFile),
       "--source-branch", shellQuote(branch),
-      "--target-branch", shellQuote(baseBranch ?? "main"),
+      "--target-branch", shellQuote(baseBranch ?? GIT_DEFAULT_BRANCH),
       "--yes", // skip interactive prompt
       "--no-editor",
     ];
@@ -431,7 +454,7 @@ async function createGitLabMR(ctx: PrCreationContext): Promise<string | undefine
       title: prTitle,
       body: task?.objective ?? "Auto-created MR from kanban done-lane.",
       head: branch,
-      base: baseBranch ?? "main",
+      base: baseBranch ?? GIT_DEFAULT_BRANCH,
     });
 
     const mrUrl = mr.html_url;

@@ -104,7 +104,7 @@ export function getInternalApiOrigin(): string {
 export function buildTaskPrompt(
   task: Task,
   boardColumns: KanbanColumn[] = [],
-  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext; branch?: string; flowReport?: FlowDiagnosisReport },
+  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext; branch?: string; baseBranch?: string; flowReport?: FlowDiagnosisReport },
 ): string {
   const labels = task.labels.length > 0 ? `Labels: ${task.labels.join(", ")}` : "Labels: none";
   const currentColumnId = task.columnId ?? "backlog";
@@ -426,7 +426,8 @@ export function buildTaskPrompt(
     ...(task.pullRequestUrl && task.pullRequestUrl !== "manual" && task.pullRequestUrl !== "already-merged"
       ? [`**Pull Request:** ${task.pullRequestUrl}${task.pullRequestMergedAt ? " (merged)" : ""}`]
       : []),
-    ...(options?.branch ? [`**Base Branch:** ${options.branch}`] : []),
+    ...(options?.baseBranch ? [`**Base Branch:** ${options.baseBranch}`] : []),
+    ...(options?.branch ? [`**Feature Branch:** ${options.branch}`] : []),
     "",
     "## Objective",
     "",
@@ -647,7 +648,8 @@ async function triggerAcpTaskAgent(params: {
         text: buildTaskPrompt(params.task, params.boardColumns, {
           currentSessionId: sessionId,
           summaryContext: params.summaryContext,
-          branch: params.baseBranch ?? params.branch,
+          branch: params.branch,
+          baseBranch: params.baseBranch,
           flowReport: params.flowReport,
         }),
       }],

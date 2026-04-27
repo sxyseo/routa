@@ -341,6 +341,16 @@ async function startKanbanTaskSession(
   let worktreeCwd = initialWorktreeTruth?.cwd ?? process.cwd();
   let worktreeBranch = initialWorktreeTruth?.branch;
   let baseBranch = initialWorktreeTruth?.baseBranch ?? preferredCodebase?.branch;
+  // Verify the base branch actually exists on remote; fall back through
+  // codebase.branch → GIT_DEFAULT_BRANCH if the recorded base is stale.
+  if (initialWorktreeTruth && preferredCodebase?.repoPath) {
+    try {
+      const { resolveVerifiedBaseBranch } = await import("./task-worktree-truth");
+      baseBranch = await resolveVerifiedBaseBranch(initialWorktreeTruth);
+    } catch {
+      // Verification failed — keep the original baseBranch
+    }
+  }
   if (branchRules.triggers.worktreeCreationColumns.includes(params.expectedColumnId ?? nextTask.columnId ?? "") && preferredCodebase && !nextTask.worktreeId) {
     const result = await ensureTaskWorktree(nextTask, preferredCodebase, {
       worktreeStore: system.worktreeStore,
@@ -654,6 +664,7 @@ export function startWorkflowOrchestrator(system: RoutaSystem): void {
   orchestrator.setExecuteAutoPrCreation((params) => executeAutoPrCreation(
     system.worktreeStore,
     system.taskStore,
+    system.codebaseStore,
     params,
   ));
   orchestrator.setWorktreeStore(system.worktreeStore);

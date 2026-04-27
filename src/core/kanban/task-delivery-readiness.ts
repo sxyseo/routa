@@ -155,6 +155,7 @@ export async function buildTaskDeliveryReadiness(
     context,
     getRepoDeliveryStatus(context.repoPath, {
       baseBranch: context.baseBranch,
+      codebaseDefaultBranch: context.codebase?.branch,
       sourceType: context.codebase?.sourceType,
       sourceUrl: context.codebase?.sourceUrl,
     }),
