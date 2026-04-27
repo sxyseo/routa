@@ -32,6 +32,9 @@ const GIT_DEFAULT_BRANCH = "main";
 /** Cached API version detection result */
 let apiVersionCache: { version: string; ce: boolean; detected: boolean } | null = null;
 
+/** Track whether SSL bypass has been applied to avoid repeated warnings */
+let sslBypassApplied = false;
+
 export class GitLabProvider implements IVCSProvider {
   readonly platform: VCSPlatform = "gitlab";
 
@@ -46,13 +49,63 @@ export class GitLabProvider implements IVCSProvider {
     return process.env.GITLAB_SKIP_SSL_VERIFY?.toLowerCase() === "true";
   }
 
-  /** Get authorization header */
+  /**
+   * Apply SSL bypass at process level when GITLAB_SKIP_SSL_VERIFY=true.
+   * Node.js fetch() ignores custom agents, so the only reliable way is
+   * to set NODE_TLS_REJECT_UNAUTHORIZED=0. This is logged once.
+   */
+  private ensureSslBypass(): void {
+    if (!this.shouldSkipSsl() || sslBypassApplied) return;
+    if (process.env.NODE_TLS_REJECT_UNAUTHORIZED !== "0") {
+      console.warn(
+        "[GitLab] SSL verification disabled via GITLAB_SKIP_SSL_VERIFY=true. " +
+        "This is insecure — only use for self-hosted instances with self-signed certificates."
+      );
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    }
+    sslBypassApplied = true;
+  }
+
+  /**
+   * Shared error handler for GitLab API responses.
+   * Maps common HTTP status codes to actionable error messages.
+   */
+  private handleGitLabError(status: number, body: string, endpoint: string): never {
+    if (status === 429) {
+      throw new Error(
+        `GitLab rate limit exceeded. Slow down requests or check your plan limits. Endpoint: ${endpoint}`
+      );
+    }
+    if (status === 401) {
+      throw new Error(
+        `GitLab authentication failed. Verify your GITLAB_TOKEN is valid and has the required scopes (api, read_api, read_repository).`
+      );
+    }
+    if (status === 403) {
+      throw new Error(
+        `GitLab permission denied. Your token may lack the required access level for this operation.`
+      );
+    }
+    if (status === 404) {
+      throw new Error(
+        `GitLab resource not found: ${endpoint}. Verify the project path and that your token has access to the repository.`
+      );
+    }
+    if (status === 406) {
+      throw new Error(
+        `GitLab API feature not available. This endpoint may require GitLab Enterprise Edition or a newer version. Endpoint: ${endpoint}`
+      );
+    }
+    throw new Error(`GitLab API error ${status}: ${body}`);
+  }
+
+  /** Get authorization header. Uses PRIVATE-TOKEN for personal access tokens (matches Rust backend). */
   private getAuthHeader(token?: string): string {
     const actualToken = token ?? process.env.GITLAB_TOKEN;
     if (!actualToken) {
       throw new Error("GitLab token is required. Set GITLAB_TOKEN environment variable.");
     }
-    return `Bearer ${actualToken}`;
+    return `PRIVATE-TOKEN ${actualToken}`;
   }
 
   /** Parse repo string to project path (GitLab uses "owner%2Frepo" encoding) */
@@ -105,6 +158,9 @@ export class GitLabProvider implements IVCSProvider {
     return apiVersionCache;
   }
 
+  /** Max retries for rate-limited (429) requests */
+  private static readonly MAX_RETRIES = 3;
+
   /**
    * Check if a specific API feature is available.
    * Returns true if the feature is supported or if detection failed
@@ -134,6 +190,7 @@ export class GitLabProvider implements IVCSProvider {
       body?: unknown;
     } = {}
   ): Promise<T> {
+    this.ensureSslBypass();
     const { method = "GET", token, body } = options;
     const url = `${this.getApiBaseUrl()}${endpoint}`;
 
@@ -148,43 +205,28 @@ export class GitLabProvider implements IVCSProvider {
       body: body ? JSON.stringify(body) : undefined,
     };
 
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= GitLabProvider.MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(url, fetchOptions);
 
+      if (response.status === 429 && attempt < GitLabProvider.MAX_RETRIES) {
+        const retryAfter = response.headers.get("Retry-After");
+        const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : (attempt + 1) * 1000;
+        console.warn(`[GitLab] Rate limited (429), retrying in ${waitMs}ms (attempt ${attempt + 1}/${GitLabProvider.MAX_RETRIES})`);
+        await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, 10000)));
+        continue;
+      }
+
       if (!response.ok) {
         const errorBody = await response.text();
-
-        // Provide actionable error messages for common self-hosted issues
-        if (response.status === 401) {
-          throw new Error(
-            `GitLab authentication failed. Verify your GITLAB_TOKEN is valid and has the required scopes (api, read_api, read_repository).`
-          );
-        }
-
-        if (response.status === 403) {
-          throw new Error(
-            `GitLab permission denied. Your token may lack the required access level for this operation.`
-          );
-        }
-
-        if (response.status === 404) {
-          throw new Error(
-            `GitLab resource not found: ${endpoint}. Verify the project path and that your token has access to the repository.`
-          );
-        }
-
-        if (response.status === 406) {
-          throw new Error(
-            `GitLab API feature not available. This endpoint may require GitLab Enterprise Edition or a newer version. Endpoint: ${endpoint}`
-          );
-        }
-
-        throw new Error(`GitLab API error ${response.status}: ${errorBody}`);
+        this.handleGitLabError(response.status, errorBody, endpoint);
       }
 
       return response.json() as Promise<T>;
     } catch (error) {
-      // Handle network-level errors (self-signed certs, connection refused, etc.)
+      lastError = error instanceof Error ? error : new Error(String(error));
+      // Network-level errors are not retryable
       if (error instanceof TypeError) {
         const message = error.message ?? "";
         if (message.includes("certificate") || message.includes("SELF_SIGNED_CERT_IN_CHAIN") || message.includes("UNABLE_TO_VERIFY_LEAF_SIGNATURE")) {
@@ -198,8 +240,11 @@ export class GitLabProvider implements IVCSProvider {
           );
         }
       }
-      throw error;
+      // Only retry on 429 (handled above), break on other errors
+      break;
     }
+    }
+    throw lastError ?? new Error("GitLab API request failed after retries");
   }
 
   /**
@@ -235,6 +280,7 @@ export class GitLabProvider implements IVCSProvider {
       body?: unknown;
     } = {}
   ): Promise<{ data: T; response: Response }> {
+    this.ensureSslBypass();
     const { method = "GET", token, body } = options;
     const url = `${this.getApiBaseUrl()}${endpoint}`;
 
@@ -251,7 +297,7 @@ export class GitLabProvider implements IVCSProvider {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`GitLab API error ${response.status}: ${errorBody}`);
+      this.handleGitLabError(response.status, errorBody, endpoint);
     }
 
     const data = await response.json() as T;
@@ -796,6 +842,27 @@ export class GitLabProvider implements IVCSProvider {
     }));
   }
 
+  /**
+   * Resolve usernames to GitLab user IDs via the project members API.
+   * Returns an array of user IDs for found members; silently skips unknown usernames.
+   */
+  private async resolveUserIds(encodedPath: string, usernames: string[], token?: string): Promise<number[]> {
+    try {
+      const members = await this.gitlabPaginate<{
+        id: number;
+        username: string;
+      }>(`/projects/${encodedPath}/members`, { token });
+
+      const usernameSet = new Set(usernames.map((u) => u.toLowerCase()));
+      return members
+        .filter((m) => usernameSet.has(m.username.toLowerCase()))
+        .map((m) => m.id);
+    } catch {
+      // Members API may be restricted; best-effort resolution
+      return [];
+    }
+  }
+
   async createIssue(opts: {
     repo: string;
     title: string;
@@ -805,6 +872,13 @@ export class GitLabProvider implements IVCSProvider {
     token?: string;
   }): Promise<VCSIssue> {
     const encodedPath = this.encodeProjectPath(opts.repo);
+
+    // Resolve assignee usernames to GitLab user IDs
+    let assigneeIds: number[] | undefined;
+    if (opts.assignees && opts.assignees.length > 0) {
+      assigneeIds = await this.resolveUserIds(encodedPath, opts.assignees, opts.token);
+    }
+
     const data = await this.gitlabApi<{
       id: number;
       iid: number;
@@ -821,7 +895,7 @@ export class GitLabProvider implements IVCSProvider {
         title: opts.title,
         description: opts.body,
         labels: opts.labels?.join(","),
-        assignee_ids: undefined, // GitLab uses assignee_ids, skip for now
+        assignee_ids: assigneeIds,
       },
     });
 
@@ -856,6 +930,7 @@ export class GitLabProvider implements IVCSProvider {
     ref?: string;
     token?: string;
   }): Promise<Buffer> {
+    this.ensureSslBypass();
     const encodedPath = this.encodeProjectPath(opts.repo);
     const ref = opts.ref ?? "HEAD";
     const url = `${this.getApiBaseUrl()}/projects/${encodedPath}/repository/archive.zip?sha=${ref}`;

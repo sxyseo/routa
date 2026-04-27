@@ -86,6 +86,10 @@ export class InMemoryGitLabWebhookStore {
   }
 
   async createConfig(input: CreateGitLabWebhookConfigInput): Promise<GitLabWebhookConfig> {
+    // Warn in non-development environments if webhook secret is empty
+    if (!input.webhookSecret && process.env.NODE_ENV === "production") {
+      throw new Error("webhookSecret is required in production. Without it, any caller can impersonate GitLab events.");
+    }
     const config: GitLabWebhookConfig = {
       id: uuidv4(),
       name: input.name,
@@ -162,6 +166,9 @@ export class PgGitLabWebhookStore {
   }
 
   async createConfig(input: CreateGitLabWebhookConfigInput): Promise<GitLabWebhookConfig> {
+    if (!input.webhookSecret && process.env.NODE_ENV === "production") {
+      throw new Error("webhookSecret is required in production. Without it, any caller can impersonate GitLab events.");
+    }
     const { gitlabWebhookConfigs } = this.schema;
     const id = uuidv4();
     const now = new Date();
@@ -311,6 +318,9 @@ export class SqliteGitLabWebhookStore {
   }
 
   async createConfig(input: CreateGitLabWebhookConfigInput): Promise<GitLabWebhookConfig> {
+    if (!input.webhookSecret && process.env.NODE_ENV === "production") {
+      throw new Error("webhookSecret is required in production. Without it, any caller can impersonate GitLab events.");
+    }
     const { gitlabWebhookConfigs } = this.schema;
     const id = uuidv4();
     const now = new Date();

@@ -31,8 +31,8 @@ import { createBackgroundTask } from "../models/background-task";
 export interface GitLabPollingConfig {
   enabled: boolean;
   intervalSeconds: number;
-  /** Last processed event ID per repo (for deduplication) */
-  lastEventIds: Record<string, string>;
+  /** Last processed event timestamp per repo (ISO string, for deduplication) */
+  lastEventTimestamps: Record<string, string>;
   lastCheckedAt?: Date;
 }
 
@@ -73,7 +73,7 @@ export class GitLabPollingAdapter {
   private config: GitLabPollingConfig = {
     enabled: false,
     intervalSeconds: 30,
-    lastEventIds: {},
+    lastEventTimestamps: {},
   };
 
   constructor(
@@ -175,18 +175,24 @@ export class GitLabPollingAdapter {
       const events = await this.fetchProjectEvents(repo, token);
       result.eventsFound = events.length;
 
-      const lastEventId = this.config.lastEventIds[repo];
+      const lastTimestamp = this.config.lastEventTimestamps[repo]
+        ? new Date(this.config.lastEventTimestamps[repo])
+        : null;
 
       // GitLab Events API returns events newest-first.
+      // Filter by timestamp: only keep events newer than the last processed one.
       const newEvents: GitLabEvent[] = [];
       for (const event of events) {
-        if (String(event.id) === lastEventId) break;
+        const eventTime = new Date(event.created_at);
+        if (lastTimestamp && eventTime <= lastTimestamp) continue;
         newEvents.push(event);
       }
 
       if (newEvents.length > 0) {
-        result.newLastEventId = String(newEvents[0].id);
-        this.config.lastEventIds[repo] = String(newEvents[0].id);
+        // Update cursor to the newest event's timestamp
+        const newestEvent = newEvents[0];
+        this.config.lastEventTimestamps[repo] = newestEvent.created_at;
+        result.newLastEventId = String(newestEvent.id);
       }
 
       // Process new events (in chronological order: oldest first)

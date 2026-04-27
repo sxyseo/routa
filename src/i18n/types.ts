@@ -561,6 +561,10 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
         retry: string;
         noCiFile: string;
         noStages: string;
+        unsupported: string;
+        fetchError: string;
+        noRepo: string;
+        loadingWorkflows: string;
         dependencyGraph: string;
         noExplicitDeps: string;
         upstream: string;

@@ -838,15 +838,15 @@ export function HarnessGitLabCIPipelinePanel({
     : (hasContext && resolvedState.loadedContextKey !== contextKey && !resolvedState.error);
 
   const summary = isLoading
-    ? t.harness.githubActions.loading
+    ? t.harness.gitlabCi.loading
     : unsupportedMessage
-      ? t.harness.githubActions.unsupported
+      ? t.harness.gitlabCi.unsupported
       : resolvedState.error
-        ? t.harness.githubActions.fetchError
+        ? t.harness.gitlabCi.fetchError
         : !hasContext
-          ? t.harness.githubActions.noRepo
+          ? t.harness.gitlabCi.noRepo
           : !pipeline
-            ? "No .gitlab-ci.yml"
+            ? t.harness.gitlabCi.noCiFile
             : `${pipeline.totalJobs} jobs / ${pipeline.totalStages} stages`;
 
   const stateBadge = (
@@ -862,7 +862,7 @@ export function HarnessGitLabCIPipelinePanel({
         actions={stateBadge}
         variant={variant}
       >
-        <HarnessSectionStateFrame>{t.harness.githubActions.loadingWorkflows}</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame>{t.harness.gitlabCi.loadingWorkflows}</HarnessSectionStateFrame>
       </HarnessSectionCard>
     );
   }

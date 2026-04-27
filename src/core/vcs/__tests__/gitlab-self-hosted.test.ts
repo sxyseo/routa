@@ -52,7 +52,7 @@ describe("GitLab Self-Hosted Compatibility", () => {
         "https://gitlab.example.com/api/v4/projects/group%2Fproject",
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: "Bearer glpat-test-token",
+            Authorization: "PRIVATE-TOKEN glpat-test-token",
           }),
         }),
       );
