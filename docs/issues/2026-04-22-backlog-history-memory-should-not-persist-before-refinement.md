@@ -2,7 +2,7 @@
 title: "Backlog cards should not persist or consume speculative history memory before refinement confirms context"
 date: "2026-04-22"
 kind: issue
-status: closed
+status: resolved
 severity: medium
 area: "kanban"
 tags: ["kanban", "backlog", "history-memory", "task-adaptive-harness"]

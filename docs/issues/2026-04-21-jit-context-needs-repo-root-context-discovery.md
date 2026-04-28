@@ -2,7 +2,7 @@
 title: "JIT Context stays empty for repo-root-only requests even when history sessions exist"
 date: "2026-04-21"
 kind: issue
-status: closed
+status: resolved
 severity: medium
 area: "kanban"
 tags: ["jit-context", "task-adaptive-harness", "feature-explorer", "history-session", "kanban"]

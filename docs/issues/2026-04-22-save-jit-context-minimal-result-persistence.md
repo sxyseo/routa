@@ -2,7 +2,7 @@
 title: "History Analysis should save a minimal task-adaptive history memory result instead of relying on generic update_task"
 date: "2026-04-22"
 kind: issue
-status: closed
+status: resolved
 severity: medium
 area: "kanban"
 tags: ["jit-context", "history-analysis", "mcp", "kanban"]

@@ -1,7 +1,17 @@
 ---
 title: Legacy backlog cards can re-persist stale history memory snapshots
+date: "2026-04-22"
 kind: issue
 status: resolved
+severity: medium
+area: "kanban"
+tags: ["kanban", "backlog", "history-memory", "task-adaptive-harness"]
+reported_by: "codex"
+related_issues:
+  - "docs/issues/2026-04-22-backlog-history-memory-should-not-persist-before-refinement.md"
+github_issue: null
+github_state: null
+github_url: null
 created_at: 2026-04-22
 updated_at: 2026-04-22
 ---

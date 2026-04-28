@@ -2,7 +2,7 @@
 title: "Task-Adaptive Harness should hydrate history-session context just in time for the current task"
 date: "2026-04-21"
 kind: issue
-status: closed
+status: resolved
 severity: medium
 area: harness
 tags:

@@ -1,3 +1,18 @@
+---
+title: "为 Kanban 建立可持久化的流动事件模型"
+date: "2026-04-21"
+kind: issue
+status: open
+severity: medium
+area: "kanban"
+tags: ["kanban", "events", "persistence", "sse"]
+reported_by: "codex"
+related_issues: []
+github_issue: null
+github_state: null
+github_url: null
+---
+
 # 为 Kanban 建立可持久化的流动事件模型
 
 - **kind**: progress_note
@@ -90,3 +105,7 @@ story:
 - [ ] 在 `kanban.rs` 中集成持久化写入
 - [ ] 在 `kanban_events` SSE handler 中加载历史事件
 - [ ] 前端 Playwright E2E 验证重连场景
+
+## Issue Hygiene
+
+- 2026-04-28: reviewed as still active. `kanban_events` persistence is not present in the codebase yet, so this remains the canonical active tracker for durable Kanban event replay/reconnect behavior.
