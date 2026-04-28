@@ -2,7 +2,7 @@
 title: "Live Canvas entry gives no usable next step when the composer is disconnected"
 date: "2026-04-27"
 kind: issue
-status: open
+status: resolved
 severity: medium
 area: "ui"
 tags: ["canvas", "session", "ux", "dogfood"]
@@ -62,6 +62,8 @@ Steps:
 - Initial screenshot: `docs/issues/assets/2026-04-27-live-canvas-entry/screenshots/initial-session.png`
 - Result screenshot: `docs/issues/assets/2026-04-27-live-canvas-entry/screenshots/canvas-entry-result.png`
 - Browser console showed no runtime errors during reproduction.
+- Resolved on 2026-04-28 by disabling the Canvas action while ACP is disconnected and pre-filling a localized default Canvas request when the action is enabled.
+- Verification: targeted Vitest, `npx tsc --noEmit`, targeted ESLint, browser smoke on `http://localhost:3000/workspace/default/sessions/session-1`, and `entrix run --tier fast`.
 
 ## References
 
