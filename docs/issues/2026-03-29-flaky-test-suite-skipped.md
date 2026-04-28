@@ -101,3 +101,7 @@ Test Files  124 passed | 1 skipped (125)
 **Status**: Tests skipped temporarily to unblock development. Root cause analysis and fixes tracked separately.
 
 **Commit**: This issue document will be committed along with the skipped test changes.
+
+## Issue Hygiene
+
+- 2026-04-28: reviewed as still active. `rg` still finds skipped suites in `workflow-orchestrator.test.ts`, `agent-trigger.test.ts`, and `kanban-tab.test.tsx`, so this cannot be resolved yet.
