@@ -1,7 +1,7 @@
 ---
 title: "Task delivery diff disappears after PR, merge, or base-branch sync"
 date: "2026-04-09"
-status: open
+status: resolved
 severity: high
 area: "kanban"
 tags: ["kanban", "task-changes", "git", "pull-request", "delivery-evidence"]
@@ -9,6 +9,8 @@ reported_by: "human"
 related_issues:
   - "docs/issues/2026-04-07-task-changes-api-performance.md"
   - "docs/issues/2026-04-09-next-task-api-head-of-line-blocking.md"
+resolved_at: "2026-04-28"
+resolution: "Task delivery snapshots now persist immutable delivery evidence and the changes API falls back to the snapshot when live diff ranges go empty."
 ---
 
 # Task delivery diff disappears after PR, merge, or base-branch sync
@@ -122,3 +124,7 @@ This means the existing UI has enough machinery to render a stable commit if the
 ## References
 
 - User report from dogfood screenshot on 2026-04-09.
+
+## Issue Hygiene
+
+- 2026-04-28: resolved after confirming `TaskDeliverySnapshot`, capture on review/done/PR handoff, snapshot persistence, and `/api/tasks/[taskId]/changes` snapshot fallback are implemented.

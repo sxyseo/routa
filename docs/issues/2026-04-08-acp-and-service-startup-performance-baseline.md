@@ -1,12 +1,14 @@
 ---
 title: "ACP provider 与 Routa service 启动性能基线缺失"
 date: "2026-04-08"
-status: open
+status: resolved
 severity: medium
 area: "acp"
 tags: ["performance", "fitness", "startup-latency", "acp", "service-startup"]
 reported_by: "codex"
 related_issues: []
+resolved_at: "2026-04-28"
+resolution: "Startup performance baseline is now tracked by `startup_performance_probe` in docs/fitness/runtime/performance.md and scripts/fitness/check-startup-performance.mjs."
 ---
 
 # ACP provider 与 Routa service 启动性能基线缺失
@@ -75,3 +77,7 @@ related_issues: []
 
 - `docs/fitness/README.md`
 - `docs/fitness/runtime/performance.md`
+
+## Issue Hygiene
+
+- 2026-04-28: resolved after confirming `docs/fitness/runtime/performance.md` includes `startup_performance_probe` and `scripts/fitness/check-startup-performance.mjs` records `service_startup_ms` and `provider_startup_ms`.

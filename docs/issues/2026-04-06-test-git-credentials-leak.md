@@ -1,12 +1,14 @@
 ---
 title: "Test git credentials leaked into production commits before commit validation"
 date: "2026-04-06"
-status: investigating
+status: resolved
 severity: medium
 area: "git"
 tags: ["git", "credentials", "commit", "safety", "cleanup"]
 reported_by: "agent"
 related_issues: []
+resolved_at: "2026-04-28"
+resolution: "Prevention is implemented and the documented cleanup recommendation is to avoid rewriting old pushed history."
 ---
 
 # Test Git Credentials Leaking to Production Commits
@@ -152,6 +154,10 @@ If any of these commits are in PR branches that need to be merged to main, consi
 - `src/core/tools/workspace-tools.ts` - Git commit tool with validation
 - Test files using git config in Rust and TypeScript
 - `.git/config` - User's actual git configuration (verified correct)
+
+## Issue Hygiene
+
+- 2026-04-28: resolved as an active incident because commit validation and test-repo scoping were already implemented; remaining historical author metadata is intentionally not rewritten.
 
 ## Verification
 

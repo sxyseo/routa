@@ -2,7 +2,7 @@
 title: "Harness monitor auto full graph test-mapping can trigger repo-wide memory spikes"
 date: "2026-04-21"
 kind: issue
-status: open
+status: resolved
 severity: high
 area: harness-monitor
 tags:
@@ -18,6 +18,8 @@ related_issues:
 github_issue: null
 github_state: null
 github_url: null
+resolved_at: "2026-04-28"
+resolution: "Harness monitor no longer auto-upgrades to Full graph test-mapping by default; opt-in is gated by HARNESS_MONITOR_ENABLE_FULL_TEST_MAPPING_REFRESH."
 ---
 
 # Harness monitor auto full graph test-mapping can trigger repo-wide memory spikes
@@ -57,3 +59,7 @@ Opening `harness-monitor` should not automatically trigger a repo-wide graph bui
 
 - `graph_test_files_by_source()` in `crates/entrix/src/test_mapping.rs` currently calls `query_current_graph(..., ReviewBuildMode::Skip)`, which returns a skipped result rather than using the graph that was just built
 - as an immediate mitigation, `harness-monitor` should not auto-upgrade to Full graph refresh by default until the graph path is both bounded and demonstrably useful
+
+## Issue Hygiene
+
+- 2026-04-28: resolved after confirming `crates/harness-monitor/src/ui/cache.rs` skips Full graph refresh by default and the regression test expects the `HARNESS_MONITOR_ENABLE_FULL_TEST_MAPPING_REFRESH=1` opt-in message.

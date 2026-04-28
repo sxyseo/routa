@@ -1,12 +1,17 @@
 ---
 title: "Codex MCP approval requests render as generic command-permission cards instead of option-driven MCP approvals"
 date: "2026-04-08"
-status: investigating
+status: resolved
 severity: medium
 area: ui
 tags: ["acp", "codex", "mcp", "permission", "ui", "kanban"]
 reported_by: "Codex"
 related_issues: ["https://github.com/phodal/routa/issues/401"]
+github_issue: 401
+github_state: closed
+github_url: "https://github.com/phodal/routa/issues/401"
+resolved_at: "2026-04-08"
+resolution: "Synced during issue hygiene after GitHub #401 was confirmed closed and the permission bubble now renders MCP option-driven approvals."
 ---
 
 # Codex MCP approval requests render as generic command-permission cards instead of option-driven MCP approvals
@@ -72,3 +77,7 @@ This keeps the transcript scannable while still allowing inspection of:
 - command / reason for exec-style approvals
 - formatted argument details
 - raw requested permission payload when needed
+
+## Issue Hygiene
+
+- 2026-04-28: resolved after confirming GitHub issue `#401` is closed and `PermissionRequestBubble` renders MCP approval metadata and explicit option buttons from the `options[]` contract.
