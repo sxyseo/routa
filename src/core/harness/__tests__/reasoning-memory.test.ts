@@ -14,6 +14,10 @@ import {
   saveReasoningMemory,
   searchReasoningMemories,
 } from "../reasoning-memory";
+import {
+  saveReasoningMemoryFromToolArgs,
+  searchReasoningMemoriesFromToolArgs,
+} from "../task-adaptive-tool";
 
 describe("reasoning-memory", () => {
   let tempHome: string;
@@ -151,5 +155,45 @@ describe("reasoning-memory", () => {
     expect(section).toContain("Outcome: failure; confidence: 0.91");
     expect(section).toContain("Lesson: When API parity is the goal");
     expect(section).toContain("feature:api-parity");
+  });
+
+  it("saves and searches reasoning memory from MCP tool args", async () => {
+    const repoRoot = path.join(tempHome, "repo");
+    await fs.mkdir(repoRoot, { recursive: true });
+
+    await saveReasoningMemoryFromToolArgs({
+      repoPath: repoRoot,
+      title: "Use focused parity checks",
+      content: "For Feature Explorer API parity work, confirm the existing route contract before extracting shared helpers.",
+      outcome: "success",
+      taskId: "task-535",
+      sessionIds: ["session-535"],
+      featureId: "feature-explorer",
+      filePaths: ["src/app/api/feature-explorer/friction-profiles/route.ts"],
+      tags: ["api-parity"],
+      lane: "dev",
+      provider: "codex",
+      confidence: 0.84,
+      evidenceCount: 2,
+    }, "default");
+
+    const result = await searchReasoningMemoriesFromToolArgs({
+      repoPath: repoRoot,
+      query: "Feature Explorer API parity route contract",
+      featureIds: ["feature-explorer"],
+      filePaths: ["src/app/api/feature-explorer/friction-profiles/route.ts"],
+      lane: "dev",
+      provider: "codex",
+    }, "default");
+
+    expect(result.storagePath).toBe(getReasoningMemoryStoragePath(repoRoot));
+    expect(result.memories).toEqual([
+      expect.objectContaining({
+        title: "Use focused parity checks",
+        outcome: "success",
+      }),
+    ]);
+    expect(result.promptSection).toContain("## Relevant Strategy Memory");
+    expect(result.promptSection).toContain("Use focused parity checks");
   });
 });

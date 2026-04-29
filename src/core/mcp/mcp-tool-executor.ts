@@ -11,22 +11,10 @@ import { WorkspaceTools } from "@/core/tools/workspace-tools";
 import { KanbanTools } from "@/core/tools/kanban-tools";
 import { getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import {
-  assembleTaskAdaptiveHarnessFromToolArgs,
   CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
-  FILE_SESSION_CONTEXT_TOOL_NAME,
   confirmFeatureTreeStoryContextFromToolArgs,
-  inspectTranscriptTurnsFromToolArgs,
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
-  LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
   loadFeatureTreeContextFromToolArgs,
-  loadFeatureRetrospectiveMemoryFromToolArgs,
-  SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
-  saveFeatureRetrospectiveMemoryFromToolArgs,
-  summarizeFileSessionContextFromToolArgs,
-  summarizeTaskHistoryContextFromToolArgs,
-  TASK_ADAPTIVE_HARNESS_TOOL_NAME,
-  TASK_HISTORY_SUMMARY_TOOL_NAME,
-  TRANSCRIPT_TURN_INSPECTION_TOOL_NAME,
 } from "@/core/harness/task-adaptive-tool";
 import { readFeatureTreeSpecResource } from "@/core/spec/feature-tree-spec-resource-contract";
 import { ToolMode } from "./routa-mcp-tool-manager";
@@ -38,6 +26,18 @@ import {
   LOAD_FEATURE_TREE_CONTEXT_DESCRIPTION,
   LOAD_FEATURE_TREE_CONTEXT_INPUT_SCHEMA,
 } from "./feature-tree-context-tools";
+import {
+  executeMemoryMcpTool,
+  isMemoryMcpToolName,
+  MEMORY_MCP_TOOL_DEFINITIONS,
+  MEMORY_MCP_TOOL_NAMES,
+} from "./reasoning-memory-tools";
+import {
+  executeTaskAdaptiveMcpTool,
+  isTaskAdaptiveMcpToolName,
+  TASK_ADAPTIVE_MCP_TOOL_DEFINITIONS,
+  TASK_ADAPTIVE_MCP_TOOL_NAMES,
+} from "./task-adaptive-mcp-tools";
 
 async function resolveSessionProvider(sessionId: string | undefined): Promise<string | undefined> {
   if (!sessionId) return undefined;
@@ -165,13 +165,9 @@ const ESSENTIAL_TOOL_NAMES = new Set([
   "list_pending_artifact_requests",
   "capture_screenshot",
   "read_specialist_spec_resource",
-  TASK_ADAPTIVE_HARNESS_TOOL_NAME,
-  TASK_HISTORY_SUMMARY_TOOL_NAME,
-  FILE_SESSION_CONTEXT_TOOL_NAME,
-  TRANSCRIPT_TURN_INSPECTION_TOOL_NAME,
+  ...TASK_ADAPTIVE_MCP_TOOL_NAMES,
   "save_history_memory_context",
-  LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
-  SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
+  ...MEMORY_MCP_TOOL_NAMES,
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
   CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
 ]);
@@ -261,6 +257,14 @@ export async function executeMcpTool(
       content: [{ type: "text", text: JSON.stringify({ error: "workspaceId is required" }) }],
       isError: true,
     };
+  }
+
+  if (isMemoryMcpToolName(name)) {
+    return formatResult(await executeMemoryMcpTool(name, args, workspace));
+  }
+
+  if (isTaskAdaptiveMcpToolName(name)) {
+    return formatResult(await executeTaskAdaptiveMcpTool(name, args, workspace));
   }
 
   switch (name) {
@@ -425,36 +429,6 @@ export async function executeMcpTool(
           modelTier: args.modelTier as string | undefined,
         })
       );
-    case TASK_ADAPTIVE_HARNESS_TOOL_NAME:
-      return formatResult({
-        success: true,
-        data: await assembleTaskAdaptiveHarnessFromToolArgs(args, workspace),
-      });
-    case TASK_HISTORY_SUMMARY_TOOL_NAME:
-      return formatResult({
-        success: true,
-        data: await summarizeTaskHistoryContextFromToolArgs(args, workspace),
-      });
-    case FILE_SESSION_CONTEXT_TOOL_NAME:
-      return formatResult({
-        success: true,
-        data: await summarizeFileSessionContextFromToolArgs(args, workspace),
-      });
-    case TRANSCRIPT_TURN_INSPECTION_TOOL_NAME:
-      return formatResult({
-        success: true,
-        data: await inspectTranscriptTurnsFromToolArgs(args, workspace),
-      });
-    case LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME:
-      return formatResult({
-        success: true,
-        data: await loadFeatureRetrospectiveMemoryFromToolArgs(args, workspace),
-      });
-    case SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME:
-      return formatResult({
-        success: true,
-        data: await saveFeatureRetrospectiveMemoryFromToolArgs(args, workspace),
-      });
     case "send_message_to_task_agent":
       return formatResult(await tools.sendMessageToTaskAgent(args as never));
     case "get_agent_status":
@@ -803,210 +777,7 @@ export function getMcpToolDefinitions(
   mcpProfile?: McpServerProfile,
 ) {
   const allTools = [
-    {
-      name: TASK_ADAPTIVE_HARNESS_TOOL_NAME,
-      description: "Compile a Task-Adaptive Harness pack for the current task by retrieving relevant history sessions, file signals, and high-friction failures just in time.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
-          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
-          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
-          taskLabel: { type: "string", description: "Short label for the current task or request." },
-          locale: { type: "string", description: "Optional locale hint, e.g. en or zh-CN." },
-          featureId: { type: "string", description: "Optional Feature Explorer feature ID to ground retrieval." },
-          featureIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional ordered candidate Feature Tree IDs to ground retrieval.",
-          },
-          filePaths: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional repository-relative file paths already known to be relevant.",
-          },
-          routeCandidates: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional route hints for Feature Tree and file inference.",
-          },
-          apiCandidates: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional API hints for Feature Tree and file inference.",
-          },
-          historySessionIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional history session IDs to prioritize during retrieval.",
-          },
-          moduleHints: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional module hints for retrieval fallback.",
-          },
-          symptomHints: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional user-visible symptom hints for retrieval fallback.",
-          },
-          taskType: {
-            type: "string",
-            enum: ["implementation", "planning", "analysis", "review"],
-            description: "Task type hint used for tool/profile recommendations.",
-          },
-          maxFiles: { type: "number", minimum: 1, description: "Maximum number of files to include in the selected context slice." },
-          maxSessions: { type: "number", minimum: 1, description: "Maximum number of history sessions to include." },
-          role: { type: "string", description: "Optional agent role hint, e.g. ROUTA or CRAFTER." },
-        },
-      },
-    },
-    {
-      name: TASK_HISTORY_SUMMARY_TOOL_NAME,
-      description: "Compress linked history sessions into a History Summary so analysts can reason from seeds, friction signals, and matched files without rereading every transcript.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
-          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
-          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
-          taskLabel: { type: "string", description: "Short label for the current task or request." },
-          locale: { type: "string", description: "Optional locale hint, e.g. en or zh-CN." },
-          featureId: { type: "string", description: "Optional Feature Explorer feature ID to ground retrieval." },
-          featureIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional ordered candidate Feature Tree IDs to ground retrieval.",
-          },
-          filePaths: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional repository-relative file paths already known to be relevant.",
-          },
-          routeCandidates: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional route hints for Feature Tree and file inference.",
-          },
-          apiCandidates: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional API hints for Feature Tree and file inference.",
-          },
-          historySessionIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional linked history session IDs to compress into seed summaries.",
-          },
-          moduleHints: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional module hints for retrieval fallback.",
-          },
-          symptomHints: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional user-visible symptom hints for retrieval fallback.",
-          },
-          taskType: {
-            type: "string",
-            enum: ["implementation", "planning", "analysis", "review"],
-            description: "Task type hint used for retrieval heuristics.",
-          },
-          maxFiles: { type: "number", minimum: 1, description: "Maximum number of files to include in the selected context slice." },
-          maxSessions: { type: "number", minimum: 1, description: "Maximum number of history seed sessions to summarize." },
-          role: { type: "string", description: "Optional agent role hint, e.g. ROUTA or CRAFTER." },
-        },
-      },
-    },
-    {
-      name: FILE_SESSION_CONTEXT_TOOL_NAME,
-      description: "Structure file-linked session evidence into direct vs adjacent buckets, scope drift, input friction, environment friction, and repeated hotspots for specialist analysis.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
-          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
-          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
-          taskLabel: { type: "string", description: "Short label for the current task or request." },
-          locale: { type: "string", description: "Optional locale hint, e.g. en or zh-CN." },
-          featureId: { type: "string", description: "Optional Feature Explorer feature ID to ground retrieval." },
-          featureIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional ordered candidate Feature Tree IDs to ground retrieval.",
-          },
-          filePaths: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional repository-relative file paths already known to be relevant.",
-          },
-          routeCandidates: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional route hints for Feature Tree and file inference.",
-          },
-          apiCandidates: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional API hints for Feature Tree and file inference.",
-          },
-          historySessionIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional linked history session IDs to prioritize.",
-          },
-          moduleHints: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional module hints for retrieval fallback.",
-          },
-          symptomHints: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional user-visible symptom hints for retrieval fallback.",
-          },
-          taskType: {
-            type: "string",
-            enum: ["implementation", "planning", "analysis", "review"],
-            description: "Task type hint used for retrieval heuristics.",
-          },
-          maxFiles: { type: "number", minimum: 1, description: "Maximum number of files to include in the selected context slice." },
-          maxSessions: { type: "number", minimum: 1, description: "Maximum number of history sessions to include." },
-          role: { type: "string", description: "Optional agent role hint, e.g. ROUTA or CRAFTER." },
-        },
-      },
-    },
-    {
-      name: TRANSCRIPT_TURN_INSPECTION_TOOL_NAME,
-      description: "Inspect specific transcript sessions and extract real user turns, file-targeted commands, failed commands, and scope-drift prompts for read-only specialist analysis.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
-          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
-          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
-          sessionIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Explicit session IDs to inspect. Prefer the highest-relevance sessions first.",
-          },
-          historySessionIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "Alias for sessionIds for compatibility with existing task-adaptive flows.",
-          },
-          featureId: { type: "string", description: "Optional Feature Explorer feature ID used to preserve feature-level evidence." },
-          filePaths: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional repository-relative focus files. Signals are filtered to these files when provided.",
-          },
-          maxUserPrompts: { type: "number", minimum: 1, description: "Maximum number of user prompts to keep per inspected session." },
-          maxSignals: { type: "number", minimum: 1, description: "Maximum number of relevant signals and failed signals to keep per session." },
-        },
-      },
-    },
+    ...TASK_ADAPTIVE_MCP_TOOL_DEFINITIONS,
     // ── Web fetch tool ───────────────────────────────────────────────
     {
       name: "fetch_webpage",
@@ -1771,24 +1542,6 @@ export function getMcpToolDefinitions(
       },
     },
     {
-      name: LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
-      description: "Load previously saved prompt-ready retrospective memory for specific files or a feature so analysts can reuse prior conclusions before rereading transcripts.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
-          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
-          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
-          featureId: { type: "string", description: "Optional Feature Explorer feature ID to load feature-level memory." },
-          filePaths: {
-            type: "array",
-            items: { type: "string" },
-            description: "Optional repository-relative files to load file-level memory for.",
-          },
-        },
-      },
-    },
-    {
       name: LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
       description: LOAD_FEATURE_TREE_CONTEXT_DESCRIPTION,
       inputSchema: LOAD_FEATURE_TREE_CONTEXT_INPUT_SCHEMA,
@@ -1798,29 +1551,7 @@ export function getMcpToolDefinitions(
       description: CONFIRM_FEATURE_TREE_STORY_CONTEXT_DESCRIPTION,
       inputSchema: CONFIRM_FEATURE_TREE_STORY_CONTEXT_INPUT_SCHEMA,
     },
-    {
-      name: SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
-      description: "Persist a short prompt-ready retrospective summary for a file or feature so future specialist sessions can reuse it as durable memory.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
-          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
-          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
-          scope: {
-            type: "string",
-            enum: ["file", "feature"],
-            description: "Whether to save file-level or feature-level retrospective memory.",
-          },
-          targetId: { type: "string", description: "Optional explicit target key. Use filePath or featureId when possible." },
-          filePath: { type: "string", description: "Repository-relative target file when scope=file." },
-          featureId: { type: "string", description: "Feature Tree ID when scope=feature or when file memory should keep feature context." },
-          featureName: { type: "string", description: "Optional human-readable feature name for the saved memory." },
-          summary: { type: "string", description: "Short prompt-ready summary to reuse next time." },
-        },
-        required: ["scope", "summary"],
-      },
-    },
+    ...MEMORY_MCP_TOOL_DEFINITIONS,
   ];
 
   // Filter tools based on mode
