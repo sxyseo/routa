@@ -21,6 +21,11 @@ import { formatFlowGuidanceForPrompt } from "./flow-ledger";
 import { buildKanbanTaskAdaptiveHarnessOptions } from "./task-adaptive";
 import { buildSavedHistoryMemoryPromptSection } from "./context-preload";
 import { buildLaneExperiencePromptSection } from "./task-lane-experience";
+import {
+  buildRelevantStrategyMemoryPromptSection,
+  searchReasoningMemories,
+  type ReasoningMemorySearchHints,
+} from "@/core/harness/reasoning-memory";
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -75,6 +80,119 @@ function formatContractRules(rules: KanbanContractRules | undefined): string {
   }
 
   return "one valid canonical ```yaml``` story contract";
+}
+
+function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  values.forEach((value) => {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+      return;
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    unique.push(trimmed);
+  });
+  return unique;
+}
+
+function collectTaskSearchSpecText(spec: Task["contextSearchSpec"]): string[] {
+  if (!spec) {
+    return [];
+  }
+
+  return [
+    spec.query,
+    ...(spec.featureCandidates ?? []),
+    ...(spec.routeCandidates ?? []),
+    ...(spec.apiCandidates ?? []),
+    ...(spec.moduleHints ?? []),
+    ...(spec.symptomHints ?? []),
+  ].filter((value): value is string => Boolean(value?.trim()));
+}
+
+function collectTaskReasoningMemoryHints(task: Task): ReasoningMemorySearchHints | undefined {
+  const snapshot = task.jitContextSnapshot;
+  const currentLaneAnalysis = task.columnId ? snapshot?.perLaneAnalysis?.[task.columnId] : undefined;
+  const contextSpecs = [
+    task.contextSearchSpec,
+    snapshot?.recommendedContextSearchSpec,
+    snapshot?.analysis?.recommendedContextSearchSpec,
+    currentLaneAnalysis?.contextHints,
+  ];
+  const query = uniqueNonEmptyStrings([
+    task.title,
+    task.objective,
+    task.scope,
+    task.comment,
+    ...(task.acceptanceCriteria ?? []),
+    ...(task.testCases ?? []),
+    ...task.labels,
+    snapshot?.summary,
+    snapshot?.analysis?.summary,
+    currentLaneAnalysis?.summary,
+    ...(currentLaneAnalysis?.learnedPatterns ?? []),
+    ...contextSpecs.flatMap((spec) => collectTaskSearchSpecText(spec)),
+  ]).join("\n");
+  const featureIds = uniqueNonEmptyStrings([
+    snapshot?.featureId,
+    ...contextSpecs.flatMap((spec) => spec?.featureCandidates ?? []),
+  ]);
+  const filePaths = uniqueNonEmptyStrings([
+    ...contextSpecs.flatMap((spec) => spec?.relatedFiles ?? []),
+    ...(snapshot?.matchedFileDetails.map((detail) => detail.filePath) ?? []),
+    ...(snapshot?.repeatedReadFiles ?? []),
+    ...(snapshot?.analysis?.topFiles ?? []),
+  ]);
+  const sourceSessionIds = uniqueNonEmptyStrings([
+    task.sessionId,
+    task.triggerSessionId,
+    ...(task.sessionIds ?? []),
+    ...(snapshot?.matchedSessionIds ?? []),
+    ...(currentLaneAnalysis?.latestSessionId ? [currentLaneAnalysis.latestSessionId] : []),
+  ]);
+  const tags = uniqueNonEmptyStrings([...task.labels, ...(contextSpecs.flatMap((spec) => spec?.symptomHints ?? []))]);
+  const hasHints = Boolean(query)
+    || featureIds.length > 0
+    || filePaths.length > 0
+    || sourceSessionIds.length > 0
+    || tags.length > 0
+    || Boolean(task.columnId)
+    || Boolean(task.assignedProvider);
+
+  if (!hasHints) {
+    return undefined;
+  }
+
+  return {
+    query,
+    sourceTaskIds: [task.id],
+    sourceSessionIds,
+    tags,
+    featureIds,
+    filePaths,
+    lane: task.columnId,
+    provider: task.assignedProvider,
+    maxResults: 3,
+  };
+}
+
+function buildTaskStrategyMemoryPromptSection(task: Task): string | undefined {
+  const repoRoot = task.jitContextSnapshot?.repoPath ?? task.deliverySnapshot?.repoPath;
+  if (!repoRoot) {
+    return undefined;
+  }
+
+  const hints = collectTaskReasoningMemoryHints(task);
+  if (!hints) {
+    return undefined;
+  }
+
+  return buildRelevantStrategyMemoryPromptSection(searchReasoningMemories(repoRoot, hints));
 }
 
 export function getInternalApiOrigin(): string {
@@ -359,6 +477,10 @@ export function buildTaskPrompt(
   const savedHistoryMemorySection = savedHistoryMemoryPrompt
     ? [savedHistoryMemoryPrompt]
     : [];
+  const strategyMemoryPrompt = buildTaskStrategyMemoryPromptSection(task);
+  const strategyMemorySection = strategyMemoryPrompt
+    ? [strategyMemoryPrompt]
+    : [];
   const laneExperiencePrompt = buildLaneExperiencePromptSection(task);
   const laneExperienceSection = laneExperiencePrompt
     ? [laneExperiencePrompt]
@@ -394,6 +516,7 @@ export function buildTaskPrompt(
     ...deliveryGateSection,
     ...evidenceBundleSection,
     ...savedHistoryMemorySection,
+    ...strategyMemorySection,
     ...laneExperienceSection,
     ...laneRunHistorySection,
     ...laneHandoffSection,
