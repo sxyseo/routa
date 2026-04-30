@@ -807,6 +807,10 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     jitContextSearchFailed: string;
     noJitContext: string;
     historySummary: string;
+    historyReadableInspectFiles: string;
+    historyReadableNoPriorityFiles: string;
+    historyReadableRecovered: string;
+    historyReadableNeedsStrongerHints: string;
     savedHistoryAnalysis: string;
     analysisSessionLayers: string;
     analysisTopLeads: string;

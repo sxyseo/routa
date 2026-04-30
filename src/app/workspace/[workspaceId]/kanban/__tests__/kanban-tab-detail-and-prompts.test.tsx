@@ -467,7 +467,7 @@ describe("KanbanCardDetail repository health", () => {
     expect(screen.getByText("History Summary")).toBeTruthy();
     expect(screen.getAllByText("Seed sessions: 3").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Recovered sessions: 2").length).toBeGreaterThan(0);
-    expect(screen.getByText("Trace the Kanban task-adaptive loading path first.")).toBeTruthy();
+    expect(screen.getByText("Investigate why page context could not be read.")).toBeTruthy();
     expect(screen.getByText("Match confidence")).toBeTruthy();
     expect(screen.getAllByText("High").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Started from 3 linked history sessions as retrieval seeds.")).toHaveLength(1);

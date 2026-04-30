@@ -2383,45 +2383,29 @@ function buildTaskAdaptiveHistorySummary(input: {
     ...input.repeatedReadFiles,
     ...input.seedSessions.flatMap((session) => session.repeatedReadFiles),
   ]), 3);
-  const priorityFailures = trimTo(dedupeFailureSignals([
-    ...input.failures,
-    ...input.seedSessions.flatMap((session) => session.failedReadSignals),
-  ], MAX_FAILURE_SIGNALS), 2);
-
+  const topFiles = trimTo(input.selectedFiles, 3);
   const overviewParts = isZh
     ? [
-        `先从 ${seedSessionCount} 个已关联 history session 里抽取上下文种子，当前收敛到 ${input.matchedSessionIds.length} 个最终命中会话和 ${input.selectedFiles.length} 个候选文件。`,
-        input.matchedSessionIds.length === 0
-          ? "这些种子会话已经帮助定位文件范围，但还没有形成文件级直接命中会话。"
-          : "这些种子会话已经被进一步压缩成可复用的文件级命中会话。",
+        topFiles.length > 0
+          ? `下次优先从 ${topFiles.join("，")} 入手。`
+          : "当前历史线索还没有形成明确的优先文件。",
+        input.matchedSessionIds.length > 0
+          ? `这些线索来自 ${seedSessionCount} 个历史会话，已压缩为 ${input.matchedSessionIds.length} 个高相关会话和 ${input.selectedFiles.length} 个候选文件。`
+          : `这些线索来自 ${seedSessionCount} 个历史会话，但还缺少文件级高相关会话；继续前应补强 feature 或文件线索。`,
         repeatedHotspots.length > 0
-          ? `优先关注的重复读取热点：${repeatedHotspots.join("，")}。`
+          ? `重复读取热点可作为排查入口：${repeatedHotspots.join("，")}。`
           : null,
-        priorityFailures.length > 0
-          ? `优先关注的历史读取问题：${priorityFailures.map((failure) => failure.message).join("；")}。`
-          : null,
-        input.seedSessions.length > 0
-          ? "如果要继续深挖，优先看下面列出的种子会话，而不是一次性回读全部 transcript。"
-          : input.matchedSessionIds.length > 0
-            ? "当前还没有可直接展开的种子会话摘要，优先看下面恢复出来的 Codex/Claude 命中会话。"
-            : "当前还没有恢复出可展示的 transcript 种子摘要；继续分析前，先补更强的文件或 feature 线索。",
       ]
     : [
-        `Started from ${seedSessionCount} linked history sessions and narrowed the search to ${input.matchedSessionIds.length} recovered sessions plus ${input.selectedFiles.length} candidate files.`,
-        input.matchedSessionIds.length === 0
-          ? "These seed sessions already helped localize files, but none of them have turned into file-grounded recovered sessions yet."
-          : "These seed sessions have already been compressed into reusable file-grounded recovered sessions.",
+        topFiles.length > 0
+          ? `Inspect ${topFiles.join(", ")} first next time.`
+          : "The current history signals do not yet identify clear priority files.",
+        input.matchedSessionIds.length > 0
+          ? `The history has been reduced from ${seedSessionCount} linked sessions to ${input.matchedSessionIds.length} high-relevance sessions and ${input.selectedFiles.length} candidate files.`
+          : `The history starts from ${seedSessionCount} linked sessions, but no file-grounded high-relevance session was recovered yet; add stronger feature or file hints before going deeper.`,
         repeatedHotspots.length > 0
-          ? `Repeated-read hotspots to inspect first: ${repeatedHotspots.join(", ")}.`
+          ? `Repeated-read hotspots can guide debugging: ${repeatedHotspots.join(", ")}.`
           : null,
-        priorityFailures.length > 0
-          ? `Priority historical read failures: ${priorityFailures.map((failure) => failure.message).join("; ")}.`
-          : null,
-        input.seedSessions.length > 0
-          ? "If you need deeper analysis, start from the seed sessions below instead of rereading every transcript."
-          : input.matchedSessionIds.length > 0
-            ? "No seed-session summaries were materialized from the linked ACP sessions, so start from the recovered Codex or Claude sessions below."
-            : "No transcript-level seed-session summaries were recovered yet; add stronger file or feature hints before going deeper.",
       ];
 
   return {

@@ -301,6 +301,35 @@ function formatMatchedFileSeed(fileDetail: TaskAdaptiveMatchedFileDetail): strin
   return stats.length > 0 ? `${fileDetail.filePath} (${stats.join(", ")})` : fileDetail.filePath;
 }
 
+function formatCompactPathList(paths: string[], maxItems = 3): string {
+  const visible = paths.slice(0, maxItems);
+  const remaining = paths.length - visible.length;
+  return remaining > 0 ? `${visible.join(", ")} +${remaining}` : visible.join(", ");
+}
+
+function buildReadableHistoryOverview(
+  summary: TaskAdaptiveHistorySummary,
+  matchedFileDetails: TaskAdaptiveMatchedFileDetail[],
+  sessions: TaskAdaptiveHarnessPack["sessions"],
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
+  const priorityFiles = matchedFileDetails.map((fileDetail) => fileDetail.filePath).slice(0, 3);
+  const recoveredSessionCount = sessions.length > 0 ? sessions.length : summary.recoveredSessionCount;
+  const matchedFileCount = matchedFileDetails.length > 0 ? matchedFileDetails.length : summary.matchedFileCount;
+
+  const first = priorityFiles.length > 0
+    ? t.kanbanDetail.historyReadableInspectFiles.replace("{files}", priorityFiles.join(", "))
+    : t.kanbanDetail.historyReadableNoPriorityFiles;
+  const second = recoveredSessionCount > 0
+    ? t.kanbanDetail.historyReadableRecovered
+      .replace("{seedCount}", String(summary.seedSessionCount))
+      .replace("{sessionCount}", String(recoveredSessionCount))
+      .replace("{fileCount}", String(matchedFileCount))
+    : t.kanbanDetail.historyReadableNeedsStrongerHints
+      .replace("{seedCount}", String(summary.seedSessionCount));
+  return `${first} ${second}`;
+}
+
 function uniquePreserveOrder(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
@@ -1093,6 +1122,9 @@ export function JitContextPanel({
   const historySeedSessionCount = historySummary?.seedSessionCount ?? 0;
   const recoveredSessionCount = pack?.sessions.length ?? 0;
   const matchedFileDetails = getMatchedFileDetails(pack);
+  const readableHistoryOverview = historySummary && pack
+    ? buildReadableHistoryOverview(historySummary, matchedFileDetails, pack.sessions, t)
+    : null;
   const matchedFileCount = matchedFileDetails.length;
   const matchConfidence = pack?.matchConfidence ?? "low";
   const harnessSignature = useMemo(
@@ -1513,7 +1545,7 @@ export function JitContextPanel({
                     {t.kanbanDetail.historySummary}
                   </div>
                   <div className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
-                    {historySummary.overview}
+                    {readableHistoryOverview ?? historySummary.overview}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                     <span>{t.kanbanDetail.historySeedSessions}: {historySummary.seedSessionCount}</span>
@@ -1544,52 +1576,7 @@ export function JitContextPanel({
                 ) : null}
               </div>
 
-              {historySummary && historySummary.seedSessions.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-                    {t.kanbanDetail.historySeedSessions}
-                  </div>
-                  <div className="space-y-2">
-                    {historySummary.seedSessions.map((session) => (
-                      <div
-                        key={`seed:${session.sessionId}`}
-                        className="rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/20"
-                      >
-                        <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
-                          <span>{session.sessionId}</span>
-                          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                            {session.provider}
-                          </span>
-                          {formatTimestamp(session.updatedAt) ? (
-                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                              {formatTimestamp(session.updatedAt)}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">
-                          {session.promptSnippet}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
-                          {session.failedReadSignals.length > 0 ? (
-                            <span>{t.kanbanDetail.historicalIssues}: {session.failedReadSignals.length}</span>
-                          ) : null}
-                          {session.repeatedReadFiles.length > 0 ? (
-                            <span>{t.kanbanDetail.repeatedReadHotspots}: {session.repeatedReadFiles.length}</span>
-                          ) : null}
-                          {session.toolNames.length > 0 ? (
-                            <span>{session.toolNames.join(", ")}</span>
-                          ) : null}
-                        </div>
-                        {session.touchedFiles.length > 0 ? (
-                          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                            {t.kanbanDetail.matchedFiles}: {session.touchedFiles.join(", ")}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : pack.sessions.length > 0 ? (
+              {pack.sessions.length > 0 ? (
                 <div className="space-y-2">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                     {t.kanbanDetail.relatedSessions}
@@ -1621,13 +1608,52 @@ export function JitContextPanel({
                           {session.repeatedReadFiles.length > 0 ? (
                             <span>{t.kanbanDetail.repeatedReadHotspots}: {session.repeatedReadFiles.length}</span>
                           ) : null}
-                          {session.toolNames.length > 0 ? (
-                            <span>{session.toolNames.join(", ")}</span>
-                          ) : null}
                         </div>
                         {session.matchedFiles.length > 0 ? (
                           <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                            {t.kanbanDetail.matchedFiles}: {session.matchedFiles.join(", ")}
+                            {t.kanbanDetail.matchedFiles}: {formatCompactPathList(session.matchedFiles)}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : historySummary && historySummary.seedSessions.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                    {t.kanbanDetail.historySeedSessions}
+                  </div>
+                  <div className="space-y-2">
+                    {historySummary.seedSessions.slice(0, 3).map((session) => (
+                      <div
+                        key={`seed:${session.sessionId}`}
+                        className="rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/20"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+                          <span>{session.sessionId}</span>
+                          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                            {session.provider}
+                          </span>
+                          {formatTimestamp(session.updatedAt) ? (
+                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                              {formatTimestamp(session.updatedAt)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">
+                          {session.promptSnippet}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                          {session.failedReadSignals.length > 0 ? (
+                            <span>{t.kanbanDetail.historicalIssues}: {session.failedReadSignals.length}</span>
+                          ) : null}
+                          {session.repeatedReadFiles.length > 0 ? (
+                            <span>{t.kanbanDetail.repeatedReadHotspots}: {session.repeatedReadFiles.length}</span>
+                          ) : null}
+                        </div>
+                        {session.touchedFiles.length > 0 ? (
+                          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            {t.kanbanDetail.matchedFiles}: {formatCompactPathList(session.touchedFiles)}
                           </div>
                         ) : null}
                       </div>
@@ -1747,41 +1773,6 @@ export function JitContextPanel({
                 </div>
               ) : null}
 
-              {pack.sessions.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-                    {t.kanbanDetail.relatedSessions}
-                  </div>
-                  <div className="space-y-2">
-                    {pack.sessions.map((session) => (
-                      <div
-                        key={session.sessionId}
-                        className="rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/20"
-                      >
-                        <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
-                          <span>{session.sessionId}</span>
-                          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                            {session.provider}
-                          </span>
-                          {formatTimestamp(session.updatedAt) ? (
-                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                              {formatTimestamp(session.updatedAt)}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">
-                          {session.promptSnippet}
-                        </div>
-                        {session.matchedFiles.length > 0 ? (
-                          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                            {t.kanbanDetail.matchedFiles}: {session.matchedFiles.join(", ")}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </>
           ) : null}
         </div>
