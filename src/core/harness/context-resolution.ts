@@ -40,7 +40,6 @@ export async function resolveRepoRoot(context: HarnessContext): Promise<string> 
   const workspaceId = normalizeContextValue(context.workspaceId);
   const codebaseId = normalizeContextValue(context.codebaseId);
   const repoPath = normalizeContextValue(context.repoPath);
-  const system = getRoutaSystem();
 
   const directPath = repoPath
     ? path.resolve(/* turbopackIgnore: true */ repoPath)
@@ -49,6 +48,8 @@ export async function resolveRepoRoot(context: HarnessContext): Promise<string> 
     validateRepoDirectory(directPath, "repoPath ");
     return directPath;
   }
+
+  const system = getRoutaSystem();
 
   if (codebaseId) {
     const codebase = await system.codebaseStore.get(codebaseId);

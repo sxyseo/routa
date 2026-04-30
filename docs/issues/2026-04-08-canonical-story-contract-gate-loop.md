@@ -1,12 +1,14 @@
 ---
 title: "Canonical story YAML needs a contract gate to stop backlog/todo bounce loops"
 date: "2026-04-08"
-status: open
+status: resolved
 severity: high
 area: "kanban"
 tags: ["kanban", "yaml", "contract", "automation", "loop-prevention"]
 reported_by: "agent"
 related_issues: []
+resolved_at: "2026-04-28"
+resolution: "Canonical story contract rules and loop-breaker enforcement are implemented across task transitions and card description updates."
 ---
 
 # Canonical Story YAML Contract Gate Loop
@@ -41,3 +43,7 @@ Keep YAML as the canonical story format, but enforce it earlier and uniformly.
 - Malformed canonical YAML is blocked before Todo can start execution work.
 - All mutation paths share the same contract gate semantics.
 - Cards stop oscillating between Backlog and Todo after repeated canonical-contract failures.
+
+## Issue Hygiene
+
+- 2026-04-28: resolved after confirming `contractRules`, `buildTaskContractReadiness`, transition/update blocking, loop-breaker messaging, and route/tool tests are present in the Kanban task paths.

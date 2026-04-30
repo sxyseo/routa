@@ -2,7 +2,7 @@
 title: "Kanban should surface Task-Adaptive Harness in backlog refinement and card detail"
 date: "2026-04-21"
 kind: issue
-status: closed
+status: resolved
 severity: medium
 area: kanban
 tags:

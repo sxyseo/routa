@@ -198,6 +198,7 @@ const en: TranslationDictionary = {
     viewerCompilationError: "Canvas compilation error:",
     liveEntryLabel: "Use Canvas",
     liveEntryShortLabel: "Canvas",
+    liveDefaultRequest: "Create a Routa Canvas for the current work.",
     livePanelTitle: "Canvas",
     livePanelPending: "Waiting for a canvas file.",
     livePanelMaterializing: "Rendering canvas...",

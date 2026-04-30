@@ -6,7 +6,9 @@ const {
   inspectTranscriptTurnsFromToolArgs,
   loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
+  saveReasoningMemoryFromToolArgs,
   saveFeatureRetrospectiveMemoryFromToolArgs,
+  searchReasoningMemoriesFromToolArgs,
   summarizeFileSessionContextFromToolArgs,
   summarizeTaskHistoryContextFromToolArgs,
 } = vi.hoisted(() => ({
@@ -96,6 +98,27 @@ const {
       featureName: "Kanban Workflow",
     },
   })),
+  searchReasoningMemoriesFromToolArgs: vi.fn(async () => ({
+    storagePath: "/tmp/.routa/projects/routa-js/reasoning-memory/memories.json",
+    memories: [{
+      id: "memory-1",
+      title: "Preserve route contracts",
+      content: "Add contract tests before reshaping API route behavior.",
+      outcome: "failure",
+      score: 98,
+      matchReasons: ["feature kanban-workflow"],
+    }],
+    promptSection: "## Relevant Strategy Memory\n\n1. Preserve route contracts",
+  })),
+  saveReasoningMemoryFromToolArgs: vi.fn(async () => ({
+    storagePath: "/tmp/.routa/projects/routa-js/reasoning-memory/memories.json",
+    saved: {
+      id: "memory-1",
+      title: "Preserve route contracts",
+      content: "Add contract tests before reshaping API route behavior.",
+      outcome: "failure",
+    },
+  })),
   loadFeatureTreeContextFromToolArgs: vi.fn(async () => ({
     warnings: [],
     features: [{
@@ -143,12 +166,16 @@ vi.mock("@/core/harness/task-adaptive-tool", () => ({
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME: "save_feature_retrospective_memory",
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME: "load_feature_tree_context",
   CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME: "confirm_feature_tree_story_context",
+  SEARCH_REASONING_MEMORY_TOOL_NAME: "search_reasoning_memories",
+  SAVE_REASONING_MEMORY_TOOL_NAME: "save_reasoning_memory",
   assembleTaskAdaptiveHarnessFromToolArgs,
   confirmFeatureTreeStoryContextFromToolArgs,
   inspectTranscriptTurnsFromToolArgs,
   loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
+  saveReasoningMemoryFromToolArgs,
   saveFeatureRetrospectiveMemoryFromToolArgs,
+  searchReasoningMemoriesFromToolArgs,
   summarizeFileSessionContextFromToolArgs,
   summarizeTaskHistoryContextFromToolArgs,
 }));
@@ -223,6 +250,12 @@ describe("executeMcpTool", () => {
     ).toBe(true);
     expect(
       getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "save_feature_retrospective_memory"),
+    ).toBe(true);
+    expect(
+      getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "search_reasoning_memories"),
+    ).toBe(true);
+    expect(
+      getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "save_reasoning_memory"),
     ).toBe(true);
     expect(
       getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "load_feature_tree_context"),
@@ -410,6 +443,64 @@ describe("executeMcpTool", () => {
     }, "workspace-1");
     expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
       '"storagePath":',
+    );
+  });
+
+  it("searches strategy memory through MCP args", async () => {
+    const result = await executeMcpTool(
+      {} as never,
+      "search_reasoning_memories",
+      {
+        workspaceId: "workspace-1",
+        query: "kanban API route parity",
+        featureIds: ["kanban-workflow"],
+        filePaths: ["src/app/api/kanban/route.ts"],
+        lane: "dev",
+        provider: "codex",
+      },
+    );
+
+    expect(searchReasoningMemoriesFromToolArgs).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      query: "kanban API route parity",
+      featureIds: ["kanban-workflow"],
+      filePaths: ["src/app/api/kanban/route.ts"],
+      lane: "dev",
+      provider: "codex",
+    }, "workspace-1");
+    expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"promptSection": "## Relevant Strategy Memory',
+    );
+  });
+
+  it("saves strategy memory through MCP args", async () => {
+    const result = await executeMcpTool(
+      {} as never,
+      "save_reasoning_memory",
+      {
+        workspaceId: "workspace-1",
+        title: "Preserve route contracts",
+        content: "Add contract tests before reshaping API route behavior.",
+        outcome: "failure",
+        featureId: "kanban-workflow",
+        filePaths: ["src/app/api/kanban/route.ts"],
+        lane: "dev",
+        provider: "codex",
+      },
+    );
+
+    expect(saveReasoningMemoryFromToolArgs).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      title: "Preserve route contracts",
+      content: "Add contract tests before reshaping API route behavior.",
+      outcome: "failure",
+      featureId: "kanban-workflow",
+      filePaths: ["src/app/api/kanban/route.ts"],
+      lane: "dev",
+      provider: "codex",
+    }, "workspace-1");
+    expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"saved": {',
     );
   });
 

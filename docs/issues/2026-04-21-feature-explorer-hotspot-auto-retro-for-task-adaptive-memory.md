@@ -69,3 +69,7 @@ The intended retrieval order is:
 ## References
 
 - Local related issue: `docs/issues/2026-04-21-jit-context-needs-repo-root-context-discovery.md`
+
+## Issue Hygiene
+
+- 2026-04-28: reviewed as still active. Reusable friction profile storage, refresh, and task-adaptive consumption exist, but the automatic async hotspot retro queue described here is not confirmed as implemented.

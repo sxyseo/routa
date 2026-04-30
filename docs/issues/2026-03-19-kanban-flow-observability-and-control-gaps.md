@@ -8,6 +8,8 @@ labels:
   - kanban
   - observability
   - enhancement
+related_issues:
+  - "docs/issues/2026-04-21-kanban-event-persistence.md"
 ---
 
 # Kanban lacks flow observability, controllability, and optimization primitives
@@ -111,3 +113,7 @@ The next Kanban milestone should focus on adding:
 3. structured blocked-state data
 4. policy-based gates, not only artifact existence checks
 5. a flow observability dashboard in the workspace UI
+
+## Issue Hygiene
+
+- 2026-04-28: reviewed as still active. Several sub-gaps have since been split or addressed, but the broad flow-management surface is not fully resolved: `kanban_events` persistence is still tracked separately, and WIP/SLE/blocked-time dashboard primitives remain open.

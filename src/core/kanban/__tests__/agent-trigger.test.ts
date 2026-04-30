@@ -1,7 +1,11 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildTaskPrompt, resolveKanbanAutomationProvider, triggerAssignedTaskAgent } from "../agent-trigger";
 import { createTask } from "../../models/task";
 import { AgentEventType, type EventBus } from "../../events/event-bus";
+import { saveReasoningMemory } from "@/core/harness/reasoning-memory";
 
 const { dispatchSessionPromptMock } = vi.hoisted(() => ({
   dispatchSessionPromptMock: vi.fn(),
@@ -129,6 +133,80 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("## Lane Experience Memory");
     expect(prompt).toContain("Review has 2 lane session");
     expect(prompt).toContain("Review review-1 before retrying this lane");
+  });
+
+  it("injects relevant strategy memory when the task has repo context", () => {
+    const originalHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "routa-reasoning-prompt-"));
+    const repoRoot = path.join(tempHome, "repo");
+    fs.mkdirSync(repoRoot, { recursive: true });
+
+    try {
+      process.env.HOME = tempHome;
+      saveReasoningMemory(repoRoot, {
+        title: "Preserve feature explorer route shape",
+        content: "When changing Feature Explorer API behavior, keep the existing route contract and add focused contract tests before extracting helpers.",
+        outcome: "success",
+        featureIds: ["feature-explorer"],
+        filePaths: ["src/app/api/feature-explorer/friction-profiles/route.ts"],
+        lanes: ["dev"],
+        providers: ["codex"],
+        tags: ["api-parity"],
+        confidence: 0.88,
+        evidenceCount: 2,
+      });
+
+      const task = createTask({
+        id: "task-reasoning-memory",
+        title: "Update Feature Explorer friction profile API",
+        objective: "Keep the Feature Explorer API route stable while adding parity checks.",
+        workspaceId: "default",
+        boardId: "board-1",
+        columnId: "dev",
+        assignedProvider: "codex",
+        labels: ["api-parity"],
+        contextSearchSpec: {
+          query: "Feature Explorer friction profile API parity",
+          featureCandidates: ["feature-explorer"],
+          relatedFiles: ["src/app/api/feature-explorer/friction-profiles/route.ts"],
+        },
+      });
+      task.jitContextSnapshot = {
+        generatedAt: "2026-04-28T08:00:00.000Z",
+        repoPath: repoRoot,
+        featureId: "feature-explorer",
+        summary: "Feature Explorer route work.",
+        matchConfidence: "high",
+        matchReasons: [],
+        warnings: [],
+        matchedFileDetails: [
+          {
+            filePath: "src/app/api/feature-explorer/friction-profiles/route.ts",
+            changes: 2,
+            sessions: 1,
+            updatedAt: "2026-04-28T08:00:00.000Z",
+          },
+        ],
+        matchedSessionIds: [],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+      };
+
+      const prompt = buildTaskPrompt(task);
+
+      expect(prompt).toContain("## Relevant Strategy Memory");
+      expect(prompt).toContain("Preserve feature explorer route shape");
+      expect(prompt).toContain("Outcome: success; confidence: 0.88");
+      expect(prompt).toContain("feature:feature-explorer");
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
   });
 
   it("does not invent a placeholder board id when the task has no board", () => {

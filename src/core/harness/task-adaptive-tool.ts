@@ -22,6 +22,13 @@ import {
   type FeatureRetrospectiveMemoryScope,
 } from "@/core/harness/retrospective-memory";
 import {
+  buildRelevantStrategyMemoryPromptSection,
+  getReasoningMemoryStoragePath,
+  saveReasoningMemory,
+  searchReasoningMemories,
+  type ReasoningMemoryOutcome,
+} from "@/core/harness/reasoning-memory";
+import {
   buildFeatureTreeRetrievalHints,
   confirmFeatureTreeStoryContext,
   loadRelevantFeatureTreeContext,
@@ -37,6 +44,8 @@ export const LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME = "load_feature_retrospective_m
 export const SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME = "save_feature_retrospective_memory";
 export const LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME = "load_feature_tree_context";
 export const CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME = "confirm_feature_tree_story_context";
+export const SEARCH_REASONING_MEMORY_TOOL_NAME = "search_reasoning_memories";
+export const SAVE_REASONING_MEMORY_TOOL_NAME = "save_reasoning_memory";
 
 function normalizeStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
@@ -62,6 +71,10 @@ function normalizePositiveInteger(value: unknown): number | undefined {
 
 function normalizeRetrospectiveScope(value: unknown): FeatureRetrospectiveMemoryScope | undefined {
   return value === "file" || value === "feature" ? value : undefined;
+}
+
+function normalizeReasoningMemoryOutcome(value: unknown): ReasoningMemoryOutcome | undefined {
+  return value === "success" || value === "failure" || value === "mixed" ? value : undefined;
 }
 
 export async function assembleTaskAdaptiveHarnessFromToolArgs(
@@ -310,5 +323,104 @@ export async function saveFeatureRetrospectiveMemoryFromToolArgs(
     featureId: normalizeContextValue(args.featureId) ?? options.featureId ?? options.featureIds?.[0],
     featureName: normalizeContextValue(args.featureName),
     summary,
+  });
+}
+
+export async function searchReasoningMemoriesFromToolArgs(
+  args: Record<string, unknown>,
+  fallbackWorkspaceId?: string,
+): Promise<{
+  storagePath: string;
+  memories: ReturnType<typeof searchReasoningMemories>;
+  promptSection?: string;
+}> {
+  const context: HarnessContext = {
+    workspaceId: normalizeContextValue(args.workspaceId) ?? fallbackWorkspaceId,
+    codebaseId: normalizeContextValue(args.codebaseId),
+    repoPath: normalizeContextValue(args.repoPath),
+  };
+  const repoRoot = await resolveRepoRoot(context);
+  const options = parseTaskAdaptiveHarnessOptions(args) ?? {};
+  const featureIds = normalizeStringArray(args.featureIds)
+    ?? normalizeStringArray([normalizeContextValue(args.featureId)])
+    ?? options.featureIds
+    ?? (options.featureId ? [options.featureId] : undefined);
+  const filePaths = normalizeStringArray(args.filePaths) ?? options.filePaths;
+  const sourceTaskIds = normalizeStringArray(args.sourceTaskIds)
+    ?? normalizeStringArray([normalizeContextValue(args.taskId)]);
+  const sourceSessionIds = normalizeStringArray(args.sourceSessionIds)
+    ?? normalizeStringArray(args.sessionIds)
+    ?? normalizeStringArray(args.historySessionIds)
+    ?? options.historySessionIds;
+  const memories = searchReasoningMemories(repoRoot, {
+    query: normalizeContextValue(args.query) ?? options.query ?? options.taskLabel,
+    sourceTaskIds,
+    sourceSessionIds,
+    tags: normalizeStringArray(args.tags),
+    featureIds,
+    filePaths,
+    lane: normalizeContextValue(args.lane) ?? normalizeContextValue(args.columnId),
+    provider: normalizeContextValue(args.provider),
+    maxResults: normalizePositiveInteger(args.maxResults),
+  });
+
+  return {
+    storagePath: getReasoningMemoryStoragePath(repoRoot),
+    memories,
+    promptSection: buildRelevantStrategyMemoryPromptSection(memories),
+  };
+}
+
+export async function saveReasoningMemoryFromToolArgs(
+  args: Record<string, unknown>,
+  fallbackWorkspaceId?: string,
+): Promise<ReturnType<typeof saveReasoningMemory>> {
+  const context: HarnessContext = {
+    workspaceId: normalizeContextValue(args.workspaceId) ?? fallbackWorkspaceId,
+    codebaseId: normalizeContextValue(args.codebaseId),
+    repoPath: normalizeContextValue(args.repoPath),
+  };
+  const repoRoot = await resolveRepoRoot(context);
+  const options = parseTaskAdaptiveHarnessOptions(args) ?? {};
+  const title = normalizeContextValue(args.title);
+  if (!title) {
+    throw new Error("save_reasoning_memory requires title.");
+  }
+
+  const content = normalizeContextValue(args.content);
+  if (!content) {
+    throw new Error("save_reasoning_memory requires content.");
+  }
+
+  const sourceTaskIds = normalizeStringArray(args.sourceTaskIds)
+    ?? normalizeStringArray([normalizeContextValue(args.taskId)]);
+  const sourceSessionIds = normalizeStringArray(args.sourceSessionIds)
+    ?? normalizeStringArray(args.sessionIds)
+    ?? normalizeStringArray(args.historySessionIds)
+    ?? options.historySessionIds;
+  const featureIds = normalizeStringArray(args.featureIds)
+    ?? normalizeStringArray([normalizeContextValue(args.featureId)])
+    ?? options.featureIds
+    ?? (options.featureId ? [options.featureId] : undefined);
+  const filePaths = normalizeStringArray(args.filePaths) ?? options.filePaths;
+  const lane = normalizeContextValue(args.lane) ?? normalizeContextValue(args.columnId);
+  const provider = normalizeContextValue(args.provider);
+
+  return saveReasoningMemory(repoRoot, {
+    id: normalizeContextValue(args.id),
+    title,
+    description: normalizeContextValue(args.description),
+    content,
+    outcome: normalizeReasoningMemoryOutcome(args.outcome),
+    sourceTaskIds,
+    sourceSessionIds,
+    tags: normalizeStringArray(args.tags),
+    confidence: typeof args.confidence === "number" ? args.confidence : undefined,
+    evidenceCount: normalizePositiveInteger(args.evidenceCount),
+    repoPath: repoRoot,
+    featureIds,
+    filePaths,
+    lanes: normalizeStringArray(args.lanes) ?? (lane ? [lane] : undefined),
+    providers: normalizeStringArray(args.providers) ?? (provider ? [provider] : undefined),
   });
 }

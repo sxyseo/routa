@@ -13,20 +13,8 @@ import { NoteTools } from "../tools/note-tools";
 import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
 import {
-  assembleTaskAdaptiveHarnessFromToolArgs,
   CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
-  FILE_SESSION_CONTEXT_TOOL_NAME,
-  inspectTranscriptTurnsFromToolArgs,
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
-  LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
-  loadFeatureRetrospectiveMemoryFromToolArgs,
-  SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
-  saveFeatureRetrospectiveMemoryFromToolArgs,
-  summarizeFileSessionContextFromToolArgs,
-  summarizeTaskHistoryContextFromToolArgs,
-  TASK_ADAPTIVE_HARNESS_TOOL_NAME,
-  TASK_HISTORY_SUMMARY_TOOL_NAME,
-  TRANSCRIPT_TURN_INSPECTION_TOOL_NAME,
 } from "../harness/task-adaptive-tool";
 import { readCanvasSdkResource } from "../canvas/sdk-resource-contract";
 import { readFeatureTreeSpecResource } from "../spec/feature-tree-spec-resource-contract";
@@ -34,6 +22,26 @@ import {
   registerConfirmFeatureTreeStoryContextTool,
   registerLoadFeatureTreeContextTool,
 } from "./feature-tree-context-tools";
+import {
+  LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
+  registerSaveReasoningMemoryTool,
+  registerSaveRetrospectiveMemoryTool,
+  registerSearchReasoningMemoryTool,
+  registerLoadRetrospectiveMemoryTool,
+  SAVE_REASONING_MEMORY_TOOL_NAME,
+  SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
+  SEARCH_REASONING_MEMORY_TOOL_NAME,
+} from "./reasoning-memory-tools";
+import {
+  FILE_SESSION_CONTEXT_TOOL_NAME,
+  TASK_ADAPTIVE_HARNESS_TOOL_NAME,
+  TASK_HISTORY_SUMMARY_TOOL_NAME,
+  TRANSCRIPT_TURN_INSPECTION_TOOL_NAME,
+  registerAssembleTaskAdaptiveHarnessTool,
+  registerInspectTranscriptTurnsTool,
+  registerSummarizeFileSessionContextTool,
+  registerSummarizeTaskHistoryContextTool,
+} from "./task-adaptive-mcp-tools";
 
 /**
  * Tool registration mode for MCP server.
@@ -194,15 +202,17 @@ export class RoutaMcpToolManager {
       register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
       register("capture_screenshot", () => this.registerCaptureScreenshot(server));
       register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
-      register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => this.registerAssembleTaskAdaptiveHarness(server));
-      register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => this.registerSummarizeTaskHistoryContext(server));
-      register(FILE_SESSION_CONTEXT_TOOL_NAME, () => this.registerSummarizeFileSessionContext(server));
-      register(TRANSCRIPT_TURN_INSPECTION_TOOL_NAME, () => this.registerInspectTranscriptTurns(server));
+      register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => registerAssembleTaskAdaptiveHarnessTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+      register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => registerSummarizeTaskHistoryContextTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+      register(FILE_SESSION_CONTEXT_TOOL_NAME, () => registerSummarizeFileSessionContextTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+      register(TRANSCRIPT_TURN_INSPECTION_TOOL_NAME, () => registerInspectTranscriptTurnsTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
       register("save_history_memory_context", () => this.registerSaveJitContext(server));
       register(LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME, () => this.registerLoadFeatureTreeContext(server));
       register(CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME, () => this.registerConfirmFeatureTreeStoryContext(server));
-      register(LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME, () => this.registerLoadRetrospectiveMemory(server));
-      register(SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME, () => this.registerSaveRetrospectiveMemory(server));
+      register(LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME, () => registerLoadRetrospectiveMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+      register(SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME, () => registerSaveRetrospectiveMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+      register(SEARCH_REASONING_MEMORY_TOOL_NAME, () => registerSearchReasoningMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+      register(SAVE_REASONING_MEMORY_TOOL_NAME, () => registerSaveReasoningMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
       return;
     }
 
@@ -272,12 +282,14 @@ export class RoutaMcpToolManager {
     register("capture_screenshot", () => this.registerCaptureScreenshot(server));
     register("read_canvas_sdk_resource", () => this.registerReadCanvasSdkResource(server));
     register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
-    register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => this.registerAssembleTaskAdaptiveHarness(server));
-    register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => this.registerSummarizeTaskHistoryContext(server));
-    register(FILE_SESSION_CONTEXT_TOOL_NAME, () => this.registerSummarizeFileSessionContext(server));
-    register(TRANSCRIPT_TURN_INSPECTION_TOOL_NAME, () => this.registerInspectTranscriptTurns(server));
-    register(LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME, () => this.registerLoadRetrospectiveMemory(server));
-    register(SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME, () => this.registerSaveRetrospectiveMemory(server));
+    register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => registerAssembleTaskAdaptiveHarnessTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+    register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => registerSummarizeTaskHistoryContextTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+    register(FILE_SESSION_CONTEXT_TOOL_NAME, () => registerSummarizeFileSessionContextTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+    register(TRANSCRIPT_TURN_INSPECTION_TOOL_NAME, () => registerInspectTranscriptTurnsTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+    register(LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME, () => registerLoadRetrospectiveMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+    register(SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME, () => registerSaveRetrospectiveMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+    register(SEARCH_REASONING_MEMORY_TOOL_NAME, () => registerSearchReasoningMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
+    register(SAVE_REASONING_MEMORY_TOOL_NAME, () => registerSaveReasoningMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
   }
 
   private shouldRegisterTool(toolName: string): boolean {
@@ -1568,221 +1580,6 @@ Can be in response to a request or proactively provided.`,
           success: true,
           data: resource,
         });
-      }
-    );
-  }
-
-  private registerAssembleTaskAdaptiveHarness(server: McpServer) {
-    server.tool(
-      TASK_ADAPTIVE_HARNESS_TOOL_NAME,
-      "Compile a Task-Adaptive Harness pack by retrieving relevant history sessions, file signals, and prior read failures for the current task.",
-      {
-        workspaceId: z.string().optional().describe("Workspace ID override. Uses the current MCP session workspace when omitted."),
-        codebaseId: z.string().optional().describe("Optional codebase ID override."),
-        repoPath: z.string().optional().describe("Optional repository path override."),
-        taskLabel: z.string().optional().describe("Short label for the current task or request."),
-        locale: z.string().optional().describe("Optional locale hint, e.g. en or zh-CN."),
-        featureId: z.string().optional().describe("Optional Feature Explorer feature ID."),
-        featureIds: z.array(z.string()).optional().describe("Optional ordered candidate Feature Tree IDs."),
-        filePaths: z.array(z.string()).optional().describe("Optional repository-relative file paths already known to be relevant."),
-        routeCandidates: z.array(z.string()).optional().describe("Optional route hints for file inference."),
-        apiCandidates: z.array(z.string()).optional().describe("Optional API hints for file inference."),
-        historySessionIds: z.array(z.string()).optional().describe("Optional history session IDs to prioritize."),
-        moduleHints: z.array(z.string()).optional().describe("Optional module or subsystem hints."),
-        symptomHints: z.array(z.string()).optional().describe("Optional user-visible symptom hints."),
-        taskType: z.enum(["implementation", "planning", "analysis", "review"]).optional()
-          .describe("Task type hint used for recommendation heuristics."),
-        maxFiles: z.number().int().positive().optional().describe("Maximum number of files to include."),
-        maxSessions: z.number().int().positive().optional().describe("Maximum number of history sessions to include."),
-        role: z.string().optional().describe("Optional agent role hint, e.g. ROUTA or CRAFTER."),
-      },
-      async (params) => {
-        try {
-          const result = await assembleTaskAdaptiveHarnessFromToolArgs(params, this.workspaceId);
-          return this.toMcpResult({
-            success: true,
-            data: result,
-          });
-        } catch (error) {
-          return this.toMcpResult({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    );
-  }
-
-  private registerSummarizeTaskHistoryContext(server: McpServer) {
-    server.tool(
-      TASK_HISTORY_SUMMARY_TOOL_NAME,
-      "Compress linked history sessions into a History Summary so analysts can start from seeds and friction signals instead of rereading every transcript.",
-      {
-        workspaceId: z.string().optional().describe("Workspace ID override. Uses the current MCP session workspace when omitted."),
-        codebaseId: z.string().optional().describe("Optional codebase ID override."),
-        repoPath: z.string().optional().describe("Optional repository path override."),
-        taskLabel: z.string().optional().describe("Short label for the current task or request."),
-        locale: z.string().optional().describe("Optional locale hint, e.g. en or zh-CN."),
-        featureId: z.string().optional().describe("Optional Feature Explorer feature ID."),
-        featureIds: z.array(z.string()).optional().describe("Optional ordered candidate Feature Tree IDs."),
-        filePaths: z.array(z.string()).optional().describe("Optional repository-relative file paths already known to be relevant."),
-        routeCandidates: z.array(z.string()).optional().describe("Optional route hints for file inference."),
-        apiCandidates: z.array(z.string()).optional().describe("Optional API hints for file inference."),
-        historySessionIds: z.array(z.string()).optional().describe("Optional linked history session IDs to summarize."),
-        moduleHints: z.array(z.string()).optional().describe("Optional module or subsystem hints."),
-        symptomHints: z.array(z.string()).optional().describe("Optional user-visible symptom hints."),
-        taskType: z.enum(["implementation", "planning", "analysis", "review"]).optional()
-          .describe("Task type hint used for retrieval heuristics."),
-        maxFiles: z.number().int().positive().optional().describe("Maximum number of files to include."),
-        maxSessions: z.number().int().positive().optional().describe("Maximum number of history seed sessions to summarize."),
-        role: z.string().optional().describe("Optional agent role hint, e.g. ROUTA or CRAFTER."),
-      },
-      async (params) => {
-        try {
-          const result = await summarizeTaskHistoryContextFromToolArgs(params, this.workspaceId);
-          return this.toMcpResult({
-            success: true,
-            data: result,
-          });
-        } catch (error) {
-          return this.toMcpResult({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    );
-  }
-
-  private registerSummarizeFileSessionContext(server: McpServer) {
-    server.tool(
-      FILE_SESSION_CONTEXT_TOOL_NAME,
-      "Build a file-session context summary that separates direct file evidence, adjacent evidence, scope drift, input friction, and environment friction for specialist analysis.",
-      {
-        workspaceId: z.string().optional().describe("Workspace ID override. Uses the current MCP session workspace when omitted."),
-        codebaseId: z.string().optional().describe("Optional codebase ID override."),
-        repoPath: z.string().optional().describe("Optional repository path override."),
-        taskLabel: z.string().optional().describe("Short label for the current task or request."),
-        locale: z.string().optional().describe("Optional locale hint, e.g. en or zh-CN."),
-        featureId: z.string().optional().describe("Optional Feature Explorer feature ID."),
-        featureIds: z.array(z.string()).optional().describe("Optional ordered candidate Feature Tree IDs."),
-        filePaths: z.array(z.string()).optional().describe("Optional repository-relative file paths already known to be relevant."),
-        routeCandidates: z.array(z.string()).optional().describe("Optional route hints for file inference."),
-        apiCandidates: z.array(z.string()).optional().describe("Optional API hints for file inference."),
-        historySessionIds: z.array(z.string()).optional().describe("Optional linked history session IDs to prioritize."),
-        moduleHints: z.array(z.string()).optional().describe("Optional module or subsystem hints."),
-        symptomHints: z.array(z.string()).optional().describe("Optional user-visible symptom hints."),
-        taskType: z.enum(["implementation", "planning", "analysis", "review"]).optional()
-          .describe("Task type hint used for retrieval heuristics."),
-        maxFiles: z.number().int().positive().optional().describe("Maximum number of files to include."),
-        maxSessions: z.number().int().positive().optional().describe("Maximum number of history sessions to include."),
-        role: z.string().optional().describe("Optional agent role hint, e.g. ROUTA or CRAFTER."),
-      },
-      async (params) => {
-        try {
-          const result = await summarizeFileSessionContextFromToolArgs(params, this.workspaceId);
-          return this.toMcpResult({
-            success: true,
-            data: result,
-          });
-        } catch (error) {
-          return this.toMcpResult({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    );
-  }
-
-  private registerInspectTranscriptTurns(server: McpServer) {
-    server.tool(
-      TRANSCRIPT_TURN_INSPECTION_TOOL_NAME,
-      "Inspect specific transcript sessions and extract real user turns, file-targeted commands, failed commands, and scope-drift prompts for read-only specialist analysis.",
-      {
-        workspaceId: z.string().optional().describe("Workspace ID override. Uses the current MCP session workspace when omitted."),
-        codebaseId: z.string().optional().describe("Optional codebase ID override."),
-        repoPath: z.string().optional().describe("Optional repository path override."),
-        sessionIds: z.array(z.string()).optional().describe("Explicit session IDs to inspect. Prefer the highest-relevance sessions first."),
-        historySessionIds: z.array(z.string()).optional().describe("Alias for sessionIds for compatibility with existing task-adaptive flows."),
-        featureId: z.string().optional().describe("Optional Feature Explorer feature ID used to preserve feature-level evidence."),
-        filePaths: z.array(z.string()).optional().describe("Optional repository-relative focus files. Signals are filtered to these files when provided."),
-        maxUserPrompts: z.number().int().positive().optional().describe("Maximum number of user prompts to keep per inspected session."),
-        maxSignals: z.number().int().positive().optional().describe("Maximum number of relevant signals and failed signals to keep per session."),
-      },
-      async (params) => {
-        try {
-          const result = await inspectTranscriptTurnsFromToolArgs(params, this.workspaceId);
-          return this.toMcpResult({
-            success: true,
-            data: result,
-          });
-        } catch (error) {
-          return this.toMcpResult({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    );
-  }
-
-  private registerLoadRetrospectiveMemory(server: McpServer) {
-    server.tool(
-      LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
-      "Load previously saved prompt-ready retrospective memory for selected files or a feature before transcript rereads.",
-      {
-        workspaceId: z.string().optional().describe("Workspace ID override. Uses the current MCP session workspace when omitted."),
-        codebaseId: z.string().optional().describe("Optional codebase ID override."),
-        repoPath: z.string().optional().describe("Optional repository path override."),
-        featureId: z.string().optional().describe("Optional Feature Explorer feature ID."),
-        filePaths: z.array(z.string()).optional().describe("Optional repository-relative files to load file-level memory for."),
-      },
-      async (params) => {
-        try {
-          const result = await loadFeatureRetrospectiveMemoryFromToolArgs(params, this.workspaceId);
-          return this.toMcpResult({
-            success: true,
-            data: result,
-          });
-        } catch (error) {
-          return this.toMcpResult({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    );
-  }
-
-  private registerSaveRetrospectiveMemory(server: McpServer) {
-    server.tool(
-      SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
-      "Persist a short prompt-ready retrospective summary for a file or feature so future specialist runs can reuse it as durable memory.",
-      {
-        workspaceId: z.string().optional().describe("Workspace ID override. Uses the current MCP session workspace when omitted."),
-        codebaseId: z.string().optional().describe("Optional codebase ID override."),
-        repoPath: z.string().optional().describe("Optional repository path override."),
-        scope: z.enum(["file", "feature"]).describe("Whether to save file-level or feature-level retrospective memory."),
-        targetId: z.string().optional().describe("Optional explicit target key. Prefer filePath or featureId when available."),
-        filePath: z.string().optional().describe("Repository-relative file path when scope=file."),
-        featureId: z.string().optional().describe("Feature Tree ID when scope=feature or to keep file memory attached to a feature."),
-        featureName: z.string().optional().describe("Optional human-readable feature name."),
-        summary: z.string().describe("Short prompt-ready summary to reuse in the next analysis session."),
-      },
-      async (params) => {
-        try {
-          const result = await saveFeatureRetrospectiveMemoryFromToolArgs(params, this.workspaceId);
-          return this.toMcpResult({
-            success: true,
-            data: result,
-          });
-        } catch (error) {
-          return this.toMcpResult({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
       }
     );
   }

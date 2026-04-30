@@ -93,6 +93,21 @@ Suggested scope:
 - keep top-k low to avoid noisy prompt bloat
 - add characterization tests around retrieval and prompt rendering
 
+Implementation progress on 2026-04-28:
+
+- Added `src/core/harness/reasoning-memory.ts` for JSON-backed project-local strategy memories under `.routa/projects/{project}/reasoning-memory/memories.json`.
+- Added retrieval scoring by task text, feature/file hints, lane, provider, tags, task IDs, and session IDs.
+- Added bounded `## Relevant Strategy Memory` prompt rendering.
+- Injected retrieved strategy memories into Kanban task prompts separately from saved history memory and lane experience memory.
+- Added focused characterization tests in `src/core/harness/__tests__/reasoning-memory.test.ts` and `src/core/kanban/__tests__/agent-trigger.test.ts`.
+
+Implementation progress on 2026-04-29:
+
+- Added MCP execution and registration paths for `search_reasoning_memories` and `save_reasoning_memory`.
+- Exposed both tools in essential Kanban planning and team coordination MCP profiles.
+- Added executor, manager, and real tool-argument tests covering strategy memory search/save.
+- Fixed `resolveRepoRoot(repoPath)` so direct repo path calls do not initialize Routa system/database first.
+
 ### M1: Closed Loop
 
 Add a dedicated extraction/save path:

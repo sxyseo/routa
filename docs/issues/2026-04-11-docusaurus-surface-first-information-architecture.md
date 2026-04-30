@@ -1,13 +1,15 @@
 ---
 title: "Docusaurus docs need surface-first information architecture instead of repo-first navigation"
 date: "2026-04-11"
-status: open
+status: resolved
 severity: medium
 area: "documentation"
 tags: ["docs", "docusaurus", "information-architecture", "onboarding", "navigation"]
 reported_by: "codex"
 related_issues:
   - "2026-04-09-home-start-surface-and-onboarding-overload.md"
+resolved_at: "2026-04-28"
+resolution: "Docusaurus now has a curated surface-first sidebar, Quick Start, platform pages, configuration pages, and stable documentation domains."
 ---
 
 # Docusaurus 文档需要从 repo-first 导航转向 surface-first 信息架构
@@ -82,3 +84,7 @@ related_issues:
 - navbar 能体现 stable sections
 - sidebar 能体现 curated onboarding tree
 - `/quick-start`、`/platforms/*`、`/configuration/*` 等新页面可访问
+
+## Issue Hygiene
+
+- 2026-04-28: resolved after confirming `sidebars.js`, `docusaurus.config.js`, `docs/quick-start.md`, `docs/platforms/*`, `docs/configuration/*`, and `docs/core-concepts/*` now implement the surface-first IA skeleton.

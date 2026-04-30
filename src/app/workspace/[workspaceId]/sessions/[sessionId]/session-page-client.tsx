@@ -233,6 +233,7 @@ export function SessionPageClient() {
   // Input text to restore when a docker session fails before prompt was sent
   const [dockerRetryText, setDockerRetryText] = useState<string | null>(null);
   const [canvasPromptEnabled, setCanvasPromptEnabled] = useState(false);
+  const [canvasPromptPrefill, setCanvasPromptPrefill] = useState<string | null>(null);
   const navigationTargetRef = useRef<string | null>(null);
   const displaySessionId = focusedSessionId ?? sessionId;
 
@@ -787,6 +788,13 @@ export function SessionPageClient() {
   const isDefaultWorkspace = workspaceId === "default";
 
   useEffect(() => {
+    if (!acpConnected) {
+      setCanvasPromptEnabled(false);
+      setCanvasPromptPrefill(null);
+    }
+  }, [acpConnected]);
+
+  useEffect(() => {
     // Don't redirect if:
     // - URL params not yet resolved (static export mode)
     // - Still loading workspaces
@@ -828,7 +836,13 @@ export function SessionPageClient() {
   };
   const isPlanningSession = activeSessionRecord?.mcpProfile === "kanban-planning";
   const handlePrepareCanvasPrompt = () => {
-    setCanvasPromptEnabled((enabled) => !enabled);
+    if (canvasPromptEnabled) {
+      setCanvasPromptEnabled(false);
+      return;
+    }
+
+    setCanvasPromptEnabled(true);
+    setCanvasPromptPrefill(t.canvas.liveDefaultRequest);
   };
   const decorateCanvasPrompt = (request: string) => {
     return buildLiveCanvasAgentPrompt({
@@ -838,15 +852,21 @@ export function SessionPageClient() {
   };
   const handleCanvasPromptSent = () => {
     setCanvasPromptEnabled(false);
+    setCanvasPromptPrefill(null);
   };
   const activeInputPrefill = dockerRetryText !== null
     ? { source: "docker" as const, text: dockerRetryText }
+    : canvasPromptPrefill !== null
+      ? { source: "canvas" as const, text: canvasPromptPrefill }
     : null;
   const chatInputPrefill = activeInputPrefill?.text ?? null;
   const handleInputPrefillConsumed = () => {
     if (activeInputPrefill?.source === "docker") {
       setDockerRetryText(null);
       return;
+    }
+    if (activeInputPrefill?.source === "canvas") {
+      setCanvasPromptPrefill(null);
     }
   };
   const hasSessionCanvasPanel = Boolean(

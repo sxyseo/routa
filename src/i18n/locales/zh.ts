@@ -197,6 +197,7 @@ const zh: TranslationDictionary = {
     viewerCompilationError: "Canvas 编译错误：",
     liveEntryLabel: "使用 Canvas",
     liveEntryShortLabel: "Canvas",
+    liveDefaultRequest: "为当前工作创建一个 Routa Canvas。",
     livePanelTitle: "Canvas",
     livePanelPending: "等待 Canvas 文件。",
     livePanelMaterializing: "正在渲染 Canvas...",

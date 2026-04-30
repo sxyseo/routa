@@ -6,7 +6,9 @@ const {
   inspectTranscriptTurnsFromToolArgs,
   loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
+  saveReasoningMemoryFromToolArgs,
   saveFeatureRetrospectiveMemoryFromToolArgs,
+  searchReasoningMemoriesFromToolArgs,
   summarizeFileSessionContextFromToolArgs,
   summarizeTaskHistoryContextFromToolArgs,
 } = vi.hoisted(() => ({
@@ -96,6 +98,27 @@ const {
       featureName: "Feature Explorer",
     },
   })),
+  searchReasoningMemoriesFromToolArgs: vi.fn(async () => ({
+    storagePath: "/tmp/.routa/projects/routa-js/reasoning-memory/memories.json",
+    memories: [{
+      id: "memory-1",
+      title: "Preserve MCP tool registration shape",
+      content: "Register manager and executor surfaces together so tool availability stays consistent.",
+      outcome: "success",
+      score: 91,
+      matchReasons: ["file src/core/mcp/routa-mcp-tool-manager.ts"],
+    }],
+    promptSection: "## Relevant Strategy Memory\n\n1. Preserve MCP tool registration shape",
+  })),
+  saveReasoningMemoryFromToolArgs: vi.fn(async () => ({
+    storagePath: "/tmp/.routa/projects/routa-js/reasoning-memory/memories.json",
+    saved: {
+      id: "memory-1",
+      title: "Preserve MCP tool registration shape",
+      content: "Register manager and executor surfaces together so tool availability stays consistent.",
+      outcome: "success",
+    },
+  })),
   loadFeatureTreeContextFromToolArgs: vi.fn(async () => ({
     warnings: [],
     features: [{
@@ -141,12 +164,16 @@ vi.mock("@/core/harness/task-adaptive-tool", () => ({
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME: "save_feature_retrospective_memory",
   LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME: "load_feature_tree_context",
   CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME: "confirm_feature_tree_story_context",
+  SEARCH_REASONING_MEMORY_TOOL_NAME: "search_reasoning_memories",
+  SAVE_REASONING_MEMORY_TOOL_NAME: "save_reasoning_memory",
   assembleTaskAdaptiveHarnessFromToolArgs,
   confirmFeatureTreeStoryContextFromToolArgs,
   inspectTranscriptTurnsFromToolArgs,
   loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
+  saveReasoningMemoryFromToolArgs,
   saveFeatureRetrospectiveMemoryFromToolArgs,
+  searchReasoningMemoriesFromToolArgs,
   summarizeFileSessionContextFromToolArgs,
   summarizeTaskHistoryContextFromToolArgs,
 }));
@@ -268,6 +295,8 @@ describe("RoutaMcpToolManager", () => {
     expect(registrations.some((entry) => entry.name === "load_feature_tree_context")).toBe(true);
     expect(registrations.some((entry) => entry.name === "confirm_feature_tree_story_context")).toBe(true);
     expect(registrations.some((entry) => entry.name === "save_feature_retrospective_memory")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "search_reasoning_memories")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "save_reasoning_memory")).toBe(true);
 
     const createTaskTool = registrations.find((entry) => entry.name === "create_task");
     const noteTool = registrations.find((entry) => entry.name === "create_note");
@@ -283,6 +312,8 @@ describe("RoutaMcpToolManager", () => {
     const loadFeatureTreeContextTool = registrations.find((entry) => entry.name === "load_feature_tree_context");
     const confirmFeatureTreeStoryContextTool = registrations.find((entry) => entry.name === "confirm_feature_tree_story_context");
     const saveRetrospectiveMemoryTool = registrations.find((entry) => entry.name === "save_feature_retrospective_memory");
+    const searchReasoningMemoryTool = registrations.find((entry) => entry.name === "search_reasoning_memories");
+    const saveReasoningMemoryTool = registrations.find((entry) => entry.name === "save_reasoning_memory");
     expect(createTaskTool).toBeDefined();
     expect(noteTool).toBeDefined();
     expect(delegateTool).toBeDefined();
@@ -297,6 +328,8 @@ describe("RoutaMcpToolManager", () => {
     expect(loadFeatureTreeContextTool).toBeDefined();
     expect(confirmFeatureTreeStoryContextTool).toBeDefined();
     expect(saveRetrospectiveMemoryTool).toBeDefined();
+    expect(searchReasoningMemoryTool).toBeDefined();
+    expect(saveReasoningMemoryTool).toBeDefined();
 
     await createTaskTool!.handler({
       title: "Task",
@@ -488,6 +521,46 @@ describe("RoutaMcpToolManager", () => {
     }, "ws-1");
     expect((saveRetrospectiveMemoryResult as { content: Array<{ text: string }> }).content[0]?.text).toContain(
       '"storagePath":',
+    );
+
+    const searchReasoningMemoryResult = await searchReasoningMemoryTool!.handler({
+      repoPath: "/repo/default",
+      query: "MCP tool registration",
+      filePaths: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+      lane: "dev",
+      provider: "codex",
+    });
+    expect(searchReasoningMemoriesFromToolArgs).toHaveBeenCalledWith({
+      repoPath: "/repo/default",
+      query: "MCP tool registration",
+      filePaths: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+      lane: "dev",
+      provider: "codex",
+    }, "ws-1");
+    expect((searchReasoningMemoryResult as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"promptSection": "## Relevant Strategy Memory',
+    );
+
+    const saveReasoningMemoryResult = await saveReasoningMemoryTool!.handler({
+      repoPath: "/repo/default",
+      title: "Preserve MCP tool registration shape",
+      content: "Register manager and executor surfaces together so tool availability stays consistent.",
+      outcome: "success",
+      filePaths: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+      lane: "dev",
+      provider: "codex",
+    });
+    expect(saveReasoningMemoryFromToolArgs).toHaveBeenCalledWith({
+      repoPath: "/repo/default",
+      title: "Preserve MCP tool registration shape",
+      content: "Register manager and executor surfaces together so tool availability stays consistent.",
+      outcome: "success",
+      filePaths: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+      lane: "dev",
+      provider: "codex",
+    }, "ws-1");
+    expect((saveReasoningMemoryResult as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"saved": {',
     );
   });
 

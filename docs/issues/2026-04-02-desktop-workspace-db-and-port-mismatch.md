@@ -88,3 +88,7 @@ related_issues:
 - `target/release/routa-desktop`
 - `/Users/phodal/Library/Application Support/com.routa.desktop/routa.db`
 - `/Users/phodal/.routa/routa.db`
+
+## Issue Hygiene
+
+- 2026-04-28: reviewed as still active. The record is an environment-sensitive desktop diagnosis gap, and there is no durable follow-up proving the DB/port ownership confusion has been eliminated.

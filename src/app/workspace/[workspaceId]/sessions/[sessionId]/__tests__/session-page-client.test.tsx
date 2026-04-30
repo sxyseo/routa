@@ -129,11 +129,13 @@ vi.mock("@/client/components/chat-panel", () => ({
   ChatPanel: ({
     canvasPromptLabel,
     canvasPromptActive,
+    inputPrefill,
     onDecoratePrompt,
     onPrepareCanvasPrompt,
   }: {
     canvasPromptActive?: boolean;
     canvasPromptLabel?: string;
+    inputPrefill?: string | null;
     onDecoratePrompt?: (text: string) => string;
     onPrepareCanvasPrompt?: () => void;
   }) => (
@@ -144,6 +146,7 @@ vi.mock("@/client/components/chat-panel", () => ({
           {canvasPromptLabel}
         </button>
       )}
+      {inputPrefill && <div data-testid="input-prefill">{inputPrefill}</div>}
       {onDecoratePrompt && <div data-testid="decorated-prompt">{onDecoratePrompt("Draw workflow")}</div>}
     </div>
   ),
@@ -473,6 +476,7 @@ describe("SessionPageClient", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Use Canvas" }));
 
     expect(await screen.findByRole("button", { name: "Use Canvas", pressed: true })).toBeTruthy();
+    expect((await screen.findByTestId("input-prefill")).textContent).toContain("Create a Routa Canvas");
     expect((await screen.findByTestId("decorated-prompt")).textContent).toContain("Draw workflow");
   });
 

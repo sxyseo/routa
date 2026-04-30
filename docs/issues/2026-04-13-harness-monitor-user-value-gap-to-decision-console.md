@@ -134,3 +134,7 @@ github_url: null
 - 不能回退现有 prompt-first runs / recovered markers / synthetic run fallback
 - 不能为了“更好看”重新把 run 语义退回 session-centric
 - 不能把 continue/merge safety 写死在 UI heuristics 中，而应尽量复用已有 assessment / evaluator 输出
+
+## Issue Hygiene
+
+- 2026-04-28: reviewed as still active. The full-graph memory spike was resolved separately, but this issue tracks journey-first decision summary and continue/merge safety, which remain broader product work.

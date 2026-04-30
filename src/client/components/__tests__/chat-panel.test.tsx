@@ -282,4 +282,59 @@ describe("ChatPanel session targeting", () => {
     expect(screen.queryByText("stderr line")).toBeNull();
     expect(screen.getByText("Done")).toBeTruthy();
   });
+
+  it("disables the Canvas prompt action while the composer is disconnected", () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    const onPrepareCanvasPrompt = vi.fn();
+    const acp = {
+      connected: false,
+      sessionId: "session-123",
+      updates: [],
+      providers: [],
+      selectedProvider: "codex",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(async () => {}),
+      respondToUserInput: vi.fn(),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    render(
+      <ChatPanel
+        acp={acp}
+        activeSessionId="session-123"
+        onEnsureSession={vi.fn(async () => "session-123")}
+        onSelectSession={vi.fn(async () => {})}
+        repoSelection={null}
+        onRepoChange={vi.fn()}
+        onPrepareCanvasPrompt={onPrepareCanvasPrompt}
+        canvasPromptLabel="Use Canvas"
+        canvasPromptShortLabel="Canvas"
+      />,
+    );
+
+    const canvasButton = screen.getByRole("button", { name: "Use Canvas" });
+
+    expect(canvasButton).toHaveProperty("disabled", true);
+    expect(canvasButton.getAttribute("title")).toBe("Connect first");
+    fireEvent.click(canvasButton);
+    expect(onPrepareCanvasPrompt).not.toHaveBeenCalled();
+  });
 });

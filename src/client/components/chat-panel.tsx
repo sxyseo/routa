@@ -146,6 +146,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const { t } = useTranslation();
   const { connected, loading, error, authError, updates, promptSession, clearAuthError } = acp;
+  const canvasPromptDisabled = !connected;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [copiedRepoPath, setCopiedRepoPath] = useState(false);
   // View mode: 'chat' or 'trace'
@@ -701,13 +702,14 @@ export function ChatPanel({
                 {onPrepareCanvasPrompt && canvasPromptLabel && canvasPromptShortLabel && (
                   <button
                     type="button"
-                    onClick={onPrepareCanvasPrompt}
+                    onClick={canvasPromptDisabled ? undefined : onPrepareCanvasPrompt}
+                    disabled={canvasPromptDisabled}
                     className={`mb-[1px] flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
                       canvasPromptActive
                         ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200"
                         : "border-slate-200 bg-slate-50 text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-[#161922] dark:text-slate-400 dark:hover:border-blue-800 dark:hover:bg-blue-900/20 dark:hover:text-blue-300"
-                    }`}
-                    title={canvasPromptLabel}
+                    } disabled:cursor-not-allowed disabled:opacity-45`}
+                    title={canvasPromptDisabled ? t.chat.connectFirst : canvasPromptLabel}
                     aria-label={canvasPromptLabel}
                     aria-pressed={canvasPromptActive}
                   >
