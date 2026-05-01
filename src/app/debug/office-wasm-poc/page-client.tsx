@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useCallback, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { resolveApiPath } from "@/client/config/backend";
 import { toErrorMessage } from "@/client/utils/diagnostics";
@@ -22,6 +22,11 @@ type ParsedArtifact = {
 };
 
 type RecordValue = Record<string, unknown>;
+
+type ImageSource = {
+  id: string;
+  src: string;
+};
 
 type PreviewLabels = {
   visualPreview: string;
@@ -180,6 +185,40 @@ function asNumber(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function bytesFromUnknown(value: unknown): Uint8Array | null {
+  if (value instanceof Uint8Array) return value;
+  if (Array.isArray(value) && value.every((item) => typeof item === "number")) {
+    return new Uint8Array(value);
+  }
+
+  const record = asRecord(value);
+  if (record == null) return null;
+
+  const numericKeys = Object.keys(record)
+    .filter((key) => /^\d+$/.test(key))
+    .map(Number)
+    .sort((left, right) => left - right);
+
+  if (numericKeys.length === 0) return null;
+
+  const bytes = new Uint8Array(numericKeys.length);
+  for (const key of numericKeys) {
+    bytes[key] = asNumber(record[String(key)]);
+  }
+
+  return bytes;
+}
+
+function inferImageContentType(id: string): string {
+  const extension = id.toLowerCase().split(".").pop();
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "png") return "image/png";
+  if (extension === "gif") return "image/gif";
+  if (extension === "webp") return "image/webp";
+  if (extension === "svg") return "image/svg+xml";
+  return "application/octet-stream";
+}
+
 function colorToCss(value: unknown): string | undefined {
   const color = asRecord(value);
   const raw = asString(color?.value);
@@ -193,6 +232,23 @@ function fillToCss(fill: unknown): string | undefined {
   const fillRecord = asRecord(fill);
   if (fillRecord == null || asNumber(fillRecord.type) === 0) return undefined;
   return colorToCss(fillRecord.color);
+}
+
+function imageReferenceId(value: unknown): string {
+  const record = asRecord(value);
+  return asString(record?.id);
+}
+
+function elementImageReferenceId(element: RecordValue): string {
+  const direct = imageReferenceId(element.imageReference);
+  if (direct) return direct;
+
+  const fill = asRecord(element.fill);
+  const fillImage = imageReferenceId(fill?.imageReference);
+  if (fillImage) return fillImage;
+
+  const shapeFill = asRecord(asRecord(element.shape)?.fill);
+  return imageReferenceId(shapeFill?.imageReference);
 }
 
 function paragraphText(paragraph: unknown): string {
@@ -391,32 +447,162 @@ const sheetCellStyle = {
 };
 
 function PresentationPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
-  const slides = asArray(asRecord(proto)?.slides).map(asRecord).filter((slide): slide is RecordValue => slide != null);
+  const root = asRecord(proto);
+  const slides = asArray(root?.slides).map(asRecord).filter((slide): slide is RecordValue => slide != null);
+  const imageSources = usePresentationImageSources(root);
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const selectedSlideIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
+  const selectedSlide = slides[selectedSlideIndex] ?? {};
 
   if (slides.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSlides}</p>;
   }
 
   return (
-    <div data-testid="presentation-preview" style={{ display: "grid", gap: 18 }}>
-      {slides.slice(0, 8).map((slide, index) => (
-        <SlideCanvas key={`${asString(slide.id)}-${index}`} labels={labels} slide={slide} slideIndex={index} />
-      ))}
+    <div
+      data-testid="presentation-preview"
+      style={{
+        background: "#f8fafc",
+        border: "1px solid #cbd5e1",
+        borderRadius: 8,
+        display: "grid",
+        gridTemplateColumns: "minmax(150px, 220px) minmax(0, 1fr)",
+        minHeight: 620,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          borderRight: "1px solid #cbd5e1",
+          display: "grid",
+          gap: 10,
+          maxHeight: 720,
+          overflowY: "auto",
+          padding: 12,
+        }}
+      >
+        {slides.map((slide, index) => (
+          <button
+            key={`${asString(slide.id)}-${index}`}
+            onClick={() => setActiveSlideIndex(index)}
+            style={{
+              background: "transparent",
+              border: "0",
+              color: "#0f172a",
+              cursor: "pointer",
+              display: "grid",
+              gap: 6,
+              padding: 0,
+              textAlign: "left",
+            }}
+            type="button"
+          >
+            <span style={{ color: "#475569", fontSize: 12, fontWeight: 600 }}>
+              {labels.slide} {asNumber(slide.index, index + 1)}
+            </span>
+            <SlideFrame
+              imageSources={imageSources}
+              isActive={index === selectedSlideIndex}
+              slide={slide}
+            />
+          </button>
+        ))}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateRows: "auto minmax(0, 1fr)",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <SlideCanvas
+          imageSources={imageSources}
+          labels={labels}
+          slide={selectedSlide}
+          slideIndex={selectedSlideIndex}
+        />
+      </div>
     </div>
   );
 }
 
 function SlideCanvas({
+  imageSources,
   labels,
   slide,
   slideIndex,
 }: {
+  imageSources: Map<string, string>;
   labels: PreviewLabels;
   slide: RecordValue;
   slideIndex: number;
 }) {
   const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
-  const bounds = elements.reduce<{ width: number; height: number }>(
+  const textRunCount = elements.reduce((count, element) => {
+    return count + collectTextBlocks(element, 20).length;
+  }, 0);
+
+  return (
+    <article style={{ display: "grid", gap: 12, minHeight: 0, overflow: "auto", padding: 18 }}>
+      <div style={{ color: "#475569", display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13 }}>
+        <strong>{labels.slide} {asNumber(slide.index, slideIndex + 1)}</strong>
+        <span>{elements.length} {labels.shapes}</span>
+        <span>{textRunCount} {labels.textRuns}</span>
+      </div>
+      <SlideFrame imageSources={imageSources} slide={slide} />
+    </article>
+  );
+}
+
+function usePresentationImageSources(root: RecordValue | null): Map<string, string> {
+  const imageRecords = useMemo(() => {
+    return asArray(root?.images).map(asRecord).filter((image): image is RecordValue => image != null);
+  }, [root]);
+
+  const imageSources = useMemo(() => {
+    const sources: ImageSource[] = [];
+    for (const image of imageRecords) {
+      const id = asString(image.id);
+      if (!id) continue;
+
+      const uri = asString(image.uri);
+      if (uri) {
+        sources.push({ id, src: uri });
+        continue;
+      }
+
+      const bytes = bytesFromUnknown(image.data);
+      if (bytes == null || bytes.byteLength === 0) continue;
+
+      const contentType = asString(image.contentType) || inferImageContentType(id);
+      const payload = new ArrayBuffer(bytes.byteLength);
+      new Uint8Array(payload).set(bytes);
+      const blob = new Blob([payload], { type: contentType });
+      sources.push({ id, src: URL.createObjectURL(blob) });
+    }
+
+    return sources;
+  }, [imageRecords]);
+
+  useEffect(() => {
+    return () => {
+      for (const image of imageSources) {
+        if (image.src.startsWith("blob:")) {
+          URL.revokeObjectURL(image.src);
+        }
+      }
+    };
+  }, [imageSources]);
+
+  return useMemo(() => {
+    return new Map(imageSources.map((image) => [image.id, image.src]));
+  }, [imageSources]);
+}
+
+function slideBounds(slide: RecordValue): { width: number; height: number } {
+  const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
+  return elements.reduce<{ width: number; height: number }>(
     (acc, element) => {
       const bbox = asRecord(element.bbox);
       return {
@@ -426,47 +612,53 @@ function SlideCanvas({
     },
     { width: 12_192_000, height: 6_858_000 },
   );
-  const textRunCount = elements.reduce((count, element) => {
-    return count + collectTextBlocks(element, 20).length;
-  }, 0);
+}
+
+function SlideFrame({
+  imageSources,
+  isActive = false,
+  slide,
+}: {
+  imageSources: Map<string, string>;
+  isActive?: boolean;
+  slide: RecordValue;
+}) {
+  const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
+  const bounds = slideBounds(slide);
 
   return (
-    <article style={{ display: "grid", gap: 8 }}>
-      <div style={{ color: "#475569", display: "flex", gap: 12, fontSize: 13 }}>
-        <strong>{labels.slide} {asNumber(slide.index, slideIndex + 1)}</strong>
-        <span>{elements.length} {labels.shapes}</span>
-        <span>{textRunCount} {labels.textRuns}</span>
-      </div>
-      <div
-        style={{
-          aspectRatio: `${bounds.width} / ${bounds.height}`,
-          background: "#ffffff",
-          border: "1px solid #cbd5e1",
-          borderRadius: 8,
-          boxShadow: "0 8px 22px rgba(15, 23, 42, 0.12)",
-          overflow: "hidden",
-          position: "relative",
-          width: "100%",
-        }}
-      >
-        {elements.map((element, index) => (
-          <SlideElement
-            bounds={bounds}
-            element={element}
-            key={`${asString(element.id)}-${index}`}
-          />
-        ))}
-      </div>
-    </article>
+    <div
+      style={{
+        aspectRatio: `${bounds.width} / ${bounds.height}`,
+        background: "#ffffff",
+        border: `1px solid ${isActive ? "#0285ff" : "#cbd5e1"}`,
+        borderRadius: 6,
+        boxShadow: isActive ? "0 0 0 2px rgba(2, 133, 255, 0.18)" : "0 8px 22px rgba(15, 23, 42, 0.12)",
+        overflow: "hidden",
+        position: "relative",
+        width: "100%",
+      }}
+    >
+      {elements.map((element, index) => (
+        <SlideElement
+          bounds={bounds}
+          element={element}
+          imageSources={imageSources}
+          key={`${asString(element.id)}-${index}`}
+        />
+      ))}
+    </div>
   );
 }
 
 function SlideElement({
   bounds,
   element,
+  imageSources,
 }: {
   bounds: { width: number; height: number };
   element: RecordValue;
+  imageSources: Map<string, string>;
 }) {
   const bbox = asRecord(element.bbox);
   const shape = asRecord(element.shape);
@@ -476,6 +668,8 @@ function SlideElement({
   const fill = fillToCss(shape?.fill);
   const textColor = colorToCss(asRecord(textStyle?.fill)?.color) ?? "#0f172a";
   const fontSize = Math.max(10, Math.min(44, asNumber(textStyle?.fontSize, 1200) / 100));
+  const imageId = elementImageReferenceId(element);
+  const imageSrc = imageId ? imageSources.get(imageId) : undefined;
 
   return (
     <div
@@ -500,7 +694,22 @@ function SlideElement({
       }}
       title={asString(element.name)}
     >
-      {text}
+      {imageSrc ? (
+        <span
+          aria-hidden="true"
+          style={{
+            backgroundImage: `url("${imageSrc}")`,
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "cover",
+            height: "100%",
+            inset: 0,
+            position: "absolute",
+            width: "100%",
+          }}
+        />
+      ) : null}
+      {text ? <span style={{ position: "relative", zIndex: 1 }}>{text}</span> : null}
     </div>
   );
 }
@@ -632,7 +841,20 @@ export function OfficeWasmPocPageClient() {
   };
 
   return (
-    <main style={{ padding: 24, fontFamily: "Arial, sans-serif", maxWidth: 1080 }}>
+    <main
+      style={{
+        boxSizing: "border-box",
+        display: "grid",
+        fontFamily: "Arial, sans-serif",
+        gap: 16,
+        height: "100vh",
+        maxWidth: "none",
+        minHeight: "100vh",
+        overflowY: "auto",
+        padding: 24,
+        width: "100%",
+      }}
+    >
       <h1>{t.debug.officeWasmPocTitle}</h1>
       <p>{t.debug.officeWasmPocDescription}</p>
       <label style={{ display: "grid", gap: 8, width: "100%", maxWidth: 360 }}>

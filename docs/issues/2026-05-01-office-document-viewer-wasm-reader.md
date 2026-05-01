@@ -330,16 +330,24 @@ Validated with local files from `~/Downloads`:
 - DOCX: `/Users/phodal/Downloads/office-wasm-poc-word-smoke.docx`
 - XLSX: `/Users/phodal/Downloads/test-file.xlsx`
 - PPTX: `/Users/phodal/Downloads/agentic_ui_proactive_agent_technical_blueprint.pptx`
+- PPTX with images/layout smoke: `/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx`
 
 Checks run:
 
 ```bash
 npm run debug:office-wasm:check
-npx eslint --max-warnings=0 'src/app/debug/office-wasm-poc/page-client.tsx' 'src/app/api/debug/office-wasm-poc/assets/[...slug]/route.ts' 'src/i18n/types-tail.ts' 'src/i18n/locales/en-tail.ts' 'src/i18n/locales/zh-tail.ts'
+npx eslint --max-warnings=0 'src/app/debug/office-wasm-poc/page-client.tsx'
 npx tsc --noEmit --pretty false
 ```
 
 The consistency check validates that the POC runtime config, module filenames, reader ABI names, and panel contracts still match `tmp/codex-app-analysis/extracted/webview/assets/artifact-tab-content.electron-DmcFg9h8.js`.
+
+Additional browser smoke validation after adding the Codex-like PPTX split layout:
+
+- DOCX/DOCUMENT preview still renders expected text/table content.
+- XLSX/SPREADSHEET preview still renders sheet tabs and cells.
+- Existing PPTX preview still renders expected title content.
+- `《此心安处》` PPTX renders as left thumbnail rail plus right slide canvas, with scrollable page container, scrollable thumbnail rail, and 22 image-backed elements detected in the preview DOM.
 
 Screenshots:
 
@@ -348,6 +356,8 @@ Screenshots:
 ![XLSX preview](./assets/2026-05-01-office-wasm-poc/xlsx-preview.png)
 
 ![PPTX preview](./assets/2026-05-01-office-wasm-poc/pptx-preview.png)
+
+![PPTX image preview](./assets/2026-05-01-office-wasm-poc/chixin-pptx-preview.png)
 
 ## References
 
