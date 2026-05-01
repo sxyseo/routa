@@ -26,6 +26,7 @@ internal static class XlsxArtifactReader
         }
 
         var sharedStrings = workbookPart.SharedStringTablePart?.SharedStringTable;
+        ExtractStyles(workbookPart.WorkbookStylesPart?.Stylesheet, artifact.Styles);
         foreach (var sheetElement in workbookPart.Workbook.Sheets.Elements<S.Sheet>())
         {
             if (artifact.Sheets.Count >= OpenXmlReaderLimits.MaxSheets)
@@ -51,15 +52,23 @@ internal static class XlsxArtifactReader
             };
             artifact.Title = FirstNonEmpty(artifact.Title, sheet.Name);
 
+            ExtractSheetLayout(worksheetPart, sheet);
             foreach (var rowElement in worksheetPart.Worksheet.Descendants<S.Row>().Take(OpenXmlReaderLimits.MaxRowsPerSheet))
             {
-                var row = new RowModel();
+                var row = new RowModel
+                {
+                    Index = (uint)(rowElement.RowIndex?.Value ?? 0),
+                    Height = rowElement.Height?.Value ?? 0,
+                };
                 foreach (var cellElement in rowElement.Elements<S.Cell>().Take(OpenXmlReaderLimits.MaxCellsPerRow))
                 {
                     row.Cells.Add(new CellModel(
                         cellElement.CellReference?.Value ?? "",
                         ReadCellText(cellElement, sharedStrings),
-                        TextNormalization.Clean(cellElement.CellFormula?.Text)));
+                        TextNormalization.Clean(cellElement.CellFormula?.Text),
+                        cellElement.DataType?.Value.ToString() ?? "",
+                        (uint)(cellElement.StyleIndex?.Value ?? 0),
+                        CellHasValue(cellElement)));
                 }
 
                 if (row.Cells.Count > 0)
@@ -68,7 +77,7 @@ internal static class XlsxArtifactReader
                 }
             }
 
-            ExtractSheetFeatures(worksheetPart, sheet);
+            ExtractSheetFeatures(worksheetPart, sheet, workbookPart.WorkbookStylesPart?.Stylesheet);
             artifact.Sheets.Add(sheet);
         }
 
@@ -100,6 +109,13 @@ internal static class XlsxArtifactReader
         }
 
         return TextNormalization.Clean(raw);
+    }
+
+    private static bool CellHasValue(S.Cell cell)
+    {
+        return !string.IsNullOrEmpty(cell.CellValue?.Text) ||
+               !string.IsNullOrEmpty(cell.InlineString?.InnerText) ||
+               cell.CellFormula is not null;
     }
 
     private static void ExtractImages(WorkbookPart workbookPart, OfficeArtifactModel artifact)
@@ -144,7 +160,23 @@ internal static class XlsxArtifactReader
         }
     }
 
-    private static void ExtractSheetFeatures(WorksheetPart worksheetPart, SheetModel sheet)
+    private static void ExtractSheetLayout(WorksheetPart worksheetPart, SheetModel sheet)
+    {
+        var format = worksheetPart.Worksheet.SheetFormatProperties;
+        sheet.DefaultColWidth = format?.DefaultColumnWidth?.Value ?? 0;
+        sheet.DefaultRowHeight = format?.DefaultRowHeight?.Value ?? 0;
+
+        foreach (var column in worksheetPart.Worksheet.Elements<S.Columns>().SelectMany(columns => columns.Elements<S.Column>()))
+        {
+            sheet.Columns.Add(new ColumnModel(
+                (uint)(column.Min?.Value ?? 0),
+                (uint)(column.Max?.Value ?? 0),
+                column.Width?.Value ?? 0,
+                column.Hidden?.Value ?? false));
+        }
+    }
+
+    private static void ExtractSheetFeatures(WorksheetPart worksheetPart, SheetModel sheet, S.Stylesheet? stylesheet)
     {
         foreach (var mergeCell in worksheetPart.Worksheet.Descendants<S.MergeCell>())
         {
@@ -158,9 +190,12 @@ internal static class XlsxArtifactReader
         foreach (var tablePart in worksheetPart.TableDefinitionParts)
         {
             var table = tablePart.Table;
+            var style = table?.TableStyleInfo;
             sheet.Tables.Add(new SheetTableModel(
                 table?.Name?.Value ?? table?.DisplayName?.Value ?? "",
-                table?.Reference?.Value ?? ""));
+                table?.Reference?.Value ?? "",
+                style?.Name?.Value ?? "",
+                table?.AutoFilter is not null));
         }
 
         foreach (var validation in worksheetPart.Worksheet.Descendants<S.DataValidation>())
@@ -178,12 +213,113 @@ internal static class XlsxArtifactReader
             var ranges = SplitReferences(formatting.GetAttribute("sqref", "").Value ?? "");
             foreach (var rule in formatting.Elements<S.ConditionalFormattingRule>())
             {
+                var differentialStyle = stylesheet?.DifferentialFormats is not null && rule.FormatId?.Value is { } formatId
+                    ? stylesheet.DifferentialFormats.Elements<S.DifferentialFormat>().ElementAtOrDefault((int)formatId)
+                    : null;
+
                 sheet.ConditionalFormats.Add(new ConditionalFormatModel(
                     rule.Type?.Value.ToString() ?? "",
                     (uint)(rule.Priority?.Value ?? 0),
-                    ranges));
+                    ranges,
+                    rule.Operator?.Value.ToString() ?? "",
+                    rule.Elements<S.Formula>().Select(formula => TextNormalization.Clean(formula.Text)).ToArray(),
+                    rule.Text?.Value ?? "",
+                    ExtractFillColor(differentialStyle?.Fill),
+                    ExtractFontColor(differentialStyle?.Font),
+                    differentialStyle?.Font?.Bold is not null,
+                    ReadColorScale(rule.Elements<S.ColorScale>().FirstOrDefault()),
+                    ReadDataBar(rule.Elements<S.DataBar>().FirstOrDefault()),
+                    ReadIconSet(rule.Elements<S.IconSet>().FirstOrDefault())));
             }
         }
+    }
+
+    private static void ExtractStyles(S.Stylesheet? stylesheet, SpreadsheetStylesModel styles)
+    {
+        if (stylesheet is null)
+        {
+            return;
+        }
+
+        foreach (var format in stylesheet.NumberingFormats?.Elements<S.NumberingFormat>() ?? [])
+        {
+            styles.NumberFormats.Add(new NumberFormatModel(
+                (uint)(format.NumberFormatId?.Value ?? 0),
+                format.FormatCode?.Value ?? ""));
+        }
+
+        foreach (var format in stylesheet.CellFormats?.Elements<S.CellFormat>() ?? [])
+        {
+            styles.CellFormats.Add(new CellFormatModel(
+                (uint)(format.NumberFormatId?.Value ?? 0),
+                (uint)(format.FontId?.Value ?? 0),
+                (uint)(format.FillId?.Value ?? 0),
+                (uint)(format.BorderId?.Value ?? 0),
+                format.Alignment?.Horizontal?.Value.ToString() ?? "",
+                format.Alignment?.Vertical?.Value.ToString() ?? ""));
+        }
+
+        foreach (var font in stylesheet.Fonts?.Elements<S.Font>() ?? [])
+        {
+            styles.Fonts.Add(new FontStyleModel(
+                font.Bold is not null,
+                font.Italic is not null,
+                font.FontSize?.Val?.Value ?? 0,
+                font.FontName?.Val?.Value ?? "",
+                ExtractFontColor(font)));
+        }
+
+        foreach (var fill in stylesheet.Fills?.Elements<S.Fill>() ?? [])
+        {
+            styles.Fills.Add(new FillStyleModel(ExtractFillColor(fill)));
+        }
+
+        foreach (var border in stylesheet.Borders?.Elements<S.Border>() ?? [])
+        {
+            styles.Borders.Add(new BorderStyleModel(ReadColor(border.BottomBorder?.Color)));
+        }
+    }
+
+    private static ColorScaleModel? ReadColorScale(S.ColorScale? colorScale)
+    {
+        var colors = colorScale?.Elements<S.Color>().Select(ReadColor).Where(color => color.Length > 0).ToArray() ?? [];
+        return colors.Length > 0 ? new ColorScaleModel(colors) : null;
+    }
+
+    private static DataBarModel? ReadDataBar(S.DataBar? dataBar)
+    {
+        var color = ReadColor(dataBar?.Elements<S.Color>().FirstOrDefault());
+        return color.Length > 0 ? new DataBarModel(color) : null;
+    }
+
+    private static IconSetModel? ReadIconSet(S.IconSet? iconSet)
+    {
+        if (iconSet is null)
+        {
+            return null;
+        }
+
+        return new IconSetModel(
+            iconSet.IconSetValue?.Value.ToString() ?? "",
+            iconSet.ShowValue?.Value ?? true,
+            iconSet.Reverse?.Value ?? false);
+    }
+
+    private static string ExtractFillColor(S.Fill? fill)
+    {
+        return FirstNonEmpty(
+            ReadColor(fill?.PatternFill?.ForegroundColor),
+            ReadColor(fill?.PatternFill?.BackgroundColor));
+    }
+
+    private static string ExtractFontColor(S.Font? font)
+    {
+        return ReadColor(font?.Color);
+    }
+
+    private static string ReadColor(OpenXmlElement? color)
+    {
+        return color?.GetAttribute("rgb", "").Value ?? "";
     }
 
     private static IReadOnlyList<string> SplitReferences(string value)

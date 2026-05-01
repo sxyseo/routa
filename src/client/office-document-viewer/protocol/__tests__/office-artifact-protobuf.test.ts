@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { decodeRoutaOfficeArtifact } from "../office-artifact-protobuf";
 
 const WIRE_VARINT = 0;
+const WIRE_64_BIT = 1;
 const WIRE_LENGTH_DELIMITED = 2;
 const encoder = new TextEncoder();
 
@@ -19,18 +20,23 @@ describe("decodeRoutaOfficeArtifact", () => {
           messageField(
             2,
             message([
+              varintField(2, 1),
+              doubleField(3, 24),
               messageField(
                 1,
                 message([
                   stringField(1, "A1"),
                   stringField(2, "42"),
                   stringField(3, "SUM(A2:A3)"),
+                  stringField(4, "Number"),
+                  varintField(5, 3),
+                  varintField(6, 1),
                 ]),
               ),
             ]),
           ),
           messageField(3, message([stringField(1, "A1:C2")])),
-          messageField(4, message([stringField(1, "Tasks"), stringField(2, "A1:C10")])),
+          messageField(4, message([stringField(1, "Tasks"), stringField(2, "A1:C10"), stringField(3, "TableStyleMedium2")])),
           messageField(
             5,
             message([
@@ -45,8 +51,14 @@ describe("decodeRoutaOfficeArtifact", () => {
               stringField(1, "cellIs"),
               varintField(2, 3),
               stringField(3, "C2:C10"),
+              stringField(4, "greaterThan"),
+              stringField(5, "0"),
+              stringField(7, "DCFCE7"),
             ]),
           ),
+          messageField(7, message([varintField(1, 1), varintField(2, 3), doubleField(3, 14)])),
+          doubleField(8, 10),
+          doubleField(9, 18),
         ]),
       ),
       messageField(
@@ -84,6 +96,16 @@ describe("decodeRoutaOfficeArtifact", () => {
           stringField(4, "line"),
         ]),
       ),
+      messageField(
+        11,
+        message([
+          messageField(1, message([varintField(1, 200), stringField(2, "$#,##0")])),
+          messageField(2, message([varintField(1, 200), varintField(2, 1), varintField(3, 2), varintField(4, 3)])),
+          messageField(3, message([varintField(1, 1), doubleField(3, 12), stringField(4, "Arial"), stringField(5, "FF0000")])),
+          messageField(4, message([stringField(1, "DCFCE7")])),
+          messageField(5, message([stringField(1, "E5E7EB")])),
+        ]),
+      ),
     ]);
 
     const artifact = decodeRoutaOfficeArtifact(payload);
@@ -93,9 +115,16 @@ describe("decodeRoutaOfficeArtifact", () => {
     expect(artifact.textBlocks[0]).toEqual({ path: "body.paragraph[0]", text: "Hello" });
     expect(artifact.sheets[0].rows[0].cells[0]).toEqual({
       address: "A1",
+      dataType: "Number",
       formula: "SUM(A2:A3)",
+      hasValue: true,
+      styleIndex: 3,
       text: "42",
     });
+    expect(artifact.sheets[0].rows[0].index).toBe(1);
+    expect(artifact.sheets[0].rows[0].height).toBe(24);
+    expect(artifact.sheets[0].columns[0]).toEqual({ hidden: false, max: 3, min: 1, width: 14 });
+    expect(artifact.sheets[0].defaultRowHeight).toBe(18);
     expect(artifact.slides[0].textBlocks[0].text).toBe("Title");
     expect(artifact.diagnostics[0]).toEqual({ level: "warning", message: "truncated" });
     expect(artifact.metadata.reader).toBe("routa-office-wasm-reader");
@@ -109,13 +138,27 @@ describe("decodeRoutaOfficeArtifact", () => {
       title: "Velocity",
     });
     expect(artifact.sheets[0].mergedRanges[0]).toEqual({ reference: "A1:C2" });
-    expect(artifact.sheets[0].tables[0]).toEqual({ name: "Tasks", reference: "A1:C10" });
+    expect(artifact.sheets[0].tables[0]).toEqual({
+      name: "Tasks",
+      reference: "A1:C10",
+      showFilterButton: true,
+      style: "TableStyleMedium2",
+    });
     expect(artifact.sheets[0].dataValidations[0].ranges).toEqual(["B2:B10"]);
     expect(artifact.sheets[0].conditionalFormats[0]).toEqual({
+      bold: false,
+      fillColor: "DCFCE7",
+      fontColor: "",
+      formulas: ["0"],
+      operator: "greaterThan",
       priority: 3,
       ranges: ["C2:C10"],
+      text: "",
       type: "cellIs",
     });
+    expect(artifact.styles.numberFormats[0]).toEqual({ formatCode: "$#,##0", id: 200 });
+    expect(artifact.styles.cellXfs[0].numFmtId).toBe(200);
+    expect(artifact.styles.fonts[0].typeface).toBe("Arial");
   });
 
   it("skips unknown length-delimited fields", () => {
@@ -144,6 +187,12 @@ function bytesField(fieldNumber: number, value: Uint8Array): Uint8Array {
 
 function varintField(fieldNumber: number, value: number): Uint8Array {
   return concat([tag(fieldNumber, WIRE_VARINT), varint(value)]);
+}
+
+function doubleField(fieldNumber: number, value: number): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setFloat64(0, value, true);
+  return concat([tag(fieldNumber, WIRE_64_BIT), bytes]);
 }
 
 function tag(fieldNumber: number, wireType: number): Uint8Array {

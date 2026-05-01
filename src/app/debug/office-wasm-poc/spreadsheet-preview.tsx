@@ -29,6 +29,8 @@ type SpreadsheetCellVisual = {
     percent: number;
   };
   filter?: boolean;
+  color?: string;
+  fontWeight?: CSSProperties["fontWeight"];
 };
 
 type SpreadsheetChartSeries = {
@@ -270,11 +272,11 @@ function spreadsheetCellStyle(
     background: visual?.background ?? fillColor ?? fallbackStyle.background,
     borderBottomColor: borderColor,
     borderRightColor: borderColor,
-    color: fontColor ?? fallbackStyle.color ?? sheetCellStyle.color,
+    color: visual?.color ?? fontColor ?? fallbackStyle.color ?? sheetCellStyle.color,
     fontFamily: asString(font?.typeface) || undefined,
     fontSize: font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize,
     fontStyle: font?.italic === true ? "italic" : fallbackStyle.fontStyle,
-    fontWeight: font?.bold === true ? 700 : fallbackStyle.fontWeight,
+    fontWeight: visual?.fontWeight ?? (font?.bold === true ? 700 : fallbackStyle.fontWeight),
     textAlign: (asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment)) as CSSProperties["textAlign"] || fallbackStyle.textAlign,
     verticalAlign: asString(alignment?.vertical) as CSSProperties["verticalAlign"] || fallbackStyle.verticalAlign || sheetCellStyle.verticalAlign,
   };
@@ -362,12 +364,21 @@ function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | nul
   const address = asString(cell?.address);
   const rowIndex = rowIndexFromAddress(address);
 
+  if (cell != null && cell.hasValue === false && !asString(cell.formula)) return "";
   const numberValue = Number(text);
   if (sheetName && rowIndex === 3 && Number.isFinite(numberValue)) return "";
   if (cell == null || !Number.isFinite(numberValue)) return text;
 
-  if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
   const columnIndex = columnIndexFromAddress(address);
+  const cellFormat = styleAt(styles?.cellXfs, cell.styleIndex);
+  const numberFormatId = asNumber(cellFormat?.numFmtId, -1);
+  const numberFormat = asArray(styles?.numberFormats)
+    .map(asRecord)
+    .find((format) => asNumber(format?.id, -2) === numberFormatId);
+  const formatCode = asString(numberFormat?.formatCode);
+
+  if (formatCode.includes("mmm") && formatCode.includes("yy")) return excelSerialMonthYearLabel(numberValue);
+  if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
 
   if (sheetName === "03_TimeSeries") {
     if (columnIndex === 3) return `${Math.round(numberValue * 100)}%`;
@@ -379,13 +390,6 @@ function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | nul
     if (columnIndex === 2) return `${Math.round(numberValue * 100)}%`;
     if (columnIndex === 3) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
   }
-
-  const cellFormat = styleAt(styles?.cellXfs, cell.styleIndex);
-  const numberFormatId = asNumber(cellFormat?.numFmtId, -1);
-  const numberFormat = asArray(styles?.numberFormats)
-    .map(asRecord)
-    .find((format) => asNumber(format?.id, -2) === numberFormatId);
-  const formatCode = asString(numberFormat?.formatCode);
 
   if (formatCode.includes("%")) return `${(numberValue * 100).toFixed(formatCode.includes(".0") ? 1 : 0)}%`;
   if (formatCode.includes("$")) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
@@ -640,16 +644,119 @@ function dataBarColorForRange(sheetName: string, reference: string): string {
   return "#38bdf8";
 }
 
+function hexColorToRgb(value: string): { blue: number; green: number; red: number } | null {
+  const normalized = /^[0-9a-f]{8}$/i.test(value) ? value.slice(2) : value;
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return null;
+  return {
+    blue: Number.parseInt(normalized.slice(4, 6), 16),
+    green: Number.parseInt(normalized.slice(2, 4), 16),
+    red: Number.parseInt(normalized.slice(0, 2), 16),
+  };
+}
+
+function protocolColorToCss(value: unknown): string | undefined {
+  const raw = asString(value);
+  const rgb = hexColorToRgb(raw);
+  return rgb ? `#${raw.slice(-6)}` : undefined;
+}
+
+function colorScaleColor(value: number, minValue: number, maxValue: number, colors: string[]): string {
+  const normalizedColors = colors.map(hexColorToRgb).filter((color): color is { blue: number; green: number; red: number } => color != null);
+  if (normalizedColors.length < 2 || maxValue <= minValue) {
+    return protocolColorToCss(colors[0]) ?? "#fff4c2";
+  }
+
+  const ratio = Math.max(0, Math.min(1, (value - minValue) / (maxValue - minValue)));
+  if (normalizedColors.length === 2 || ratio <= 0.5) {
+    return interpolateColor(normalizedColors[0], normalizedColors[Math.min(1, normalizedColors.length - 1)], normalizedColors.length === 2 ? ratio : ratio * 2);
+  }
+
+  return interpolateColor(normalizedColors[1], normalizedColors[2], (ratio - 0.5) * 2);
+}
+
+function conditionalTextMatches(format: RecordValue, text: string, numericValue: number | null): boolean {
+  const type = asString(format.type);
+  if (type === "containsText") {
+    return text.includes(asString(format.text));
+  }
+
+  if (type === "cellIs" && numericValue != null) {
+    const formula = Number(asArray(format.formulas).map(asString)[0] ?? "");
+    const operator = asString(format.operator);
+    if (!Number.isFinite(formula)) return false;
+    if (operator === "lessThan") return numericValue < formula;
+    if (operator === "lessThanOrEqual") return numericValue <= formula;
+    if (operator === "greaterThan") return numericValue > formula;
+    if (operator === "greaterThanOrEqual") return numericValue >= formula;
+    if (operator === "equal") return numericValue === formula;
+  }
+
+  return false;
+}
+
 function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
   const visuals = buildSpreadsheetTableHeaderVisuals(sheet);
   const sheetName = asString(sheet?.name);
-  const conditionalReferences = asArray(sheet?.conditionalFormats)
-    .flatMap((format) => asArray(asRecord(format)?.ranges))
+  const conditionalFormats = asArray(sheet?.conditionalFormats)
+    .map(asRecord)
+    .filter((format): format is RecordValue => format != null);
+  const conditionalReferences = conditionalFormats
+    .flatMap((format) => asArray(format.ranges))
     .map(asString)
     .filter(Boolean);
 
   if (conditionalReferences.length === 0) {
     conditionalReferences.push(...knownSpreadsheetConditionalReferences(sheetName));
+  }
+
+  for (const format of conditionalFormats) {
+    for (const reference of asArray(format.ranges).map(asString).filter(Boolean)) {
+      const values = numericValuesInRange(sheet, reference);
+      const minValue = values.length > 0 ? Math.min(...values.map((item) => item.value)) : 0;
+      const maxValue = values.length > 0 ? Math.max(...values.map((item) => item.value)) : 0;
+      const colorScale = asRecord(format.colorScale);
+      const dataBar = asRecord(format.dataBar);
+
+      if (colorScale) {
+        const colors = asArray(colorScale.colors).map(asString).filter(Boolean);
+        for (const item of values) {
+          mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
+            background: colorScaleColor(item.value, minValue, maxValue, colors),
+          });
+        }
+        continue;
+      }
+
+      if (dataBar) {
+        const maxAbs = Math.max(1, ...values.map((item) => Math.abs(item.value)));
+        const color = protocolColorToCss(dataBar.color) ?? "#38bdf8";
+        for (const item of values) {
+          mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
+            dataBar: {
+              color,
+              percent: Math.max(0, Math.min(100, Math.abs(item.value) / maxAbs * 100)),
+            },
+          });
+        }
+        continue;
+      }
+
+      forEachCellInRange(reference, (rowIndex, columnIndex) => {
+        const cell = cellAt(sheet, rowIndex, columnIndex);
+        const text = cellText(cell);
+        const numericValue = cellNumberAt(sheet, rowIndex, columnIndex);
+        if (!conditionalTextMatches(format, text, numericValue)) return;
+        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, {
+          background: protocolColorToCss(format.fillColor),
+          color: protocolColorToCss(format.fontColor),
+          fontWeight: format.bold === true ? 700 : undefined,
+        });
+      });
+    }
+  }
+
+  if (conditionalFormats.length > 0) {
+    return visuals;
   }
 
   for (const reference of conditionalReferences) {

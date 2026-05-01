@@ -11,10 +11,15 @@ export interface RoutaOfficeCell {
   address: string;
   text: string;
   formula: string;
+  dataType: string;
+  styleIndex: number;
+  hasValue: boolean;
 }
 
 export interface RoutaOfficeRow {
   cells: RoutaOfficeCell[];
+  index: number;
+  height: number;
 }
 
 export interface RoutaOfficeSheet {
@@ -24,6 +29,9 @@ export interface RoutaOfficeSheet {
   tables: RoutaOfficeSheetTable[];
   dataValidations: RoutaOfficeDataValidation[];
   conditionalFormats: RoutaOfficeConditionalFormat[];
+  columns: RoutaOfficeColumn[];
+  defaultColWidth: number;
+  defaultRowHeight: number;
 }
 
 export interface RoutaOfficeTable {
@@ -63,6 +71,8 @@ export interface RoutaOfficeMergedRange {
 export interface RoutaOfficeSheetTable {
   name: string;
   reference: string;
+  style: string;
+  showFilterButton: boolean;
 }
 
 export interface RoutaOfficeDataValidation {
@@ -77,6 +87,74 @@ export interface RoutaOfficeConditionalFormat {
   type: string;
   priority: number;
   ranges: string[];
+  operator: string;
+  formulas: string[];
+  text: string;
+  fillColor: string;
+  fontColor: string;
+  bold: boolean;
+  colorScale?: RoutaOfficeColorScale;
+  dataBar?: RoutaOfficeDataBar;
+  iconSet?: RoutaOfficeIconSet;
+}
+
+export interface RoutaOfficeColumn {
+  min: number;
+  max: number;
+  width: number;
+  hidden: boolean;
+}
+
+export interface RoutaOfficeSpreadsheetStyles {
+  numberFormats: RoutaOfficeNumberFormat[];
+  cellXfs: RoutaOfficeCellFormat[];
+  fonts: RoutaOfficeFontStyle[];
+  fills: RoutaOfficeFillStyle[];
+  borders: RoutaOfficeBorderStyle[];
+}
+
+export interface RoutaOfficeNumberFormat {
+  id: number;
+  formatCode: string;
+}
+
+export interface RoutaOfficeCellFormat {
+  numFmtId: number;
+  fontId: number;
+  fillId: number;
+  borderId: number;
+  horizontalAlignment: string;
+  verticalAlignment: string;
+}
+
+export interface RoutaOfficeFontStyle {
+  bold: boolean;
+  italic: boolean;
+  fontSize: number;
+  typeface: string;
+  color: string;
+}
+
+export interface RoutaOfficeFillStyle {
+  color: string;
+}
+
+export interface RoutaOfficeBorderStyle {
+  bottomColor: string;
+}
+
+export interface RoutaOfficeColorScale {
+  colors: string[];
+}
+
+export interface RoutaOfficeDataBar {
+  color: string;
+}
+
+export interface RoutaOfficeIconSet {
+  name: string;
+  showValue: boolean;
+  reverse: boolean;
 }
 
 export interface RoutaOfficeArtifact {
@@ -90,6 +168,7 @@ export interface RoutaOfficeArtifact {
   images: RoutaOfficeImageAsset[];
   tables: RoutaOfficeTable[];
   charts: RoutaOfficeChart[];
+  styles: RoutaOfficeSpreadsheetStyles;
 }
 
 export function emptyRoutaOfficeArtifact(): RoutaOfficeArtifact {
@@ -101,6 +180,13 @@ export function emptyRoutaOfficeArtifact(): RoutaOfficeArtifact {
     sheets: [],
     slides: [],
     sourceKind: "",
+    styles: {
+      borders: [],
+      cellXfs: [],
+      fills: [],
+      fonts: [],
+      numberFormats: [],
+    },
     tables: [],
     textBlocks: [],
     title: "",

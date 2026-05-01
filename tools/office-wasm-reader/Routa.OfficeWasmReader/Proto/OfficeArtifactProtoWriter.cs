@@ -50,6 +50,15 @@ internal static class OfficeArtifactProtoWriter
             {
                 WriteMessage(output, 10, WriteChart(chart));
             }
+
+            if (artifact.Styles.NumberFormats.Count > 0 ||
+                artifact.Styles.CellFormats.Count > 0 ||
+                artifact.Styles.Fonts.Count > 0 ||
+                artifact.Styles.Fills.Count > 0 ||
+                artifact.Styles.Borders.Count > 0)
+            {
+                WriteMessage(output, 11, WriteSpreadsheetStyles(artifact.Styles));
+            }
         });
     }
 
@@ -91,6 +100,14 @@ internal static class OfficeArtifactProtoWriter
             {
                 WriteMessage(output, 6, WriteConditionalFormat(format));
             }
+
+            foreach (var column in sheet.Columns)
+            {
+                WriteMessage(output, 7, WriteColumn(column));
+            }
+
+            WriteDouble(output, 8, sheet.DefaultColWidth);
+            WriteDouble(output, 9, sheet.DefaultRowHeight);
         });
     }
 
@@ -114,6 +131,9 @@ internal static class OfficeArtifactProtoWriter
             {
                 WriteMessage(output, 1, WriteCell(cell));
             }
+
+            WriteUInt32(output, 2, row.Index);
+            WriteDouble(output, 3, row.Height);
         });
     }
 
@@ -124,6 +144,20 @@ internal static class OfficeArtifactProtoWriter
             WriteString(output, 1, cell.Address);
             WriteString(output, 2, cell.Text);
             WriteString(output, 3, cell.Formula);
+            WriteString(output, 4, cell.DataType);
+            WriteUInt32(output, 5, cell.StyleIndex);
+            WriteBoolAlways(output, 6, cell.HasValue);
+        });
+    }
+
+    private static byte[] WriteColumn(ColumnModel column)
+    {
+        return Message(output =>
+        {
+            WriteUInt32(output, 1, column.Min);
+            WriteUInt32(output, 2, column.Max);
+            WriteDouble(output, 3, column.Width);
+            WriteBool(output, 4, column.Hidden);
         });
     }
 
@@ -194,6 +228,8 @@ internal static class OfficeArtifactProtoWriter
         {
             WriteString(output, 1, table.Name);
             WriteString(output, 2, table.Reference);
+            WriteString(output, 3, table.Style);
+            WriteBool(output, 4, table.ShowFilterButton);
         });
     }
 
@@ -222,6 +258,141 @@ internal static class OfficeArtifactProtoWriter
             {
                 WriteString(output, 3, range);
             }
+
+            WriteString(output, 4, format.Operator);
+            foreach (var formula in format.Formulas ?? [])
+            {
+                WriteString(output, 5, formula);
+            }
+
+            WriteString(output, 6, format.Text);
+            WriteString(output, 7, format.FillColor);
+            WriteString(output, 8, format.FontColor);
+            WriteBool(output, 9, format.Bold);
+            if (format.ColorScale is not null)
+            {
+                WriteMessage(output, 10, WriteColorScale(format.ColorScale));
+            }
+
+            if (format.DataBar is not null)
+            {
+                WriteMessage(output, 11, WriteDataBar(format.DataBar));
+            }
+
+            if (format.IconSet is not null)
+            {
+                WriteMessage(output, 12, WriteIconSet(format.IconSet));
+            }
+        });
+    }
+
+    private static byte[] WriteSpreadsheetStyles(SpreadsheetStylesModel styles)
+    {
+        return Message(output =>
+        {
+            foreach (var format in styles.NumberFormats)
+            {
+                WriteMessage(output, 1, WriteNumberFormat(format));
+            }
+
+            foreach (var format in styles.CellFormats)
+            {
+                WriteMessage(output, 2, WriteCellFormat(format));
+            }
+
+            foreach (var font in styles.Fonts)
+            {
+                WriteMessage(output, 3, WriteFontStyle(font));
+            }
+
+            foreach (var fill in styles.Fills)
+            {
+                WriteMessage(output, 4, WriteFillStyle(fill));
+            }
+
+            foreach (var border in styles.Borders)
+            {
+                WriteMessage(output, 5, WriteBorderStyle(border));
+            }
+        });
+    }
+
+    private static byte[] WriteNumberFormat(NumberFormatModel format)
+    {
+        return Message(output =>
+        {
+            WriteUInt32(output, 1, format.Id);
+            WriteString(output, 2, format.FormatCode);
+        });
+    }
+
+    private static byte[] WriteCellFormat(CellFormatModel format)
+    {
+        return Message(output =>
+        {
+            WriteUInt32(output, 1, format.NumFmtId);
+            WriteUInt32(output, 2, format.FontId);
+            WriteUInt32(output, 3, format.FillId);
+            WriteUInt32(output, 4, format.BorderId);
+            WriteString(output, 5, format.HorizontalAlignment);
+            WriteString(output, 6, format.VerticalAlignment);
+        });
+    }
+
+    private static byte[] WriteFontStyle(FontStyleModel font)
+    {
+        return Message(output =>
+        {
+            WriteBool(output, 1, font.Bold);
+            WriteBool(output, 2, font.Italic);
+            WriteDouble(output, 3, font.FontSize);
+            WriteString(output, 4, font.Typeface);
+            WriteString(output, 5, font.Color);
+        });
+    }
+
+    private static byte[] WriteFillStyle(FillStyleModel fill)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, fill.Color);
+        });
+    }
+
+    private static byte[] WriteBorderStyle(BorderStyleModel border)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, border.BottomColor);
+        });
+    }
+
+    private static byte[] WriteColorScale(ColorScaleModel colorScale)
+    {
+        return Message(output =>
+        {
+            foreach (var color in colorScale.Colors)
+            {
+                WriteString(output, 1, color);
+            }
+        });
+    }
+
+    private static byte[] WriteDataBar(DataBarModel dataBar)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, dataBar.Color);
+        });
+    }
+
+    private static byte[] WriteIconSet(IconSetModel iconSet)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, iconSet.Name);
+            WriteBool(output, 2, iconSet.ShowValue);
+            WriteBool(output, 3, iconSet.Reverse);
         });
     }
 
@@ -264,7 +435,40 @@ internal static class OfficeArtifactProtoWriter
 
     private static void WriteUInt32(CodedOutputStream output, int fieldNumber, uint value)
     {
+        if (value == 0)
+        {
+            return;
+        }
+
         output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
         output.WriteUInt32(value);
+    }
+
+    private static void WriteDouble(CodedOutputStream output, int fieldNumber, double value)
+    {
+        if (value <= 0)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Fixed64);
+        output.WriteDouble(value);
+    }
+
+    private static void WriteBool(CodedOutputStream output, int fieldNumber, bool value)
+    {
+        if (!value)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteBool(value);
+    }
+
+    private static void WriteBoolAlways(CodedOutputStream output, int fieldNumber, bool value)
+    {
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteBool(value);
     }
 }

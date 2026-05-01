@@ -202,6 +202,7 @@ function routaArtifactToPreviewProto(artifact: RoutaOfficeArtifact, kind: Office
       images: artifact.images,
       metadata: artifact.metadata,
       sheets: artifact.sheets.map(routaSheetToPreviewSheet),
+      styles: routaStylesToPreviewStyles(artifact),
       tables: artifact.tables,
       title: artifact.title,
     };
@@ -246,12 +247,15 @@ function routaArtifactToPreviewProto(artifact: RoutaOfficeArtifact, kind: Office
 function routaSheetToPreviewSheet(sheet: RoutaOfficeSheet): RecordValue {
   return {
     conditionalFormats: sheet.conditionalFormats,
-    defaultColWidth: 10,
+    columns: sheet.columns,
+    defaultColWidth: sheet.defaultColWidth || 10,
+    defaultRowHeight: sheet.defaultRowHeight,
     mergedCells: sheet.mergedRanges.map((range) => ({ reference: range.reference })),
     name: sheet.name,
     rows: sheet.rows.map((row, rowIndex) => ({
       cells: row.cells.map(routaCellToPreviewCell),
-      index: rowIndexFromAddress(row.cells[0]?.address ?? "") || rowIndex + 1,
+      height: row.height,
+      index: row.index || rowIndexFromAddress(row.cells[0]?.address ?? "") || rowIndex + 1,
     })),
     tables: sheet.tables,
   };
@@ -260,8 +264,53 @@ function routaSheetToPreviewSheet(sheet: RoutaOfficeSheet): RecordValue {
 function routaCellToPreviewCell(cell: RoutaOfficeCell): RecordValue {
   return {
     address: cell.address,
+    dataType: cell.dataType,
     formula: cell.formula,
+    hasValue: cell.hasValue,
+    styleIndex: cell.styleIndex,
     value: cell.text,
+  };
+}
+
+function routaColorToPreviewColor(color: string): RecordValue | undefined {
+  return color ? { value: color } : undefined;
+}
+
+function routaStylesToPreviewStyles(artifact: RoutaOfficeArtifact): RecordValue {
+  return {
+    borders: artifact.styles.borders.map((border) => ({
+      bottom: { color: routaColorToPreviewColor(border.bottomColor) },
+    })),
+    cellXfs: artifact.styles.cellXfs.map((format) => ({
+      alignment: {
+        horizontal: format.horizontalAlignment,
+        vertical: format.verticalAlignment,
+      },
+      borderId: format.borderId,
+      fillId: format.fillId,
+      fontId: format.fontId,
+      horizontalAlignment: format.horizontalAlignment,
+      numFmtId: format.numFmtId,
+      verticalAlignment: format.verticalAlignment,
+    })),
+    fills: artifact.styles.fills.map((fill) => ({
+      color: routaColorToPreviewColor(fill.color),
+      pattern: {
+        backgroundColor: routaColorToPreviewColor(fill.color),
+        foregroundColor: routaColorToPreviewColor(fill.color),
+      },
+    })),
+    fonts: artifact.styles.fonts.map((font) => ({
+      bold: font.bold,
+      color: routaColorToPreviewColor(font.color),
+      fontSize: font.fontSize,
+      italic: font.italic,
+      typeface: font.typeface,
+    })),
+    numberFormats: artifact.styles.numberFormats.map((format) => ({
+      formatCode: format.formatCode,
+      id: format.id,
+    })),
   };
 }
 

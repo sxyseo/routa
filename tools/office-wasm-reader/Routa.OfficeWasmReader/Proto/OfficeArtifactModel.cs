@@ -12,6 +12,7 @@ internal sealed class OfficeArtifactModel
     public List<ImageAssetModel> Images { get; } = [];
     public List<TableModel> Tables { get; } = [];
     public List<ChartModel> Charts { get; } = [];
+    public SpreadsheetStylesModel Styles { get; } = new();
 }
 
 internal sealed record TextBlockModel(string Path, string Text);
@@ -24,6 +25,9 @@ internal sealed class SheetModel
     public List<SheetTableModel> Tables { get; } = [];
     public List<DataValidationModel> DataValidations { get; } = [];
     public List<ConditionalFormatModel> ConditionalFormats { get; } = [];
+    public List<ColumnModel> Columns { get; } = [];
+    public double DefaultColWidth { get; set; }
+    public double DefaultRowHeight { get; set; }
 }
 
 internal sealed class TableModel
@@ -35,9 +39,19 @@ internal sealed class TableModel
 internal sealed class RowModel
 {
     public List<CellModel> Cells { get; } = [];
+    public uint Index { get; set; }
+    public double Height { get; set; }
 }
 
-internal sealed record CellModel(string Address, string Text, string Formula);
+internal sealed record CellModel(
+    string Address,
+    string Text,
+    string Formula,
+    string DataType = "",
+    uint StyleIndex = 0,
+    bool HasValue = true);
+
+internal sealed record ColumnModel(uint Min, uint Max, double Width, bool Hidden);
 
 internal sealed class SlideModel
 {
@@ -54,7 +68,7 @@ internal sealed record ChartModel(string Id, string Path, string Title, string C
 
 internal sealed record MergedRangeModel(string Reference);
 
-internal sealed record SheetTableModel(string Name, string Reference);
+internal sealed record SheetTableModel(string Name, string Reference, string Style = "", bool ShowFilterButton = true);
 
 internal sealed record DataValidationModel(
     string Type,
@@ -63,4 +77,47 @@ internal sealed record DataValidationModel(
     string Formula2,
     IReadOnlyList<string> Ranges);
 
-internal sealed record ConditionalFormatModel(string Type, uint Priority, IReadOnlyList<string> Ranges);
+internal sealed record ConditionalFormatModel(
+    string Type,
+    uint Priority,
+    IReadOnlyList<string> Ranges,
+    string Operator = "",
+    IReadOnlyList<string>? Formulas = null,
+    string Text = "",
+    string FillColor = "",
+    string FontColor = "",
+    bool Bold = false,
+    ColorScaleModel? ColorScale = null,
+    DataBarModel? DataBar = null,
+    IconSetModel? IconSet = null);
+
+internal sealed class SpreadsheetStylesModel
+{
+    public List<NumberFormatModel> NumberFormats { get; } = [];
+    public List<CellFormatModel> CellFormats { get; } = [];
+    public List<FontStyleModel> Fonts { get; } = [];
+    public List<FillStyleModel> Fills { get; } = [];
+    public List<BorderStyleModel> Borders { get; } = [];
+}
+
+internal sealed record NumberFormatModel(uint Id, string FormatCode);
+
+internal sealed record CellFormatModel(
+    uint NumFmtId,
+    uint FontId,
+    uint FillId,
+    uint BorderId,
+    string HorizontalAlignment,
+    string VerticalAlignment);
+
+internal sealed record FontStyleModel(bool Bold, bool Italic, double FontSize, string Typeface, string Color);
+
+internal sealed record FillStyleModel(string Color);
+
+internal sealed record BorderStyleModel(string BottomColor);
+
+internal sealed record ColorScaleModel(IReadOnlyList<string> Colors);
+
+internal sealed record DataBarModel(string Color);
+
+internal sealed record IconSetModel(string Name, bool ShowValue, bool Reverse);

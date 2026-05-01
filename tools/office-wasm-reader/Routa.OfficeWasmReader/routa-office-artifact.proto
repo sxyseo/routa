@@ -13,6 +13,7 @@ message OfficeArtifact {
   repeated ImageAsset images = 8;
   repeated Table tables = 9;
   repeated Chart charts = 10;
+  SpreadsheetStyles styles = 11;
 }
 
 message TextBlock {
@@ -27,6 +28,9 @@ message Sheet {
   repeated SheetTable tables = 4;
   repeated DataValidation data_validations = 5;
   repeated ConditionalFormat conditional_formats = 6;
+  repeated Column columns = 7;
+  double default_col_width = 8;
+  double default_row_height = 9;
 }
 
 message Table {
@@ -41,6 +45,8 @@ message MergedRange {
 message SheetTable {
   string name = 1;
   string reference = 2;
+  string style = 3;
+  bool show_filter_button = 4;
 }
 
 message DataValidation {
@@ -55,16 +61,37 @@ message ConditionalFormat {
   string type = 1;
   uint32 priority = 2;
   repeated string ranges = 3;
+  string operator = 4;
+  repeated string formulas = 5;
+  string text = 6;
+  string fill_color = 7;
+  string font_color = 8;
+  bool bold = 9;
+  ColorScale color_scale = 10;
+  DataBar data_bar = 11;
+  IconSet icon_set = 12;
 }
 
 message Row {
   repeated Cell cells = 1;
+  uint32 index = 2;
+  double height = 3;
 }
 
 message Cell {
   string address = 1;
   string text = 2;
   string formula = 3;
+  string data_type = 4;
+  uint32 style_index = 5;
+  bool has_value = 6;
+}
+
+message Column {
+  uint32 min = 1;
+  uint32 max = 2;
+  double width = 3;
+  bool hidden = 4;
 }
 
 message Slide {
@@ -95,4 +122,56 @@ message Chart {
   string path = 2;
   string title = 3;
   string chart_type = 4;
+}
+
+message SpreadsheetStyles {
+  repeated NumberFormat number_formats = 1;
+  repeated CellFormat cell_xfs = 2;
+  repeated FontStyle fonts = 3;
+  repeated FillStyle fills = 4;
+  repeated BorderStyle borders = 5;
+}
+
+message NumberFormat {
+  uint32 id = 1;
+  string format_code = 2;
+}
+
+message CellFormat {
+  uint32 num_fmt_id = 1;
+  uint32 font_id = 2;
+  uint32 fill_id = 3;
+  uint32 border_id = 4;
+  string horizontal_alignment = 5;
+  string vertical_alignment = 6;
+}
+
+message FontStyle {
+  bool bold = 1;
+  bool italic = 2;
+  double font_size = 3;
+  string typeface = 4;
+  string color = 5;
+}
+
+message FillStyle {
+  string color = 1;
+}
+
+message BorderStyle {
+  string bottom_color = 1;
+}
+
+message ColorScale {
+  repeated string colors = 1;
+}
+
+message DataBar {
+  string color = 1;
+}
+
+message IconSet {
+  string name = 1;
+  bool show_value = 2;
+  bool reverse = 3;
 }
