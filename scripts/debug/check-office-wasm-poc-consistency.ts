@@ -15,10 +15,12 @@ const {
 const repoRoot = process.cwd();
 const assetDir = path.resolve(repoRoot, OFFICE_WASM_TMP_ASSET_DIR);
 const artifactBundlePath = path.join(assetDir, OFFICE_WASM_ARTIFACT_TAB_BUNDLE);
-const pageClientPath = path.resolve(
-  repoRoot,
+const rendererPaths = [
   "src/app/debug/office-wasm-poc/page-client.tsx",
-);
+  "src/app/debug/office-wasm-poc/spreadsheet-preview.tsx",
+  "src/app/debug/office-wasm-poc/presentation-preview.tsx",
+  "src/app/debug/office-wasm-poc/document-preview.tsx",
+].map((filePath) => path.resolve(repoRoot, filePath));
 
 const failures: string[] = [];
 
@@ -69,9 +71,10 @@ assertFileExists(OFFICE_WASM_ARTIFACT_TAB_BUNDLE);
 const artifactBundle = existsSync(artifactBundlePath)
   ? readFileSync(artifactBundlePath, "utf8")
   : "";
-const pageClient = existsSync(pageClientPath)
-  ? readFileSync(pageClientPath, "utf8")
-  : "";
+const rendererSource = rendererPaths
+  .filter(existsSync)
+  .map((filePath) => readFileSync(filePath, "utf8"))
+  .join("\n");
 
 assertIncludes(
   artifactBundle,
@@ -129,7 +132,7 @@ for (const testId of [
   "presentation-preview",
   "document-preview",
 ]) {
-  assertIncludes(pageClient, `data-testid="${testId}"`, `POC renderer ${testId}`);
+  assertIncludes(rendererSource, `data-testid="${testId}"`, `POC renderer ${testId}`);
 }
 
 if (failures.length > 0) {
