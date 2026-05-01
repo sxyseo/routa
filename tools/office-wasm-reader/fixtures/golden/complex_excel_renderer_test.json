@@ -278,36 +278,8 @@
           "type": "containsText"
         }
       ],
-      "dataValidationCount": 3,
-      "dataValidations": [
-        {
-          "formula1": "\"Backlog,Todo,Dev,Review,Done,Blocked\"",
-          "formula2": "",
-          "operator": "",
-          "ranges": [
-            "E5:E44"
-          ],
-          "type": "list"
-        },
-        {
-          "formula1": "\"P0,P1,P2,P3\"",
-          "formula2": "",
-          "operator": "",
-          "ranges": [
-            "F5:F44"
-          ],
-          "type": "list"
-        },
-        {
-          "formula1": "\"Ada,Ben,Chen,Dina,Eli,Fang,Gita\"",
-          "formula2": "",
-          "operator": "",
-          "ranges": [
-            "D5:D44"
-          ],
-          "type": "list"
-        }
-      ],
+      "dataValidationCount": 0,
+      "dataValidations": [],
       "formulaCellCount": 160,
       "mergedRangeCount": 2,
       "mergedRanges": [
@@ -717,54 +689,8 @@
           "type": "dataBar"
         }
       ],
-      "dataValidationCount": 5,
-      "dataValidations": [
-        {
-          "formula1": "\"Kanban Harness,Feature Explorer,Task-Adaptive Harness,Entrix Fitness,Agent Trace Learning,Code Review UI,Validation For...",
-          "formula2": "",
-          "operator": "",
-          "ranges": [
-            "B8"
-          ],
-          "type": "list"
-        },
-        {
-          "formula1": "\"P0,P1,P2,P3\"",
-          "formula2": "",
-          "operator": "",
-          "ranges": [
-            "B9"
-          ],
-          "type": "list"
-        },
-        {
-          "formula1": "1",
-          "formula2": "300",
-          "operator": "between",
-          "ranges": [
-            "B11"
-          ],
-          "type": "whole"
-        },
-        {
-          "formula1": "DATE(2026,1,1)",
-          "formula2": "DATE(2026,12,31)",
-          "operator": "between",
-          "ranges": [
-            "B10"
-          ],
-          "type": "date"
-        },
-        {
-          "formula1": "\"Ada,Ben,Chen,Dina,Eli,Fang,Gita\"",
-          "formula2": "",
-          "operator": "",
-          "ranges": [
-            "B12"
-          ],
-          "type": "list"
-        }
-      ],
+      "dataValidationCount": 0,
+      "dataValidations": [],
       "formulaCellCount": 3,
       "mergedRangeCount": 4,
       "mergedRanges": [
@@ -952,6 +878,6 @@
   "textBlockCount": 0,
   "textBlocks": [],
   "title": "00_README",
-  "wasmProtoByteLength": 263419,
-  "wasmProtoSha256": "837f60f63c389c33567ac1a1f9a5ba9eaf691da013b3564f4c98d4551704432b"
+  "wasmProtoByteLength": 263016,
+  "wasmProtoSha256": "d9e3d24eb6a44c3aec1998b501f80e6a65a9319338ff26e7e1965cd17eb5325d"
 }

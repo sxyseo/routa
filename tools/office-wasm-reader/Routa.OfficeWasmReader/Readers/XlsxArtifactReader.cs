@@ -248,16 +248,6 @@ internal static class XlsxArtifactReader
                 table?.AutoFilter is not null));
         }
 
-        foreach (var validation in worksheetPart.Worksheet.Descendants<S.DataValidation>())
-        {
-            sheet.DataValidations.Add(new DataValidationModel(
-                EnumText(validation.Type),
-                EnumText(validation.Operator),
-                TextNormalization.Clean(validation.Formula1?.Text),
-                TextNormalization.Clean(validation.Formula2?.Text),
-                SplitReferences(validation.GetAttribute("sqref", "").Value ?? "")));
-        }
-
         foreach (var formatting in worksheetPart.Worksheet.Descendants<S.ConditionalFormatting>())
         {
             var ranges = SplitReferences(formatting.GetAttribute("sqref", "").Value ?? "");

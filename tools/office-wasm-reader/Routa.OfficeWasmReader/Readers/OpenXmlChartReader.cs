@@ -89,15 +89,16 @@ internal static class OpenXmlChartReader
         var from = anchor.FromMarker;
         var fromCol = ParseUInt(from?.ColumnId?.Text);
         var fromRow = ParseUInt(from?.RowId?.Text);
+        var ext = anchor.Extent;
         return new ChartAnchorModel(
             fromCol,
             fromRow,
-            fromCol + 6,
-            fromRow + 12,
+            fromCol,
+            fromRow,
             ParseDouble(from?.ColumnOffset?.Text),
             ParseDouble(from?.RowOffset?.Text),
-            0,
-            0);
+            ext?.Cx?.Value ?? 0,
+            ext?.Cy?.Value ?? 0);
     }
 
     private static IReadOnlyList<ChartSeriesModel> ReadSeries(C.ChartSpace chartSpace)
