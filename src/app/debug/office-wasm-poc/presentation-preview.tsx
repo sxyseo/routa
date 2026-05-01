@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   asArray,
@@ -8,269 +8,246 @@ import {
   asRecord,
   asString,
   collectTextBlocks,
-  colorToCss,
-  elementImageReferenceId,
-  EMPTY_DOCUMENT_STYLE_MAPS,
-  fillToCss,
-  lineToCss,
-  paragraphView,
+  prewarmOfficeFonts,
   type PreviewLabels,
   type RecordValue,
-  slideBackgroundToCss,
-  textRunStyle,
   useOfficeImageSources,
 } from "./office-preview-utils";
+import styles from "./presentation-preview.module.css";
+import {
+  collectPresentationTypefaces,
+  computePresentationFit,
+  getSlideFrameSize,
+  renderPresentationSlide,
+  type PresentationSize,
+  type PresentationTextOverflow,
+} from "./presentation-renderer";
+
+const THUMBNAIL_WIDTH = 176;
+const STACK_BAR_COUNT = 12;
 
 export function PresentationPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
-  const slides = asArray(root?.slides).map(asRecord).filter((slide): slide is RecordValue => slide != null);
+  const slides = useMemo(
+    () => asArray(root?.slides).map(asRecord).filter((slide): slide is RecordValue => slide != null),
+    [root],
+  );
   const imageSources = useOfficeImageSources(root);
+  const imageElements = useLoadedOfficeImages(imageSources);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [thumbnailRailOpen, setThumbnailRailOpen] = useState(false);
   const selectedSlideIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
   const selectedSlide = slides[selectedSlideIndex] ?? {};
+
+  useEffect(() => {
+    void prewarmOfficeFonts(collectPresentationTypefaces(slides));
+  }, [slides]);
 
   if (slides.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSlides}</p>;
   }
 
   return (
-    <div
-      data-testid="presentation-preview"
-      style={{
-        background: "#f8fafc",
-        border: "1px solid #cbd5e1",
-        borderRadius: 8,
-        display: "grid",
-        gridTemplateColumns: "minmax(150px, 220px) minmax(0, 1fr)",
-        minHeight: 620,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          borderRight: "1px solid #cbd5e1",
-          display: "grid",
-          gap: 10,
-          maxHeight: 720,
-          overflowY: "auto",
-          padding: 12,
-        }}
-      >
-        {slides.map((slide, index) => (
-          <button
-            key={`${asString(slide.id)}-${index}`}
-            onClick={() => setActiveSlideIndex(index)}
-            style={{
-              background: "transparent",
-              border: "0",
-              color: "#0f172a",
-              cursor: "pointer",
-              display: "grid",
-              gap: 6,
-              padding: 0,
-              textAlign: "left",
-            }}
-            type="button"
-          >
-            <span style={{ color: "#475569", fontSize: 12, fontWeight: 600 }}>
-              {labels.slide} {asNumber(slide.index, index + 1)}
-            </span>
-            <SlideFrame
-              compact
-              imageSources={imageSources}
-              isActive={index === selectedSlideIndex}
-              slide={slide}
-            />
-          </button>
-        ))}
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateRows: "auto minmax(0, 1fr)",
-          minWidth: 0,
-          overflow: "hidden",
-        }}
-      >
-        <SlideCanvas
-          imageSources={imageSources}
-          labels={labels}
-          slide={selectedSlide}
-          slideIndex={selectedSlideIndex}
-        />
-      </div>
+    <div className={styles.shell} data-testid="presentation-preview">
+      <aside className={styles.rail} data-open={thumbnailRailOpen}>
+        <button
+          aria-label={labels.slide}
+          className={styles.stackButton}
+          onClick={() => setThumbnailRailOpen((isOpen) => !isOpen)}
+          type="button"
+        >
+          {Array.from({ length: Math.min(STACK_BAR_COUNT, slides.length) }).map((_, index) => (
+            <span className={styles.stackBar} key={index} />
+          ))}
+        </button>
+        <div className={styles.thumbnailPanel}>
+          {slides.map((slide, index) => (
+            <button
+              className={styles.thumbnailButton}
+              data-active={index === selectedSlideIndex}
+              key={`${asString(slide.id)}-${index}`}
+              onClick={() => {
+                setActiveSlideIndex(index);
+                setThumbnailRailOpen(false);
+              }}
+              type="button"
+            >
+              <span className={styles.thumbnailLabel}>
+                {labels.slide} {asNumber(slide.index, index + 1)}
+              </span>
+              <SlideCanvasFrame
+                className={styles.thumbnailCanvas}
+                images={imageElements}
+                slide={slide}
+                textOverflow="clip"
+                width={THUMBNAIL_WIDTH}
+              />
+            </button>
+          ))}
+        </div>
+      </aside>
+      <SlideStage
+        images={imageElements}
+        labels={labels}
+        slide={selectedSlide}
+        slideIndex={selectedSlideIndex}
+      />
     </div>
   );
 }
 
-function SlideCanvas({
-  imageSources,
+function SlideStage({
+  images,
   labels,
   slide,
   slideIndex,
 }: {
-  imageSources: Map<string, string>;
+  images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
   slide: RecordValue;
   slideIndex: number;
 }) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const stageSize = useElementSize(stageRef);
   const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
-  const textRunCount = elements.reduce((count, element) => {
-    return count + collectTextBlocks(element, 20).length;
-  }, 0);
+  const textRunCount = elements.reduce((count, element) => count + collectTextBlocks(element, 20).length, 0);
+  const frame = getSlideFrameSize(slide);
+  const fit = computePresentationFit(stageSize, frame);
+  const canvasWidth = Math.max(1, fit.width);
 
   return (
-    <article style={{ display: "grid", gap: 12, minHeight: 0, overflow: "auto", padding: 18 }}>
-      <div style={{ color: "#475569", display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13 }}>
-        <strong>{labels.slide} {asNumber(slide.index, slideIndex + 1)}</strong>
-        <span>{elements.length} {labels.shapes}</span>
-        <span>{textRunCount} {labels.textRuns}</span>
-      </div>
-      <SlideFrame imageSources={imageSources} slide={slide} />
-    </article>
-  );
-}
-
-function slideBounds(slide: RecordValue): { width: number; height: number } {
-  const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
-  return elements.reduce<{ width: number; height: number }>(
-    (acc, element) => {
-      const bbox = asRecord(element.bbox);
-      return {
-        width: Math.max(acc.width, asNumber(bbox?.xEmu) + asNumber(bbox?.widthEmu)),
-        height: Math.max(acc.height, asNumber(bbox?.yEmu) + asNumber(bbox?.heightEmu)),
-      };
-    },
-    { width: 12_192_000, height: 6_858_000 },
-  );
-}
-
-function SlideFrame({
-  compact = false,
-  imageSources,
-  isActive = false,
-  slide,
-}: {
-  compact?: boolean;
-  imageSources: Map<string, string>;
-  isActive?: boolean;
-  slide: RecordValue;
-}) {
-  const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
-  const bounds = slideBounds(slide);
-  const background = slideBackgroundToCss(slide);
-
-  return (
-    <div
-      style={{
-        aspectRatio: `${bounds.width} / ${bounds.height}`,
-        background,
-        border: `1px solid ${isActive ? "#0285ff" : "#cbd5e1"}`,
-        borderRadius: 6,
-        boxShadow: isActive ? "0 0 0 2px rgba(2, 133, 255, 0.18)" : "0 8px 22px rgba(15, 23, 42, 0.12)",
-        overflow: "hidden",
-        position: "relative",
-        width: "100%",
-      }}
-    >
-      {elements.map((element, index) => (
-        <SlideElement
-          bounds={bounds}
-          compact={compact}
-          element={element}
-          imageSources={imageSources}
-          key={`${asString(element.id)}-${index}`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function SlideElement({
-  bounds,
-  compact,
-  element,
-  imageSources,
-}: {
-  bounds: { width: number; height: number };
-  compact: boolean;
-  element: RecordValue;
-  imageSources: Map<string, string>;
-}) {
-  const bbox = asRecord(element.bbox);
-  const shape = asRecord(element.shape);
-  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_DOCUMENT_STYLE_MAPS));
-  const text = paragraphs.map((paragraph) => paragraph.runs.map((run) => run.text).join("")).filter(Boolean).join("\n");
-  const firstRun = asRecord(asArray(asRecord(asArray(element.paragraphs)[0])?.runs)[0]);
-  const textStyle = asRecord(firstRun?.textStyle);
-  const fill = fillToCss(shape?.fill);
-  const line = lineToCss(shape?.line);
-  const textColor = colorToCss(asRecord(textStyle?.fill)?.color) ?? "#0f172a";
-  const fontScale = compact ? 0.15 : 1;
-  const fontSize = Math.max(compact ? 2 : 10, Math.min(44, asNumber(textStyle?.fontSize, 1200) / 100) * fontScale);
-  const imageId = elementImageReferenceId(element);
-  const imageSrc = imageId ? imageSources.get(imageId) : undefined;
-  const heightEmu = asNumber(bbox?.heightEmu);
-  const isLine = heightEmu === 0 && line.color != null;
-  const borderRadius = shape?.geometry === 26 ? 8 : shape?.geometry === 35 || shape?.geometry === 89 ? "999px" : 3;
-
-  return (
-    <div
-      style={{
-        alignItems: "center",
-        background: text ? "transparent" : fill,
-        borderColor: !isLine ? line.color : undefined,
-        borderRadius,
-        borderStyle: !isLine && line.color ? "solid" : undefined,
-        borderTopColor: isLine ? line.color : undefined,
-        borderTopStyle: isLine && line.color ? "solid" : undefined,
-        borderTopWidth: isLine && line.color ? line.width : undefined,
-        borderWidth: !isLine && line.color ? line.width : undefined,
-        color: textColor,
-        display: "flex",
-        fontSize,
-        fontWeight: textStyle?.bold === true ? 700 : 400,
-        height: `${(asNumber(bbox?.heightEmu) / bounds.height) * 100}%`,
-        left: `${(asNumber(bbox?.xEmu) / bounds.width) * 100}%`,
-        lineHeight: 1.15,
-        overflow: "hidden",
-        padding: text ? (compact ? "0.05em" : "0.15em") : 0,
-        position: "absolute",
-        top: `${(asNumber(bbox?.yEmu) / bounds.height) * 100}%`,
-        transform: `rotate(${asNumber(bbox?.rotation) / 60000}deg)`,
-        whiteSpace: "pre-wrap",
-        width: `${(asNumber(bbox?.widthEmu) / bounds.width) * 100}%`,
-      }}
-      title={asString(element.name)}
-    >
-      {imageSrc ? (
-        <span
-          aria-hidden="true"
-          style={{
-            backgroundImage: `url("${imageSrc}")`,
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat",
-            backgroundSize: "100% 100%",
-            height: "100%",
-            inset: 0,
-            position: "absolute",
-            width: "100%",
-          }}
-        />
-      ) : null}
-      {text ? (
-        <span style={{ display: "grid", position: "relative", width: "100%", zIndex: 1 }}>
-          {paragraphs.map((paragraph, paragraphIndex) => (
-            <span key={paragraph.id || paragraphIndex}>
-              {paragraph.runs.map((run, runIndex) => (
-                <span key={run.id || runIndex} style={textRunStyle(run, fontScale)}>
-                  {run.text}
-                </span>
-              ))}
-            </span>
-          ))}
+    <main className={styles.mainPanel}>
+      <div className={styles.meta}>
+        <strong className={styles.metaStrong}>
+          {labels.slide} {asNumber(slide.index, slideIndex + 1)}
+        </strong>
+        <span className={styles.metaText}>
+          {elements.length} {labels.shapes}
         </span>
-      ) : null}
-    </div>
+        <span className={styles.metaText}>
+          {textRunCount} {labels.textRuns}
+        </span>
+      </div>
+      <div className={styles.stage} ref={stageRef}>
+        <SlideCanvasFrame
+          className={styles.slideCanvas}
+          images={images}
+          slide={slide}
+          textOverflow="visible"
+          width={canvasWidth}
+        />
+      </div>
+    </main>
   );
+}
+
+function SlideCanvasFrame({
+  className,
+  images,
+  slide,
+  textOverflow,
+  width,
+}: {
+  className: string;
+  images: ReadonlyMap<string, CanvasImageSource>;
+  slide: RecordValue;
+  textOverflow: PresentationTextOverflow;
+  width: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frame = getSlideFrameSize(slide);
+  const height = Math.max(1, (width / frame.width) * frame.height);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(width * pixelRatio));
+    canvas.height = Math.max(1, Math.round(height * pixelRatio));
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    renderPresentationSlide({ context, height, images, slide, textOverflow, width });
+  }, [height, images, slide, textOverflow, width]);
+
+  return (
+    <canvas
+      aria-hidden="true"
+      className={className}
+      height={Math.round(height)}
+      ref={canvasRef}
+      width={Math.round(width)}
+    />
+  );
+}
+
+function useLoadedOfficeImages(imageSources: Map<string, string>): ReadonlyMap<string, CanvasImageSource> {
+  const [images, setImages] = useState<ReadonlyMap<string, CanvasImageSource>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    const next = new Map<string, CanvasImageSource>();
+    if (imageSources.size === 0) {
+      window.requestAnimationFrame(() => {
+        if (!cancelled) setImages(next);
+      });
+      return;
+    }
+
+    for (const [id, src] of imageSources) {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => {
+        next.set(id, image);
+        if (!cancelled) setImages(new Map(next));
+      };
+      image.onerror = () => {
+        if (!cancelled) setImages(new Map(next));
+      };
+      image.src = src;
+      if (image.complete && image.naturalWidth > 0) {
+        next.set(id, image);
+      }
+    }
+
+    window.requestAnimationFrame(() => {
+      if (!cancelled) setImages(new Map(next));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [imageSources]);
+
+  return images;
+}
+
+function useElementSize<T extends HTMLElement>(ref: RefObject<T | null>): PresentationSize {
+  const [size, setSize] = useState<PresentationSize>({ height: 0, width: 0 });
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const update = () => {
+      const rect = element.getBoundingClientRect();
+      setSize({ height: rect.height, width: rect.width });
+    };
+    update();
+
+    const observer = new ResizeObserver(() => {
+      window.requestAnimationFrame(update);
+    });
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [ref]);
+
+  return size;
 }

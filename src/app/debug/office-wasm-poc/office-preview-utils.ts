@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useEffect, useMemo } from "react";
+import { type CSSProperties, useMemo } from "react";
 
 export type RecordValue = Record<string, unknown>;
 
@@ -237,7 +237,7 @@ export function paragraphStyle(paragraph: ParagraphView): CSSProperties {
 
   return {
     color: colorToCss(asRecord(paragraph.style?.fill)?.color) ?? "#0f172a",
-    fontFamily: asString(paragraph.style?.typeface) || undefined,
+    fontFamily: officeFontFamily(asString(paragraph.style?.typeface)),
     fontSize: cssFontSize(paragraph.style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14),
     fontWeight: paragraph.style?.bold === true || isTitle || isHeading ? 700 : 400,
     lineHeight: 1.55,
@@ -252,12 +252,42 @@ export function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {
   const runFontSize = run.style?.fontSize == null ? undefined : cssFontSize(run.style.fontSize, 14) * fontScale;
   return {
     color: colorToCss(asRecord(run.style?.fill)?.color) ?? undefined,
-    fontFamily: asString(run.style?.typeface) || undefined,
+    fontFamily: officeFontFamily(asString(run.style?.typeface)),
     fontSize: runFontSize == null ? undefined : Math.max(fontScale < 1 ? 2 : 8, Math.min(fontScale < 1 ? 12 : 72, runFontSize)),
     fontStyle: run.style?.italic === true ? "italic" : undefined,
     fontWeight: run.style?.bold === true ? 700 : undefined,
     textDecoration: run.style?.underline === true ? "underline" : undefined,
   };
+}
+
+export const OFFICE_FONT_FALLBACK =
+  'Aptos, Carlito, Calibri, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
+const OFFICE_SERIF_FONT_FALLBACK =
+  '"Songti SC", STSong, SimSun, "Noto Serif CJK SC", "Noto Serif CJK", serif';
+
+export function officeFontFamily(typeface: string): string {
+  const normalized = typeface.trim();
+  if (!normalized) return OFFICE_FONT_FALLBACK;
+  const escaped = normalized.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  const fallback = /serif|song|宋|明|仿宋|楷/i.test(normalized)
+    ? `${OFFICE_SERIF_FONT_FALLBACK}, ${OFFICE_FONT_FALLBACK}`
+    : OFFICE_FONT_FALLBACK;
+  return `"${escaped}", ${fallback}`;
+}
+
+export async function prewarmOfficeFonts(typefaces: Iterable<string>): Promise<void> {
+  if (typeof document === "undefined" || !("fonts" in document)) return;
+  const fontSet = document.fonts;
+  const families = new Set(["Aptos", "Carlito", "Calibri", "Arial", ...Array.from(typefaces).filter(Boolean)]);
+  await Promise.all(
+    Array.from(families).map(async (family) => {
+      try {
+        await fontSet.load(`400 16px ${officeFontFamily(family)}`);
+      } catch {
+        // Optional font probing should never block preview rendering.
+      }
+    }),
+  );
 }
 
 export function collectTextBlocks(value: unknown, limit = 80): string[] {
@@ -386,33 +416,23 @@ export function useOfficeImageSources(root: RecordValue | null): Map<string, str
   const imageSources = useMemo(() => {
     const sources: ImageSource[] = [];
     for (const image of imageRecords) {
-      if (image.uri) {
-        sources.push({ id: image.id, src: image.uri });
+      const bytes = image.bytes;
+      if (bytes != null && bytes.byteLength > 0) {
+        const contentType = image.contentType || inferImageContentType(image.id);
+        const payload = new ArrayBuffer(bytes.byteLength);
+        new Uint8Array(payload).set(bytes);
+        const blob = new Blob([payload], { type: contentType });
+        sources.push({ id: image.id, src: URL.createObjectURL(blob) });
         continue;
       }
 
-      const bytes = image.bytes;
-      if (bytes == null || bytes.byteLength === 0) continue;
-
-      const contentType = image.contentType || inferImageContentType(image.id);
-      const payload = new ArrayBuffer(bytes.byteLength);
-      new Uint8Array(payload).set(bytes);
-      const blob = new Blob([payload], { type: contentType });
-      sources.push({ id: image.id, src: URL.createObjectURL(blob) });
+      if (image.uri) {
+        sources.push({ id: image.id, src: image.uri });
+      }
     }
 
     return sources;
   }, [imageRecords]);
-
-  useEffect(() => {
-    return () => {
-      for (const image of imageSources) {
-        if (image.src.startsWith("blob:")) {
-          URL.revokeObjectURL(image.src);
-        }
-      }
-    };
-  }, [imageSources]);
 
   return useMemo(() => {
     return new Map(imageSources.map((image) => [image.id, image.src]));
