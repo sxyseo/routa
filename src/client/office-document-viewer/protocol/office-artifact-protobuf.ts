@@ -22,6 +22,7 @@ import {
   type RoutaOfficeRow,
   type RoutaOfficeSheet,
   type RoutaOfficeSheetTable,
+  type RoutaOfficeSpreadsheetShape,
   type RoutaOfficeSpreadsheetStyles,
   type RoutaOfficeSlide,
   type RoutaOfficeTable,
@@ -159,6 +160,9 @@ export function decodeRoutaOfficeArtifact(bytes: Uint8Array): RoutaOfficeArtifac
         break;
       case 11:
         artifact.styles = decodeSpreadsheetStyles(readMessageField(reader, wireType));
+        break;
+      case 12:
+        artifact.shapes.push(decodeSpreadsheetShape(readMessageField(reader, wireType)));
         break;
       default:
         reader.skip(wireType);
@@ -389,6 +393,43 @@ function decodeChartSeries(bytes: Uint8Array): RoutaOfficeChartSeries {
   }
 
   return series;
+}
+
+function decodeSpreadsheetShape(bytes: Uint8Array): RoutaOfficeSpreadsheetShape {
+  const reader = new ProtoReader(bytes);
+  const shape: RoutaOfficeSpreadsheetShape = {
+    fillColor: "",
+    fromCol: 0,
+    fromColOffsetEmu: 0,
+    fromRow: 0,
+    fromRowOffsetEmu: 0,
+    geometry: "",
+    heightEmu: 0,
+    id: "",
+    lineColor: "",
+    sheetName: "",
+    text: "",
+    widthEmu: 0,
+  };
+
+  while (!reader.done) {
+    const { fieldNumber, wireType } = reader.readTag();
+    if (fieldNumber === 1) shape.id = readStringField(reader, wireType);
+    else if (fieldNumber === 2) shape.sheetName = readStringField(reader, wireType);
+    else if (fieldNumber === 3) shape.fromCol = readUInt32Field(reader, wireType);
+    else if (fieldNumber === 4) shape.fromRow = readUInt32Field(reader, wireType);
+    else if (fieldNumber === 5) shape.fromColOffsetEmu = readDoubleField(reader, wireType);
+    else if (fieldNumber === 6) shape.fromRowOffsetEmu = readDoubleField(reader, wireType);
+    else if (fieldNumber === 7) shape.widthEmu = readDoubleField(reader, wireType);
+    else if (fieldNumber === 8) shape.heightEmu = readDoubleField(reader, wireType);
+    else if (fieldNumber === 9) shape.fillColor = readStringField(reader, wireType);
+    else if (fieldNumber === 10) shape.lineColor = readStringField(reader, wireType);
+    else if (fieldNumber === 11) shape.text = readStringField(reader, wireType);
+    else if (fieldNumber === 12) shape.geometry = readStringField(reader, wireType);
+    else reader.skip(wireType);
+  }
+
+  return shape;
 }
 
 function decodeMergedRange(bytes: Uint8Array): RoutaOfficeMergedRange {

@@ -59,6 +59,11 @@ internal static class OfficeArtifactProtoWriter
             {
                 WriteMessage(output, 11, WriteSpreadsheetStyles(artifact.Styles));
             }
+
+            foreach (var shape in artifact.Shapes)
+            {
+                WriteMessage(output, 12, WriteSpreadsheetShape(shape));
+            }
         });
     }
 
@@ -255,6 +260,25 @@ internal static class OfficeArtifactProtoWriter
             }
 
             WriteString(output, 4, series.Color);
+        });
+    }
+
+    private static byte[] WriteSpreadsheetShape(SpreadsheetShapeModel shape)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, shape.Id);
+            WriteString(output, 2, shape.SheetName);
+            WriteUInt32(output, 3, shape.FromCol);
+            WriteUInt32(output, 4, shape.FromRow);
+            WriteDouble(output, 5, shape.FromColOffsetEmu);
+            WriteDouble(output, 6, shape.FromRowOffsetEmu);
+            WriteDouble(output, 7, shape.WidthEmu);
+            WriteDouble(output, 8, shape.HeightEmu);
+            WriteString(output, 9, shape.FillColor);
+            WriteString(output, 10, shape.LineColor);
+            WriteString(output, 11, shape.Text);
+            WriteString(output, 12, shape.Geometry);
         });
     }
 

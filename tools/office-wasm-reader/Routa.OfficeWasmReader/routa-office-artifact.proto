@@ -14,6 +14,7 @@ message OfficeArtifact {
   repeated Table tables = 9;
   repeated Chart charts = 10;
   SpreadsheetStyles styles = 11;
+  repeated SpreadsheetShape shapes = 12;
 }
 
 message TextBlock {
@@ -195,4 +196,19 @@ message ChartSeries {
   repeated string categories = 2;
   repeated double values = 3;
   string color = 4;
+}
+
+message SpreadsheetShape {
+  string id = 1;
+  string sheet_name = 2;
+  uint32 from_col = 3;
+  uint32 from_row = 4;
+  double from_col_offset_emu = 5;
+  double from_row_offset_emu = 6;
+  double width_emu = 7;
+  double height_emu = 8;
+  string fill_color = 9;
+  string line_color = 10;
+  string text = 11;
+  string geometry = 12;
 }

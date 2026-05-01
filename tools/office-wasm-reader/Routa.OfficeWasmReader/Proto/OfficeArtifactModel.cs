@@ -13,6 +13,7 @@ internal sealed class OfficeArtifactModel
     public List<TableModel> Tables { get; } = [];
     public List<ChartModel> Charts { get; } = [];
     public SpreadsheetStylesModel Styles { get; } = new();
+    public List<SpreadsheetShapeModel> Shapes { get; } = [];
 }
 
 internal sealed record TextBlockModel(string Path, string Text);
@@ -88,6 +89,20 @@ internal sealed record ChartSeriesModel(
     IReadOnlyList<string> Categories,
     IReadOnlyList<double> Values,
     string Color);
+
+internal sealed record SpreadsheetShapeModel(
+    string Id,
+    string SheetName,
+    uint FromCol,
+    uint FromRow,
+    double FromColOffsetEmu,
+    double FromRowOffsetEmu,
+    double WidthEmu,
+    double HeightEmu,
+    string FillColor,
+    string LineColor,
+    string Text,
+    string Geometry);
 
 internal sealed record MergedRangeModel(string Reference);
 

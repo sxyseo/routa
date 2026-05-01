@@ -50,16 +50,31 @@ type SpreadsheetChartSpec = {
   width: number;
 };
 
+type SpreadsheetShapeSpec = {
+  fill: string;
+  geometry: string;
+  height: number;
+  id: string;
+  left: number;
+  line: string;
+  text: string;
+  top: number;
+  width: number;
+};
+
 const SPREADSHEET_ROW_HEADER_WIDTH = 52;
 const SPREADSHEET_COLUMN_HEADER_HEIGHT = 29;
 const SPREADSHEET_DEFAULT_COLUMN_WIDTH = 88;
 const SPREADSHEET_DEFAULT_ROW_HEIGHT = 28;
+const SPREADSHEET_EMU_PER_PIXEL = 9525;
+const SPREADSHEET_FONT_FAMILY = "Arial, Helvetica, sans-serif";
 
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
   const sheets = asArray(root?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null);
   const styles = asRecord(root?.styles);
   const charts = asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null);
+  const shapes = asArray(root?.shapes).map(asRecord).filter((shape): shape is RecordValue => shape != null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
 
@@ -131,6 +146,12 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     rowHeights,
     sheets,
   });
+  const shapeSpecs = buildSpreadsheetShapes({
+    activeSheet,
+    columnWidths,
+    rowHeights,
+    shapes,
+  });
   const cellVisuals = buildSpreadsheetConditionalVisuals(activeSheet);
 
   if (sheets.length === 0) {
@@ -148,15 +169,18 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
         borderWidth: 1,
         boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)",
         display: "grid",
-        gridTemplateRows: "minmax(0, 1fr) auto",
+        fontFamily: SPREADSHEET_FONT_FAMILY,
+        gridTemplateRows: "auto auto minmax(0, 1fr) auto",
         maxHeight: "calc(100vh - 150px)",
         minHeight: 620,
         overflow: "hidden",
       }}
     >
+      <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
+      <SpreadsheetFormulaBar activeSheet={activeSheet} styles={styles} />
       <div style={{ overflow: "auto" }}>
         <div style={{ minHeight: SPREADSHEET_COLUMN_HEADER_HEIGHT + maxRow * SPREADSHEET_DEFAULT_ROW_HEIGHT, position: "relative" }}>
-          <table style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: "100%", fontSize: 13 }}>
+          <table style={{ borderCollapse: "separate", borderSpacing: 0, fontFamily: SPREADSHEET_FONT_FAMILY, fontSize: 13, minWidth: "100%" }}>
             <colgroup>
               <col style={{ width: 52 }} />
               {Array.from({ length: columnCount }, (_, index) => (
@@ -206,6 +230,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               })}
             </tbody>
           </table>
+          <SpreadsheetShapeLayer shapes={shapeSpecs} />
           <SpreadsheetChartLayer charts={chartSpecs} />
         </div>
       </div>
@@ -251,6 +276,124 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   );
 }
 
+function SpreadsheetWorkbookBar({ title }: { title: string }) {
+  return (
+    <div
+      style={{
+        alignItems: "center",
+        background: "#ffffff",
+        borderBottomColor: "#dadce0",
+        borderBottomStyle: "solid",
+        borderBottomWidth: 1,
+        display: "flex",
+        gap: 12,
+        minHeight: 54,
+        padding: "0 18px",
+      }}
+    >
+      <div
+        aria-hidden="true"
+        style={{
+          alignItems: "center",
+          background: "#12b76a",
+          borderRadius: 8,
+          color: "#ffffff",
+          display: "grid",
+          flex: "0 0 auto",
+          height: 32,
+          justifyContent: "center",
+          width: 32,
+        }}
+      >
+        <span
+          style={{
+            backgroundImage: "linear-gradient(#ffffff 0 0), linear-gradient(#ffffff 0 0)",
+            backgroundPosition: "center, center",
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "1px 18px, 18px 1px",
+            borderColor: "#ffffff",
+            borderRadius: 3,
+            borderStyle: "solid",
+            borderWidth: 1.5,
+            height: 18,
+            width: 18,
+          }}
+        />
+      </div>
+      <div
+        style={{
+          color: "#202124",
+          fontSize: 17,
+          fontWeight: 600,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {title}
+      </div>
+    </div>
+  );
+}
+
+function SpreadsheetFormulaBar({
+  activeSheet,
+  styles,
+}: {
+  activeSheet: RecordValue | undefined;
+  styles: RecordValue | null;
+}) {
+  const activeCell = cellAt(activeSheet, 1, 0);
+  const sheetName = asString(activeSheet?.name);
+  const value = spreadsheetCellText(activeCell, styles, sheetName);
+
+  return (
+    <div
+      style={{
+        alignItems: "center",
+        background: "#f8f9fa",
+        borderBottomColor: "#dadce0",
+        borderBottomStyle: "solid",
+        borderBottomWidth: 1,
+        display: "grid",
+        gap: 8,
+        gridTemplateColumns: "72px minmax(160px, 1fr)",
+        minHeight: 42,
+        padding: "6px 12px",
+      }}
+    >
+      <div
+        style={{
+          color: "#5f6368",
+          fontSize: 13,
+          paddingLeft: 2,
+        }}
+      >
+        A1
+      </div>
+      <div
+        style={{
+          background: "#ffffff",
+          borderColor: "#dadce0",
+          borderRadius: 4,
+          borderStyle: "solid",
+          borderWidth: 1,
+          color: "#5f6368",
+          fontSize: 13,
+          minHeight: 28,
+          overflow: "hidden",
+          padding: "5px 9px",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function spreadsheetCellStyle(
   cell: RecordValue | null,
   styles: RecordValue | null,
@@ -275,7 +418,7 @@ function spreadsheetCellStyle(
     borderBottomColor: borderColor,
     borderRightColor: borderColor,
     color: visual?.color ?? fontColor ?? fallbackStyle.color ?? sheetCellStyle.color,
-    fontFamily: asString(font?.typeface) || undefined,
+    fontFamily: spreadsheetFontFamily(asString(font?.typeface)),
     fontSize: font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize,
     fontStyle: font?.italic === true ? "italic" : fallbackStyle.fontStyle,
     fontWeight: visual?.fontWeight ?? (font?.bold === true ? 700 : fallbackStyle.fontWeight),
@@ -587,6 +730,42 @@ function buildProtocolSpreadsheetCharts(
     .filter((chart): chart is SpreadsheetChartSpec => chart != null);
 }
 
+function buildSpreadsheetShapes({
+  activeSheet,
+  columnWidths,
+  rowHeights,
+  shapes,
+}: {
+  activeSheet: RecordValue | undefined;
+  columnWidths: Map<number, number>;
+  rowHeights: Map<number, number>;
+  shapes: RecordValue[];
+}): SpreadsheetShapeSpec[] {
+  const sheetName = asString(activeSheet?.name);
+  return shapes
+    .filter((shape) => asString(shape.sheetName) === sheetName)
+    .map((shape, index) => {
+      const fromCol = asNumber(shape.fromCol, 0);
+      const fromRow = asNumber(shape.fromRow, 0);
+      const left = spreadsheetColumnLeft(columnWidths, fromCol) + asNumber(shape.fromColOffsetEmu, 0) / SPREADSHEET_EMU_PER_PIXEL;
+      const top = spreadsheetRowTop(rowHeights, fromRow) + asNumber(shape.fromRowOffsetEmu, 0) / SPREADSHEET_EMU_PER_PIXEL;
+      const width = Math.max(24, asNumber(shape.widthEmu, 0) / SPREADSHEET_EMU_PER_PIXEL);
+      const height = Math.max(24, asNumber(shape.heightEmu, 0) / SPREADSHEET_EMU_PER_PIXEL);
+
+      return {
+        fill: protocolColorToCss(shape.fillColor) ?? "#ffffff",
+        geometry: asString(shape.geometry),
+        height,
+        id: asString(shape.id) || `shape-${index}`,
+        left,
+        line: protocolColorToCss(shape.lineColor) ?? "#cbd5e1",
+        text: asString(shape.text),
+        top,
+        width,
+      };
+    });
+}
+
 function spreadsheetCellKey(rowIndex: number, columnIndex: number): string {
   return `${rowIndex}:${columnIndex}`;
 }
@@ -716,6 +895,13 @@ function protocolColorToCss(value: unknown): string | undefined {
   const raw = asString(value);
   const rgb = hexColorToRgb(raw);
   return rgb ? `#${raw.slice(-6)}` : undefined;
+}
+
+function spreadsheetFontFamily(typeface: string): string {
+  const normalized = typeface.trim();
+  if (!normalized) return SPREADSHEET_FONT_FAMILY;
+  const escaped = normalized.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  return `"${escaped}", ${SPREADSHEET_FONT_FAMILY}`;
 }
 
 function colorScaleColor(value: number, minValue: number, maxValue: number, colors: string[]): string {
@@ -903,6 +1089,46 @@ function SpreadsheetCellContent({
   );
 }
 
+function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec[] }) {
+  if (shapes.length === 0) return null;
+
+  return (
+    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 4 }}>
+      {shapes.map((shape) => (
+        <div
+          data-office-shape={shape.id}
+          key={shape.id}
+          style={{
+            alignItems: "center",
+            background: shape.fill,
+            borderColor: shape.line,
+            borderRadius: shape.geometry === "roundRect" ? 18 : 0,
+            borderStyle: "solid",
+            borderWidth: 1,
+            color: "#0f172a",
+            display: "flex",
+            fontFamily: SPREADSHEET_FONT_FAMILY,
+            fontSize: 13,
+            height: shape.height,
+            justifyContent: "center",
+            left: shape.left,
+            lineHeight: 1.35,
+            overflow: "hidden",
+            padding: 12,
+            position: "absolute",
+            textAlign: "center",
+            top: shape.top,
+            whiteSpace: "pre-wrap",
+            width: shape.width,
+          }}
+        >
+          {shape.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SpreadsheetChartLayer({ charts }: { charts: SpreadsheetChartSpec[] }) {
   if (charts.length === 0) return null;
 
@@ -963,7 +1189,8 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
     top: 58,
   };
   const values = chart.series.flatMap((series) => series.values);
-  const maxValue = Math.max(1, Math.ceil(Math.max(...values) / 10) * 10);
+  const observedMax = Math.max(...values);
+  const maxValue = observedMax <= 10 ? Math.max(1, Math.ceil(observedMax)) : Math.max(1, Math.ceil(observedMax / 10) * 10);
   const minValue = chart.type === "line" ? Math.floor(Math.min(...values) / 10) * 10 : 0;
 
   context.fillStyle = "#ffffff";
@@ -1110,14 +1337,15 @@ function drawLineChart(
 }
 
 const spreadsheetHeaderBaseStyle: CSSProperties = {
-  background: "#f3f4f6",
-  borderBottomColor: "#d7dde5",
+  background: "#f1f3f4",
+  borderBottomColor: "#dadce0",
   borderBottomStyle: "solid",
   borderBottomWidth: 1,
-  borderRightColor: "#d7dde5",
+  borderRightColor: "#dadce0",
   borderRightStyle: "solid",
   borderRightWidth: 1,
-  color: "#2f3437",
+  color: "#3c4043",
+  fontFamily: SPREADSHEET_FONT_FAMILY,
   fontSize: 13,
   fontWeight: 500,
   padding: "4px 9px",
@@ -1157,6 +1385,7 @@ const sheetCellStyle: CSSProperties = {
   borderRightStyle: "solid",
   borderRightWidth: 1,
   color: "#0f172a",
+  fontFamily: SPREADSHEET_FONT_FAMILY,
   minWidth: 88,
   padding: "7px 9px",
   verticalAlign: "top" as const,

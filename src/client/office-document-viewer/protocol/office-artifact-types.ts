@@ -85,6 +85,21 @@ export interface RoutaOfficeChartSeries {
   color: string;
 }
 
+export interface RoutaOfficeSpreadsheetShape {
+  id: string;
+  sheetName: string;
+  fromCol: number;
+  fromRow: number;
+  fromColOffsetEmu: number;
+  fromRowOffsetEmu: number;
+  widthEmu: number;
+  heightEmu: number;
+  fillColor: string;
+  lineColor: string;
+  text: string;
+  geometry: string;
+}
+
 export interface RoutaOfficeMergedRange {
   reference: string;
 }
@@ -189,6 +204,7 @@ export interface RoutaOfficeArtifact {
   images: RoutaOfficeImageAsset[];
   tables: RoutaOfficeTable[];
   charts: RoutaOfficeChart[];
+  shapes: RoutaOfficeSpreadsheetShape[];
   styles: RoutaOfficeSpreadsheetStyles;
 }
 
@@ -198,6 +214,7 @@ export function emptyRoutaOfficeArtifact(): RoutaOfficeArtifact {
     diagnostics: [],
     images: [],
     metadata: {},
+    shapes: [],
     sheets: [],
     slides: [],
     sourceKind: "",

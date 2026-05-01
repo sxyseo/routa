@@ -1,5 +1,7 @@
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml;
+using System.Xml.Linq;
+using A = DocumentFormat.OpenXml.Drawing;
 using S = DocumentFormat.OpenXml.Spreadsheet;
 
 namespace Routa.OfficeWasmReader;
@@ -53,6 +55,7 @@ internal static class XlsxArtifactReader
             artifact.Title = FirstNonEmpty(artifact.Title, sheet.Name);
 
             ExtractSheetLayout(worksheetPart, sheet);
+            ExtractShapes(worksheetPart, sheet.Name, artifact);
             foreach (var rowElement in worksheetPart.Worksheet.Descendants<S.Row>().Take(OpenXmlReaderLimits.MaxRowsPerSheet))
             {
                 var row = new RowModel
@@ -160,6 +163,50 @@ internal static class XlsxArtifactReader
             {
                 artifact.Charts.Add(chart);
             }
+        }
+    }
+
+    private static void ExtractShapes(WorksheetPart worksheetPart, string sheetName, OfficeArtifactModel artifact)
+    {
+        var drawingPart = worksheetPart.DrawingsPart;
+        if (drawingPart is null)
+        {
+            return;
+        }
+
+        XDocument drawingDocument;
+        using (var stream = drawingPart.GetStream())
+        {
+            drawingDocument = XDocument.Load(stream);
+        }
+
+        XNamespace xdr = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
+        XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        foreach (var anchor in drawingDocument.Root?.Elements(xdr + "oneCellAnchor") ?? [])
+        {
+            var shape = anchor.Element(xdr + "sp");
+            var from = anchor.Element(xdr + "from");
+            var ext = anchor.Element(xdr + "ext");
+            if (shape is null || from is null || ext is null)
+            {
+                continue;
+            }
+
+            var properties = shape.Element(xdr + "spPr");
+            var nonVisual = shape.Element(xdr + "nvSpPr")?.Element(xdr + "cNvPr");
+            artifact.Shapes.Add(new SpreadsheetShapeModel(
+                nonVisual?.Attribute("id")?.Value ?? $"shape-{artifact.Shapes.Count + 1}",
+                sheetName,
+                ParseUInt(from.Element(xdr + "col")?.Value),
+                ParseUInt(from.Element(xdr + "row")?.Value),
+                ParseDouble(from.Element(xdr + "colOff")?.Value),
+                ParseDouble(from.Element(xdr + "rowOff")?.Value),
+                ParseDouble(ext.Attribute("cx")?.Value),
+                ParseDouble(ext.Attribute("cy")?.Value),
+                ReadDrawingColor(properties?.Element(a + "solidFill")),
+                ReadDrawingColor(properties?.Element(a + "ln")?.Element(a + "solidFill")),
+                TextNormalization.Clean(string.Concat(shape.Descendants(a + "t").Select(text => text.Value))),
+                properties?.Element(a + "prstGeom")?.Attribute("prst")?.Value ?? ""));
         }
     }
 
@@ -323,6 +370,29 @@ internal static class XlsxArtifactReader
     private static string ReadColor(OpenXmlElement? color)
     {
         return color?.GetAttribute("rgb", "").Value ?? "";
+    }
+
+    private static string ReadDrawingColor(XElement? fill)
+    {
+        if (fill is null)
+        {
+            return "";
+        }
+
+        XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        return fill.Element(a + "srgbClr")?.Attribute("val")?.Value ??
+            fill.Element(a + "schemeClr")?.Attribute("val")?.Value ??
+            "";
+    }
+
+    private static uint ParseUInt(string? value)
+    {
+        return uint.TryParse(value, out var parsed) ? parsed : 0;
+    }
+
+    private static double ParseDouble(string? value)
+    {
+        return double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
     }
 
     private static string EnumText(OpenXmlSimpleType? value)

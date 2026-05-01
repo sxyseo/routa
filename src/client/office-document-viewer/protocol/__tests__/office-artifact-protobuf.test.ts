@@ -109,6 +109,23 @@ describe("decodeRoutaOfficeArtifact", () => {
           messageField(5, message([stringField(1, "E5E7EB")])),
         ]),
       ),
+      messageField(
+        12,
+        message([
+          stringField(1, "shape-1"),
+          stringField(2, "Sheet1"),
+          varintField(3, 8),
+          varintField(4, 30),
+          doubleField(5, 9525),
+          doubleField(6, 19050),
+          doubleField(7, 3810000),
+          doubleField(8, 1143000),
+          stringField(9, "F0FDFA"),
+          stringField(10, "14B8A6"),
+          stringField(11, "Callout"),
+          stringField(12, "roundRect"),
+        ]),
+      ),
     ]);
 
     const artifact = decodeRoutaOfficeArtifact(payload);
@@ -174,6 +191,20 @@ describe("decodeRoutaOfficeArtifact", () => {
     expect(artifact.styles.numberFormats[0]).toEqual({ formatCode: "$#,##0", id: 200 });
     expect(artifact.styles.cellXfs[0].numFmtId).toBe(200);
     expect(artifact.styles.fonts[0].typeface).toBe("Arial");
+    expect(artifact.shapes[0]).toEqual({
+      fillColor: "F0FDFA",
+      fromCol: 8,
+      fromColOffsetEmu: 9525,
+      fromRow: 30,
+      fromRowOffsetEmu: 19050,
+      geometry: "roundRect",
+      heightEmu: 1143000,
+      id: "shape-1",
+      lineColor: "14B8A6",
+      sheetName: "Sheet1",
+      text: "Callout",
+      widthEmu: 3810000,
+    });
   });
 
   it("skips unknown length-delimited fields", () => {

@@ -202,7 +202,7 @@ async function parseDocumentWithGeneratedReader(file: File, kind: OfficeWasmArti
   return {
     generatedSummary: await summarizeGeneratedWasmArtifact(artifact, protoBytes),
     kind: kind === "xlsx" ? "spreadsheet" : "document",
-    proto: routaArtifactToPreviewProto(artifact, kind),
+    proto: routaArtifactToPreviewProto(artifact, kind, file.name),
     rawProto: artifact,
     readerMode: "routa",
     sourceKind: kind,
@@ -216,17 +216,19 @@ async function decodePresentationProto(protoBytes: Uint8Array): Promise<unknown>
   return Presentation.decode(protoBytes);
 }
 
-function routaArtifactToPreviewProto(artifact: RoutaOfficeArtifact, kind: OfficeWasmArtifactKind): unknown {
+function routaArtifactToPreviewProto(artifact: RoutaOfficeArtifact, kind: OfficeWasmArtifactKind, sourceName = ""): unknown {
   if (kind === "xlsx") {
     return {
       charts: artifact.charts,
       diagnostics: artifact.diagnostics,
       images: artifact.images,
       metadata: artifact.metadata,
+      shapes: artifact.shapes,
       sheets: artifact.sheets.map(routaSheetToPreviewSheet),
       styles: routaStylesToPreviewStyles(artifact),
       tables: artifact.tables,
       title: artifact.title,
+      sourceName,
     };
   }
 
