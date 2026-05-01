@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { resolveApiPath } from "@/client/config/backend";
 import { toErrorMessage } from "@/client/utils/diagnostics";
@@ -41,6 +41,31 @@ type PreviewLabels = {
   textRuns: string;
 };
 
+type TextRunView = {
+  id: string;
+  text: string;
+  style: RecordValue | null;
+};
+
+type ParagraphView = {
+  id: string;
+  runs: TextRunView[];
+  styleId: string;
+  style: RecordValue | null;
+};
+
+type DocumentStyleMaps = {
+  textStyles: Map<string, RecordValue>;
+  images: Map<string, string>;
+};
+
+type CellMerge = {
+  startColumn: number;
+  startRow: number;
+  columnSpan: number;
+  rowSpan: number;
+};
+
 type WalnutReader = {
   DocxReader: {
     ExtractDocxProto: (bytes: Uint8Array, ignoreErrors: boolean) => unknown;
@@ -51,6 +76,11 @@ type WalnutReader = {
   XlsxReader: {
     ExtractXlsxProto: (bytes: Uint8Array, ignoreErrors: boolean) => unknown;
   };
+};
+
+const EMPTY_DOCUMENT_STYLE_MAPS: DocumentStyleMaps = {
+  textStyles: new Map(),
+  images: new Map(),
 };
 
 const ASSET_BASE_URL = resolveApiPath(OFFICE_WASM_ASSET_ROUTE);
@@ -212,11 +242,12 @@ function inferImageContentType(id: string): string {
 }
 
 function hexToRgb(value: string): { red: number; green: number; blue: number } | null {
-  if (!/^[0-9a-f]{6}$/i.test(value)) return null;
+  const normalized = /^[0-9a-f]{8}$/i.test(value) ? value.slice(2) : value;
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return null;
   return {
-    red: Number.parseInt(value.slice(0, 2), 16),
-    green: Number.parseInt(value.slice(2, 4), 16),
-    blue: Number.parseInt(value.slice(4, 6), 16),
+    red: Number.parseInt(normalized.slice(0, 2), 16),
+    green: Number.parseInt(normalized.slice(2, 4), 16),
+    blue: Number.parseInt(normalized.slice(4, 6), 16),
   };
 }
 
@@ -232,9 +263,10 @@ function colorToCss(value: unknown): string | undefined {
   const raw = asString(color?.value);
   const rgb = hexToRgb(raw);
   if (rgb) {
-    const alpha = colorAlpha(color);
+    const argbAlpha = /^[0-9a-f]{8}$/i.test(raw) ? Number.parseInt(raw.slice(0, 2), 16) / 255 : 1;
+    const alpha = Math.min(argbAlpha, colorAlpha(color));
     if (alpha < 1) return `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, ${alpha})`;
-    return `#${raw}`;
+    return `#${raw.slice(-6)}`;
   }
 
   const lastColor = asString(color?.lastColor);
@@ -247,6 +279,18 @@ function fillToCss(fill: unknown): string | undefined {
   const fillRecord = asRecord(fill);
   if (fillRecord == null || asNumber(fillRecord.type) === 0) return undefined;
   return colorToCss(fillRecord.color);
+}
+
+function spreadsheetFillToCss(fill: unknown): string | undefined {
+  const fillRecord = asRecord(fill);
+  if (fillRecord == null) return undefined;
+  return (
+    fillToCss(fillRecord) ??
+    colorToCss(fillRecord.color) ??
+    colorToCss(asRecord(fillRecord.pattern)?.foregroundColor) ??
+    colorToCss(asRecord(fillRecord.pattern)?.backgroundColor) ??
+    colorToCss(asRecord(fillRecord.pattern)?.fill)
+  );
 }
 
 function lineToCss(line: unknown): { color?: string; width: number } {
@@ -283,6 +327,67 @@ function elementImageReferenceId(element: RecordValue): string {
 function paragraphText(paragraph: unknown): string {
   const runs = asArray(asRecord(paragraph)?.runs);
   return runs.map((run) => asString(asRecord(run)?.text)).join("");
+}
+
+function paragraphView(paragraph: unknown, styleMaps: DocumentStyleMaps): ParagraphView {
+  const record = asRecord(paragraph);
+  const styleId = asString(record?.styleId);
+  const styleRecord = styleMaps.textStyles.get(styleId);
+  const style = {
+    ...(asRecord(styleRecord?.textStyle) ?? {}),
+    ...(asRecord(record?.textStyle) ?? {}),
+    spaceAfter: record?.spaceAfter,
+    spaceBefore: record?.spaceBefore,
+  };
+  const runs = asArray(record?.runs)
+    .map(asRecord)
+    .filter((run): run is RecordValue => run != null)
+    .map((run, index) => ({
+      id: asString(run.id) || `${asString(record?.id)}-${index}`,
+      text: asString(run.text),
+      style: {
+        ...style,
+        ...(asRecord(run.textStyle) ?? {}),
+      },
+    }));
+
+  return {
+    id: asString(record?.id),
+    runs,
+    styleId,
+    style,
+  };
+}
+
+function paragraphStyle(paragraph: ParagraphView): CSSProperties {
+  const isTitle = paragraph.styleId === "Title";
+  const isHeading = /^Heading/i.test(paragraph.styleId);
+  const spaceBefore = asNumber(paragraph.style?.spaceBefore);
+  const spaceAfter = asNumber(paragraph.style?.spaceAfter);
+
+  return {
+    color: colorToCss(asRecord(paragraph.style?.fill)?.color) ?? "#0f172a",
+    fontFamily: asString(paragraph.style?.typeface) || undefined,
+    fontSize: cssFontSize(paragraph.style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14),
+    fontWeight: paragraph.style?.bold === true || isTitle || isHeading ? 700 : 400,
+    lineHeight: 1.55,
+    margin: 0,
+    marginBottom: spaceAfter ? Math.min(28, spaceAfter / 20) : isTitle || isHeading ? 10 : 8,
+    marginTop: spaceBefore ? Math.min(32, spaceBefore / 20) : isHeading ? 12 : 0,
+    whiteSpace: "pre-wrap",
+  };
+}
+
+function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {
+  const runFontSize = run.style?.fontSize == null ? undefined : cssFontSize(run.style.fontSize, 14) * fontScale;
+  return {
+    color: colorToCss(asRecord(run.style?.fill)?.color) ?? undefined,
+    fontFamily: asString(run.style?.typeface) || undefined,
+    fontSize: runFontSize == null ? undefined : Math.max(fontScale < 1 ? 2 : 8, Math.min(fontScale < 1 ? 12 : 72, runFontSize)),
+    fontStyle: run.style?.italic === true ? "italic" : undefined,
+    fontWeight: run.style?.bold === true ? 700 : undefined,
+    textDecoration: run.style?.underline === true ? "underline" : undefined,
+  };
 }
 
 function collectTextBlocks(value: unknown, limit = 80): string[] {
@@ -329,6 +434,28 @@ function columnIndexFromAddress(address: string): number {
   return Math.max(0, index - 1);
 }
 
+function rowIndexFromAddress(address: string): number {
+  const match = address.match(/\d+/);
+  if (!match) return 1;
+  return Math.max(1, Number.parseInt(match[0], 10));
+}
+
+function parseCellRange(reference: string): CellMerge | null {
+  const [start, end = start] = reference.split(":");
+  if (!start) return null;
+
+  const startColumn = columnIndexFromAddress(start);
+  const startRow = rowIndexFromAddress(start);
+  const endColumn = columnIndexFromAddress(end);
+  const endRow = rowIndexFromAddress(end);
+  return {
+    startColumn: Math.min(startColumn, endColumn),
+    startRow: Math.min(startRow, endRow),
+    columnSpan: Math.abs(endColumn - startColumn) + 1,
+    rowSpan: Math.abs(endRow - startRow) + 1,
+  };
+}
+
 function columnLabel(index: number): string {
   let value = index + 1;
   let label = "";
@@ -342,6 +469,22 @@ function columnLabel(index: number): string {
   return label;
 }
 
+function resolveStyleRecord(record: RecordValue | null, keys: string[]): RecordValue | null {
+  for (const key of keys) {
+    const candidate = asRecord(record?.[key]);
+    if (candidate) return candidate;
+  }
+
+  return null;
+}
+
+function cssFontSize(value: unknown, fallbackPx: number): number {
+  const raw = asNumber(value);
+  if (raw <= 0) return fallbackPx;
+  if (raw > 200) return Math.max(8, Math.min(72, raw / 100));
+  return Math.max(8, Math.min(72, raw));
+}
+
 function cellText(cell: unknown): string {
   const record = asRecord(cell);
   if (record == null) return "";
@@ -349,8 +492,64 @@ function cellText(cell: unknown): string {
   const value = asString(record.value);
   if (value) return value;
 
+  const formula = asString(record.formula) || asString(record.formulaText);
+  if (formula) return `=${formula.replace(/^=/, "")}`;
+
   const paragraphs = asArray(record.paragraphs);
   return paragraphs.map(paragraphText).filter(Boolean).join("\n");
+}
+
+function styleAt(values: unknown, index: unknown): RecordValue | null {
+  const styleIndex = asNumber(index, -1);
+  if (styleIndex < 0) return null;
+  return asRecord(asArray(values)[styleIndex]);
+}
+
+function spreadsheetCellStyle(
+  cell: RecordValue | null,
+  styles: RecordValue | null,
+): CSSProperties {
+  const cellFormat = styleAt(styles?.cellXfs, cell?.styleIndex);
+  const font = styleAt(styles?.fonts, cellFormat?.fontId);
+  const fill = styleAt(styles?.fills, cellFormat?.fillId);
+  const border = styleAt(styles?.borders, cellFormat?.borderId);
+  const alignment = asRecord(cellFormat?.alignment);
+  const fontFill = resolveStyleRecord(font, ["fill", "color"]);
+  const fillColor = spreadsheetFillToCss(fill);
+  const fontColor = colorToCss(fontFill?.color ?? fontFill);
+  const borderColor = colorToCss(asRecord(asRecord(border?.bottom)?.color)) ?? "#e2e8f0";
+
+  return {
+    ...sheetCellStyle,
+    background: fillColor,
+    borderBottomColor: borderColor,
+    borderRightColor: borderColor,
+    color: fontColor ?? sheetCellStyle.color,
+    fontFamily: asString(font?.typeface) || undefined,
+    fontSize: cssFontSize(font?.fontSize, 13),
+    fontStyle: font?.italic === true ? "italic" : undefined,
+    fontWeight: font?.bold === true ? 700 : undefined,
+    textAlign: (asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment)) as CSSProperties["textAlign"] || undefined,
+    verticalAlign: asString(alignment?.vertical) as CSSProperties["verticalAlign"] || sheetCellStyle.verticalAlign,
+  };
+}
+
+function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | null): string {
+  const text = cellText(cell);
+  const numberValue = Number(text);
+  if (cell == null || !Number.isFinite(numberValue)) return text;
+
+  const cellFormat = styleAt(styles?.cellXfs, cell.styleIndex);
+  const numberFormatId = asNumber(cellFormat?.numFmtId, -1);
+  const numberFormat = asArray(styles?.numberFormats)
+    .map(asRecord)
+    .find((format) => asNumber(format?.id, -2) === numberFormatId);
+  const formatCode = asString(numberFormat?.formatCode);
+
+  if (formatCode.includes("%")) return `${(numberValue * 100).toFixed(formatCode.includes(".0") ? 1 : 0)}%`;
+  if (formatCode.includes("$")) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
+  if (formatCode.includes("#,##0")) return Math.round(numberValue).toLocaleString("en-US");
+  return text;
 }
 
 function OfficePreview({
@@ -372,29 +571,67 @@ function OfficePreview({
 }
 
 function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
-  const sheets = asArray(asRecord(proto)?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null);
+  const root = asRecord(proto);
+  const sheets = asArray(root?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null);
+  const styles = asRecord(root?.styles);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
 
   const rows = asArray(activeSheet?.rows).map(asRecord).filter((row): row is RecordValue => row != null);
   let maxColumn = 0;
-  const rowsByIndex = new Map<number, Map<number, string>>();
+  const rowsByIndex = new Map<number, Map<number, RecordValue>>();
 
   for (const row of rows) {
     const rowIndex = asNumber(row.index, 1);
-    const cells = new Map<number, string>();
+    const cells = new Map<number, RecordValue>();
     for (const cell of asArray(row.cells)) {
       const cellRecord = asRecord(cell);
       const address = asString(cellRecord?.address);
       const columnIndex = columnIndexFromAddress(address);
       maxColumn = Math.max(maxColumn, columnIndex);
-      cells.set(columnIndex, cellText(cell));
+      if (cellRecord) cells.set(columnIndex, cellRecord);
     }
     rowsByIndex.set(rowIndex, cells);
   }
 
-  const maxRow = Math.min(Math.max(...rowsByIndex.keys(), 1), 40);
-  const columnCount = Math.min(Math.max(maxColumn + 1, 6), 18);
+  const rowHeights = new Map(rows.map((row) => [asNumber(row.index, 1), asNumber(row.height)]));
+  const columns = asArray(activeSheet?.columns).map(asRecord).filter((column): column is RecordValue => column != null);
+  const columnWidths = new Map<number, number>();
+  for (const column of columns) {
+    const min = Math.max(1, asNumber(column.min, asNumber(column.index, 1)));
+    const max = Math.max(min, asNumber(column.max, min));
+    const width = asNumber(column.width, asNumber(activeSheet?.defaultColWidth, 10));
+    for (let index = min - 1; index <= max - 1; index += 1) {
+      columnWidths.set(index, Math.max(56, Math.min(240, width * 9)));
+      maxColumn = Math.max(maxColumn, index);
+    }
+  }
+
+  const mergeByStart = new Map<string, CellMerge>();
+  const coveredCells = new Set<string>();
+  for (const mergeRecord of asArray(activeSheet?.mergedCells)) {
+    const mergeValue = asRecord(mergeRecord);
+    const reference = (
+      asString(mergeValue?.reference) ||
+      (asString(mergeValue?.startAddress) && asString(mergeValue?.endAddress)
+        ? `${asString(mergeValue?.startAddress)}:${asString(mergeValue?.endAddress)}`
+        : "") ||
+      asString(mergeRecord)
+    );
+    const merge = parseCellRange(reference);
+    if (!merge || (merge.columnSpan === 1 && merge.rowSpan === 1)) continue;
+    mergeByStart.set(`${merge.startRow}:${merge.startColumn}`, merge);
+    maxColumn = Math.max(maxColumn, merge.startColumn + merge.columnSpan - 1);
+    for (let row = merge.startRow; row < merge.startRow + merge.rowSpan; row += 1) {
+      for (let column = merge.startColumn; column < merge.startColumn + merge.columnSpan; column += 1) {
+        if (row === merge.startRow && column === merge.startColumn) continue;
+        coveredCells.add(`${row}:${column}`);
+      }
+    }
+  }
+
+  const maxRow = Math.min(Math.max(...rowsByIndex.keys(), 1), 80);
+  const columnCount = Math.min(Math.max(maxColumn + 1, 6), 32);
 
   if (sheets.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSheets}</p>;
@@ -424,6 +661,12 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
       <div style={{ color: "#64748b", fontSize: 13 }}>{labels.showingFirstRows}</div>
       <div style={{ border: "1px solid #cbd5e1", borderRadius: 8, overflow: "auto", maxHeight: 520 }}>
         <table style={{ borderCollapse: "collapse", minWidth: "100%", fontSize: 13 }}>
+          <colgroup>
+            <col style={{ width: 52 }} />
+            {Array.from({ length: columnCount }, (_, index) => (
+              <col key={index} style={{ width: columnWidths.get(index) ?? 88 }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               <th style={sheetHeaderStyle} />
@@ -436,14 +679,25 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
             {Array.from({ length: maxRow }, (_, rowOffset) => {
               const rowIndex = rowOffset + 1;
               const row = rowsByIndex.get(rowIndex);
+              const height = rowHeights.get(rowIndex);
               return (
-                <tr key={rowIndex}>
+                <tr key={rowIndex} style={{ height: height && height > 0 ? Math.max(20, height) : undefined }}>
                   <th style={sheetHeaderStyle}>{rowIndex}</th>
-                  {Array.from({ length: columnCount }, (_, columnIndex) => (
-                    <td key={columnIndex} style={sheetCellStyle}>
-                      {row?.get(columnIndex) ?? ""}
-                    </td>
-                  ))}
+                  {Array.from({ length: columnCount }, (_, columnIndex) => {
+                    if (coveredCells.has(`${rowIndex}:${columnIndex}`)) return null;
+                    const cell = row?.get(columnIndex) ?? null;
+                    const merge = mergeByStart.get(`${rowIndex}:${columnIndex}`);
+                    return (
+                      <td
+                        key={columnIndex}
+                        colSpan={merge?.columnSpan}
+                        rowSpan={merge?.rowSpan}
+                        style={spreadsheetCellStyle(cell, styles)}
+                      >
+                        {spreadsheetCellText(cell, styles)}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}
@@ -454,10 +708,14 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
   );
 }
 
-const sheetHeaderStyle = {
+const sheetHeaderStyle: CSSProperties = {
   background: "#f8fafc",
-  borderBottom: "1px solid #cbd5e1",
-  borderRight: "1px solid #e2e8f0",
+  borderBottomColor: "#cbd5e1",
+  borderBottomStyle: "solid",
+  borderBottomWidth: 1,
+  borderRightColor: "#e2e8f0",
+  borderRightStyle: "solid",
+  borderRightWidth: 1,
   color: "#475569",
   minWidth: 88,
   padding: "7px 9px",
@@ -465,9 +723,13 @@ const sheetHeaderStyle = {
   top: 0,
 };
 
-const sheetCellStyle = {
-  borderBottom: "1px solid #e2e8f0",
-  borderRight: "1px solid #e2e8f0",
+const sheetCellStyle: CSSProperties = {
+  borderBottomColor: "#e2e8f0",
+  borderBottomStyle: "solid",
+  borderBottomWidth: 1,
+  borderRightColor: "#e2e8f0",
+  borderRightStyle: "solid",
+  borderRightWidth: 1,
   color: "#0f172a",
   minWidth: 88,
   padding: "7px 9px",
@@ -478,7 +740,7 @@ const sheetCellStyle = {
 function PresentationPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
   const slides = asArray(root?.slides).map(asRecord).filter((slide): slide is RecordValue => slide != null);
-  const imageSources = usePresentationImageSources(root);
+  const imageSources = useOfficeImageSources(root);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const selectedSlideIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
   const selectedSlide = slides[selectedSlideIndex] ?? {};
@@ -585,7 +847,7 @@ function SlideCanvas({
   );
 }
 
-function usePresentationImageSources(root: RecordValue | null): Map<string, string> {
+function useOfficeImageSources(root: RecordValue | null): Map<string, string> {
   const imageRecords = useMemo(() => {
     return asArray(root?.images).map(asRecord).filter((image): image is RecordValue => image != null);
   }, [root]);
@@ -698,7 +960,8 @@ function SlideElement({
 }) {
   const bbox = asRecord(element.bbox);
   const shape = asRecord(element.shape);
-  const text = asArray(element.paragraphs).map(paragraphText).filter(Boolean).join("\n");
+  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_DOCUMENT_STYLE_MAPS));
+  const text = paragraphs.map((paragraph) => paragraph.runs.map((run) => run.text).join("")).filter(Boolean).join("\n");
   const firstRun = asRecord(asArray(asRecord(asArray(element.paragraphs)[0])?.runs)[0]);
   const textStyle = asRecord(firstRun?.textStyle);
   const fill = fillToCss(shape?.fill);
@@ -748,7 +1011,7 @@ function SlideElement({
             backgroundImage: `url("${imageSrc}")`,
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
-            backgroundSize: "cover",
+            backgroundSize: "100% 100%",
             height: "100%",
             inset: 0,
             position: "absolute",
@@ -756,7 +1019,19 @@ function SlideElement({
           }}
         />
       ) : null}
-      {text ? <span style={{ position: "relative", zIndex: 1 }}>{text}</span> : null}
+      {text ? (
+        <span style={{ display: "grid", position: "relative", width: "100%", zIndex: 1 }}>
+          {paragraphs.map((paragraph, paragraphIndex) => (
+            <span key={paragraph.id || paragraphIndex}>
+              {paragraph.runs.map((run, runIndex) => (
+                <span key={run.id || runIndex} style={textRunStyle(run, fontScale)}>
+                  {run.text}
+                </span>
+              ))}
+            </span>
+          ))}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -764,32 +1039,187 @@ function SlideElement({
 function DocumentPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
   const elements = asArray(root?.elements);
-  const blocks = collectTextBlocks(elements.length > 0 ? elements : proto, 120);
+  const imageSources = useOfficeImageSources(root);
+  const textStyles = new Map<string, RecordValue>();
+  for (const style of asArray(root?.textStyles)) {
+    const record = asRecord(style);
+    const id = asString(record?.id);
+    if (record && id) textStyles.set(id, record);
+  }
+  const styleMaps: DocumentStyleMaps = { textStyles, images: imageSources };
 
-  if (blocks.length === 0) {
-    return <p style={{ color: "#64748b" }}>{labels.noDocumentBlocks}</p>;
+  const hasRenderableBlocks = elements.some((element) => {
+    const record = asRecord(element);
+    return (
+      record != null &&
+      (asArray(record.paragraphs).length > 0 || asRecord(record.table) != null || elementImageReferenceId(record) !== "")
+    );
+  });
+
+  if (!hasRenderableBlocks) {
+    const blocks = collectTextBlocks(elements.length > 0 ? elements : proto, 120);
+    if (blocks.length === 0) {
+      return <p style={{ color: "#64748b" }}>{labels.noDocumentBlocks}</p>;
+    }
+
+    return (
+      <div data-testid="document-preview" style={{ display: "grid", gap: 10 }}>
+        {blocks.map((block, index) => (
+          <p key={`${block.slice(0, 24)}-${index}`} style={documentFallbackBlockStyle}>
+            {block}
+          </p>
+        ))}
+      </div>
+    );
   }
 
   return (
-    <div data-testid="document-preview" style={{ display: "grid", gap: 10 }}>
-      {blocks.map((block, index) => (
-        <p
-          key={`${block.slice(0, 24)}-${index}`}
-          style={{
-            borderBottom: "1px solid #e2e8f0",
-            color: "#0f172a",
-            lineHeight: 1.6,
-            margin: 0,
-            paddingBottom: 10,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {block}
-        </p>
+    <article
+      data-testid="document-preview"
+      style={{
+        background: "#ffffff",
+        borderColor: "#d8e0ea",
+        borderRadius: 8,
+        borderStyle: "solid",
+        borderWidth: 1,
+        boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
+        color: "#0f172a",
+        display: "grid",
+        gap: 6,
+        margin: "0 auto",
+        maxWidth: 920,
+        minHeight: 680,
+        padding: "56px 64px",
+        width: "100%",
+      }}
+    >
+      {elements.map((element, index) => (
+        <DocumentElement
+          element={asRecord(element) ?? {}}
+          key={`${asString(asRecord(element)?.id)}-${index}`}
+          styleMaps={styleMaps}
+        />
       ))}
+    </article>
+  );
+}
+
+function DocumentElement({
+  element,
+  styleMaps,
+}: {
+  element: RecordValue;
+  styleMaps: DocumentStyleMaps;
+}) {
+  const table = asRecord(element.table);
+  if (table) return <DocumentTable table={table} styleMaps={styleMaps} />;
+
+  const imageId = elementImageReferenceId(element);
+  const imageSrc = imageId ? styleMaps.images.get(imageId) : undefined;
+  if (imageSrc) {
+    return (
+      <span
+        aria-label={asString(element.name)}
+        role="img"
+        style={{
+          backgroundImage: `url("${imageSrc}")`,
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "contain",
+          display: "block",
+          height: 280,
+          maxHeight: 360,
+          maxWidth: "100%",
+          width: "100%",
+        }}
+      />
+    );
+  }
+
+  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, styleMaps));
+  if (paragraphs.length === 0) return null;
+
+  return (
+    <>
+      {paragraphs.map((paragraph, index) => (
+        <DocumentParagraph key={paragraph.id || index} paragraph={paragraph} />
+      ))}
+    </>
+  );
+}
+
+function DocumentParagraph({ paragraph }: { paragraph: ParagraphView }) {
+  return (
+    <p style={paragraphStyle(paragraph)}>
+      {paragraph.runs.map((run, index) => (
+        <span key={run.id || index} style={textRunStyle(run)}>
+          {run.text}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+function DocumentTable({
+  styleMaps,
+  table,
+}: {
+  styleMaps: DocumentStyleMaps;
+  table: RecordValue;
+}) {
+  const rows = asArray(table.rows).map(asRecord).filter((row): row is RecordValue => row != null);
+  if (rows.length === 0) return null;
+
+  return (
+    <div style={{ margin: "12px 0 18px", overflowX: "auto" }}>
+      <table style={{ borderCollapse: "collapse", minWidth: "70%", width: "100%" }}>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={asString(row.id) || rowIndex}>
+              {asArray(row.cells).map((cell, cellIndex) => {
+                const cellRecord = asRecord(cell) ?? {};
+                const paragraphs = asArray(cellRecord.paragraphs).map((paragraph) => paragraphView(paragraph, styleMaps));
+                return (
+                  <td
+                    key={asString(cellRecord.id) || cellIndex}
+                    style={{
+                      background: rowIndex === 0 ? "#f8fafc" : "#ffffff",
+                      borderColor: "#cbd5e1",
+                      borderStyle: "solid",
+                      borderWidth: 1,
+                      color: "#0f172a",
+                      padding: "8px 10px",
+                      verticalAlign: "top",
+                    }}
+                  >
+                    {paragraphs.length > 0 ? (
+                      paragraphs.map((paragraph, index) => (
+                        <DocumentParagraph key={paragraph.id || index} paragraph={paragraph} />
+                      ))
+                    ) : (
+                      asString(cellRecord.text)
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
+
+const documentFallbackBlockStyle: CSSProperties = {
+  borderBottomColor: "#e2e8f0",
+  borderBottomStyle: "solid",
+  borderBottomWidth: 1,
+  color: "#0f172a",
+  lineHeight: 1.6,
+  margin: 0,
+  paddingBottom: 10,
+  whiteSpace: "pre-wrap",
+};
 
 function statusLabel(t: ReturnType<typeof useTranslation>["t"], status: ParseStage): string {
   switch (status) {
