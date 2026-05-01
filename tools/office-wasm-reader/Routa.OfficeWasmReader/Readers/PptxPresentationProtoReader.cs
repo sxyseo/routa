@@ -66,6 +66,7 @@ internal static class PptxPresentationProtoReader
         var slideLayoutParts = DistinctByUri(slideParts.Select(part => part.SlideLayoutPart)).ToList();
         var slideMasterParts = DistinctByUri(slideLayoutParts.Select(part => part?.SlideMasterPart)).ToList();
         var themePart = slideMasterParts.Select(part => part.ThemePart).FirstOrDefault(part => part is not null);
+        var tableStylesPart = presentationPart?.TableStylesPart;
         var presentationParts = slideParts.Cast<OpenXmlPart>()
             .Concat(slideLayoutParts)
             .Concat(slideMasterParts)
@@ -107,6 +108,12 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 4, WriteRootImage(imagePart));
             }
 
+            var tableStyles = WriteTableStyles(tableStylesPart);
+            if (tableStyles is not null)
+            {
+                WriteMessage(output, 7, tableStyles);
+            }
+
             foreach (var chartPart in chartParts)
             {
                 WriteMessage(output, 9, WriteChart(chartPart));
@@ -129,10 +136,28 @@ internal static class PptxPresentationProtoReader
 
             WriteInt64(output, 5, widthEmu);
             WriteInt64(output, 6, heightEmu);
-            var background = SolidFillFromBackground(slidePart.Slide.CommonSlideData?.Background);
+            var background = WriteBackground(slidePart.Slide.CommonSlideData?.Background);
             if (background is not null)
             {
-                WriteMessage(output, 10, WriteBackground(background));
+                WriteMessage(output, 10, background);
+            }
+
+            WriteString(output, 11, slidePart.Uri.OriginalString);
+            if (slidePart.NotesSlidePart is { } notesSlidePart)
+            {
+                WriteMessage(output, 12, WriteNotesSlide(slidePart, notesSlidePart));
+            }
+        });
+    }
+
+    private static byte[] WriteNotesSlide(SlidePart slidePart, NotesSlidePart notesSlidePart)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 2, slidePart.SlideLayoutPart?.Uri.OriginalString);
+            foreach (var element in ExtractNotesElements(notesSlidePart.NotesSlide.CommonSlideData?.ShapeTree))
+            {
+                WriteMessage(output, 3, element);
             }
 
             WriteString(output, 11, slidePart.Uri.OriginalString);
@@ -172,7 +197,7 @@ internal static class PptxPresentationProtoReader
 
             foreach (var effectStyle in formatScheme?.EffectStyleList?.Elements<A.EffectStyle>() ?? Enumerable.Empty<A.EffectStyle>())
             {
-                WriteMessage(output, 4, WriteEffectStyle(effectStyle));
+                WriteMessageAlways(output, 4, WriteEffectStyle(effectStyle));
             }
         });
     }
@@ -193,6 +218,22 @@ internal static class PptxPresentationProtoReader
             {
                 WriteMessage(output, 16, WriteColorMap(colorMap));
             }
+
+            var textStyles = slideMasterPart.SlideMaster.TextStyles;
+            foreach (var levelStyle in ExtractLevelStyles(textStyles?.BodyStyle))
+            {
+                WriteMessage(output, 12, levelStyle);
+            }
+
+            foreach (var levelStyle in ExtractLevelStyles(textStyles?.TitleStyle))
+            {
+                WriteMessage(output, 13, levelStyle);
+            }
+
+            foreach (var levelStyle in ExtractLevelStyles(textStyles?.OtherStyle))
+            {
+                WriteMessage(output, 14, levelStyle);
+            }
         });
     }
 
@@ -202,10 +243,10 @@ internal static class PptxPresentationProtoReader
         {
             WriteString(output, 1, slideLayoutPart.Uri.OriginalString);
             WriteString(output, 8, slideLayoutPart.SlideLayout.CommonSlideData?.Name?.Value);
-            var background = SolidFillFromBackground(slideLayoutPart.SlideLayout.CommonSlideData?.Background);
+            var background = WriteBackground(slideLayoutPart.SlideLayout.CommonSlideData?.Background);
             if (background is not null)
             {
-                WriteMessage(output, 10, WriteBackground(background));
+                WriteMessage(output, 10, background);
             }
 
             foreach (var element in ExtractElements(slideLayoutPart.SlideLayout.CommonSlideData?.ShapeTree, slideLayoutPart))
@@ -249,6 +290,26 @@ internal static class PptxPresentationProtoReader
         foreach (var element in ExtractElements(shapeTree.ChildElements, partContainer))
         {
             yield return element;
+        }
+    }
+
+    private static IEnumerable<byte[]> ExtractNotesElements(P.ShapeTree? shapeTree)
+    {
+        if (shapeTree is null)
+        {
+            yield break;
+        }
+
+        var shapeIndex = 0;
+        foreach (var shape in shapeTree.Elements<P.Shape>())
+        {
+            var element = WriteNotesShapeElement(shape, shapeIndex);
+            if (element is not null)
+            {
+                yield return element;
+            }
+
+            shapeIndex++;
         }
     }
 
@@ -315,6 +376,7 @@ internal static class PptxPresentationProtoReader
     private static byte[]? WriteShapeElement(P.Shape shape, int zIndex)
     {
         var nonVisual = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
+        var placeholder = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.GetFirstChild<P.PlaceholderShape>();
         var shapeProperties = shape.ShapeProperties;
         var bbox = shapeProperties?.Transform2D;
         var paragraphs = ExtractParagraphs(shape.TextBody).ToList();
@@ -326,8 +388,6 @@ internal static class PptxPresentationProtoReader
             {
                 WriteMessage(output, 1, WriteBoundingBox(bbox));
             }
-
-            WriteInt32Always(output, 2, zIndex);
 
             var fill = SolidFillFromProperties(shapeProperties);
             var line = OutlineFromProperties(shapeProperties);
@@ -341,22 +401,86 @@ internal static class PptxPresentationProtoReader
 
             WriteString(output, 10, nonVisual?.Name?.Value ?? $"Shape {zIndex}");
             WriteInt32(output, 11, hasText ? ElementTypeText : ElementTypeShape);
-            if (fill is not null)
+            if (placeholder?.Index?.Value is { } placeholderIndex)
             {
-                WriteMessage(output, 19, WriteFill(fill));
+                WriteInt32Always(output, 12, (int)Math.Min(int.MaxValue, placeholderIndex));
             }
+
+            WriteString(output, 13, EnumText(placeholder?.Type));
 
             foreach (var effect in ExtractEffects(shapeProperties))
             {
                 WriteMessage(output, 15, effect);
             }
 
-            WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? (zIndex + 1).ToString());
-            if (line is not null)
+            var bodyTextStyle = WriteBodyTextStyle(shape.TextBody?.BodyProperties);
+            if (bodyTextStyle is not null)
             {
-                WriteMessage(output, 30, WriteLine(line));
+                WriteMessage(output, 14, bodyTextStyle);
             }
+
+            WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? (zIndex + 1).ToString());
         });
+    }
+
+    private static byte[]? WriteNotesShapeElement(P.Shape shape, int zIndex)
+    {
+        var nonVisual = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
+        var placeholder = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.GetFirstChild<P.PlaceholderShape>();
+        if (placeholder is null && shape.TextBody is null)
+        {
+            return null;
+        }
+
+        var placeholderType = EnumText(placeholder?.Type);
+        var paragraphs = ExtractNotesParagraphs(shape.TextBody).ToList();
+        var isTextPlaceholder = paragraphs.Count > 0 || !string.Equals(placeholderType, "sldImg", StringComparison.Ordinal);
+
+        return Message(output =>
+        {
+            foreach (var paragraph in paragraphs)
+            {
+                WriteMessage(output, 6, paragraph);
+            }
+
+            WriteString(output, 10, nonVisual?.Name?.Value ?? $"Notes Shape {zIndex}");
+            if (isTextPlaceholder)
+            {
+                WriteInt32(output, 11, ElementTypeText);
+                WriteMessageAlways(output, 14, Message(_ => { }));
+            }
+
+            if (placeholder is not null)
+            {
+                var placeholderIndex = placeholder.Index?.Value ?? 0;
+                WriteInt32Always(output, 12, (int)Math.Min(int.MaxValue, placeholderIndex));
+            }
+
+            WriteString(output, 13, placeholderType);
+            WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? (zIndex + 1).ToString());
+        });
+    }
+
+    private static IEnumerable<byte[]> ExtractNotesParagraphs(OpenXmlElement? textBody)
+    {
+        if (textBody is null)
+        {
+            yield break;
+        }
+
+        foreach (var paragraph in textBody.Elements<A.Paragraph>())
+        {
+            var runs = ExtractRuns(paragraph).ToList();
+            yield return Message(output =>
+            {
+                foreach (var run in runs)
+                {
+                    WriteMessage(output, 1, run);
+                }
+
+                WriteMessageAlways(output, 2, Message(_ => { }));
+            });
+        }
     }
 
     private static byte[]? WritePictureElement(OpenXmlPartContainer partContainer, P.Picture picture, int zIndex)
@@ -378,8 +502,6 @@ internal static class PptxPresentationProtoReader
             {
                 WriteMessage(output, 1, WriteBoundingBox(transform));
             }
-
-            WriteInt32Always(output, 2, zIndex);
 
             if (!string.IsNullOrEmpty(imageId))
             {
@@ -404,7 +526,6 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 33, imageMask);
             }
 
-            WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? (zIndex + 1).ToString());
         });
     }
 
@@ -425,8 +546,6 @@ internal static class PptxPresentationProtoReader
             {
                 WriteMessage(output, 1, WriteBoundingBox(transform));
             }
-
-            WriteInt32Always(output, 2, zIndex);
 
             if (chartReference is not null)
             {
@@ -479,16 +598,11 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 1, WriteBoundingBox(transform));
             }
 
-            WriteInt32Always(output, 2, zIndex);
             WriteMessage(output, 4, WriteShape(properties, null, line));
             WriteString(output, 10, nonVisual?.Name?.Value ?? $"Connector {zIndex}");
             WriteInt32(output, 11, ElementTypeShape);
             WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? (zIndex + 1).ToString());
             WriteMessage(output, 28, WriteConnector(connectionShape, line));
-            if (line is not null)
-            {
-                WriteMessage(output, 30, WriteLine(line));
-            }
         });
     }
 
@@ -509,7 +623,6 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 1, WriteBoundingBox(transform));
             }
 
-            WriteInt32Always(output, 2, zIndex);
             WriteString(output, 10, nonVisual?.Name?.Value ?? $"Group {zIndex}");
             WriteInt32(output, 11, ElementTypeShape);
             foreach (var child in children)
@@ -532,11 +645,7 @@ internal static class PptxPresentationProtoReader
         foreach (var paragraph in textBody.Elements<A.Paragraph>())
         {
             var runs = ExtractRuns(paragraph).ToList();
-            if (runs.Count == 0)
-            {
-                continue;
-            }
-
+            var paragraphProperties = paragraph.ParagraphProperties;
             yield return Message(output =>
             {
                 foreach (var run in runs)
@@ -544,7 +653,27 @@ internal static class PptxPresentationProtoReader
                     WriteMessage(output, 1, run);
                 }
 
-                WriteString(output, 9, $"p{paragraphIndex}");
+                var paragraphTextStyle = WriteParagraphTextStyle(paragraphProperties);
+                if (paragraphTextStyle is not null)
+                {
+                    WriteMessageAlways(output, 2, paragraphTextStyle);
+                }
+
+                if (paragraphProperties?.LeftMargin?.Value is { } marginLeft)
+                {
+                    WriteInt32Always(output, 4, marginLeft);
+                }
+
+                if (paragraphProperties?.Indent?.Value is { } indent)
+                {
+                    WriteInt32Always(output, 5, indent);
+                }
+
+                var paragraphStyle = WriteParagraphStyle(paragraphProperties);
+                if (paragraphStyle is not null)
+                {
+                    WriteMessage(output, 10, paragraphStyle);
+                }
             });
             paragraphIndex++;
         }
@@ -555,7 +684,7 @@ internal static class PptxPresentationProtoReader
         var runIndex = 0;
         foreach (var run in paragraph.Elements<A.Run>())
         {
-            var text = TextNormalization.Clean(run.Text?.Text ?? "");
+            var text = PreservePresentationText(run.Text?.Text);
             if (text.Length == 0)
             {
                 continue;
@@ -569,8 +698,6 @@ internal static class PptxPresentationProtoReader
                 {
                     WriteMessage(output, 2, WriteTextStyle(runProperties));
                 }
-
-                WriteString(output, 4, $"r{runIndex}");
             });
             runIndex++;
         }
@@ -621,6 +748,10 @@ internal static class PptxPresentationProtoReader
             {
                 WriteMessage(output, 5, WriteFill(fill));
             }
+            else if (properties?.GetFirstChild<A.NoFill>() is not null)
+            {
+                WriteMessageAlways(output, 5, Message(_ => { }));
+            }
 
             if (line is not null)
             {
@@ -629,11 +760,107 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[] WriteBackground(A.SolidFill fill)
+    private static byte[]? WriteBodyTextStyle(A.BodyProperties? bodyProperties)
+    {
+        if (bodyProperties is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteInt32(output, 1, BodyAnchorCode(bodyProperties.Anchor));
+            WriteInt32Always(output, 10, bodyProperties.BottomInset?.Value ?? 0);
+            WriteInt32Always(output, 11, bodyProperties.LeftInset?.Value ?? 0);
+            WriteInt32Always(output, 12, bodyProperties.RightInset?.Value ?? 0);
+            WriteInt32Always(output, 13, bodyProperties.TopInset?.Value ?? 0);
+            WriteInt32(output, 20, TextWrappingCode(bodyProperties.Wrap));
+        });
+    }
+
+    private static byte[]? WriteParagraphTextStyle(A.ParagraphProperties? paragraphProperties)
+    {
+        if (paragraphProperties is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            var alignment = AlignmentCode(AttributeValue(paragraphProperties, "algn"));
+            WriteInt32(output, 8, alignment);
+        });
+    }
+
+    private static byte[]? WriteParagraphStyle(OpenXmlElement? paragraphProperties)
+    {
+        if (paragraphProperties is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            var bulletCharacter = paragraphProperties.GetFirstChild<A.CharacterBullet>()?.Char?.Value;
+            if (bulletCharacter is not null || paragraphProperties.GetFirstChild<A.NoBullet>() is not null)
+            {
+                WriteStringAlways(output, 1, bulletCharacter ?? "");
+            }
+            if (IntAttribute(paragraphProperties, "marL") is { } marginLeft)
+            {
+                WriteInt32Always(output, 2, marginLeft);
+            }
+
+            if (IntAttribute(paragraphProperties, "indent") is { } indent)
+            {
+                WriteInt32Always(output, 3, indent);
+            }
+
+            if (paragraphProperties.GetFirstChild<A.LineSpacing>()?.GetFirstChild<A.SpacingPercent>()?.Val?.Value is { } lineSpacing)
+            {
+                WriteInt32Always(output, 4, lineSpacing);
+            }
+        });
+    }
+
+    private static byte[]? WriteBackground(P.Background? background)
+    {
+        if (background is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            var styleReference = background.GetFirstChild<P.BackgroundStyleReference>();
+            if (styleReference is not null)
+            {
+                WriteMessage(output, 2, WriteBackgroundStyleReference(styleReference));
+                return;
+            }
+
+            var fill = SolidFillFromBackground(background);
+            if (fill is not null)
+            {
+                WriteMessage(output, 3, WriteFill(fill));
+            }
+        });
+    }
+
+    private static byte[] WriteBackgroundStyleReference(P.BackgroundStyleReference styleReference)
     {
         return Message(output =>
         {
-            WriteMessage(output, 3, WriteFill(fill));
+            if (styleReference.Index?.Value is { } index)
+            {
+                WriteInt32(output, 1, (int)Math.Min(int.MaxValue, index));
+            }
+
+            var schemeColor = styleReference.GetFirstChild<A.SchemeColor>();
+            if (schemeColor?.Val is not null)
+            {
+                WriteString(output, 2, EnumText(schemeColor.Val));
+            }
         });
     }
 
@@ -642,7 +869,7 @@ internal static class PptxPresentationProtoReader
         return Message(output =>
         {
             WriteString(output, 1, colorScheme.Name?.Value);
-            foreach (var child in colorScheme.ChildElements)
+            foreach (var child in OrderedColorSchemeElements(colorScheme))
             {
                 var color = ColorFromElement(child);
                 if (color is not null)
@@ -666,19 +893,129 @@ internal static class PptxPresentationProtoReader
     {
         return Message(output =>
         {
-            WriteString(output, 1, colorMap.Accent1?.Value.ToString());
-            WriteString(output, 2, colorMap.Accent2?.Value.ToString());
-            WriteString(output, 3, colorMap.Accent3?.Value.ToString());
-            WriteString(output, 4, colorMap.Accent4?.Value.ToString());
-            WriteString(output, 5, colorMap.Accent5?.Value.ToString());
-            WriteString(output, 6, colorMap.Accent6?.Value.ToString());
-            WriteString(output, 7, colorMap.Background1?.Value.ToString());
-            WriteString(output, 8, colorMap.Background2?.Value.ToString());
-            WriteString(output, 9, colorMap.Text1?.Value.ToString());
-            WriteString(output, 10, colorMap.Text2?.Value.ToString());
-            WriteString(output, 11, colorMap.Hyperlink?.Value.ToString());
-            WriteString(output, 12, colorMap.FollowedHyperlink?.Value.ToString());
+            WriteString(output, 1, EnumText(colorMap.Accent1));
+            WriteString(output, 2, EnumText(colorMap.Accent2));
+            WriteString(output, 3, EnumText(colorMap.Accent3));
+            WriteString(output, 4, EnumText(colorMap.Accent4));
+            WriteString(output, 5, EnumText(colorMap.Accent5));
+            WriteString(output, 6, EnumText(colorMap.Accent6));
+            WriteString(output, 7, EnumText(colorMap.Background1));
+            WriteString(output, 8, EnumText(colorMap.Background2));
+            WriteString(output, 9, EnumText(colorMap.Text1));
+            WriteString(output, 10, EnumText(colorMap.Text2));
+            WriteString(output, 11, EnumText(colorMap.Hyperlink));
+            WriteString(output, 12, EnumText(colorMap.FollowedHyperlink));
         });
+    }
+
+    private static IEnumerable<byte[]> ExtractLevelStyles(OpenXmlElement? styleContainer)
+    {
+        if (styleContainer is null)
+        {
+            yield break;
+        }
+
+        foreach (var child in styleContainer.ChildElements)
+        {
+            var level = LevelFromParagraphStyleName(child.LocalName);
+            if (level is null)
+            {
+                continue;
+            }
+
+            yield return Message(output =>
+            {
+                WriteInt32(output, 2, level.Value);
+                var textStyle = WriteLevelTextStyle(child);
+                if (textStyle is not null)
+                {
+                    WriteMessage(output, 3, textStyle);
+                }
+
+                var paragraphStyle = WriteParagraphStyle(child);
+                if (paragraphStyle is not null)
+                {
+                    WriteMessage(output, 4, paragraphStyle);
+                }
+
+                if (child.ChildElements.Any(element => string.Equals(element.LocalName, "spcBef", StringComparison.Ordinal)))
+                {
+                    WriteInt32Always(output, 5, 0);
+                }
+            });
+        }
+    }
+
+    private static IEnumerable<OpenXmlElement> OrderedColorSchemeElements(A.ColorScheme colorScheme)
+    {
+        var byName = colorScheme.ChildElements
+            .GroupBy(element => element.LocalName, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        foreach (var name in new[] { "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "dk1", "lt1", "dk2", "lt2", "hlink", "folHlink" })
+        {
+            if (byName.TryGetValue(name, out var element))
+            {
+                yield return element;
+            }
+        }
+    }
+
+    private static int? BodyAnchorCode(OpenXmlSimpleType? value)
+    {
+        return EnumText(value) switch
+        {
+            "t" => 1,
+            "ctr" => 2,
+            "b" => 3,
+            "just" => 4,
+            "dist" => 5,
+            _ => null,
+        };
+    }
+
+    private static int? TextWrappingCode(OpenXmlSimpleType? value)
+    {
+        return EnumText(value) switch
+        {
+            "none" => 1,
+            "square" => 2,
+            _ => null,
+        };
+    }
+
+    private static int? AlignmentCode(OpenXmlSimpleType? value)
+    {
+        return AlignmentCode(EnumText(value));
+    }
+
+    private static int? AlignmentCode(string? value)
+    {
+        return value switch
+        {
+            "l" => 1,
+            "ctr" => 2,
+            "r" => 3,
+            "just" => 4,
+            "justLow" => 5,
+            "dist" => 6,
+            "thaiDist" => 7,
+            _ => null,
+        };
+    }
+
+    private static string EnumText(OpenXmlSimpleType? value)
+    {
+        return value?.InnerText ?? "";
+    }
+
+    private static int? LevelFromParagraphStyleName(string localName)
+    {
+        return localName.Length == 7 &&
+            localName.StartsWith("lvl", StringComparison.Ordinal) &&
+            localName.EndsWith("pPr", StringComparison.Ordinal) &&
+            int.TryParse(localName.AsSpan(3, 1), out var level)
+            ? level
+            : null;
     }
 
     private static byte[] WriteFill(A.SolidFill fill)
@@ -719,7 +1056,11 @@ internal static class PptxPresentationProtoReader
 
                 WriteMessage(output, 3, Message(stopOutput =>
                 {
-                    WriteInt32(stopOutput, 1, stop.Position?.Value);
+                    if (stop.Position?.Value is { } position)
+                    {
+                        WriteInt32Always(stopOutput, 1, position);
+                    }
+
                     WriteMessage(stopOutput, 2, WriteColor(color));
                 }));
             }
@@ -732,6 +1073,8 @@ internal static class PptxPresentationProtoReader
                 {
                     WriteDouble(output, 6, angle / 60000d);
                 }
+
+                WriteBoolValue(output, 7, linear.Scaled?.Value);
             }
         });
     }
@@ -743,6 +1086,7 @@ internal static class PptxPresentationProtoReader
             WriteInt32(output, 1, FillTypePicture);
             WriteString(output, 4, relationshipId);
             WriteMessage(output, 11, WriteImageReference(imageId));
+            WriteMessageAlways(output, 15, Message(_ => { }));
         });
     }
 
@@ -755,7 +1099,7 @@ internal static class PptxPresentationProtoReader
             sourceRectangle?.Top is not null ||
             sourceRectangle?.Right is not null ||
             sourceRectangle?.Bottom is not null;
-        if (!hasCrop && string.IsNullOrEmpty(geometry))
+        if (!hasCrop && (string.IsNullOrEmpty(geometry) || string.Equals(geometry, "rect", StringComparison.OrdinalIgnoreCase)))
         {
             return null;
         }
@@ -804,8 +1148,8 @@ internal static class PptxPresentationProtoReader
                         WriteInt32(shadowOutput, 3, ToInt32(shadow.BlurRadius));
                         WriteInt32(shadowOutput, 4, ToInt32(shadow.Distance));
                         WriteInt32(shadowOutput, 5, shadow.Direction?.Value);
-                        WriteString(shadowOutput, 6, shadow.Alignment?.Value.ToString());
-                        WriteBool(shadowOutput, 7, shadow.RotateWithShape?.Value);
+                        WriteString(shadowOutput, 6, EnumText(shadow.Alignment));
+                        WriteBoolValue(shadowOutput, 7, shadow.RotateWithShape?.Value);
                     }));
                 }));
             }
@@ -816,27 +1160,48 @@ internal static class PptxPresentationProtoReader
     {
         return Message(output =>
         {
-            WriteBool(output, 4, runProperties.Bold?.Value);
-            WriteBool(output, 5, runProperties.Italic?.Value);
-            WriteInt32(output, 6, runProperties.FontSize?.Value);
-            var fill = runProperties.GetFirstChild<A.SolidFill>();
-            if (fill is not null)
-            {
-                WriteMessage(output, 7, WriteFill(fill));
-            }
-
-            var underline = runProperties.Underline?.Value.ToString();
-            if (!string.IsNullOrEmpty(underline) && underline != "None")
-            {
-                WriteString(output, 9, underline);
-            }
-
-            var typeface =
-                runProperties.GetFirstChild<A.LatinFont>()?.Typeface?.Value ??
-                runProperties.GetFirstChild<A.EastAsianFont>()?.Typeface?.Value ??
-                runProperties.GetFirstChild<A.ComplexScriptFont>()?.Typeface?.Value;
-            WriteString(output, 18, typeface);
+            WriteTextStyleProperties(output, runProperties, null);
         });
+    }
+
+    private static byte[]? WriteLevelTextStyle(OpenXmlElement paragraphProperties)
+    {
+        var defaultRunProperties = paragraphProperties.GetFirstChild<A.DefaultRunProperties>();
+        if (defaultRunProperties is null && AttributeValue(paragraphProperties, "algn") is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteTextStyleProperties(output, defaultRunProperties, paragraphProperties);
+        });
+    }
+
+    private static void WriteTextStyleProperties(CodedOutputStream output, OpenXmlElement? textProperties, OpenXmlElement? paragraphProperties)
+    {
+        WriteBool(output, 4, BoolAttribute(textProperties, "b"));
+        WriteBool(output, 5, BoolAttribute(textProperties, "i"));
+        WriteInt32(output, 6, IntAttribute(textProperties, "sz"));
+        var fill = textProperties?.GetFirstChild<A.SolidFill>();
+        if (fill is not null)
+        {
+            WriteMessage(output, 7, WriteFill(fill));
+        }
+
+        WriteInt32(output, 8, AlignmentCode(AttributeValue(paragraphProperties, "algn")));
+
+        var underline = AttributeValue(textProperties, "u");
+        if (!string.IsNullOrEmpty(underline) && underline != "none")
+        {
+            WriteString(output, 9, underline);
+        }
+
+        var typeface =
+            textProperties?.GetFirstChild<A.LatinFont>()?.Typeface?.Value ??
+            textProperties?.GetFirstChild<A.EastAsianFont>()?.Typeface?.Value ??
+            textProperties?.GetFirstChild<A.ComplexScriptFont>()?.Typeface?.Value;
+        WriteString(output, 18, typeface);
     }
 
     private static byte[] WriteImage(ImagePart imagePart, string alt)
@@ -907,6 +1272,21 @@ internal static class PptxPresentationProtoReader
             {
                 WriteMessage(output, 3, properties);
             }
+        });
+    }
+
+    private static byte[]? WriteTableStyles(TableStylesPart? tableStylesPart)
+    {
+        var root = tableStylesPart?.RootElement;
+        if (root is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteString(output, 1, AttributeValue(root, "def"));
+            WriteString(output, 2, root.OuterXml);
         });
     }
 
@@ -1367,7 +1747,7 @@ internal static class PptxPresentationProtoReader
                 WriteInt32(shadowOutput, 3, ToInt32(shadow.BlurRadius));
                 WriteInt32(shadowOutput, 4, ToInt32(shadow.Distance));
                 WriteInt32(shadowOutput, 5, shadow.Direction?.Value);
-                WriteString(shadowOutput, 6, shadow.Alignment?.Value.ToString());
+                WriteString(shadowOutput, 6, EnumText(shadow.Alignment));
                 WriteBoolValue(shadowOutput, 7, shadow.RotateWithShape?.Value);
             }));
         });
@@ -1514,7 +1894,7 @@ internal static class PptxPresentationProtoReader
         var scheme = element.GetFirstChild<A.SchemeColor>() ?? element.Descendants<A.SchemeColor>().FirstOrDefault();
         if (scheme?.Val?.Value is not null)
         {
-            return ColorValueFromElement(ColorTypeScheme, scheme.Val.Value.ToString(), scheme, LastColor: null);
+            return ColorValueFromElement(ColorTypeScheme, EnumText(scheme.Val), scheme, LastColor: null);
         }
 
         var system = element.GetFirstChild<A.SystemColor>() ?? element.Descendants<A.SystemColor>().FirstOrDefault();
@@ -1522,7 +1902,7 @@ internal static class PptxPresentationProtoReader
         {
             return ColorValueFromElement(
                 ColorTypeSystem,
-                system.Val.Value.ToString(),
+                EnumText(system.Val),
                 system,
                 system.LastColor?.Value);
         }
@@ -1603,6 +1983,35 @@ internal static class PptxPresentationProtoReader
     private static string NormalizeImageContentType(string contentType)
     {
         return string.Equals(contentType, "image/jpeg", StringComparison.OrdinalIgnoreCase) ? "image/jpg" : contentType;
+    }
+
+    private static string PreservePresentationText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "" : value;
+    }
+
+    private static string? AttributeValue(OpenXmlElement? element, string localName)
+    {
+        return element?.GetAttributes()
+            .FirstOrDefault(attribute => string.Equals(attribute.LocalName, localName, StringComparison.Ordinal))
+            .Value;
+    }
+
+    private static int? IntAttribute(OpenXmlElement? element, string localName)
+    {
+        return int.TryParse(AttributeValue(element, localName), out var value) ? value : null;
+    }
+
+    private static bool? BoolAttribute(OpenXmlElement? element, string localName)
+    {
+        return AttributeValue(element, localName) switch
+        {
+            "1" => true,
+            "true" => true,
+            "0" => false,
+            "false" => false,
+            _ => null,
+        };
     }
 
     private static int GeometryCode(A.PresetGeometry? geometry)
@@ -1694,6 +2103,12 @@ internal static class PptxPresentationProtoReader
         output.WriteBytes(ByteString.CopyFrom(bytes));
     }
 
+    private static void WriteMessageAlways(CodedOutputStream output, int fieldNumber, byte[] bytes)
+    {
+        output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
+        output.WriteBytes(ByteString.CopyFrom(bytes));
+    }
+
     private static void WriteString(CodedOutputStream output, int fieldNumber, string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -1701,6 +2116,12 @@ internal static class PptxPresentationProtoReader
             return;
         }
 
+        output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
+        output.WriteString(value);
+    }
+
+    private static void WriteStringAlways(CodedOutputStream output, int fieldNumber, string value)
+    {
         output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
         output.WriteString(value);
     }
