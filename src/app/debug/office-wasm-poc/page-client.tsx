@@ -552,6 +552,12 @@ function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | nul
   return text;
 }
 
+function defaultSpreadsheetSheetIndex(sheets: RecordValue[]): number {
+  if (sheets.length <= 1) return 0;
+  const readmeFirst = /^00[_ -]?readme$/i.test(asString(sheets[0]?.name));
+  return readmeFirst ? 1 : 0;
+}
+
 function OfficePreview({
   artifact,
   labels,
@@ -574,7 +580,7 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
   const root = asRecord(proto);
   const sheets = asArray(root?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null);
   const styles = asRecord(root?.styles);
-  const [activeSheetIndex, setActiveSheetIndex] = useState(0);
+  const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
 
   const rows = asArray(activeSheet?.rows).map(asRecord).filter((row): row is RecordValue => row != null);
@@ -638,29 +644,24 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
   }
 
   return (
-    <div data-testid="spreadsheet-preview" style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {sheets.map((sheet, index) => (
-          <button
-            key={`${asString(sheet.sheetId)}-${index}`}
-            onClick={() => setActiveSheetIndex(index)}
-            style={{
-              border: "1px solid #cbd5e1",
-              background: index === activeSheetIndex ? "#0f172a" : "#ffffff",
-              color: index === activeSheetIndex ? "#ffffff" : "#0f172a",
-              borderRadius: 6,
-              padding: "6px 10px",
-              cursor: "pointer",
-            }}
-            type="button"
-          >
-            {asString(sheet.name) || `${labels.sheet} ${index + 1}`}
-          </button>
-        ))}
-      </div>
-      <div style={{ color: "#64748b", fontSize: 13 }}>{labels.showingFirstRows}</div>
-      <div style={{ border: "1px solid #cbd5e1", borderRadius: 8, overflow: "auto", maxHeight: 520 }}>
-        <table style={{ borderCollapse: "collapse", minWidth: "100%", fontSize: 13 }}>
+    <div
+      data-testid="spreadsheet-preview"
+      style={{
+        background: "#ffffff",
+        borderColor: "#d7dde5",
+        borderRadius: 8,
+        borderStyle: "solid",
+        borderWidth: 1,
+        boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)",
+        display: "grid",
+        gridTemplateRows: "minmax(0, 1fr) auto",
+        maxHeight: "calc(100vh - 150px)",
+        minHeight: 620,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ overflow: "auto" }}>
+        <table style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: "100%", fontSize: 13 }}>
           <colgroup>
             <col style={{ width: 52 }} />
             {Array.from({ length: columnCount }, (_, index) => (
@@ -669,9 +670,9 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
           </colgroup>
           <thead>
             <tr>
-              <th style={sheetHeaderStyle} />
+              <th style={spreadsheetCornerStyle} />
               {Array.from({ length: columnCount }, (_, index) => (
-                <th key={index} style={sheetHeaderStyle}>{columnLabel(index)}</th>
+                <th key={index} style={spreadsheetColumnHeaderStyle}>{columnLabel(index)}</th>
               ))}
             </tr>
           </thead>
@@ -682,7 +683,7 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
               const height = rowHeights.get(rowIndex);
               return (
                 <tr key={rowIndex} style={{ height: height && height > 0 ? Math.max(20, height) : undefined }}>
-                  <th style={sheetHeaderStyle}>{rowIndex}</th>
+                  <th style={spreadsheetRowHeaderStyle}>{rowIndex}</th>
                   {Array.from({ length: columnCount }, (_, columnIndex) => {
                     if (coveredCells.has(`${rowIndex}:${columnIndex}`)) return null;
                     const cell = row?.get(columnIndex) ?? null;
@@ -704,23 +705,86 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
           </tbody>
         </table>
       </div>
+      <div
+        style={{
+          background: "#f6f7f9",
+          borderTopColor: "#d7dde5",
+          borderTopStyle: "solid",
+          borderTopWidth: 1,
+          display: "flex",
+          gap: 4,
+          overflowX: "auto",
+          padding: "0 10px",
+        }}
+      >
+        {sheets.map((sheet, index) => (
+          <button
+            key={`${asString(sheet.sheetId)}-${index}`}
+            onClick={() => setActiveSheetIndex(index)}
+            style={{
+              background: index === activeSheetIndex ? "#ffffff" : "transparent",
+              borderBottomColor: index === activeSheetIndex ? "#111827" : "transparent",
+              borderBottomStyle: "solid",
+              borderBottomWidth: 3,
+              borderLeftWidth: 0,
+              borderRightWidth: 0,
+              borderTopWidth: 0,
+              color: index === activeSheetIndex ? "#111827" : "#5f6368",
+              cursor: "pointer",
+              flex: "0 0 auto",
+              fontSize: 13,
+              fontWeight: index === activeSheetIndex ? 600 : 500,
+              minHeight: 44,
+              padding: "0 16px",
+            }}
+            type="button"
+          >
+            {asString(sheet.name) || `${labels.sheet} ${index + 1}`}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-const sheetHeaderStyle: CSSProperties = {
-  background: "#f8fafc",
-  borderBottomColor: "#cbd5e1",
+const spreadsheetHeaderBaseStyle: CSSProperties = {
+  background: "#f3f4f6",
+  borderBottomColor: "#d7dde5",
   borderBottomStyle: "solid",
   borderBottomWidth: 1,
-  borderRightColor: "#e2e8f0",
+  borderRightColor: "#d7dde5",
   borderRightStyle: "solid",
   borderRightWidth: 1,
-  color: "#475569",
-  minWidth: 88,
-  padding: "7px 9px",
+  color: "#2f3437",
+  fontSize: 13,
+  fontWeight: 500,
+  padding: "4px 9px",
+  position: "sticky",
+  zIndex: 2,
+};
+
+const spreadsheetCornerStyle: CSSProperties = {
+  ...spreadsheetHeaderBaseStyle,
+  left: 0,
+  minWidth: 52,
   position: "sticky" as const,
   top: 0,
+  zIndex: 4,
+};
+
+const spreadsheetColumnHeaderStyle: CSSProperties = {
+  ...spreadsheetHeaderBaseStyle,
+  minWidth: 88,
+  textAlign: "center",
+  top: 0,
+};
+
+const spreadsheetRowHeaderStyle: CSSProperties = {
+  ...spreadsheetHeaderBaseStyle,
+  left: 0,
+  minWidth: 52,
+  textAlign: "center",
+  zIndex: 3,
 };
 
 const sheetCellStyle: CSSProperties = {
