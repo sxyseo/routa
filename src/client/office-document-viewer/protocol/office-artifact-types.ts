@@ -62,6 +62,27 @@ export interface RoutaOfficeChart {
   path: string;
   title: string;
   chartType: string;
+  sheetName: string;
+  anchor?: RoutaOfficeChartAnchor;
+  series: RoutaOfficeChartSeries[];
+}
+
+export interface RoutaOfficeChartAnchor {
+  fromCol: number;
+  fromRow: number;
+  toCol: number;
+  toRow: number;
+  fromColOffsetEmu: number;
+  fromRowOffsetEmu: number;
+  toColOffsetEmu: number;
+  toRowOffsetEmu: number;
+}
+
+export interface RoutaOfficeChartSeries {
+  label: string;
+  categories: string[];
+  values: number[];
+  color: string;
 }
 
 export interface RoutaOfficeMergedRange {

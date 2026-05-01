@@ -5,6 +5,8 @@ import {
   type RoutaOfficeCell,
   type RoutaOfficeCellFormat,
   type RoutaOfficeChart,
+  type RoutaOfficeChartAnchor,
+  type RoutaOfficeChartSeries,
   type RoutaOfficeColorScale,
   type RoutaOfficeColumn,
   type RoutaOfficeConditionalFormat,
@@ -327,7 +329,7 @@ function decodeImage(bytes: Uint8Array): RoutaOfficeImageAsset {
 
 function decodeChart(bytes: Uint8Array): RoutaOfficeChart {
   const reader = new ProtoReader(bytes);
-  const chart: RoutaOfficeChart = { chartType: "", id: "", path: "", title: "" };
+  const chart: RoutaOfficeChart = { chartType: "", id: "", path: "", series: [], sheetName: "", title: "" };
 
   while (!reader.done) {
     const { fieldNumber, wireType } = reader.readTag();
@@ -335,10 +337,58 @@ function decodeChart(bytes: Uint8Array): RoutaOfficeChart {
     else if (fieldNumber === 2) chart.path = readStringField(reader, wireType);
     else if (fieldNumber === 3) chart.title = readStringField(reader, wireType);
     else if (fieldNumber === 4) chart.chartType = readStringField(reader, wireType);
+    else if (fieldNumber === 5) chart.sheetName = readStringField(reader, wireType);
+    else if (fieldNumber === 6) chart.anchor = decodeChartAnchor(readMessageField(reader, wireType));
+    else if (fieldNumber === 7) chart.series.push(decodeChartSeries(readMessageField(reader, wireType)));
     else reader.skip(wireType);
   }
 
   return chart;
+}
+
+function decodeChartAnchor(bytes: Uint8Array): RoutaOfficeChartAnchor {
+  const reader = new ProtoReader(bytes);
+  const anchor: RoutaOfficeChartAnchor = {
+    fromCol: 0,
+    fromColOffsetEmu: 0,
+    fromRow: 0,
+    fromRowOffsetEmu: 0,
+    toCol: 0,
+    toColOffsetEmu: 0,
+    toRow: 0,
+    toRowOffsetEmu: 0,
+  };
+
+  while (!reader.done) {
+    const { fieldNumber, wireType } = reader.readTag();
+    if (fieldNumber === 1) anchor.fromCol = readUInt32Field(reader, wireType);
+    else if (fieldNumber === 2) anchor.fromRow = readUInt32Field(reader, wireType);
+    else if (fieldNumber === 3) anchor.toCol = readUInt32Field(reader, wireType);
+    else if (fieldNumber === 4) anchor.toRow = readUInt32Field(reader, wireType);
+    else if (fieldNumber === 5) anchor.fromColOffsetEmu = readDoubleField(reader, wireType);
+    else if (fieldNumber === 6) anchor.fromRowOffsetEmu = readDoubleField(reader, wireType);
+    else if (fieldNumber === 7) anchor.toColOffsetEmu = readDoubleField(reader, wireType);
+    else if (fieldNumber === 8) anchor.toRowOffsetEmu = readDoubleField(reader, wireType);
+    else reader.skip(wireType);
+  }
+
+  return anchor;
+}
+
+function decodeChartSeries(bytes: Uint8Array): RoutaOfficeChartSeries {
+  const reader = new ProtoReader(bytes);
+  const series: RoutaOfficeChartSeries = { categories: [], color: "", label: "", values: [] };
+
+  while (!reader.done) {
+    const { fieldNumber, wireType } = reader.readTag();
+    if (fieldNumber === 1) series.label = readStringField(reader, wireType);
+    else if (fieldNumber === 2) series.categories.push(readStringField(reader, wireType));
+    else if (fieldNumber === 3) series.values.push(readDoubleField(reader, wireType));
+    else if (fieldNumber === 4) series.color = readStringField(reader, wireType);
+    else reader.skip(wireType);
+  }
+
+  return series;
 }
 
 function decodeMergedRange(bytes: Uint8Array): RoutaOfficeMergedRange {

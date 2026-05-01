@@ -66,7 +66,7 @@ internal static class XlsxArtifactReader
                         cellElement.CellReference?.Value ?? "",
                         ReadCellText(cellElement, sharedStrings),
                         TextNormalization.Clean(cellElement.CellFormula?.Text),
-                        cellElement.DataType?.Value.ToString() ?? "",
+                        EnumText(cellElement.DataType),
                         (uint)(cellElement.StyleIndex?.Value ?? 0),
                         CellHasValue(cellElement)));
                 }
@@ -78,11 +78,11 @@ internal static class XlsxArtifactReader
             }
 
             ExtractSheetFeatures(worksheetPart, sheet, workbookPart.WorkbookStylesPart?.Stylesheet);
+            ExtractCharts(worksheetPart, sheet.Name, artifact);
             artifact.Sheets.Add(sheet);
         }
 
         ExtractImages(workbookPart, artifact);
-        ExtractCharts(workbookPart, artifact);
 
         artifact.Metadata["sheetCount"] = artifact.Sheets.Count.ToString();
         artifact.Metadata["imageCount"] = artifact.Images.Count.ToString();
@@ -145,17 +145,20 @@ internal static class XlsxArtifactReader
         }
     }
 
-    private static void ExtractCharts(WorkbookPart workbookPart, OfficeArtifactModel artifact)
+    private static void ExtractCharts(WorksheetPart worksheetPart, string sheetName, OfficeArtifactModel artifact)
     {
-        foreach (var drawingPart in workbookPart.WorksheetParts.Select(part => part.DrawingsPart).Where(part => part is not null))
+        var drawingPart = worksheetPart.DrawingsPart;
+        if (drawingPart is null)
         {
-            foreach (var chartPart in drawingPart!.ChartParts)
+            return;
+        }
+
+        foreach (var chartPart in drawingPart.ChartParts)
+        {
+            var chart = OpenXmlChartReader.Read(drawingPart, chartPart, $"worksheets.chart[{artifact.Charts.Count}]", sheetName);
+            if (chart is not null)
             {
-                var chart = OpenXmlChartReader.Read(drawingPart, chartPart, $"worksheets.chart[{artifact.Charts.Count}]");
-                if (chart is not null)
-                {
-                    artifact.Charts.Add(chart);
-                }
+                artifact.Charts.Add(chart);
             }
         }
     }
@@ -201,8 +204,8 @@ internal static class XlsxArtifactReader
         foreach (var validation in worksheetPart.Worksheet.Descendants<S.DataValidation>())
         {
             sheet.DataValidations.Add(new DataValidationModel(
-                validation.Type?.Value.ToString() ?? "",
-                validation.Operator?.Value.ToString() ?? "",
+                EnumText(validation.Type),
+                EnumText(validation.Operator),
                 TextNormalization.Clean(validation.Formula1?.Text),
                 TextNormalization.Clean(validation.Formula2?.Text),
                 SplitReferences(validation.GetAttribute("sqref", "").Value ?? "")));
@@ -218,10 +221,10 @@ internal static class XlsxArtifactReader
                     : null;
 
                 sheet.ConditionalFormats.Add(new ConditionalFormatModel(
-                    rule.Type?.Value.ToString() ?? "",
+                    EnumText(rule.Type),
                     (uint)(rule.Priority?.Value ?? 0),
                     ranges,
-                    rule.Operator?.Value.ToString() ?? "",
+                    EnumText(rule.Operator),
                     rule.Elements<S.Formula>().Select(formula => TextNormalization.Clean(formula.Text)).ToArray(),
                     rule.Text?.Value ?? "",
                     ExtractFillColor(differentialStyle?.Fill),
@@ -255,8 +258,8 @@ internal static class XlsxArtifactReader
                 (uint)(format.FontId?.Value ?? 0),
                 (uint)(format.FillId?.Value ?? 0),
                 (uint)(format.BorderId?.Value ?? 0),
-                format.Alignment?.Horizontal?.Value.ToString() ?? "",
-                format.Alignment?.Vertical?.Value.ToString() ?? ""));
+                EnumText(format.Alignment?.Horizontal),
+                EnumText(format.Alignment?.Vertical)));
         }
 
         foreach (var font in stylesheet.Fonts?.Elements<S.Font>() ?? [])
@@ -300,7 +303,7 @@ internal static class XlsxArtifactReader
         }
 
         return new IconSetModel(
-            iconSet.IconSetValue?.Value.ToString() ?? "",
+            EnumText(iconSet.IconSetValue),
             iconSet.ShowValue?.Value ?? true,
             iconSet.Reverse?.Value ?? false);
     }
@@ -320,6 +323,11 @@ internal static class XlsxArtifactReader
     private static string ReadColor(OpenXmlElement? color)
     {
         return color?.GetAttribute("rgb", "").Value ?? "";
+    }
+
+    private static string EnumText(OpenXmlSimpleType? value)
+    {
+        return value?.InnerText ?? "";
     }
 
     private static IReadOnlyList<string> SplitReferences(string value)

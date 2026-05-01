@@ -64,7 +64,30 @@ internal sealed record DiagnosticModel(string Level, string Message);
 
 internal sealed record ImageAssetModel(string Id, string Path, string ContentType, byte[] Bytes);
 
-internal sealed record ChartModel(string Id, string Path, string Title, string ChartType);
+internal sealed record ChartModel(
+    string Id,
+    string Path,
+    string Title,
+    string ChartType,
+    string SheetName = "",
+    ChartAnchorModel? Anchor = null,
+    IReadOnlyList<ChartSeriesModel>? Series = null);
+
+internal sealed record ChartAnchorModel(
+    uint FromCol,
+    uint FromRow,
+    uint ToCol,
+    uint ToRow,
+    double FromColOffsetEmu,
+    double FromRowOffsetEmu,
+    double ToColOffsetEmu,
+    double ToRowOffsetEmu);
+
+internal sealed record ChartSeriesModel(
+    string Label,
+    IReadOnlyList<string> Categories,
+    IReadOnlyList<double> Values,
+    string Color);
 
 internal sealed record MergedRangeModel(string Reference);
 

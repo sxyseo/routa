@@ -211,6 +211,50 @@ internal static class OfficeArtifactProtoWriter
             WriteString(output, 2, chart.Path);
             WriteString(output, 3, chart.Title);
             WriteString(output, 4, chart.ChartType);
+            WriteString(output, 5, chart.SheetName);
+            if (chart.Anchor is not null)
+            {
+                WriteMessage(output, 6, WriteChartAnchor(chart.Anchor));
+            }
+
+            foreach (var series in chart.Series ?? [])
+            {
+                WriteMessage(output, 7, WriteChartSeries(series));
+            }
+        });
+    }
+
+    private static byte[] WriteChartAnchor(ChartAnchorModel anchor)
+    {
+        return Message(output =>
+        {
+            WriteUInt32(output, 1, anchor.FromCol);
+            WriteUInt32(output, 2, anchor.FromRow);
+            WriteUInt32(output, 3, anchor.ToCol);
+            WriteUInt32(output, 4, anchor.ToRow);
+            WriteDouble(output, 5, anchor.FromColOffsetEmu);
+            WriteDouble(output, 6, anchor.FromRowOffsetEmu);
+            WriteDouble(output, 7, anchor.ToColOffsetEmu);
+            WriteDouble(output, 8, anchor.ToRowOffsetEmu);
+        });
+    }
+
+    private static byte[] WriteChartSeries(ChartSeriesModel series)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, series.Label);
+            foreach (var category in series.Categories)
+            {
+                WriteString(output, 2, category);
+            }
+
+            foreach (var value in series.Values)
+            {
+                WriteDoubleAlways(output, 3, value);
+            }
+
+            WriteString(output, 4, series.Color);
         });
     }
 
@@ -451,6 +495,12 @@ internal static class OfficeArtifactProtoWriter
             return;
         }
 
+        output.WriteTag(fieldNumber, WireFormat.WireType.Fixed64);
+        output.WriteDouble(value);
+    }
+
+    private static void WriteDoubleAlways(CodedOutputStream output, int fieldNumber, double value)
+    {
         output.WriteTag(fieldNumber, WireFormat.WireType.Fixed64);
         output.WriteDouble(value);
     }

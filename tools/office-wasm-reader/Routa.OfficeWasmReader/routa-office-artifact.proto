@@ -122,6 +122,9 @@ message Chart {
   string path = 2;
   string title = 3;
   string chart_type = 4;
+  string sheet_name = 5;
+  ChartAnchor anchor = 6;
+  repeated ChartSeries series = 7;
 }
 
 message SpreadsheetStyles {
@@ -174,4 +177,22 @@ message IconSet {
   string name = 1;
   bool show_value = 2;
   bool reverse = 3;
+}
+
+message ChartAnchor {
+  uint32 from_col = 1;
+  uint32 from_row = 2;
+  uint32 to_col = 3;
+  uint32 to_row = 4;
+  double from_col_offset_emu = 5;
+  double from_row_offset_emu = 6;
+  double to_col_offset_emu = 7;
+  double to_row_offset_emu = 8;
+}
+
+message ChartSeries {
+  string label = 1;
+  repeated string categories = 2;
+  repeated double values = 3;
+  string color = 4;
 }

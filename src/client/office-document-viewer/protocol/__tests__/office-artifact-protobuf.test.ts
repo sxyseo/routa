@@ -94,6 +94,9 @@ describe("decodeRoutaOfficeArtifact", () => {
           stringField(2, "worksheets.chart[0]"),
           stringField(3, "Velocity"),
           stringField(4, "line"),
+          stringField(5, "Sheet1"),
+          messageField(6, message([varintField(1, 6), varintField(2, 15), varintField(3, 12), varintField(4, 28)])),
+          messageField(7, message([stringField(1, "Done"), stringField(2, "Jan"), doubleField(3, 12), stringField(4, "1F6F8B")])),
         ]),
       ),
       messageField(
@@ -133,8 +136,20 @@ describe("decodeRoutaOfficeArtifact", () => {
     expect(artifact.tables[0].rows[0].cells[0].text).toBe("Cell text");
     expect(artifact.charts[0]).toEqual({
       chartType: "line",
+      anchor: {
+        fromCol: 6,
+        fromColOffsetEmu: 0,
+        fromRow: 15,
+        fromRowOffsetEmu: 0,
+        toCol: 12,
+        toColOffsetEmu: 0,
+        toRow: 28,
+        toRowOffsetEmu: 0,
+      },
       id: "rId8",
       path: "worksheets.chart[0]",
+      series: [{ categories: ["Jan"], color: "1F6F8B", label: "Done", values: [12] }],
+      sheetName: "Sheet1",
       title: "Velocity",
     });
     expect(artifact.sheets[0].mergedRanges[0]).toEqual({ reference: "A1:C2" });

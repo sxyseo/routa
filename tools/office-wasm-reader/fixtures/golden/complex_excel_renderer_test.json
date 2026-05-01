@@ -132,7 +132,7 @@
           "ranges": [
             "B18:B23"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "dataBar"
         }
       ],
       "dataValidationCount": 0,
@@ -247,35 +247,35 @@
           "ranges": [
             "J5:J44"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "dataBar"
         },
         {
           "priority": 2,
           "ranges": [
             "N5:N44"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "iconSet"
         },
         {
           "priority": 3,
           "ranges": [
             "I5:I44"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "cellIs"
         },
         {
           "priority": 4,
           "ranges": [
             "E5:E44"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "containsText"
         },
         {
           "priority": 5,
           "ranges": [
             "E5:E44"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "containsText"
         }
       ],
       "dataValidationCount": 3,
@@ -287,7 +287,7 @@
           "ranges": [
             "E5:E44"
           ],
-          "type": "DataValidationValues { }"
+          "type": "list"
         },
         {
           "formula1": "\"P0,P1,P2,P3\"",
@@ -296,7 +296,7 @@
           "ranges": [
             "F5:F44"
           ],
-          "type": "DataValidationValues { }"
+          "type": "list"
         },
         {
           "formula1": "\"Ada,Ben,Chen,Dina,Eli,Fang,Gita\"",
@@ -305,7 +305,7 @@
           "ranges": [
             "D5:D44"
           ],
-          "type": "DataValidationValues { }"
+          "type": "list"
         }
       ],
       "formulaCellCount": 160,
@@ -399,21 +399,21 @@
           "ranges": [
             "F5:F22"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "colorScale"
         },
         {
           "priority": 2,
           "ranges": [
             "D5:D22"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "dataBar"
         },
         {
           "priority": 3,
           "ranges": [
             "K5:K22"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "containsText"
         }
       ],
       "dataValidationCount": 0,
@@ -509,14 +509,14 @@
           "ranges": [
             "B6:I15"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "colorScale"
         },
         {
           "priority": 2,
           "ranges": [
             "J6:J15"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "dataBar"
         }
       ],
       "dataValidationCount": 0,
@@ -616,7 +616,7 @@
           "ranges": [
             "B5:B13"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "colorScale"
         }
       ],
       "dataValidationCount": 0,
@@ -707,14 +707,14 @@
           "ranges": [
             "B15:B15"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "containsText"
         },
         {
           "priority": 2,
           "ranges": [
             "D21:D27"
           ],
-          "type": "ConditionalFormatValues { }"
+          "type": "dataBar"
         }
       ],
       "dataValidationCount": 5,
@@ -726,7 +726,7 @@
           "ranges": [
             "B8"
           ],
-          "type": "DataValidationValues { }"
+          "type": "list"
         },
         {
           "formula1": "\"P0,P1,P2,P3\"",
@@ -735,25 +735,25 @@
           "ranges": [
             "B9"
           ],
-          "type": "DataValidationValues { }"
+          "type": "list"
         },
         {
           "formula1": "1",
           "formula2": "300",
-          "operator": "DataValidationOperatorValues { }",
+          "operator": "between",
           "ranges": [
             "B11"
           ],
-          "type": "DataValidationValues { }"
+          "type": "whole"
         },
         {
           "formula1": "DATE(2026,1,1)",
           "formula2": "DATE(2026,12,31)",
-          "operator": "DataValidationOperatorValues { }",
+          "operator": "between",
           "ranges": [
             "B10"
           ],
-          "type": "DataValidationValues { }"
+          "type": "date"
         },
         {
           "formula1": "\"Ada,Ben,Chen,Dina,Eli,Fang,Gita\"",
@@ -762,7 +762,7 @@
           "ranges": [
             "B12"
           ],
-          "type": "DataValidationValues { }"
+          "type": "list"
         }
       ],
       "formulaCellCount": 3,
@@ -952,6 +952,6 @@
   "textBlockCount": 0,
   "textBlocks": [],
   "title": "00_README",
-  "wasmProtoByteLength": 287018,
-  "wasmProtoSha256": "5fbcc095a68aa33c54a8870c4a8aeff7052bd9023aff80750f38f89d31b4fd01"
+  "wasmProtoByteLength": 263087,
+  "wasmProtoSha256": "6ab374cd34150666ca3f2eb88cee5a1370518eef71e5dc3d36f6f0dcdfdeb18b"
 }

@@ -59,6 +59,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const root = asRecord(proto);
   const sheets = asArray(root?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null);
   const styles = asRecord(root?.styles);
+  const charts = asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
 
@@ -87,7 +88,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     const max = Math.max(min, asNumber(column.max, min));
     const width = asNumber(column.width, asNumber(activeSheet?.defaultColWidth, 10));
     for (let index = min - 1; index <= max - 1; index += 1) {
-      columnWidths.set(index, Math.max(56, Math.min(240, width * 9)));
+      columnWidths.set(index, Math.max(56, Math.min(560, width * 5 + 5)));
       maxColumn = Math.max(maxColumn, index);
     }
   }
@@ -125,6 +126,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const columnCount = Math.min(Math.max(maxColumn + 1, 6), 32);
   const chartSpecs = buildSpreadsheetCharts({
     activeSheet,
+    charts,
     columnWidths,
     rowHeights,
     sheets,
@@ -353,6 +355,11 @@ function excelSerialMonthYearLabel(value: number): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC", year: "numeric" }).format(date);
 }
 
+function excelSerialDateLabel(value: number): string {
+  const date = new Date(Date.UTC(1899, 11, 30) + value * 86_400_000);
+  return new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "short", timeZone: "UTC", year: "numeric" }).format(date);
+}
+
 function shouldFormatAsMonthSerial(cell: RecordValue | null, sheetName?: string): boolean {
   if (sheetName !== "03_TimeSeries") return false;
   const address = asString(cell?.address);
@@ -378,6 +385,7 @@ function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | nul
   const formatCode = asString(numberFormat?.formatCode);
 
   if (formatCode.includes("mmm") && formatCode.includes("yy")) return excelSerialMonthYearLabel(numberValue);
+  if (formatCode.includes("yyyy") && formatCode.includes("dd")) return excelSerialDateLabel(numberValue);
   if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
 
   if (sheetName === "03_TimeSeries") {
@@ -458,15 +466,20 @@ function spreadsheetRowTop(rowHeights: Map<number, number>, zeroBasedRowIndex: n
 
 function buildSpreadsheetCharts({
   activeSheet,
+  charts: workbookCharts,
   columnWidths,
   rowHeights,
   sheets,
 }: {
   activeSheet: RecordValue | undefined;
+  charts: RecordValue[];
   columnWidths: Map<number, number>;
   rowHeights: Map<number, number>;
   sheets: RecordValue[];
 }): SpreadsheetChartSpec[] {
+  const protocolCharts = buildProtocolSpreadsheetCharts(activeSheet, workbookCharts, columnWidths, rowHeights);
+  if (protocolCharts.length > 0) return protocolCharts;
+
   if (asString(activeSheet?.name) !== "01_Dashboard") return [];
   if (cellText(cellAt(activeSheet, 1, 0)) !== "AI Coding Delivery Dashboard") return [];
 
@@ -481,9 +494,9 @@ function buildSpreadsheetCharts({
     }
   }
 
-  const charts: SpreadsheetChartSpec[] = [];
+  const fallbackCharts: SpreadsheetChartSpec[] = [];
   if (statusCategories.length > 0) {
-    charts.push({
+    fallbackCharts.push({
       categories: statusCategories,
       height: 280,
       left: spreadsheetColumnLeft(columnWidths, 5),
@@ -511,7 +524,7 @@ function buildSpreadsheetCharts({
   }
 
   if (monthLabels.length > 0) {
-    charts.push({
+    fallbackCharts.push({
       categories: monthLabels,
       height: 280,
       left: spreadsheetColumnLeft(columnWidths, 0),
@@ -526,7 +539,52 @@ function buildSpreadsheetCharts({
     });
   }
 
-  return charts;
+  return fallbackCharts;
+}
+
+function buildProtocolSpreadsheetCharts(
+  activeSheet: RecordValue | undefined,
+  charts: RecordValue[],
+  columnWidths: Map<number, number>,
+  rowHeights: Map<number, number>,
+): SpreadsheetChartSpec[] {
+  const sheetName = asString(activeSheet?.name);
+  return charts
+    .filter((chart) => asString(chart.sheetName) === sheetName)
+    .map((chart) => {
+      const anchor = asRecord(chart.anchor);
+      const seriesRecords = asArray(chart.series).map(asRecord).filter((item): item is RecordValue => item != null);
+      const series = seriesRecords
+        .map((item, index) => ({
+          color: protocolColorToCss(item.color) ?? (index === 1 ? "#f9732a" : "#1f6f8b"),
+          label: asString(item.label) || `Series ${index + 1}`,
+          values: asArray(item.values).map((value) => asNumber(value)).filter(Number.isFinite),
+        }))
+        .filter((item) => item.values.length > 0);
+      if (series.length === 0) return null;
+
+      const categories = asArray(seriesRecords[0]?.categories).map(asString).filter(Boolean);
+      const fromCol = asNumber(anchor?.fromCol, 0);
+      const fromRow = asNumber(anchor?.fromRow, 0);
+      const toCol = Math.max(fromCol + 5, asNumber(anchor?.toCol, fromCol + 5));
+      const toRow = Math.max(fromRow + 10, asNumber(anchor?.toRow, fromRow + 10));
+      const left = spreadsheetColumnLeft(columnWidths, fromCol);
+      const top = spreadsheetRowTop(rowHeights, fromRow);
+      const right = spreadsheetColumnLeft(columnWidths, toCol);
+      const bottom = spreadsheetRowTop(rowHeights, toRow);
+
+      return {
+        categories: categories.length > 0 ? categories : series[0].values.map((_, index) => String(index + 1)),
+        height: Math.max(220, bottom - top),
+        left,
+        series,
+        title: asString(chart.title),
+        top,
+        type: asString(chart.chartType) === "line" ? "line" : "bar",
+        width: Math.max(360, right - left),
+      } satisfies SpreadsheetChartSpec;
+    })
+    .filter((chart): chart is SpreadsheetChartSpec => chart != null);
 }
 
 function spreadsheetCellKey(rowIndex: number, columnIndex: number): string {
