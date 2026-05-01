@@ -506,7 +506,9 @@ function SlideElement({
 }
 
 function DocumentPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
-  const blocks = collectTextBlocks(proto, 120);
+  const root = asRecord(proto);
+  const elements = asArray(root?.elements);
+  const blocks = collectTextBlocks(elements.length > 0 ? elements : proto, 120);
 
   if (blocks.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noDocumentBlocks}</p>;

@@ -327,6 +327,7 @@ Implemented a debug proof-of-concept page at `/debug/office-wasm-poc` that loads
 
 Validated with local files from `~/Downloads`:
 
+- DOCX: `/Users/phodal/Downloads/office-wasm-poc-word-smoke.docx`
 - XLSX: `/Users/phodal/Downloads/test-file.xlsx`
 - PPTX: `/Users/phodal/Downloads/agentic_ui_proactive_agent_technical_blueprint.pptx`
 
@@ -341,6 +342,8 @@ npx tsc --noEmit --pretty false
 The consistency check validates that the POC runtime config, module filenames, reader ABI names, and panel contracts still match `tmp/codex-app-analysis/extracted/webview/assets/artifact-tab-content.electron-DmcFg9h8.js`.
 
 Screenshots:
+
+![DOCX preview](./assets/2026-05-01-office-wasm-poc/docx-preview.png)
 
 ![XLSX preview](./assets/2026-05-01-office-wasm-poc/xlsx-preview.png)
 
