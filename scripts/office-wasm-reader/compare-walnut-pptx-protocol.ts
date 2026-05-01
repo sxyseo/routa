@@ -122,8 +122,11 @@ async function extractRoutaPresentationProto(sourceBytes: Uint8Array): Promise<U
 function summarizePresentation(presentation: Record<string, unknown>, protoBytes: Uint8Array) {
   const slides = arrayOfRecords(presentation.slides);
   const images = arrayOfRecords(presentation.images);
+  const charts = arrayOfRecords(presentation.charts);
   const imageIds = new Set(images.map((image) => String(image.id ?? "")).filter(Boolean));
+  const chartIds = new Set(charts.map((chart) => String(chart.id ?? "")).filter(Boolean));
   const allImageReferenceIds = slides.flatMap((slide) => arrayOfRecords(slide.elements).flatMap(elementImageReferenceIds));
+  const allChartReferenceIds = slides.flatMap((slide) => arrayOfRecords(slide.elements).flatMap(elementChartReferenceIds));
   return {
     protoByteLength: protoBytes.length,
     protoSha256: sha256(protoBytes),
@@ -132,10 +135,13 @@ function summarizePresentation(presentation: Record<string, unknown>, protoBytes
     layoutCount: arrayOfRecords(presentation.layouts).length,
     imageCount: images.length,
     imageDigests: images.map(summarizeImage),
-    chartCount: arrayOfRecords(presentation.charts).length,
+    chartCount: charts.length,
+    chartIds: charts.map((chart) => String(chart.id ?? "")).filter(Boolean),
     hasTheme: isRecord(presentation.theme),
     imageReferenceCount: allImageReferenceIds.length,
     missingImageReferenceIds: [...new Set(allImageReferenceIds.filter((id) => !imageIds.has(id)))],
+    chartReferenceCount: allChartReferenceIds.length,
+    missingChartReferenceIds: [...new Set(allChartReferenceIds.filter((id) => !chartIds.has(id)))],
     slides: slides.map(summarizeSlide),
     firstSlide: summarizeSlide(slides[0] ?? {}),
   };
@@ -145,6 +151,7 @@ function summarizeSlide(slide: Record<string, unknown>) {
   const elements = arrayOfRecords(slide.elements);
   const elementTypes = new Map<string, number>();
   const imageReferenceIds = elements.flatMap(elementImageReferenceIds);
+  const chartReferenceIds = elements.flatMap(elementChartReferenceIds);
   for (const element of elements) {
     const type = String(element.type ?? "unset");
     elementTypes.set(type, (elementTypes.get(type) ?? 0) + 1);
@@ -161,11 +168,14 @@ function summarizeSlide(slide: Record<string, unknown>) {
     elementCount: elements.length,
     imageReferenceCount: imageReferenceIds.length,
     imageReferenceIds,
+    chartReferenceCount: chartReferenceIds.length,
+    chartReferenceIds,
     elementTypes: Object.fromEntries(elementTypes),
     firstElements: elements.slice(0, 8).map((element) => ({
       id: element.id,
       name: element.name,
       type: element.type,
+      zIndex: element.zIndex,
       bbox: element.bbox,
       hasShape: isRecord(element.shape),
       hasFill: isRecord(element.fill) || isRecord(asRecord(element.shape)?.fill),
@@ -173,7 +183,9 @@ function summarizeSlide(slide: Record<string, unknown>) {
       paragraphCount: arrayOfRecords(element.paragraphs).length,
       textPreview: collectTextPreview(element),
       hasImage: isRecord(element.image) || isRecord(element.imageReference),
+      hasChartReference: isRecord(element.chartReference),
       hasTable: isRecord(element.table),
+      childCount: arrayOfRecords(element.children).length,
     })),
   };
 }
@@ -193,6 +205,7 @@ function summarizeEquivalence(
 
   return {
     chartCountMatches: walnutSummary.chartCount === routaSummary.chartCount,
+    chartReferencesResolve: routaSummary.missingChartReferenceIds.length === 0,
     elementTypeCountsMatch: JSON.stringify(walnutSummary.slides.map((slide) => slide.elementTypes)) ===
       JSON.stringify(routaSummary.slides.map((slide) => slide.elementTypes)),
     imageCountMatches: walnutSummary.imageCount === routaSummary.imageCount,
@@ -208,6 +221,12 @@ function summarizeEquivalence(
     slideImageReferenceIdsMatch:
       stableJson(walnutSummary.slides.map((slide) => slide.imageReferenceIds)) ===
       stableJson(routaSummary.slides.map((slide) => slide.imageReferenceIds)),
+    slideChartReferenceCountsMatch:
+      JSON.stringify(walnutSummary.slides.map((slide) => slide.chartReferenceCount)) ===
+      JSON.stringify(routaSummary.slides.map((slide) => slide.chartReferenceCount)),
+    slideChartReferenceIdsMatch:
+      stableJson(walnutSummary.slides.map((slide) => slide.chartReferenceIds)) ===
+      stableJson(routaSummary.slides.map((slide) => slide.chartReferenceIds)),
     themePresenceMatches: walnutSummary.hasTheme === routaSummary.hasTheme,
     firstSlideSizeMatches:
       walnutFirst.widthEmu === routaFirst.widthEmu &&
@@ -242,10 +261,21 @@ function elementImageReferenceIds(element: Record<string, unknown>): string[] {
     imageReferenceId(asRecord(element.fill)?.imageReference),
     imageReferenceId(asRecord(asRecord(element.shape)?.fill)?.imageReference),
   ].filter(Boolean);
-  return ids;
+  return ids.concat(arrayOfRecords(element.children).flatMap(elementImageReferenceIds));
+}
+
+function elementChartReferenceIds(element: Record<string, unknown>): string[] {
+  const id = chartReferenceId(element.chartReference);
+  const children = arrayOfRecords(element.children).flatMap(elementChartReferenceIds);
+  return id ? [id, ...children] : children;
 }
 
 function imageReferenceId(value: unknown): string {
+  const record = asRecord(value);
+  return typeof record?.id === "string" ? record.id : "";
+}
+
+function chartReferenceId(value: unknown): string {
   const record = asRecord(value);
   return typeof record?.id === "string" ? record.id : "";
 }
