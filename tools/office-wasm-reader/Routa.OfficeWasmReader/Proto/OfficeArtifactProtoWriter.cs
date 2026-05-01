@@ -156,8 +156,7 @@ internal static class OfficeArtifactProtoWriter
     private static void WriteMessage(CodedOutputStream output, int fieldNumber, byte[] bytes)
     {
         output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
-        output.WriteLength(bytes.Length);
-        output.WriteRawBytes(bytes);
+        output.WriteBytes(ByteString.CopyFrom(bytes));
     }
 
     private static void WriteString(CodedOutputStream output, int fieldNumber, string? value)

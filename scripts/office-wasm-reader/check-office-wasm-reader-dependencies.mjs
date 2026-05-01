@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const packagesProps = path.join(repoRoot, "tools/office-wasm-reader/Directory.Packages.props");
 const extractedAssets = path.join(repoRoot, "tmp/codex-app-analysis/extracted/webview/assets");
+const generatedAssets = path.join(repoRoot, "public/office-wasm-reader/_framework");
 
 const expectedVersions = {
   "DocumentFormat.OpenXml": "3.3.0",
@@ -60,3 +61,11 @@ for (const fileName of [
 
 console.log("Office WASM reader dependency pins match extracted bundle evidence.");
 
+if (existsSync(path.join(generatedAssets, "dotnet.native.wasm"))) {
+  const generatedNative = readBinaryAsLatin1(path.join(generatedAssets, "dotnet.native.wasm"));
+  assert(
+    generatedNative.includes("Microsoft.NETCore.App.Runtime.Mono.browser-wasm/9.0.14"),
+    "Generated dotnet.native.wasm must be built from Microsoft.NETCore.App.Runtime.Mono.browser-wasm/9.0.14",
+  );
+  assert(!generatedNative.includes("browser-wasm/9.0.15"), "Generated dotnet.native.wasm must not use 9.0.15 packs");
+}
