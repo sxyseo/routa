@@ -81,6 +81,10 @@ export async function parseOfficeArtifactWithWasm(
   kind: OfficeWasmArtifactKind,
   ignoreErrors = false,
 ): Promise<RoutaOfficeArtifact> {
+  if (kind === "pptx") {
+    throw new Error("PPTX reader returns a Walnut-like Presentation proto; decode it with the Presentation wrapper.");
+  }
+
   return decodeRoutaOfficeArtifact(extractOfficeArtifactProto(reader, bytes, kind, ignoreErrors));
 }
 
@@ -125,4 +129,3 @@ function toUint8Array(value: Uint8Array | ArrayBuffer | number[]): Uint8Array {
 
   return new Uint8Array(value);
 }
-

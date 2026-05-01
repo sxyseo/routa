@@ -6,7 +6,13 @@ public static partial class PptxReader
     [JSExport]
     public static byte[] ExtractSlidesProto(byte[] bytes, bool ignoreErrors)
     {
-        return OfficeArtifactExtractor.ExtractPptxProto(bytes, ignoreErrors);
+        try
+        {
+            return PptxPresentationProtoReader.Read(bytes);
+        }
+        catch when (ignoreErrors)
+        {
+            return [];
+        }
     }
 }
-

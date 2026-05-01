@@ -52,6 +52,13 @@ type ImageSource = {
   src: string;
 };
 
+type ImagePayload = {
+  bytes: Uint8Array | null;
+  contentType: string;
+  id: string;
+  uri: string;
+};
+
 export function asRecord(value: unknown): RecordValue | null {
   return typeof value === "object" && value !== null ? (value as RecordValue) : null;
 }
@@ -370,29 +377,28 @@ export function styleAt(values: unknown, index: unknown): RecordValue | null {
 
 export function useOfficeImageSources(root: RecordValue | null): Map<string, string> {
   const imageRecords = useMemo(() => {
-    return asArray(root?.images).map(asRecord).filter((image): image is RecordValue => image != null);
+    const rootImages = asArray(root?.images).map(asRecord).filter((image): image is RecordValue => image != null);
+    return [...rootImages.map(imagePayloadFromImageRecord), ...collectElementImagePayloads(root)].filter(
+      (image): image is ImagePayload => image != null,
+    );
   }, [root]);
 
   const imageSources = useMemo(() => {
     const sources: ImageSource[] = [];
     for (const image of imageRecords) {
-      const id = asString(image.id);
-      if (!id) continue;
-
-      const uri = asString(image.uri);
-      if (uri) {
-        sources.push({ id, src: uri });
+      if (image.uri) {
+        sources.push({ id: image.id, src: image.uri });
         continue;
       }
 
-      const bytes = bytesFromUnknown(image.data ?? image.bytes);
+      const bytes = image.bytes;
       if (bytes == null || bytes.byteLength === 0) continue;
 
-      const contentType = asString(image.contentType) || inferImageContentType(id);
+      const contentType = image.contentType || inferImageContentType(image.id);
       const payload = new ArrayBuffer(bytes.byteLength);
       new Uint8Array(payload).set(bytes);
       const blob = new Blob([payload], { type: contentType });
-      sources.push({ id, src: URL.createObjectURL(blob) });
+      sources.push({ id: image.id, src: URL.createObjectURL(blob) });
     }
 
     return sources;
@@ -411,4 +417,54 @@ export function useOfficeImageSources(root: RecordValue | null): Map<string, str
   return useMemo(() => {
     return new Map(imageSources.map((image) => [image.id, image.src]));
   }, [imageSources]);
+}
+
+function imagePayloadFromImageRecord(image: RecordValue): ImagePayload | null {
+  const id = asString(image.id);
+  if (!id) return null;
+
+  return {
+    bytes: bytesFromUnknown(image.data ?? image.bytes),
+    contentType: asString(image.contentType),
+    id,
+    uri: asString(image.uri),
+  };
+}
+
+function collectElementImagePayloads(root: RecordValue | null): ImagePayload[] {
+  if (root == null) return [];
+
+  const payloads: ImagePayload[] = [];
+  const seen = new WeakSet<object>();
+
+  function visit(value: unknown): void {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+
+    const record = asRecord(value);
+    if (record == null || seen.has(record)) return;
+    seen.add(record);
+
+    const image = asRecord(record.image);
+    const id = imageReferenceId(record.imageReference);
+    if (image != null && id) {
+      payloads.push({
+        bytes: bytesFromUnknown(image.data ?? image.bytes),
+        contentType: asString(image.contentType),
+        id,
+        uri: asString(image.uri),
+      });
+    }
+
+    for (const child of Object.values(record)) {
+      if (typeof child === "object" && child !== null) {
+        visit(child);
+      }
+    }
+  }
+
+  visit(root);
+  return payloads;
 }

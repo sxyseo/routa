@@ -212,7 +212,7 @@ function SlideElement({
   const imageSrc = imageId ? imageSources.get(imageId) : undefined;
   const heightEmu = asNumber(bbox?.heightEmu);
   const isLine = heightEmu === 0 && line.color != null;
-  const borderRadius = shape?.geometry === 35 || shape?.geometry === 89 ? "999px" : 3;
+  const borderRadius = shape?.geometry === 26 ? 8 : shape?.geometry === 35 || shape?.geometry === 89 ? "999px" : 3;
 
   return (
     <div

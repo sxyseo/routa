@@ -422,6 +422,13 @@ Minimum protocol target for PPTX parity:
 
 Implementation implication: keep the exported method names, but change the generated PPTX payload to converge on the Walnut `Presentation` shape, or add a faithful adapter that maps a Routa-owned equivalent schema to that same shape before rendering. Extending the current `OfficeArtifact.Slide.text_blocks` model is insufficient.
 
+Follow-up implementation:
+
+- `Routa.OfficeWasmReader.PptxReader.ExtractSlidesProto` now emits a Walnut-like `oaiproto.coworker.presentation.Presentation` payload instead of `routa.office.v1.OfficeArtifact` for PPTX.
+- The generated payload is decoded with the extracted `Presentation.decode` module in both `/debug/office-wasm-poc` and `npm run compare:office-wasm-reader:pptx`.
+- On `agentic_ui_proactive_agent_technical_blueprint.pptx`, protocol-level equivalence now matches slide count, first-slide size, first-slide background, first-slide positioned element presence, first-slide text style presence, and first-slide element count (`23`, matching Walnut: `11` text + `12` shape elements).
+- Known remaining gap: the emitted proto is structurally compatible but not byte-identical; theme/layout payloads are still minimal compared with Walnut's full reader output.
+
 ## Verification - 2026-05-01
 
 Implemented a debug proof-of-concept page at `/debug/office-wasm-poc` that loads Codex's extracted Walnut WASM reader assets from `tmp/codex-app-analysis/extracted/webview/assets`.

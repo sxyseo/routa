@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import officeWasmConfig from "../../src/app/debug/office-wasm-poc/office-wasm-config";
 import type {
   RoutaOfficeArtifact,
   RoutaOfficeChart,
@@ -29,6 +30,8 @@ type ReaderExports = {
 };
 
 type DecodeRoutaOfficeArtifact = (bytes: Uint8Array) => RoutaOfficeArtifact;
+
+type DecodePresentation = (bytes: Uint8Array) => Record<string, unknown>;
 
 type FixtureCase = {
   kind: "pptx" | "xlsx";
@@ -61,6 +64,7 @@ async function main(): Promise<void> {
   }
 
   const decodeRoutaOfficeArtifact = await loadArtifactDecoder();
+  const decodePresentation = await loadPresentationDecoder();
   const exports = await loadReaderExports();
   for (const fixture of fixtureCases) {
     const bytes = readFileSync(fixture.path);
@@ -69,8 +73,10 @@ async function main(): Promise<void> {
         ? exports.XlsxReader.ExtractXlsxProto(bytes, false)
         : exports.PptxReader.ExtractSlidesProto(bytes, false);
     const protoPayload = toUint8Array(protoBytes);
-    const artifact = decodeRoutaOfficeArtifact(protoPayload);
-    const summary = summarizeArtifact(artifact, protoPayload);
+    const summary =
+      fixture.kind === "pptx"
+        ? summarizePresentation(decodePresentation(protoPayload), protoPayload)
+        : summarizeArtifact(decodeRoutaOfficeArtifact(protoPayload), protoPayload);
     const goldenPath = path.join(goldenDir, `${fixture.name}.json`);
     const serialized = `${JSON.stringify(summary, null, 2)}\n`;
 
@@ -89,8 +95,29 @@ async function main(): Promise<void> {
   }
 }
 
+async function loadPresentationDecoder(): Promise<DecodePresentation> {
+  const imported = await import(
+    pathToFileURL(path.join(repoRoot, officeWasmConfig.OFFICE_WASM_TMP_ASSET_DIR, officeWasmConfig.OFFICE_WASM_READER_MODULES.presentation)).href
+  ) as {
+    Presentation?: { decode?: DecodePresentation };
+    default?: { Presentation?: { decode?: DecodePresentation } };
+    "module.exports"?: { Presentation?: { decode?: DecodePresentation } };
+  };
+
+  const decoder =
+    imported.Presentation?.decode ??
+    imported.default?.Presentation?.decode ??
+    imported["module.exports"]?.Presentation?.decode;
+
+  if (!decoder) {
+    throw new Error("Could not load Walnut Presentation decoder.");
+  }
+
+  return decoder;
+}
+
 async function loadArtifactDecoder(): Promise<DecodeRoutaOfficeArtifact> {
-  const module = (await import(
+  const imported = (await import(
     "../../src/client/office-document-viewer/protocol/office-artifact-protobuf"
   )) as unknown as {
     decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact;
@@ -98,9 +125,9 @@ async function loadArtifactDecoder(): Promise<DecodeRoutaOfficeArtifact> {
     "module.exports"?: { decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact };
   };
   const decoder =
-    module.decodeRoutaOfficeArtifact ??
-    module.default?.decodeRoutaOfficeArtifact ??
-    module["module.exports"]?.decodeRoutaOfficeArtifact;
+    imported.decodeRoutaOfficeArtifact ??
+    imported.default?.decodeRoutaOfficeArtifact ??
+    imported["module.exports"]?.decodeRoutaOfficeArtifact;
 
   if (!decoder) {
     throw new Error("Could not load decodeRoutaOfficeArtifact.");
@@ -142,6 +169,50 @@ function summarizeArtifact(artifact: RoutaOfficeArtifact, protoPayload: Uint8Arr
     title: artifact.title,
     wasmProtoByteLength: protoPayload.length,
     wasmProtoSha256: createHash("sha256").update(protoPayload).digest("hex"),
+  };
+}
+
+function summarizePresentation(presentation: Record<string, unknown>, protoPayload: Uint8Array): unknown {
+  const slides = arrayOfRecords(presentation.slides);
+  return {
+    chartCount: arrayOfRecords(presentation.charts).length,
+    imageCount: arrayOfRecords(presentation.images).length,
+    layoutCount: arrayOfRecords(presentation.layouts).length,
+    protocol: "oaiproto.coworker.presentation.Presentation",
+    slideCount: slides.length,
+    slides: slides.slice(0, 12).map(summarizePresentationSlide),
+    wasmProtoByteLength: protoPayload.length,
+    wasmProtoSha256: createHash("sha256").update(protoPayload).digest("hex"),
+  };
+}
+
+function summarizePresentationSlide(slide: Record<string, unknown>): unknown {
+  const elements = arrayOfRecords(slide.elements);
+  return {
+    elementCount: elements.length,
+    elementTypes: countBy(elements, (element) => String(element.type ?? "unset")),
+    hasBackground: isRecord(slide.background),
+    heightEmu: slide.heightEmu,
+    id: slide.id,
+    index: slide.index,
+    textElementCount: elements.filter((element) => element.type === 1).length,
+    shapeElementCount: elements.filter((element) => element.type === 5).length,
+    previewElements: elements.slice(0, 10).map(summarizePresentationElement),
+    widthEmu: slide.widthEmu,
+  };
+}
+
+function summarizePresentationElement(element: Record<string, unknown>): unknown {
+  const paragraphs = arrayOfRecords(element.paragraphs);
+  return {
+    bbox: element.bbox,
+    hasFill: isRecord(element.fill) || isRecord(asRecord(element.shape)?.fill),
+    hasLine: isRecord(element.line) || isRecord(asRecord(element.shape)?.line),
+    id: element.id,
+    name: element.name,
+    paragraphCount: paragraphs.length,
+    textPreview: paragraphs.map(paragraphText).filter(Boolean).join(" ").slice(0, 160),
+    type: element.type,
   };
 }
 
@@ -261,6 +332,32 @@ function summarizeConditionalFormat(format: RoutaOfficeConditionalFormat): unkno
     ranges: format.ranges.slice(0, 12),
     type: format.type,
   };
+}
+
+function paragraphText(paragraph: Record<string, unknown>): string {
+  return arrayOfRecords(paragraph.runs)
+    .map((run) => typeof run.text === "string" ? run.text : "")
+    .join("");
+}
+
+function countBy<T>(items: T[], key: (item: T) => string): Record<string, number> {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    const itemKey = key(item);
+    counts[itemKey] = (counts[itemKey] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function truncate(value: string, maxLength: number): string {

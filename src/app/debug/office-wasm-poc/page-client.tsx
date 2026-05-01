@@ -34,8 +34,10 @@ type ReaderMode = "walnut" | "routa";
 
 type GeneratedWasmSummary = {
   chartCount: number;
+  elementCount?: number;
   imageCount: number;
   metadata: Record<string, string>;
+  protocol?: string;
   sheetCount: number;
   slideCount: number;
   sourceKind: string;
@@ -182,16 +184,36 @@ async function parseDocumentWithGeneratedReader(file: File, kind: OfficeWasmArti
   const reader = await loadRoutaOfficeWasmReader();
   const bytes = new Uint8Array(await file.arrayBuffer());
   const protoBytes = extractOfficeArtifactProto(reader, bytes, kind, false);
+
+  if (kind === "pptx") {
+    const proto = await decodePresentationProto(protoBytes);
+    return {
+      generatedSummary: await summarizeGeneratedPresentationProto(proto, protoBytes),
+      kind: "presentation",
+      proto,
+      rawProto: proto,
+      readerMode: "routa",
+      sourceKind: kind,
+    };
+  }
+
   const artifact = decodeRoutaOfficeArtifact(protoBytes);
 
   return {
     generatedSummary: await summarizeGeneratedWasmArtifact(artifact, protoBytes),
-    kind: kind === "xlsx" ? "spreadsheet" : kind === "pptx" ? "presentation" : "document",
+    kind: kind === "xlsx" ? "spreadsheet" : "document",
     proto: routaArtifactToPreviewProto(artifact, kind),
     rawProto: artifact,
     readerMode: "routa",
     sourceKind: kind,
   };
+}
+
+async function decodePresentationProto(protoBytes: Uint8Array): Promise<unknown> {
+  const { Presentation } = (await import(
+    /* webpackIgnore: true */ `${PRESENTATION_MODULE}?v=generated-presentation`
+  )) as { Presentation: { decode: (value: unknown) => unknown } };
+  return Presentation.decode(protoBytes);
 }
 
 function routaArtifactToPreviewProto(artifact: RoutaOfficeArtifact, kind: OfficeWasmArtifactKind): unknown {
@@ -360,6 +382,35 @@ async function summarizeGeneratedWasmArtifact(
     tableCount: artifact.tables.length,
     textBlockCount: artifact.textBlocks.length,
     title: artifact.title,
+    wasmProtoByteLength: protoBytes.length,
+    wasmProtoSha256: await sha256Hex(protoBytes),
+  };
+}
+
+async function summarizeGeneratedPresentationProto(
+  proto: unknown,
+  protoBytes: Uint8Array,
+): Promise<GeneratedWasmSummary> {
+  const root = proto && typeof proto === "object" ? proto as Record<string, unknown> : {};
+  const slides = Array.isArray(root.slides) ? root.slides : [];
+  const elementCount = slides.reduce((count, slide) => {
+    if (slide == null || typeof slide !== "object") return count;
+    const elements = (slide as Record<string, unknown>).elements;
+    return count + (Array.isArray(elements) ? elements.length : 0);
+  }, 0);
+
+  return {
+    chartCount: Array.isArray(root.charts) ? root.charts.length : 0,
+    elementCount,
+    imageCount: Array.isArray(root.images) ? root.images.length : 0,
+    metadata: {},
+    protocol: "oaiproto.coworker.presentation.Presentation",
+    sheetCount: 0,
+    slideCount: slides.length,
+    sourceKind: "pptx",
+    tableCount: 0,
+    textBlockCount: 0,
+    title: "",
     wasmProtoByteLength: protoBytes.length,
     wasmProtoSha256: await sha256Hex(protoBytes),
   };

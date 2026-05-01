@@ -11,19 +11,6 @@ type ReaderExports = {
   };
 };
 
-type DecodeRoutaOfficeArtifact = (bytes: Uint8Array) => {
-  charts: unknown[];
-  images: unknown[];
-  metadata: Record<string, string>;
-  slides: Array<{
-    index: number;
-    title: string;
-    textBlocks: Array<{ path: string; text: string }>;
-    elements?: unknown[];
-  }>;
-  tables: unknown[];
-};
-
 const repoRoot = process.cwd();
 const assetDir = path.resolve(repoRoot, officeWasmConfig.OFFICE_WASM_TMP_ASSET_DIR);
 const fixturePath = path.resolve(
@@ -41,13 +28,14 @@ async function main(): Promise<void> {
   const walnutProtoBytes = await extractWalnutPresentationProto(sourceBytes);
   const walnutPresentation = await decodeWalnutPresentation(walnutProtoBytes);
   const routaProtoBytes = await extractRoutaPresentationProto(sourceBytes);
-  const routaArtifact = await decodeRoutaArtifact(routaProtoBytes);
+  const routaPresentation = await decodeWalnutPresentation(routaProtoBytes);
 
   console.log(JSON.stringify({
     fixture: path.relative(repoRoot, fixturePath),
-    protocolMismatch: summarizeProtocolMismatch(),
-    walnut: summarizeWalnutPresentation(walnutPresentation, walnutProtoBytes),
-    routa: summarizeRoutaArtifact(routaArtifact, routaProtoBytes),
+    targetProtocol: "oaiproto.coworker.presentation.Presentation",
+    walnut: summarizePresentation(walnutPresentation, walnutProtoBytes),
+    routa: summarizePresentation(routaPresentation, routaProtoBytes),
+    equivalence: summarizeEquivalence(walnutPresentation, routaPresentation),
   }, null, 2));
 }
 
@@ -100,43 +88,7 @@ async function extractRoutaPresentationProto(sourceBytes: Uint8Array): Promise<U
   return toUint8Array(bridge.exports.PptxReader.ExtractSlidesProto(sourceBytes, false));
 }
 
-async function decodeRoutaArtifact(protoBytes: Uint8Array): Promise<ReturnType<DecodeRoutaOfficeArtifact>> {
-  const protocolModule = moduleWithExport(await import(
-    "../../src/client/office-document-viewer/protocol/office-artifact-protobuf"
-  ), "decodeRoutaOfficeArtifact") as {
-    decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact;
-  };
-
-  if (!protocolModule.decodeRoutaOfficeArtifact) {
-    throw new Error("Could not load decodeRoutaOfficeArtifact.");
-  }
-
-  return protocolModule.decodeRoutaOfficeArtifact(protoBytes);
-}
-
-function summarizeProtocolMismatch(): unknown {
-  return {
-    abiMethod: "PptxReader.ExtractSlidesProto(bytes, false)",
-    walnutMessage: "oaiproto.coworker.presentation.Presentation",
-    routaMessage: "routa.office.v1.OfficeArtifact",
-    reason: "The WASM ABI name matches, but the protobuf message behind the returned bytes does not.",
-    firstMissingRoutaFields: [
-      "Presentation.theme",
-      "Presentation.layouts",
-      "Slide.widthEmu",
-      "Slide.heightEmu",
-      "Slide.background",
-      "Slide.elements[].bbox",
-      "Slide.elements[].type",
-      "Slide.elements[].shape",
-      "Slide.elements[].fill",
-      "Slide.elements[].line",
-      "Slide.elements[].paragraphs[].runs[].textStyle",
-    ],
-  };
-}
-
-function summarizeWalnutPresentation(presentation: Record<string, unknown>, protoBytes: Uint8Array): unknown {
+function summarizePresentation(presentation: Record<string, unknown>, protoBytes: Uint8Array): unknown {
   const slides = arrayOfRecords(presentation.slides);
   const firstSlide = slides[0] ?? {};
   return {
@@ -148,11 +100,11 @@ function summarizeWalnutPresentation(presentation: Record<string, unknown>, prot
     imageCount: arrayOfRecords(presentation.images).length,
     chartCount: arrayOfRecords(presentation.charts).length,
     hasTheme: isRecord(presentation.theme),
-    firstSlide: summarizeWalnutSlide(firstSlide),
+    firstSlide: summarizeSlide(firstSlide),
   };
 }
 
-function summarizeWalnutSlide(slide: Record<string, unknown>): unknown {
+function summarizeSlide(slide: Record<string, unknown>): unknown {
   const elements = arrayOfRecords(slide.elements);
   const elementTypes = new Map<string, number>();
   for (const element of elements) {
@@ -186,25 +138,30 @@ function summarizeWalnutSlide(slide: Record<string, unknown>): unknown {
   };
 }
 
-function summarizeRoutaArtifact(artifact: ReturnType<DecodeRoutaOfficeArtifact>, protoBytes: Uint8Array): unknown {
-  const firstSlide = artifact.slides[0];
+function summarizeEquivalence(
+  walnutPresentation: Record<string, unknown>,
+  routaPresentation: Record<string, unknown>,
+): unknown {
+  const walnutSlides = arrayOfRecords(walnutPresentation.slides);
+  const routaSlides = arrayOfRecords(routaPresentation.slides);
+  const walnutFirst = walnutSlides[0] ?? {};
+  const routaFirst = routaSlides[0] ?? {};
+  const walnutElements = arrayOfRecords(walnutFirst.elements);
+  const routaElements = arrayOfRecords(routaFirst.elements);
+
   return {
-    protoByteLength: protoBytes.length,
-    protoSha256: sha256(protoBytes),
-    topLevelKeys: Object.keys(artifact),
-    slideCount: artifact.slides.length,
-    imageCount: artifact.images.length,
-    chartCount: artifact.charts.length,
-    tableCount: artifact.tables.length,
-    metadata: artifact.metadata,
-    firstSlide: {
-      keys: Object.keys(firstSlide ?? {}),
-      index: firstSlide?.index,
-      title: firstSlide?.title,
-      textBlockCount: firstSlide?.textBlocks.length ?? 0,
-      elementCount: firstSlide?.elements?.length ?? 0,
-      firstTextBlocks: firstSlide?.textBlocks.slice(0, 8) ?? [],
-    },
+    slideCountMatches: walnutSlides.length === routaSlides.length,
+    firstSlideSizeMatches:
+      walnutFirst.widthEmu === routaFirst.widthEmu &&
+      walnutFirst.heightEmu === routaFirst.heightEmu,
+    firstSlideElementCountDelta: routaElements.length - walnutElements.length,
+    firstSlideHasBackground: isRecord(routaFirst.background),
+    firstSlideHasPositionedElements: routaElements.some((element) => isRecord(element.bbox)),
+    firstSlideHasTextStyles: routaElements.some((element) =>
+      arrayOfRecords(element.paragraphs).some((paragraph) =>
+        arrayOfRecords(paragraph.runs).some((run) => isRecord(run.textStyle)),
+      ),
+    ),
   };
 }
 
