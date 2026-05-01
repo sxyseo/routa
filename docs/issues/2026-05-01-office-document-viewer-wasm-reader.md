@@ -429,6 +429,29 @@ Follow-up implementation:
 - On `agentic_ui_proactive_agent_technical_blueprint.pptx`, protocol-level equivalence now matches slide count, first-slide size, first-slide background, first-slide positioned element presence, first-slide text style presence, and first-slide element count (`23`, matching Walnut: `11` text + `12` shape elements).
 - Known remaining gap: the emitted proto is structurally compatible but not byte-identical; theme/layout payloads are still minimal compared with Walnut's full reader output.
 
+PPTX parity regression guard:
+
+```bash
+npm run test:office-wasm-reader:pptx-parity
+```
+
+The committed parity fixture stays small. Large local image-heavy decks can still be checked explicitly without adding them to git:
+
+```bash
+npm run compare:office-wasm-reader:pptx -- --assert '/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx'
+```
+
+`《此心安处》` is not a real PowerPoint chart-object case: its package has `ppt/charts/` but no chart XML parts, and Walnut also decodes `chartCount = 0`. The visible "chart-like" content is carried by images and shapes. The current parity check therefore verifies the relevant contract for this deck: root `Presentation.images`, element `imageReference` resolution, slide counts, layout/theme presence, element counts, image-reference counts, and per-slide element type counts.
+
+Remaining implementation gaps after the image-reference/theme/layout pass:
+
+- True PPTX chart parts (`c:chart` / `ChartPart`) are not emitted as `charts` or `chartReference` yet.
+- Group shapes, connectors, SmartArt/diagrams, video/audio, comments, notes, and custom geometry paths are still not fully modeled.
+- Theme and layout payloads are structurally present but not byte-identical to Walnut; text style inheritance from master/layout placeholders is still shallow.
+- Table support is minimal and not parity-tested against Walnut tables.
+- Picture crop/mask, tiling, duotone, advanced effects, gradients/pattern fills, and z-order metadata need broader coverage.
+- Export back to PPTX (`ExportProtoToPptx`-style flow) is not implemented.
+
 ## Verification - 2026-05-01
 
 Implemented a debug proof-of-concept page at `/debug/office-wasm-poc` that loads Codex's extracted Walnut WASM reader assets from `tmp/codex-app-analysis/extracted/webview/assets`.

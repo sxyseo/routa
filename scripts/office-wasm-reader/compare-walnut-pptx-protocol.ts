@@ -11,32 +11,63 @@ type ReaderExports = {
   };
 };
 
+type PresentationSummary = ReturnType<typeof summarizePresentation>;
+
+type ComparisonResult = {
+  fixture: string;
+  targetProtocol: string;
+  walnut: PresentationSummary;
+  routa: PresentationSummary;
+  equivalence: ReturnType<typeof summarizeEquivalence>;
+};
+
 const repoRoot = process.cwd();
 const assetDir = path.resolve(repoRoot, officeWasmConfig.OFFICE_WASM_TMP_ASSET_DIR);
-const fixturePath = path.resolve(
-  repoRoot,
-  process.argv[2] ?? "tools/office-wasm-reader/fixtures/agentic_ui_proactive_agent_technical_blueprint.pptx",
-);
+const assertMode = process.argv.includes("--assert");
+const fixturePaths = process.argv
+  .slice(2)
+  .filter((arg) => !arg.startsWith("--"))
+  .map((arg) => path.resolve(repoRoot, arg));
+if (fixturePaths.length === 0) {
+  fixturePaths.push(path.resolve(repoRoot, "tools/office-wasm-reader/fixtures/agentic_ui_proactive_agent_technical_blueprint.pptx"));
+}
 const generatedBundleEntry = path.resolve(repoRoot, "public/office-wasm-reader/main.js");
 
 async function main(): Promise<void> {
   assertFile(assetDir, "extracted Walnut asset directory");
-  assertFile(fixturePath, "PPTX fixture");
   assertFile(generatedBundleEntry, "generated Routa office WASM bundle");
 
+  const results: ComparisonResult[] = [];
+  for (const fixturePath of fixturePaths) {
+    assertFile(fixturePath, "PPTX fixture");
+    results.push(await compareFixture(fixturePath));
+  }
+
+  if (assertMode) {
+    for (const result of results) {
+      assertEquivalence(result);
+      console.log(`ok ${result.fixture}`);
+    }
+    return;
+  }
+
+  console.log(JSON.stringify(results.length === 1 ? results[0] : results, null, 2));
+}
+
+async function compareFixture(fixturePath: string): Promise<ComparisonResult> {
   const sourceBytes = readFileSync(fixturePath);
   const walnutProtoBytes = await extractWalnutPresentationProto(sourceBytes);
   const walnutPresentation = await decodeWalnutPresentation(walnutProtoBytes);
   const routaProtoBytes = await extractRoutaPresentationProto(sourceBytes);
   const routaPresentation = await decodeWalnutPresentation(routaProtoBytes);
 
-  console.log(JSON.stringify({
+  return {
+    equivalence: summarizeEquivalence(walnutPresentation, routaPresentation),
     fixture: path.relative(repoRoot, fixturePath),
+    routa: summarizePresentation(routaPresentation, routaProtoBytes),
     targetProtocol: "oaiproto.coworker.presentation.Presentation",
     walnut: summarizePresentation(walnutPresentation, walnutProtoBytes),
-    routa: summarizePresentation(routaPresentation, routaProtoBytes),
-    equivalence: summarizeEquivalence(walnutPresentation, routaPresentation),
-  }, null, 2));
+  };
 }
 
 async function extractWalnutPresentationProto(sourceBytes: Uint8Array): Promise<Uint8Array> {
@@ -88,23 +119,28 @@ async function extractRoutaPresentationProto(sourceBytes: Uint8Array): Promise<U
   return toUint8Array(bridge.exports.PptxReader.ExtractSlidesProto(sourceBytes, false));
 }
 
-function summarizePresentation(presentation: Record<string, unknown>, protoBytes: Uint8Array): unknown {
+function summarizePresentation(presentation: Record<string, unknown>, protoBytes: Uint8Array) {
   const slides = arrayOfRecords(presentation.slides);
-  const firstSlide = slides[0] ?? {};
+  const images = arrayOfRecords(presentation.images);
+  const imageIds = new Set(images.map((image) => String(image.id ?? "")).filter(Boolean));
+  const allImageReferenceIds = slides.flatMap((slide) => arrayOfRecords(slide.elements).flatMap(elementImageReferenceIds));
   return {
     protoByteLength: protoBytes.length,
     protoSha256: sha256(protoBytes),
     topLevelKeys: Object.keys(presentation),
     slideCount: slides.length,
     layoutCount: arrayOfRecords(presentation.layouts).length,
-    imageCount: arrayOfRecords(presentation.images).length,
+    imageCount: images.length,
     chartCount: arrayOfRecords(presentation.charts).length,
     hasTheme: isRecord(presentation.theme),
-    firstSlide: summarizeSlide(firstSlide),
+    imageReferenceCount: allImageReferenceIds.length,
+    missingImageReferenceIds: [...new Set(allImageReferenceIds.filter((id) => !imageIds.has(id)))],
+    slides: slides.map(summarizeSlide),
+    firstSlide: summarizeSlide(slides[0] ?? {}),
   };
 }
 
-function summarizeSlide(slide: Record<string, unknown>): unknown {
+function summarizeSlide(slide: Record<string, unknown>) {
   const elements = arrayOfRecords(slide.elements);
   const elementTypes = new Map<string, number>();
   for (const element of elements) {
@@ -121,6 +157,7 @@ function summarizeSlide(slide: Record<string, unknown>): unknown {
     useLayoutId: slide.useLayoutId,
     hasBackground: isRecord(slide.background),
     elementCount: elements.length,
+    imageReferenceCount: elements.flatMap(elementImageReferenceIds).length,
     elementTypes: Object.fromEntries(elementTypes),
     firstElements: elements.slice(0, 8).map((element) => ({
       id: element.id,
@@ -141,21 +178,35 @@ function summarizeSlide(slide: Record<string, unknown>): unknown {
 function summarizeEquivalence(
   walnutPresentation: Record<string, unknown>,
   routaPresentation: Record<string, unknown>,
-): unknown {
+){
   const walnutSlides = arrayOfRecords(walnutPresentation.slides);
   const routaSlides = arrayOfRecords(routaPresentation.slides);
+  const walnutSummary = summarizePresentation(walnutPresentation, new Uint8Array());
+  const routaSummary = summarizePresentation(routaPresentation, new Uint8Array());
   const walnutFirst = walnutSlides[0] ?? {};
   const routaFirst = routaSlides[0] ?? {};
   const walnutElements = arrayOfRecords(walnutFirst.elements);
   const routaElements = arrayOfRecords(routaFirst.elements);
 
   return {
+    chartCountMatches: walnutSummary.chartCount === routaSummary.chartCount,
+    elementTypeCountsMatch: JSON.stringify(walnutSummary.slides.map((slide) => slide.elementTypes)) ===
+      JSON.stringify(routaSummary.slides.map((slide) => slide.elementTypes)),
+    imageCountMatches: walnutSummary.imageCount === routaSummary.imageCount,
+    imageReferencesResolve: routaSummary.missingImageReferenceIds.length === 0,
+    layoutCountMatches: walnutSummary.layoutCount === routaSummary.layoutCount,
     slideCountMatches: walnutSlides.length === routaSlides.length,
+    slideElementCountsMatch: JSON.stringify(walnutSummary.slides.map((slide) => slide.elementCount)) ===
+      JSON.stringify(routaSummary.slides.map((slide) => slide.elementCount)),
+    slideImageReferenceCountsMatch:
+      JSON.stringify(walnutSummary.slides.map((slide) => slide.imageReferenceCount)) ===
+      JSON.stringify(routaSummary.slides.map((slide) => slide.imageReferenceCount)),
+    themePresenceMatches: walnutSummary.hasTheme === routaSummary.hasTheme,
     firstSlideSizeMatches:
       walnutFirst.widthEmu === routaFirst.widthEmu &&
       walnutFirst.heightEmu === routaFirst.heightEmu,
     firstSlideElementCountDelta: routaElements.length - walnutElements.length,
-    firstSlideHasBackground: isRecord(routaFirst.background),
+    firstSlideBackgroundPresenceMatches: isRecord(walnutFirst.background) === isRecord(routaFirst.background),
     firstSlideHasPositionedElements: routaElements.some((element) => isRecord(element.bbox)),
     firstSlideHasTextStyles: routaElements.some((element) =>
       arrayOfRecords(element.paragraphs).some((paragraph) =>
@@ -163,6 +214,33 @@ function summarizeEquivalence(
       ),
     ),
   };
+}
+
+function assertEquivalence(result: ComparisonResult): void {
+  const failed = Object.entries(result.equivalence)
+    .filter(([, value]) => typeof value === "boolean" && !value)
+    .map(([key]) => key);
+  if (result.equivalence.firstSlideElementCountDelta !== 0) {
+    failed.push("firstSlideElementCountDelta");
+  }
+
+  if (failed.length > 0) {
+    throw new Error(`${result.fixture} PPTX parity failed: ${failed.join(", ")}`);
+  }
+}
+
+function elementImageReferenceIds(element: Record<string, unknown>): string[] {
+  const ids = [
+    imageReferenceId(element.imageReference),
+    imageReferenceId(asRecord(element.fill)?.imageReference),
+    imageReferenceId(asRecord(asRecord(element.shape)?.fill)?.imageReference),
+  ].filter(Boolean);
+  return ids;
+}
+
+function imageReferenceId(value: unknown): string {
+  const record = asRecord(value);
+  return typeof record?.id === "string" ? record.id : "";
 }
 
 function collectTextPreview(value: unknown): string {

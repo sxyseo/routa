@@ -44,6 +44,7 @@ const bundleEntry = path.join(repoRoot, "public/office-wasm-reader/main.js");
 const fixturesDir = path.join(repoRoot, "tools/office-wasm-reader/fixtures");
 const goldenDir = path.join(fixturesDir, "golden");
 const updateGoldens = process.argv.includes("--update");
+const fixtureFilter = new Set(readRepeatedOption("--only"));
 
 const fixtureCases: FixtureCase[] = [
   {
@@ -66,7 +67,7 @@ async function main(): Promise<void> {
   const decodeRoutaOfficeArtifact = await loadArtifactDecoder();
   const decodePresentation = await loadPresentationDecoder();
   const exports = await loadReaderExports();
-  for (const fixture of fixtureCases) {
+  for (const fixture of fixtureCases.filter((fixture) => fixtureFilter.size === 0 || fixtureFilter.has(fixture.name))) {
     const bytes = readFileSync(fixture.path);
     const protoBytes =
       fixture.kind === "xlsx"
@@ -93,6 +94,18 @@ async function main(): Promise<void> {
 
     console.log(`ok ${fixture.name}`);
   }
+}
+
+function readRepeatedOption(optionName: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < process.argv.length; index++) {
+    if (process.argv[index] === optionName && process.argv[index + 1]) {
+      values.push(process.argv[index + 1]);
+      index++;
+    }
+  }
+
+  return values;
 }
 
 async function loadPresentationDecoder(): Promise<DecodePresentation> {

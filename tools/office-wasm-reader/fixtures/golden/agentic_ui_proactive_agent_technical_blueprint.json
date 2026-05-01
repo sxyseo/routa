@@ -1,7 +1,7 @@
 {
   "chartCount": 0,
   "imageCount": 0,
-  "layoutCount": 0,
+  "layoutCount": 2,
   "protocol": "oaiproto.coworker.presentation.Presentation",
   "slideCount": 20,
   "slides": [
@@ -1964,6 +1964,6 @@
       "widthEmu": 12191695
     }
   ],
-  "wasmProtoByteLength": 105510,
-  "wasmProtoSha256": "c7cf4bcc6991ad3c599297b8f435e827481f92c5f232e89e31a55079bc3cb7d2"
+  "wasmProtoByteLength": 106712,
+  "wasmProtoSha256": "a912131ccb617a1d535708c615190978fcc64f43a6fb335797d14362ed7a2cd0"
 }

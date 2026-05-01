@@ -62,6 +62,7 @@
     "build:office-wasm-reader": "node scripts/office-wasm-reader/build-office-wasm-reader.mjs",
     "check:office-wasm-reader:deps": "node scripts/office-wasm-reader/check-office-wasm-reader-dependencies.mjs",
     "compare:office-wasm-reader:pptx": "node --import tsx scripts/office-wasm-reader/compare-walnut-pptx-protocol.ts",
+    "test:office-wasm-reader:pptx-parity": "node --import tsx scripts/office-wasm-reader/compare-walnut-pptx-protocol.ts --assert tools/office-wasm-reader/fixtures/agentic_ui_proactive_agent_technical_blueprint.pptx",
     "test:office-wasm-reader:fixtures": "node --import tsx scripts/office-wasm-reader/run-office-wasm-fixtures.ts",
     "test:office-wasm-reader:fixtures:update": "node --import tsx scripts/office-wasm-reader/run-office-wasm-fixtures.ts --update",
     "db:generate": "drizzle-kit generate",
