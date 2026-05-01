@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,18 @@ const expectedVersions = {
   "System.IO.Packaging": "8.0.1",
 };
 
+const expectedExtractedOnlyAssemblies = ["Walnut"];
+const expectedGeneratedOnlyAssemblies = ["Routa.OfficeWasmReader"];
+const requiredSharedAssemblies = [
+  "DocumentFormat.OpenXml",
+  "DocumentFormat.OpenXml.Framework",
+  "Google.Protobuf",
+  "System.Console",
+  "System.IO.Packaging",
+  "System.Security.Cryptography",
+  "dotnet.native",
+];
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -28,6 +40,40 @@ function readText(filePath) {
 
 function readBinaryAsLatin1(filePath) {
   return readFileSync(filePath).toString("latin1");
+}
+
+function readWasmAssemblyNames(directory, normalizeName) {
+  return new Set(
+    readdirSync(directory)
+      .filter(fileName => fileName.endsWith(".wasm"))
+      .map(normalizeName),
+  );
+}
+
+function normalizeExtractedWasmName(fileName) {
+  const stem = path.basename(fileName, ".wasm");
+  if (stem.startsWith("dotnet.native.")) {
+    return "dotnet.native";
+  }
+
+  return stem.replace(/\.[a-z0-9_-]{10}$/i, "");
+}
+
+function normalizeGeneratedWasmName(fileName) {
+  return path.basename(fileName, ".wasm");
+}
+
+function sortedDifference(left, right) {
+  return [...left].filter(item => !right.has(item)).sort();
+}
+
+function assertSameList(actual, expected, label) {
+  const sortedActual = [...actual].sort();
+  const sortedExpected = [...expected].sort();
+  assert(
+    JSON.stringify(sortedActual) === JSON.stringify(sortedExpected),
+    `${label} mismatch: expected ${sortedExpected.join(", ") || "(none)"}, got ${sortedActual.join(", ") || "(none)"}`,
+  );
 }
 
 const props = readText(packagesProps);
@@ -68,4 +114,25 @@ if (existsSync(path.join(generatedAssets, "dotnet.native.wasm"))) {
     "Generated dotnet.native.wasm must be built from Microsoft.NETCore.App.Runtime.Mono.browser-wasm/9.0.14",
   );
   assert(!generatedNative.includes("browser-wasm/9.0.15"), "Generated dotnet.native.wasm must not use 9.0.15 packs");
+
+  const extractedAssemblies = readWasmAssemblyNames(extractedAssets, normalizeExtractedWasmName);
+  const generatedAssemblies = readWasmAssemblyNames(generatedAssets, normalizeGeneratedWasmName);
+
+  for (const assemblyName of requiredSharedAssemblies) {
+    assert(extractedAssemblies.has(assemblyName), `Extracted bundle is missing required assembly ${assemblyName}`);
+    assert(generatedAssemblies.has(assemblyName), `Generated bundle is missing required assembly ${assemblyName}`);
+  }
+
+  assertSameList(
+    sortedDifference(extractedAssemblies, generatedAssemblies),
+    expectedExtractedOnlyAssemblies,
+    "Extracted-only assembly surface",
+  );
+  assertSameList(
+    sortedDifference(generatedAssemblies, extractedAssemblies),
+    expectedGeneratedOnlyAssemblies,
+    "Generated-only assembly surface",
+  );
+
+  console.log("Generated Office WASM reader assembly surface matches extracted bundle with expected main-assembly rename.");
 }
