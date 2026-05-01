@@ -131,6 +131,7 @@ function summarizePresentation(presentation: Record<string, unknown>, protoBytes
     slideCount: slides.length,
     layoutCount: arrayOfRecords(presentation.layouts).length,
     imageCount: images.length,
+    imageDigests: images.map(summarizeImage),
     chartCount: arrayOfRecords(presentation.charts).length,
     hasTheme: isRecord(presentation.theme),
     imageReferenceCount: allImageReferenceIds.length,
@@ -143,6 +144,7 @@ function summarizePresentation(presentation: Record<string, unknown>, protoBytes
 function summarizeSlide(slide: Record<string, unknown>) {
   const elements = arrayOfRecords(slide.elements);
   const elementTypes = new Map<string, number>();
+  const imageReferenceIds = elements.flatMap(elementImageReferenceIds);
   for (const element of elements) {
     const type = String(element.type ?? "unset");
     elementTypes.set(type, (elementTypes.get(type) ?? 0) + 1);
@@ -157,7 +159,8 @@ function summarizeSlide(slide: Record<string, unknown>) {
     useLayoutId: slide.useLayoutId,
     hasBackground: isRecord(slide.background),
     elementCount: elements.length,
-    imageReferenceCount: elements.flatMap(elementImageReferenceIds).length,
+    imageReferenceCount: imageReferenceIds.length,
+    imageReferenceIds,
     elementTypes: Object.fromEntries(elementTypes),
     firstElements: elements.slice(0, 8).map((element) => ({
       id: element.id,
@@ -178,7 +181,7 @@ function summarizeSlide(slide: Record<string, unknown>) {
 function summarizeEquivalence(
   walnutPresentation: Record<string, unknown>,
   routaPresentation: Record<string, unknown>,
-){
+) {
   const walnutSlides = arrayOfRecords(walnutPresentation.slides);
   const routaSlides = arrayOfRecords(routaPresentation.slides);
   const walnutSummary = summarizePresentation(walnutPresentation, new Uint8Array());
@@ -193,6 +196,7 @@ function summarizeEquivalence(
     elementTypeCountsMatch: JSON.stringify(walnutSummary.slides.map((slide) => slide.elementTypes)) ===
       JSON.stringify(routaSummary.slides.map((slide) => slide.elementTypes)),
     imageCountMatches: walnutSummary.imageCount === routaSummary.imageCount,
+    imageDigestsMatch: stableJson(walnutSummary.imageDigests) === stableJson(routaSummary.imageDigests),
     imageReferencesResolve: routaSummary.missingImageReferenceIds.length === 0,
     layoutCountMatches: walnutSummary.layoutCount === routaSummary.layoutCount,
     slideCountMatches: walnutSlides.length === routaSlides.length,
@@ -201,6 +205,9 @@ function summarizeEquivalence(
     slideImageReferenceCountsMatch:
       JSON.stringify(walnutSummary.slides.map((slide) => slide.imageReferenceCount)) ===
       JSON.stringify(routaSummary.slides.map((slide) => slide.imageReferenceCount)),
+    slideImageReferenceIdsMatch:
+      stableJson(walnutSummary.slides.map((slide) => slide.imageReferenceIds)) ===
+      stableJson(routaSummary.slides.map((slide) => slide.imageReferenceIds)),
     themePresenceMatches: walnutSummary.hasTheme === routaSummary.hasTheme,
     firstSlideSizeMatches:
       walnutFirst.widthEmu === routaFirst.widthEmu &&
@@ -241,6 +248,37 @@ function elementImageReferenceIds(element: Record<string, unknown>): string[] {
 function imageReferenceId(value: unknown): string {
   const record = asRecord(value);
   return typeof record?.id === "string" ? record.id : "";
+}
+
+function summarizeImage(image: Record<string, unknown>) {
+  const data = bytesFromUnknown(image.data ?? image.bytes);
+  return {
+    id: typeof image.id === "string" ? image.id : "",
+    contentType: typeof image.contentType === "string" ? image.contentType : "",
+    byteLength: data.length,
+    sha256: data.length > 0 ? sha256(data) : "",
+    uri: typeof image.uri === "string" ? image.uri : "",
+  };
+}
+
+function bytesFromUnknown(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+
+  if (Array.isArray(value) && value.every((item) => typeof item === "number")) {
+    return new Uint8Array(value);
+  }
+
+  return new Uint8Array();
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(value);
 }
 
 function collectTextPreview(value: unknown): string {

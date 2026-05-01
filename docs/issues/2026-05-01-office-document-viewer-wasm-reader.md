@@ -441,7 +441,9 @@ The committed parity fixture stays small. Large local image-heavy decks can stil
 npm run compare:office-wasm-reader:pptx -- --assert '/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx'
 ```
 
-`《此心安处》` is not a real PowerPoint chart-object case: its package has `ppt/charts/` but no chart XML parts, and Walnut also decodes `chartCount = 0`. The visible "chart-like" content is carried by images and shapes. The current parity check therefore verifies the relevant contract for this deck: root `Presentation.images`, element `imageReference` resolution, slide counts, layout/theme presence, element counts, image-reference counts, and per-slide element type counts.
+`《此心安处》` is not a real PowerPoint chart-object case: its package has `ppt/charts/` but no chart XML parts, and Walnut also decodes `chartCount = 0`. The visible "chart-like" content is carried by images and shapes. The current parity check therefore verifies the relevant contract for this deck: root `Presentation.images`, image byte SHA-256 digests, element `imageReference` id sequences, `imageReference` resolution, slide counts, layout/theme presence, element counts, image-reference counts, and per-slide element type counts.
+
+Walnut-specific finding from decoding both WASM outputs on this deck: root `Presentation.images` is emitted in ordinal path order (`/ppt/media/...`) rather than slide traversal order. Walnut does not appear to transcode the JPEG payloads for this fixture; after matching the ordering, image ids, content types, byte lengths, and SHA-256 digests match exactly. The generated debug preview on `http://localhost:3000/debug/office-wasm-poc` now shows slide 4 with multiple distinct image-backed elements instead of one repeated image.
 
 Remaining implementation gaps after the image-reference/theme/layout pass:
 

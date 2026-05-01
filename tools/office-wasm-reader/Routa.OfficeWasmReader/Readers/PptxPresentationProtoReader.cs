@@ -35,7 +35,9 @@ internal static class PptxPresentationProtoReader
         var slideLayoutParts = DistinctByUri(slideParts.Select(part => part.SlideLayoutPart)).ToList();
         var slideMasterParts = DistinctByUri(slideLayoutParts.Select(part => part?.SlideMasterPart)).ToList();
         var themePart = slideMasterParts.Select(part => part.ThemePart).FirstOrDefault(part => part is not null);
-        var imageParts = DistinctByUri(slideParts.SelectMany(part => part.ImageParts)).ToList();
+        var imageParts = DistinctByUri(slideParts.SelectMany(part => part.ImageParts))
+            .OrderBy(part => part.Uri.OriginalString, StringComparer.Ordinal)
+            .ToList();
 
         return Message(output =>
         {
