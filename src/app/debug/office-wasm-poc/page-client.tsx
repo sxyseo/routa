@@ -219,12 +219,35 @@ function inferImageContentType(id: string): string {
   return "application/octet-stream";
 }
 
+function hexToRgb(value: string): { red: number; green: number; blue: number } | null {
+  if (!/^[0-9a-f]{6}$/i.test(value)) return null;
+  return {
+    red: Number.parseInt(value.slice(0, 2), 16),
+    green: Number.parseInt(value.slice(2, 4), 16),
+    blue: Number.parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function colorAlpha(value: unknown): number {
+  const transform = asRecord(asRecord(value)?.transform);
+  const alpha = transform?.alpha;
+  if (typeof alpha !== "number" || !Number.isFinite(alpha)) return 1;
+  return Math.max(0, Math.min(1, alpha / 100_000));
+}
+
 function colorToCss(value: unknown): string | undefined {
   const color = asRecord(value);
   const raw = asString(color?.value);
-  if (/^[0-9a-f]{6}$/i.test(raw)) return `#${raw}`;
+  const rgb = hexToRgb(raw);
+  if (rgb) {
+    const alpha = colorAlpha(color);
+    if (alpha < 1) return `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, ${alpha})`;
+    return `#${raw}`;
+  }
+
   const lastColor = asString(color?.lastColor);
-  if (/^[0-9a-f]{6}$/i.test(lastColor)) return `#${lastColor}`;
+  const lastRgb = hexToRgb(lastColor);
+  if (lastRgb) return `#${lastColor}`;
   return undefined;
 }
 
@@ -232,6 +255,20 @@ function fillToCss(fill: unknown): string | undefined {
   const fillRecord = asRecord(fill);
   if (fillRecord == null || asNumber(fillRecord.type) === 0) return undefined;
   return colorToCss(fillRecord.color);
+}
+
+function lineToCss(line: unknown): { color?: string; width: number } {
+  const lineRecord = asRecord(line);
+  const fillRecord = asRecord(lineRecord?.fill);
+  const color = colorToCss(fillRecord?.color);
+  const width = Math.max(1, Math.min(4, asNumber(lineRecord?.widthEmu) / 9_000));
+  return { color, width };
+}
+
+function slideBackgroundToCss(slide: RecordValue): string {
+  const background = asRecord(slide.background);
+  const fill = asRecord(background?.fill);
+  return fillToCss(fill) ?? "#ffffff";
 }
 
 function imageReferenceId(value: unknown): string {
@@ -501,6 +538,7 @@ function PresentationPreview({ labels, proto }: { labels: PreviewLabels; proto: 
               {labels.slide} {asNumber(slide.index, index + 1)}
             </span>
             <SlideFrame
+              compact
               imageSources={imageSources}
               isActive={index === selectedSlideIndex}
               slide={slide}
@@ -615,22 +653,25 @@ function slideBounds(slide: RecordValue): { width: number; height: number } {
 }
 
 function SlideFrame({
+  compact = false,
   imageSources,
   isActive = false,
   slide,
 }: {
+  compact?: boolean;
   imageSources: Map<string, string>;
   isActive?: boolean;
   slide: RecordValue;
 }) {
   const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
   const bounds = slideBounds(slide);
+  const background = slideBackgroundToCss(slide);
 
   return (
     <div
       style={{
         aspectRatio: `${bounds.width} / ${bounds.height}`,
-        background: "#ffffff",
+        background,
         border: `1px solid ${isActive ? "#0285ff" : "#cbd5e1"}`,
         borderRadius: 6,
         boxShadow: isActive ? "0 0 0 2px rgba(2, 133, 255, 0.18)" : "0 8px 22px rgba(15, 23, 42, 0.12)",
@@ -642,6 +683,7 @@ function SlideFrame({
       {elements.map((element, index) => (
         <SlideElement
           bounds={bounds}
+          compact={compact}
           element={element}
           imageSources={imageSources}
           key={`${asString(element.id)}-${index}`}
@@ -653,10 +695,12 @@ function SlideFrame({
 
 function SlideElement({
   bounds,
+  compact,
   element,
   imageSources,
 }: {
   bounds: { width: number; height: number };
+  compact: boolean;
   element: RecordValue;
   imageSources: Map<string, string>;
 }) {
@@ -666,17 +710,24 @@ function SlideElement({
   const firstRun = asRecord(asArray(asRecord(asArray(element.paragraphs)[0])?.runs)[0]);
   const textStyle = asRecord(firstRun?.textStyle);
   const fill = fillToCss(shape?.fill);
+  const line = lineToCss(shape?.line);
   const textColor = colorToCss(asRecord(textStyle?.fill)?.color) ?? "#0f172a";
-  const fontSize = Math.max(10, Math.min(44, asNumber(textStyle?.fontSize, 1200) / 100));
+  const fontScale = compact ? 0.15 : 1;
+  const fontSize = Math.max(compact ? 2 : 10, Math.min(44, asNumber(textStyle?.fontSize, 1200) / 100) * fontScale);
   const imageId = elementImageReferenceId(element);
   const imageSrc = imageId ? imageSources.get(imageId) : undefined;
+  const heightEmu = asNumber(bbox?.heightEmu);
+  const isLine = heightEmu === 0 && line.color != null;
+  const borderRadius = shape?.geometry === 35 || shape?.geometry === 89 ? "999px" : 3;
 
   return (
     <div
       style={{
         alignItems: "center",
         background: text ? "transparent" : fill,
-        borderRadius: shape?.geometry === 89 ? "999px" : 3,
+        border: !isLine && line.color ? `${line.width}px solid ${line.color}` : undefined,
+        borderRadius,
+        borderTop: isLine && line.color ? `${line.width}px solid ${line.color}` : undefined,
         color: textColor,
         display: "flex",
         fontSize,
@@ -685,7 +736,7 @@ function SlideElement({
         left: `${(asNumber(bbox?.xEmu) / bounds.width) * 100}%`,
         lineHeight: 1.15,
         overflow: "hidden",
-        padding: text ? "0.15em" : 0,
+        padding: text ? (compact ? "0.05em" : "0.15em") : 0,
         position: "absolute",
         top: `${(asNumber(bbox?.yEmu) / bounds.height) * 100}%`,
         transform: `rotate(${asNumber(bbox?.rotation) / 60000}deg)`,
