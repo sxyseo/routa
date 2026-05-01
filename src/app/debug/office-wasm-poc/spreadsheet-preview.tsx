@@ -8,7 +8,6 @@ import {
   asRecord,
   asString,
   cellText,
-  type CellMerge,
   columnIndexFromAddress,
   columnLabel,
   colorToCss,
@@ -21,6 +20,17 @@ import {
   spreadsheetFillToCss,
   styleAt,
 } from "./office-preview-utils";
+import {
+  buildSpreadsheetLayout,
+  SPREADSHEET_COLUMN_HEADER_HEIGHT,
+  SPREADSHEET_FONT_FAMILY,
+  SPREADSHEET_ROW_HEADER_WIDTH,
+  spreadsheetCellKey,
+  spreadsheetColumnLeft,
+  spreadsheetEmuToPx,
+  type SpreadsheetLayout,
+  spreadsheetRowTop,
+} from "./spreadsheet-layout";
 
 type SpreadsheetCellVisual = {
   background?: string;
@@ -62,13 +72,6 @@ type SpreadsheetShapeSpec = {
   width: number;
 };
 
-const SPREADSHEET_ROW_HEADER_WIDTH = 52;
-const SPREADSHEET_COLUMN_HEADER_HEIGHT = 29;
-const SPREADSHEET_DEFAULT_COLUMN_WIDTH = 88;
-const SPREADSHEET_DEFAULT_ROW_HEIGHT = 28;
-const SPREADSHEET_EMU_PER_PIXEL = 9525;
-const SPREADSHEET_FONT_FAMILY = "Arial, Helvetica, sans-serif";
-
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
   const sheets = asArray(root?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null);
@@ -77,79 +80,16 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const shapes = asArray(root?.shapes).map(asRecord).filter((shape): shape is RecordValue => shape != null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
-
-  const rows = asArray(activeSheet?.rows).map(asRecord).filter((row): row is RecordValue => row != null);
-  let maxColumn = 0;
-  const rowsByIndex = new Map<number, Map<number, RecordValue>>();
-
-  for (const row of rows) {
-    const rowIndex = asNumber(row.index, 1);
-    const cells = new Map<number, RecordValue>();
-    for (const cell of asArray(row.cells)) {
-      const cellRecord = asRecord(cell);
-      const address = asString(cellRecord?.address);
-      const columnIndex = columnIndexFromAddress(address);
-      maxColumn = Math.max(maxColumn, columnIndex);
-      if (cellRecord) cells.set(columnIndex, cellRecord);
-    }
-    rowsByIndex.set(rowIndex, cells);
-  }
-
-  const rowHeights = new Map(rows.map((row) => [asNumber(row.index, 1), asNumber(row.height)]));
-  const columns = asArray(activeSheet?.columns).map(asRecord).filter((column): column is RecordValue => column != null);
-  const columnWidths = new Map<number, number>();
-  for (const column of columns) {
-    const min = Math.max(1, asNumber(column.min, asNumber(column.index, 1)));
-    const max = Math.max(min, asNumber(column.max, min));
-    const width = asNumber(column.width, asNumber(activeSheet?.defaultColWidth, 10));
-    for (let index = min - 1; index <= max - 1; index += 1) {
-      columnWidths.set(index, Math.max(56, Math.min(560, width * 5 + 5)));
-      maxColumn = Math.max(maxColumn, index);
-    }
-  }
-  if (columns.length === 0) {
-    for (const [index, width] of knownSpreadsheetColumnWidths(asString(activeSheet?.name))) {
-      columnWidths.set(index, width);
-      maxColumn = Math.max(maxColumn, index);
-    }
-  }
-
-  const mergeByStart = new Map<string, CellMerge>();
-  const coveredCells = new Set<string>();
-  for (const mergeRecord of asArray(activeSheet?.mergedCells)) {
-    const mergeValue = asRecord(mergeRecord);
-    const reference = (
-      asString(mergeValue?.reference) ||
-      (asString(mergeValue?.startAddress) && asString(mergeValue?.endAddress)
-        ? `${asString(mergeValue?.startAddress)}:${asString(mergeValue?.endAddress)}`
-        : "") ||
-      asString(mergeRecord)
-    );
-    const merge = parseCellRange(reference);
-    if (!merge || (merge.columnSpan === 1 && merge.rowSpan === 1)) continue;
-    mergeByStart.set(`${merge.startRow}:${merge.startColumn}`, merge);
-    maxColumn = Math.max(maxColumn, merge.startColumn + merge.columnSpan - 1);
-    for (let row = merge.startRow; row < merge.startRow + merge.rowSpan; row += 1) {
-      for (let column = merge.startColumn; column < merge.startColumn + merge.columnSpan; column += 1) {
-        if (row === merge.startRow && column === merge.startColumn) continue;
-        coveredCells.add(`${row}:${column}`);
-      }
-    }
-  }
-
-  const maxRow = Math.min(Math.max(...rowsByIndex.keys(), 1), 80);
-  const columnCount = Math.min(Math.max(maxColumn + 1, 6), 32);
+  const layout = buildSpreadsheetLayout(activeSheet);
   const chartSpecs = buildSpreadsheetCharts({
     activeSheet,
     charts,
-    columnWidths,
-    rowHeights,
+    layout,
     sheets,
   });
   const shapeSpecs = buildSpreadsheetShapes({
     activeSheet,
-    columnWidths,
-    rowHeights,
+    layout,
     shapes,
   });
   const cellVisuals = buildSpreadsheetConditionalVisuals(activeSheet);
@@ -179,57 +119,13 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
       <SpreadsheetFormulaBar activeSheet={activeSheet} styles={styles} />
       <div style={{ overflow: "auto" }}>
-        <div style={{ minHeight: SPREADSHEET_COLUMN_HEADER_HEIGHT + maxRow * SPREADSHEET_DEFAULT_ROW_HEIGHT, position: "relative" }}>
-          <table style={{ borderCollapse: "separate", borderSpacing: 0, fontFamily: SPREADSHEET_FONT_FAMILY, fontSize: 13, minWidth: "100%" }}>
-            <colgroup>
-              <col style={{ width: 52 }} />
-              {Array.from({ length: columnCount }, (_, index) => (
-                <col key={index} style={{ width: columnWidths.get(index) ?? 88 }} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr>
-                <th style={spreadsheetCornerStyle} />
-                {Array.from({ length: columnCount }, (_, index) => (
-                  <th key={index} style={spreadsheetColumnHeaderStyle}>{columnLabel(index)}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: maxRow }, (_, rowOffset) => {
-                const rowIndex = rowOffset + 1;
-                const row = rowsByIndex.get(rowIndex);
-                const height = rowHeights.get(rowIndex);
-                return (
-                  <tr key={rowIndex} style={{ height: height && height > 0 ? Math.max(20, height) : undefined }}>
-                    <th style={spreadsheetRowHeaderStyle}>{rowIndex}</th>
-                    {Array.from({ length: columnCount }, (_, columnIndex) => {
-                      if (coveredCells.has(`${rowIndex}:${columnIndex}`)) return null;
-                      const cell = row?.get(columnIndex) ?? null;
-                      const merge = mergeByStart.get(`${rowIndex}:${columnIndex}`);
-                      const visual = cellVisuals.get(spreadsheetCellKey(rowIndex, columnIndex));
-                      const sheetName = asString(activeSheet?.name);
-                      const text = spreadsheetCellText(cell, styles, sheetName);
-                      return (
-                        <td
-                          key={columnIndex}
-                          colSpan={merge?.columnSpan}
-                          rowSpan={merge?.rowSpan}
-                          style={{
-                            ...spreadsheetCellStyle(cell, styles, visual, sheetName),
-                            overflow: visual?.dataBar ? "hidden" : undefined,
-                            position: visual?.dataBar ? "relative" : undefined,
-                          }}
-                        >
-                          <SpreadsheetCellContent text={text} visual={visual} />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }}>
+          <SpreadsheetGrid
+            activeSheet={activeSheet}
+            cellVisuals={cellVisuals}
+            layout={layout}
+            styles={styles}
+          />
           <SpreadsheetShapeLayer shapes={shapeSpecs} />
           <SpreadsheetChartLayer charts={chartSpecs} />
         </div>
@@ -272,6 +168,96 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SpreadsheetGrid({
+  activeSheet,
+  cellVisuals,
+  layout,
+  styles,
+}: {
+  activeSheet: RecordValue | undefined;
+  cellVisuals: Map<string, SpreadsheetCellVisual>;
+  layout: SpreadsheetLayout;
+  styles: RecordValue | null;
+}) {
+  const sheetName = asString(activeSheet?.name);
+
+  return (
+    <div
+      role="grid"
+      style={{
+        fontFamily: SPREADSHEET_FONT_FAMILY,
+        fontSize: 13,
+        height: layout.gridHeight,
+        position: "absolute",
+        width: layout.gridWidth,
+      }}
+    >
+      <div style={spreadsheetCornerStyle} />
+      {Array.from({ length: layout.columnCount }, (_, columnIndex) => (
+        <div
+          key={columnIndex}
+          role="columnheader"
+          style={{
+            ...spreadsheetColumnHeaderStyle,
+            left: spreadsheetColumnLeft(layout, columnIndex),
+            width: layout.columnWidths[columnIndex],
+          }}
+        >
+          {columnLabel(columnIndex)}
+        </div>
+      ))}
+      {Array.from({ length: layout.rowCount }, (_, rowOffset) => {
+        const rowIndex = rowOffset + 1;
+        const row = layout.rowsByIndex.get(rowIndex);
+        const top = spreadsheetRowTop(layout, rowOffset);
+        const height = layout.rowHeights[rowOffset];
+        return (
+          <div key={rowIndex} role="row">
+            <div
+              role="rowheader"
+              style={{
+                ...spreadsheetRowHeaderStyle,
+                height,
+                top,
+              }}
+            >
+              {rowIndex}
+            </div>
+            {Array.from({ length: layout.columnCount }, (_, columnIndex) => {
+              const cellKey = spreadsheetCellKey(rowIndex, columnIndex);
+              if (layout.coveredCells.has(cellKey)) return null;
+              const cell = row?.get(columnIndex) ?? null;
+              const merge = layout.mergeByStart.get(cellKey);
+              const left = spreadsheetColumnLeft(layout, columnIndex);
+              const width = spreadsheetColumnLeft(layout, columnIndex + (merge?.columnSpan ?? 1)) - left;
+              const cellHeight = spreadsheetRowTop(layout, rowOffset + (merge?.rowSpan ?? 1)) - top;
+              const visual = cellVisuals.get(cellKey);
+              const text = spreadsheetCellText(cell, styles, sheetName);
+              return (
+                <div
+                  data-cell-address={asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`}
+                  key={columnIndex}
+                  role="gridcell"
+                  style={{
+                    ...spreadsheetCellStyle(cell, styles, visual, sheetName),
+                    height: cellHeight,
+                    left,
+                    position: "absolute",
+                    top,
+                    width,
+                  }}
+                >
+                  <SpreadsheetCellContent text={text} visual={visual} />
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -427,23 +413,6 @@ function spreadsheetCellStyle(
   };
 }
 
-function knownSpreadsheetColumnWidths(sheetName: string): Map<number, number> {
-  const widths = new Map<number, number>();
-  if (sheetName === "03_TimeSeries") {
-    [108, 100, 116, 108, 108, 118, 118, 118, 118, 118, 126, 460].forEach((width, index) => {
-      widths.set(index, width);
-    });
-  }
-
-  if (sheetName === "04_Heatmap") {
-    [190, 118, 118, 118, 118, 118, 118, 118, 118, 120, 108, 108, 132, 320].forEach((width, index) => {
-      widths.set(index, width);
-    });
-  }
-
-  return widths;
-}
-
 function knownSpreadsheetCellStyle(cell: RecordValue | null, sheetName?: string): CSSProperties {
   const address = asString(cell?.address);
   if (!cell || !address) return {};
@@ -586,41 +555,18 @@ function defaultSpreadsheetSheetIndex(sheets: RecordValue[]): number {
   return readmeFirst ? 1 : 0;
 }
 
-function rowHeightPx(rowHeights: Map<number, number>, rowIndex: number): number {
-  const value = rowHeights.get(rowIndex);
-  return value && value > 0 ? Math.max(20, value) : SPREADSHEET_DEFAULT_ROW_HEIGHT;
-}
-
-function spreadsheetColumnLeft(columnWidths: Map<number, number>, columnIndex: number): number {
-  let left = SPREADSHEET_ROW_HEADER_WIDTH;
-  for (let index = 0; index < columnIndex; index += 1) {
-    left += columnWidths.get(index) ?? SPREADSHEET_DEFAULT_COLUMN_WIDTH;
-  }
-  return left;
-}
-
-function spreadsheetRowTop(rowHeights: Map<number, number>, zeroBasedRowIndex: number): number {
-  let top = SPREADSHEET_COLUMN_HEADER_HEIGHT;
-  for (let rowIndex = 1; rowIndex <= zeroBasedRowIndex; rowIndex += 1) {
-    top += rowHeightPx(rowHeights, rowIndex);
-  }
-  return top;
-}
-
 function buildSpreadsheetCharts({
   activeSheet,
   charts: workbookCharts,
-  columnWidths,
-  rowHeights,
+  layout,
   sheets,
 }: {
   activeSheet: RecordValue | undefined;
   charts: RecordValue[];
-  columnWidths: Map<number, number>;
-  rowHeights: Map<number, number>;
+  layout: SpreadsheetLayout;
   sheets: RecordValue[];
 }): SpreadsheetChartSpec[] {
-  const protocolCharts = buildProtocolSpreadsheetCharts(activeSheet, workbookCharts, columnWidths, rowHeights);
+  const protocolCharts = buildProtocolSpreadsheetCharts(activeSheet, workbookCharts, layout);
   if (protocolCharts.length > 0) return protocolCharts;
 
   if (asString(activeSheet?.name) !== "01_Dashboard") return [];
@@ -642,10 +588,10 @@ function buildSpreadsheetCharts({
     fallbackCharts.push({
       categories: statusCategories,
       height: 280,
-      left: spreadsheetColumnLeft(columnWidths, 5),
+      left: spreadsheetColumnLeft(layout, 5),
       series: [{ color: "#1f6f8b", label: "Count", values: statusValues }],
       title: "Tasks by Status",
-      top: spreadsheetRowTop(rowHeights, 16),
+      top: spreadsheetRowTop(layout, 16),
       type: "bar",
       width: 450,
     });
@@ -670,13 +616,13 @@ function buildSpreadsheetCharts({
     fallbackCharts.push({
       categories: monthLabels,
       height: 280,
-      left: spreadsheetColumnLeft(columnWidths, 0),
+      left: spreadsheetColumnLeft(layout, 0),
       series: [
         { color: "#1f6f8b", label: "Fitness Score", values: fitnessValues },
         { color: "#f9732a", label: "Coverage %", values: coverageValues },
       ],
       title: "Fitness Score vs Coverage",
-      top: spreadsheetRowTop(rowHeights, 30),
+      top: spreadsheetRowTop(layout, 30),
       type: "line",
       width: 640,
     });
@@ -688,8 +634,7 @@ function buildSpreadsheetCharts({
 function buildProtocolSpreadsheetCharts(
   activeSheet: RecordValue | undefined,
   charts: RecordValue[],
-  columnWidths: Map<number, number>,
-  rowHeights: Map<number, number>,
+  layout: SpreadsheetLayout,
 ): SpreadsheetChartSpec[] {
   const sheetName = asString(activeSheet?.name);
   return charts
@@ -709,22 +654,24 @@ function buildProtocolSpreadsheetCharts(
       const categories = asArray(seriesRecords[0]?.categories).map(asString).filter(Boolean);
       const fromCol = asNumber(anchor?.fromCol, 0);
       const fromRow = asNumber(anchor?.fromRow, 0);
+      const left = spreadsheetColumnLeft(layout, fromCol);
+      const top = spreadsheetRowTop(layout, fromRow);
+      const extWidth = spreadsheetEmuToPx(anchor?.toColOffsetEmu);
+      const extHeight = spreadsheetEmuToPx(anchor?.toRowOffsetEmu);
       const toCol = Math.max(fromCol + 5, asNumber(anchor?.toCol, fromCol + 5));
       const toRow = Math.max(fromRow + 10, asNumber(anchor?.toRow, fromRow + 10));
-      const left = spreadsheetColumnLeft(columnWidths, fromCol);
-      const top = spreadsheetRowTop(rowHeights, fromRow);
-      const right = spreadsheetColumnLeft(columnWidths, toCol);
-      const bottom = spreadsheetRowTop(rowHeights, toRow);
+      const right = spreadsheetColumnLeft(layout, toCol);
+      const bottom = spreadsheetRowTop(layout, toRow);
 
       return {
         categories: categories.length > 0 ? categories : series[0].values.map((_, index) => String(index + 1)),
-        height: Math.max(220, bottom - top),
+        height: Math.max(220, extHeight > 0 ? extHeight : bottom - top),
         left,
         series,
         title: asString(chart.title),
         top,
         type: asString(chart.chartType) === "line" ? "line" : "bar",
-        width: Math.max(360, right - left),
+        width: Math.max(360, extWidth > 0 ? extWidth : right - left),
       } satisfies SpreadsheetChartSpec;
     })
     .filter((chart): chart is SpreadsheetChartSpec => chart != null);
@@ -732,13 +679,11 @@ function buildProtocolSpreadsheetCharts(
 
 function buildSpreadsheetShapes({
   activeSheet,
-  columnWidths,
-  rowHeights,
+  layout,
   shapes,
 }: {
   activeSheet: RecordValue | undefined;
-  columnWidths: Map<number, number>;
-  rowHeights: Map<number, number>;
+  layout: SpreadsheetLayout;
   shapes: RecordValue[];
 }): SpreadsheetShapeSpec[] {
   const sheetName = asString(activeSheet?.name);
@@ -747,10 +692,10 @@ function buildSpreadsheetShapes({
     .map((shape, index) => {
       const fromCol = asNumber(shape.fromCol, 0);
       const fromRow = asNumber(shape.fromRow, 0);
-      const left = spreadsheetColumnLeft(columnWidths, fromCol) + asNumber(shape.fromColOffsetEmu, 0) / SPREADSHEET_EMU_PER_PIXEL;
-      const top = spreadsheetRowTop(rowHeights, fromRow) + asNumber(shape.fromRowOffsetEmu, 0) / SPREADSHEET_EMU_PER_PIXEL;
-      const width = Math.max(24, asNumber(shape.widthEmu, 0) / SPREADSHEET_EMU_PER_PIXEL);
-      const height = Math.max(24, asNumber(shape.heightEmu, 0) / SPREADSHEET_EMU_PER_PIXEL);
+      const left = spreadsheetColumnLeft(layout, fromCol) + spreadsheetEmuToPx(shape.fromColOffsetEmu);
+      const top = spreadsheetRowTop(layout, fromRow) + spreadsheetEmuToPx(shape.fromRowOffsetEmu);
+      const width = Math.max(24, spreadsheetEmuToPx(shape.widthEmu));
+      const height = Math.max(24, spreadsheetEmuToPx(shape.heightEmu));
 
       return {
         fill: protocolColorToCss(shape.fillColor) ?? "#ffffff",
@@ -764,10 +709,6 @@ function buildSpreadsheetShapes({
         width,
       };
     });
-}
-
-function spreadsheetCellKey(rowIndex: number, columnIndex: number): string {
-  return `${rowIndex}:${columnIndex}`;
 }
 
 function forEachCellInRange(reference: string, visit: (rowIndex: number, columnIndex: number) => void) {
@@ -1183,15 +1124,16 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
   const width = chart.width;
   const height = chart.height;
   const plot = {
-    bottom: height - (chart.type === "line" ? 58 : 44),
+    bottom: height - (chart.type === "line" ? 82 : 44),
     left: chart.type === "line" ? 42 : 38,
     right: width - 18,
     top: 58,
   };
   const values = chart.series.flatMap((series) => series.values);
   const observedMax = Math.max(...values);
-  const maxValue = observedMax <= 10 ? Math.max(1, Math.ceil(observedMax)) : Math.max(1, Math.ceil(observedMax / 10) * 10);
-  const minValue = chart.type === "line" ? Math.floor(Math.min(...values) / 10) * 10 : 0;
+  const tickCount = chart.type === "line" ? 6 : 5;
+  const minValue = 0;
+  const maxValue = niceChartMax(observedMax, tickCount);
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
@@ -1200,7 +1142,7 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
   context.textAlign = "center";
   context.fillText(chart.title, width / 2, 28);
 
-  drawChartGrid(context, plot, minValue, maxValue);
+  drawChartGrid(context, plot, minValue, maxValue, tickCount);
 
   if (chart.type === "bar") {
     drawBarChart(context, chart, plot, minValue, maxValue);
@@ -1214,6 +1156,7 @@ function drawChartGrid(
   plot: { bottom: number; left: number; right: number; top: number },
   minValue: number,
   maxValue: number,
+  tickCount: number,
 ) {
   context.save();
   context.strokeStyle = "#d1d5db";
@@ -1224,7 +1167,6 @@ function drawChartGrid(
   context.textAlign = "right";
   context.textBaseline = "middle";
 
-  const tickCount = 5;
   for (let index = 0; index < tickCount; index += 1) {
     const ratio = index / (tickCount - 1);
     const y = plot.bottom - ratio * (plot.bottom - plot.top);
@@ -1236,6 +1178,16 @@ function drawChartGrid(
     context.fillText(String(Math.round(value)), plot.left - 8, y);
   }
   context.restore();
+}
+
+function niceChartMax(observedMax: number, tickCount: number): number {
+  if (!Number.isFinite(observedMax) || observedMax <= 0) return 1;
+  const intervalCount = Math.max(1, tickCount - 1);
+  const roughStep = observedMax / intervalCount;
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const normalized = roughStep / magnitude;
+  const step = normalized <= 1 ? magnitude : normalized <= 2 ? 2 * magnitude : normalized <= 5 ? 5 * magnitude : 10 * magnitude;
+  return Math.max(step, Math.ceil(observedMax / step) * step);
 }
 
 function chartY(
@@ -1310,12 +1262,31 @@ function drawLineChart(
   context.font = "10px Arial, sans-serif";
   context.textAlign = "center";
   chart.categories.forEach((category, index) => {
-    if (index % 2 !== 0 && chart.categories.length > 10) return;
-    context.save();
-    context.translate(xForIndex(index), plot.bottom + 22);
-    context.rotate(-Math.PI / 4);
-    context.fillText(category, 0, 0);
-    context.restore();
+    const x = xForIndex(index);
+    const [first, ...rest] = category.split(/\s+/);
+    context.fillText(first, x, plot.bottom + 20);
+    if (rest.length > 0) {
+      context.fillText(rest.join(" "), x, plot.bottom + 36);
+    }
+  });
+
+  chart.series.forEach((series, seriesIndex) => {
+    context.fillStyle = series.color;
+    series.values.forEach((value, index) => {
+      const x = xForIndex(index);
+      const y = chartY(value, plot, minValue, maxValue);
+      context.beginPath();
+      if (seriesIndex % 2 === 0) {
+        context.moveTo(x, y - 4);
+        context.lineTo(x + 4, y);
+        context.lineTo(x, y + 4);
+        context.lineTo(x - 4, y);
+      } else {
+        context.rect(x - 4, y - 4, 8, 8);
+      }
+      context.closePath();
+      context.fill();
+    });
   });
 
   const legendY = chart.height - 18;
@@ -1337,6 +1308,7 @@ function drawLineChart(
 }
 
 const spreadsheetHeaderBaseStyle: CSSProperties = {
+  alignItems: "center",
   background: "#f1f3f4",
   borderBottomColor: "#dadce0",
   borderBottomStyle: "solid",
@@ -1344,36 +1316,38 @@ const spreadsheetHeaderBaseStyle: CSSProperties = {
   borderRightColor: "#dadce0",
   borderRightStyle: "solid",
   borderRightWidth: 1,
+  boxSizing: "border-box",
   color: "#3c4043",
+  display: "flex",
   fontFamily: SPREADSHEET_FONT_FAMILY,
   fontSize: 13,
   fontWeight: 500,
-  padding: "4px 9px",
-  position: "sticky",
+  justifyContent: "center",
+  overflow: "hidden",
+  padding: "0 4px",
+  position: "absolute",
   zIndex: 2,
 };
 
 const spreadsheetCornerStyle: CSSProperties = {
   ...spreadsheetHeaderBaseStyle,
+  height: SPREADSHEET_COLUMN_HEADER_HEIGHT,
   left: 0,
-  minWidth: 52,
-  position: "sticky" as const,
   top: 0,
+  width: SPREADSHEET_ROW_HEADER_WIDTH,
   zIndex: 4,
 };
 
 const spreadsheetColumnHeaderStyle: CSSProperties = {
   ...spreadsheetHeaderBaseStyle,
-  minWidth: 88,
-  textAlign: "center",
+  height: SPREADSHEET_COLUMN_HEADER_HEIGHT,
   top: 0,
 };
 
 const spreadsheetRowHeaderStyle: CSSProperties = {
   ...spreadsheetHeaderBaseStyle,
   left: 0,
-  minWidth: 52,
-  textAlign: "center",
+  width: SPREADSHEET_ROW_HEADER_WIDTH,
   zIndex: 3,
 };
 
@@ -1384,9 +1358,12 @@ const sheetCellStyle: CSSProperties = {
   borderRightColor: "#e2e8f0",
   borderRightStyle: "solid",
   borderRightWidth: 1,
+  boxSizing: "border-box",
   color: "#0f172a",
   fontFamily: SPREADSHEET_FONT_FAMILY,
-  minWidth: 88,
+  lineHeight: 1.35,
+  overflow: "hidden",
+  overflowWrap: "break-word",
   padding: "7px 9px",
   verticalAlign: "top" as const,
   whiteSpace: "pre-wrap" as const,
