@@ -122,6 +122,22 @@ export interface TailTranslationDictionarySections {
     officeWasmPocTopFields: string;
     officeWasmPocParsedOutput: string;
     unsupportedOfficeFormat: string;
+    officeWasmPocBytes: string;
+    officeWasmPocStatusIdle: string;
+    officeWasmPocStatusInitializing: string;
+    officeWasmPocStatusParsing: string;
+    officeWasmPocStatusReady: string;
+    officeWasmPocStatusError: string;
+    officeWasmPocVisualPreview: string;
+    officeWasmPocRawJson: string;
+    officeWasmPocSheet: string;
+    officeWasmPocSlide: string;
+    officeWasmPocNoSheets: string;
+    officeWasmPocNoSlides: string;
+    officeWasmPocNoDocumentBlocks: string;
+    officeWasmPocShowingFirstRows: string;
+    officeWasmPocShapes: string;
+    officeWasmPocTextRuns: string;
   };
 
   // UI components

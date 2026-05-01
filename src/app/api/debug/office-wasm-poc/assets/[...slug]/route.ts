@@ -23,9 +23,10 @@ function contentTypeFor(fileName: string): string {
 
 export async function GET(
   _request: Request,
-  { params }: { params: { slug: string[] } },
+  { params }: { params: Promise<{ slug: string[] }> },
 ) {
-  const rel = params.slug.join(path.sep);
+  const { slug } = await params;
+  const rel = slug.join(path.sep);
   if (!rel || rel.startsWith("..")) {
     return NextResponse.json({ error: "Asset path is required" }, { status: 400 });
   }
