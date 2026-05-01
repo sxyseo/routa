@@ -29,6 +29,24 @@ describe("decodeRoutaOfficeArtifact", () => {
               ),
             ]),
           ),
+          messageField(3, message([stringField(1, "A1:C2")])),
+          messageField(4, message([stringField(1, "Tasks"), stringField(2, "A1:C10")])),
+          messageField(
+            5,
+            message([
+              stringField(1, "list"),
+              stringField(3, "\"Open,Done\""),
+              stringField(5, "B2:B10"),
+            ]),
+          ),
+          messageField(
+            6,
+            message([
+              stringField(1, "cellIs"),
+              varintField(2, 3),
+              stringField(3, "C2:C10"),
+            ]),
+          ),
         ]),
       ),
       messageField(
@@ -57,6 +75,15 @@ describe("decodeRoutaOfficeArtifact", () => {
           messageField(2, message([messageField(1, message([stringField(2, "Cell text")]))])),
         ]),
       ),
+      messageField(
+        10,
+        message([
+          stringField(1, "rId8"),
+          stringField(2, "worksheets.chart[0]"),
+          stringField(3, "Velocity"),
+          stringField(4, "line"),
+        ]),
+      ),
     ]);
 
     const artifact = decodeRoutaOfficeArtifact(payload);
@@ -75,6 +102,20 @@ describe("decodeRoutaOfficeArtifact", () => {
     expect(Array.from(artifact.images[0].bytes)).toEqual([1, 2, 3]);
     expect(artifact.images[0].contentType).toBe("image/png");
     expect(artifact.tables[0].rows[0].cells[0].text).toBe("Cell text");
+    expect(artifact.charts[0]).toEqual({
+      chartType: "line",
+      id: "rId8",
+      path: "worksheets.chart[0]",
+      title: "Velocity",
+    });
+    expect(artifact.sheets[0].mergedRanges[0]).toEqual({ reference: "A1:C2" });
+    expect(artifact.sheets[0].tables[0]).toEqual({ name: "Tasks", reference: "A1:C10" });
+    expect(artifact.sheets[0].dataValidations[0].ranges).toEqual(["B2:B10"]);
+    expect(artifact.sheets[0].conditionalFormats[0]).toEqual({
+      priority: 3,
+      ranges: ["C2:C10"],
+      type: "cellIs",
+    });
   });
 
   it("skips unknown length-delimited fields", () => {

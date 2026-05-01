@@ -65,6 +65,7 @@ internal static class PptxArtifactReader
 
             ExtractSlideTables(slidePart, artifact, slideIndex);
             ExtractSlideImages(slidePart, artifact, slideIndex);
+            ExtractSlideCharts(slidePart, artifact, slideIndex);
 
             artifact.Slides.Add(slide);
             slideIndex++;
@@ -73,6 +74,7 @@ internal static class PptxArtifactReader
         artifact.Metadata["slideCount"] = artifact.Slides.Count.ToString();
         artifact.Metadata["tableCount"] = artifact.Tables.Count.ToString();
         artifact.Metadata["imageCount"] = artifact.Images.Count.ToString();
+        artifact.Metadata["chartCount"] = artifact.Charts.Count.ToString();
         return artifact;
     }
 
@@ -122,6 +124,18 @@ internal static class PptxArtifactReader
             if (image is not null)
             {
                 artifact.Images.Add(image);
+            }
+        }
+    }
+
+    private static void ExtractSlideCharts(SlidePart slidePart, OfficeArtifactModel artifact, uint slideIndex)
+    {
+        foreach (var chartPart in slidePart.ChartParts)
+        {
+            var chart = OpenXmlChartReader.Read(slidePart, chartPart, $"slides[{slideIndex}].chart[{artifact.Charts.Count}]");
+            if (chart is not null)
+            {
+                artifact.Charts.Add(chart);
             }
         }
     }

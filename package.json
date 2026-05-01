@@ -61,6 +61,8 @@
     "debug:office-wasm:check": "node --import tsx scripts/debug/check-office-wasm-poc-consistency.ts",
     "build:office-wasm-reader": "node scripts/office-wasm-reader/build-office-wasm-reader.mjs",
     "check:office-wasm-reader:deps": "node scripts/office-wasm-reader/check-office-wasm-reader-dependencies.mjs",
+    "test:office-wasm-reader:fixtures": "node --import tsx scripts/office-wasm-reader/run-office-wasm-fixtures.ts",
+    "test:office-wasm-reader:fixtures:update": "node --import tsx scripts/office-wasm-reader/run-office-wasm-fixtures.ts --update",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

@@ -20,6 +20,10 @@ export interface RoutaOfficeRow {
 export interface RoutaOfficeSheet {
   name: string;
   rows: RoutaOfficeRow[];
+  mergedRanges: RoutaOfficeMergedRange[];
+  tables: RoutaOfficeSheetTable[];
+  dataValidations: RoutaOfficeDataValidation[];
+  conditionalFormats: RoutaOfficeConditionalFormat[];
 }
 
 export interface RoutaOfficeTable {
@@ -45,6 +49,36 @@ export interface RoutaOfficeImageAsset {
   bytes: Uint8Array;
 }
 
+export interface RoutaOfficeChart {
+  id: string;
+  path: string;
+  title: string;
+  chartType: string;
+}
+
+export interface RoutaOfficeMergedRange {
+  reference: string;
+}
+
+export interface RoutaOfficeSheetTable {
+  name: string;
+  reference: string;
+}
+
+export interface RoutaOfficeDataValidation {
+  type: string;
+  operator: string;
+  formula1: string;
+  formula2: string;
+  ranges: string[];
+}
+
+export interface RoutaOfficeConditionalFormat {
+  type: string;
+  priority: number;
+  ranges: string[];
+}
+
 export interface RoutaOfficeArtifact {
   sourceKind: string;
   title: string;
@@ -55,10 +89,12 @@ export interface RoutaOfficeArtifact {
   metadata: Record<string, string>;
   images: RoutaOfficeImageAsset[];
   tables: RoutaOfficeTable[];
+  charts: RoutaOfficeChart[];
 }
 
 export function emptyRoutaOfficeArtifact(): RoutaOfficeArtifact {
   return {
+    charts: [],
     diagnostics: [],
     images: [],
     metadata: {},

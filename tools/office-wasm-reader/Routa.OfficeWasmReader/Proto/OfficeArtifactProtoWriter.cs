@@ -45,6 +45,11 @@ internal static class OfficeArtifactProtoWriter
             {
                 WriteMessage(output, 9, WriteTable(table));
             }
+
+            foreach (var chart in artifact.Charts)
+            {
+                WriteMessage(output, 10, WriteChart(chart));
+            }
         });
     }
 
@@ -65,6 +70,26 @@ internal static class OfficeArtifactProtoWriter
             foreach (var row in sheet.Rows)
             {
                 WriteMessage(output, 2, WriteRow(row));
+            }
+
+            foreach (var range in sheet.MergedRanges)
+            {
+                WriteMessage(output, 3, WriteMergedRange(range));
+            }
+
+            foreach (var table in sheet.Tables)
+            {
+                WriteMessage(output, 4, WriteSheetTable(table));
+            }
+
+            foreach (var validation in sheet.DataValidations)
+            {
+                WriteMessage(output, 5, WriteDataValidation(validation));
+            }
+
+            foreach (var format in sheet.ConditionalFormats)
+            {
+                WriteMessage(output, 6, WriteConditionalFormat(format));
             }
         });
     }
@@ -141,6 +166,62 @@ internal static class OfficeArtifactProtoWriter
             WriteString(output, 2, image.Path);
             WriteString(output, 3, image.ContentType);
             WriteBytes(output, 4, image.Bytes);
+        });
+    }
+
+    private static byte[] WriteChart(ChartModel chart)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, chart.Id);
+            WriteString(output, 2, chart.Path);
+            WriteString(output, 3, chart.Title);
+            WriteString(output, 4, chart.ChartType);
+        });
+    }
+
+    private static byte[] WriteMergedRange(MergedRangeModel range)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, range.Reference);
+        });
+    }
+
+    private static byte[] WriteSheetTable(SheetTableModel table)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, table.Name);
+            WriteString(output, 2, table.Reference);
+        });
+    }
+
+    private static byte[] WriteDataValidation(DataValidationModel validation)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, validation.Type);
+            WriteString(output, 2, validation.Operator);
+            WriteString(output, 3, validation.Formula1);
+            WriteString(output, 4, validation.Formula2);
+            foreach (var range in validation.Ranges)
+            {
+                WriteString(output, 5, range);
+            }
+        });
+    }
+
+    private static byte[] WriteConditionalFormat(ConditionalFormatModel format)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, format.Type);
+            WriteUInt32(output, 2, format.Priority);
+            foreach (var range in format.Ranges)
+            {
+                WriteString(output, 3, range);
+            }
         });
     }
 

@@ -12,6 +12,7 @@ message OfficeArtifact {
   repeated MetadataEntry metadata = 7;
   repeated ImageAsset images = 8;
   repeated Table tables = 9;
+  repeated Chart charts = 10;
 }
 
 message TextBlock {
@@ -22,11 +23,38 @@ message TextBlock {
 message Sheet {
   string name = 1;
   repeated Row rows = 2;
+  repeated MergedRange merged_ranges = 3;
+  repeated SheetTable tables = 4;
+  repeated DataValidation data_validations = 5;
+  repeated ConditionalFormat conditional_formats = 6;
 }
 
 message Table {
   string path = 1;
   repeated Row rows = 2;
+}
+
+message MergedRange {
+  string reference = 1;
+}
+
+message SheetTable {
+  string name = 1;
+  string reference = 2;
+}
+
+message DataValidation {
+  string type = 1;
+  string operator = 2;
+  string formula1 = 3;
+  string formula2 = 4;
+  repeated string ranges = 5;
+}
+
+message ConditionalFormat {
+  string type = 1;
+  uint32 priority = 2;
+  repeated string ranges = 3;
 }
 
 message Row {
@@ -60,4 +88,11 @@ message ImageAsset {
   string path = 2;
   string content_type = 3;
   bytes bytes = 4;
+}
+
+message Chart {
+  string id = 1;
+  string path = 2;
+  string title = 3;
+  string chart_type = 4;
 }

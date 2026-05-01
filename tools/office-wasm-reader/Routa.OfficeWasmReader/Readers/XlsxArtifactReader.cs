@@ -1,4 +1,5 @@
 using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml;
 using S = DocumentFormat.OpenXml.Spreadsheet;
 
 namespace Routa.OfficeWasmReader;
@@ -67,13 +68,16 @@ internal static class XlsxArtifactReader
                 }
             }
 
+            ExtractSheetFeatures(worksheetPart, sheet);
             artifact.Sheets.Add(sheet);
         }
 
         ExtractImages(workbookPart, artifact);
+        ExtractCharts(workbookPart, artifact);
 
         artifact.Metadata["sheetCount"] = artifact.Sheets.Count.ToString();
         artifact.Metadata["imageCount"] = artifact.Images.Count.ToString();
+        artifact.Metadata["chartCount"] = artifact.Charts.Count.ToString();
         return artifact;
     }
 
@@ -123,6 +127,70 @@ internal static class XlsxArtifactReader
                 }
             }
         }
+    }
+
+    private static void ExtractCharts(WorkbookPart workbookPart, OfficeArtifactModel artifact)
+    {
+        foreach (var drawingPart in workbookPart.WorksheetParts.Select(part => part.DrawingsPart).Where(part => part is not null))
+        {
+            foreach (var chartPart in drawingPart!.ChartParts)
+            {
+                var chart = OpenXmlChartReader.Read(drawingPart, chartPart, $"worksheets.chart[{artifact.Charts.Count}]");
+                if (chart is not null)
+                {
+                    artifact.Charts.Add(chart);
+                }
+            }
+        }
+    }
+
+    private static void ExtractSheetFeatures(WorksheetPart worksheetPart, SheetModel sheet)
+    {
+        foreach (var mergeCell in worksheetPart.Worksheet.Descendants<S.MergeCell>())
+        {
+            var reference = mergeCell.Reference?.Value;
+            if (!string.IsNullOrWhiteSpace(reference))
+            {
+                sheet.MergedRanges.Add(new MergedRangeModel(reference));
+            }
+        }
+
+        foreach (var tablePart in worksheetPart.TableDefinitionParts)
+        {
+            var table = tablePart.Table;
+            sheet.Tables.Add(new SheetTableModel(
+                table?.Name?.Value ?? table?.DisplayName?.Value ?? "",
+                table?.Reference?.Value ?? ""));
+        }
+
+        foreach (var validation in worksheetPart.Worksheet.Descendants<S.DataValidation>())
+        {
+            sheet.DataValidations.Add(new DataValidationModel(
+                validation.Type?.Value.ToString() ?? "",
+                validation.Operator?.Value.ToString() ?? "",
+                TextNormalization.Clean(validation.Formula1?.Text),
+                TextNormalization.Clean(validation.Formula2?.Text),
+                SplitReferences(validation.GetAttribute("sqref", "").Value ?? "")));
+        }
+
+        foreach (var formatting in worksheetPart.Worksheet.Descendants<S.ConditionalFormatting>())
+        {
+            var ranges = SplitReferences(formatting.GetAttribute("sqref", "").Value ?? "");
+            foreach (var rule in formatting.Elements<S.ConditionalFormattingRule>())
+            {
+                sheet.ConditionalFormats.Add(new ConditionalFormatModel(
+                    rule.Type?.Value.ToString() ?? "",
+                    (uint)(rule.Priority?.Value ?? 0),
+                    ranges));
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> SplitReferences(string value)
+    {
+        return value
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
     }
 
     private static string FirstNonEmpty(string current, string candidate)

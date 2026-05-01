@@ -1,0 +1,875 @@
+{
+  "chartCount": 0,
+  "charts": [],
+  "diagnostics": [],
+  "imageCount": 0,
+  "images": [],
+  "metadata": {
+    "chartCount": "0",
+    "imageCount": "0",
+    "reader": "routa-office-wasm-reader",
+    "slideCount": "20",
+    "tableCount": "0"
+  },
+  "sheetCount": 0,
+  "sheets": [],
+  "slideCount": 20,
+  "slides": [
+    {
+      "index": 1,
+      "textBlockCount": 15,
+      "textBlocks": [
+        {
+          "path": "slides[1].text[0]",
+          "text": "TECHNICAL BLUEPRINT"
+        },
+        {
+          "path": "slides[1].text[1]",
+          "text": "主动式 Agentic UI"
+        },
+        {
+          "path": "slides[1].text[2]",
+          "text": "技术方案总览"
+        },
+        {
+          "path": "slides[1].text[3]",
+          "text": "Agent Runtime × Context Engineering × Permission Governance × UI Orchestration"
+        },
+        {
+          "path": "slides[1].text[4]",
+          "text": "设计时"
+        },
+        {
+          "path": "slides[1].text[5]",
+          "text": "Claude Design"
+        },
+        {
+          "path": "slides[1].text[6]",
+          "text": "Pattern Lab / 原型 / 评审"
+        },
+        {
+          "path": "slides[1].text[7]",
+          "text": "运行时"
+        },
+        {
+          "path": "slides[1].text[8]",
+          "text": "Agentic UI"
+        },
+        {
+          "path": "slides[1].text[9]",
+          "text": "建议 / 计划 / 审批 / 轨迹"
+        },
+        {
+          "path": "slides[1].text[10]",
+          "text": "执行层"
+        },
+        {
+          "path": "slides[1].text[11]",
+          "text": "主动式 Agent"
+        },
+        {
+          "path": "slides[1].text[12]",
+          "text": "感知 / 规划 / 工具调用 / 学习"
+        },
+        {
+          "path": "slides[1].text[13]",
+          "text": "目标：把“Agent 主动介入”从黑盒行为，变成可解释、可授权、可回滚的产品体验。"
+        },
+        {
+          "path": "slides[1].text[14]",
+          "text": "2026-04"
+        }
+      ],
+      "title": "TECHNICAL BLUEPRINT"
+    },
+    {
+      "index": 2,
+      "textBlockCount": 17,
+      "textBlocks": [
+        {
+          "path": "slides[2].text[0]",
+          "text": "总体判断：技术方案应围绕“有边界的主动性”设计"
+        },
+        {
+          "path": "slides[2].text[1]",
+          "text": "将主动式 Agent 的行为拆成可感知、可解释、可授权、可追踪、可恢复的五层能力。"
+        },
+        {
+          "path": "slides[2].text[2]",
+          "text": "01"
+        },
+        {
+          "path": "slides[2].text[3]",
+          "text": "主动性不是通知更多"
+        },
+        {
+          "path": "slides[2].text[4]",
+          "text": "Opportunity Detector 先过滤信号，再通过 Relevance / Interruption Policy 决定是否打扰用户。"
+        },
+        {
+          "path": "slides[2].text[5]",
+          "text": "02"
+        },
+        {
+          "path": "slides[2].text[6]",
+          "text": "UI 是 Agent 的安全边界"
+        },
+        {
+          "path": "slides[2].text[7]",
+          "text": "Plan Preview、Permission Ladder、Approval Modal、Activity Timeline 是核心，不是装饰。"
+        },
+        {
+          "path": "slides[2].text[8]",
+          "text": "03"
+        },
+        {
+          "path": "slides[2].text[9]",
+          "text": "工具层必须最小权限"
+        },
+        {
+          "path": "slides[2].text[10]",
+          "text": "MCP / API / 浏览器 / 文件系统全部走权限策略、作用域、审计、速率与沙箱。"
+        },
+        {
+          "path": "slides[2].text[11]",
+          "text": "04"
+        },
+        {
+          "path": "slides[2].text[12]",
+          "text": "长期任务要靠工作台维持"
+        },
+        {
+          "path": "slides[2].text[13]",
+          "text": "Feature list、progress file、trace、audit log、memory store 让 Agent 跨会话保持进度。"
+        },
+        {
+          "path": "slides[2].text[14]",
+          "text": "落地策略：先做低风险、高重复、可回滚的 MVP；再逐步打开自动执行与跨工具编排。"
+        },
+        {
+          "path": "slides[2].text[15]",
+          "text": "02"
+        }
+      ],
+      "title": "总体判断：技术方案应围绕“有边界的主动性”设计"
+    },
+    {
+      "index": 3,
+      "textBlockCount": 33,
+      "textBlocks": [
+        {
+          "path": "slides[3].text[0]",
+          "text": "设计目标与成功标准"
+        },
+        {
+          "path": "slides[3].text[1]",
+          "text": "主动式 Agent 技术方案既要解决任务效率，也要解决信任、风险和可运营性。"
+        },
+        {
+          "path": "slides[3].text[2]",
+          "text": "产品目标"
+        },
+        {
+          "path": "slides[3].text[3]",
+          "text": "• 在用户未明确发问时识别机会"
+        },
+        {
+          "path": "slides[3].text[4]",
+          "text": "• 将建议沉淀为可执行计划"
+        },
+        {
+          "path": "slides[3].text[5]",
+          "text": "• 通过 UI 让用户快速理解与授权"
+        },
+        {
+          "path": "slides[3].text[6]",
+          "text": "技术目标"
+        },
+        {
+          "path": "slides[3].text[7]",
+          "text": "• 事件驱动的上下文感知"
+        },
+        {
+          "path": "slides[3].text[8]",
+          "text": "• 可插拔工具与 MCP/API 网关"
+        },
+        {
+          "path": "slides[3].text[9]",
+          "text": "• 细粒度权限、审计与回滚"
+        },
+        {
+          "path": "slides[3].text[10]",
+          "text": "治理目标"
+        },
+        {
+          "path": "slides[3].text[11]",
+          "text": "• 最小权限与敏感操作审批"
+        },
+        {
+          "path": "slides[3].text[12]",
+          "text": "• Prompt Injection / Excessive Agency 防护"
+        },
+        {
+          "path": "slides[3].text[13]",
+          "text": "• 可追踪、可解释、可停用"
+        },
+        {
+          "path": "slides[3].text[14]",
+          "text": "成功指标"
+        },
+        {
+          "path": "slides[3].text[15]",
+          "text": "效率"
+        }
+      ],
+      "title": "设计目标与成功标准"
+    },
+    {
+      "index": 4,
+      "textBlockCount": 29,
+      "textBlocks": [
+        {
+          "path": "slides[4].text[0]",
+          "text": "端到端系统架构"
+        },
+        {
+          "path": "slides[4].text[1]",
+          "text": "从信号感知到主动建议、授权执行、审计学习的闭环。"
+        },
+        {
+          "path": "slides[4].text[2]",
+          "text": "Signals / Context"
+        },
+        {
+          "path": "slides[4].text[3]",
+          "text": "日历 · 邮件 · CRM · 产品事件"
+        },
+        {
+          "path": "slides[4].text[4]",
+          "text": "网页 · 文件 · 代码 · 用户偏好"
+        },
+        {
+          "path": "slides[4].text[5]",
+          "text": "Opportunity Engine"
+        },
+        {
+          "path": "slides[4].text[6]",
+          "text": "去重 · 聚类 · 重要性评分"
+        },
+        {
+          "path": "slides[4].text[7]",
+          "text": "打扰策略 · 时机判断"
+        },
+        {
+          "path": "slides[4].text[8]",
+          "text": "Agent Runtime"
+        },
+        {
+          "path": "slides[4].text[9]",
+          "text": "Planner · Executor · Critic"
+        },
+        {
+          "path": "slides[4].text[10]",
+          "text": "Memory Manager · Tool Router"
+        },
+        {
+          "path": "slides[4].text[11]",
+          "text": "Governance Layer"
+        },
+        {
+          "path": "slides[4].text[12]",
+          "text": "权限策略 · 风险分类"
+        },
+        {
+          "path": "slides[4].text[13]",
+          "text": "审批 · 沙箱 · 审计"
+        },
+        {
+          "path": "slides[4].text[14]",
+          "text": "Agentic UI"
+        },
+        {
+          "path": "slides[4].text[15]",
+          "text": "Suggestion Card · Agent Inbox"
+        }
+      ],
+      "title": "端到端系统架构"
+    },
+    {
+      "index": 5,
+      "textBlockCount": 17,
+      "textBlocks": [
+        {
+          "path": "slides[5].text[0]",
+          "text": "两套系统：设计时工作台 vs 运行时 Agentic UI"
+        },
+        {
+          "path": "slides[5].text[1]",
+          "text": "Claude Design 不直接替代产品运行时，而是作为模式库和原型生成器嵌入研发流程。"
+        },
+        {
+          "path": "slides[5].text[2]",
+          "text": "DESIGN-TIME"
+        },
+        {
+          "path": "slides[5].text[3]",
+          "text": "RUNTIME"
+        },
+        {
+          "path": "slides[5].text[4]",
+          "text": "Claude Design / Pattern Lab"
+        },
+        {
+          "path": "slides[5].text[5]",
+          "text": "Proactive Agentic UI"
+        },
+        {
+          "path": "slides[5].text[6]",
+          "text": "• 生成 Suggestion Card、Plan Preview、Agent Inbox 等模式"
+        },
+        {
+          "path": "slides[5].text[7]",
+          "text": "• 把交互流做成可点击原型，服务评审与用户测试"
+        },
+        {
+          "path": "slides[5].text[8]",
+          "text": "• 沉淀设计系统、文案规范、风险状态组件"
+        },
+        {
+          "path": "slides[5].text[9]",
+          "text": "• 交给 Claude Code / 前端团队实现"
+        },
+        {
+          "path": "slides[5].text[10]",
+          "text": "• 承载实时/异步 Agent 意图、证据与计划"
+        },
+        {
+          "path": "slides[5].text[11]",
+          "text": "• 接收审批、编辑、接管、回滚等用户操作"
+        },
+        {
+          "path": "slides[5].text[12]",
+          "text": "• 展示工具调用、执行进度、异常与审计记录"
+        },
+        {
+          "path": "slides[5].text[13]",
+          "text": "• 把用户反馈写回策略和记忆系统"
+        },
+        {
+          "path": "slides[5].text[14]",
+          "text": "落地原则：把 Claude Design 当作“Agentic UI 设计编译器”，而不是最终运行系统。"
+        },
+        {
+          "path": "slides[5].text[15]",
+          "text": "05"
+        }
+      ],
+      "title": "两套系统：设计时工作台 vs 运行时 Agentic UI"
+    },
+    {
+      "index": 6,
+      "textBlockCount": 29,
+      "textBlocks": [
+        {
+          "path": "slides[6].text[0]",
+          "text": "主动式 Agent 的核心循环"
+        },
+        {
+          "path": "slides[6].text[1]",
+          "text": "把“主动”拆成 6 个可工程化的阶段，而不是直接让 Agent 自动行动。"
+        },
+        {
+          "path": "slides[6].text[2]",
+          "text": "Sense"
+        },
+        {
+          "path": "slides[6].text[3]",
+          "text": "收集信号"
+        },
+        {
+          "path": "slides[6].text[4]",
+          "text": "事件流 / 连接器 / 用户状态"
+        },
+        {
+          "path": "slides[6].text[5]",
+          "text": "Score"
+        },
+        {
+          "path": "slides[6].text[6]",
+          "text": "筛选机会"
+        },
+        {
+          "path": "slides[6].text[7]",
+          "text": "重要性 × 置信度 × 时机 × 风险"
+        },
+        {
+          "path": "slides[6].text[8]",
+          "text": "Suggest"
+        },
+        {
+          "path": "slides[6].text[9]",
+          "text": "提出建议"
+        },
+        {
+          "path": "slides[6].text[10]",
+          "text": "证据、理由、影响、可选行动"
+        },
+        {
+          "path": "slides[6].text[11]",
+          "text": "Negotiate"
+        },
+        {
+          "path": "slides[6].text[12]",
+          "text": "协商权限"
+        },
+        {
+          "path": "slides[6].text[13]",
+          "text": "计划预览、审批、降低权限"
+        },
+        {
+          "path": "slides[6].text[14]",
+          "text": "Act"
+        },
+        {
+          "path": "slides[6].text[15]",
+          "text": "执行任务"
+        }
+      ],
+      "title": "主动式 Agent 的核心循环"
+    },
+    {
+      "index": 7,
+      "textBlockCount": 36,
+      "textBlocks": [
+        {
+          "path": "slides[7].text[0]",
+          "text": "Opportunity Engine：主动介入的技术判定"
+        },
+        {
+          "path": "slides[7].text[1]",
+          "text": "核心不是“能发现什么”，而是“什么值得现在告诉用户”。"
+        },
+        {
+          "path": "slides[7].text[2]",
+          "text": "Opportunity Score"
+        },
+        {
+          "path": "slides[7].text[3]",
+          "text": "S = Impact × Confidence × Urgency × UserFit − Risk − InterruptionCost"
+        },
+        {
+          "path": "slides[7].text[4]",
+          "text": "Impact"
+        },
+        {
+          "path": "slides[7].text[5]",
+          "text": "潜在收益或损失"
+        },
+        {
+          "path": "slides[7].text[6]",
+          "text": "客户流失、收入、项目延期"
+        },
+        {
+          "path": "slides[7].text[7]",
+          "text": "Confidence"
+        },
+        {
+          "path": "slides[7].text[8]",
+          "text": "证据强度"
+        },
+        {
+          "path": "slides[7].text[9]",
+          "text": "多源信号一致、历史相似案例"
+        },
+        {
+          "path": "slides[7].text[10]",
+          "text": "Urgency"
+        },
+        {
+          "path": "slides[7].text[11]",
+          "text": "时效性"
+        },
+        {
+          "path": "slides[7].text[12]",
+          "text": "截止时间、窗口期、风险增长"
+        },
+        {
+          "path": "slides[7].text[13]",
+          "text": "UserFit"
+        },
+        {
+          "path": "slides[7].text[14]",
+          "text": "用户偏好"
+        },
+        {
+          "path": "slides[7].text[15]",
+          "text": "用户常处理、已授权、当前上下文"
+        }
+      ],
+      "title": "Opportunity Engine：主动介入的技术判定"
+    },
+    {
+      "index": 8,
+      "textBlockCount": 23,
+      "textBlocks": [
+        {
+          "path": "slides[8].text[0]",
+          "text": "Context & Memory：让 Agent 主动但不越界"
+        },
+        {
+          "path": "slides[8].text[1]",
+          "text": "上下文工程决定 Agent 看见什么；记忆治理决定 Agent 可以长期记住什么。"
+        },
+        {
+          "path": "slides[8].text[2]",
+          "text": "Event Context"
+        },
+        {
+          "path": "slides[8].text[3]",
+          "text": "实时信号：邮件、会议、CRM、产品事件、浏览器状态"
+        },
+        {
+          "path": "slides[8].text[4]",
+          "text": "Task Context"
+        },
+        {
+          "path": "slides[8].text[5]",
+          "text": "当前任务、计划、草稿、工具结果、用户编辑"
+        },
+        {
+          "path": "slides[8].text[6]",
+          "text": "Profile Memory"
+        },
+        {
+          "path": "slides[8].text[7]",
+          "text": "偏好、角色、项目、常用流程、禁忌与权限"
+        },
+        {
+          "path": "slides[8].text[8]",
+          "text": "Context Composer"
+        },
+        {
+          "path": "slides[8].text[9]",
+          "text": "1. 信号归一化"
+        },
+        {
+          "path": "slides[8].text[10]",
+          "text": "2. 去重与窗口化"
+        },
+        {
+          "path": "slides[8].text[11]",
+          "text": "3. 检索相关资料"
+        },
+        {
+          "path": "slides[8].text[12]",
+          "text": "4. 组装最小上下文"
+        },
+        {
+          "path": "slides[8].text[13]",
+          "text": "5. 标注来源与可信度"
+        },
+        {
+          "path": "slides[8].text[14]",
+          "text": "RAG / Search"
+        },
+        {
+          "path": "slides[8].text[15]",
+          "text": "文件、知识库、历史记录；必要时用语义检索"
+        }
+      ],
+      "title": "Context & Memory：让 Agent 主动但不越界"
+    },
+    {
+      "index": 9,
+      "textBlockCount": 23,
+      "textBlocks": [
+        {
+          "path": "slides[9].text[0]",
+          "text": "Agent Runtime：可替换的编排内核"
+        },
+        {
+          "path": "slides[9].text[1]",
+          "text": "把大模型调用包在可测试、可治理、可追踪的运行时中。"
+        },
+        {
+          "path": "slides[9].text[2]",
+          "text": "Orchestrator"
+        },
+        {
+          "path": "slides[9].text[3]",
+          "text": "会话、目标、状态机、子任务路由"
+        },
+        {
+          "path": "slides[9].text[4]",
+          "text": "Planner"
+        },
+        {
+          "path": "slides[9].text[5]",
+          "text": "生成计划、依赖、风险与权限请求"
+        },
+        {
+          "path": "slides[9].text[6]",
+          "text": "Critic / Verifier"
+        },
+        {
+          "path": "slides[9].text[7]",
+          "text": "自检、事实核验、E2E 测试、结果评分"
+        },
+        {
+          "path": "slides[9].text[8]",
+          "text": "Memory Manager"
+        },
+        {
+          "path": "slides[9].text[9]",
+          "text": "读取/更新记忆、上下文压缩、进度文件"
+        },
+        {
+          "path": "slides[9].text[10]",
+          "text": "Executor"
+        },
+        {
+          "path": "slides[9].text[11]",
+          "text": "调用工具、处理错误、重试与回滚"
+        },
+        {
+          "path": "slides[9].text[12]",
+          "text": "Tool Router"
+        },
+        {
+          "path": "slides[9].text[13]",
+          "text": "MCP/API/Browser/Files 的统一入口"
+        },
+        {
+          "path": "slides[9].text[14]",
+          "text": "Subagents"
+        },
+        {
+          "path": "slides[9].text[15]",
+          "text": "搜索、分析、风控、前端实现并行化"
+        }
+      ],
+      "title": "Agent Runtime：可替换的编排内核"
+    },
+    {
+      "index": 10,
+      "textBlockCount": 20,
+      "textBlocks": [
+        {
+          "path": "slides[10].text[0]",
+          "text": "Tool Runtime：MCP / API / Browser 的统一工具网关"
+        },
+        {
+          "path": "slides[10].text[1]",
+          "text": "工具调用是主动式 Agent 最大的价值来源，也是最大的风险来源。"
+        },
+        {
+          "path": "slides[10].text[2]",
+          "text": "MCP Servers"
+        },
+        {
+          "path": "slides[10].text[3]",
+          "text": "第三方/内部工具、数据库、项目管理、监控、CRM"
+        },
+        {
+          "path": "slides[10].text[4]",
+          "text": "API Gateway"
+        },
+        {
+          "path": "slides[10].text[5]",
+          "text": "OAuth、Token、速率限制、审计、Scope pinning"
+        },
+        {
+          "path": "slides[10].text[6]",
+          "text": "Browser Runtime"
+        },
+        {
+          "path": "slides[10].text[7]",
+          "text": "网页观察、表单操作、点击/填充/截屏"
+        },
+        {
+          "path": "slides[10].text[8]",
+          "text": "File / Code Runtime"
+        },
+        {
+          "path": "slides[10].text[9]",
+          "text": "文件系统、代码库、测试、Patch、PR"
+        },
+        {
+          "path": "slides[10].text[10]",
+          "text": "Tool Policy Gateway"
+        },
+        {
+          "path": "slides[10].text[11]",
+          "text": "工具注册表 · 允许/拒绝规则 · 权限级别 · 输入/输出 Guardrails · 审批触发 · 沙箱 · 审计日志"
+        },
+        {
+          "path": "slides[10].text[12]",
+          "text": "Before Tool Use"
+        },
+        {
+          "path": "slides[10].text[13]",
+          "text": "权限检查、PII 检测、Prompt Injection 检测、风险评分"
+        },
+        {
+          "path": "slides[10].text[14]",
+          "text": "During Execution"
+        },
+        {
+          "path": "slides[10].text[15]",
+          "text": "超时、重试、幂等键、事务、速率限制、用户接管"
+        }
+      ],
+      "title": "Tool Runtime：MCP / API / Browser 的统一工具网关"
+    },
+    {
+      "index": 11,
+      "textBlockCount": 31,
+      "textBlocks": [
+        {
+          "path": "slides[11].text[0]",
+          "text": "Autonomy & Permission Ladder：逐级开放主动性"
+        },
+        {
+          "path": "slides[11].text[1]",
+          "text": "从观察、建议、起草到审批执行和条件自动执行，每一层都有明确 UI 与技术边界。"
+        },
+        {
+          "path": "slides[11].text[2]",
+          "text": "默认策略：MVP 只开放 L0–L3；L4 仅限低风险、可回滚、用户显式配置的重复流程。"
+        },
+        {
+          "path": "slides[11].text[3]",
+          "text": "0"
+        },
+        {
+          "path": "slides[11].text[4]",
+          "text": "L0 观察"
+        },
+        {
+          "path": "slides[11].text[5]",
+          "text": "只读取允许上下文，不主动提示"
+        },
+        {
+          "path": "slides[11].text[6]",
+          "text": "状态提示 / 数据源权限"
+        },
+        {
+          "path": "slides[11].text[7]",
+          "text": "读范围、脱敏、最小上下文"
+        },
+        {
+          "path": "slides[11].text[8]",
+          "text": "1"
+        },
+        {
+          "path": "slides[11].text[9]",
+          "text": "L1 建议"
+        },
+        {
+          "path": "slides[11].text[10]",
+          "text": "发现机会，提供解释与行动选项"
+        },
+        {
+          "path": "slides[11].text[11]",
+          "text": "Suggestion Card / Agent Inbox"
+        },
+        {
+          "path": "slides[11].text[12]",
+          "text": "不写入系统；只生成建议"
+        },
+        {
+          "path": "slides[11].text[13]",
+          "text": "2"
+        },
+        {
+          "path": "slides[11].text[14]",
+          "text": "L2 起草"
+        },
+        {
+          "path": "slides[11].text[15]",
+          "text": "自动生成草稿，不执行外部写操作"
+        }
+      ],
+      "title": "Autonomy & Permission Ladder：逐级开放主动性"
+    },
+    {
+      "index": 12,
+      "textBlockCount": 27,
+      "textBlocks": [
+        {
+          "path": "slides[12].text[0]",
+          "text": "Agentic UI Protocol：后端意图到前端组件的桥"
+        },
+        {
+          "path": "slides[12].text[1]",
+          "text": "不要让前端解析自然语言；让 Agent Runtime 输出结构化 UI 事件。"
+        },
+        {
+          "path": "slides[12].text[2]",
+          "text": "Agent Runtime"
+        },
+        {
+          "path": "slides[12].text[3]",
+          "text": "规划、工具调用、结果、异常"
+        },
+        {
+          "path": "slides[12].text[4]",
+          "text": "UI Protocol Stream"
+        },
+        {
+          "path": "slides[12].text[5]",
+          "text": "typed events + schema + policy metadata"
+        },
+        {
+          "path": "slides[12].text[6]",
+          "text": "UI Renderer"
+        },
+        {
+          "path": "slides[12].text[7]",
+          "text": "卡片、计划、审批、时间线"
+        },
+        {
+          "path": "slides[12].text[8]",
+          "text": "示例事件：SuggestionCreated"
+        },
+        {
+          "path": "slides[12].text[9]",
+          "text": "{"
+        },
+        {
+          "path": "slides[12].text[10]",
+          "text": "\"type\": \"suggestion.created\","
+        },
+        {
+          "path": "slides[12].text[11]",
+          "text": "\"priority\": \"high\","
+        },
+        {
+          "path": "slides[12].text[12]",
+          "text": "\"reason\": \"3 个企业客户反馈集中指向 onboarding\","
+        },
+        {
+          "path": "slides[12].text[13]",
+          "text": "\"evidence\": [\"crm:case/103\", \"feedback:thread/81\"],"
+        },
+        {
+          "path": "slides[12].text[14]",
+          "text": "\"actions\": [\"view_evidence\", \"draft_plan\", \"ignore\"],"
+        },
+        {
+          "path": "slides[12].text[15]",
+          "text": "\"required_permission\": \"L2_DRAFT_ONLY\""
+        }
+      ],
+      "title": "Agentic UI Protocol：后端意图到前端组件的桥"
+    }
+  ],
+  "sourceKind": "pptx",
+  "tableCount": 0,
+  "tables": [],
+  "textBlockCount": 0,
+  "textBlocks": [],
+  "title": "Agentic UI × 主动式 Agent 技术方案",
+  "wasmProtoByteLength": 32007,
+  "wasmProtoSha256": "dd12294780ac15f34eb01363c16898750ba2fd6b4afcfae06443bc884d9f1777"
+}

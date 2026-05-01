@@ -2,10 +2,15 @@ import {
   emptyRoutaOfficeArtifact,
   type RoutaOfficeArtifact,
   type RoutaOfficeCell,
+  type RoutaOfficeChart,
+  type RoutaOfficeConditionalFormat,
+  type RoutaOfficeDataValidation,
   type RoutaOfficeDiagnostic,
   type RoutaOfficeImageAsset,
+  type RoutaOfficeMergedRange,
   type RoutaOfficeRow,
   type RoutaOfficeSheet,
+  type RoutaOfficeSheetTable,
   type RoutaOfficeSlide,
   type RoutaOfficeTable,
   type RoutaOfficeTextBlock,
@@ -122,6 +127,9 @@ export function decodeRoutaOfficeArtifact(bytes: Uint8Array): RoutaOfficeArtifac
       case 9:
         artifact.tables.push(decodeTable(readMessageField(reader, wireType)));
         break;
+      case 10:
+        artifact.charts.push(decodeChart(readMessageField(reader, wireType)));
+        break;
       default:
         reader.skip(wireType);
     }
@@ -146,12 +154,23 @@ function decodeTextBlock(bytes: Uint8Array): RoutaOfficeTextBlock {
 
 function decodeSheet(bytes: Uint8Array): RoutaOfficeSheet {
   const reader = new ProtoReader(bytes);
-  const sheet: RoutaOfficeSheet = { name: "", rows: [] };
+  const sheet: RoutaOfficeSheet = {
+    conditionalFormats: [],
+    dataValidations: [],
+    mergedRanges: [],
+    name: "",
+    rows: [],
+    tables: [],
+  };
 
   while (!reader.done) {
     const { fieldNumber, wireType } = reader.readTag();
     if (fieldNumber === 1) sheet.name = readStringField(reader, wireType);
     else if (fieldNumber === 2) sheet.rows.push(decodeRow(readMessageField(reader, wireType)));
+    else if (fieldNumber === 3) sheet.mergedRanges.push(decodeMergedRange(readMessageField(reader, wireType)));
+    else if (fieldNumber === 4) sheet.tables.push(decodeSheetTable(readMessageField(reader, wireType)));
+    else if (fieldNumber === 5) sheet.dataValidations.push(decodeDataValidation(readMessageField(reader, wireType)));
+    else if (fieldNumber === 6) sheet.conditionalFormats.push(decodeConditionalFormat(readMessageField(reader, wireType)));
     else reader.skip(wireType);
   }
 
@@ -258,6 +277,87 @@ function decodeImage(bytes: Uint8Array): RoutaOfficeImageAsset {
   }
 
   return image;
+}
+
+function decodeChart(bytes: Uint8Array): RoutaOfficeChart {
+  const reader = new ProtoReader(bytes);
+  const chart: RoutaOfficeChart = { chartType: "", id: "", path: "", title: "" };
+
+  while (!reader.done) {
+    const { fieldNumber, wireType } = reader.readTag();
+    if (fieldNumber === 1) chart.id = readStringField(reader, wireType);
+    else if (fieldNumber === 2) chart.path = readStringField(reader, wireType);
+    else if (fieldNumber === 3) chart.title = readStringField(reader, wireType);
+    else if (fieldNumber === 4) chart.chartType = readStringField(reader, wireType);
+    else reader.skip(wireType);
+  }
+
+  return chart;
+}
+
+function decodeMergedRange(bytes: Uint8Array): RoutaOfficeMergedRange {
+  const reader = new ProtoReader(bytes);
+  const range: RoutaOfficeMergedRange = { reference: "" };
+
+  while (!reader.done) {
+    const { fieldNumber, wireType } = reader.readTag();
+    if (fieldNumber === 1) range.reference = readStringField(reader, wireType);
+    else reader.skip(wireType);
+  }
+
+  return range;
+}
+
+function decodeSheetTable(bytes: Uint8Array): RoutaOfficeSheetTable {
+  const reader = new ProtoReader(bytes);
+  const table: RoutaOfficeSheetTable = { name: "", reference: "" };
+
+  while (!reader.done) {
+    const { fieldNumber, wireType } = reader.readTag();
+    if (fieldNumber === 1) table.name = readStringField(reader, wireType);
+    else if (fieldNumber === 2) table.reference = readStringField(reader, wireType);
+    else reader.skip(wireType);
+  }
+
+  return table;
+}
+
+function decodeDataValidation(bytes: Uint8Array): RoutaOfficeDataValidation {
+  const reader = new ProtoReader(bytes);
+  const validation: RoutaOfficeDataValidation = {
+    formula1: "",
+    formula2: "",
+    operator: "",
+    ranges: [],
+    type: "",
+  };
+
+  while (!reader.done) {
+    const { fieldNumber, wireType } = reader.readTag();
+    if (fieldNumber === 1) validation.type = readStringField(reader, wireType);
+    else if (fieldNumber === 2) validation.operator = readStringField(reader, wireType);
+    else if (fieldNumber === 3) validation.formula1 = readStringField(reader, wireType);
+    else if (fieldNumber === 4) validation.formula2 = readStringField(reader, wireType);
+    else if (fieldNumber === 5) validation.ranges.push(readStringField(reader, wireType));
+    else reader.skip(wireType);
+  }
+
+  return validation;
+}
+
+function decodeConditionalFormat(bytes: Uint8Array): RoutaOfficeConditionalFormat {
+  const reader = new ProtoReader(bytes);
+  const format: RoutaOfficeConditionalFormat = { priority: 0, ranges: [], type: "" };
+
+  while (!reader.done) {
+    const { fieldNumber, wireType } = reader.readTag();
+    if (fieldNumber === 1) format.type = readStringField(reader, wireType);
+    else if (fieldNumber === 2) format.priority = readUInt32Field(reader, wireType);
+    else if (fieldNumber === 3) format.ranges.push(readStringField(reader, wireType));
+    else reader.skip(wireType);
+  }
+
+  return format;
 }
 
 function readStringField(reader: ProtoReader, wireType: number): string {
