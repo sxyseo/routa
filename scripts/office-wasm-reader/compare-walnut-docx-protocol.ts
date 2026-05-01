@@ -180,6 +180,7 @@ function summarizeDocument(document: Record<string, unknown>, protoBytes: Uint8A
       level: Number(numbering.level ?? 0),
     })),
     tableShapes: elements.filter((element) => isRecord(element.table)).map(summarizeTableShape),
+    tableColorSignatures: elements.filter((element) => isRecord(element.table)).map(summarizeTableColors),
     firstElements: elements.slice(0, 12).map(summarizeElement),
   };
 }
@@ -213,6 +214,8 @@ function summarizeEquivalence(
       stableJson(walnutSummary.commentReferenceRunIds) === stableJson(routaSummary.commentReferenceRunIds),
     reviewMarkCountMatches: walnutSummary.reviewMarkCount === routaSummary.reviewMarkCount,
     tableShapesMatch: stableJson(walnutSummary.tableShapes) === stableJson(routaSummary.tableShapes),
+    tableColorSignaturesMatch:
+      stableJson(walnutSummary.tableColorSignatures) === stableJson(routaSummary.tableColorSignatures),
     textRunCountMatches: walnutSummary.textRunCount === routaSummary.textRunCount,
     textStyleCountMatches: walnutSummary.textStyleCount === routaSummary.textStyleCount,
     sectionCountMatches: walnutSummary.sectionCount === routaSummary.sectionCount,
@@ -271,6 +274,21 @@ function summarizeTableShape(element: Record<string, unknown>) {
       arrayOfRecords(row.cells).slice(0, 4).map((cell) => collectTextPreview(cell).slice(0, 80))
     ),
   };
+}
+
+function summarizeTableColors(element: Record<string, unknown>) {
+  const table = asRecord(element.table) ?? {};
+  return arrayOfRecords(table.rows).map((row) =>
+    arrayOfRecords(row.cells).map((cell) => ({
+      fill: fillColorSignature(cell.fill),
+      paragraphFills: arrayOfRecords(cell.paragraphs).map((paragraph) =>
+        fillColorSignature(asRecord(paragraph.textStyle)?.fill)
+      ),
+      runFills: arrayOfRecords(cell.paragraphs).map((paragraph) =>
+        arrayOfRecords(paragraph.runs).map((run) => fillColorSignature(asRecord(run.textStyle)?.fill))
+      ),
+    }))
+  );
 }
 
 function elementTypeKey(element: Record<string, unknown>): string {
@@ -340,6 +358,28 @@ function chartReferenceId(value: unknown): string {
 function imageReferenceId(value: unknown): string {
   const record = asRecord(value);
   return typeof record?.id === "string" ? record.id : "";
+}
+
+function fillColorSignature(value: unknown): string {
+  const fill = asRecord(value);
+  if (!fill) return "";
+  return colorSignature(fill.color);
+}
+
+function colorSignature(value: unknown): string {
+  const color = asRecord(value);
+  if (!color) return "";
+  const transform = asRecord(color.transform);
+  return [
+    String(color.type ?? ""),
+    String(color.value ?? ""),
+    String(color.lastColor ?? ""),
+    String(transform?.alpha ?? ""),
+    String(transform?.lumMod ?? ""),
+    String(transform?.lumOff ?? ""),
+    String(transform?.shade ?? ""),
+    String(transform?.tint ?? ""),
+  ].join(":");
 }
 
 function summarizeImage(image: Record<string, unknown>) {

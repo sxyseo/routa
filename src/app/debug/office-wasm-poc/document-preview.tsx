@@ -7,7 +7,9 @@ import {
   asRecord,
   asString,
   collectTextBlocks,
+  colorToCss,
   elementImageReferenceId,
+  fillToCss,
   type DocumentStyleMaps,
   paragraphStyle,
   type ParagraphView,
@@ -130,9 +132,20 @@ function DocumentElement({
   );
 }
 
-function DocumentParagraph({ paragraph }: { paragraph: ParagraphView }) {
+function DocumentParagraph({
+  fallbackColor,
+  paragraph,
+}: {
+  fallbackColor?: string;
+  paragraph: ParagraphView;
+}) {
+  const style = paragraphStyle(paragraph);
+  if (fallbackColor && asRecord(paragraph.style?.fill)?.color == null) {
+    style.color = fallbackColor;
+  }
+
   return (
-    <p style={paragraphStyle(paragraph)}>
+    <p style={style}>
       {paragraph.runs.map((run, index) => (
         <span key={run.id || index} style={textRunStyle(run)}>
           {run.text}
@@ -161,22 +174,28 @@ function DocumentTable({
               {asArray(row.cells).map((cell, cellIndex) => {
                 const cellRecord = asRecord(cell) ?? {};
                 const paragraphs = asArray(cellRecord.paragraphs).map((paragraph) => paragraphView(paragraph, styleMaps));
+                const background = documentFillToCss(cellRecord.fill) ?? (rowIndex === 0 ? "#f8fafc" : "#ffffff");
+                const fallbackTextColor = readableTextColor(background);
                 return (
                   <td
                     key={asString(cellRecord.id) || cellIndex}
                     style={{
-                      background: rowIndex === 0 ? "#f8fafc" : "#ffffff",
+                      background,
                       borderColor: "#cbd5e1",
                       borderStyle: "solid",
                       borderWidth: 1,
-                      color: "#0f172a",
+                      color: fallbackTextColor,
                       padding: "8px 10px",
                       verticalAlign: "top",
                     }}
                   >
                     {paragraphs.length > 0 ? (
                       paragraphs.map((paragraph, index) => (
-                        <DocumentParagraph key={paragraph.id || index} paragraph={paragraph} />
+                        <DocumentParagraph
+                          fallbackColor={fallbackTextColor}
+                          key={paragraph.id || index}
+                          paragraph={paragraph}
+                        />
                       ))
                     ) : (
                       asString(cellRecord.text)
@@ -190,6 +209,33 @@ function DocumentTable({
       </table>
     </div>
   );
+}
+
+function documentFillToCss(fill: unknown): string | undefined {
+  const fillRecord = asRecord(fill);
+  return fillToCss(fillRecord) ?? colorToCss(fillRecord?.color);
+}
+
+function readableTextColor(background: string): string {
+  const rgb = hexCssToRgb(background);
+  if (rgb == null) return "#0f172a";
+  const [red, green, blue] = rgb.map((channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return luminance < 0.45 ? "#ffffff" : "#0f172a";
+}
+
+function hexCssToRgb(value: string): [number, number, number] | null {
+  const match = value.match(/^#([0-9a-f]{6})$/i);
+  if (!match) return null;
+  const hex = match[1];
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16),
+  ];
 }
 
 const documentFallbackBlockStyle: CSSProperties = {
