@@ -580,10 +580,10 @@ internal static class PptxPresentationProtoReader
     {
         return Message(output =>
         {
-            WriteInt64(output, 1, ToLong(transform.Offset?.X));
-            WriteInt64(output, 2, ToLong(transform.Offset?.Y));
-            WriteInt64(output, 3, ToLong(transform.Extents?.Cx));
-            WriteInt64(output, 4, ToLong(transform.Extents?.Cy));
+            WriteInt64Always(output, 1, ToLong(transform.Offset?.X));
+            WriteInt64Always(output, 2, ToLong(transform.Offset?.Y));
+            WriteInt64Always(output, 3, ToLong(transform.Extents?.Cx));
+            WriteInt64Always(output, 4, ToLong(transform.Extents?.Cy));
             WriteInt32(output, 5, transform.Rotation?.Value);
             WriteBool(output, 6, transform.HorizontalFlip?.Value);
             WriteBool(output, 7, transform.VerticalFlip?.Value);
@@ -594,10 +594,10 @@ internal static class PptxPresentationProtoReader
     {
         return Message(output =>
         {
-            WriteInt64(output, 1, ToLong(transform.Offset?.X));
-            WriteInt64(output, 2, ToLong(transform.Offset?.Y));
-            WriteInt64(output, 3, ToLong(transform.Extents?.Cx));
-            WriteInt64(output, 4, ToLong(transform.Extents?.Cy));
+            WriteInt64Always(output, 1, ToLong(transform.Offset?.X));
+            WriteInt64Always(output, 2, ToLong(transform.Offset?.Y));
+            WriteInt64Always(output, 3, ToLong(transform.Extents?.Cx));
+            WriteInt64Always(output, 4, ToLong(transform.Extents?.Cy));
         });
     }
 
@@ -605,10 +605,10 @@ internal static class PptxPresentationProtoReader
     {
         return Message(output =>
         {
-            WriteInt64(output, 1, ToLong(transform.Offset?.X));
-            WriteInt64(output, 2, ToLong(transform.Offset?.Y));
-            WriteInt64(output, 3, ToLong(transform.Extents?.Cx));
-            WriteInt64(output, 4, ToLong(transform.Extents?.Cy));
+            WriteInt64Always(output, 1, ToLong(transform.Offset?.X));
+            WriteInt64Always(output, 2, ToLong(transform.Offset?.Y));
+            WriteInt64Always(output, 3, ToLong(transform.Extents?.Cx));
+            WriteInt64Always(output, 4, ToLong(transform.Extents?.Cy));
         });
     }
 
@@ -749,7 +749,7 @@ internal static class PptxPresentationProtoReader
     private static byte[]? WriteImageMask(P.Picture picture)
     {
         var sourceRectangle = picture.BlipFill?.SourceRectangle;
-        var geometry = picture.ShapeProperties?.GetFirstChild<A.PresetGeometry>()?.Preset?.Value.ToString();
+        var geometry = PresetGeometryName(picture.ShapeProperties?.GetFirstChild<A.PresetGeometry>());
         var hasCrop =
             sourceRectangle?.Left is not null ||
             sourceRectangle?.Top is not null ||
@@ -1559,7 +1559,10 @@ internal static class PptxPresentationProtoReader
                     WriteInt32(transformOutput, 3, color.LuminanceModulation);
                     WriteInt32(transformOutput, 4, color.LuminanceOffset);
                     WriteInt32(transformOutput, 5, color.SaturationModulation);
-                    WriteInt32(transformOutput, 6, color.Alpha);
+                    if (color.Alpha is not null)
+                    {
+                        WriteInt32Always(transformOutput, 6, color.Alpha.Value);
+                    }
                 }));
             }
 
@@ -1604,12 +1607,12 @@ internal static class PptxPresentationProtoReader
 
     private static int GeometryCode(A.PresetGeometry? geometry)
     {
-        var value = geometry?.Preset?.Value.ToString();
+        var value = PresetGeometryName(geometry)?.ToLowerInvariant();
         return value switch
         {
             "rect" => 5,
-            "roundRect" => 26,
-            "ellipse" => 89,
+            "roundrect" => 26,
+            "ellipse" => 35,
             "line" => 1,
             "triangle" => 23,
             "diamond" => 30,
@@ -1617,10 +1620,18 @@ internal static class PptxPresentationProtoReader
             "trapezoid" => 32,
             "hexagon" => 39,
             "arc" => 91,
-            "bracePair" => 111,
-            "bracketPair" => 112,
+            "bracepair" => 111,
+            "bracketpair" => 112,
             _ => 5,
         };
+    }
+
+    private static string? PresetGeometryName(A.PresetGeometry? geometry)
+    {
+        var preset = geometry?.Preset;
+        return string.IsNullOrWhiteSpace(preset?.InnerText)
+            ? preset?.Value.ToString()
+            : preset.InnerText;
     }
 
     private static long? ToLong(Int64Value? value)
@@ -1725,6 +1736,17 @@ internal static class PptxPresentationProtoReader
     private static void WriteInt64(CodedOutputStream output, int fieldNumber, long? value)
     {
         if (value is null or 0)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteInt64(value.Value);
+    }
+
+    private static void WriteInt64Always(CodedOutputStream output, int fieldNumber, long? value)
+    {
+        if (value is null)
         {
             return;
         }
