@@ -321,6 +321,28 @@ Office binary <-> normalized proto artifact model <-> React panel/editor
 4. **Protobuf vs JSON**: Codex 用 protobuf 传输解析结果，我们是否需要这一层？还是直接用 JSON 更简单？
 5. **是否需要编辑能力**: Codex 的 Walnut 至少编译了 `ExportProtoToDocx` / `ExportProtoToPptx` / `ExportProtoToXlsx` 符号；Routa 是只需要预览，还是要预留 artifact 编辑与导出回 Office 的中间 schema？
 
+## Verification - 2026-05-01
+
+Implemented a debug proof-of-concept page at `/debug/office-wasm-poc` that loads Codex's extracted Walnut WASM reader assets from `tmp/codex-app-analysis/extracted/webview/assets`.
+
+Validated with local files from `~/Downloads`:
+
+- XLSX: `/Users/phodal/Downloads/test-file.xlsx`
+- PPTX: `/Users/phodal/Downloads/agentic_ui_proactive_agent_technical_blueprint.pptx`
+
+Checks run:
+
+```bash
+npx eslint --max-warnings=0 'src/app/debug/office-wasm-poc/page-client.tsx' 'src/app/api/debug/office-wasm-poc/assets/[...slug]/route.ts' 'src/i18n/types-tail.ts' 'src/i18n/locales/en-tail.ts' 'src/i18n/locales/zh-tail.ts'
+npx tsc --noEmit --pretty false
+```
+
+Screenshots:
+
+![XLSX preview](./assets/2026-05-01-office-wasm-poc/xlsx-preview.png)
+
+![PPTX preview](./assets/2026-05-01-office-wasm-poc/pptx-preview.png)
+
 ## References
 
 - Codex 分析文件: `tmp/codex-app-analysis/extracted/webview/assets/`
