@@ -185,6 +185,18 @@ async function parseDocumentWithGeneratedReader(file: File, kind: OfficeWasmArti
   const bytes = new Uint8Array(await file.arrayBuffer());
   const protoBytes = extractOfficeArtifactProto(reader, bytes, kind, false);
 
+  if (kind === "docx") {
+    const proto = await decodeDocumentProto(protoBytes);
+    return {
+      generatedSummary: await summarizeGeneratedDocumentProto(proto, protoBytes),
+      kind: "document",
+      proto,
+      rawProto: proto,
+      readerMode: "routa",
+      sourceKind: kind,
+    };
+  }
+
   if (kind === "pptx") {
     const proto = await decodePresentationProto(protoBytes);
     return {
@@ -207,6 +219,13 @@ async function parseDocumentWithGeneratedReader(file: File, kind: OfficeWasmArti
     readerMode: "routa",
     sourceKind: kind,
   };
+}
+
+async function decodeDocumentProto(protoBytes: Uint8Array): Promise<unknown> {
+  const { Document } = (await import(
+    /* webpackIgnore: true */ `${DOCUMENT_MODULE}?v=generated-document`
+  )) as { Document: { decode: (value: unknown) => unknown } };
+  return Document.decode(protoBytes);
 }
 
 async function decodePresentationProto(protoBytes: Uint8Array): Promise<unknown> {
@@ -384,6 +403,35 @@ async function summarizeGeneratedWasmArtifact(
     tableCount: artifact.tables.length,
     textBlockCount: artifact.textBlocks.length,
     title: artifact.title,
+    wasmProtoByteLength: protoBytes.length,
+    wasmProtoSha256: await sha256Hex(protoBytes),
+  };
+}
+
+async function summarizeGeneratedDocumentProto(
+  proto: unknown,
+  protoBytes: Uint8Array,
+): Promise<GeneratedWasmSummary> {
+  const root = proto && typeof proto === "object" ? proto as Record<string, unknown> : {};
+  const elements = Array.isArray(root.elements) ? root.elements : [];
+  const tables = elements.filter((element) => {
+    if (element == null || typeof element !== "object") return false;
+    const table = (element as Record<string, unknown>).table;
+    return table != null && typeof table === "object";
+  });
+
+  return {
+    chartCount: Array.isArray(root.charts) ? root.charts.length : 0,
+    elementCount: elements.length,
+    imageCount: Array.isArray(root.images) ? root.images.length : 0,
+    metadata: {},
+    protocol: "oaiproto.coworker.docx.Document",
+    sheetCount: 0,
+    slideCount: 0,
+    sourceKind: "docx",
+    tableCount: tables.length,
+    textBlockCount: elements.length - tables.length,
+    title: typeof root.name === "string" ? root.name : "",
     wasmProtoByteLength: protoBytes.length,
     wasmProtoSha256: await sha256Hex(protoBytes),
   };

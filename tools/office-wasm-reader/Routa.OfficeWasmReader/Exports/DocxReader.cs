@@ -6,7 +6,13 @@ public static partial class DocxReader
     [JSExport]
     public static byte[] ExtractDocxProto(byte[] bytes, bool ignoreErrors)
     {
-        return OfficeArtifactExtractor.ExtractDocxProto(bytes, ignoreErrors);
+        try
+        {
+            return DocxDocumentProtoReader.Read(bytes);
+        }
+        catch when (ignoreErrors)
+        {
+            return [];
+        }
     }
 }
-
