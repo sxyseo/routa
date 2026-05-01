@@ -2,7 +2,7 @@
 title: "codex-acp rejects gpt-5.5 because installed Codex is too old"
 date: "2026-04-30"
 kind: issue
-status: closed
+status: resolved
 severity: medium
 area: "acp"
 tags:
