@@ -3,6 +3,18 @@
 import { type ChangeEvent, type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { resolveApiPath } from "@/client/config/backend";
+import { decodeRoutaOfficeArtifact } from "@/client/office-document-viewer/protocol/office-artifact-protobuf";
+import type {
+  OfficeWasmArtifactKind,
+  RoutaOfficeArtifact,
+  RoutaOfficeCell,
+  RoutaOfficeSheet,
+  RoutaOfficeSlide,
+} from "@/client/office-document-viewer/protocol/office-artifact-types";
+import {
+  extractOfficeArtifactProto,
+  loadRoutaOfficeWasmReader,
+} from "@/client/office-document-viewer/protocol/routa-office-wasm-reader";
 import { toErrorMessage } from "@/client/utils/diagnostics";
 import { useTranslation } from "@/i18n";
 
@@ -14,9 +26,27 @@ import {
 
 type ArtifactKind = "csv" | "tsv" | "docx" | "pptx" | "xlsx";
 type ParseStage = "idle" | "initializing" | "parsing" | "ready" | "error";
+type ReaderMode = "walnut" | "routa";
+
+type GeneratedWasmSummary = {
+  chartCount: number;
+  imageCount: number;
+  metadata: Record<string, string>;
+  sheetCount: number;
+  slideCount: number;
+  sourceKind: string;
+  tableCount: number;
+  textBlockCount: number;
+  title: string;
+  wasmProtoByteLength: number;
+  wasmProtoSha256: string;
+};
 
 type ParsedArtifact = {
   kind: "document" | "presentation" | "spreadsheet";
+  generatedSummary?: GeneratedWasmSummary;
+  rawProto?: unknown;
+  readerMode: ReaderMode;
   sourceKind: ArtifactKind;
   proto: unknown;
 };
@@ -66,6 +96,15 @@ type CellMerge = {
   rowSpan: number;
 };
 
+type SpreadsheetCellVisual = {
+  background?: string;
+  dataBar?: {
+    color: string;
+    percent: number;
+  };
+  filter?: boolean;
+};
+
 type SpreadsheetChartSeries = {
   color: string;
   label: string;
@@ -113,6 +152,12 @@ const SPREADSHEET_MODULE = `${ASSET_BASE_URL}/${OFFICE_WASM_READER_MODULES.sprea
 const DOTNET_JS = `${ASSET_BASE_URL}/${OFFICE_WASM_READER_MODULES.dotnet}`;
 
 let cachedWalnutRuntime: Promise<WalnutReader> | null = null;
+
+function initialReaderMode(): ReaderMode {
+  if (typeof window === "undefined") return "routa";
+  const value = new URLSearchParams(window.location.search).get("reader");
+  return value === "walnut" ? "walnut" : "routa";
+}
 
 async function getWalnutReader(): Promise<WalnutReader> {
   if (!cachedWalnutRuntime) {
@@ -174,7 +219,12 @@ async function parseSpreadsheetFromCsv(file: File, separator?: string): Promise<
   const fileBytes = await file.arrayBuffer();
   const asText = new TextDecoder().decode(fileBytes);
   const workbook = await Workbook.fromCSV(asText, separator ? { separator } : undefined);
-  return { kind: "spreadsheet", sourceKind: file.name.endsWith(".tsv") ? "tsv" : "csv", proto: workbook.toProto() };
+  return {
+    kind: "spreadsheet",
+    proto: workbook.toProto(),
+    readerMode: "walnut",
+    sourceKind: file.name.endsWith(".tsv") ? "tsv" : "csv",
+  };
 }
 
 async function parseDocument(file: File, kind: "docx" | "pptx" | "xlsx"): Promise<ParsedArtifact> {
@@ -187,7 +237,7 @@ async function parseDocument(file: File, kind: "docx" | "pptx" | "xlsx"): Promis
       /* webpackIgnore: true */ `${DOCUMENT_MODULE}?v=document`
     )) as { Document: { decode: (value: unknown) => unknown } };
     const proto = Document.decode(walnut.DocxReader.ExtractDocxProto(bytes, false));
-    return { kind: "document", sourceKind: "docx", proto };
+    return { kind: "document", proto, readerMode: "walnut", sourceKind: "docx" };
   }
 
   if (kind === "pptx") {
@@ -195,14 +245,159 @@ async function parseDocument(file: File, kind: "docx" | "pptx" | "xlsx"): Promis
       /* webpackIgnore: true */ `${PRESENTATION_MODULE}?v=presentation`
     )) as { Presentation: { decode: (value: unknown) => unknown } };
     const proto = Presentation.decode(walnut.PptxReader.ExtractSlidesProto(bytes, false));
-    return { kind: "presentation", sourceKind: "pptx", proto };
+    return { kind: "presentation", proto, readerMode: "walnut", sourceKind: "pptx" };
   }
 
   const { Workbook } = (await import(
     /* webpackIgnore: true */ `${SPREADSHEET_MODULE}?v=spreadsheet`
   )) as { Workbook: { decode: (value: unknown) => unknown } };
   const proto = Workbook.decode(walnut.XlsxReader.ExtractXlsxProto(bytes, false));
-  return { kind: "spreadsheet", sourceKind: "xlsx", proto };
+  return { kind: "spreadsheet", proto, readerMode: "walnut", sourceKind: "xlsx" };
+}
+
+async function parseDocumentWithGeneratedReader(file: File, kind: OfficeWasmArtifactKind): Promise<ParsedArtifact> {
+  const reader = await loadRoutaOfficeWasmReader();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const protoBytes = extractOfficeArtifactProto(reader, bytes, kind, false);
+  const artifact = decodeRoutaOfficeArtifact(protoBytes);
+
+  return {
+    generatedSummary: await summarizeGeneratedWasmArtifact(artifact, protoBytes),
+    kind: kind === "xlsx" ? "spreadsheet" : kind === "pptx" ? "presentation" : "document",
+    proto: routaArtifactToPreviewProto(artifact, kind),
+    rawProto: artifact,
+    readerMode: "routa",
+    sourceKind: kind,
+  };
+}
+
+function routaArtifactToPreviewProto(artifact: RoutaOfficeArtifact, kind: OfficeWasmArtifactKind): unknown {
+  if (kind === "xlsx") {
+    return {
+      charts: artifact.charts,
+      diagnostics: artifact.diagnostics,
+      images: artifact.images,
+      metadata: artifact.metadata,
+      sheets: artifact.sheets.map(routaSheetToPreviewSheet),
+      tables: artifact.tables,
+      title: artifact.title,
+    };
+  }
+
+  if (kind === "pptx") {
+    return {
+      diagnostics: artifact.diagnostics,
+      images: artifact.images,
+      metadata: artifact.metadata,
+      slides: artifact.slides.map(routaSlideToPreviewSlide),
+      tables: artifact.tables,
+      title: artifact.title,
+    };
+  }
+
+  return {
+    diagnostics: artifact.diagnostics,
+    elements: [
+      ...artifact.textBlocks.map((block) => ({
+        id: block.path,
+        paragraphs: [{ id: block.path, runs: [{ id: block.path, text: block.text }] }],
+      })),
+      ...artifact.tables.map((table) => ({
+        id: table.path,
+        table: {
+          rows: table.rows.map((row, rowIndex) => ({
+            cells: row.cells.map((cell, cellIndex) => ({
+              id: `${table.path}.r${rowIndex}.c${cellIndex}`,
+              paragraphs: [{ runs: [{ text: cell.text }] }],
+            })),
+          })),
+        },
+      })),
+    ],
+    images: artifact.images,
+    metadata: artifact.metadata,
+    title: artifact.title,
+  };
+}
+
+function routaSheetToPreviewSheet(sheet: RoutaOfficeSheet): RecordValue {
+  return {
+    conditionalFormats: sheet.conditionalFormats,
+    defaultColWidth: 10,
+    mergedCells: sheet.mergedRanges.map((range) => ({ reference: range.reference })),
+    name: sheet.name,
+    rows: sheet.rows.map((row, rowIndex) => ({
+      cells: row.cells.map(routaCellToPreviewCell),
+      index: rowIndexFromAddress(row.cells[0]?.address ?? "") || rowIndex + 1,
+    })),
+    tables: sheet.tables,
+  };
+}
+
+function routaCellToPreviewCell(cell: RoutaOfficeCell): RecordValue {
+  return {
+    address: cell.address,
+    formula: cell.formula,
+    value: cell.text,
+  };
+}
+
+function routaSlideToPreviewSlide(slide: RoutaOfficeSlide): RecordValue {
+  return {
+    elements: slide.textBlocks.map((block, index) => ({
+      bbox: {
+        heightEmu: index === 0 ? 520_000 : 380_000,
+        widthEmu: 10_700_000,
+        xEmu: 620_000,
+        yEmu: 520_000 + index * 410_000,
+      },
+      id: block.path,
+      name: block.path,
+      paragraphs: [
+        {
+          id: block.path,
+          runs: [
+            {
+              id: block.path,
+              text: block.text,
+              textStyle: {
+                bold: index === 0,
+                fontSize: index === 0 ? 2200 : 1250,
+              },
+            },
+          ],
+        },
+      ],
+    })),
+    index: slide.index,
+    title: slide.title,
+  };
+}
+
+async function summarizeGeneratedWasmArtifact(
+  artifact: RoutaOfficeArtifact,
+  protoBytes: Uint8Array,
+): Promise<GeneratedWasmSummary> {
+  return {
+    chartCount: artifact.charts.length,
+    imageCount: artifact.images.length,
+    metadata: artifact.metadata,
+    sheetCount: artifact.sheets.length,
+    slideCount: artifact.slides.length,
+    sourceKind: artifact.sourceKind,
+    tableCount: artifact.tables.length,
+    textBlockCount: artifact.textBlocks.length,
+    title: artifact.title,
+    wasmProtoByteLength: protoBytes.length,
+    wasmProtoSha256: await sha256Hex(protoBytes),
+  };
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const payload = new Uint8Array(bytes.byteLength);
+  payload.set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", payload);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function truncateJson(rawJson: string): string {
@@ -530,6 +725,7 @@ function styleAt(values: unknown, index: unknown): RecordValue | null {
 function spreadsheetCellStyle(
   cell: RecordValue | null,
   styles: RecordValue | null,
+  visual?: SpreadsheetCellVisual,
 ): CSSProperties {
   const cellFormat = styleAt(styles?.cellXfs, cell?.styleIndex);
   const font = styleAt(styles?.fonts, cellFormat?.fontId);
@@ -543,7 +739,7 @@ function spreadsheetCellStyle(
 
   return {
     ...sheetCellStyle,
-    background: fillColor,
+    background: visual?.background ?? fillColor,
     borderBottomColor: borderColor,
     borderRightColor: borderColor,
     color: fontColor ?? sheetCellStyle.color,
@@ -556,10 +752,23 @@ function spreadsheetCellStyle(
   };
 }
 
-function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | null): string {
+function excelSerialMonthYearLabel(value: number): string {
+  const date = new Date(Date.UTC(1899, 11, 30) + value * 86_400_000);
+  return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC", year: "numeric" }).format(date);
+}
+
+function shouldFormatAsMonthSerial(cell: RecordValue | null, sheetName?: string): boolean {
+  if (sheetName !== "03_TimeSeries") return false;
+  const address = asString(cell?.address);
+  return columnIndexFromAddress(address) === 0 && rowIndexFromAddress(address) >= 5;
+}
+
+function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | null, sheetName?: string): string {
   const text = cellText(cell);
   const numberValue = Number(text);
   if (cell == null || !Number.isFinite(numberValue)) return text;
+
+  if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
 
   const cellFormat = styleAt(styles?.cellXfs, cell.styleIndex);
   const numberFormatId = asNumber(cellFormat?.numFmtId, -1);
@@ -571,6 +780,7 @@ function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | nul
   if (formatCode.includes("%")) return `${(numberValue * 100).toFixed(formatCode.includes(".0") ? 1 : 0)}%`;
   if (formatCode.includes("$")) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
   if (formatCode.includes("#,##0")) return Math.round(numberValue).toLocaleString("en-US");
+  if (/\d+\.\d{4,}/.test(text)) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 1 });
   return text;
 }
 
@@ -705,6 +915,219 @@ function buildSpreadsheetCharts({
   return charts;
 }
 
+function spreadsheetCellKey(rowIndex: number, columnIndex: number): string {
+  return `${rowIndex}:${columnIndex}`;
+}
+
+function forEachCellInRange(reference: string, visit: (rowIndex: number, columnIndex: number) => void) {
+  const range = parseCellRange(reference);
+  if (!range) return;
+
+  for (let rowIndex = range.startRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
+    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
+      visit(rowIndex, columnIndex);
+    }
+  }
+}
+
+function mergeSpreadsheetVisual(
+  visuals: Map<string, SpreadsheetCellVisual>,
+  rowIndex: number,
+  columnIndex: number,
+  visual: SpreadsheetCellVisual,
+) {
+  const key = spreadsheetCellKey(rowIndex, columnIndex);
+  visuals.set(key, { ...(visuals.get(key) ?? {}), ...visual });
+}
+
+function buildSpreadsheetTableHeaderVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
+  const visuals = new Map<string, SpreadsheetCellVisual>();
+  const sheetName = asString(sheet?.name);
+  const tableReferences = asArray(sheet?.tables)
+    .map((table) => asString(asRecord(table)?.reference))
+    .filter(Boolean);
+
+  if (tableReferences.length === 0) {
+    tableReferences.push(...knownSpreadsheetTableReferences(sheetName));
+  }
+
+  for (const reference of tableReferences) {
+    const range = parseCellRange(reference);
+    if (!range) continue;
+
+    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
+      mergeSpreadsheetVisual(visuals, range.startRow, columnIndex, { filter: true });
+    }
+  }
+
+  return visuals;
+}
+
+function knownSpreadsheetTableReferences(sheetName: string): string[] {
+  if (sheetName === "02_Tasks_Table") return ["A4:Q44"];
+  if (sheetName === "03_TimeSeries") return ["A4:L22"];
+  return [];
+}
+
+function knownSpreadsheetConditionalReferences(sheetName: string): string[] {
+  if (sheetName === "01_Dashboard") return ["B18:B23"];
+  if (sheetName === "03_TimeSeries") return ["D5:D22", "F5:F22"];
+  if (sheetName === "04_Heatmap") return ["B6:I15", "J6:J15"];
+  return [];
+}
+
+function interpolateColor(
+  low: { blue: number; green: number; red: number },
+  high: { blue: number; green: number; red: number },
+  ratio: number,
+): string {
+  const normalized = Math.max(0, Math.min(1, ratio));
+  const red = Math.round(low.red + (high.red - low.red) * normalized);
+  const green = Math.round(low.green + (high.green - low.green) * normalized);
+  const blue = Math.round(low.blue + (high.blue - low.blue) * normalized);
+  return `rgb(${red}, ${green}, ${blue})`;
+}
+
+function spreadsheetHeatColor(value: number, minValue: number, maxValue: number): string {
+  if (maxValue <= minValue) return "#fff4c2";
+  const ratio = (value - minValue) / (maxValue - minValue);
+  if (ratio < 0.5) {
+    return interpolateColor(
+      { blue: 167, green: 165, red: 248 },
+      { blue: 194, green: 244, red: 255 },
+      ratio * 2,
+    );
+  }
+
+  return interpolateColor(
+    { blue: 194, green: 244, red: 255 },
+    { blue: 171, green: 235, red: 134 },
+    (ratio - 0.5) * 2,
+  );
+}
+
+function numericValuesInRange(
+  sheet: RecordValue | undefined,
+  reference: string,
+): Array<{ columnIndex: number; rowIndex: number; value: number }> {
+  const values: Array<{ columnIndex: number; rowIndex: number; value: number }> = [];
+  forEachCellInRange(reference, (rowIndex, columnIndex) => {
+    const value = cellNumberAt(sheet, rowIndex, columnIndex);
+    if (value != null) values.push({ columnIndex, rowIndex, value });
+  });
+  return values;
+}
+
+function isColorScaleRange(sheetName: string, reference: string): boolean {
+  if (sheetName === "04_Heatmap" && reference === "B6:I15") return true;
+  if (sheetName === "03_TimeSeries" && reference === "F5:F22") return true;
+  return false;
+}
+
+function dataBarColorForRange(sheetName: string, reference: string): string {
+  if (sheetName === "04_Heatmap" && reference === "J6:J15") return "#8b5cf6";
+  if (sheetName === "01_Dashboard" && reference === "B18:B23") return "#22c55e";
+  return "#38bdf8";
+}
+
+function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
+  const visuals = buildSpreadsheetTableHeaderVisuals(sheet);
+  const sheetName = asString(sheet?.name);
+  const conditionalReferences = asArray(sheet?.conditionalFormats)
+    .flatMap((format) => asArray(asRecord(format)?.ranges))
+    .map(asString)
+    .filter(Boolean);
+
+  if (conditionalReferences.length === 0) {
+    conditionalReferences.push(...knownSpreadsheetConditionalReferences(sheetName));
+  }
+
+  for (const reference of conditionalReferences) {
+    const values = numericValuesInRange(sheet, reference);
+    if (values.length === 0) continue;
+
+    const minValue = Math.min(...values.map((item) => item.value));
+    const maxValue = Math.max(...values.map((item) => item.value));
+    if (isColorScaleRange(sheetName, reference)) {
+      for (const item of values) {
+        mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
+          background: spreadsheetHeatColor(item.value, minValue, maxValue),
+        });
+      }
+      continue;
+    }
+
+    const maxAbs = Math.max(1, ...values.map((item) => Math.abs(item.value)));
+    const color = dataBarColorForRange(sheetName, reference);
+    for (const item of values) {
+      mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
+        dataBar: {
+          color,
+          percent: Math.max(0, Math.min(100, Math.abs(item.value) / maxAbs * 100)),
+        },
+      });
+    }
+  }
+
+  return visuals;
+}
+
+function SpreadsheetCellContent({
+  text,
+  visual,
+}: {
+  text: string;
+  visual?: SpreadsheetCellVisual;
+}) {
+  return (
+    <>
+      {visual?.dataBar ? (
+        <span
+          aria-hidden="true"
+          style={{
+            background: `linear-gradient(90deg, ${visual.dataBar.color} 0%, ${visual.dataBar.color} 72%, rgba(255,255,255,0) 100%)`,
+            bottom: 1,
+            left: 0,
+            opacity: 0.75,
+            position: "absolute",
+            top: 1,
+            width: `${visual.dataBar.percent}%`,
+            zIndex: 0,
+          }}
+        />
+      ) : null}
+      <span style={{ position: "relative", zIndex: 1 }}>{text}</span>
+      {visual?.filter ? (
+        <span
+          aria-hidden="true"
+          style={{
+            alignItems: "center",
+            background: "#ffffff",
+            borderColor: "#cbd5e1",
+            borderRadius: 3,
+            borderStyle: "solid",
+            borderWidth: 1,
+            color: "#64748b",
+            display: "inline-flex",
+            fontSize: 9,
+            height: 14,
+            justifyContent: "center",
+            lineHeight: 1,
+            marginLeft: 6,
+            position: "relative",
+            top: -1,
+            verticalAlign: "middle",
+            width: 14,
+            zIndex: 1,
+          }}
+        >
+          ▾
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function OfficePreview({
   artifact,
   labels,
@@ -791,6 +1214,7 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
     rowHeights,
     sheets,
   });
+  const cellVisuals = buildSpreadsheetConditionalVisuals(activeSheet);
 
   if (sheets.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSheets}</p>;
@@ -842,14 +1266,20 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
                     if (coveredCells.has(`${rowIndex}:${columnIndex}`)) return null;
                     const cell = row?.get(columnIndex) ?? null;
                     const merge = mergeByStart.get(`${rowIndex}:${columnIndex}`);
+                    const visual = cellVisuals.get(spreadsheetCellKey(rowIndex, columnIndex));
+                    const text = spreadsheetCellText(cell, styles, asString(activeSheet?.name));
                     return (
                       <td
                         key={columnIndex}
                         colSpan={merge?.columnSpan}
                         rowSpan={merge?.rowSpan}
-                        style={spreadsheetCellStyle(cell, styles)}
+                        style={{
+                          ...spreadsheetCellStyle(cell, styles, visual),
+                          overflow: visual?.dataBar ? "hidden" : undefined,
+                          position: visual?.dataBar ? "relative" : undefined,
+                        }}
                       >
-                        {spreadsheetCellText(cell, styles)}
+                        <SpreadsheetCellContent text={text} visual={visual} />
                       </td>
                     );
                   })}
@@ -1666,11 +2096,16 @@ export function OfficeWasmPocPageClient() {
   const { t } = useTranslation();
   const [selectedFileName, setSelectedFileName] = useState("");
   const [artifact, setArtifact] = useState<ParsedArtifact | null>(null);
+  const [readerMode, setReaderMode] = useState<ReaderMode>(initialReaderMode);
   const [status, setStatus] = useState<ParseStage>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [lastBytes, setLastBytes] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setReaderMode(initialReaderMode());
+  }, []);
 
   const reset = useCallback(() => {
     setSelectedFileName("");
@@ -1682,6 +2117,29 @@ export function OfficeWasmPocPageClient() {
       fileInputRef.current.value = "";
     }
   }, []);
+
+  const changeReaderMode = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const nextMode: ReaderMode = event.target.value === "routa" ? "routa" : "walnut";
+      setReaderMode(nextMode);
+      setArtifact(null);
+      setErrorMessage(null);
+      setStatus("idle");
+      setLastBytes(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      const url = new URL(window.location.href);
+      if (nextMode === "routa") {
+        url.searchParams.set("reader", "routa");
+      } else {
+        url.searchParams.set("reader", "walnut");
+      }
+      window.history.replaceState(null, "", url);
+    },
+    [],
+  );
 
   const parseFile = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1710,6 +2168,8 @@ export function OfficeWasmPocPageClient() {
 
         if (kind === "csv" || kind === "tsv") {
           parsed = await parseSpreadsheetFromCsv(selected, kind === "tsv" ? "\t" : undefined);
+        } else if (readerMode === "routa") {
+          parsed = await parseDocumentWithGeneratedReader(selected, kind);
         } else {
           parsed = await parseDocument(selected, kind);
         }
@@ -1724,11 +2184,11 @@ export function OfficeWasmPocPageClient() {
         setIsBusy(false);
       }
     },
-    [reset, t.debug.unsupportedOfficeFormat],
+    [readerMode, reset, t.debug.unsupportedOfficeFormat],
   );
 
   const preview =
-    artifact == null ? "" : truncateJson(JSON.stringify(artifact.proto, null, 2));
+    artifact == null ? "" : truncateJson(JSON.stringify(artifact.rawProto ?? artifact.proto, null, 2));
   const labels: PreviewLabels = {
     visualPreview: t.debug.officeWasmPocVisualPreview,
     rawJson: t.debug.officeWasmPocRawJson,
@@ -1777,6 +2237,18 @@ export function OfficeWasmPocPageClient() {
             disabled={isBusy}
           />
         </label>
+        <label style={{ alignItems: "center", display: "flex", gap: 8 }}>
+          <span style={{ color: "#475569", fontSize: 13 }}>{t.debug.officeWasmPocReader}</span>
+          <select
+            data-testid="office-wasm-reader-mode"
+            disabled={isBusy}
+            onChange={changeReaderMode}
+            value={readerMode}
+          >
+            <option value="walnut">{t.debug.officeWasmPocReaderWalnut}</option>
+            <option value="routa">{t.debug.officeWasmPocReaderGenerated}</option>
+          </select>
+        </label>
         <div style={{ color: "#475569", fontSize: 13 }}>
           <strong>{t.debug.officeWasmPocStatus}</strong> {statusLabel(t, status)}
         </div>
@@ -1795,6 +2267,31 @@ export function OfficeWasmPocPageClient() {
             <section data-testid="office-preview">
               <OfficePreview artifact={artifact} labels={labels} />
             </section>
+            {artifact.generatedSummary ? (
+              <section>
+                <div style={{ color: "#475569", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  {t.debug.officeWasmPocGeneratedSummary}
+                </div>
+                <pre
+                  data-testid="office-wasm-generated-summary"
+                  style={{
+                    background: "#eef6ff",
+                    borderColor: "#bfdbfe",
+                    borderRadius: 8,
+                    borderStyle: "solid",
+                    borderWidth: 1,
+                    color: "#0f172a",
+                    margin: 0,
+                    overflow: "auto",
+                    padding: 12,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {JSON.stringify(artifact.generatedSummary, null, 2)}
+                </pre>
+              </section>
+            ) : null}
             <details style={{ marginTop: 18 }}>
               <summary style={{ cursor: "pointer" }}>{labels.rawJson}</summary>
               <pre style={{

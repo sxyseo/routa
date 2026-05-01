@@ -115,6 +115,9 @@ export interface TailTranslationDictionarySections {
     officeWasmPocTitle: string;
     officeWasmPocDescription: string;
     officeWasmPocSelectFile: string;
+    officeWasmPocReader: string;
+    officeWasmPocReaderWalnut: string;
+    officeWasmPocReaderGenerated: string;
     officeWasmPocStatus: string;
     officeWasmPocFile: string;
     officeWasmPocArtifactType: string;
@@ -129,6 +132,7 @@ export interface TailTranslationDictionarySections {
     officeWasmPocStatusReady: string;
     officeWasmPocStatusError: string;
     officeWasmPocVisualPreview: string;
+    officeWasmPocGeneratedSummary: string;
     officeWasmPocRawJson: string;
     officeWasmPocSheet: string;
     officeWasmPocSlide: string;
