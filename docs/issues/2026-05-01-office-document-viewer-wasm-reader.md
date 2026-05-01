@@ -333,9 +333,12 @@ Validated with local files from `~/Downloads`:
 Checks run:
 
 ```bash
+npm run debug:office-wasm:check
 npx eslint --max-warnings=0 'src/app/debug/office-wasm-poc/page-client.tsx' 'src/app/api/debug/office-wasm-poc/assets/[...slug]/route.ts' 'src/i18n/types-tail.ts' 'src/i18n/locales/en-tail.ts' 'src/i18n/locales/zh-tail.ts'
 npx tsc --noEmit --pretty false
 ```
+
+The consistency check validates that the POC runtime config, module filenames, reader ABI names, and panel contracts still match `tmp/codex-app-analysis/extracted/webview/assets/artifact-tab-content.electron-DmcFg9h8.js`.
 
 Screenshots:
 
