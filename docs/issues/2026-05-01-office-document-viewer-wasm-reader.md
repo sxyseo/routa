@@ -454,6 +454,47 @@ Remaining implementation gaps after the image-reference/theme/layout pass:
 - Picture crop/mask, tiling, duotone, advanced effects, gradients/pattern fills, and z-order metadata need broader coverage.
 - Export back to PPTX (`ExportProtoToPptx`-style flow) is not implemented.
 
+## DOCX Protocol Parity - 2026-05-01
+
+`Routa.OfficeWasmReader.DocxReader.ExtractDocxProto` now emits a Walnut-like `oaiproto.coworker.docx.Document` payload for DOCX instead of the older `routa.office.v1.OfficeArtifact` text/table projection.
+
+Validated fixture:
+
+```text
+tools/office-wasm-reader/fixtures/dll_viewer_solution_test_document.docx
+```
+
+Walnut parity checks now match for this fixture:
+
+- document page size (`widthEmu = 12240`, `heightEmu = 15840`)
+- element count and type counts (`26` text, `1` image reference, `7` tables)
+- embedded image id/content type/byte length/SHA-256 digest
+- image reference ids and reference resolution
+- paragraph count and text run count
+- table row/cell shapes and newline-preserving table previews
+- section count and numbering definition count
+- paragraph style definition count (`36`) and ids
+
+Important Walnut-specific findings:
+
+- `Document.name` is empty for this fixture even though the DOCX core properties have a title-like value; the generated reader mirrors Walnut and does not write the root name field.
+- DOCX text runs must preserve original spaces and explicit line breaks. Reusing the earlier `TextNormalization.Clean` behavior collapsed code blocks and reduced the text run count.
+- Walnut emits paragraph styles only. Writing every style from `styles.xml` produced `164` styles; filtering to `StyleValues.Paragraph` matches Walnut's `36` style definitions.
+- Walnut element ids for inline images appear non-semantic/random across runs, so equivalence tests intentionally compare image ids/references and payload digests rather than element ids or raw proto bytes.
+
+DOCX parity regression guards:
+
+```bash
+npm run test:office-wasm-reader:docx-parity
+npm run test:office-wasm-reader:fixtures -- --only dll_viewer_solution_test_document
+```
+
+Remaining DOCX implementation gaps:
+
+- Headers/footers, comments, footnotes/endnotes, track changes, hyperlinks, bookmarks, content controls, equations, floating/anchored positioning, charts, and complex section layouts are still not fully modeled.
+- Style inheritance is shallow; the current pass captures direct run/paragraph properties and paragraph style definitions needed by the fixture.
+- The debug renderer supports the Walnut-like structure but remains a POC renderer, not the final document panel.
+
 ## Verification - 2026-05-01
 
 Implemented a debug proof-of-concept page at `/debug/office-wasm-poc` that loads Codex's extracted Walnut WASM reader assets from `tmp/codex-app-analysis/extracted/webview/assets`.
