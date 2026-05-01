@@ -12,6 +12,11 @@ const projectPath = path.join(
 const artifactRoot = path.join(repoRoot, "tools/office-wasm-reader/artifacts");
 const publishDir = path.join(artifactRoot, "publish");
 const publicDir = path.join(repoRoot, "public/office-wasm-reader");
+const dotnetCommand =
+  process.env.DOTNET ??
+  (existsSync("/opt/homebrew/opt/dotnet@9/libexec/dotnet")
+    ? "/opt/homebrew/opt/dotnet@9/libexec/dotnet"
+    : "dotnet");
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -33,7 +38,7 @@ function run(command, args, options = {}) {
 }
 
 rmSync(publishDir, { force: true, recursive: true });
-run("dotnet", ["publish", projectPath, "-c", "Release", "-o", publishDir]);
+run(dotnetCommand, ["publish", projectPath, "-c", "Release", "-o", publishDir]);
 
 const candidateRoots = [
   path.join(publishDir, "wwwroot"),
@@ -50,4 +55,3 @@ rmSync(publicDir, { force: true, recursive: true });
 cpSync(bundleRoot, publicDir, { recursive: true });
 
 console.log(`Published Office WASM reader to ${publicDir}`);
-
