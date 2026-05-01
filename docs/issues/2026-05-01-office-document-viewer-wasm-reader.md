@@ -375,6 +375,53 @@ Office binary <-> normalized proto artifact model <-> React panel/editor
 4. **Protobuf vs JSON**: Codex 用 protobuf 传输解析结果，我们是否需要这一层？还是直接用 JSON 更简单？
 5. **是否需要编辑能力**: Codex 的 Walnut 至少编译了 `ExportProtoToDocx` / `ExportProtoToPptx` / `ExportProtoToXlsx` 符号；Routa 是只需要预览，还是要预留 artifact 编辑与导出回 Office 的中间 schema？
 
+## Protocol Parity Finding - 2026-05-01
+
+The current Routa-owned WASM reader matches the Walnut ABI names and dependency family, but it does **not** match the returned protobuf protocol. This is the main reason the generated PPTX preview is mostly plain text.
+
+Run:
+
+```bash
+npm run compare:office-wasm-reader:pptx
+```
+
+Fixture:
+
+```text
+tools/office-wasm-reader/fixtures/agentic_ui_proactive_agent_technical_blueprint.pptx
+```
+
+Observed protocol delta:
+
+| Reader | ABI method | Returned message | Proto bytes | First slide visual data |
+| --- | --- | --- | ---: | --- |
+| Walnut | `PptxReader.ExtractSlidesProto(bytes, false)` | `oaiproto.coworker.presentation.Presentation` | `119233` | `23` elements: `11` text elements + `12` shape elements |
+| Routa generated | `PptxReader.ExtractSlidesProto(bytes, false)` | `routa.office.v1.OfficeArtifact` | `32007` | `0` elements; only `15` text blocks |
+
+Walnut first-slide keys:
+
+```text
+index, useLayoutId, elements, widthEmu, heightEmu, innerXml, outerXml,
+background, id, notesSlide, creationId
+```
+
+Routa first-slide keys:
+
+```text
+index, textBlocks, title
+```
+
+The missing contract is therefore not "embedded images" for this fixture. The fixture has no media files in `ppt/media`; its visual appearance is carried by vector slide elements: background, positioned shapes, fills, lines, rounded rectangles, text boxes, and styled text runs.
+
+Minimum protocol target for PPTX parity:
+
+- Top level: `Presentation.theme`, `Presentation.layouts`, `Presentation.images`, `Presentation.charts`.
+- Slide level: `id`, `index`, `useLayoutId`, `widthEmu`, `heightEmu`, `background`, `elements`.
+- Element level: `id`, `name`, `type`, `bbox`, `shape`, `fill`, `line`, `paragraphs`, plus image/table/chart references.
+- Text level: paragraphs and runs with `textStyle` (`fontSize`, `fill.color`, `typeface`, bold/italic/underline).
+
+Implementation implication: keep the exported method names, but change the generated PPTX payload to converge on the Walnut `Presentation` shape, or add a faithful adapter that maps a Routa-owned equivalent schema to that same shape before rendering. Extending the current `OfficeArtifact.Slide.text_blocks` model is insufficient.
+
 ## Verification - 2026-05-01
 
 Implemented a debug proof-of-concept page at `/debug/office-wasm-poc` that loads Codex's extracted Walnut WASM reader assets from `tmp/codex-app-analysis/extracted/webview/assets`.
