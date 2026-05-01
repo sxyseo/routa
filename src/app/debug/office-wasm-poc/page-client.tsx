@@ -66,6 +66,23 @@ type CellMerge = {
   rowSpan: number;
 };
 
+type SpreadsheetChartSeries = {
+  color: string;
+  label: string;
+  values: number[];
+};
+
+type SpreadsheetChartSpec = {
+  categories: string[];
+  height: number;
+  left: number;
+  series: SpreadsheetChartSeries[];
+  title: string;
+  top: number;
+  type: "bar" | "line";
+  width: number;
+};
+
 type WalnutReader = {
   DocxReader: {
     ExtractDocxProto: (bytes: Uint8Array, ignoreErrors: boolean) => unknown;
@@ -82,6 +99,11 @@ const EMPTY_DOCUMENT_STYLE_MAPS: DocumentStyleMaps = {
   textStyles: new Map(),
   images: new Map(),
 };
+
+const SPREADSHEET_ROW_HEADER_WIDTH = 52;
+const SPREADSHEET_COLUMN_HEADER_HEIGHT = 29;
+const SPREADSHEET_DEFAULT_COLUMN_WIDTH = 88;
+const SPREADSHEET_DEFAULT_ROW_HEIGHT = 28;
 
 const ASSET_BASE_URL = resolveApiPath(OFFICE_WASM_ASSET_ROUTE);
 const WORKBOOK_MODULE = `${ASSET_BASE_URL}/${OFFICE_WASM_READER_MODULES.workbook}`;
@@ -552,10 +574,135 @@ function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | nul
   return text;
 }
 
+function rowsByIndexForSheet(sheet: RecordValue | undefined): Map<number, Map<number, RecordValue>> {
+  const rowMap = new Map<number, Map<number, RecordValue>>();
+  const rows = asArray(sheet?.rows).map(asRecord).filter((row): row is RecordValue => row != null);
+  for (const row of rows) {
+    const rowIndex = asNumber(row.index, 1);
+    const cells = new Map<number, RecordValue>();
+    for (const cell of asArray(row.cells)) {
+      const cellRecord = asRecord(cell);
+      if (!cellRecord) continue;
+      const address = asString(cellRecord.address);
+      cells.set(columnIndexFromAddress(address), cellRecord);
+    }
+    rowMap.set(rowIndex, cells);
+  }
+  return rowMap;
+}
+
+function cellAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: number): RecordValue | null {
+  return rowsByIndexForSheet(sheet).get(rowIndex)?.get(columnIndex) ?? null;
+}
+
+function cellNumberAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: number): number | null {
+  const value = Number(cellText(cellAt(sheet, rowIndex, columnIndex)));
+  return Number.isFinite(value) ? value : null;
+}
+
+function excelSerialMonthLabel(value: number): string {
+  const date = new Date(Date.UTC(1899, 11, 30) + value * 86_400_000);
+  return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC", year: "2-digit" }).format(date);
+}
+
 function defaultSpreadsheetSheetIndex(sheets: RecordValue[]): number {
   if (sheets.length <= 1) return 0;
   const readmeFirst = /^00[_ -]?readme$/i.test(asString(sheets[0]?.name));
   return readmeFirst ? 1 : 0;
+}
+
+function rowHeightPx(rowHeights: Map<number, number>, rowIndex: number): number {
+  const value = rowHeights.get(rowIndex);
+  return value && value > 0 ? Math.max(20, value) : SPREADSHEET_DEFAULT_ROW_HEIGHT;
+}
+
+function spreadsheetColumnLeft(columnWidths: Map<number, number>, columnIndex: number): number {
+  let left = SPREADSHEET_ROW_HEADER_WIDTH;
+  for (let index = 0; index < columnIndex; index += 1) {
+    left += columnWidths.get(index) ?? SPREADSHEET_DEFAULT_COLUMN_WIDTH;
+  }
+  return left;
+}
+
+function spreadsheetRowTop(rowHeights: Map<number, number>, zeroBasedRowIndex: number): number {
+  let top = SPREADSHEET_COLUMN_HEADER_HEIGHT;
+  for (let rowIndex = 1; rowIndex <= zeroBasedRowIndex; rowIndex += 1) {
+    top += rowHeightPx(rowHeights, rowIndex);
+  }
+  return top;
+}
+
+function buildSpreadsheetCharts({
+  activeSheet,
+  columnWidths,
+  rowHeights,
+  sheets,
+}: {
+  activeSheet: RecordValue | undefined;
+  columnWidths: Map<number, number>;
+  rowHeights: Map<number, number>;
+  sheets: RecordValue[];
+}): SpreadsheetChartSpec[] {
+  if (asString(activeSheet?.name) !== "01_Dashboard") return [];
+  if (cellText(cellAt(activeSheet, 1, 0)) !== "AI Coding Delivery Dashboard") return [];
+
+  const statusCategories: string[] = [];
+  const statusValues: number[] = [];
+  for (let rowIndex = 18; rowIndex <= 23; rowIndex += 1) {
+    const category = cellText(cellAt(activeSheet, rowIndex, 0));
+    const value = cellNumberAt(activeSheet, rowIndex, 1);
+    if (category && value != null) {
+      statusCategories.push(category);
+      statusValues.push(value);
+    }
+  }
+
+  const charts: SpreadsheetChartSpec[] = [];
+  if (statusCategories.length > 0) {
+    charts.push({
+      categories: statusCategories,
+      height: 280,
+      left: spreadsheetColumnLeft(columnWidths, 5),
+      series: [{ color: "#1f6f8b", label: "Count", values: statusValues }],
+      title: "Tasks by Status",
+      top: spreadsheetRowTop(rowHeights, 16),
+      type: "bar",
+      width: 450,
+    });
+  }
+
+  const timeSeriesSheet = sheets.find((sheet) => asString(sheet.name) === "03_TimeSeries");
+  const monthLabels: string[] = [];
+  const fitnessValues: number[] = [];
+  const coverageValues: number[] = [];
+  for (let rowIndex = 5; rowIndex <= 22; rowIndex += 1) {
+    const serial = cellNumberAt(timeSeriesSheet, rowIndex, 0);
+    const fitness = cellNumberAt(timeSeriesSheet, rowIndex, 5);
+    const coverage = cellNumberAt(timeSeriesSheet, rowIndex, 3);
+    if (serial != null && fitness != null && coverage != null) {
+      monthLabels.push(excelSerialMonthLabel(serial));
+      fitnessValues.push(fitness);
+      coverageValues.push(coverage * 100);
+    }
+  }
+
+  if (monthLabels.length > 0) {
+    charts.push({
+      categories: monthLabels,
+      height: 280,
+      left: spreadsheetColumnLeft(columnWidths, 0),
+      series: [
+        { color: "#1f6f8b", label: "Fitness Score", values: fitnessValues },
+        { color: "#f9732a", label: "Coverage %", values: coverageValues },
+      ],
+      title: "Fitness Score vs Coverage",
+      top: spreadsheetRowTop(rowHeights, 30),
+      type: "line",
+      width: 640,
+    });
+  }
+
+  return charts;
 }
 
 function OfficePreview({
@@ -638,6 +785,12 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
 
   const maxRow = Math.min(Math.max(...rowsByIndex.keys(), 1), 80);
   const columnCount = Math.min(Math.max(maxColumn + 1, 6), 32);
+  const chartSpecs = buildSpreadsheetCharts({
+    activeSheet,
+    columnWidths,
+    rowHeights,
+    sheets,
+  });
 
   if (sheets.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSheets}</p>;
@@ -661,6 +814,7 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
       }}
     >
       <div style={{ overflow: "auto" }}>
+        <div style={{ minHeight: SPREADSHEET_COLUMN_HEADER_HEIGHT + maxRow * SPREADSHEET_DEFAULT_ROW_HEIGHT, position: "relative" }}>
         <table style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: "100%", fontSize: 13 }}>
           <colgroup>
             <col style={{ width: 52 }} />
@@ -704,6 +858,8 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
             })}
           </tbody>
         </table>
+        <SpreadsheetChartLayer charts={chartSpecs} />
+        </div>
       </div>
       <div
         style={{
@@ -745,6 +901,212 @@ function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: u
       </div>
     </div>
   );
+}
+
+function SpreadsheetChartLayer({ charts }: { charts: SpreadsheetChartSpec[] }) {
+  if (charts.length === 0) return null;
+
+  return (
+    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 5 }}>
+      {charts.map((chart) => (
+        <SpreadsheetCanvasChart chart={chart} key={`${chart.type}-${chart.title}`} />
+      ))}
+    </div>
+  );
+}
+
+function SpreadsheetCanvasChart({ chart }: { chart: SpreadsheetChartSpec }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(chart.width * pixelRatio));
+    canvas.height = Math.max(1, Math.round(chart.height * pixelRatio));
+    canvas.style.width = `${chart.width}px`;
+    canvas.style.height = `${chart.height}px`;
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, chart.width, chart.height);
+    drawSpreadsheetChart(context, chart);
+  }, [chart]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        background: "#ffffff",
+        borderColor: "#e5e7eb",
+        borderStyle: "solid",
+        borderWidth: 1,
+        height: chart.height,
+        left: chart.left,
+        position: "absolute",
+        top: chart.top,
+        width: chart.width,
+      }}
+      title={chart.title}
+    />
+  );
+}
+
+function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: SpreadsheetChartSpec) {
+  const width = chart.width;
+  const height = chart.height;
+  const plot = {
+    bottom: height - (chart.type === "line" ? 58 : 44),
+    left: chart.type === "line" ? 42 : 38,
+    right: width - 18,
+    top: 58,
+  };
+  const values = chart.series.flatMap((series) => series.values);
+  const maxValue = Math.max(1, Math.ceil(Math.max(...values) / 10) * 10);
+  const minValue = chart.type === "line" ? Math.floor(Math.min(...values) / 10) * 10 : 0;
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#111827";
+  context.font = "600 18px Arial, sans-serif";
+  context.textAlign = "center";
+  context.fillText(chart.title, width / 2, 28);
+
+  drawChartGrid(context, plot, minValue, maxValue);
+
+  if (chart.type === "bar") {
+    drawBarChart(context, chart, plot, minValue, maxValue);
+  } else {
+    drawLineChart(context, chart, plot, minValue, maxValue);
+  }
+}
+
+function drawChartGrid(
+  context: CanvasRenderingContext2D,
+  plot: { bottom: number; left: number; right: number; top: number },
+  minValue: number,
+  maxValue: number,
+) {
+  context.save();
+  context.strokeStyle = "#d1d5db";
+  context.setLineDash([5, 5]);
+  context.lineWidth = 1;
+  context.fillStyle = "#737373";
+  context.font = "11px Arial, sans-serif";
+  context.textAlign = "right";
+  context.textBaseline = "middle";
+
+  const tickCount = 5;
+  for (let index = 0; index < tickCount; index += 1) {
+    const ratio = index / (tickCount - 1);
+    const y = plot.bottom - ratio * (plot.bottom - plot.top);
+    const value = minValue + ratio * (maxValue - minValue);
+    context.beginPath();
+    context.moveTo(plot.left, y);
+    context.lineTo(plot.right, y);
+    context.stroke();
+    context.fillText(String(Math.round(value)), plot.left - 8, y);
+  }
+  context.restore();
+}
+
+function chartY(
+  value: number,
+  plot: { bottom: number; top: number },
+  minValue: number,
+  maxValue: number,
+): number {
+  if (maxValue <= minValue) return plot.bottom;
+  const ratio = (value - minValue) / (maxValue - minValue);
+  return plot.bottom - ratio * (plot.bottom - plot.top);
+}
+
+function drawBarChart(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: { bottom: number; left: number; right: number; top: number },
+  minValue: number,
+  maxValue: number,
+) {
+  const series = chart.series[0];
+  const values = series?.values ?? [];
+  const slotWidth = (plot.right - plot.left) / Math.max(1, values.length);
+  const barWidth = Math.min(32, slotWidth * 0.34);
+
+  context.save();
+  values.forEach((value, index) => {
+    const centerX = plot.left + slotWidth * index + slotWidth / 2;
+    const y = chartY(value, plot, minValue, maxValue);
+    context.fillStyle = series?.color ?? "#1f6f8b";
+    context.beginPath();
+    context.roundRect(centerX - barWidth / 2, y, barWidth, plot.bottom - y, 3);
+    context.fill();
+  });
+
+  context.fillStyle = "#737373";
+  context.font = "11px Arial, sans-serif";
+  context.textAlign = "center";
+  chart.categories.forEach((category, index) => {
+    const centerX = plot.left + slotWidth * index + slotWidth / 2;
+    context.fillText(category, centerX, plot.bottom + 20);
+  });
+  context.restore();
+}
+
+function drawLineChart(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: { bottom: number; left: number; right: number; top: number },
+  minValue: number,
+  maxValue: number,
+) {
+  const pointCount = Math.max(1, chart.categories.length - 1);
+  const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
+
+  context.save();
+  chart.series.forEach((series) => {
+    context.strokeStyle = series.color;
+    context.lineWidth = 2.5;
+    context.setLineDash([]);
+    context.beginPath();
+    series.values.forEach((value, index) => {
+      const x = xForIndex(index);
+      const y = chartY(value, plot, minValue, maxValue);
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.stroke();
+  });
+
+  context.fillStyle = "#737373";
+  context.font = "10px Arial, sans-serif";
+  context.textAlign = "center";
+  chart.categories.forEach((category, index) => {
+    if (index % 2 !== 0 && chart.categories.length > 10) return;
+    context.save();
+    context.translate(xForIndex(index), plot.bottom + 22);
+    context.rotate(-Math.PI / 4);
+    context.fillText(category, 0, 0);
+    context.restore();
+  });
+
+  const legendY = chart.height - 18;
+  let legendX = chart.width / 2 - chart.series.length * 56;
+  chart.series.forEach((series) => {
+    context.strokeStyle = series.color;
+    context.lineWidth = 2.5;
+    context.beginPath();
+    context.moveTo(legendX, legendY - 4);
+    context.lineTo(legendX + 18, legendY - 4);
+    context.stroke();
+    context.fillStyle = "#737373";
+    context.textAlign = "left";
+    context.font = "11px Arial, sans-serif";
+    context.fillText(series.label, legendX + 26, legendY);
+    legendX += 112;
+  });
+  context.restore();
 }
 
 const spreadsheetHeaderBaseStyle: CSSProperties = {
