@@ -4,8 +4,39 @@ use crate::{
     HookArgs, HookCommand, StreamMode,
 };
 use clap::{CommandFactory, Parser};
-use std::fs;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::{Mutex, MutexGuard},
+};
 use tempfile::tempdir;
+
+static CURRENT_DIR_LOCK: Mutex<()> = Mutex::new(());
+
+struct CurrentDirGuard {
+    previous: PathBuf,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl CurrentDirGuard {
+    fn enter(path: &Path) -> Self {
+        let lock = CURRENT_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = std::env::current_dir().expect("cwd");
+        std::env::set_current_dir(path).expect("chdir temp repo");
+        Self {
+            previous,
+            _lock: lock,
+        }
+    }
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        std::env::set_current_dir(&self.previous).expect("restore cwd");
+    }
+}
 
 #[test]
 fn graph_stats_accepts_json_flag() {
@@ -438,8 +469,7 @@ fn graph_test_mapping_returns_non_zero_when_missing_and_fail_on_missing_enabled(
     fs::create_dir_all(repo_root.join("src")).expect("create src");
     fs::write(repo_root.join("src/demo.ts"), "export function demo() {}\n").expect("write source");
 
-    let previous = std::env::current_dir().expect("cwd");
-    std::env::set_current_dir(repo_root).expect("chdir temp repo");
+    let _cwd_guard = CurrentDirGuard::enter(repo_root);
 
     let exit_code = cmd_graph_test_mapping(GraphTestMappingArgs {
         files: vec!["src/demo.ts".to_string()],
@@ -450,7 +480,6 @@ fn graph_test_mapping_returns_non_zero_when_missing_and_fail_on_missing_enabled(
         json: true,
     });
 
-    std::env::set_current_dir(previous).expect("restore cwd");
     assert_eq!(exit_code, 2);
 }
 
@@ -461,8 +490,7 @@ fn graph_test_mapping_allows_missing_when_flag_disabled() {
     fs::create_dir_all(repo_root.join("src")).expect("create src");
     fs::write(repo_root.join("src/demo.ts"), "export function demo() {}\n").expect("write source");
 
-    let previous = std::env::current_dir().expect("cwd");
-    std::env::set_current_dir(repo_root).expect("chdir temp repo");
+    let _cwd_guard = CurrentDirGuard::enter(repo_root);
 
     let exit_code = cmd_graph_test_mapping(GraphTestMappingArgs {
         files: vec!["src/demo.ts".to_string()],
@@ -473,7 +501,6 @@ fn graph_test_mapping_allows_missing_when_flag_disabled() {
         json: true,
     });
 
-    std::env::set_current_dir(previous).expect("restore cwd");
     assert_eq!(exit_code, 0);
 }
 
