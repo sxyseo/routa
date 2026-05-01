@@ -113,6 +113,17 @@ export const enTail: TailTranslationDictionarySections = {
     eventSourceDisconnected: "EventSource disconnected",
     historySnapshot: "History Snapshot",
     replayEvents: "Replay Events",
+    officeWasmPocTitle: "Office WASM POC",
+    officeWasmPocDescription:
+      "Upload CSV, TSV, DOCX, PPTX or XLSX to parse them in-browser with Walnut readers.",
+    officeWasmPocSelectFile: "Select file",
+    officeWasmPocStatus: "Status",
+    officeWasmPocFile: "File:",
+    officeWasmPocArtifactType: "Artifact:",
+    officeWasmPocNoResult: "No parse result yet.",
+    officeWasmPocTopFields: "Top-level proto fields:",
+    officeWasmPocParsedOutput: "Parsed output",
+    unsupportedOfficeFormat: "Unsupported file format. Supported: .csv, .tsv, .docx, .pptx, .xlsx",
   },
 
   // UI components

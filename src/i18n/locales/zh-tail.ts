@@ -110,6 +110,17 @@ export const zhTail: TailTranslationDictionarySections = {
     eventSourceDisconnected: "EventSource 已断开",
     historySnapshot: "历史快照",
     replayEvents: "回放事件",
+    officeWasmPocTitle: "Office WASM POC",
+    officeWasmPocDescription:
+      "支持上传 CSV / TSV / DOCX / PPTX / XLSX 文件，并使用 Walnut 解析器在浏览器内完成解析。",
+    officeWasmPocSelectFile: "选择文件",
+    officeWasmPocStatus: "状态",
+    officeWasmPocFile: "文件：",
+    officeWasmPocArtifactType: "产物类型：",
+    officeWasmPocNoResult: "尚未解析任何内容。",
+    officeWasmPocTopFields: "Proto 顶层字段：",
+    officeWasmPocParsedOutput: "解析结果",
+    unsupportedOfficeFormat: "不支持的文件类型，当前仅支持 .csv、.tsv、.docx、.pptx、.xlsx",
   },
 
   ui: {

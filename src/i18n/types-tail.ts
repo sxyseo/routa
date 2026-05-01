@@ -112,6 +112,16 @@ export interface TailTranslationDictionarySections {
     eventSourceDisconnected: string;
     historySnapshot: string;
     replayEvents: string;
+    officeWasmPocTitle: string;
+    officeWasmPocDescription: string;
+    officeWasmPocSelectFile: string;
+    officeWasmPocStatus: string;
+    officeWasmPocFile: string;
+    officeWasmPocArtifactType: string;
+    officeWasmPocNoResult: string;
+    officeWasmPocTopFields: string;
+    officeWasmPocParsedOutput: string;
+    unsupportedOfficeFormat: string;
   };
 
   // UI components
