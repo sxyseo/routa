@@ -120,11 +120,20 @@ async function extractRoutaDocumentProto(sourceBytes: Uint8Array): Promise<Uint8
 }
 
 function summarizeDocument(document: Record<string, unknown>, protoBytes: Uint8Array) {
+  const charts = arrayOfRecords(document.charts);
   const elements = arrayOfRecords(document.elements);
   const images = arrayOfRecords(document.images);
+  const footnotes = arrayOfRecords(document.footnotes);
+  const comments = arrayOfRecords(document.comments);
+  const commentReferences = arrayOfRecords(document.commentReferences);
+  const reviewMarks = arrayOfRecords(document.reviewMarks);
+  const sections = arrayOfRecords(document.sections);
+  const paragraphNumberings = arrayOfRecords(document.paragraphNumberings);
   const imageIds = new Set(images.map((image) => String(image.id ?? "")).filter(Boolean));
   const imageReferenceIds = elements.flatMap(elementImageReferenceIds);
+  const chartReferenceIds = elements.flatMap(elementChartReferenceIds);
   const paragraphs = elements.flatMap(elementParagraphs);
+  const textRuns = paragraphs.flatMap((paragraph) => arrayOfRecords(paragraph.runs));
 
   return {
     protoByteLength: protoBytes.length,
@@ -133,6 +142,10 @@ function summarizeDocument(document: Record<string, unknown>, protoBytes: Uint8A
     name: document.name,
     widthEmu: document.widthEmu,
     heightEmu: document.heightEmu,
+    chartCount: charts.length,
+    chartIds: charts.map((chart) => String(chart.id ?? "")).filter(Boolean),
+    chartReferenceCount: chartReferenceIds.length,
+    chartReferenceIds,
     elementCount: elements.length,
     elementTypes: countBy(elements, elementTypeKey),
     imageCount: images.length,
@@ -141,12 +154,31 @@ function summarizeDocument(document: Record<string, unknown>, protoBytes: Uint8A
     imageReferenceIds,
     missingImageReferenceIds: [...new Set(imageReferenceIds.filter((id) => !imageIds.has(id)))],
     paragraphCount: paragraphs.length,
-    textRunCount: paragraphs.reduce((count, paragraph) => count + arrayOfRecords(paragraph.runs).length, 0),
+    textRunCount: textRuns.length,
+    hyperlinkCount: textRuns.filter((run) => isRecord(run.hyperlink)).length,
+    reviewMarkedRunCount: textRuns.filter((run) => arrayOfStrings(run.reviewMarkIds).length > 0).length,
+    footnoteCount: footnotes.length,
+    footnoteReferenceRunIds: footnotes.flatMap((footnote) =>
+      arrayOfStrings(footnote.referenceRunIds).map((runId) => `${String(footnote.id ?? "")}:${runId}`)
+    ),
+    commentCount: comments.length,
+    commentReferenceCount: commentReferences.length,
+    commentReferenceRunIds: commentReferences.flatMap((reference) =>
+      arrayOfStrings(reference.runIds).map((runId) => `${String(reference.commentId ?? "")}:${runId}`)
+    ),
+    reviewMarkCount: reviewMarks.length,
     tableCount: elements.filter((element) => isRecord(element.table)).length,
     textStyleCount: arrayOfRecords(document.textStyles).length,
     textStyleIds: arrayOfRecords(document.textStyles).map((style) => String(style.id ?? "")).filter(Boolean),
-    sectionCount: arrayOfRecords(document.sections).length,
+    sectionCount: sections.length,
+    sectionShapes: sections.map(summarizeSection),
     numberingDefinitionCount: arrayOfRecords(document.numberingDefinitions).length,
+    paragraphNumberingCount: paragraphNumberings.length,
+    paragraphNumberings: paragraphNumberings.map((numbering) => ({
+      paragraphId: String(numbering.paragraphId ?? ""),
+      numId: String(numbering.numId ?? ""),
+      level: Number(numbering.level ?? 0),
+    })),
     tableShapes: elements.filter((element) => isRecord(element.table)).map(summarizeTableShape),
     firstElements: elements.slice(0, 12).map(summarizeElement),
   };
@@ -169,13 +201,26 @@ function summarizeEquivalence(
     imageDigestsMatch: stableJson(walnutSummary.imageDigests) === stableJson(routaSummary.imageDigests),
     imageReferenceIdsMatch: stableJson(walnutSummary.imageReferenceIds) === stableJson(routaSummary.imageReferenceIds),
     imageReferencesResolve: routaSummary.missingImageReferenceIds.length === 0,
+    chartCountMatches: walnutSummary.chartCount === routaSummary.chartCount,
+    chartReferenceIdsMatch: stableJson(walnutSummary.chartReferenceIds) === stableJson(routaSummary.chartReferenceIds),
     paragraphCountMatches: walnutSummary.paragraphCount === routaSummary.paragraphCount,
+    hyperlinkCountMatches: walnutSummary.hyperlinkCount === routaSummary.hyperlinkCount,
+    footnoteCountMatches: walnutSummary.footnoteCount === routaSummary.footnoteCount,
+    footnoteReferenceRunIdsMatch:
+      stableJson(walnutSummary.footnoteReferenceRunIds) === stableJson(routaSummary.footnoteReferenceRunIds),
+    commentCountMatches: walnutSummary.commentCount === routaSummary.commentCount,
+    commentReferenceRunIdsMatch:
+      stableJson(walnutSummary.commentReferenceRunIds) === stableJson(routaSummary.commentReferenceRunIds),
+    reviewMarkCountMatches: walnutSummary.reviewMarkCount === routaSummary.reviewMarkCount,
     tableShapesMatch: stableJson(walnutSummary.tableShapes) === stableJson(routaSummary.tableShapes),
     textRunCountMatches: walnutSummary.textRunCount === routaSummary.textRunCount,
     textStyleCountMatches: walnutSummary.textStyleCount === routaSummary.textStyleCount,
     sectionCountMatches: walnutSummary.sectionCount === routaSummary.sectionCount,
+    sectionShapesMatch: stableJson(walnutSummary.sectionShapes) === stableJson(routaSummary.sectionShapes),
     numberingDefinitionCountMatches:
       walnutSummary.numberingDefinitionCount === routaSummary.numberingDefinitionCount,
+    paragraphNumberingCountMatches:
+      walnutSummary.paragraphNumberingCount === routaSummary.paragraphNumberingCount,
   };
 }
 
@@ -196,10 +241,23 @@ function summarizeElement(element: Record<string, unknown>) {
     type: element.type,
     bbox: element.bbox,
     hasImageReference: elementImageReferenceIds(element).length > 0,
+    hasChartReference: elementChartReferenceIds(element).length > 0,
     hasTable: isRecord(element.table),
     paragraphCount: paragraphs.length,
     textPreview: paragraphs.map(paragraphText).filter(Boolean).join(" ").slice(0, 220),
     tableShape: isRecord(element.table) ? summarizeTableShape(element) : undefined,
+  };
+}
+
+function summarizeSection(section: Record<string, unknown>) {
+  const columns = asRecord(section.columns);
+  const header = asRecord(section.header);
+  const footer = asRecord(section.footer);
+  return {
+    breakType: section.breakType,
+    columnCount: columns?.count ?? 0,
+    headerElementCount: arrayOfRecords(header?.elements).length,
+    footerElementCount: arrayOfRecords(footer?.elements).length,
   };
 }
 
@@ -226,6 +284,10 @@ function elementTypeKey(element: Record<string, unknown>): string {
 
   if (elementImageReferenceIds(element).length > 0) {
     return "imageReference";
+  }
+
+  if (elementChartReferenceIds(element).length > 0) {
+    return "chartReference";
   }
 
   return "text";
@@ -264,6 +326,15 @@ function elementImageReferenceIds(element: Record<string, unknown>): string[] {
     imageReferenceId(asRecord(element.fill)?.imageReference),
     imageReferenceId(asRecord(asRecord(element.shape)?.fill)?.imageReference),
   ].filter(Boolean);
+}
+
+function elementChartReferenceIds(element: Record<string, unknown>): string[] {
+  return [chartReferenceId(element.chartReference)].filter(Boolean);
+}
+
+function chartReferenceId(value: unknown): string {
+  const record = asRecord(value);
+  return typeof record?.id === "string" ? record.id : "";
 }
 
 function imageReferenceId(value: unknown): string {
@@ -397,6 +468,10 @@ function toUint8Array(value: Uint8Array | ArrayBuffer | number[]): Uint8Array {
 
 function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
