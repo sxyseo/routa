@@ -153,14 +153,6 @@ async function parseDocument(file: File, kind: "docx" | "pptx" | "xlsx"): Promis
   return { kind: "spreadsheet", sourceKind: "xlsx", proto };
 }
 
-function buildSummary(parsed: ParsedArtifact | null): string[] {
-  if (!parsed || typeof parsed.proto !== "object" || parsed.proto === null) {
-    return [];
-  }
-
-  return Object.keys(parsed.proto as Record<string, unknown>).slice(0, 20);
-}
-
 function truncateJson(rawJson: string): string {
   const maxLength = 50_000;
   if (rawJson.length <= maxLength) return rawJson;
@@ -877,7 +869,6 @@ export function OfficeWasmPocPageClient() {
 
   const preview =
     artifact == null ? "" : truncateJson(JSON.stringify(artifact.proto, null, 2));
-  const summary = buildSummary(artifact);
   const labels: PreviewLabels = {
     visualPreview: t.debug.officeWasmPocVisualPreview,
     rawJson: t.debug.officeWasmPocRawJson,
@@ -906,46 +897,42 @@ export function OfficeWasmPocPageClient() {
         width: "100%",
       }}
     >
-      <h1>{t.debug.officeWasmPocTitle}</h1>
-      <p>{t.debug.officeWasmPocDescription}</p>
-      <label style={{ display: "grid", gap: 8, width: "100%", maxWidth: 360 }}>
-        <span>{t.debug.officeWasmPocSelectFile}</span>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv,.tsv,.docx,.pptx,.xlsx"
-          onChange={parseFile}
-          disabled={isBusy}
-        />
-      </label>
-
-      <section style={{ marginTop: 16 }}>
-        <div><strong>{t.debug.officeWasmPocStatus}</strong> {statusLabel(t, status)}</div>
+      <header
+        style={{
+          alignItems: "center",
+          borderBottom: "1px solid #e2e8f0",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          paddingBottom: 12,
+        }}
+      >
+        <label style={{ alignItems: "center", display: "flex", gap: 8 }}>
+          <span style={{ color: "#475569", fontSize: 13 }}>{t.debug.officeWasmPocSelectFile}</span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.tsv,.docx,.pptx,.xlsx"
+            onChange={parseFile}
+            disabled={isBusy}
+          />
+        </label>
+        <div style={{ color: "#475569", fontSize: 13 }}>
+          <strong>{t.debug.officeWasmPocStatus}</strong> {statusLabel(t, status)}
+        </div>
         {selectedFileName ? (
-          <div>
-            {t.debug.officeWasmPocFile} <code>{selectedFileName}</code>
+          <div style={{ color: "#475569", fontSize: 13 }}>
+            <code>{selectedFileName}</code>
             {lastBytes !== null ? <> ({lastBytes} {t.debug.officeWasmPocBytes})</> : null}
           </div>
         ) : null}
-        {errorMessage ? <p style={{ color: "#b91c1c" }}>{errorMessage}</p> : null}
-      </section>
+        {errorMessage ? <div style={{ color: "#b91c1c", fontSize: 13 }}>{errorMessage}</div> : null}
+      </header>
 
-      <section style={{ marginTop: 16 }}>
-        <h2>{t.debug.officeWasmPocParsedOutput}</h2>
+      <section>
         {artifact ? (
-          <div>
-            <p>
-              {t.debug.officeWasmPocArtifactType}
-              <code>{artifact.kind}</code> / <code>{artifact.sourceKind}</code>
-            </p>
-            {summary.length > 0 ? (
-              <p>
-                {t.debug.officeWasmPocTopFields}
-                <code>{summary.join(", ")}</code>
-              </p>
-            ) : null}
-            <section data-testid="office-preview" style={{ display: "grid", gap: 12, marginTop: 16 }}>
-              <h3 style={{ margin: 0 }}>{labels.visualPreview}</h3>
+          <div style={{ display: "grid", gap: 12 }}>
+            <section data-testid="office-preview">
               <OfficePreview artifact={artifact} labels={labels} />
             </section>
             <details style={{ marginTop: 18 }}>
