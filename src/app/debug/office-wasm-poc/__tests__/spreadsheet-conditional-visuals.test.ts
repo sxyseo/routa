@@ -66,4 +66,37 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:1")?.background).toBe("#bfdbfe");
     expect(visuals.get("4:1")?.fontWeight).toBe(700);
   });
+
+  it("preserves icon set family metadata for renderer glyphs", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A2"],
+          rules: [
+            {
+              iconSet: {
+                cfvos: [
+                  { type: "percent", val: "0" },
+                  { type: "percent", val: "50" },
+                ],
+                iconSet: "5Rating",
+                showValue: false,
+              },
+              type: "iconSet",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: 1 }], index: 1 },
+        { cells: [{ address: "A2", value: 9 }], index: 2 },
+      ],
+    });
+
+    expect(visuals.get("1:0")?.iconSet).toMatchObject({
+      iconSet: "5Rating",
+      levelCount: 5,
+      showValue: false,
+    });
+  });
 });

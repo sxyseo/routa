@@ -25,7 +25,9 @@ export type SpreadsheetCellVisual = {
   filter?: boolean;
   iconSet?: {
     color: string;
+    iconSet: string;
     level: number;
+    levelCount: number;
     showValue: boolean;
   };
   color?: string;
@@ -574,7 +576,9 @@ function spreadsheetIconSetVisual(
   const palette = ["#9ca3af", "#94a3b8", "#6b9fc3", "#3b82b6", "#16638a"];
   return {
     color: palette[level - 1] ?? palette[0],
+    iconSet: asString(iconSet?.iconSet),
     level,
+    levelCount,
     showValue,
   };
 }

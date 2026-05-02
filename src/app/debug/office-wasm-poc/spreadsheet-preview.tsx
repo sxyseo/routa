@@ -622,6 +622,30 @@ function SpreadsheetCellContent({
 }
 
 function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVisual["iconSet"]> }) {
+  const glyph = spreadsheetIconSetGlyph(visual);
+  if (glyph) {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          color: visual.color,
+          display: "inline-block",
+          fontSize: 15,
+          fontWeight: 700,
+          lineHeight: "14px",
+          marginRight: visual.showValue ? 5 : 0,
+          position: "relative",
+          textAlign: "center",
+          top: 1,
+          width: 18,
+          zIndex: 1,
+        }}
+      >
+        {glyph}
+      </span>
+    );
+  }
+
   return (
     <span
       aria-hidden="true"
@@ -652,6 +676,25 @@ function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVis
       ))}
     </span>
   );
+}
+
+function spreadsheetIconSetGlyph(visual: NonNullable<SpreadsheetCellVisual["iconSet"]>): string {
+  const iconSet = visual.iconSet.toLowerCase();
+  const zeroBasedLevel = Math.max(0, Math.min(visual.levelCount - 1, visual.level - 1));
+  if (iconSet.includes("rating") || iconSet.includes("quarter")) {
+    return ["☆", "◔", "◑", "◕", "★"][zeroBasedLevel] ?? "★";
+  }
+
+  if (iconSet.includes("arrow")) {
+    const arrows = visual.levelCount >= 5 ? ["▼", "↘", "→", "↗", "▲"] : ["▼", "→", "▲"];
+    return arrows[Math.min(arrows.length - 1, zeroBasedLevel)] ?? "→";
+  }
+
+  if (iconSet.includes("traffic") || iconSet.includes("symbol") || iconSet.includes("sign")) {
+    return "●";
+  }
+
+  return "";
 }
 
 const spreadsheetHeaderBaseStyle: CSSProperties = {
