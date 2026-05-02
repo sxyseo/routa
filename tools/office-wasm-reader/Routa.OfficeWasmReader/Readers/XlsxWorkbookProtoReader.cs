@@ -93,6 +93,11 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 22, note);
             }
 
+            foreach (var pivotCache in WorkbookPivotCaches(workbookPart))
+            {
+                WriteMessage(output, 24, pivotCache);
+            }
+
             var definedNames = WriteDefinedNames(workbookPart.Workbook.DefinedNames);
             if (definedNames is not null)
             {
@@ -158,6 +163,11 @@ internal static class XlsxWorkbookProtoReader
             foreach (var tablePart in worksheetPart.TableDefinitionParts)
             {
                 WriteMessage(output, 15, WriteTable(tablePart.Table));
+            }
+
+            foreach (var pivotTablePart in worksheetPart.PivotTableParts)
+            {
+                WriteMessage(output, 16, WritePivotTable(pivotTablePart.PivotTableDefinition));
             }
 
             var sparklineGroups = WriteSparklineGroups(worksheetPart.Worksheet);
@@ -377,6 +387,207 @@ internal static class XlsxWorkbookProtoReader
             {
                 WriteMessage(output, 2, WriteFilterColumn(column));
             }
+        });
+    }
+
+    private static byte[] WritePivotTable(S.PivotTableDefinition? pivotTable)
+    {
+        return Message(output =>
+        {
+            if (pivotTable is null)
+            {
+                return;
+            }
+
+            WriteString(output, 1, pivotTable.Name?.Value ?? "");
+            WriteInt32(output, 2, (int)(pivotTable.CacheId?.Value ?? 0));
+            if (pivotTable.Location is not null)
+            {
+                WriteMessage(output, 3, WritePivotLocation(pivotTable.Location));
+            }
+
+            WriteBoolValue(output, 4, BoolAttribute(pivotTable, "dataOnRows"));
+            WriteBoolValue(output, 5, BoolAttribute(pivotTable, "rowGrandTotals"));
+            WriteBoolValue(output, 6, BoolAttribute(pivotTable, "colGrandTotals"));
+
+            var fieldIndex = 0;
+            foreach (var field in pivotTable.PivotFields?.Elements<S.PivotField>() ?? [])
+            {
+                WriteMessage(output, 7, WritePivotField(field, fieldIndex));
+                fieldIndex += 1;
+            }
+
+            WritePackedInt32s(output, 8, PivotFieldIndexes(ChildByLocalName(pivotTable, "rowFields")));
+            WritePackedInt32s(output, 9, PivotFieldIndexes(ChildByLocalName(pivotTable, "colFields")));
+
+            foreach (var pageField in ChildByLocalName(pivotTable, "pageFields")?.Elements() ?? [])
+            {
+                if (pageField.LocalName == "pageField")
+                {
+                    WriteMessage(output, 10, WritePivotPageField(pageField));
+                }
+            }
+
+            foreach (var dataField in pivotTable.DataFields?.Elements<S.DataField>() ?? [])
+            {
+                WriteMessage(output, 11, WritePivotDataField(dataField));
+            }
+
+            foreach (var filter in ChildByLocalName(pivotTable, "filters")?.Elements() ?? [])
+            {
+                if (filter.LocalName == "filter")
+                {
+                    WriteMessage(output, 12, WritePivotFilter(filter));
+                }
+            }
+
+            WriteBoolValue(output, 13, BoolAttribute(pivotTable, "compact"));
+            WriteBoolValue(output, 14, BoolAttribute(pivotTable, "outline"));
+            WriteBoolValue(output, 15, BoolAttribute(pivotTable, "showDrill"));
+
+            var style = ChildByLocalName(pivotTable, "pivotTableStyleInfo");
+            WriteString(output, 16, AttributeValue(style, "name"));
+
+            foreach (var item in ChildByLocalName(pivotTable, "rowItems")?.Elements() ?? [])
+            {
+                if (item.LocalName == "i")
+                {
+                    WriteMessage(output, 17, WritePivotItem(item));
+                }
+            }
+
+            foreach (var item in ChildByLocalName(pivotTable, "colItems")?.Elements() ?? [])
+            {
+                if (item.LocalName == "i")
+                {
+                    WriteMessage(output, 18, WritePivotItem(item));
+                }
+            }
+
+            WriteBoolValue(output, 19, BoolAttribute(style, "showRowHeaders"));
+            WriteBoolValue(output, 20, BoolAttribute(style, "showColHeaders"));
+            WriteBoolValue(output, 21, BoolAttribute(style, "showRowStripes"));
+            WriteBoolValue(output, 22, BoolAttribute(style, "showColStripes"));
+            WriteBoolValue(output, 23, BoolAttribute(style, "showLastColumn"));
+            WriteBoolValue(output, 24, BoolAttribute(pivotTable, "applyNumberFormats"));
+            WriteBoolValue(output, 25, BoolAttribute(pivotTable, "applyBorderFormats"));
+            WriteBoolValue(output, 26, BoolAttribute(pivotTable, "applyFontFormats"));
+            WriteBoolValue(output, 27, BoolAttribute(pivotTable, "applyPatternFormats"));
+            WriteBoolValue(output, 28, BoolAttribute(pivotTable, "applyAlignmentFormats"));
+            WriteBoolValue(output, 29, BoolAttribute(pivotTable, "applyWidthHeightFormats"));
+            WriteString(output, 30, AttributeValue(pivotTable, "dataCaption"));
+            WriteInt32Value(output, 31, Int32Attribute(pivotTable, "updatedVersion"));
+            WriteInt32Value(output, 32, Int32Attribute(pivotTable, "minRefreshableVersion"));
+            WriteBoolValue(output, 33, BoolAttribute(pivotTable, "useAutoFormatting"));
+            WriteBoolValue(output, 34, BoolAttribute(pivotTable, "itemPrintTitles"));
+            WriteInt32Value(output, 35, Int32Attribute(pivotTable, "createdVersion"));
+            WriteDoubleValue(output, 36, DoubleAttribute(pivotTable, "indent"));
+            WriteBoolValue(output, 37, BoolAttribute(pivotTable, "outlineData"));
+            WriteBoolValue(output, 38, BoolAttribute(pivotTable, "multipleFieldFilters"));
+            WriteInt32Value(output, 39, Int32Attribute(pivotTable, "chartFormat"));
+            WriteString(output, 40, TextNormalization.Clean(pivotTable.PivotTableDefinitionExtensionList?.OuterXml));
+        });
+    }
+
+    private static byte[] WritePivotLocation(S.Location location)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, location.Reference?.Value ?? "");
+            WriteInt32Value(output, 2, Int32Attribute(location, "firstHeaderRow"));
+            WriteInt32Value(output, 3, Int32Attribute(location, "firstDataRow"));
+            WriteInt32Value(output, 4, Int32Attribute(location, "firstHeaderCol"));
+            WriteInt32Value(output, 5, Int32Attribute(location, "firstDataCol"));
+            WriteInt32Value(output, 6, Int32Attribute(location, "rowPageCount"));
+            WriteInt32Value(output, 7, Int32Attribute(location, "colPageCount"));
+        });
+    }
+
+    private static byte[] WritePivotField(S.PivotField field, int index)
+    {
+        var axis = AttributeValue(field, "axis");
+        var sortType = AttributeValue(field, "sortType");
+        return Message(output =>
+        {
+            WriteInt32(output, 1, index);
+            WriteString(output, 2, field.Name?.Value ?? "");
+            WriteString(output, 3, axis);
+            WriteBoolValue(output, 4, BoolAttribute(field, "dataField"));
+            WriteBoolValue(output, 5, BoolAttribute(field, "showAll"));
+            WriteBoolValue(output, 6, BoolAttribute(field, "subtotalTop"));
+
+            foreach (var item in field.Items?.Elements<S.Item>() ?? [])
+            {
+                WriteMessage(output, 7, WritePivotItem(item));
+            }
+
+            WriteInt32Value(output, 8, Int32Attribute(field, "numFmtId"));
+            WriteString(output, 9, sortType);
+            WriteBoolValue(output, 10, BoolAttribute(field, "multipleItemSelectionAllowed"));
+            WriteInt32(output, 30, PivotAxis(axis));
+            WriteInt32(output, 31, FieldSort(sortType));
+        });
+    }
+
+    private static byte[] WritePivotItem(OpenXmlElement item)
+    {
+        var index = Int32Attribute(item, "x");
+        if (index is null)
+        {
+            index = item.Elements().FirstOrDefault(child => child.LocalName == "x") is { } child
+                ? Int32Attribute(child, "v")
+                : null;
+        }
+
+        return Message(output =>
+        {
+            WriteString(output, 1, AttributeValue(item, "t"));
+            WriteInt32Value(output, 2, index);
+            WriteBoolValue(output, 3, BoolAttribute(item, "h"));
+            WriteBoolValue(output, 4, BoolAttribute(item, "c"));
+            WriteBoolValue(output, 5, BoolAttribute(item, "m"));
+            WriteInt32Value(output, 6, Int32Attribute(item, "r"));
+            WriteInt32Value(output, 7, Int32Attribute(item, "i"));
+        });
+    }
+
+    private static byte[] WritePivotPageField(OpenXmlElement pageField)
+    {
+        return Message(output =>
+        {
+            WriteInt32Value(output, 1, Int32Attribute(pageField, "fld"));
+            WriteInt32Value(output, 2, Int32Attribute(pageField, "item"));
+            WriteString(output, 3, AttributeValue(pageField, "name"));
+            WriteInt32Value(output, 4, Int32Attribute(pageField, "hier"));
+        });
+    }
+
+    private static byte[] WritePivotDataField(S.DataField dataField)
+    {
+        var subtotal = AttributeValue(dataField, "subtotal");
+        return Message(output =>
+        {
+            WriteInt32(output, 1, (int)(dataField.Field?.Value ?? 0));
+            WriteString(output, 2, dataField.Name?.Value ?? "");
+            WriteString(output, 3, subtotal);
+            WriteInt32Value(output, 4, Int32Attribute(dataField, "numFmtId"));
+            WriteString(output, 5, AttributeValue(dataField, "showDataAs"));
+            WriteInt32Value(output, 6, Int32Attribute(dataField, "baseField"));
+            WriteInt32Value(output, 7, Int32Attribute(dataField, "baseItem"));
+            WriteInt32(output, 30, DataConsolidateFunction(subtotal));
+        });
+    }
+
+    private static byte[] WritePivotFilter(OpenXmlElement filter)
+    {
+        var type = AttributeValue(filter, "type");
+        return Message(output =>
+        {
+            WriteInt32Value(output, 1, Int32Attribute(filter, "fld"));
+            WriteString(output, 2, type);
+            WriteString(output, 3, AttributeValue(filter, "name"));
+            WriteString(output, 4, AttributeValue(filter, "description"));
+            WriteInt32(output, 30, PivotFilterType(type));
         });
     }
 
@@ -751,6 +962,125 @@ internal static class XlsxWorkbookProtoReader
                 }
             }
         }
+    }
+
+    private static IEnumerable<byte[]> WorkbookPivotCaches(WorkbookPart workbookPart)
+    {
+        foreach (var pivotCache in workbookPart.Workbook.Descendants<S.PivotCache>())
+        {
+            var relationshipId = pivotCache.Id?.Value;
+            if (string.IsNullOrEmpty(relationshipId) ||
+                workbookPart.GetPartById(relationshipId) is not PivotTableCacheDefinitionPart cachePart)
+            {
+                continue;
+            }
+
+            yield return WritePivotCache((int)(pivotCache.CacheId?.Value ?? 0), cachePart.PivotCacheDefinition);
+        }
+    }
+
+    private static byte[] WritePivotCache(int cacheId, S.PivotCacheDefinition? definition)
+    {
+        return Message(output =>
+        {
+            if (definition is null)
+            {
+                return;
+            }
+
+            WriteInt32(output, 1, cacheId);
+
+            foreach (var field in definition.CacheFields?.Elements<S.CacheField>() ?? [])
+            {
+                WriteMessage(output, 3, WritePivotCacheField(field));
+            }
+
+            var worksheetSource = definition.CacheSource?.WorksheetSource;
+            WriteString(output, 6, worksheetSource?.Reference?.Value ?? "");
+            WriteString(output, 7, worksheetSource?.Sheet?.Value ?? "");
+            WriteString(output, 8, definition.RefreshedBy?.Value ?? "");
+            WriteString(output, 9, PivotRefreshedDate(definition));
+            WriteInt32Value(output, 10, Int32Attribute(definition, "createdVersion"));
+            WriteInt32Value(output, 11, Int32Attribute(definition, "refreshedVersion"));
+            WriteInt32Value(output, 12, Int32Attribute(definition, "minRefreshableVersion"));
+            WriteInt32Value(output, 13, Int32Attribute(definition, "recordCount"));
+            WriteString(output, 14, TextNormalization.Clean(definition.PivotCacheDefinitionExtensionList?.OuterXml));
+        });
+    }
+
+    private static byte[] WritePivotCacheField(S.CacheField field)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, field.Name?.Value ?? "");
+            WriteInt32Value(output, 2, Int32Attribute(field, "numFmtId"));
+            if (field.SharedItems is not null)
+            {
+                WriteMessage(output, 3, WritePivotSharedItems(field.SharedItems));
+            }
+
+            if (field.FieldGroup is not null)
+            {
+                WriteMessage(output, 4, WritePivotFieldGroup(field.FieldGroup));
+            }
+        });
+    }
+
+    private static byte[] WritePivotSharedItems(S.SharedItems sharedItems)
+    {
+        return Message(output =>
+        {
+            foreach (var item in sharedItems.Elements())
+            {
+                var value = AttributeValue(item, "v");
+                if (value.Length > 0)
+                {
+                    WriteString(output, 1, value);
+                }
+            }
+
+            WriteBoolValue(output, 2, BoolAttribute(sharedItems, "containsBlank"));
+            WriteBoolValue(output, 3, BoolAttribute(sharedItems, "containsDate"));
+            WriteBoolValue(output, 4, BoolAttribute(sharedItems, "containsNumber"));
+            WriteBoolValue(output, 5, BoolAttribute(sharedItems, "containsString"));
+            WriteBoolValue(output, 6, BoolAttribute(sharedItems, "containsSemiMixedTypes"));
+            WriteBoolValue(output, 7, BoolAttribute(sharedItems, "containsNonDate"));
+            WriteBoolValue(output, 8, BoolAttribute(sharedItems, "containsInteger"));
+            WriteDoubleValue(output, 9, DoubleAttribute(sharedItems, "minValue"));
+            WriteDoubleValue(output, 10, DoubleAttribute(sharedItems, "maxValue"));
+            WriteString(output, 11, AttributeValue(sharedItems, "minDate"));
+            WriteString(output, 12, AttributeValue(sharedItems, "maxDate"));
+            WriteInt32Value(output, 13, Int32Attribute(sharedItems, "count"));
+            WriteBoolValue(output, 14, BoolAttribute(sharedItems, "containsMixedTypes"));
+        });
+    }
+
+    private static byte[] WritePivotFieldGroup(S.FieldGroup fieldGroup)
+    {
+        return Message(output =>
+        {
+            WriteInt32Value(output, 1, Int32Attribute(fieldGroup, "par"));
+            WriteInt32Value(output, 2, Int32Attribute(fieldGroup, "base"));
+            var range = ChildByLocalName(fieldGroup, "rangePr");
+            if (range is not null)
+            {
+                WriteMessage(output, 3, Message(rangeOutput =>
+                {
+                    WriteString(rangeOutput, 1, AttributeValue(range, "groupBy"));
+                    WriteString(rangeOutput, 2, AttributeValue(range, "startDate"));
+                    WriteString(rangeOutput, 3, AttributeValue(range, "endDate"));
+                }));
+            }
+
+            foreach (var item in ChildByLocalName(fieldGroup, "groupItems")?.Elements() ?? [])
+            {
+                var value = AttributeValue(item, "v");
+                if (value.Length > 0)
+                {
+                    WriteString(output, 4, value);
+                }
+            }
+        });
     }
 
     private static IEnumerable<WorksheetCommentSheet> WorksheetCommentSheets(WorkbookPart workbookPart)
@@ -2310,6 +2640,80 @@ internal static class XlsxWorkbookProtoReader
         };
     }
 
+    private static int PivotAxis(string value)
+    {
+        return value switch
+        {
+            "axisRow" => 1,
+            "axisCol" => 2,
+            "axisPage" => 3,
+            "axisValues" => 4,
+            _ => 0,
+        };
+    }
+
+    private static int FieldSort(string value)
+    {
+        return value switch
+        {
+            "manual" => 1,
+            "ascending" => 2,
+            "descending" => 3,
+            _ => 0,
+        };
+    }
+
+    private static int DataConsolidateFunction(string value)
+    {
+        return value switch
+        {
+            "sum" => 1,
+            "average" => 2,
+            "count" => 3,
+            "countNums" => 4,
+            "max" => 5,
+            "min" => 6,
+            "product" => 7,
+            "stdDev" => 8,
+            "stdDevP" => 9,
+            "var" => 10,
+            "varP" => 11,
+            _ => 0,
+        };
+    }
+
+    private static int PivotFilterType(string value)
+    {
+        return value switch
+        {
+            "unknown" => 1,
+            "count" => 2,
+            "percent" => 3,
+            "sum" => 4,
+            "captionEqual" => 5,
+            "captionNotEqual" => 6,
+            "captionBeginsWith" => 7,
+            "captionEndsWith" => 8,
+            "captionContains" => 9,
+            "valueEqual" => 10,
+            "valueNotEqual" => 11,
+            "valueGreaterThan" => 12,
+            "valueLessThan" => 13,
+            "dateEqual" => 14,
+            "today" => 15,
+            "yesterday" => 16,
+            "tomorrow" => 17,
+            "thisMonth" => 18,
+            "lastMonth" => 19,
+            "nextMonth" => 20,
+            "thisYear" => 21,
+            "lastYear" => 22,
+            "nextYear" => 23,
+            "yearToDate" => 24,
+            _ => 0,
+        };
+    }
+
     private static int CellDataType(S.Cell cell, string text)
     {
         if (cell.DataType?.Value == S.CellValues.SharedString) return 3;
@@ -2348,6 +2752,22 @@ internal static class XlsxWorkbookProtoReader
         return value
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToArray();
+    }
+
+    private static IReadOnlyList<int> PivotFieldIndexes(OpenXmlElement? fields)
+    {
+        return fields?.Elements()
+            .Where(field => field.LocalName == "field")
+            .Select(field => Int32Attribute(field, "x"))
+            .Where(index => index is not null)
+            .Select(index => index!.Value)
+            .ToArray() ?? [];
+    }
+
+    private static string PivotRefreshedDate(S.PivotCacheDefinition definition)
+    {
+        var refreshedDate = AttributeValue(definition, "refreshedDate");
+        return refreshedDate.Length > 0 ? refreshedDate : AttributeValue(definition, "refreshedDateIso");
     }
 
     private static int SparklineType(string? value)
@@ -2393,12 +2813,17 @@ internal static class XlsxWorkbookProtoReader
         return element.Elements().FirstOrDefault(child => child.LocalName == localName);
     }
 
-    private static string AttributeValue(OpenXmlElement element, string localName)
+    private static string AttributeValue(OpenXmlElement? element, string localName)
     {
+        if (element is null)
+        {
+            return "";
+        }
+
         return element.GetAttributes().FirstOrDefault(attribute => attribute.LocalName == localName).Value ?? "";
     }
 
-    private static double? DoubleAttribute(OpenXmlElement element, string localName)
+    private static double? DoubleAttribute(OpenXmlElement? element, string localName)
     {
         var value = AttributeValue(element, localName);
         if (value.Length == 0)
@@ -2415,7 +2840,7 @@ internal static class XlsxWorkbookProtoReader
             : null;
     }
 
-    private static int? Int32Attribute(OpenXmlElement element, string localName)
+    private static int? Int32Attribute(OpenXmlElement? element, string localName)
     {
         var value = AttributeValue(element, localName);
         if (value.Length == 0)
@@ -2432,7 +2857,7 @@ internal static class XlsxWorkbookProtoReader
             : null;
     }
 
-    private static bool? BoolAttribute(OpenXmlElement element, string localName)
+    private static bool? BoolAttribute(OpenXmlElement? element, string localName)
     {
         var value = AttributeValue(element, localName);
         if (value.Length == 0)
@@ -2607,6 +3032,23 @@ internal static class XlsxWorkbookProtoReader
             foreach (var value in values)
             {
                 inner.WriteDouble(value);
+            }
+        });
+        WriteMessage(output, fieldNumber, bytes);
+    }
+
+    private static void WritePackedInt32s(CodedOutputStream output, int fieldNumber, IReadOnlyList<int> values)
+    {
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        var bytes = Message(inner =>
+        {
+            foreach (var value in values)
+            {
+                inner.WriteInt32(value);
             }
         });
         WriteMessage(output, fieldNumber, bytes);
