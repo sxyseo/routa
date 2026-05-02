@@ -2249,6 +2249,12 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessageIncludingEmpty(output, 14, Message(_ => { }));
             }
 
+            var connector = WriteShapeConnector(shapeProperties?.GetFirstChild<A.Outline>());
+            if (connector is not null)
+            {
+                WriteMessage(output, 28, connector);
+            }
+
             WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? "");
         });
     }
@@ -2281,6 +2287,12 @@ internal static class XlsxWorkbookProtoReader
                     WriteMessageIncludingEmpty(output, 2, paragraphTextStyle);
                 }
 
+                var bulletCharacter = paragraphProperties?.GetFirstChild<A.CharacterBullet>()?.Char?.Value;
+                if (bulletCharacter is not null)
+                {
+                    WriteStringIncludingEmpty(output, 3, bulletCharacter);
+                }
+
                 if (paragraphProperties?.LeftMargin?.Value is { } marginLeft)
                 {
                     WriteInt32IncludingZero(output, 4, marginLeft);
@@ -2289,6 +2301,16 @@ internal static class XlsxWorkbookProtoReader
                 if (paragraphProperties?.Indent?.Value is { } indent)
                 {
                     WriteInt32IncludingZero(output, 5, indent);
+                }
+
+                if (SpacingAfter(paragraphProperties) is { } spaceAfter)
+                {
+                    WriteInt32IncludingZero(output, 6, spaceAfter);
+                }
+
+                if (SpacingBefore(paragraphProperties) is { } spaceBefore)
+                {
+                    WriteInt32IncludingZero(output, 7, spaceBefore);
                 }
 
                 var paragraphStyle = WriteShapeParagraphStyle(paragraphProperties);
@@ -2413,10 +2435,104 @@ internal static class XlsxWorkbookProtoReader
 
         if (bodyProperties.ChildElements.Any(element => string.Equals(element.LocalName, "noAutofit", StringComparison.Ordinal)))
         {
-            return Message(_ => { });
+            return Message(output =>
+            {
+                WriteMessageIncludingEmpty(output, 1, Message(_ => { }));
+            });
         }
 
         return null;
+    }
+
+    private static byte[]? WriteShapeConnector(A.Outline? line)
+    {
+        var head = line?.GetFirstChild<A.HeadEnd>() ?? ChildByLocalName(line, "headEnd");
+        var tail = line?.GetFirstChild<A.TailEnd>() ?? ChildByLocalName(line, "tailEnd");
+        if (head is null && tail is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteMessage(output, 5, Message(lineStyleOutput =>
+            {
+                WriteInt32(lineStyleOutput, 5, 1);
+                WriteInt32(lineStyleOutput, 6, 1);
+                WriteMessage(lineStyleOutput, 7, WriteLineEnd(head));
+                WriteMessage(lineStyleOutput, 8, WriteLineEnd(tail));
+            }));
+        });
+    }
+
+    private static byte[] WriteLineEnd(OpenXmlElement? lineEnd)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, LineEndType(AttributeValue(lineEnd, "type")));
+            WriteInt32(output, 2, LineEndWidth(AttributeValue(lineEnd, "w")));
+            WriteInt32(output, 3, LineEndLength(AttributeValue(lineEnd, "len")));
+        });
+    }
+
+    private static int LineEndType(string? value)
+    {
+        return value switch
+        {
+            "triangle" => 2,
+            "stealth" => 3,
+            "diamond" => 4,
+            "oval" => 5,
+            "arrow" => 6,
+            _ => 1,
+        };
+    }
+
+    private static int LineEndWidth(string? value)
+    {
+        return value switch
+        {
+            "med" => 2,
+            "lg" => 3,
+            _ => 1,
+        };
+    }
+
+    private static int LineEndLength(string? value)
+    {
+        return value switch
+        {
+            "med" => 2,
+            "lg" => 3,
+            _ => 1,
+        };
+    }
+
+    private static int? SpacingBefore(OpenXmlElement? paragraphProperties)
+    {
+        return SpacingPoints(paragraphProperties, "spcBef");
+    }
+
+    private static int? SpacingAfter(OpenXmlElement? paragraphProperties)
+    {
+        return SpacingPoints(paragraphProperties, "spcAft");
+    }
+
+    private static int? SpacingPoints(OpenXmlElement? paragraphProperties, string localName)
+    {
+        var spacing = paragraphProperties?.ChildElements.FirstOrDefault(child => string.Equals(child.LocalName, localName, StringComparison.Ordinal));
+        if (spacing is null)
+        {
+            return null;
+        }
+
+        var points = spacing.ChildElements.FirstOrDefault(child => string.Equals(child.LocalName, "spcPts", StringComparison.Ordinal));
+        if (Int32Attribute(points, "val") is { } pointValue)
+        {
+            return pointValue;
+        }
+
+        return 0;
     }
 
     private static int? BodyAnchorCode(OpenXmlSimpleType? value)
@@ -2557,7 +2673,8 @@ internal static class XlsxWorkbookProtoReader
         return Message(output =>
         {
             var fill = line?.GetFirstChild<A.SolidFill>();
-            if (fill is null && line?.Width is null)
+            var noFill = line?.GetFirstChild<A.NoFill>() is not null;
+            if (fill is null && !noFill && line?.Width is null)
             {
                 return;
             }
@@ -2572,6 +2689,10 @@ internal static class XlsxWorkbookProtoReader
             if (fill is not null)
             {
                 WriteMessage(output, 3, WriteSolidFill(fill));
+            }
+            else if (noFill)
+            {
+                WriteMessageIncludingEmpty(output, 3, Message(_ => { }));
             }
         });
     }
