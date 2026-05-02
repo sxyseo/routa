@@ -68,6 +68,16 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added a spreadsheet layout adapter that normalizes column widths, row heights, merge coverage, and prefix-sum offsets.
 - Reworked the debug workbook preview to render cells, headers, shapes, and charts from the shared pixel coordinate model instead of DOM table layout.
 - Verified `complex_excel_renderer_test.xlsx` protocol parity and captured browser evidence for the task table and Fitness chart.
+- Added table row striping and basic icon-set rendering after comparing the workbook against Microsoft Excel through Computer Use.
+
+## Remaining XLSX Work
+
+- Precise table styles: table stripes are still rendered from a small local approximation for `TableStyleMedium2`; the reader and preview should parse theme/table style metadata and apply row/column stripe options from the protocol.
+- Icon-set details: Risk icons render, but thresholds should honor `cfvo` type/value, `percent`, `reverse`, and `showValue` exactly instead of deriving levels from the observed min/max only.
+- Chart fidelity: Fitness charts now use a zero baseline, but plot area sizing, legend placement, markers, gridlines, fonts, and Excel internal chart layout are still simplified.
+- Freeze panes and sticky headers: the prefix-sum layout adapter exists, but the preview still needs Walnut-like frozen pane projection, viewport scrolling, and hit regions for cells/floating elements.
+- Conditional formatting breadth: data bars need negative values, axis, gradient/solid variants, and multi-rule layering; color scales need fuller multi-stop handling.
+- Protocol coverage: `complex_excel_renderer_test.xlsx` core parity passes, but it is not byte-for-byte Walnut proto equivalence; add more XLSX fixtures and field-level assertions.
 
 ## References
 
