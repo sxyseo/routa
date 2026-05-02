@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type UIEvent, useEffect, useRef, useState } from "react";
 
 import {
   asArray,
@@ -24,6 +24,8 @@ import {
   protocolColorToCss,
   type SpreadsheetCellVisual,
 } from "./spreadsheet-conditional-visuals";
+import { buildSpreadsheetCharts, SpreadsheetChartLayer } from "./spreadsheet-charts";
+import { SpreadsheetFrozenHeaders } from "./spreadsheet-frozen-headers";
 import {
   buildSpreadsheetLayout,
   SPREADSHEET_COLUMN_HEADER_HEIGHT,
@@ -35,23 +37,6 @@ import {
   type SpreadsheetLayout,
   spreadsheetRowTop,
 } from "./spreadsheet-layout";
-
-type SpreadsheetChartSeries = {
-  color: string;
-  label: string;
-  values: number[];
-};
-
-type SpreadsheetChartSpec = {
-  categories: string[];
-  height: number;
-  left: number;
-  series: SpreadsheetChartSeries[];
-  title: string;
-  top: number;
-  type: "bar" | "line";
-  width: number;
-};
 
 type SpreadsheetShapeSpec = {
   fill: string;
@@ -72,6 +57,8 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const charts = asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null);
   const shapes = asArray(root?.shapes).map(asRecord).filter((shape): shape is RecordValue => shape != null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
+  const [viewportScroll, setViewportScroll] = useState({ left: 0, top: 0 });
+  const viewportRef = useRef<HTMLDivElement>(null);
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
   const layout = buildSpreadsheetLayout(activeSheet);
   const chartSpecs = buildSpreadsheetCharts({
@@ -86,6 +73,26 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     shapes,
   });
   const cellVisuals = buildSpreadsheetConditionalVisuals(activeSheet);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.scrollLeft = 0;
+    viewport.scrollTop = 0;
+  }, [activeSheetIndex]);
+
+  const handleSheetSelect = (index: number) => {
+    setViewportScroll({ left: 0, top: 0 });
+    setActiveSheetIndex(index);
+  };
+
+  const handleViewportScroll = (event: UIEvent<HTMLDivElement>) => {
+    const { scrollLeft, scrollTop } = event.currentTarget;
+    setViewportScroll((current) => {
+      if (current.left === scrollLeft && current.top === scrollTop) return current;
+      return { left: scrollLeft, top: scrollTop };
+    });
+  };
 
   if (sheets.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSheets}</p>;
@@ -111,17 +118,24 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     >
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
       <SpreadsheetFormulaBar activeSheet={activeSheet} styles={styles} />
-      <div style={{ overflow: "auto" }}>
-        <div style={{ height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }}>
-          <SpreadsheetGrid
-            activeSheet={activeSheet}
-            cellVisuals={cellVisuals}
-            layout={layout}
-            styles={styles}
-          />
-          <SpreadsheetShapeLayer shapes={shapeSpecs} />
-          <SpreadsheetChartLayer charts={chartSpecs} />
+      <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
+        <div
+          onScroll={handleViewportScroll}
+          ref={viewportRef}
+          style={{ height: "100%", overflow: "auto" }}
+        >
+          <div style={{ height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }}>
+            <SpreadsheetGrid
+              activeSheet={activeSheet}
+              cellVisuals={cellVisuals}
+              layout={layout}
+              styles={styles}
+            />
+            <SpreadsheetShapeLayer shapes={shapeSpecs} />
+            <SpreadsheetChartLayer charts={chartSpecs} />
+          </div>
         </div>
+        <SpreadsheetFrozenHeaders layout={layout} scrollLeft={viewportScroll.left} scrollTop={viewportScroll.top} />
       </div>
       <div
         style={{
@@ -138,7 +152,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
         {sheets.map((sheet, index) => (
           <button
             key={`${asString(sheet.sheetId)}-${index}`}
-            onClick={() => setActiveSheetIndex(index)}
+            onClick={() => handleSheetSelect(index)}
             style={{
               background: index === activeSheetIndex ? "#ffffff" : "transparent",
               borderBottomColor: index === activeSheetIndex ? "#111827" : "transparent",
@@ -532,142 +546,10 @@ function cellAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: n
   return rowsByIndexForSheet(sheet).get(rowIndex)?.get(columnIndex) ?? null;
 }
 
-function cellNumberAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: number): number | null {
-  const value = Number(cellText(cellAt(sheet, rowIndex, columnIndex)));
-  return Number.isFinite(value) ? value : null;
-}
-
-function excelSerialMonthLabel(value: number): string {
-  const date = new Date(Date.UTC(1899, 11, 30) + value * 86_400_000);
-  return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC", year: "2-digit" }).format(date);
-}
-
 function defaultSpreadsheetSheetIndex(sheets: RecordValue[]): number {
   if (sheets.length <= 1) return 0;
   const readmeFirst = /^00[_ -]?readme$/i.test(asString(sheets[0]?.name));
   return readmeFirst ? 1 : 0;
-}
-
-function buildSpreadsheetCharts({
-  activeSheet,
-  charts: workbookCharts,
-  layout,
-  sheets,
-}: {
-  activeSheet: RecordValue | undefined;
-  charts: RecordValue[];
-  layout: SpreadsheetLayout;
-  sheets: RecordValue[];
-}): SpreadsheetChartSpec[] {
-  const protocolCharts = buildProtocolSpreadsheetCharts(activeSheet, workbookCharts, layout);
-  if (protocolCharts.length > 0) return protocolCharts;
-
-  if (asString(activeSheet?.name) !== "01_Dashboard") return [];
-  if (cellText(cellAt(activeSheet, 1, 0)) !== "AI Coding Delivery Dashboard") return [];
-
-  const statusCategories: string[] = [];
-  const statusValues: number[] = [];
-  for (let rowIndex = 18; rowIndex <= 23; rowIndex += 1) {
-    const category = cellText(cellAt(activeSheet, rowIndex, 0));
-    const value = cellNumberAt(activeSheet, rowIndex, 1);
-    if (category && value != null) {
-      statusCategories.push(category);
-      statusValues.push(value);
-    }
-  }
-
-  const fallbackCharts: SpreadsheetChartSpec[] = [];
-  if (statusCategories.length > 0) {
-    fallbackCharts.push({
-      categories: statusCategories,
-      height: 280,
-      left: spreadsheetColumnLeft(layout, 5),
-      series: [{ color: "#1f6f8b", label: "Count", values: statusValues }],
-      title: "Tasks by Status",
-      top: spreadsheetRowTop(layout, 16),
-      type: "bar",
-      width: 450,
-    });
-  }
-
-  const timeSeriesSheet = sheets.find((sheet) => asString(sheet.name) === "03_TimeSeries");
-  const monthLabels: string[] = [];
-  const fitnessValues: number[] = [];
-  const coverageValues: number[] = [];
-  for (let rowIndex = 5; rowIndex <= 22; rowIndex += 1) {
-    const serial = cellNumberAt(timeSeriesSheet, rowIndex, 0);
-    const fitness = cellNumberAt(timeSeriesSheet, rowIndex, 5);
-    const coverage = cellNumberAt(timeSeriesSheet, rowIndex, 3);
-    if (serial != null && fitness != null && coverage != null) {
-      monthLabels.push(excelSerialMonthLabel(serial));
-      fitnessValues.push(fitness);
-      coverageValues.push(coverage * 100);
-    }
-  }
-
-  if (monthLabels.length > 0) {
-    fallbackCharts.push({
-      categories: monthLabels,
-      height: 280,
-      left: spreadsheetColumnLeft(layout, 0),
-      series: [
-        { color: "#1f6f8b", label: "Fitness Score", values: fitnessValues },
-        { color: "#f9732a", label: "Coverage %", values: coverageValues },
-      ],
-      title: "Fitness Score vs Coverage",
-      top: spreadsheetRowTop(layout, 30),
-      type: "line",
-      width: 640,
-    });
-  }
-
-  return fallbackCharts;
-}
-
-function buildProtocolSpreadsheetCharts(
-  activeSheet: RecordValue | undefined,
-  charts: RecordValue[],
-  layout: SpreadsheetLayout,
-): SpreadsheetChartSpec[] {
-  const sheetName = asString(activeSheet?.name);
-  return charts
-    .filter((chart) => asString(chart.sheetName) === sheetName)
-    .map((chart) => {
-      const anchor = asRecord(chart.anchor);
-      const seriesRecords = asArray(chart.series).map(asRecord).filter((item): item is RecordValue => item != null);
-      const series = seriesRecords
-        .map((item, index) => ({
-          color: protocolColorToCss(item.color) ?? (index === 1 ? "#f9732a" : "#1f6f8b"),
-          label: asString(item.label) || `Series ${index + 1}`,
-          values: asArray(item.values).map((value) => asNumber(value)).filter(Number.isFinite),
-        }))
-        .filter((item) => item.values.length > 0);
-      if (series.length === 0) return null;
-
-      const categories = asArray(seriesRecords[0]?.categories).map(asString).filter(Boolean);
-      const fromCol = asNumber(anchor?.fromCol, 0);
-      const fromRow = asNumber(anchor?.fromRow, 0);
-      const left = spreadsheetColumnLeft(layout, fromCol);
-      const top = spreadsheetRowTop(layout, fromRow);
-      const extWidth = spreadsheetEmuToPx(anchor?.toColOffsetEmu);
-      const extHeight = spreadsheetEmuToPx(anchor?.toRowOffsetEmu);
-      const toCol = Math.max(fromCol + 5, asNumber(anchor?.toCol, fromCol + 5));
-      const toRow = Math.max(fromRow + 10, asNumber(anchor?.toRow, fromRow + 10));
-      const right = spreadsheetColumnLeft(layout, toCol);
-      const bottom = spreadsheetRowTop(layout, toRow);
-
-      return {
-        categories: categories.length > 0 ? categories : series[0].values.map((_, index) => String(index + 1)),
-        height: Math.max(220, extHeight > 0 ? extHeight : bottom - top),
-        left,
-        series,
-        title: asString(chart.title),
-        top,
-        type: asString(chart.chartType) === "line" ? "line" : "bar",
-        width: Math.max(360, extWidth > 0 ? extWidth : right - left),
-      } satisfies SpreadsheetChartSpec;
-    })
-    .filter((chart): chart is SpreadsheetChartSpec => chart != null);
 }
 
 function buildSpreadsheetShapes({
@@ -857,243 +739,6 @@ function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec[] }) {
       ))}
     </div>
   );
-}
-
-function SpreadsheetChartLayer({ charts }: { charts: SpreadsheetChartSpec[] }) {
-  if (charts.length === 0) return null;
-
-  return (
-    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 5 }}>
-      {charts.map((chart) => (
-        <SpreadsheetCanvasChart chart={chart} key={`${chart.type}-${chart.title}`} />
-      ))}
-    </div>
-  );
-}
-
-function SpreadsheetCanvasChart({ chart }: { chart: SpreadsheetChartSpec }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const pixelRatio = window.devicePixelRatio || 1;
-    canvas.width = Math.max(1, Math.round(chart.width * pixelRatio));
-    canvas.height = Math.max(1, Math.round(chart.height * pixelRatio));
-    canvas.style.width = `${chart.width}px`;
-    canvas.style.height = `${chart.height}px`;
-
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    context.clearRect(0, 0, chart.width, chart.height);
-    drawSpreadsheetChart(context, chart);
-  }, [chart]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        background: "#ffffff",
-        borderColor: "#e5e7eb",
-        borderStyle: "solid",
-        borderWidth: 1,
-        height: chart.height,
-        left: chart.left,
-        position: "absolute",
-        top: chart.top,
-        width: chart.width,
-      }}
-      title={chart.title}
-    />
-  );
-}
-
-function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: SpreadsheetChartSpec) {
-  const width = chart.width;
-  const height = chart.height;
-  const plot = {
-    bottom: height - (chart.type === "line" ? 82 : 44),
-    left: chart.type === "line" ? 42 : 38,
-    right: width - 18,
-    top: 58,
-  };
-  const values = chart.series.flatMap((series) => series.values);
-  const observedMax = Math.max(...values);
-  const tickCount = chart.type === "line" ? 6 : 5;
-  const minValue = 0;
-  const maxValue = niceChartMax(observedMax, tickCount);
-
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, width, height);
-  context.fillStyle = "#111827";
-  context.font = "600 18px Arial, sans-serif";
-  context.textAlign = "center";
-  context.fillText(chart.title, width / 2, 28);
-
-  drawChartGrid(context, plot, minValue, maxValue, tickCount);
-
-  if (chart.type === "bar") {
-    drawBarChart(context, chart, plot, minValue, maxValue);
-  } else {
-    drawLineChart(context, chart, plot, minValue, maxValue);
-  }
-}
-
-function drawChartGrid(
-  context: CanvasRenderingContext2D,
-  plot: { bottom: number; left: number; right: number; top: number },
-  minValue: number,
-  maxValue: number,
-  tickCount: number,
-) {
-  context.save();
-  context.strokeStyle = "#d1d5db";
-  context.setLineDash([5, 5]);
-  context.lineWidth = 1;
-  context.fillStyle = "#737373";
-  context.font = "11px Arial, sans-serif";
-  context.textAlign = "right";
-  context.textBaseline = "middle";
-
-  for (let index = 0; index < tickCount; index += 1) {
-    const ratio = index / (tickCount - 1);
-    const y = plot.bottom - ratio * (plot.bottom - plot.top);
-    const value = minValue + ratio * (maxValue - minValue);
-    context.beginPath();
-    context.moveTo(plot.left, y);
-    context.lineTo(plot.right, y);
-    context.stroke();
-    context.fillText(String(Math.round(value)), plot.left - 8, y);
-  }
-  context.restore();
-}
-
-function niceChartMax(observedMax: number, tickCount: number): number {
-  if (!Number.isFinite(observedMax) || observedMax <= 0) return 1;
-  const intervalCount = Math.max(1, tickCount - 1);
-  const roughStep = observedMax / intervalCount;
-  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
-  const normalized = roughStep / magnitude;
-  const step = normalized <= 1 ? magnitude : normalized <= 2 ? 2 * magnitude : normalized <= 5 ? 5 * magnitude : 10 * magnitude;
-  return Math.max(step, Math.ceil(observedMax / step) * step);
-}
-
-function chartY(
-  value: number,
-  plot: { bottom: number; top: number },
-  minValue: number,
-  maxValue: number,
-): number {
-  if (maxValue <= minValue) return plot.bottom;
-  const ratio = (value - minValue) / (maxValue - minValue);
-  return plot.bottom - ratio * (plot.bottom - plot.top);
-}
-
-function drawBarChart(
-  context: CanvasRenderingContext2D,
-  chart: SpreadsheetChartSpec,
-  plot: { bottom: number; left: number; right: number; top: number },
-  minValue: number,
-  maxValue: number,
-) {
-  const series = chart.series[0];
-  const values = series?.values ?? [];
-  const slotWidth = (plot.right - plot.left) / Math.max(1, values.length);
-  const barWidth = Math.min(32, slotWidth * 0.34);
-
-  context.save();
-  values.forEach((value, index) => {
-    const centerX = plot.left + slotWidth * index + slotWidth / 2;
-    const y = chartY(value, plot, minValue, maxValue);
-    context.fillStyle = series?.color ?? "#1f6f8b";
-    context.beginPath();
-    context.roundRect(centerX - barWidth / 2, y, barWidth, plot.bottom - y, 3);
-    context.fill();
-  });
-
-  context.fillStyle = "#737373";
-  context.font = "11px Arial, sans-serif";
-  context.textAlign = "center";
-  chart.categories.forEach((category, index) => {
-    const centerX = plot.left + slotWidth * index + slotWidth / 2;
-    context.fillText(category, centerX, plot.bottom + 20);
-  });
-  context.restore();
-}
-
-function drawLineChart(
-  context: CanvasRenderingContext2D,
-  chart: SpreadsheetChartSpec,
-  plot: { bottom: number; left: number; right: number; top: number },
-  minValue: number,
-  maxValue: number,
-) {
-  const pointCount = Math.max(1, chart.categories.length - 1);
-  const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
-
-  context.save();
-  chart.series.forEach((series) => {
-    context.strokeStyle = series.color;
-    context.lineWidth = 2.5;
-    context.setLineDash([]);
-    context.beginPath();
-    series.values.forEach((value, index) => {
-      const x = xForIndex(index);
-      const y = chartY(value, plot, minValue, maxValue);
-      if (index === 0) context.moveTo(x, y);
-      else context.lineTo(x, y);
-    });
-    context.stroke();
-  });
-
-  context.fillStyle = "#737373";
-  context.font = "10px Arial, sans-serif";
-  context.textAlign = "center";
-  chart.categories.forEach((category, index) => {
-    const x = xForIndex(index);
-    const [first, ...rest] = category.split(/\s+/);
-    context.fillText(first, x, plot.bottom + 20);
-    if (rest.length > 0) {
-      context.fillText(rest.join(" "), x, plot.bottom + 36);
-    }
-  });
-
-  chart.series.forEach((series, seriesIndex) => {
-    context.fillStyle = series.color;
-    series.values.forEach((value, index) => {
-      const x = xForIndex(index);
-      const y = chartY(value, plot, minValue, maxValue);
-      context.beginPath();
-      if (seriesIndex % 2 === 0) {
-        context.moveTo(x, y - 4);
-        context.lineTo(x + 4, y);
-        context.lineTo(x, y + 4);
-        context.lineTo(x - 4, y);
-      } else {
-        context.rect(x - 4, y - 4, 8, 8);
-      }
-      context.closePath();
-      context.fill();
-    });
-  });
-
-  const legendY = chart.height - 18;
-  let legendX = chart.width / 2 - chart.series.length * 56;
-  chart.series.forEach((series) => {
-    context.strokeStyle = series.color;
-    context.lineWidth = 2.5;
-    context.beginPath();
-    context.moveTo(legendX, legendY - 4);
-    context.lineTo(legendX + 18, legendY - 4);
-    context.stroke();
-    context.fillStyle = "#737373";
-    context.textAlign = "left";
-    context.font = "11px Arial, sans-serif";
-    context.fillText(series.label, legendX + 26, legendY);
-    legendX += 112;
-  });
-  context.restore();
 }
 
 const spreadsheetHeaderBaseStyle: CSSProperties = {

@@ -139,7 +139,8 @@ export function spreadsheetRowTop(layout: SpreadsheetLayout, zeroBasedRowIndex: 
 }
 
 export function spreadsheetEmuToPx(value: unknown): number {
-  return asNumber(value, 0) / SPREADSHEET_EMU_PER_PIXEL;
+  const numericValue = typeof value === "string" ? Number(value) : asNumber(value, 0);
+  return Number.isFinite(numericValue) ? numericValue / SPREADSHEET_EMU_PER_PIXEL : 0;
 }
 
 function prefixSums(initial: number, sizes: number[]): number[] {
