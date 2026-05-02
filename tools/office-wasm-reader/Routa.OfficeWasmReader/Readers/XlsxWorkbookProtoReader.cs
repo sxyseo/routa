@@ -123,7 +123,7 @@ internal static class XlsxWorkbookProtoReader
         S.Stylesheet? stylesheet,
         int sheetIndex)
     {
-        var name = TextNormalization.Clean(sheetElement.Name?.Value);
+        var name = PreserveText(sheetElement.Name?.Value);
         return Message(output =>
         {
             WriteInt32(output, 1, sheetIndex);
@@ -156,6 +156,8 @@ internal static class XlsxWorkbookProtoReader
                 WriteBool(output, 10, showGridLines);
             }
 
+            WriteMessage(output, 18, WriteColor(worksheetPart.Worksheet.SheetProperties?.TabColor));
+
             foreach (var mergeCell in worksheetPart.Worksheet.Descendants<S.MergeCell>())
             {
                 var range = WriteRangeTarget(name, mergeCell.Reference?.Value ?? "");
@@ -168,6 +170,11 @@ internal static class XlsxWorkbookProtoReader
             foreach (var formatting in worksheetPart.Worksheet.Descendants<S.ConditionalFormatting>())
             {
                 WriteMessage(output, 13, WriteConditionalFormatting(name, formatting));
+            }
+
+            foreach (var sharedFormula in SharedFormulas(worksheetPart.Worksheet))
+            {
+                WriteMessage(output, 14, sharedFormula);
             }
 
             foreach (var tablePart in worksheetPart.TableDefinitionParts)
@@ -228,20 +235,26 @@ internal static class XlsxWorkbookProtoReader
         return Message(output =>
         {
             var address = cell.CellReference?.Value ?? "";
-            var text = ReadCellText(cell, sharedStrings);
+            var sharedStringItem = SharedStringItem(cell, sharedStrings);
+            var text = ReadCellText(cell, sharedStringItem);
             var formula = cell.CellFormula;
-            var formulaText = TextNormalization.Clean(formula?.Text);
+            var formulaText = PreserveText(formula?.Text);
             WriteString(output, 1, address);
             WriteString(output, 2, text);
             WriteString(output, 3, formulaText);
             if (ShouldWriteCellDataType(cell, formulaText))
             {
-                WriteInt32(output, 4, CellDataType(cell, text));
+                WriteInt32(output, 4, CellDataType(cell));
             }
 
             WriteInt32IncludingZero(output, 5, (int)(cell.StyleIndex?.Value ?? 0));
 
-            if (formulaText.Length > 0 && formula is not null)
+            foreach (var paragraph in ExtractCellParagraphs(cell, sharedStringItem))
+            {
+                WriteMessage(output, 6, paragraph);
+            }
+
+            if (formula is not null && ShouldWriteCellFormulaMetadata(formula, formulaText))
             {
                 if (formula.SharedIndex?.Value is { } sharedIndex)
                 {
@@ -271,7 +284,46 @@ internal static class XlsxWorkbookProtoReader
                 WriteInt32(output, 5, (int)styleIndex);
             }
 
-            WriteBool(output, 6, column.Hidden?.Value ?? false);
+            if (column.Hidden?.Value is { } hidden)
+            {
+                WriteBool(output, 6, hidden);
+            }
+        });
+    }
+
+    private static IEnumerable<byte[]> SharedFormulas(S.Worksheet worksheet)
+    {
+        var rows = worksheet
+            .Descendants<S.Row>()
+            .Take(OpenXmlReaderLimits.MaxRowsPerSheet);
+        var cells = rows.SelectMany(row => row.Elements<S.Cell>().Take(OpenXmlReaderLimits.MaxCellsPerRow));
+
+        foreach (var cell in cells)
+        {
+            var formula = cell.CellFormula;
+            if (formula?.FormulaType?.Value != S.CellFormulaValues.Shared ||
+                formula.SharedIndex?.Value is not { } sharedIndex)
+            {
+                continue;
+            }
+
+            var formulaText = PreserveText(formula.Text);
+            if (formulaText.Length == 0)
+            {
+                continue;
+            }
+
+            yield return WriteSharedFormula((int)sharedIndex, formulaText, cell.CellReference?.Value ?? "");
+        }
+    }
+
+    private static byte[] WriteSharedFormula(int sharedIndex, string formulaText, string anchor)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, sharedIndex);
+            WriteString(output, 2, formulaText);
+            WriteString(output, 3, anchor);
         });
     }
 
@@ -347,7 +399,7 @@ internal static class XlsxWorkbookProtoReader
         return Message(output =>
         {
             WriteString(output, 1, definedName.Name?.Value ?? "");
-            WriteString(output, 2, TextNormalization.Clean(definedName.Text));
+            WriteString(output, 2, PreserveText(definedName.Text));
             WriteInt32Value(output, 3, Int32Attribute(definedName, "localSheetId"));
             WriteBoolValue(output, 4, BoolAttribute(definedName, "hidden"));
             WriteString(output, 5, AttributeValue(definedName, "comment"));
@@ -743,8 +795,8 @@ internal static class XlsxWorkbookProtoReader
             WriteString(output, 11, validation.Error?.Value ?? "");
             WriteString(output, 12, validation.PromptTitle?.Value ?? "");
             WriteString(output, 13, validation.Prompt?.Value ?? "");
-            WriteString(output, 14, TextNormalization.Clean(validation.Elements<S.Formula1>().FirstOrDefault()?.Text));
-            WriteString(output, 15, TextNormalization.Clean(validation.Elements<S.Formula2>().FirstOrDefault()?.Text));
+            WriteString(output, 14, PreserveText(validation.Elements<S.Formula1>().FirstOrDefault()?.Text));
+            WriteString(output, 15, PreserveText(validation.Elements<S.Formula2>().FirstOrDefault()?.Text));
             WriteString(output, 16, ExtendedAttributeValue(validation, "uid"));
         });
     }
@@ -799,7 +851,7 @@ internal static class XlsxWorkbookProtoReader
             WriteMessage(output, 24, WriteSparklineColor(ChildByLocalName(group, "colorLast")));
             WriteMessage(output, 25, WriteSparklineColor(ChildByLocalName(group, "colorHigh")));
             WriteMessage(output, 26, WriteSparklineColor(ChildByLocalName(group, "colorLow")));
-            WriteString(output, 27, TextNormalization.Clean(group.Elements().FirstOrDefault(element => element.LocalName == "f")?.InnerText));
+            WriteString(output, 27, PreserveText(group.Elements().FirstOrDefault(element => element.LocalName == "f")?.InnerText));
 
             foreach (var sparkline in group.Descendants().Where(element => element.LocalName == "sparkline"))
             {
@@ -812,8 +864,8 @@ internal static class XlsxWorkbookProtoReader
     {
         return Message(output =>
         {
-            WriteString(output, 1, TextNormalization.Clean(sparkline.Elements().FirstOrDefault(element => element.LocalName == "f")?.InnerText));
-            WriteString(output, 2, TextNormalization.Clean(sparkline.Elements().FirstOrDefault(element => element.LocalName == "sqref")?.InnerText));
+            WriteString(output, 1, PreserveText(sparkline.Elements().FirstOrDefault(element => element.LocalName == "f")?.InnerText));
+            WriteString(output, 2, PreserveText(sparkline.Elements().FirstOrDefault(element => element.LocalName == "sqref")?.InnerText));
         });
     }
 
@@ -866,7 +918,7 @@ internal static class XlsxWorkbookProtoReader
 
             foreach (var formula in rule.Elements<S.Formula>())
             {
-                WriteString(output, 5, TextNormalization.Clean(formula.Text));
+                WriteString(output, 5, PreserveText(formula.Text));
             }
 
             if (rule.StopIfTrue?.Value is { } stopIfTrue)
@@ -1362,7 +1414,7 @@ internal static class XlsxWorkbookProtoReader
         foreach (var comment in commentSheet.Part.WorksheetCommentsPart?.Comments?.CommentList?.Elements<S.Comment>() ?? [])
         {
             var reference = TextNormalization.Clean(comment.Reference?.Value);
-            var body = TextNormalization.Clean(comment.Elements<S.CommentText>().FirstOrDefault()?.InnerText);
+            var body = PreserveText(comment.Elements<S.CommentText>().FirstOrDefault()?.InnerText);
             if (reference.Length == 0 && body.Length == 0)
             {
                 continue;
@@ -2674,7 +2726,8 @@ internal static class XlsxWorkbookProtoReader
         {
             WriteInt32IncludingZero(output, 1, index);
             WriteString(output, 2, style.Name?.Value ?? "");
-            WriteString(output, 3, style.BuiltinId?.Value.ToString() ?? "");
+            var builtinId = style.BuiltinId?.Value;
+            WriteString(output, 3, builtinId is null or 0 ? "" : builtinId.Value.ToString());
             if (style.FormatId?.Value is { } formatId)
             {
                 WriteInt32IncludingZero(output, 4, (int)formatId);
@@ -2716,7 +2769,20 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 7, WriteColorFill(font.Color));
             }
 
-            WriteString(output, 9, font.Underline?.Val?.InnerText);
+            var underlineElement = font.Underline;
+            var underline = underlineElement?.Val?.InnerText;
+            if (underlineElement is not null && underline != "none")
+            {
+                WriteString(output, 9, string.IsNullOrEmpty(underline) ? "single" : underline);
+            }
+
+            var family = AttributeValue(font.FontFamilyNumbering, "val");
+            if (int.TryParse(family, out var familyValue))
+            {
+                WriteInt32(output, 16, familyValue);
+            }
+
+            WriteString(output, 17, EnumText(font.FontScheme?.Val));
             WriteString(output, 18, font.FontName?.Val?.Value ?? "");
         });
     }
@@ -2819,7 +2885,7 @@ internal static class XlsxWorkbookProtoReader
 
             if (format.Border is not null)
             {
-                WriteMessage(output, 3, WriteBorder(format.Border));
+                WriteMessageIncludingEmpty(output, 3, WriteBorder(format.Border));
             }
 
             if (format.NumberingFormat is not null)
@@ -2847,6 +2913,14 @@ internal static class XlsxWorkbookProtoReader
         return Message(output =>
         {
             WriteMessage(output, 2, WriteColor(color));
+        });
+    }
+
+    private static byte[] WriteCellTextColorFill(OpenXmlElement color)
+    {
+        return Message(output =>
+        {
+            WriteMessage(output, 2, WriteColor(color, preserveAlpha: true));
         });
     }
 
@@ -2889,11 +2963,30 @@ internal static class XlsxWorkbookProtoReader
     {
         return Message(output =>
         {
-            WriteMessage(output, 1, WriteBorderLine(border.LeftBorder));
-            WriteMessage(output, 2, WriteBorderLine(border.RightBorder));
-            WriteMessage(output, 3, WriteBorderLine(border.TopBorder));
-            WriteMessage(output, 4, WriteBorderLine(border.BottomBorder));
-            WriteMessage(output, 5, WriteBorderLine(border.DiagonalBorder));
+            if (border.LeftBorder is not null)
+            {
+                WriteMessageIncludingEmpty(output, 1, WriteBorderLine(border.LeftBorder));
+            }
+
+            if (border.RightBorder is not null)
+            {
+                WriteMessageIncludingEmpty(output, 2, WriteBorderLine(border.RightBorder));
+            }
+
+            if (border.TopBorder is not null)
+            {
+                WriteMessageIncludingEmpty(output, 3, WriteBorderLine(border.TopBorder));
+            }
+
+            if (border.BottomBorder is not null)
+            {
+                WriteMessageIncludingEmpty(output, 4, WriteBorderLine(border.BottomBorder));
+            }
+
+            if (border.DiagonalBorder is not null)
+            {
+                WriteMessageIncludingEmpty(output, 5, WriteBorderLine(border.DiagonalBorder));
+            }
             if (border.DiagonalUp?.Value is { } diagonalUp)
             {
                 WriteBool(output, 6, diagonalUp);
@@ -2917,8 +3010,28 @@ internal static class XlsxWorkbookProtoReader
 
     private static byte[] WriteColor(OpenXmlElement? color)
     {
-        var value = color?.GetAttribute("rgb", "").Value;
-        return WriteColor(value);
+        return WriteColor(color, preserveAlpha: true);
+    }
+
+    private static byte[] WriteColor(OpenXmlElement? color, bool preserveAlpha)
+    {
+        var rgb = AttributeValue(color, "rgb");
+        if (rgb.Length > 0)
+        {
+            return WriteColorValue(rgb, preserveAlpha);
+        }
+
+        var theme = AttributeValue(color, "theme");
+        if (theme.Length > 0)
+        {
+            return Message(output =>
+            {
+                WriteInt32(output, 1, ColorTypeScheme);
+                WriteString(output, 2, $"theme:{theme}");
+            });
+        }
+
+        return WriteColorValue("", preserveAlpha);
     }
 
     private static byte[] WriteSparklineColor(OpenXmlElement? color)
@@ -3047,7 +3160,7 @@ internal static class XlsxWorkbookProtoReader
         return element.GetFirstChild<A.SaturationModulation>()?.Val?.Value;
     }
 
-    private static string ReadCellText(S.Cell cell, S.SharedStringTable? sharedStrings)
+    private static string ReadCellText(S.Cell cell, S.SharedStringItem? sharedStringItem)
     {
         var raw = cell.CellValue?.Text;
         if (string.IsNullOrEmpty(raw) && cell.CellFormula is null)
@@ -3060,9 +3173,10 @@ internal static class XlsxWorkbookProtoReader
             return "";
         }
 
-        if (cell.DataType?.Value == S.CellValues.SharedString && int.TryParse(raw, out var sharedStringIndex))
+        if (cell.DataType?.Value == S.CellValues.SharedString)
         {
-            return TextNormalization.Clean(sharedStrings?.Elements<S.SharedStringItem>().ElementAtOrDefault(sharedStringIndex)?.InnerText);
+            var sharedText = PreserveText(sharedStringItem?.InnerText);
+            return sharedText.Length > 0 ? sharedText : PreserveText(raw);
         }
 
         if (cell.DataType?.Value == S.CellValues.Boolean)
@@ -3070,7 +3184,92 @@ internal static class XlsxWorkbookProtoReader
             return raw == "1" ? "TRUE" : "FALSE";
         }
 
-        return TextNormalization.Clean(raw);
+        return PreserveText(raw);
+    }
+
+    private static S.SharedStringItem? SharedStringItem(S.Cell cell, S.SharedStringTable? sharedStrings)
+    {
+        var raw = cell.CellValue?.Text;
+        if (cell.DataType?.Value != S.CellValues.SharedString || !int.TryParse(raw, out var sharedStringIndex))
+        {
+            return null;
+        }
+
+        return sharedStrings?.Elements<S.SharedStringItem>().ElementAtOrDefault(sharedStringIndex);
+    }
+
+    private static IEnumerable<byte[]> ExtractCellParagraphs(S.Cell cell, S.SharedStringItem? sharedStringItem)
+    {
+        var runs = sharedStringItem?.Elements<S.Run>().ToArray();
+        if (runs is { Length: > 0 })
+        {
+            yield return WriteCellParagraph(runs);
+            yield break;
+        }
+
+        var inlineRuns = cell.InlineString?.Elements<S.Run>().ToArray();
+        if (inlineRuns is { Length: > 0 })
+        {
+            yield return WriteCellParagraph(inlineRuns);
+        }
+    }
+
+    private static byte[] WriteCellParagraph(IReadOnlyList<S.Run> runs)
+    {
+        return Message(output =>
+        {
+            foreach (var run in runs)
+            {
+                var runText = PreserveText(run.Text?.Text);
+                if (runText.Length == 0)
+                {
+                    continue;
+                }
+
+                WriteMessage(output, 1, WriteCellTextRun(run, runText));
+            }
+        });
+    }
+
+    private static byte[] WriteCellTextRun(S.Run run, string text)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, text);
+            if (run.RunProperties is not null)
+            {
+                WriteMessage(output, 2, WriteCellTextStyle(run.RunProperties));
+            }
+        });
+    }
+
+    private static byte[] WriteCellTextStyle(S.RunProperties properties)
+    {
+        return Message(output =>
+        {
+            WriteBool(output, 4, IsOnOffElementEnabled(properties.GetFirstChild<S.Bold>()));
+            WriteBool(output, 5, IsOnOffElementEnabled(properties.GetFirstChild<S.Italic>()));
+
+            if (properties.GetFirstChild<S.FontSize>()?.Val?.Value is { } fontSize)
+            {
+                WriteInt32(output, 6, (int)Math.Round(fontSize));
+            }
+
+            var color = properties.GetFirstChild<S.Color>();
+            if (color is not null)
+            {
+                WriteMessage(output, 7, WriteCellTextColorFill(color));
+            }
+
+            var underlineElement = properties.GetFirstChild<S.Underline>();
+            var underline = underlineElement?.Val?.InnerText;
+            if (underlineElement is not null && underline != "none")
+            {
+                WriteString(output, 9, string.IsNullOrEmpty(underline) ? "single" : underline);
+            }
+
+            WriteString(output, 18, properties.GetFirstChild<S.RunFont>()?.Val?.Value ?? "");
+        });
     }
 
     private static int CellFormulaType(S.CellFormula formula)
@@ -3091,6 +3290,14 @@ internal static class XlsxWorkbookProtoReader
         }
 
         return 1;
+    }
+
+    private static bool ShouldWriteCellFormulaMetadata(S.CellFormula formula, string formulaText)
+    {
+        return formulaText.Length > 0 ||
+            formula.SharedIndex?.Value is not null ||
+            formula.FormulaType?.Value is not null ||
+            !string.IsNullOrEmpty(formula.Reference?.Value);
     }
 
     private static int DataValidationType(string value)
@@ -3229,15 +3436,15 @@ internal static class XlsxWorkbookProtoReader
         };
     }
 
-    private static int CellDataType(S.Cell cell, string text)
+    private static int CellDataType(S.Cell cell)
     {
-        if (cell.DataType?.Value == S.CellValues.SharedString) return 3;
+        if (cell.DataType?.Value == S.CellValues.SharedString) return 1;
         if (cell.DataType?.Value == S.CellValues.InlineString) return 2;
         if (cell.DataType?.Value == S.CellValues.String) return 3;
         if (cell.DataType?.Value == S.CellValues.Boolean) return 4;
+        if (cell.DataType?.Value == S.CellValues.Number) return 5;
         if (cell.DataType?.Value == S.CellValues.Error) return 6;
-        if (!string.IsNullOrEmpty(text) && double.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _)) return 5;
-        return string.IsNullOrEmpty(text) ? 0 : 3;
+        return 0;
     }
 
     private static bool ShouldWriteCellDataType(S.Cell cell, string formulaText)
@@ -3250,6 +3457,17 @@ internal static class XlsxWorkbookProtoReader
         var trimmed = formulaText.TrimStart();
         return trimmed.StartsWith("[", StringComparison.Ordinal) ||
             trimmed.StartsWith("'[", StringComparison.Ordinal);
+    }
+
+    private static bool IsOnOffElementEnabled(OpenXmlElement? element)
+    {
+        if (element is null)
+        {
+            return false;
+        }
+
+        var value = AttributeValue(element, "val");
+        return value.Length == 0 || value == "1" || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ConditionalRuleId(S.ConditionalFormattingRule rule)
@@ -3374,6 +3592,11 @@ internal static class XlsxWorkbookProtoReader
         }
 
         return element.GetAttributes().FirstOrDefault(attribute => attribute.LocalName == localName).Value ?? "";
+    }
+
+    private static string PreserveText(string? value)
+    {
+        return value ?? "";
     }
 
     private static double? DoubleAttribute(OpenXmlElement? element, string localName)
