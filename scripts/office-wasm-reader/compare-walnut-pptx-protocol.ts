@@ -14,10 +14,13 @@ type ReaderExports = {
 type PresentationSummary = ReturnType<typeof summarizePresentation>;
 
 type ComparisonResult = {
+  byteComparison: ReturnType<typeof summarizeByteComparison>;
   fixture: string;
   targetProtocol: string;
   walnut: PresentationSummary;
   routa: PresentationSummary;
+  routaProtocol: string;
+  parity: ReturnType<typeof summarizeParity>;
   equivalence: ReturnType<typeof summarizeEquivalence>;
 };
 
@@ -60,11 +63,15 @@ async function compareFixture(fixturePath: string): Promise<ComparisonResult> {
   const walnutPresentation = await decodeWalnutPresentation(walnutProtoBytes);
   const routaProtoBytes = await extractRoutaPresentationProto(sourceBytes);
   const routaPresentation = await decodeWalnutPresentation(routaProtoBytes);
+  const equivalence = summarizeEquivalence(walnutPresentation, routaPresentation);
 
   return {
-    equivalence: summarizeEquivalence(walnutPresentation, routaPresentation),
+    byteComparison: summarizeByteComparison(walnutProtoBytes, routaProtoBytes),
+    equivalence,
     fixture: path.relative(repoRoot, fixturePath),
+    parity: summarizeParity(equivalence),
     routa: summarizePresentation(routaPresentation, routaProtoBytes),
+    routaProtocol: "oaiproto.coworker.presentation.Presentation",
     targetProtocol: "oaiproto.coworker.presentation.Presentation",
     walnut: summarizePresentation(walnutPresentation, walnutProtoBytes),
   };
@@ -267,9 +274,7 @@ function summarizeEquivalence(
 }
 
 function assertEquivalence(result: ComparisonResult): void {
-  const failed = Object.entries(result.equivalence)
-    .filter(([, value]) => typeof value === "boolean" && !value)
-    .map(([key]) => key);
+  const failed = requiredSemanticChecks(result.equivalence);
   if (result.equivalence.firstSlideElementCountDelta !== 0) {
     failed.push("firstSlideElementCountDelta");
   }
@@ -277,6 +282,37 @@ function assertEquivalence(result: ComparisonResult): void {
   if (failed.length > 0) {
     throw new Error(`${result.fixture} PPTX parity failed: ${failed.join(", ")}`);
   }
+}
+
+function summarizeParity(equivalence: ReturnType<typeof summarizeEquivalence>) {
+  const checks = Object.entries(equivalence).filter(([, value]) => typeof value === "boolean");
+  const failedChecks = checks.filter(([, value]) => value !== true).map(([key]) => key);
+  return {
+    failedChecks,
+    passedChecks: checks.length - failedChecks.length,
+    semanticParityPercent:
+      checks.length === 0 ? 100 : Number((((checks.length - failedChecks.length) / checks.length) * 100).toFixed(2)),
+    totalChecks: checks.length,
+  };
+}
+
+function summarizeByteComparison(walnutProtoBytes: Uint8Array, routaProtoBytes: Uint8Array) {
+  return {
+    byteLengthDelta: routaProtoBytes.length - walnutProtoBytes.length,
+    protoBytesExactMatch:
+      walnutProtoBytes.length === routaProtoBytes.length &&
+      sha256(walnutProtoBytes) === sha256(routaProtoBytes),
+    routaByteLength: routaProtoBytes.length,
+    routaSha256: sha256(routaProtoBytes),
+    walnutByteLength: walnutProtoBytes.length,
+    walnutSha256: sha256(walnutProtoBytes),
+  };
+}
+
+function requiredSemanticChecks(equivalence: ReturnType<typeof summarizeEquivalence>): string[] {
+  return Object.entries(equivalence)
+    .filter(([, value]) => typeof value === "boolean" && !value)
+    .map(([key]) => key);
 }
 
 function elementImageReferenceIds(element: Record<string, unknown>): string[] {
@@ -496,7 +532,23 @@ function bytesFromUnknown(value: unknown): Uint8Array {
 }
 
 function stableJson(value: unknown): string {
-  return JSON.stringify(value);
+  return JSON.stringify(sortForJson(value));
+}
+
+function sortForJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortForJson);
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortForJson(value[key])]),
+  );
 }
 
 function numberValue(value: unknown): number {
