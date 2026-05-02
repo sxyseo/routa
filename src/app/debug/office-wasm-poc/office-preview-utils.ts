@@ -208,8 +208,15 @@ export function paragraphView(paragraph: unknown, styleMaps: DocumentStyleMaps):
     ...(asRecord(record?.paragraphStyle) ?? {}),
     ...(asRecord(record?.style) ?? {}),
     ...(asRecord(record?.textStyle) ?? {}),
-    spaceAfter: record?.spaceAfter,
-    spaceBefore: record?.spaceBefore,
+    ...definedRecordProperties(record, [
+      "bulletCharacter",
+      "indent",
+      "lineSpacing",
+      "lineSpacingPercent",
+      "marginLeft",
+      "spaceAfter",
+      "spaceBefore",
+    ]),
   };
   const runs = asArray(record?.runs)
     .map(asRecord)
@@ -229,6 +236,19 @@ export function paragraphView(paragraph: unknown, styleMaps: DocumentStyleMaps):
     styleId,
     style,
   };
+}
+
+function definedRecordProperties(record: RecordValue | null, keys: string[]): RecordValue {
+  const values: RecordValue = {};
+  if (!record) return values;
+
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) {
+      values[key] = record[key];
+    }
+  }
+
+  return values;
 }
 
 export function paragraphStyle(paragraph: ParagraphView): CSSProperties {

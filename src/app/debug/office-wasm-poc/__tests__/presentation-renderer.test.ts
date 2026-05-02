@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { officeFontFamily } from "../office-preview-utils";
+import { EMPTY_DOCUMENT_STYLE_MAPS, officeFontFamily, paragraphView } from "../office-preview-utils";
 import {
   computePresentationFit,
   emuRectToCanvasRect,
+  presentationGradientStops,
   presentationImageSourceRect,
+  presentationLineEndStyle,
   presentationLineStyle,
   presentationScaledFontSize,
   presentationShadowStyle,
@@ -96,8 +98,10 @@ describe("presentation renderer helpers", () => {
       {
         cap: 3,
         fill: { color: { type: 1, value: "8FA69D" } },
+        headEnd: { length: 3, type: 2, width: 2 },
         join: 1,
         style: 2,
+        tailEnd: { length: 2, type: 5, width: 2 },
         widthEmu: 19_050,
       },
       2,
@@ -108,6 +112,68 @@ describe("presentation renderer helpers", () => {
     expect(line.lineCap).toBe("round");
     expect(line.lineJoin).toBe("round");
     expect(line.dash.length).toBeGreaterThan(0);
+    expect(line.headEnd?.type).toBe(2);
+    expect(line.tailEnd?.type).toBe(5);
+  });
+
+  it("maps PPT line end records into canvas arrowhead dimensions", () => {
+    expect(presentationLineEndStyle(undefined, 2)).toBeNull();
+    expect(presentationLineEndStyle({ type: 0 }, 2)).toBeNull();
+    expect(presentationLineEndStyle({ length: 3, type: 2, width: 2 }, 2)).toEqual({
+      length: 10,
+      type: 2,
+      width: 7,
+    });
+  });
+
+  it("normalizes PPT gradient stops and percent positions", () => {
+    expect(
+      presentationGradientStops({
+        gradientStops: [
+          { color: { type: 1, value: "FF0000" }, position: 0 },
+          { color: { transform: { alpha: 50_000 }, type: 1, value: "00FF00" }, position: 50_000 },
+          { color: { type: 1, value: "0000FF" }, position: 100_000 },
+        ],
+      }),
+    ).toEqual([
+      { color: "#FF0000", position: 0 },
+      { color: "rgba(0, 255, 0, 0.5)", position: 0.5 },
+      { color: "#0000FF", position: 1 },
+    ]);
+
+    expect(
+      presentationGradientStops({
+        gradientStops: [
+          { color: { type: 1, value: "111111" } },
+          { color: { type: 1, value: "222222" } },
+          { color: { type: 1, value: "333333" } },
+        ],
+      }),
+    ).toEqual([
+      { color: "#111111", position: 0 },
+      { color: "#222222", position: 0.5 },
+      { color: "#333333", position: 1 },
+    ]);
+  });
+
+  it("preserves top-level PPT paragraph spacing, bullet, and indent fields", () => {
+    const paragraph = paragraphView(
+      {
+        bulletCharacter: "*",
+        indent: -90_000,
+        marginLeft: 180_000,
+        runs: [{ text: "Nested point", textStyle: { fontSize: 1400 } }],
+        spaceAfter: 120,
+        textStyle: { alignment: 1 },
+      },
+      EMPTY_DOCUMENT_STYLE_MAPS,
+    );
+
+    expect(paragraph.style?.bulletCharacter).toBe("*");
+    expect(paragraph.style?.marginLeft).toBe(180_000);
+    expect(paragraph.style?.indent).toBe(-90_000);
+    expect(paragraph.style?.spaceAfter).toBe(120);
+    expect(paragraph.runs[0]?.style?.marginLeft).toBe(180_000);
   });
 
   it("maps PPT shadow effects into canvas offsets", () => {

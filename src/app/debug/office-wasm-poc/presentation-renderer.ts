@@ -46,8 +46,16 @@ export type PresentationImageSourceRect = {
 export type PresentationLineStyle = {
   color?: string;
   dash: number[];
+  headEnd: PresentationLineEndStyle | null;
   lineCap: CanvasLineCap;
   lineJoin: CanvasLineJoin;
+  tailEnd: PresentationLineEndStyle | null;
+  width: number;
+};
+
+export type PresentationLineEndStyle = {
+  length: number;
+  type: number;
   width: number;
 };
 
@@ -290,7 +298,7 @@ function drawElement(
   }
 
   const path = elementPath(shapeKind, rect);
-  const fill = shapeFillToCss(shape, element, line.color, rect);
+  const fill = shapeFillToPaint(context, shape, element, line.color, rect);
   if (fill) {
     context.fillStyle = fill;
     context.fill(path);
@@ -329,12 +337,15 @@ function drawLine(
   height: number,
   line: PresentationLineStyle,
 ): void {
+  if (!line.color) return;
   applyLineStyle(context, line);
   context.beginPath();
   context.moveTo(0, 0);
   context.lineTo(width, height);
   context.stroke();
   context.setLineDash([]);
+  drawLineEnd(context, width, height, line.headEnd, line.color, false);
+  drawLineEnd(context, width, height, line.tailEnd, line.color, true);
 }
 
 function elementPath(kind: PresentationShapeKind, rect: PresentationRect): Path2D {
@@ -520,8 +531,10 @@ export function presentationLineStyle(line: unknown, slideScale: number): Presen
   return {
     color: colorToCss(fillRecord?.color),
     dash: presentationLineDash(asNumber(lineRecord?.style), scaledWidth),
+    headEnd: presentationLineEndStyle(lineRecord?.headEnd, scaledWidth),
     lineCap: presentationLineCap(asNumber(lineRecord?.cap)),
     lineJoin: presentationLineJoin(asNumber(lineRecord?.join)),
+    tailEnd: presentationLineEndStyle(lineRecord?.tailEnd, scaledWidth),
     width: scaledWidth,
   };
 }
@@ -554,6 +567,56 @@ function presentationLineDash(style: number, width: number): number[] {
   if (style === 5) return [unit * 8, unit * 3, unit, unit * 3];
   if (style === 6) return [unit * 8, unit * 3, unit, unit * 3, unit, unit * 3];
   return [];
+}
+
+export function presentationLineEndStyle(end: unknown, lineWidth: number): PresentationLineEndStyle | null {
+  const record = asRecord(end);
+  const type = asNumber(record?.type);
+  if (!record || type <= 0) return null;
+
+  return {
+    length: lineEndScale(asNumber(record.length, 2), lineWidth),
+    type,
+    width: lineEndScale(asNumber(record.width, 2), lineWidth),
+  };
+}
+
+function lineEndScale(value: number, lineWidth: number): number {
+  const multiplier = value <= 1 ? 2.5 : value === 2 ? 3.5 : value === 3 ? 5 : Math.min(value, 6);
+  return Math.max(5, lineWidth * multiplier);
+}
+
+function drawLineEnd(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  end: PresentationLineEndStyle | null,
+  color: string,
+  atTail: boolean,
+): void {
+  if (!end) return;
+
+  const from = atTail ? { x: width, y: height } : { x: 0, y: 0 };
+  const to = atTail ? { x: 0, y: 0 } : { x: width, y: height };
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const x = atTail ? 0 : width;
+  const y = atTail ? 0 : height;
+
+  context.save();
+  context.translate(x, y);
+  context.rotate(angle);
+  context.fillStyle = color;
+  context.beginPath();
+  if (end.type === 5) {
+    context.ellipse(-end.length / 2, 0, end.width / 2, end.width / 2, 0, 0, Math.PI * 2);
+  } else {
+    context.moveTo(0, 0);
+    context.lineTo(-end.length, -end.width / 2);
+    context.lineTo(-end.length, end.width / 2);
+    context.closePath();
+  }
+  context.fill();
+  context.restore();
 }
 
 export function presentationShadowStyle(element: RecordValue, slideScale: number): PresentationShadowStyle | null {
@@ -601,6 +664,92 @@ function shapeFillToCss(
   }
 
   return fill;
+}
+
+function shapeFillToPaint(
+  context: CanvasRenderingContext2D,
+  shape: RecordValue | null,
+  element: RecordValue,
+  lineColor: string | undefined,
+  rect: PresentationRect,
+): string | CanvasGradient | undefined {
+  const fill = asRecord(shape?.fill) ?? asRecord(element.fill);
+  const gradient = presentationGradientFill(context, fill, rect);
+  if (gradient) return gradient;
+  return shapeFillToCss(shape, element, lineColor, rect);
+}
+
+export function presentationGradientStops(fill: unknown): Array<{ color: string; position: number }> {
+  const stops = asArray(asRecord(fill)?.gradientStops)
+    .map((stop, index) => {
+      const record = asRecord(stop);
+      const color = colorToCss(record?.color ?? stop);
+      if (!color) return null;
+      return {
+        color,
+        index,
+        position: gradientStopPosition(record),
+      };
+    })
+    .filter((stop): stop is { color: string; index: number; position: number | null } => stop != null);
+
+  return stops.map((stop) => ({
+    color: stop.color,
+    position: stop.position ?? (stops.length === 1 ? 0 : stop.index / (stops.length - 1)),
+  }));
+}
+
+function presentationGradientFill(
+  context: CanvasRenderingContext2D,
+  fill: RecordValue | null,
+  rect: PresentationRect,
+): CanvasGradient | undefined {
+  const stops = presentationGradientStops(fill);
+  if (stops.length < 2) return undefined;
+
+  const line = gradientLine(rect, gradientAngle(fill));
+  const gradient = context.createLinearGradient(line.x1, line.y1, line.x2, line.y2);
+  for (const stop of stops) {
+    gradient.addColorStop(clamp(stop.position, 0, 1), stop.color);
+  }
+  return gradient;
+}
+
+function gradientStopPosition(stop: RecordValue | null): number | null {
+  for (const key of ["position", "offset", "pos"]) {
+    const value = asNumber(stop?.[key], Number.NaN);
+    if (Number.isFinite(value)) {
+      return value > 1 ? clamp(value / 100_000, 0, 1) : clamp(value, 0, 1);
+    }
+  }
+
+  return null;
+}
+
+function gradientAngle(fill: RecordValue | null): number {
+  for (const key of ["angle", "gradientAngle", "direction"]) {
+    const value = asNumber(fill?.[key], Number.NaN);
+    if (Number.isFinite(value)) {
+      return Math.abs(value) > 360 ? value / 60_000 : value;
+    }
+  }
+
+  return 0;
+}
+
+function gradientLine(rect: PresentationRect, angleDegrees: number): { x1: number; x2: number; y1: number; y2: number } {
+  const radians = (angleDegrees * Math.PI) / 180;
+  const dx = Math.cos(radians);
+  const dy = Math.sin(radians);
+  const length = Math.abs(rect.width * dx) + Math.abs(rect.height * dy);
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  return {
+    x1: cx - (dx * length) / 2,
+    x2: cx + (dx * length) / 2,
+    y1: cy - (dy * length) / 2,
+    y2: cy + (dy * length) / 2,
+  };
 }
 
 function isTransparentOutlineEllipse(shape: RecordValue | null, rect: PresentationRect): boolean {
