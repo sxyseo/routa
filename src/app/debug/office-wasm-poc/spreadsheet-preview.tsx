@@ -35,8 +35,11 @@ import {
 type SpreadsheetCellVisual = {
   background?: string;
   dataBar?: {
+    axisPercent?: number;
     color: string;
-    percent: number;
+    gradient: boolean;
+    startPercent: number;
+    widthPercent: number;
   };
   filter?: boolean;
   iconSet?: {
@@ -969,10 +972,7 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
         const negativeColor = protocolColorToCss(dataBar.negativeFillColor) ?? color;
         for (const item of values) {
           mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
-            dataBar: {
-              color: item.value < 0 ? negativeColor : color,
-              percent: Math.max(0, Math.min(100, (item.value - barMin) / span * 100)),
-            },
+            dataBar: spreadsheetDataBarVisual(item.value, barMin, barMax, span, color, negativeColor, dataBar),
           });
         }
         continue;
@@ -1029,14 +1029,13 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
       continue;
     }
 
-    const maxAbs = Math.max(1, ...values.map((item) => Math.abs(item.value)));
+    const fallbackMin = Math.min(0, minValue);
+    const fallbackMax = Math.max(0, maxValue);
+    const fallbackSpan = Math.max(1, fallbackMax - fallbackMin);
     const color = dataBarColorForRange(sheetName, reference);
     for (const item of values) {
       mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
-        dataBar: {
-          color,
-          percent: Math.max(0, Math.min(100, Math.abs(item.value) / maxAbs * 100)),
-        },
+        dataBar: spreadsheetDataBarVisual(item.value, fallbackMin, fallbackMax, fallbackSpan, color, color, { gradient: true }),
       });
     }
   }
@@ -1085,6 +1084,39 @@ function dataBarThresholdValue(
 ): number {
   const cfvo = asRecord(asArray(dataBar.cfvos)[index]);
   return cfvoThresholdValue(cfvo, rangeValues, minValue, maxValue, fallback);
+}
+
+function spreadsheetDataBarVisual(
+  value: number,
+  minValue: number,
+  maxValue: number,
+  span: number,
+  color: string,
+  negativeColor: string,
+  dataBar: RecordValue,
+): NonNullable<SpreadsheetCellVisual["dataBar"]> {
+  const zeroPercent = dataBarAxisPercent(dataBar, minValue, maxValue, span);
+  const valuePercent = Math.max(0, Math.min(100, (value - minValue) / span * 100));
+  const startPercent = Math.max(0, Math.min(100, Math.min(zeroPercent, valuePercent)));
+  const endPercent = Math.max(0, Math.min(100, Math.max(zeroPercent, valuePercent)));
+  const axisPercent = minValue < 0 && maxValue > 0 ? zeroPercent : undefined;
+
+  return {
+    axisPercent,
+    color: value < 0 ? negativeColor : color,
+    gradient: dataBar.gradient !== false,
+    startPercent,
+    widthPercent: Math.max(0, endPercent - startPercent),
+  };
+}
+
+function dataBarAxisPercent(dataBar: RecordValue, minValue: number, maxValue: number, span: number): number {
+  const axisPosition = asString(dataBar.axisPosition);
+  if (axisPosition === "middle") return 50;
+  if (axisPosition === "none") return minValue < 0 && maxValue <= 0 ? 100 : 0;
+  if (maxValue <= 0) return 100;
+  if (minValue >= 0) return 0;
+  return Math.max(0, Math.min(100, (0 - minValue) / span * 100));
 }
 
 function spreadsheetIconSetVisual(
@@ -1174,19 +1206,37 @@ function SpreadsheetCellContent({
   return (
     <>
       {visual?.dataBar ? (
-        <span
-          aria-hidden="true"
-          style={{
-            background: `linear-gradient(90deg, ${visual.dataBar.color} 0%, ${visual.dataBar.color} 72%, rgba(255,255,255,0) 100%)`,
-            bottom: 1,
-            left: 0,
-            opacity: 0.75,
-            position: "absolute",
-            top: 1,
-            width: `${visual.dataBar.percent}%`,
-            zIndex: 0,
-          }}
-        />
+        <>
+          <span
+            aria-hidden="true"
+            style={{
+              background: visual.dataBar.gradient
+                ? `linear-gradient(90deg, ${visual.dataBar.color} 0%, ${visual.dataBar.color} 72%, rgba(255,255,255,0) 100%)`
+                : visual.dataBar.color,
+              bottom: 1,
+              left: `${visual.dataBar.startPercent}%`,
+              opacity: 0.75,
+              position: "absolute",
+              top: 1,
+              width: `${visual.dataBar.widthPercent}%`,
+              zIndex: 0,
+            }}
+          />
+          {visual.dataBar.axisPercent === undefined ? null : (
+            <span
+              aria-hidden="true"
+              style={{
+                background: "rgba(31, 41, 55, 0.45)",
+                bottom: 1,
+                left: `${visual.dataBar.axisPercent}%`,
+                position: "absolute",
+                top: 1,
+                width: 1,
+                zIndex: 1,
+              }}
+            />
+          )}
+        </>
       ) : null}
       {visual?.iconSet ? <SpreadsheetIconSet visual={visual.iconSet} /> : null}
       {visual?.iconSet?.showValue === false ? null : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
