@@ -9,6 +9,7 @@ import {
   spreadsheetFrozenBodyHeight,
   spreadsheetFrozenBodyWidth,
   spreadsheetHitCellAtViewportPoint,
+  spreadsheetVisibleCellRange,
   spreadsheetViewportPointToWorld,
   spreadsheetViewportRectSegments,
 } from "../spreadsheet-layout";
@@ -98,5 +99,27 @@ describe("spreadsheet frozen headers", () => {
         width: 145,
       },
     ]);
+  });
+
+  it("finds visible cells from prefix sums with overscan", () => {
+    const layout = buildSpreadsheetLayout({
+      columns: Array.from({ length: 12 }, (_, index) => ({ max: index + 1, min: index + 1, width: 10 })),
+      rows: Array.from({ length: 20 }, (_, index) => ({
+        cells: [{ address: `A${index + 1}` }],
+        index: index + 1,
+      })),
+    });
+
+    expect(spreadsheetVisibleCellRange(
+      layout,
+      { height: 75, width: 260 },
+      { left: 270, top: 105 },
+      1,
+    )).toEqual({
+      endColumnIndex: 7,
+      endRowOffset: 9,
+      startColumnIndex: 2,
+      startRowOffset: 3,
+    });
   });
 });

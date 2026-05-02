@@ -57,6 +57,18 @@ export type SpreadsheetViewportScroll = {
   top: number;
 };
 
+export type SpreadsheetViewportSize = {
+  height: number;
+  width: number;
+};
+
+export type SpreadsheetVisibleCellRange = {
+  endColumnIndex: number;
+  endRowOffset: number;
+  startColumnIndex: number;
+  startRowOffset: number;
+};
+
 export type SpreadsheetCellHit = {
   columnIndex: number;
   rowIndex: number;
@@ -230,6 +242,55 @@ export function spreadsheetHitCellAtViewportPoint(
   };
 }
 
+export function spreadsheetVisibleCellRange(
+  layout: SpreadsheetLayout,
+  viewport: SpreadsheetViewportSize,
+  scroll: SpreadsheetViewportScroll,
+  overscan = 2,
+): SpreadsheetVisibleCellRange {
+  if (layout.columnCount <= 0 || layout.rowCount <= 0 || viewport.width <= 0 || viewport.height <= 0) {
+    return {
+      endColumnIndex: Math.max(0, layout.columnCount - 1),
+      endRowOffset: Math.max(0, layout.rowCount - 1),
+      startColumnIndex: 0,
+      startRowOffset: 0,
+    };
+  }
+
+  const startX = Math.max(SPREADSHEET_ROW_HEADER_WIDTH, scroll.left);
+  const endX = Math.min(layout.gridWidth - 0.001, Math.max(startX, scroll.left + viewport.width));
+  const startY = Math.max(SPREADSHEET_COLUMN_HEADER_HEIGHT, scroll.top);
+  const endY = Math.min(layout.gridHeight - 0.001, Math.max(startY, scroll.top + viewport.height));
+  const startColumnIndex = offsetIndexAt(layout.columnOffsets, startX);
+  const endColumnIndex = offsetIndexAt(layout.columnOffsets, endX);
+  const startRowOffset = offsetIndexAt(layout.rowOffsets, startY);
+  const endRowOffset = offsetIndexAt(layout.rowOffsets, endY);
+  const padding = Math.max(0, Math.trunc(overscan));
+
+  return {
+    endColumnIndex: clampInteger(
+      (endColumnIndex < 0 ? layout.columnCount - 1 : endColumnIndex) + padding,
+      0,
+      layout.columnCount - 1,
+    ),
+    endRowOffset: clampInteger(
+      (endRowOffset < 0 ? layout.rowCount - 1 : endRowOffset) + padding,
+      0,
+      layout.rowCount - 1,
+    ),
+    startColumnIndex: clampInteger(
+      (startColumnIndex < 0 ? 0 : startColumnIndex) - padding,
+      0,
+      layout.columnCount - 1,
+    ),
+    startRowOffset: clampInteger(
+      (startRowOffset < 0 ? 0 : startRowOffset) - padding,
+      0,
+      layout.rowCount - 1,
+    ),
+  };
+}
+
 export function spreadsheetViewportRectSegments(
   layout: SpreadsheetLayout,
   rect: SpreadsheetViewportRect,
@@ -377,8 +438,21 @@ function spreadsheetAxisViewportSegments(
 }
 
 function offsetIndexAt(offsets: number[], value: number): number {
-  for (let index = 0; index < offsets.length - 1; index += 1) {
-    if (value >= (offsets[index] ?? 0) && value < (offsets[index + 1] ?? 0)) {
+  if (offsets.length < 2 || value < (offsets[0] ?? 0) || value >= (offsets[offsets.length - 1] ?? 0)) {
+    return -1;
+  }
+
+  let low = 0;
+  let high = offsets.length - 2;
+  while (low <= high) {
+    const index = Math.floor((low + high) / 2);
+    const start = offsets[index] ?? 0;
+    const end = offsets[index + 1] ?? start;
+    if (value < start) {
+      high = index - 1;
+    } else if (value >= end) {
+      low = index + 1;
+    } else {
       return index;
     }
   }

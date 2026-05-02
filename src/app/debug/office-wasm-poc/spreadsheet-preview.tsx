@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type UIEvent, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   asArray,
@@ -41,10 +41,12 @@ import {
   spreadsheetColumnLeft,
   spreadsheetFrozenBodyHeight,
   spreadsheetFrozenBodyWidth,
+  spreadsheetVisibleCellRange,
   spreadsheetViewportRectSegments,
   type SpreadsheetLayout,
   spreadsheetRowTop,
   type SpreadsheetViewportScroll,
+  type SpreadsheetViewportSize,
 } from "./spreadsheet-layout";
 
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
@@ -56,6 +58,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const imageSources = useOfficeImageSources(root);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
   const [viewportScroll, setViewportScroll] = useState({ left: 0, top: 0 });
+  const [viewportSize, setViewportSize] = useState({ height: 0, width: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
   const layout = buildSpreadsheetLayout(activeSheet);
@@ -84,17 +87,42 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     viewport.scrollTop = 0;
   }, [activeSheetIndex]);
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const updateViewportSize = () => {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      setViewportSize((current) => current.width === width && current.height === height ? current : { height, width });
+    };
+
+    updateViewportSize();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateViewportSize);
+      return () => window.removeEventListener("resize", updateViewportSize);
+    }
+
+    const observer = new ResizeObserver(updateViewportSize);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [activeSheetIndex]);
+
   const handleSheetSelect = (index: number) => {
     setViewportScroll({ left: 0, top: 0 });
     setActiveSheetIndex(index);
   };
 
   const handleViewportScroll = (event: UIEvent<HTMLDivElement>) => {
-    const { scrollLeft, scrollTop } = event.currentTarget;
+    const { clientHeight, clientWidth, scrollLeft, scrollTop } = event.currentTarget;
     setViewportScroll((current) => {
       if (current.left === scrollLeft && current.top === scrollTop) return current;
       return { left: scrollLeft, top: scrollTop };
     });
+    setViewportSize((current) => (
+      current.width === clientWidth && current.height === clientHeight
+        ? current
+        : { height: clientHeight, width: clientWidth }
+    ));
   };
 
   if (sheets.length === 0) {
@@ -132,7 +160,9 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               activeSheet={activeSheet}
               cellVisuals={cellVisuals}
               layout={layout}
+              scroll={viewportScroll}
               styles={styles}
+              viewportSize={viewportSize}
             />
             <SpreadsheetImageLayer images={imageSpecs} />
             <SpreadsheetShapeLayer shapes={shapeSpecs} />
@@ -258,14 +288,54 @@ function SpreadsheetGrid({
   activeSheet,
   cellVisuals,
   layout,
+  scroll,
   styles,
+  viewportSize,
 }: {
   activeSheet: RecordValue | undefined;
   cellVisuals: Map<string, SpreadsheetCellVisual>;
   layout: SpreadsheetLayout;
+  scroll: SpreadsheetViewportScroll;
   styles: RecordValue | null;
+  viewportSize: SpreadsheetViewportSize;
 }) {
   const sheetName = asString(activeSheet?.name);
+  const visibleRange = useMemo(
+    () => spreadsheetVisibleCellRange(layout, viewportSize, scroll),
+    [layout, scroll, viewportSize],
+  );
+  const visibleMergeStarts = useMemo(() => {
+    const keys = new Set<string>();
+    for (const [key, merge] of layout.mergeByStart) {
+      const rowStart = merge.startRow - 1;
+      const rowEnd = rowStart + merge.rowSpan - 1;
+      const columnStart = merge.startColumn;
+      const columnEnd = columnStart + merge.columnSpan - 1;
+      if (
+        rowStart <= visibleRange.endRowOffset &&
+        rowEnd >= visibleRange.startRowOffset &&
+        columnStart <= visibleRange.endColumnIndex &&
+        columnEnd >= visibleRange.startColumnIndex
+      ) {
+        keys.add(key);
+      }
+    }
+    return keys;
+  }, [layout.mergeByStart, visibleRange]);
+  const visibleColumnIndexes = useMemo(() => {
+    const indexes = rangeIndexes(visibleRange.startColumnIndex, visibleRange.endColumnIndex);
+    for (const key of visibleMergeStarts) {
+      indexes.add(Number(key.split(":")[1] ?? 0));
+    }
+    return [...indexes].sort((a, b) => a - b);
+  }, [visibleMergeStarts, visibleRange]);
+  const visibleRowOffsets = useMemo(() => {
+    const offsets = rangeIndexes(visibleRange.startRowOffset, visibleRange.endRowOffset);
+    for (const key of visibleMergeStarts) {
+      offsets.add(Math.max(0, Number(key.split(":")[0] ?? 1) - 1));
+    }
+    return [...offsets].sort((a, b) => a - b);
+  }, [visibleMergeStarts, visibleRange]);
 
   return (
     <div
@@ -279,7 +349,7 @@ function SpreadsheetGrid({
       }}
     >
       <div style={spreadsheetCornerStyle} />
-      {Array.from({ length: layout.columnCount }, (_, columnIndex) => (
+      {visibleColumnIndexes.map((columnIndex) => (
         <div
           key={columnIndex}
           role="columnheader"
@@ -292,7 +362,7 @@ function SpreadsheetGrid({
           {columnLabel(columnIndex)}
         </div>
       ))}
-      {Array.from({ length: layout.rowCount }, (_, rowOffset) => {
+      {visibleRowOffsets.map((rowOffset) => {
         const rowIndex = rowOffset + 1;
         const row = layout.rowsByIndex.get(rowIndex);
         const top = spreadsheetRowTop(layout, rowOffset);
@@ -309,9 +379,10 @@ function SpreadsheetGrid({
             >
               {rowIndex}
             </div>
-            {Array.from({ length: layout.columnCount }, (_, columnIndex) => {
+            {visibleColumnIndexes.map((columnIndex) => {
               const cellKey = spreadsheetCellKey(rowIndex, columnIndex);
               if (layout.coveredCells.has(cellKey)) return null;
+              if (!visibleCellIntersectsRange(layout, rowOffset, columnIndex, visibleRange)) return null;
               const cell = row?.get(columnIndex) ?? null;
               const merge = layout.mergeByStart.get(cellKey);
               const left = spreadsheetColumnLeft(layout, columnIndex);
@@ -341,6 +412,31 @@ function SpreadsheetGrid({
         );
       })}
     </div>
+  );
+}
+
+function rangeIndexes(start: number, end: number): Set<number> {
+  const indexes = new Set<number>();
+  for (let index = Math.max(0, start); index <= end; index += 1) {
+    indexes.add(index);
+  }
+  return indexes;
+}
+
+function visibleCellIntersectsRange(
+  layout: SpreadsheetLayout,
+  rowOffset: number,
+  columnIndex: number,
+  range: ReturnType<typeof spreadsheetVisibleCellRange>,
+): boolean {
+  const merge = layout.mergeByStart.get(spreadsheetCellKey(rowOffset + 1, columnIndex));
+  const rowEnd = rowOffset + (merge?.rowSpan ?? 1) - 1;
+  const columnEnd = columnIndex + (merge?.columnSpan ?? 1) - 1;
+  return (
+    rowOffset <= range.endRowOffset &&
+    rowEnd >= range.startRowOffset &&
+    columnIndex <= range.endColumnIndex &&
+    columnEnd >= range.startColumnIndex
   );
 }
 
