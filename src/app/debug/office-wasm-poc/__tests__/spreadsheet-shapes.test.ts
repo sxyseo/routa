@@ -166,4 +166,41 @@ describe("spreadsheet shapes", () => {
     expect(images[0]?.zIndex).toBe(0);
     expect(shapes[0]?.zIndex).toBe(1);
   });
+
+  it("projects sheet drawing shape shadows from presentation effects", () => {
+    const sheet = {
+      drawings: [
+        {
+          extentCx: "952500",
+          extentCy: "476250",
+          fromAnchor: { colId: "1", rowId: "1" },
+          shape: {
+            effects: [
+              {
+                shadow: {
+                  blurRadius: "19050",
+                  color: {
+                    transform: { alpha: 50000 },
+                    type: 1,
+                    value: "334155",
+                  },
+                  direction: 0,
+                  distance: "38100",
+                },
+              },
+            ],
+            id: "shadowed-shape",
+            shape: { fill: { color: { value: "FFFFFF" } } },
+          },
+        },
+      ],
+      name: "Drawings",
+      rows: [{ cells: [{ address: "B2" }], index: 2 }],
+    };
+    const layout = buildSpreadsheetLayout(sheet);
+
+    const shapes = buildSpreadsheetShapes({ activeSheet: sheet, layout, shapes: [] });
+
+    expect(shapes[0]?.boxShadow).toBe("4px 0px 2px rgba(51, 65, 85, 0.5)");
+  });
 });

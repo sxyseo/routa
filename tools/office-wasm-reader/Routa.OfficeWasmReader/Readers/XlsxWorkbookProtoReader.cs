@@ -10,6 +10,15 @@ namespace Routa.OfficeWasmReader;
 
 internal static class XlsxWorkbookProtoReader
 {
+    private const int ColorTypeRgb = 1;
+    private const int ColorTypeScheme = 2;
+    private const int ColorTypeSystem = 3;
+    private const int EffectTypeShadow = 1;
+    private const int EffectTypeGlow = 3;
+    private const int EffectTypeReflection = 4;
+    private const int EffectTypeSoftEdges = 5;
+    private const int FillTypeSolid = 1;
+
     public static byte[] Read(byte[] bytes)
     {
         using var stream = new MemoryStream(bytes, writable: false);
@@ -685,6 +694,11 @@ internal static class XlsxWorkbookProtoReader
         {
             WriteMessage(output, 1, WriteBoundingBox(extentCx, extentCy));
             WriteMessage(output, 4, WriteShape(shapeProperties));
+            foreach (var effect in ExtractEffects(shapeProperties))
+            {
+                WriteMessage(output, 15, effect);
+            }
+
             WriteString(output, 10, nonVisual?.Name?.Value ?? "");
             WriteInt32(output, 11, 5);
             WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? "");
@@ -726,8 +740,12 @@ internal static class XlsxWorkbookProtoReader
     {
         return Message(output =>
         {
-            WriteInt32(output, 1, 1);
-            WriteMessage(output, 2, WriteColor(fill?.RgbColorModelHex?.Val?.Value));
+            WriteInt32(output, 1, FillTypeSolid);
+            var color = fill is null ? null : ColorFromDrawingElement(fill);
+            if (color is not null)
+            {
+                WriteMessage(output, 2, WriteColor(color));
+            }
         });
     }
 
@@ -737,6 +755,111 @@ internal static class XlsxWorkbookProtoReader
         {
             WriteInt32(output, 2, line?.Width?.Value ?? 0);
             WriteMessage(output, 3, WriteSolidFill(line?.GetFirstChild<A.SolidFill>()));
+        });
+    }
+
+    private static IEnumerable<byte[]> ExtractEffects(OpenXmlElement? element)
+    {
+        if (element is null)
+        {
+            yield break;
+        }
+
+        foreach (var shadow in element.Descendants<A.OuterShadow>())
+        {
+            yield return WriteShadowEffect(shadow);
+        }
+
+        foreach (var glow in element.Descendants<A.Glow>())
+        {
+            yield return WriteGlowEffect(glow);
+        }
+
+        foreach (var reflection in element.Descendants<A.Reflection>())
+        {
+            yield return WriteReflectionEffect(reflection);
+        }
+
+        foreach (var softEdges in element.Descendants<A.SoftEdge>())
+        {
+            yield return WriteSoftEdgesEffect(softEdges);
+        }
+    }
+
+    private static byte[] WriteShadowEffect(A.OuterShadow shadow)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, EffectTypeShadow);
+            WriteMessage(output, 2, Message(shadowOutput =>
+            {
+                var color = ColorFromDrawingElement(shadow);
+                if (color is not null)
+                {
+                    WriteMessage(shadowOutput, 2, WriteColor(color));
+                }
+
+                WriteInt32(shadowOutput, 3, ToInt32(shadow.BlurRadius));
+                WriteInt32(shadowOutput, 4, ToInt32(shadow.Distance));
+                WriteInt32(shadowOutput, 5, shadow.Direction?.Value);
+                WriteString(shadowOutput, 6, EnumText(shadow.Alignment));
+                WriteBoolValue(shadowOutput, 7, shadow.RotateWithShape?.Value);
+            }));
+        });
+    }
+
+    private static byte[] WriteGlowEffect(A.Glow glow)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, EffectTypeGlow);
+            WriteMessage(output, 3, Message(glowOutput =>
+            {
+                var color = ColorFromDrawingElement(glow);
+                if (color is not null)
+                {
+                    WriteMessage(glowOutput, 1, WriteColor(color));
+                }
+
+                WriteInt64(glowOutput, 2, ToLong(glow.Radius));
+            }));
+        });
+    }
+
+    private static byte[] WriteReflectionEffect(A.Reflection reflection)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, EffectTypeReflection);
+            WriteMessage(output, 4, Message(reflectionOutput =>
+            {
+                WriteInt64(reflectionOutput, 1, ToLong(reflection.BlurRadius));
+                WriteInt32(reflectionOutput, 2, reflection.StartOpacity?.Value);
+                WriteInt32(reflectionOutput, 3, reflection.StartPosition?.Value);
+                WriteInt32(reflectionOutput, 4, reflection.EndAlpha?.Value);
+                WriteInt32(reflectionOutput, 5, reflection.EndPosition?.Value);
+                WriteInt64(reflectionOutput, 6, ToLong(reflection.Distance));
+                WriteInt32(reflectionOutput, 7, reflection.Direction?.Value);
+                WriteInt32(reflectionOutput, 8, reflection.FadeDirection?.Value);
+                WriteInt32(reflectionOutput, 9, reflection.HorizontalRatio?.Value);
+                WriteInt32(reflectionOutput, 10, reflection.VerticalRatio?.Value);
+                WriteInt32(reflectionOutput, 11, reflection.HorizontalSkew?.Value);
+                WriteInt32(reflectionOutput, 12, reflection.VerticalSkew?.Value);
+                WriteString(reflectionOutput, 13, reflection.Alignment?.Value.ToString());
+                WriteBoolValue(reflectionOutput, 14, reflection.RotateWithShape?.Value);
+            }));
+        });
+    }
+
+    private static byte[] WriteSoftEdgesEffect(A.SoftEdge softEdges)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, EffectTypeSoftEdges);
+            WriteMessage(output, 5, Message(softEdgesOutput =>
+            {
+                WriteInt64(softEdgesOutput, 1, ToLong(softEdges.Radius));
+            }));
         });
     }
 
@@ -1113,6 +1236,107 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
+    private static byte[] WriteColor(DrawingColorValue color)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, color.Type);
+            WriteString(output, 2, color.Value);
+            if (color.HasTransform)
+            {
+                WriteMessage(output, 3, Message(transformOutput =>
+                {
+                    WriteInt32(transformOutput, 1, color.Tint);
+                    WriteInt32(transformOutput, 2, color.Shade);
+                    WriteInt32(transformOutput, 3, color.LuminanceModulation);
+                    WriteInt32(transformOutput, 4, color.LuminanceOffset);
+                    WriteInt32(transformOutput, 5, color.SaturationModulation);
+                    if (color.Alpha is not null)
+                    {
+                        WriteInt32IncludingZero(transformOutput, 6, color.Alpha.Value);
+                    }
+                }));
+            }
+
+            WriteString(output, 4, color.LastColor);
+        });
+    }
+
+    private static DrawingColorValue? ColorFromDrawingElement(OpenXmlElement element)
+    {
+        var rgb = element.GetFirstChild<A.RgbColorModelHex>() ?? element.Descendants<A.RgbColorModelHex>().FirstOrDefault();
+        if (rgb?.Val?.Value is { Length: > 0 } value)
+        {
+            return ColorValueFromDrawingElement(ColorTypeRgb, value, rgb, LastColor: null);
+        }
+
+        var scheme = element.GetFirstChild<A.SchemeColor>() ?? element.Descendants<A.SchemeColor>().FirstOrDefault();
+        if (scheme?.Val?.Value is not null)
+        {
+            return ColorValueFromDrawingElement(ColorTypeScheme, EnumText(scheme.Val), scheme, LastColor: null);
+        }
+
+        var system = element.GetFirstChild<A.SystemColor>() ?? element.Descendants<A.SystemColor>().FirstOrDefault();
+        if (system?.Val?.Value is not null)
+        {
+            return ColorValueFromDrawingElement(
+                ColorTypeSystem,
+                EnumText(system.Val),
+                system,
+                system.LastColor?.Value);
+        }
+
+        return null;
+    }
+
+    private static DrawingColorValue ColorValueFromDrawingElement(
+        int type,
+        string value,
+        OpenXmlElement element,
+        string? LastColor)
+    {
+        return new DrawingColorValue(
+            type,
+            value,
+            LastColor,
+            TintFrom(element),
+            ShadeFrom(element),
+            LuminanceModulationFrom(element),
+            LuminanceOffsetFrom(element),
+            SaturationModulationFrom(element),
+            AlphaFrom(element));
+    }
+
+    private static int? AlphaFrom(OpenXmlElement element)
+    {
+        return element.GetFirstChild<A.Alpha>()?.Val?.Value;
+    }
+
+    private static int? TintFrom(OpenXmlElement element)
+    {
+        return element.GetFirstChild<A.Tint>()?.Val?.Value;
+    }
+
+    private static int? ShadeFrom(OpenXmlElement element)
+    {
+        return element.GetFirstChild<A.Shade>()?.Val?.Value;
+    }
+
+    private static int? LuminanceModulationFrom(OpenXmlElement element)
+    {
+        return element.GetFirstChild<A.LuminanceModulation>()?.Val?.Value;
+    }
+
+    private static int? LuminanceOffsetFrom(OpenXmlElement element)
+    {
+        return element.GetFirstChild<A.LuminanceOffset>()?.Val?.Value;
+    }
+
+    private static int? SaturationModulationFrom(OpenXmlElement element)
+    {
+        return element.GetFirstChild<A.SaturationModulation>()?.Val?.Value;
+    }
+
     private static string ReadCellText(S.Cell cell, S.SharedStringTable? sharedStrings)
     {
         var raw = cell.CellValue?.Text ?? cell.InnerText;
@@ -1169,6 +1393,21 @@ internal static class XlsxWorkbookProtoReader
     private static string EnumText(OpenXmlSimpleType? value)
     {
         return value?.InnerText ?? "";
+    }
+
+    private static int? ToInt32(Int64Value? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        return (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, value.Value));
+    }
+
+    private static long? ToLong(Int64Value? value)
+    {
+        return value?.Value;
     }
 
     private static string NormalizeImageContentType(string contentType)
@@ -1235,6 +1474,17 @@ internal static class XlsxWorkbookProtoReader
         output.WriteInt32(value);
     }
 
+    private static void WriteInt32(CodedOutputStream output, int fieldNumber, int? value)
+    {
+        if (value is null or 0)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteInt32(value.Value);
+    }
+
     private static void WriteInt32IncludingZero(CodedOutputStream output, int fieldNumber, int value)
     {
         output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
@@ -1250,6 +1500,17 @@ internal static class XlsxWorkbookProtoReader
 
         output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
         output.WriteInt64(value);
+    }
+
+    private static void WriteInt64(CodedOutputStream output, int fieldNumber, long? value)
+    {
+        if (value is null or 0)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteInt64(value.Value);
     }
 
     private static void WritePackedDoubles(CodedOutputStream output, int fieldNumber, IReadOnlyList<double> values)
@@ -1286,7 +1547,38 @@ internal static class XlsxWorkbookProtoReader
         output.WriteBool(value);
     }
 
+    private static void WriteBoolValue(CodedOutputStream output, int fieldNumber, bool? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteBool(value.Value);
+    }
+
     private sealed record WorksheetImageReference(string Id, ImagePart Part);
+
+    private sealed record DrawingColorValue(
+        int Type,
+        string Value,
+        string? LastColor,
+        int? Tint,
+        int? Shade,
+        int? LuminanceModulation,
+        int? LuminanceOffset,
+        int? SaturationModulation,
+        int? Alpha)
+    {
+        public bool HasTransform =>
+            Tint is not null ||
+            Shade is not null ||
+            LuminanceModulation is not null ||
+            LuminanceOffset is not null ||
+            SaturationModulation is not null ||
+            Alpha is not null;
+    }
 
     private sealed record ChartReadModel(
         string Title,

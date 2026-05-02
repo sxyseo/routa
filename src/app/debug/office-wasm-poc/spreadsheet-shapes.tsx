@@ -18,6 +18,7 @@ import {
 } from "./spreadsheet-layout";
 
 type SpreadsheetShapeSpec = {
+  boxShadow?: string;
   fill: string;
   geometry: number | string;
   height: number;
@@ -99,8 +100,10 @@ function shapeFromSheetDrawing(
   const top = spreadsheetRowTop(layout, protocolNumber(fromAnchor?.rowId, 0)) + spreadsheetEmuToPx(fromAnchor?.rowOffset);
   const width = spreadsheetEmuToPx(drawing.extentCx) || spreadsheetEmuToPx(bbox?.widthEmu);
   const height = spreadsheetEmuToPx(drawing.extentCy) || spreadsheetEmuToPx(bbox?.heightEmu);
+  const boxShadow = spreadsheetShapeBoxShadow(shapeElement);
 
   return {
+    ...(boxShadow ? { boxShadow } : {}),
     fill: nestedProtocolColor(shape.fill) ?? "#ffffff",
     geometry: asNumber(shape.geometry, 0),
     height: Math.max(24, height),
@@ -240,6 +243,7 @@ export function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec
             borderRadius: shapeBorderRadius(shape.geometry),
             borderStyle: "solid",
             borderWidth: shape.lineWidth,
+            boxShadow: shape.boxShadow,
             color: "#0f172a",
             display: "flex",
             fontFamily: SPREADSHEET_FONT_FAMILY,
@@ -263,6 +267,50 @@ export function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec
       ))}
     </div>
   );
+}
+
+function spreadsheetShapeBoxShadow(element: RecordValue): string | undefined {
+  for (const effect of asArray(element.effects)) {
+    const shadow = asRecord(asRecord(effect)?.shadow);
+    const color = protocolColorToCss(shadow?.color);
+    if (!shadow || !color || cssColorAlpha(color) <= 0) {
+      continue;
+    }
+
+    const distance = spreadsheetEmuToPx(shadow.distance);
+    const direction = (asNumber(shadow.direction) / 60_000 / 180) * Math.PI;
+    const offsetX = Math.cos(direction) * distance;
+    const offsetY = Math.sin(direction) * distance;
+    const blur = Math.max(0, spreadsheetEmuToPx(shadow.blurRadius));
+    return `${formatCssPx(offsetX)} ${formatCssPx(offsetY)} ${formatCssPx(blur)} ${color}`;
+  }
+
+  return undefined;
+}
+
+function formatCssPx(value: number): string {
+  const rounded = Math.abs(value) < 0.01 ? 0 : Math.round(value * 100) / 100;
+  return `${rounded}px`;
+}
+
+function cssColorAlpha(value: string): number {
+  const channels = parseCssColorChannels(value);
+  if (!channels || channels[3] == null) return 1;
+  const alpha = Number(channels[3]);
+  return Number.isFinite(alpha) ? alpha : 1;
+}
+
+function parseCssColorChannels(value: string): string[] | null {
+  const open = value.indexOf("(");
+  const close = value.lastIndexOf(")");
+  if (open < 0 || close <= open) return null;
+  const functionName = value.slice(0, open).trim().toLowerCase();
+  if (functionName !== "rgb" && functionName !== "rgba") return null;
+  const channels = value
+    .slice(open + 1, close)
+    .split(",")
+    .map((channel) => channel.trim());
+  return channels.length >= 3 ? channels : null;
 }
 
 export function SpreadsheetImageLayer({ images }: { images: SpreadsheetImageSpec[] }) {
