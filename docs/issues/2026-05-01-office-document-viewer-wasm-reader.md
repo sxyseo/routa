@@ -62,13 +62,13 @@ Routa 目前仅有 `file-output-viewer`（代码/搜索结果）和 `reposlide`�
 - [x] PPTX chart parts: emit `charts` and `chartReference` from `c:chart` / `ChartPart` relationships, and render basic bar/line/pie-style chart payloads in the debug preview.
 - [ ] PPTX group shapes, connectors, and SmartArt/diagram support.
 - [ ] PPTX complete theme/layout/master inheritance for fills, lines, text styles, and placeholders.
-- [ ] PPTX table parity against Walnut: protocol and renderer now cover rows/columns, spans, fills, borders, margins, anchors, and text styles, but still need a dedicated Walnut fixture and richer table-style inheritance checks.
+- [x] PPTX table parity against Walnut for the dedicated table fixture: protocol assertions now cover rows/columns, spans/merge placeholders, fills, borders, margins, anchors, and text styles.
 - [ ] PPTX picture crop, masks, tiling, duotone/advanced effects, and z-order metadata.
 
 PPTX implementation order:
 
 1. Theme/layout/master placeholder inheritance: deepen slide fallback from slide element -> layout placeholder -> master placeholder for text body style, list levels, fills, lines, and placeholder geometry.
-2. PPT tables: add a small table fixture with decoded Walnut parity, then deepen table-style inheritance and merged-cell edge cases.
+2. PPT tables: dedicated decoded Walnut parity fixture is covered; next deepen table-style inheritance and broader merged-cell edge cases.
 3. Group/connector/custom geometry: improve group transforms, connector endpoints, and common custom paths before SmartArt/diagram-specific work.
 4. Advanced pictures/effects: broaden crop/mask/tile/effect metadata after core text/layout/chart/table paths are stable.
 5. Slideshow depth: add slide navigation affordances, notes mode, timing, and transitions after static rendering fidelity is stable.
@@ -82,7 +82,7 @@ Progress - 2026-05-02:
 - PPT table protocol and preview rendering now cover graphic-frame tables with row/column grids, merged spans, cell fills/borders, margins, anchors, and text.
 - PPT viewer shell now puts the slideshow action in the debug page header and computes slide fit independently from notes/sources footnote height, so long footnotes scroll below the slide instead of shrinking or covering the slide.
 - Latest validation on `/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx`: `compare:office-wasm-reader:pptx-render -- --assert` passes; browser measurement at `2048x1058` keeps slide 1/4 at `1703x958`, Play is in the 52px header, and hiding the footnote does not change slide size.
-- Next PPT item is table fixture parity and then group/connectors/custom geometry; pixel-level PowerPoint typography remains a renderer fidelity limitation until the viewer has a native screenshot/raster path or a deeper text layout engine.
+- Next PPT item is group/connectors/custom geometry and deeper table-style inheritance; pixel-level PowerPoint typography remains a renderer fidelity limitation until the viewer has a native screenshot/raster path or a deeper text layout engine.
 
 ## Expected Behavior
 
@@ -531,7 +531,7 @@ Remaining implementation gaps after the image-reference/theme/layout/chart/table
 
 - Group shapes, connector endpoints, SmartArt/diagrams, video/audio, comments, notes mode, and custom geometry paths are still not fully modeled.
 - Theme and layout payloads are structurally present but not byte-identical to Walnut; text style inheritance from master/layout placeholders is still shallower than PowerPoint.
-- Table support is implemented but not parity-tested against a dedicated Walnut table fixture.
+- Table support is protocol-tested against `pptx_table_contract.pptx`; render screenshots for that synthetic table fixture still have small anti-aliased text differences, so the default render gate stays on the real-world image-heavy PPTX fixture.
 - Chart rendering consumes decoded chart payloads but remains approximate for plot layout, axis typography, legends, labels, and non-basic chart families.
 - Picture crop/mask, tiling, duotone, advanced effects, gradients/pattern fills, and z-order metadata need broader coverage.
 - Export back to PPTX (`ExportProtoToPptx`-style flow) is not implemented.

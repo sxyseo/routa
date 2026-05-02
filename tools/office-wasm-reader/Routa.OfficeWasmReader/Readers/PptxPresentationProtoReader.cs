@@ -1,6 +1,7 @@
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using Google.Protobuf;
+using System.Globalization;
 using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using P = DocumentFormat.OpenXml.Presentation;
@@ -611,7 +612,6 @@ internal static class PptxPresentationProtoReader
             }
 
             WriteString(output, 10, nonVisual?.Name?.Value ?? $"Graphic Frame {zIndex}");
-            WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? (zIndex + 1).ToString());
         });
     }
 
@@ -1266,7 +1266,7 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[] WriteLine(A.Outline line, bool suppressStyle = false)
+    private static byte[] WriteLine(OpenXmlElement line, bool suppressStyle = false)
     {
         return Message(output =>
         {
@@ -1276,12 +1276,23 @@ internal static class PptxPresentationProtoReader
                 WriteInt32(output, 1, 1);
             }
 
-            WriteInt32(output, 2, line.Width?.Value);
+            WriteInt32(output, 2, LineWidth(line));
             if (fill is not null)
             {
                 WriteMessage(output, 3, WriteFill(fill));
             }
         });
+    }
+
+    private static int? LineWidth(OpenXmlElement line)
+    {
+        if (line is A.Outline outline)
+        {
+            return ToInt32(outline.Width);
+        }
+
+        var width = line.GetAttribute("w", string.Empty).Value;
+        return int.TryParse(width, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
     }
 
     private static byte[] WriteEffectStyle(A.EffectStyle effectStyle)
@@ -1458,7 +1469,6 @@ internal static class PptxPresentationProtoReader
             }
 
             WriteInt32(rowOutput, 2, ToInt32(row.Height));
-            WriteString(rowOutput, 3, $"table-row-{rowIndex:x8}");
         });
     }
 
@@ -1466,11 +1476,15 @@ internal static class PptxPresentationProtoReader
     {
         return Message(cellOutput =>
         {
-            var text = TextNormalization.Clean(string.Join("\n", cell.TextBody?.Elements<A.Paragraph>().Select(ParagraphText) ?? []));
-            WriteString(cellOutput, 1, text);
+            var textStyle = WriteBodyTextStyle(cell.TextBody?.BodyProperties);
+            if (textStyle is not null)
+            {
+                WriteMessage(cellOutput, 2, textStyle);
+            }
+
             foreach (var paragraph in ExtractParagraphs(cell.TextBody))
             {
-                WriteMessage(cellOutput, 3, paragraph);
+                WriteMessageAlways(cellOutput, 3, paragraph);
             }
 
             var fill = SolidFillFromProperties(cell.TableCellProperties);
@@ -1485,7 +1499,6 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(cellOutput, 6, borders);
             }
 
-            WriteString(cellOutput, 7, $"table-cell-{rowIndex:x4}-{cellIndex:x4}");
             WriteInt32(cellOutput, 8, cell.GridSpan?.Value);
             WriteInt32(cellOutput, 9, cell.RowSpan?.Value);
             WriteBoolValue(cellOutput, 10, cell.HorizontalMerge?.Value);
@@ -1539,12 +1552,12 @@ internal static class PptxPresentationProtoReader
             return null;
         }
 
-        var top = OutlineFromProperties(properties.GetFirstChild<A.TopBorderLineProperties>());
-        var right = OutlineFromProperties(properties.GetFirstChild<A.RightBorderLineProperties>());
-        var bottom = OutlineFromProperties(properties.GetFirstChild<A.BottomBorderLineProperties>());
-        var left = OutlineFromProperties(properties.GetFirstChild<A.LeftBorderLineProperties>());
-        var diagonalDown = OutlineFromProperties(properties.GetFirstChild<A.BottomLeftToTopRightBorderLineProperties>());
-        var diagonalUp = OutlineFromProperties(properties.GetFirstChild<A.TopLeftToBottomRightBorderLineProperties>());
+        var top = TableLineFromProperties(properties.GetFirstChild<A.TopBorderLineProperties>());
+        var right = TableLineFromProperties(properties.GetFirstChild<A.RightBorderLineProperties>());
+        var bottom = TableLineFromProperties(properties.GetFirstChild<A.BottomBorderLineProperties>());
+        var left = TableLineFromProperties(properties.GetFirstChild<A.LeftBorderLineProperties>());
+        var diagonalDown = TableLineFromProperties(properties.GetFirstChild<A.BottomLeftToTopRightBorderLineProperties>());
+        var diagonalUp = TableLineFromProperties(properties.GetFirstChild<A.TopLeftToBottomRightBorderLineProperties>());
         if (top is null && right is null && bottom is null && left is null && diagonalDown is null && diagonalUp is null)
         {
             return null;
@@ -1552,13 +1565,23 @@ internal static class PptxPresentationProtoReader
 
         return Message(output =>
         {
-            if (top is not null) WriteMessage(output, 1, WriteLine(top));
-            if (right is not null) WriteMessage(output, 2, WriteLine(right));
-            if (bottom is not null) WriteMessage(output, 3, WriteLine(bottom));
-            if (left is not null) WriteMessage(output, 4, WriteLine(left));
-            if (diagonalDown is not null) WriteMessage(output, 5, WriteLine(diagonalDown));
-            if (diagonalUp is not null) WriteMessage(output, 6, WriteLine(diagonalUp));
+            if (top is not null) WriteMessage(output, 1, WriteLine(top, suppressStyle: true));
+            if (right is not null) WriteMessage(output, 2, WriteLine(right, suppressStyle: true));
+            if (bottom is not null) WriteMessage(output, 3, WriteLine(bottom, suppressStyle: true));
+            if (left is not null) WriteMessage(output, 4, WriteLine(left, suppressStyle: true));
+            if (diagonalDown is not null) WriteMessage(output, 5, WriteLine(diagonalDown, suppressStyle: true));
+            if (diagonalUp is not null) WriteMessage(output, 6, WriteLine(diagonalUp, suppressStyle: true));
         });
+    }
+
+    private static OpenXmlElement? TableLineFromProperties(OpenXmlElement? properties)
+    {
+        if (properties is null || properties.GetFirstChild<A.NoFill>() is not null)
+        {
+            return null;
+        }
+
+        return properties.GetFirstChild<A.SolidFill>() is not null || LineWidth(properties) is not null ? properties : null;
     }
 
     private static string ParagraphText(A.Paragraph paragraph)

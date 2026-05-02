@@ -153,6 +153,8 @@ function summarizePresentation(presentation: Record<string, unknown>, protoBytes
     slideNotesTextDigests: slides.map((slide) => summarizeNotesTextDigest(slide)),
     slideShapeGeometryCounts: slides.map((slide) => summarizeShapeGeometryCounts(slide)),
     slideShapeStyleDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementShapeStyle)),
+    slideTableDigests: slides.map((slide) => summarizeSlideTableDigest(slide)),
+    slideTableSummaries: slides.map(summarizeSlideTables),
     slideTextStyleDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementTextStyle)),
     slides: slides.map(summarizeSlide),
     firstSlide: summarizeSlide(slides[0] ?? {}),
@@ -207,6 +209,7 @@ function summarizeSlide(slide: Record<string, unknown>) {
       hasImage: isRecord(element.image) || isRecord(element.imageReference),
       hasChartReference: isRecord(element.chartReference),
       hasTable: isRecord(element.table),
+      tableDigest: isRecord(element.table) ? sha256Text(stableJson(summarizeElementTable(element))) : "",
       childCount: arrayOfRecords(element.children).length,
     })),
   };
@@ -256,6 +259,8 @@ function summarizeEquivalence(
       stableJson(walnutSummary.slideShapeGeometryCounts) === stableJson(routaSummary.slideShapeGeometryCounts),
     slideShapeStyleDigestsMatch:
       stableJson(walnutSummary.slideShapeStyleDigests) === stableJson(routaSummary.slideShapeStyleDigests),
+    slideTableDigestsMatch:
+      stableJson(walnutSummary.slideTableDigests) === stableJson(routaSummary.slideTableDigests),
     slideTextStyleDigestsMatch:
       stableJson(walnutSummary.slideTextStyleDigests) === stableJson(routaSummary.slideTextStyleDigests),
     themePresenceMatches: walnutSummary.hasTheme === routaSummary.hasTheme,
@@ -406,6 +411,115 @@ function summarizeNotesText(slide: Record<string, unknown>): string {
   return collectTextPreview(notesSlide);
 }
 
+function summarizeSlideTableDigest(slide: Record<string, unknown>): string {
+  return sha256Text(stableJson(summarizeSlideTables(slide)));
+}
+
+function summarizeSlideTables(slide: Record<string, unknown>) {
+  return arrayOfRecords(slide.elements)
+    .filter((element) => isRecord(element.table))
+    .map(summarizeElementTable);
+}
+
+function summarizeElementTable(element: Record<string, unknown>) {
+  const table = asRecord(element.table) ?? {};
+  return {
+    id: stringValue(element.id),
+    name: stringValue(element.name),
+    type: element.type,
+    bbox: summarizeBbox(asRecord(element.bbox)),
+    columnWidths: summarizeTableColumns(table.columns ?? table.columnWidths ?? table.gridColumns),
+    properties: summarizeTableProperties(asRecord(table.properties) ?? asRecord(table.tableProperties)),
+    rows: arrayOfRecords(table.rows).map(summarizeTableRow),
+  };
+}
+
+function summarizeTableColumns(value: unknown): number[] {
+  return Array.isArray(value)
+    ? value.map((column) => {
+        if (typeof column === "number") return column;
+        const record = asRecord(column);
+        return numberValue(record?.widthEmu ?? record?.width);
+      })
+    : [];
+}
+
+function summarizeTableProperties(properties: Record<string, unknown> | null) {
+  return {
+    fill: summarizeFill(asRecord(properties?.fill)),
+    firstRow: properties?.firstRow === true,
+    firstColumn: properties?.firstColumn === true,
+    lastRow: properties?.lastRow === true,
+    lastColumn: properties?.lastColumn === true,
+    bandedRows: properties?.bandedRows === true || properties?.bandRow === true,
+    bandedColumns: properties?.bandedColumns === true || properties?.bandColumn === true,
+    rightToLeft: properties?.rightToLeft === true,
+    styleId: stringValue(properties?.styleId),
+    effects: summarizeEffects(properties?.effects),
+  };
+}
+
+function summarizeTableRow(row: Record<string, unknown>) {
+  return {
+    heightEmu: numberValue(row.heightEmu ?? row.height),
+    cells: arrayOfRecords(row.cells).map(summarizeTableCell),
+  };
+}
+
+function summarizeTableCell(cell: Record<string, unknown>) {
+  const properties = asRecord(cell.properties) ?? asRecord(cell.tableCellProperties);
+  return {
+    text: stringValue(cell.text),
+    textStyle: summarizeTextStyle(asRecord(cell.textStyle)),
+    paragraphs: arrayOfRecords(cell.paragraphs).map(summarizeParagraph),
+    fill: summarizeFill(asRecord(cell.fill) ?? asRecord(properties?.fill)),
+    lines: summarizeTableCellLines(asRecord(cell.lines) ?? asRecord(cell.borders)),
+    gridSpan: numberValue(cell.gridSpan),
+    rowSpan: numberValue(cell.rowSpan),
+    horizontalMerge: cell.horizontalMerge === true || cell.hMerge === true,
+    verticalMerge: cell.verticalMerge === true || cell.vMerge === true,
+    vertical: stringValue(cell.vertical),
+    leftMargin: numberValue(cell.leftMargin),
+    rightMargin: numberValue(cell.rightMargin),
+    topMargin: numberValue(cell.topMargin),
+    bottomMargin: numberValue(cell.bottomMargin),
+    anchor: stringValue(cell.anchor),
+    anchorCenter: cell.anchorCenter === true,
+    horizontalOverflow: stringValue(cell.horizontalOverflow),
+  };
+}
+
+function summarizeParagraph(paragraph: Record<string, unknown>) {
+  return {
+    text: arrayOfRecords(paragraph.runs).map((run) => stringValue(run.text)).join(""),
+    paragraphStyle: summarizeTextStyle(mergeRecords(asRecord(paragraph.paragraphStyle), asRecord(paragraph.textStyle))),
+    runs: arrayOfRecords(paragraph.runs).map((run) => ({
+      text: stringValue(run.text),
+      textStyle: summarizeTextStyle(asRecord(run.textStyle)),
+    })),
+  };
+}
+
+function summarizeTableCellLines(lines: Record<string, unknown> | null) {
+  return {
+    top: summarizeLine(lineRecord(lines, ["top", "topBorder", "topLine"])),
+    right: summarizeLine(lineRecord(lines, ["right", "rightBorder", "rightLine"])),
+    bottom: summarizeLine(lineRecord(lines, ["bottom", "bottomBorder", "bottomLine"])),
+    left: summarizeLine(lineRecord(lines, ["left", "leftBorder", "leftLine"])),
+    diagonalDown: summarizeLine(lineRecord(lines, ["diagonalDown", "bottomLeftToTopRight", "diagonalDownLine"])),
+    diagonalUp: summarizeLine(lineRecord(lines, ["diagonalUp", "topLeftToBottomRight", "diagonalUpLine"])),
+  };
+}
+
+function lineRecord(lines: Record<string, unknown> | null, keys: string[]): Record<string, unknown> | null {
+  if (!lines) return null;
+  for (const key of keys) {
+    const line = asRecord(lines[key]);
+    if (line) return line;
+  }
+  return null;
+}
+
 function summarizeFill(fill: Record<string, unknown> | null) {
   return {
     type: numberValue(fill?.type),
@@ -417,6 +531,16 @@ function summarizeFill(fill: Record<string, unknown> | null) {
       asRecord(fill?.srcRect) ??
       asRecord(fill?.stretchFillRect) ??
       null,
+  };
+}
+
+function summarizeBbox(bbox: Record<string, unknown> | null) {
+  return {
+    heightEmu: numberValue(bbox?.heightEmu),
+    rotation: numberValue(bbox?.rotation),
+    widthEmu: numberValue(bbox?.widthEmu),
+    xEmu: numberValue(bbox?.xEmu),
+    yEmu: numberValue(bbox?.yEmu),
   };
 }
 
