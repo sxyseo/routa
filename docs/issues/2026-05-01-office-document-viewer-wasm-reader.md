@@ -56,28 +56,30 @@ Routa 目前仅有 `file-output-viewer`（代码/搜索结果）和 `reposlide`�
 - [ ] XLSX freeze panes / sticky headers: prefix-sum layout now drives fixed workbook row/column header overlays; worksheet freeze panes, scroll viewport virtualization, and floating-element hit regions remain.
 - [ ] XLSX conditional formatting breadth: negative data bars, axes, gradient/solid variants, and cfvo-driven color scale interpolation are implemented; layered rules still need more coverage.
 - [ ] XLSX protocol coverage: add more fixtures and deeper field assertions beyond the current `complex_excel_renderer_test.xlsx` core parity check.
-- [ ] PPTX chart parts: emit `charts` and `chartReference` from `c:chart` / `ChartPart` relationships.
+- [x] PPTX chart parts: emit `charts` and `chartReference` from `c:chart` / `ChartPart` relationships, and render basic bar/line/pie-style chart payloads in the debug preview.
 - [ ] PPTX group shapes, connectors, and SmartArt/diagram support.
 - [ ] PPTX complete theme/layout/master inheritance for fills, lines, text styles, and placeholders.
-- [ ] PPTX table parity against Walnut, including cell spans, fills, borders, and text styles.
+- [ ] PPTX table parity against Walnut: protocol and renderer now cover rows/columns, spans, fills, borders, margins, anchors, and text styles, but still need a dedicated Walnut fixture and richer table-style inheritance checks.
 - [ ] PPTX picture crop, masks, tiling, duotone/advanced effects, and z-order metadata.
 
 PPTX implementation order:
 
 1. Theme/layout/master placeholder inheritance: deepen slide fallback from slide element -> layout placeholder -> master placeholder for text body style, list levels, fills, lines, and placeholder geometry.
-2. True chart parts: emit root `Presentation.charts` and slide element `chartReference` from `c:chart` relationships, then add a chart fixture with decoded Walnut parity.
-3. PPT tables: cover cell spans, fills, borders, text styles, and renderer parity against a small table fixture.
-4. Group/connector/custom geometry: improve group transforms, connector endpoints, and common custom paths before SmartArt/diagram-specific work.
-5. Advanced pictures/effects: broaden crop/mask/tile/effect metadata after core text/layout/chart/table paths are stable.
-6. Slideshow depth: add slide navigation affordances, notes mode, timing, and transitions after static rendering fidelity is stable.
-7. Export/editing: evaluate `ExportProtoToPptx` only after viewer protocol fidelity is mature.
+2. PPT tables: add a small table fixture with decoded Walnut parity, then deepen table-style inheritance and merged-cell edge cases.
+3. Group/connector/custom geometry: improve group transforms, connector endpoints, and common custom paths before SmartArt/diagram-specific work.
+4. Advanced pictures/effects: broaden crop/mask/tile/effect metadata after core text/layout/chart/table paths are stable.
+5. Slideshow depth: add slide navigation affordances, notes mode, timing, and transitions after static rendering fidelity is stable.
+6. Export/editing: evaluate `ExportProtoToPptx` only after viewer protocol fidelity is mature.
 
 Progress - 2026-05-02:
 
 - PPT preview renderer now applies `Presentation.layouts`/master placeholder inheritance before slide rendering, thumbnail bitmap generation, slideshow rendering, typeface prewarm, and selection hit-testing. The implementation keeps direct slide styles authoritative and fills missing placeholder geometry/text/list defaults from layout/master records.
 - PPT render contract now compares decoded screenshot pixels with a tiny antialias tolerance instead of raw PNG bytes, which removes false failures from identical-looking Walnut/Routa previews while still failing on real layout differences.
-- PPT viewer shell now puts the slideshow action in the debug page header and computes slide fit independently from notes/sources footnote height, so long footnotes scroll below the slide instead of shrinking the slide.
-- Next PPT item remains true chart parts: compare Walnut `c:chart` relationship output against Routa protocol, then render chart placeholders from decoded chart payloads instead of image-only fallbacks.
+- PPT chart protocol and preview rendering now cover root `Presentation.charts`, slide element `chartReference`, and basic chart drawing from decoded chart payloads.
+- PPT table protocol and preview rendering now cover graphic-frame tables with row/column grids, merged spans, cell fills/borders, margins, anchors, and text.
+- PPT viewer shell now puts the slideshow action in the debug page header and computes slide fit independently from notes/sources footnote height, so long footnotes scroll below the slide instead of shrinking or covering the slide.
+- Latest validation on `/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx`: `compare:office-wasm-reader:pptx-render -- --assert` passes; browser measurement at `2048x1058` keeps slide 1/4 at `1703x958`, Play is in the 52px header, and hiding the footnote does not change slide size.
+- Next PPT item is table fixture parity and then group/connectors/custom geometry; pixel-level PowerPoint typography remains a renderer fidelity limitation until the viewer has a native screenshot/raster path or a deeper text layout engine.
 
 ## Expected Behavior
 
@@ -521,12 +523,12 @@ npm run test:office-wasm-reader:pptx-render
 - The guard asserts that both readers render from bitmap surfaces instead of live fallback canvases, enter fullscreen slideshow, keep the same layout stats, avoid runtime console errors, and produce identical preview/slideshow screenshot hashes.
 - The `test:*` script can start an isolated Next dev server on port `3218`; the `compare:*` script can target an already-running app at `http://127.0.0.1:3000/debug/office-wasm-poc` or a custom `--base-url`.
 
-Remaining implementation gaps after the image-reference/theme/layout pass:
+Remaining implementation gaps after the image-reference/theme/layout/chart/table pass:
 
-- True PPTX chart parts (`c:chart` / `ChartPart`) are not emitted as `charts` or `chartReference` yet.
-- Group shapes, connectors, SmartArt/diagrams, video/audio, comments, notes, and custom geometry paths are still not fully modeled.
-- Theme and layout payloads are structurally present but not byte-identical to Walnut; text style inheritance from master/layout placeholders is still shallow.
-- Table support is minimal and not parity-tested against Walnut tables.
+- Group shapes, connector endpoints, SmartArt/diagrams, video/audio, comments, notes mode, and custom geometry paths are still not fully modeled.
+- Theme and layout payloads are structurally present but not byte-identical to Walnut; text style inheritance from master/layout placeholders is still shallower than PowerPoint.
+- Table support is implemented but not parity-tested against a dedicated Walnut table fixture.
+- Chart rendering consumes decoded chart payloads but remains approximate for plot layout, axis typography, legends, labels, and non-basic chart families.
 - Picture crop/mask, tiling, duotone, advanced effects, gradients/pattern fills, and z-order metadata need broader coverage.
 - Export back to PPTX (`ExportProtoToPptx`-style flow) is not implemented.
 
