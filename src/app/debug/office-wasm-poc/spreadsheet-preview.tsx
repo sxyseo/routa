@@ -39,8 +39,12 @@ import {
   SPREADSHEET_ROW_HEADER_WIDTH,
   spreadsheetCellKey,
   spreadsheetColumnLeft,
+  spreadsheetFrozenBodyHeight,
+  spreadsheetFrozenBodyWidth,
+  spreadsheetViewportRectSegments,
   type SpreadsheetLayout,
   spreadsheetRowTop,
+  type SpreadsheetViewportScroll,
 } from "./spreadsheet-layout";
 
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
@@ -135,6 +139,13 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
             <SpreadsheetChartLayer charts={chartSpecs} />
           </div>
         </div>
+        <SpreadsheetFrozenBodyLayer
+          activeSheet={activeSheet}
+          cellVisuals={cellVisuals}
+          layout={layout}
+          scroll={viewportScroll}
+          styles={styles}
+        />
         <SpreadsheetFrozenHeaders layout={layout} scrollLeft={viewportScroll.left} scrollTop={viewportScroll.top} />
       </div>
       <div
@@ -175,6 +186,70 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SpreadsheetFrozenBodyLayer({
+  activeSheet,
+  cellVisuals,
+  layout,
+  scroll,
+  styles,
+}: {
+  activeSheet: RecordValue | undefined;
+  cellVisuals: Map<string, SpreadsheetCellVisual>;
+  layout: SpreadsheetLayout;
+  scroll: SpreadsheetViewportScroll;
+  styles: RecordValue | null;
+}) {
+  if (layout.freezePanes.columnCount === 0 && layout.freezePanes.rowCount === 0) {
+    return null;
+  }
+
+  const sheetName = asString(activeSheet?.name);
+  const frozenWidth = spreadsheetFrozenBodyWidth(layout);
+  const frozenHeight = spreadsheetFrozenBodyHeight(layout);
+  if (frozenWidth <= 0 && frozenHeight <= 0) return null;
+
+  return (
+    <div aria-hidden="true" style={{ inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 11 }}>
+      {Array.from({ length: layout.rowCount }, (_, rowOffset) => {
+        const rowIndex = rowOffset + 1;
+        const row = layout.rowsByIndex.get(rowIndex);
+        const top = spreadsheetRowTop(layout, rowOffset);
+        return Array.from({ length: layout.columnCount }, (_, columnIndex) => {
+          const cellKey = spreadsheetCellKey(rowIndex, columnIndex);
+          if (layout.coveredCells.has(cellKey)) return null;
+          const cell = row?.get(columnIndex) ?? null;
+          const merge = layout.mergeByStart.get(cellKey);
+          const left = spreadsheetColumnLeft(layout, columnIndex);
+          const width = spreadsheetColumnLeft(layout, columnIndex + (merge?.columnSpan ?? 1)) - left;
+          const cellHeight = spreadsheetRowTop(layout, rowOffset + (merge?.rowSpan ?? 1)) - top;
+          const rects = spreadsheetViewportRectSegments(layout, { height: cellHeight, left, top, width }, scroll);
+          if (rects.length === 0) return null;
+
+          const visual = cellVisuals.get(cellKey);
+          const text = spreadsheetCellText(cell, styles, sheetName);
+          return rects.map((rect, segmentIndex) => (
+            <div
+              data-frozen-cell-address={asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`}
+              key={`${rowIndex}:${columnIndex}:${segmentIndex}`}
+              style={{
+                ...spreadsheetCellStyle(cell, styles, visual, sheetName),
+                height: rect.height,
+                left: rect.left,
+                overflow: "hidden",
+                position: "absolute",
+                top: rect.top,
+                width: rect.width,
+              }}
+            >
+              <SpreadsheetCellContent text={text} visual={visual} />
+            </div>
+          ));
+        });
+      })}
     </div>
   );
 }

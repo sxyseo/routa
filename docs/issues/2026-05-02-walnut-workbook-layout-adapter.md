@@ -73,6 +73,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Aligned `complex_excel_renderer_test.xlsx` non-byte render contract with Walnut: all render-facing checks pass, including chart metadata, worksheet drawings, shape geometry, conditional formatting, and styles. The remaining mismatch is byte-for-byte proto serialization only.
 - Confirmed the next protocol-level Walnut gap for XLSX drawings: the extracted schema includes workbook-level `images` and per-drawing `imageReference`, while Routa still only consumes chart/shape anchors.
 - Implemented Walnut-like worksheet image drawing support and added `xlsx_image_drawing_contract.xlsx` to the XLSX parity/render scripts. The fixture verifies workbook `images`, drawing `imageReference`, two-cell anchors, and Walnut's image-specific omission of `extentCx/extentCy`.
+- Added Walnut-like freeze-pane viewport math to the layout adapter: frozen body sizes, world/viewport point projection, rect segmentation for frozen rows/columns, and cell hit-testing now share the same prefix-sum coordinate model. The debug preview renders frozen body overlays when a decoded/synthetic sheet supplies `freezePanes`.
 
 ## Remaining XLSX Work
 
@@ -80,7 +81,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Icon-set details: Risk icons now honor `cfvo` type/value for `min`, `max`, `num`, `percent`, `percentile`, plus `gte`, `reverse`, `showValue`, and common rating/arrows/traffic/symbol icon families. Custom icon-image payloads are not supported.
 - Chart fidelity: Fitness charts now use a zero baseline, and the preview consumes sheet drawing chart anchors/series/legend directly from the Walnut-like protocol. Plot area sizing, gridlines, fonts, and Excel internal chart layout are still simplified.
 - Drawing overlays: sheet drawing chart/shape/image anchors, workbook image payloads, and Walnut-style image references are now consumed by the preview. Full drawing z-order, crop, and effects remain.
-- Freeze panes and sticky headers: the prefix-sum layout adapter now drives fixed row/column header overlays during scroll. Worksheet freeze panes, viewport virtualization, and hit regions for cells/floating elements remain to be implemented.
+- Freeze panes and sticky headers: the prefix-sum layout adapter now drives fixed headers, frozen body overlays, viewport projection, and cell hit regions. Remaining work is extracting freeze panes from a future protocol source, viewport virtualization, and floating-element hit regions.
 - Conditional formatting breadth: data bars now support negative values, explicit axis placement, and gradient/solid variants. Color scales now use cfvo thresholds for multi-stop interpolation; multi-rule layering still needs more coverage.
 - Protocol coverage: `complex_excel_renderer_test.xlsx` and `xlsx_image_drawing_contract.xlsx` parity/render checks pass, but the generated proto is not byte-for-byte Walnut equivalent for the complex workbook; add more XLSX fixtures and field-level assertions.
 

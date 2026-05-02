@@ -23,6 +23,7 @@ export type SpreadsheetLayout = {
   columnOffsets: number[];
   columnWidths: number[];
   coveredCells: Set<string>;
+  freezePanes: SpreadsheetFreezePanes;
   gridHeight: number;
   gridWidth: number;
   maxColumn: number;
@@ -32,6 +33,34 @@ export type SpreadsheetLayout = {
   rowOffsets: number[];
   rows: RecordValue[];
   rowsByIndex: Map<number, Map<number, RecordValue>>;
+};
+
+export type SpreadsheetFreezePanes = {
+  columnCount: number;
+  rowCount: number;
+};
+
+export type SpreadsheetViewportPoint = {
+  x: number;
+  y: number;
+};
+
+export type SpreadsheetViewportRect = {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+};
+
+export type SpreadsheetViewportScroll = {
+  left: number;
+  top: number;
+};
+
+export type SpreadsheetCellHit = {
+  columnIndex: number;
+  rowIndex: number;
+  rowOffset: number;
 };
 
 export function buildSpreadsheetLayout(sheet: RecordValue | undefined): SpreadsheetLayout {
@@ -121,12 +150,14 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
   });
   const columnOffsets = prefixSums(SPREADSHEET_ROW_HEADER_WIDTH, columnWidths);
   const rowOffsets = prefixSums(SPREADSHEET_COLUMN_HEADER_HEIGHT, rowHeights);
+  const freezePanes = clampSpreadsheetFreezePanes(readSpreadsheetFreezePanes(sheet), columnCount, rowCount);
 
   return {
     columnCount,
     columnOffsets,
     columnWidths,
     coveredCells,
+    freezePanes,
     gridHeight: rowOffsets[rowOffsets.length - 1] ?? SPREADSHEET_COLUMN_HEADER_HEIGHT,
     gridWidth: columnOffsets[columnOffsets.length - 1] ?? SPREADSHEET_ROW_HEADER_WIDTH,
     maxColumn,
@@ -149,6 +180,90 @@ export function spreadsheetColumnLeft(layout: SpreadsheetLayout, columnIndex: nu
 
 export function spreadsheetRowTop(layout: SpreadsheetLayout, zeroBasedRowIndex: number): number {
   return layout.rowOffsets[zeroBasedRowIndex] ?? layout.gridHeight;
+}
+
+export function spreadsheetFrozenBodyWidth(layout: SpreadsheetLayout): number {
+  return layout.columnOffsets[layout.freezePanes.columnCount] != null
+    ? (layout.columnOffsets[layout.freezePanes.columnCount] ?? SPREADSHEET_ROW_HEADER_WIDTH) - SPREADSHEET_ROW_HEADER_WIDTH
+    : 0;
+}
+
+export function spreadsheetFrozenBodyHeight(layout: SpreadsheetLayout): number {
+  return layout.rowOffsets[layout.freezePanes.rowCount] != null
+    ? (layout.rowOffsets[layout.freezePanes.rowCount] ?? SPREADSHEET_COLUMN_HEADER_HEIGHT) - SPREADSHEET_COLUMN_HEADER_HEIGHT
+    : 0;
+}
+
+export function spreadsheetViewportPointToWorld(
+  layout: SpreadsheetLayout,
+  point: SpreadsheetViewportPoint,
+  scroll: SpreadsheetViewportScroll,
+): SpreadsheetViewportPoint {
+  const frozenRight = SPREADSHEET_ROW_HEADER_WIDTH + spreadsheetFrozenBodyWidth(layout);
+  const frozenBottom = SPREADSHEET_COLUMN_HEADER_HEIGHT + spreadsheetFrozenBodyHeight(layout);
+  return {
+    x: point.x < frozenRight ? point.x : point.x + scroll.left,
+    y: point.y < frozenBottom ? point.y : point.y + scroll.top,
+  };
+}
+
+export function spreadsheetHitCellAtViewportPoint(
+  layout: SpreadsheetLayout,
+  point: SpreadsheetViewportPoint,
+  scroll: SpreadsheetViewportScroll,
+): SpreadsheetCellHit | null {
+  const world = spreadsheetViewportPointToWorld(layout, point, scroll);
+  if (world.x < SPREADSHEET_ROW_HEADER_WIDTH || world.y < SPREADSHEET_COLUMN_HEADER_HEIGHT) {
+    return null;
+  }
+
+  const columnIndex = offsetIndexAt(layout.columnOffsets, world.x);
+  const rowOffset = offsetIndexAt(layout.rowOffsets, world.y);
+  if (columnIndex < 0 || rowOffset < 0 || columnIndex >= layout.columnCount || rowOffset >= layout.rowCount) {
+    return null;
+  }
+
+  return {
+    columnIndex,
+    rowIndex: rowOffset + 1,
+    rowOffset,
+  };
+}
+
+export function spreadsheetViewportRectSegments(
+  layout: SpreadsheetLayout,
+  rect: SpreadsheetViewportRect,
+  scroll: SpreadsheetViewportScroll,
+): SpreadsheetViewportRect[] {
+  const xSegments = spreadsheetAxisViewportSegments(
+    rect.left,
+    rect.width,
+    SPREADSHEET_ROW_HEADER_WIDTH,
+    spreadsheetFrozenBodyWidth(layout),
+    scroll.left,
+  );
+  const ySegments = spreadsheetAxisViewportSegments(
+    rect.top,
+    rect.height,
+    SPREADSHEET_COLUMN_HEADER_HEIGHT,
+    spreadsheetFrozenBodyHeight(layout),
+    scroll.top,
+  );
+
+  const segments: SpreadsheetViewportRect[] = [];
+  for (const xSegment of xSegments) {
+    for (const ySegment of ySegments) {
+      if (!xSegment.frozen && !ySegment.frozen) continue;
+      segments.push({
+        height: ySegment.size,
+        left: xSegment.start,
+        top: ySegment.start,
+        width: xSegment.size,
+      });
+    }
+  }
+
+  return segments;
 }
 
 export function spreadsheetEmuToPx(value: unknown): number {
@@ -183,6 +298,92 @@ function protocolNumber(value: unknown, fallback: number): number {
   }
 
   return fallback;
+}
+
+function readSpreadsheetFreezePanes(sheet: RecordValue | undefined): SpreadsheetFreezePanes {
+  const freeze = asRecord(sheet?.freezePanes) ??
+    asRecord(sheet?.freezePane) ??
+    asRecord(asRecord(sheet?.viewport)?.freezePanes);
+  return {
+    columnCount: Math.trunc(protocolNumber(
+      freeze?.columnCount ?? freeze?.columns ?? freeze?.colCount ?? freeze?.xSplit,
+      0,
+    )),
+    rowCount: Math.trunc(protocolNumber(
+      freeze?.rowCount ?? freeze?.rows ?? freeze?.ySplit,
+      0,
+    )),
+  };
+}
+
+function clampSpreadsheetFreezePanes(
+  freezePanes: SpreadsheetFreezePanes,
+  columnCount: number,
+  rowCount: number,
+): SpreadsheetFreezePanes {
+  return {
+    columnCount: clampInteger(freezePanes.columnCount, 0, Math.max(0, columnCount - 1)),
+    rowCount: clampInteger(freezePanes.rowCount, 0, Math.max(0, rowCount - 1)),
+  };
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+type SpreadsheetAxisViewportSegment = {
+  frozen: boolean;
+  size: number;
+  start: number;
+};
+
+function spreadsheetAxisViewportSegments(
+  start: number,
+  size: number,
+  headerSize: number,
+  frozenBodySize: number,
+  scroll: number,
+): SpreadsheetAxisViewportSegment[] {
+  if (size <= 0) return [];
+
+  const end = start + size;
+  const frozenEnd = headerSize + Math.max(0, frozenBodySize);
+  const segments: SpreadsheetAxisViewportSegment[] = [];
+  const frozenSegmentEnd = Math.min(end, frozenEnd);
+  if (frozenSegmentEnd > start) {
+    segments.push({
+      frozen: true,
+      size: frozenSegmentEnd - start,
+      start,
+    });
+  }
+
+  const scrollStart = Math.max(start, frozenEnd);
+  if (end > scrollStart) {
+    const projectedStart = scrollStart - scroll;
+    const projectedEnd = end - scroll;
+    const clippedStart = Math.max(projectedStart, frozenEnd);
+    if (projectedEnd > clippedStart) {
+      segments.push({
+        frozen: false,
+        size: projectedEnd - clippedStart,
+        start: clippedStart,
+      });
+    }
+  }
+
+  return segments;
+}
+
+function offsetIndexAt(offsets: number[], value: number): number {
+  for (let index = 0; index < offsets.length - 1; index += 1) {
+    if (value >= (offsets[index] ?? 0) && value < (offsets[index + 1] ?? 0)) {
+      return index;
+    }
+  }
+
+  return -1;
 }
 
 function knownSpreadsheetColumnWidths(sheetName: string): Map<number, number> {
