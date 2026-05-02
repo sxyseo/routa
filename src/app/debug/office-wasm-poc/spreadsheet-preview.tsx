@@ -961,8 +961,9 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
       }
 
       if (dataBar) {
-        const barMin = dataBarThresholdValue(dataBar, 0, minValue);
-        const barMax = dataBarThresholdValue(dataBar, 1, maxValue);
+        const rangeValues = values.map((item) => item.value);
+        const barMin = dataBarThresholdValue(dataBar, 0, rangeValues, minValue, maxValue, minValue);
+        const barMax = dataBarThresholdValue(dataBar, 1, rangeValues, minValue, maxValue, maxValue);
         const span = Math.max(1, barMax - barMin);
         const color = protocolColorToCss(dataBar.color) ?? "#38bdf8";
         const negativeColor = protocolColorToCss(dataBar.negativeFillColor) ?? color;
@@ -978,10 +979,12 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
       }
 
       if (iconSet) {
+        const rangeValues = values.map((item) => item.value);
         for (const item of values) {
           mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
             iconSet: spreadsheetIconSetVisual(
               item.value,
+              rangeValues,
               minValue,
               maxValue,
               iconSet.showValue !== false,
@@ -1072,16 +1075,21 @@ function rangeTargetReference(value: unknown): string {
   return end && end !== start ? `${start}:${end}` : start;
 }
 
-function dataBarThresholdValue(dataBar: RecordValue, index: number, fallback: number): number {
+function dataBarThresholdValue(
+  dataBar: RecordValue,
+  index: number,
+  rangeValues: number[],
+  minValue: number,
+  maxValue: number,
+  fallback: number,
+): number {
   const cfvo = asRecord(asArray(dataBar.cfvos)[index]);
-  const type = asString(cfvo?.type);
-  if (type === "min" || type === "max") return fallback;
-  const value = Number(asString(cfvo?.val));
-  return Number.isFinite(value) ? value : fallback;
+  return cfvoThresholdValue(cfvo, rangeValues, minValue, maxValue, fallback);
 }
 
 function spreadsheetIconSetVisual(
   value: number,
+  rangeValues: number[],
   minValue: number,
   maxValue: number,
   showValue: boolean,
@@ -1090,13 +1098,12 @@ function spreadsheetIconSetVisual(
 ): SpreadsheetCellVisual["iconSet"] {
   const cfvos = asArray(iconSet?.cfvos).map(asRecord).filter((cfvo): cfvo is RecordValue => cfvo != null);
   const ratio = Math.max(0, Math.min(1, maxValue > minValue ? (value - minValue) / (maxValue - minValue) : 0));
-  const percentMode = iconSet?.percent === true || cfvos.some((cfvo) => asString(cfvo.type) === "percent");
-  const score = percentMode ? ratio * 100 : value;
-  const levelCount = Math.max(3, Math.min(5, cfvos.length || 5));
+  const levelCount = iconSetLevelCount(iconSet, cfvos.length);
   let level = 1;
   cfvos.forEach((cfvo, index) => {
-    const threshold = Number(asString(cfvo.val));
-    if (Number.isFinite(threshold) && score >= threshold) {
+    const threshold = cfvoThresholdValue(cfvo, rangeValues, minValue, maxValue, index === 0 ? minValue : maxValue);
+    const gte = cfvo.gte !== false;
+    if (Number.isFinite(threshold) && (gte ? value >= threshold : value > threshold)) {
       level = Math.min(levelCount, index + 1);
     }
   });
@@ -1112,6 +1119,49 @@ function spreadsheetIconSetVisual(
     level,
     showValue,
   };
+}
+
+function cfvoThresholdValue(
+  cfvo: RecordValue | null,
+  rangeValues: number[],
+  minValue: number,
+  maxValue: number,
+  fallback: number,
+): number {
+  const type = asString(cfvo?.type);
+  if (type === "min") return minValue;
+  if (type === "max") return maxValue;
+
+  const rawValue = Number(asString(cfvo?.val));
+  if (!Number.isFinite(rawValue)) return fallback;
+
+  if (type === "percent") {
+    return minValue + (maxValue - minValue) * Math.max(0, Math.min(100, rawValue)) / 100;
+  }
+
+  if (type === "percentile") {
+    return percentileValue(rangeValues, rawValue, fallback);
+  }
+
+  return rawValue;
+}
+
+function percentileValue(values: number[], percentile: number, fallback: number): number {
+  if (values.length === 0) return fallback;
+  const sorted = [...values].filter(Number.isFinite).sort((a, b) => a - b);
+  if (sorted.length === 0) return fallback;
+  const position = Math.max(0, Math.min(100, percentile)) / 100 * (sorted.length - 1);
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.ceil(position);
+  const lower = sorted[lowerIndex] ?? fallback;
+  const upper = sorted[upperIndex] ?? lower;
+  return lower + (upper - lower) * (position - lowerIndex);
+}
+
+function iconSetLevelCount(iconSet: RecordValue | undefined, cfvoCount: number): number {
+  const fromName = Number(asString(iconSet?.iconSet).match(/^[345]/)?.[0] ?? "");
+  const count = Number.isFinite(fromName) && fromName > 0 ? fromName : cfvoCount || 5;
+  return Math.max(3, Math.min(5, count));
 }
 
 function SpreadsheetCellContent({
