@@ -30,6 +30,13 @@ type SpreadsheetChartAxisSpec = {
 
 type SpreadsheetChartLegendPosition = "bottom" | "left" | "none" | "right" | "top";
 
+export type SpreadsheetChartPlotArea = {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+};
+
 export type SpreadsheetChartSeries = {
   color: string;
   label: string;
@@ -422,19 +429,19 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
   const height = chart.height;
   const plot = spreadsheetChartPlotArea(chart);
   const values = chart.series.flatMap((series) => series.values);
-  const observedMax = Math.max(...values);
-  const tickCount = chart.type === "line" ? 6 : 5;
-  const minValue = chart.yAxis?.minimum ?? 0;
-  const maxValue = chart.yAxis?.maximum ?? niceChartMax(observedMax, tickCount);
+  const ticks = spreadsheetChartTickValues(chart, values);
+  const minValue = ticks[0] ?? 0;
+  const maxValue = ticks[ticks.length - 1] ?? 1;
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
   context.fillStyle = "#111827";
   context.font = "600 18px Arial, sans-serif";
   context.textAlign = "center";
-  context.fillText(chart.title, width / 2, 28);
+  context.textBaseline = "alphabetic";
+  context.fillText(chart.title, width / 2, 30);
 
-  drawChartGrid(context, plot, minValue, maxValue, tickCount);
+  drawChartGrid(context, chart, plot, ticks);
 
   if (chart.type === "bar") {
     drawBarChart(context, chart, plot, minValue, maxValue);
@@ -445,42 +452,99 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
   drawChartLegend(context, chart, plot);
 }
 
-function spreadsheetChartPlotArea(chart: SpreadsheetChartSpec) {
+export function spreadsheetChartPlotArea(chart: SpreadsheetChartSpec): SpreadsheetChartPlotArea {
+  const hasBottomLegend = chart.legendPosition === "bottom";
+  const categoryLabelHeight = chart.type === "line" ? 46 : 30;
+  const legendHeight = hasBottomLegend ? 42 : 0;
+  const top = chart.title ? 58 : 24;
+  const bottom = Math.max(top + 48, chart.height - categoryLabelHeight - legendHeight);
+
   return {
-    bottom: chart.height - (chart.legendPosition === "bottom" ? 82 : chart.type === "line" ? 52 : 44),
-    left: chart.type === "line" ? 42 : 38,
-    right: chart.width - (chart.legendPosition === "right" ? 118 : 18),
-    top: 58,
+    bottom,
+    left: chart.type === "line" ? 64 : 52,
+    right: chart.width - (chart.legendPosition === "right" ? 126 : 22),
+    top,
   };
 }
 
 function drawChartGrid(
   context: CanvasRenderingContext2D,
-  plot: { bottom: number; left: number; right: number; top: number },
-  minValue: number,
-  maxValue: number,
-  tickCount: number,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  ticks: number[],
 ) {
   context.save();
-  context.strokeStyle = "#d1d5db";
+  context.strokeStyle = "#c7c7c7";
   context.setLineDash([5, 5]);
   context.lineWidth = 1;
   context.fillStyle = "#737373";
-  context.font = "11px Arial, sans-serif";
+  context.font = "12px Arial, sans-serif";
   context.textAlign = "right";
   context.textBaseline = "middle";
 
-  for (let index = 0; index < tickCount; index += 1) {
-    const ratio = index / (tickCount - 1);
-    const y = plot.bottom - ratio * (plot.bottom - plot.top);
-    const value = minValue + ratio * (maxValue - minValue);
-    context.beginPath();
-    context.moveTo(plot.left, y);
-    context.lineTo(plot.right, y);
-    context.stroke();
-    context.fillText(String(Math.round(value)), plot.left - 8, y);
+  const minValue = ticks[0] ?? 0;
+  const maxValue = ticks[ticks.length - 1] ?? 1;
+  const showHorizontalGrid = chart.yAxis?.majorGridLines !== false;
+  for (const value of ticks) {
+    const y = chartY(value, plot, minValue, maxValue);
+    if (showHorizontalGrid) {
+      context.beginPath();
+      context.moveTo(plot.left, y);
+      context.lineTo(plot.right, y);
+      context.stroke();
+    }
+
+    context.fillText(formatChartTick(value), plot.left - 8, y);
   }
+
+  if (chart.type === "line" && chart.categories.length > 0) {
+    const pointCount = Math.max(1, chart.categories.length - 1);
+    for (let index = 0; index < chart.categories.length; index += 1) {
+      const x = plot.left + (index / pointCount) * (plot.right - plot.left);
+      context.beginPath();
+      context.moveTo(x, plot.top);
+      context.lineTo(x, plot.bottom);
+      context.stroke();
+    }
+  }
+
+  context.setLineDash([]);
+  context.strokeStyle = "#111827";
+  context.beginPath();
+  context.moveTo(plot.left, plot.top);
+  context.lineTo(plot.left, plot.bottom);
+  context.lineTo(plot.right, plot.bottom);
+  context.stroke();
   context.restore();
+}
+
+export function spreadsheetChartTickValues(chart: SpreadsheetChartSpec, values: number[]): number[] {
+  const tickCount = chart.type === "line" ? 6 : 5;
+  const minValue = chart.yAxis?.minimum ?? 0;
+  const observedMax = Math.max(minValue, ...values.filter(Number.isFinite));
+  const majorUnit = chart.yAxis?.majorUnit;
+  let maxValue = chart.yAxis?.maximum ?? (
+    majorUnit && majorUnit > 0
+      ? Math.ceil(observedMax / majorUnit) * majorUnit
+      : niceChartMax(observedMax, tickCount)
+  );
+
+  if (!Number.isFinite(maxValue) || maxValue <= minValue) {
+    maxValue = minValue + 1;
+  }
+
+  if (majorUnit && majorUnit > 0) {
+    const ticks: number[] = [];
+    for (let value = minValue; value <= maxValue + majorUnit / 1000; value += majorUnit) {
+      ticks.push(roundChartNumber(value));
+    }
+    return ticks.length >= 2 ? ticks : [minValue, maxValue];
+  }
+
+  return Array.from({ length: tickCount }, (_, index) => {
+    const ratio = index / Math.max(1, tickCount - 1);
+    return roundChartNumber(minValue + ratio * (maxValue - minValue));
+  });
 }
 
 function niceChartMax(observedMax: number, tickCount: number): number {
@@ -495,7 +559,7 @@ function niceChartMax(observedMax: number, tickCount: number): number {
 
 function chartY(
   value: number,
-  plot: { bottom: number; top: number },
+  plot: Pick<SpreadsheetChartPlotArea, "bottom" | "top">,
   minValue: number,
   maxValue: number,
 ): number {
@@ -507,7 +571,7 @@ function chartY(
 function drawBarChart(
   context: CanvasRenderingContext2D,
   chart: SpreadsheetChartSpec,
-  plot: { bottom: number; left: number; right: number; top: number },
+  plot: SpreadsheetChartPlotArea,
   minValue: number,
   maxValue: number,
 ) {
@@ -527,8 +591,9 @@ function drawBarChart(
   });
 
   context.fillStyle = "#737373";
-  context.font = "11px Arial, sans-serif";
+  context.font = "12px Arial, sans-serif";
   context.textAlign = "center";
+  context.textBaseline = "alphabetic";
   chart.categories.forEach((category, index) => {
     const centerX = plot.left + slotWidth * index + slotWidth / 2;
     context.fillText(category, centerX, plot.bottom + 20);
@@ -539,7 +604,7 @@ function drawBarChart(
 function drawLineChart(
   context: CanvasRenderingContext2D,
   chart: SpreadsheetChartSpec,
-  plot: { bottom: number; left: number; right: number; top: number },
+  plot: SpreadsheetChartPlotArea,
   minValue: number,
   maxValue: number,
 ) {
@@ -549,7 +614,7 @@ function drawLineChart(
   context.save();
   chart.series.forEach((series) => {
     context.strokeStyle = series.color;
-    context.lineWidth = 2.5;
+    context.lineWidth = 3;
     context.setLineDash([]);
     context.beginPath();
     series.values.forEach((value, index) => {
@@ -562,8 +627,9 @@ function drawLineChart(
   });
 
   context.fillStyle = "#737373";
-  context.font = "10px Arial, sans-serif";
+  context.font = "12px Arial, sans-serif";
   context.textAlign = "center";
+  context.textBaseline = "alphabetic";
   chart.categories.forEach((category, index) => {
     const x = xForIndex(index);
     const [first, ...rest] = category.split(/\s+/);
@@ -580,12 +646,12 @@ function drawLineChart(
       const y = chartY(value, plot, minValue, maxValue);
       context.beginPath();
       if (series.marker === "diamond") {
-        context.moveTo(x, y - 4);
-        context.lineTo(x + 4, y);
-        context.lineTo(x, y + 4);
-        context.lineTo(x - 4, y);
+        context.moveTo(x, y - 5);
+        context.lineTo(x + 5, y);
+        context.lineTo(x, y + 5);
+        context.lineTo(x - 5, y);
       } else {
-        context.rect(x - 4, y - 4, 8, 8);
+        context.rect(x - 5, y - 5, 10, 10);
       }
       context.closePath();
       context.fill();
@@ -597,7 +663,7 @@ function drawLineChart(
 function drawChartLegend(
   context: CanvasRenderingContext2D,
   chart: SpreadsheetChartSpec,
-  plot: { bottom: number; left: number; right: number; top: number },
+  plot: SpreadsheetChartPlotArea,
 ) {
   if (chart.legendPosition === "none") return;
 
@@ -629,13 +695,44 @@ function drawLegendEntry(
   y: number,
 ) {
   context.strokeStyle = series.color;
-  context.lineWidth = 2.5;
+  context.lineWidth = 3;
   context.beginPath();
   context.moveTo(x, y - 4);
   context.lineTo(x + 18, y - 4);
   context.stroke();
+  context.fillStyle = series.color;
+  drawChartMarker(context, series.marker, x + 9, y - 4, 4);
   context.fillStyle = "#737373";
   context.textAlign = "left";
-  context.font = "11px Arial, sans-serif";
+  context.textBaseline = "alphabetic";
+  context.font = "12px Arial, sans-serif";
   context.fillText(series.label, x + 26, y);
+}
+
+function drawChartMarker(
+  context: CanvasRenderingContext2D,
+  marker: SpreadsheetChartSeries["marker"],
+  x: number,
+  y: number,
+  radius: number,
+) {
+  context.beginPath();
+  if (marker === "diamond") {
+    context.moveTo(x, y - radius);
+    context.lineTo(x + radius, y);
+    context.lineTo(x, y + radius);
+    context.lineTo(x - radius, y);
+  } else {
+    context.rect(x - radius, y - radius, radius * 2, radius * 2);
+  }
+  context.closePath();
+  context.fill();
+}
+
+function formatChartTick(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function roundChartNumber(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }

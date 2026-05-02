@@ -78,12 +78,13 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Projected OpenXML drawing shape effects into Walnut-like presentation `Element.effects` for XLSX shapes, and rendered shadow effects in the debug spreadsheet shape layer.
 - Confirmed Walnut's spreadsheet reader ignores XLSX picture crop (`a:srcRect`) for image drawings: a cropped temp fixture produced the same Walnut proto hash as the uncropped image fixture. Crop remains a protocol limitation unless the target schema adds an image crop field.
 - Added workbook theme extraction for XLSX and switched table stripe palettes to derive from theme color-scheme accents when the protocol supplies a theme.
+- Tightened the debug chart renderer toward Excel/Walnut output with explicit tick values, wider y-axis plot margins, axis baselines, vertical/horizontal gridlines, larger line markers, and marker-aware legends.
 
 ## Remaining XLSX Work
 
 - Precise table styles: table headers, row/column stripe flags, first/last column emphasis, totals rows, and theme-derived stripe colors are now projected from protocol table style metadata. Exact built-in Excel table style definitions beyond the common medium styles still need wider fixture coverage.
 - Icon-set details: Risk icons now honor `cfvo` type/value for `min`, `max`, `num`, `percent`, `percentile`, plus `gte`, `reverse`, `showValue`, and common rating/arrows/traffic/symbol icon families. Custom icon-image payloads are not supported.
-- Chart fidelity: Fitness charts now use a zero baseline, and the preview consumes sheet drawing chart anchors/series/legend directly from the Walnut-like protocol. Plot area sizing, gridlines, fonts, and Excel internal chart layout are still simplified.
+- Chart fidelity: Fitness charts now use a zero baseline, explicit Excel-like tick values, gridlines, plot margins, marker styling, and marker-aware legends. Remaining chart work is deeper Excel layout parity for plot-area auto sizing, number formats, and non-line/bar chart families.
 - Drawing overlays: sheet drawing chart/shape/image anchors, workbook image payloads, Walnut-style image references, sheet drawing order, and shape effect metadata are now consumed by the preview. Image crop is not currently representable in the Walnut spreadsheet `Drawing` schema based on the cropped-image probe.
 - Freeze panes and sticky headers: the prefix-sum layout adapter now drives fixed headers, frozen body overlays, viewport projection, and cell hit regions. Remaining work is extracting freeze panes from a future protocol source, viewport virtualization, and floating-element hit regions.
 - Conditional formatting breadth: data bars now support negative values, explicit axis placement, and gradient/solid variants. Color scales now use cfvo thresholds for multi-stop interpolation; multi-rule layering still needs more coverage.

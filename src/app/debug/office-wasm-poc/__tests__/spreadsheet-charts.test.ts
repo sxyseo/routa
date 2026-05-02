@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSpreadsheetCharts } from "../spreadsheet-charts";
+import { buildSpreadsheetCharts, spreadsheetChartPlotArea, spreadsheetChartTickValues } from "../spreadsheet-charts";
 import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetRowTop } from "../spreadsheet-layout";
 
 describe("spreadsheet charts", () => {
@@ -64,6 +64,32 @@ describe("spreadsheet charts", () => {
       label: "Fitness Score",
       marker: "diamond",
       values: [62.6, 64.5],
+    });
+  });
+
+  it("uses Excel-like zero-based ticks and plot margins for line charts", () => {
+    const chart = {
+      categories: ["Jan 25", "Feb 25", "Mar 25"],
+      height: 280,
+      left: 0,
+      legendPosition: "bottom" as const,
+      series: [
+        { color: "#1f6f8b", label: "Fitness Score", marker: "diamond" as const, values: [62.6, 78.1, 89.9] },
+      ],
+      title: "Fitness Score vs Coverage",
+      top: 0,
+      type: "line" as const,
+      width: 640,
+      yAxis: { majorGridLines: true, minimum: 0, numberFormat: "", position: "" },
+      zIndex: 0,
+    };
+
+    expect(spreadsheetChartTickValues(chart, chart.series[0].values)).toEqual([0, 20, 40, 60, 80, 100]);
+    expect(spreadsheetChartPlotArea(chart)).toMatchObject({
+      bottom: 192,
+      left: 64,
+      right: 618,
+      top: 58,
     });
   });
 });
