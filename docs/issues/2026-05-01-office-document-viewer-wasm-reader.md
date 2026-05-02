@@ -473,6 +473,17 @@ npm run compare:office-wasm-reader:pptx -- --assert '/Users/phodal/Downloads/《
 
 Walnut-specific finding from decoding both WASM outputs on this deck: root `Presentation.images` is emitted in ordinal path order (`/ppt/media/...`) rather than slide traversal order. Walnut does not appear to transcode the JPEG payloads for this fixture; after matching the ordering, image ids, content types, byte lengths, and SHA-256 digests match exactly. The generated debug preview on `http://localhost:3000/debug/office-wasm-poc` now shows slide 4 with multiple distinct image-backed elements instead of one repeated image.
 
+PPTX render-contract guard:
+
+```bash
+npm run compare:office-wasm-reader:pptx-render -- --assert '/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx'
+npm run test:office-wasm-reader:pptx-render
+```
+
+- `compare-walnut-pptx-render-contract.ts` opens the debug page through Playwright, loads the same PPTX through both `reader=routa` and `reader=walnut`, and captures desktop, narrow, and slideshow screenshots into `/tmp/routa-office-wasm-pptx-render`.
+- The guard asserts that both readers render from bitmap surfaces instead of live fallback canvases, enter fullscreen slideshow, keep the same layout stats, avoid runtime console errors, and produce identical preview/slideshow screenshot hashes.
+- The `test:*` script can start an isolated Next dev server on port `3218`; the `compare:*` script can target an already-running app at `http://127.0.0.1:3000/debug/office-wasm-poc` or a custom `--base-url`.
+
 Remaining implementation gaps after the image-reference/theme/layout pass:
 
 - True PPTX chart parts (`c:chart` / `ChartPart`) are not emitted as `charts` or `chartReference` yet.
