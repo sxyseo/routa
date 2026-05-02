@@ -4,21 +4,6 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import officeWasmConfig from "../../src/app/debug/office-wasm-poc/office-wasm-config";
-import type {
-  RoutaOfficeArtifact,
-  RoutaOfficeChart,
-  RoutaOfficeCell,
-  RoutaOfficeConditionalFormat,
-  RoutaOfficeDataValidation,
-  RoutaOfficeImageAsset,
-  RoutaOfficeMergedRange,
-  RoutaOfficeRow,
-  RoutaOfficeSheet,
-  RoutaOfficeSheetTable,
-  RoutaOfficeSlide,
-  RoutaOfficeTable,
-  RoutaOfficeTextBlock,
-} from "../../src/client/office-document-viewer/protocol/office-artifact-types";
 
 type ReaderExports = {
   DocxReader: {
@@ -32,11 +17,11 @@ type ReaderExports = {
   };
 };
 
-type DecodeRoutaOfficeArtifact = (bytes: Uint8Array) => RoutaOfficeArtifact;
-
 type DecodeDocument = (bytes: Uint8Array) => Record<string, unknown>;
 
 type DecodePresentation = (bytes: Uint8Array) => Record<string, unknown>;
+
+type DecodeWorkbook = (bytes: Uint8Array) => Record<string, unknown>;
 
 type FixtureCase = {
   kind: "docx" | "pptx" | "xlsx";
@@ -74,9 +59,9 @@ async function main(): Promise<void> {
     throw new Error("Office WASM bundle is missing. Run `npm run build:office-wasm-reader` first.");
   }
 
-  const decodeRoutaOfficeArtifact = await loadArtifactDecoder();
   const decodeDocument = await loadDocumentDecoder();
   const decodePresentation = await loadPresentationDecoder();
+  const decodeWorkbook = await loadWorkbookDecoder();
   const exports = await loadReaderExports();
   for (const fixture of fixtureCases.filter((fixture) => fixtureFilter.size === 0 || fixtureFilter.has(fixture.name))) {
     const bytes = readFileSync(fixture.path);
@@ -92,7 +77,7 @@ async function main(): Promise<void> {
         ? summarizeDocument(decodeDocument(protoPayload), protoPayload)
         : fixture.kind === "pptx"
         ? summarizePresentation(decodePresentation(protoPayload), protoPayload)
-        : summarizeArtifact(decodeRoutaOfficeArtifact(protoPayload), protoPayload);
+        : summarizeWorkbook(decodeWorkbook(protoPayload), protoPayload);
     const goldenPath = path.join(goldenDir, `${fixture.name}.json`);
     const serialized = `${JSON.stringify(summary, null, 2)}\n`;
 
@@ -165,21 +150,21 @@ async function loadPresentationDecoder(): Promise<DecodePresentation> {
   return decoder;
 }
 
-async function loadArtifactDecoder(): Promise<DecodeRoutaOfficeArtifact> {
-  const imported = (await import(
-    "../../src/client/office-document-viewer/protocol/office-artifact-protobuf"
-  )) as unknown as {
-    decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact;
-    default?: { decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact };
-    "module.exports"?: { decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact };
+async function loadWorkbookDecoder(): Promise<DecodeWorkbook> {
+  const imported = await import(
+    pathToFileURL(path.join(repoRoot, officeWasmConfig.OFFICE_WASM_TMP_ASSET_DIR, officeWasmConfig.OFFICE_WASM_READER_MODULES.spreadsheet)).href
+  ) as {
+    Workbook?: { decode?: DecodeWorkbook };
+    default?: { Workbook?: { decode?: DecodeWorkbook } };
+    "module.exports"?: { Workbook?: { decode?: DecodeWorkbook } };
   };
   const decoder =
-    imported.decodeRoutaOfficeArtifact ??
-    imported.default?.decodeRoutaOfficeArtifact ??
-    imported["module.exports"]?.decodeRoutaOfficeArtifact;
+    imported.Workbook?.decode ??
+    imported.default?.Workbook?.decode ??
+    imported["module.exports"]?.Workbook?.decode;
 
   if (!decoder) {
-    throw new Error("Could not load decodeRoutaOfficeArtifact.");
+    throw new Error("Could not load Walnut Workbook decoder.");
   }
 
   return decoder;
@@ -196,29 +181,6 @@ async function loadReaderExports(): Promise<ReaderExports> {
   }
 
   return bridge.exports;
-}
-
-function summarizeArtifact(artifact: RoutaOfficeArtifact, protoPayload: Uint8Array): unknown {
-  return {
-    chartCount: artifact.charts.length,
-    charts: artifact.charts.slice(0, 12).map(summarizeChart),
-    diagnostics: artifact.diagnostics,
-    imageCount: artifact.images.length,
-    images: artifact.images.slice(0, 12).map(summarizeImage),
-    metadata: artifact.metadata,
-    sheetCount: artifact.sheets.length,
-    sheets: artifact.sheets.slice(0, 8).map(summarizeSheet),
-    slideCount: artifact.slides.length,
-    slides: artifact.slides.slice(0, 12).map(summarizeSlide),
-    sourceKind: artifact.sourceKind,
-    tableCount: artifact.tables.length,
-    tables: artifact.tables.slice(0, 8).map(summarizeTable),
-    textBlockCount: artifact.textBlocks.length,
-    textBlocks: artifact.textBlocks.slice(0, 20).map(summarizeTextBlock),
-    title: artifact.title,
-    wasmProtoByteLength: protoPayload.length,
-    wasmProtoSha256: createHash("sha256").update(protoPayload).digest("hex"),
-  };
 }
 
 function summarizeDocument(document: Record<string, unknown>, protoPayload: Uint8Array): unknown {
@@ -255,6 +217,63 @@ function summarizePresentation(presentation: Record<string, unknown>, protoPaylo
     slides: slides.slice(0, 12).map(summarizePresentationSlide),
     wasmProtoByteLength: protoPayload.length,
     wasmProtoSha256: createHash("sha256").update(protoPayload).digest("hex"),
+  };
+}
+
+function summarizeWorkbook(workbook: Record<string, unknown>, protoPayload: Uint8Array): unknown {
+  const sheets = arrayOfRecords(workbook.sheets);
+  const drawings = sheets.flatMap((sheet) => arrayOfRecords(sheet.drawings));
+  const charts = drawings.filter((drawing) => isRecord(drawing.chart));
+  return {
+    chartCount: charts.length,
+    imageCount: arrayOfRecords(workbook.images).length,
+    protocol: "oaiproto.coworker.spreadsheet.Workbook",
+    sheetCount: sheets.length,
+    sheets: sheets.slice(0, 8).map(summarizeWorkbookSheet),
+    styleCounts: summarizeWorkbookStyleCounts(asRecord(workbook.styles) ?? {}),
+    tableCount: sheets.reduce((count, sheet) => count + arrayOfRecords(sheet.tables).length, 0),
+    wasmProtoByteLength: protoPayload.length,
+    wasmProtoSha256: createHash("sha256").update(protoPayload).digest("hex"),
+  };
+}
+
+function summarizeWorkbookSheet(sheet: Record<string, unknown>): unknown {
+  const rows = arrayOfRecords(sheet.rows);
+  const cells = rows.flatMap((row) => arrayOfRecords(row.cells));
+  return {
+    cellCount: cells.length,
+    columnCount: arrayOfRecords(sheet.columns).length,
+    conditionalFormatCount: arrayOfRecords(sheet.conditionalFormattings).length,
+    dataValidationCount: arrayOfRecords(sheet.dataValidations).length,
+    drawingCount: arrayOfRecords(sheet.drawings).length,
+    formulaCellCount: cells.filter((cell) => typeof cell.formula === "string" && cell.formula.length > 0).length,
+    mergedRangeCount: arrayOfRecords(sheet.mergedCells).length,
+    name: typeof sheet.name === "string" ? sheet.name : "",
+    previewCells: cells
+      .filter((cell) => Boolean(cell.value) || Boolean(cell.formula))
+      .slice(0, 12)
+      .map((cell) => ({
+        address: typeof cell.address === "string" ? cell.address : "",
+        formula: typeof cell.formula === "string" ? cell.formula : "",
+        value: truncate(String(cell.value ?? ""), 120),
+      })),
+    rowCount: rows.length,
+    tableCount: arrayOfRecords(sheet.tables).length,
+    tables: arrayOfRecords(sheet.tables).slice(0, 12).map((table) => ({
+      displayName: typeof table.displayName === "string" ? table.displayName : "",
+      name: typeof table.name === "string" ? table.name : "",
+      ref: typeof table.ref === "string" ? table.ref : "",
+    })),
+  };
+}
+
+function summarizeWorkbookStyleCounts(styles: Record<string, unknown>): unknown {
+  return {
+    borderCount: arrayOfRecords(styles.borders).length,
+    cellFormatCount: arrayOfRecords(styles.cellXfs).length,
+    fillCount: arrayOfRecords(styles.fills).length,
+    fontCount: arrayOfRecords(styles.fonts).length,
+    numberFormatCount: arrayOfRecords(styles.numberFormats).length,
   };
 }
 
@@ -319,124 +338,6 @@ function summarizePresentationElement(element: Record<string, unknown>): unknown
     paragraphCount: paragraphs.length,
     textPreview: paragraphs.map(paragraphText).filter(Boolean).join(" ").slice(0, 160),
     type: element.type,
-  };
-}
-
-function summarizeSheet(sheet: RoutaOfficeSheet): unknown {
-  return {
-    cellCount: sheet.rows.reduce((total, row) => total + row.cells.length, 0),
-    conditionalFormatCount: sheet.conditionalFormats.length,
-    conditionalFormats: sheet.conditionalFormats.slice(0, 12).map(summarizeConditionalFormat),
-    dataValidationCount: sheet.dataValidations.length,
-    dataValidations: sheet.dataValidations.slice(0, 12).map(summarizeDataValidation),
-    formulaCellCount: sheet.rows.reduce(
-      (total, row) => total + row.cells.filter(cell => cell.formula.length > 0).length,
-      0,
-    ),
-    mergedRangeCount: sheet.mergedRanges.length,
-    mergedRanges: sheet.mergedRanges.slice(0, 20).map(summarizeMergedRange),
-    name: sheet.name,
-    previewCells: summarizePreviewCells(sheet),
-    rowCount: sheet.rows.length,
-    tableCount: sheet.tables.length,
-    tables: sheet.tables.slice(0, 12).map(summarizeSheetTable),
-  };
-}
-
-function summarizeTable(table: RoutaOfficeTable): unknown {
-  return {
-    path: table.path,
-    rowCount: table.rows.length,
-    rows: table.rows.slice(0, 8).map(summarizeRow),
-  };
-}
-
-function summarizeRow(row: RoutaOfficeRow): unknown {
-  return {
-    cellCount: row.cells.length,
-    cells: row.cells.slice(0, 12).map(summarizeCell),
-  };
-}
-
-function summarizePreviewCells(sheet: RoutaOfficeSheet): unknown {
-  return sheet.rows
-    .flatMap(row => row.cells)
-    .filter(cell => cell.text.length > 0 || cell.formula.length > 0)
-    .slice(0, 12)
-    .map(summarizeCell);
-}
-
-function summarizeCell(cell: RoutaOfficeCell): unknown {
-  return {
-    address: cell.address,
-    formula: cell.formula,
-    text: truncate(cell.text, 120),
-  };
-}
-
-function summarizeSlide(slide: RoutaOfficeSlide): unknown {
-  return {
-    index: slide.index,
-    textBlockCount: slide.textBlocks.length,
-    textBlocks: slide.textBlocks.slice(0, 16).map(summarizeTextBlock),
-    title: truncate(slide.title, 160),
-  };
-}
-
-function summarizeTextBlock(block: RoutaOfficeTextBlock): unknown {
-  return {
-    path: block.path,
-    text: truncate(block.text, 160),
-  };
-}
-
-function summarizeImage(image: RoutaOfficeImageAsset): unknown {
-  return {
-    byteLength: image.bytes.length,
-    contentType: image.contentType,
-    id: image.id,
-    path: image.path,
-    sha256: createHash("sha256").update(image.bytes).digest("hex"),
-  };
-}
-
-function summarizeChart(chart: RoutaOfficeChart): unknown {
-  return {
-    chartType: chart.chartType,
-    id: chart.id,
-    path: chart.path,
-    title: truncate(chart.title, 160),
-  };
-}
-
-function summarizeMergedRange(range: RoutaOfficeMergedRange): unknown {
-  return {
-    reference: range.reference,
-  };
-}
-
-function summarizeSheetTable(table: RoutaOfficeSheetTable): unknown {
-  return {
-    name: table.name,
-    reference: table.reference,
-  };
-}
-
-function summarizeDataValidation(validation: RoutaOfficeDataValidation): unknown {
-  return {
-    formula1: truncate(validation.formula1, 120),
-    formula2: truncate(validation.formula2, 120),
-    operator: validation.operator,
-    ranges: validation.ranges.slice(0, 12),
-    type: validation.type,
-  };
-}
-
-function summarizeConditionalFormat(format: RoutaOfficeConditionalFormat): unknown {
-  return {
-    priority: format.priority,
-    ranges: format.ranges.slice(0, 12),
-    type: format.type,
   };
 }
 

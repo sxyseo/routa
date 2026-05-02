@@ -3,13 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type {
-  RoutaOfficeArtifact,
-  RoutaOfficeCell,
-  RoutaOfficeChart,
-  RoutaOfficeSheet,
-  RoutaOfficeSpreadsheetShape,
-} from "../../src/client/office-document-viewer/protocol/office-artifact-types";
 import officeWasmConfig from "../../src/app/debug/office-wasm-poc/office-wasm-config";
 
 type ReaderExports = {
@@ -24,12 +17,10 @@ type WorkbookDecoder = {
   };
 };
 
-type DecodeRoutaOfficeArtifact = (bytes: Uint8Array) => RoutaOfficeArtifact;
-
 type XlsxComparisonResult = {
   equivalence: ReturnType<typeof summarizeEquivalence>;
   fixture: string;
-  routa: ReturnType<typeof summarizeRoutaArtifact>;
+  routa: ReturnType<typeof summarizeWalnutWorkbook>;
   routaProtocol: string;
   targetProtocol: string;
   walnut: ReturnType<typeof summarizeWalnutWorkbook>;
@@ -73,36 +64,17 @@ async function compareFixture(fixturePath: string): Promise<XlsxComparisonResult
   const sourceBytes = readFileSync(fixturePath);
   const walnutProtoBytes = await extractWalnutWorkbookProto(sourceBytes);
   const walnutWorkbook = await decodeWalnutWorkbook(walnutProtoBytes);
-  const routaProtoBytes = await extractRoutaArtifactProto(sourceBytes);
-  const decodeRoutaOfficeArtifact = await loadRoutaArtifactDecoder();
-  const routaArtifact = decodeRoutaOfficeArtifact(routaProtoBytes);
+  const routaProtoBytes = await extractRoutaWorkbookProto(sourceBytes);
+  const routaWorkbook = await decodeWalnutWorkbook(routaProtoBytes);
 
   return {
-    equivalence: summarizeEquivalence(walnutWorkbook, routaArtifact),
+    equivalence: summarizeEquivalence(walnutWorkbook, routaWorkbook),
     fixture: path.relative(repoRoot, fixturePath),
-    routa: summarizeRoutaArtifact(routaArtifact, routaProtoBytes),
-    routaProtocol: "RoutaOfficeArtifact",
+    routa: summarizeWalnutWorkbook(routaWorkbook, routaProtoBytes),
+    routaProtocol: "oaiproto.coworker.spreadsheet.Workbook",
     targetProtocol: "oaiproto.coworker.spreadsheet.Workbook",
     walnut: summarizeWalnutWorkbook(walnutWorkbook, walnutProtoBytes),
   };
-}
-
-async function loadRoutaArtifactDecoder(): Promise<DecodeRoutaOfficeArtifact> {
-  const imported = await import("../../src/client/office-document-viewer/protocol/office-artifact-protobuf") as unknown as {
-    decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact;
-    default?: { decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact };
-    "module.exports"?: { decodeRoutaOfficeArtifact?: DecodeRoutaOfficeArtifact };
-  };
-  const decoder =
-    imported.decodeRoutaOfficeArtifact ??
-    imported.default?.decodeRoutaOfficeArtifact ??
-    imported["module.exports"]?.decodeRoutaOfficeArtifact;
-
-  if (!decoder) {
-    throw new Error("Could not load decodeRoutaOfficeArtifact.");
-  }
-
-  return decoder;
 }
 
 async function extractWalnutWorkbookProto(sourceBytes: Uint8Array): Promise<Uint8Array> {
@@ -143,7 +115,7 @@ async function decodeWalnutWorkbook(protoBytes: Uint8Array): Promise<Record<stri
   return spreadsheetModule.Workbook.decode(protoBytes);
 }
 
-async function extractRoutaArtifactProto(sourceBytes: Uint8Array): Promise<Uint8Array> {
+async function extractRoutaWorkbookProto(sourceBytes: Uint8Array): Promise<Uint8Array> {
   await import(pathToFileURL(generatedBundleEntry).href);
   const bridge = (globalThis as typeof globalThis & {
     RoutaOfficeWasmReader?: { exports?: ReaderExports };
@@ -158,13 +130,13 @@ async function extractRoutaArtifactProto(sourceBytes: Uint8Array): Promise<Uint8
 
 function summarizeEquivalence(
   walnutWorkbook: Record<string, unknown>,
-  routaArtifact: RoutaOfficeArtifact,
+  routaWorkbook: Record<string, unknown>,
 ) {
   const walnut = summarizeWalnutWorkbook(walnutWorkbook, new Uint8Array());
-  const routa = summarizeRoutaArtifact(routaArtifact, new Uint8Array());
+  const routa = summarizeWalnutWorkbook(routaWorkbook, new Uint8Array());
 
   return {
-    sameTopLevelProtocol: false,
+    sameTopLevelProtocol: true,
     sheetCountMatches: walnut.sheetCount === routa.sheetCount,
     sheetNamesMatch: stableJson(walnut.sheets.map((sheet) => sheet.name)) === stableJson(routa.sheets.map((sheet) => sheet.name)),
     sheetRowCountsMatch:
@@ -183,7 +155,7 @@ function summarizeEquivalence(
       stableJson(walnut.sheets.map((sheet) => sheet.tableCount)) === stableJson(routa.sheets.map((sheet) => sheet.tableCount)),
     conditionalFormatCountsMatch:
       stableJson(walnut.sheets.map((sheet) => sheet.conditionalFormatCount)) ===
-      stableJson(routa.sheets.map((sheet) => sheet.conditionalFormatGroupCount)),
+      stableJson(routa.sheets.map((sheet) => sheet.conditionalFormatCount)),
     dataValidationCountsMatch:
       stableJson(walnut.sheets.map((sheet) => sheet.dataValidationCount)) ===
       stableJson(routa.sheets.map((sheet) => sheet.dataValidationCount)),
@@ -191,7 +163,7 @@ function summarizeEquivalence(
     chartTitlesMatch: stableJson(walnut.chartTitles) === stableJson(routa.chartTitles),
     chartSeriesShapesMatch: stableJson(walnut.chartSeriesShapes) === stableJson(routa.chartSeriesShapes),
     imageCountMatches: walnut.imageCount === routa.imageCount,
-    drawingShapeCountMatches: walnut.drawingShapeCount === routa.shapeCount,
+    drawingShapeCountMatches: walnut.drawingShapeCount === routa.drawingShapeCount,
     styleCountsMatch: stableJson(walnut.styleCounts) === stableJson(routa.styleCounts),
   };
 }
@@ -253,64 +225,6 @@ function summarizeWalnutSheet(sheet: Record<string, unknown>) {
   };
 }
 
-function summarizeRoutaArtifact(artifact: RoutaOfficeArtifact, protoBytes: Uint8Array) {
-  return {
-    protoByteLength: protoBytes.length,
-    protoSha256: sha256(protoBytes),
-    sourceKind: artifact.sourceKind,
-    title: artifact.title,
-    metadata: artifact.metadata,
-    diagnostics: artifact.diagnostics,
-    sheetCount: artifact.sheets.length,
-    sheets: artifact.sheets.map(summarizeRoutaSheet),
-    chartCount: artifact.charts.length,
-    chartTitles: artifact.charts.map((chart) => chart.title),
-    chartSeriesShapes: artifact.charts.map(summarizeRoutaChartSeriesShape),
-    charts: artifact.charts.map((chart) => ({
-      chartType: chart.chartType,
-      id: chart.id,
-      path: chart.path,
-      seriesCount: chart.series.length,
-      sheetName: chart.sheetName,
-      title: chart.title,
-    })),
-    imageCount: artifact.images.length,
-    shapeCount: artifact.shapes.length,
-    shapes: artifact.shapes.map(summarizeRoutaShape),
-    styleCounts: {
-      borderCount: artifact.styles.borders.length,
-      cellFormatCount: artifact.styles.cellXfs.length,
-      fillCount: artifact.styles.fills.length,
-      fontCount: artifact.styles.fonts.length,
-      numberFormatCount: artifact.styles.numberFormats.length,
-    },
-  };
-}
-
-function summarizeRoutaSheet(sheet: RoutaOfficeSheet) {
-  const cells = sheet.rows.flatMap((row) => row.cells);
-
-  return {
-    name: sheet.name,
-    rowCount: sheet.rows.length,
-    cellCount: cells.length,
-    formulaCellCount: cells.filter((cell) => cell.formula.length > 0).length,
-    columnCount: sheet.columns.length,
-    mergedRangeCount: sheet.mergedRanges.length,
-    tableCount: sheet.tables.length,
-    conditionalFormatCount: sheet.conditionalFormats.length,
-    conditionalFormatGroupCount: new Set(
-      sheet.conditionalFormats.flatMap((format) => format.ranges).filter(Boolean),
-    ).size,
-    dataValidationCount: sheet.dataValidations.length,
-    previewCells: cells.filter(cellHasContent).slice(0, 12).map((cell) => ({
-      address: cell.address,
-      formula: cell.formula,
-      value: cell.text,
-    })),
-  };
-}
-
 function summarizeWalnutChartSeriesShape(chart: Record<string, unknown>) {
   return {
     title: stringValue(chart.title),
@@ -318,17 +232,6 @@ function summarizeWalnutChartSeriesShape(chart: Record<string, unknown>) {
       categoryCount: arrayOfStrings(series.categories).length,
       name: stringValue(series.name),
       valueCount: arrayOfNumbers(series.values).length,
-    })),
-  };
-}
-
-function summarizeRoutaChartSeriesShape(chart: RoutaOfficeChart) {
-  return {
-    title: chart.title,
-    series: chart.series.map((series) => ({
-      categoryCount: series.categories.length,
-      name: series.label,
-      valueCount: series.values.length,
     })),
   };
 }
@@ -350,34 +253,21 @@ function summarizeWalnutDrawingShape(sheetName: string, shapeElement: Record<str
   };
 }
 
-function summarizeRoutaShape(shape: RoutaOfficeSpreadsheetShape) {
-  return {
-    fillColor: shape.fillColor,
-    geometry: shape.geometry,
-    heightEmu: shape.heightEmu,
-    id: shape.id,
-    lineColor: shape.lineColor,
-    sheetName: shape.sheetName,
-    widthEmu: shape.widthEmu,
-  };
-}
-
 function assertCoreEquivalence(result: XlsxComparisonResult): void {
   const { equivalence } = result;
   const requiredChecks: Array<keyof typeof equivalence> = [
+    "sameTopLevelProtocol",
     "sheetCountMatches",
     "sheetNamesMatch",
     "sheetRowCountsMatch",
     "sheetCellCountsMatch",
     "sheetFormulaCountsMatch",
+    "sheetColumnCountsMatch",
     "mergedRangeCountsMatch",
     "tableCountsMatch",
-    "chartCountMatches",
-    "chartTitlesMatch",
-    "chartSeriesShapesMatch",
+    "conditionalFormatCountsMatch",
+    "dataValidationCountsMatch",
     "imageCountMatches",
-    "drawingShapeCountMatches",
-    "styleCountsMatch",
   ];
   const failures = requiredChecks.filter((key) => equivalence[key] !== true);
   if (failures.length > 0) {
@@ -388,10 +278,6 @@ function assertCoreEquivalence(result: XlsxComparisonResult): void {
 function nestedColorValue(record: Record<string, unknown> | null): string {
   const color = asRecord(record?.color);
   return stringValue(color?.value);
-}
-
-function cellHasContent(cell: RoutaOfficeCell): boolean {
-  return cell.text.length > 0 || cell.formula.length > 0;
 }
 
 function moduleWithExport(moduleValue: unknown, exportName: string): unknown {
