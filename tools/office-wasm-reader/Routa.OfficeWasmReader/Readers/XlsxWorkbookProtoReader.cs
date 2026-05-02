@@ -2211,9 +2211,10 @@ internal static class XlsxWorkbookProtoReader
     {
         var nonVisual = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
         var shapeProperties = shape.ShapeProperties;
+        var transform = shapeProperties?.GetFirstChild<A.Transform2D>();
         return Message(output =>
         {
-            WriteMessage(output, 1, WriteBoundingBox(extentCx, extentCy));
+            WriteMessage(output, 1, WriteBoundingBox(transform, extentCx, extentCy));
             WriteMessage(output, 4, WriteShape(shapeProperties, isSlicerShape));
             if (isSlicerShape)
             {
@@ -2226,7 +2227,7 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteString(output, 10, nonVisual?.Name?.Value ?? "");
-            WriteInt32(output, 11, isSlicerShape ? 1 : 5);
+            WriteInt32(output, 11, 1);
             if (isSlicerShape)
             {
                 WriteMessageIncludingEmpty(output, 14, Message(_ => { }));
@@ -2244,14 +2245,16 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
-    private static byte[] WriteBoundingBox(long extentCx, long extentCy)
+    private static byte[] WriteBoundingBox(A.Transform2D? transform, long fallbackExtentCx, long fallbackExtentCy)
     {
+        var offset = transform?.Offset;
+        var extents = transform?.Extents;
         return Message(output =>
         {
-            WriteInt64IncludingZero(output, 1, 0);
-            WriteInt64IncludingZero(output, 2, 0);
-            WriteInt64(output, 3, extentCx);
-            WriteInt64(output, 4, extentCy);
+            WriteInt64IncludingZero(output, 1, offset?.X?.Value ?? 0);
+            WriteInt64IncludingZero(output, 2, offset?.Y?.Value ?? 0);
+            WriteInt64(output, 3, extents?.Cx?.Value ?? fallbackExtentCx);
+            WriteInt64(output, 4, extents?.Cy?.Value ?? fallbackExtentCy);
         });
     }
 
