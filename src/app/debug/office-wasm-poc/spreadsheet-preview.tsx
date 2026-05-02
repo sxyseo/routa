@@ -39,6 +39,11 @@ type SpreadsheetCellVisual = {
     percent: number;
   };
   filter?: boolean;
+  iconSet?: {
+    color: string;
+    level: number;
+    showValue: boolean;
+  };
   color?: string;
   fontWeight?: CSSProperties["fontWeight"];
 };
@@ -729,10 +734,17 @@ function mergeSpreadsheetVisual(
   visual: SpreadsheetCellVisual,
 ) {
   const key = spreadsheetCellKey(rowIndex, columnIndex);
-  visuals.set(key, { ...(visuals.get(key) ?? {}), ...visual });
+  const next = { ...(visuals.get(key) ?? {}) };
+  if (visual.background !== undefined) next.background = visual.background;
+  if (visual.color !== undefined) next.color = visual.color;
+  if (visual.dataBar !== undefined) next.dataBar = visual.dataBar;
+  if (visual.filter !== undefined) next.filter = visual.filter;
+  if (visual.fontWeight !== undefined) next.fontWeight = visual.fontWeight;
+  if (visual.iconSet !== undefined) next.iconSet = visual.iconSet;
+  visuals.set(key, next);
 }
 
-function buildSpreadsheetTableHeaderVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
+function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
   const visuals = new Map<string, SpreadsheetCellVisual>();
   const sheetName = asString(sheet?.name);
   const tableReferences = asArray(sheet?.tables)
@@ -749,6 +761,13 @@ function buildSpreadsheetTableHeaderVisuals(sheet: RecordValue | undefined): Map
 
     for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
       mergeSpreadsheetVisual(visuals, range.startRow, columnIndex, { filter: true });
+    }
+
+    for (let rowIndex = range.startRow + 1; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
+      if ((rowIndex - range.startRow - 1) % 2 !== 0) continue;
+      for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
+        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, { background: "#c7eaf7" });
+      }
     }
   }
 
@@ -880,7 +899,7 @@ function conditionalTextMatches(format: RecordValue, text: string, numericValue:
 }
 
 function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
-  const visuals = buildSpreadsheetTableHeaderVisuals(sheet);
+  const visuals = buildSpreadsheetTableVisuals(sheet);
   const sheetName = asString(sheet?.name);
   const conditionalFormats = asArray(sheet?.conditionalFormats)
     .map(asRecord)
@@ -901,6 +920,7 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
       const maxValue = values.length > 0 ? Math.max(...values.map((item) => item.value)) : 0;
       const colorScale = asRecord(format.colorScale);
       const dataBar = asRecord(format.dataBar);
+      const iconSet = asRecord(format.iconSet);
 
       if (colorScale) {
         const colors = asArray(colorScale.colors).map(asString).filter(Boolean);
@@ -921,6 +941,21 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
               color,
               percent: Math.max(0, Math.min(100, Math.abs(item.value) / maxAbs * 100)),
             },
+          });
+        }
+        continue;
+      }
+
+      if (iconSet) {
+        for (const item of values) {
+          mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
+            iconSet: spreadsheetIconSetVisual(
+              item.value,
+              minValue,
+              maxValue,
+              iconSet.showValue !== false,
+              iconSet.reverse === true,
+            ),
           });
         }
         continue;
@@ -974,6 +1009,24 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
   return visuals;
 }
 
+function spreadsheetIconSetVisual(
+  value: number,
+  minValue: number,
+  maxValue: number,
+  showValue: boolean,
+  reverse: boolean,
+): SpreadsheetCellVisual["iconSet"] {
+  const ratio = maxValue > minValue ? (value - minValue) / (maxValue - minValue) : 0;
+  const normalized = reverse ? 1 - ratio : ratio;
+  const level = Math.max(1, Math.min(5, Math.floor(normalized * 5) + 1));
+  const palette = ["#9ca3af", "#94a3b8", "#6b9fc3", "#3b82b6", "#16638a"];
+  return {
+    color: palette[level - 1] ?? palette[0],
+    level,
+    showValue,
+  };
+}
+
 function SpreadsheetCellContent({
   text,
   visual,
@@ -998,7 +1051,8 @@ function SpreadsheetCellContent({
           }}
         />
       ) : null}
-      <span style={{ position: "relative", zIndex: 1 }}>{text}</span>
+      {visual?.iconSet ? <SpreadsheetIconSet visual={visual.iconSet} /> : null}
+      {visual?.iconSet?.showValue === false ? null : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
       {visual?.filter ? (
         <span
           aria-hidden="true"
@@ -1027,6 +1081,39 @@ function SpreadsheetCellContent({
         </span>
       ) : null}
     </>
+  );
+}
+
+function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVisual["iconSet"]> }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        alignItems: "end",
+        display: "inline-flex",
+        gap: 1,
+        height: 14,
+        justifyContent: "center",
+        marginRight: visual.showValue ? 5 : 0,
+        position: "relative",
+        top: 2,
+        width: 18,
+        zIndex: 1,
+      }}
+    >
+      {Array.from({ length: 5 }, (_, index) => (
+        <span
+          key={index}
+          style={{
+            background: index < visual.level ? visual.color : "#d1d5db",
+            display: "inline-block",
+            height: 3 + index * 2,
+            opacity: index < visual.level ? 1 : 0.45,
+            width: 2,
+          }}
+        />
+      ))}
+    </span>
   );
 }
 
