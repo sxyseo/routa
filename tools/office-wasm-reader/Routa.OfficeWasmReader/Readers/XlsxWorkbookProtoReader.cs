@@ -2115,7 +2115,8 @@ internal static class XlsxWorkbookProtoReader
             .Concat(chartSpace.Descendants<C.AreaChartSeries>())
             .Concat(chartSpace.Descendants<C.ScatterChartSeries>())
             .Concat(chartSpace.Descendants<C.BubbleChartSeries>())
-            .Concat(chartSpace.Descendants<C.RadarChartSeries>());
+            .Concat(chartSpace.Descendants<C.RadarChartSeries>())
+            .Concat(chartSpace.Descendants<C.SurfaceChartSeries>());
 
         var index = 0;
         foreach (var series in seriesElements)
