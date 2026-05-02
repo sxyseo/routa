@@ -176,6 +176,45 @@ describe("presentation renderer helpers", () => {
     expect(paragraph.runs[0]?.style?.marginLeft).toBe(180_000);
   });
 
+  it("inherits document text styles through basedOn chains", () => {
+    const paragraph = paragraphView(
+      {
+        runs: [{ text: "Inherited heading" }],
+        styleId: "Heading1",
+      },
+      {
+        images: new Map(),
+        textStyles: new Map([
+          [
+            "Normal",
+            {
+              id: "Normal",
+              textStyle: { fill: { color: { type: 1, value: "111111" } }, fontSize: 1050 },
+              spaceAfter: 200,
+            },
+          ],
+          [
+            "Heading1",
+            {
+              basedOn: "Normal",
+              id: "Heading1",
+              paragraphStyle: { alignment: 2 },
+              textStyle: { bold: true },
+              spaceBefore: 480,
+            },
+          ],
+        ]),
+      },
+    );
+
+    expect(paragraph.style?.bold).toBe(true);
+    expect(paragraph.style?.fontSize).toBe(1050);
+    expect(paragraph.style?.spaceAfter).toBe(200);
+    expect(paragraph.style?.spaceBefore).toBe(480);
+    expect(paragraph.style?.alignment).toBe(2);
+    expect(paragraph.runs[0]?.style?.bold).toBe(true);
+  });
+
   it("maps PPT shadow effects into canvas offsets", () => {
     const shadow = presentationShadowStyle(
       {

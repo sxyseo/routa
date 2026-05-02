@@ -137,6 +137,10 @@ export interface TailTranslationDictionarySections {
     officeWasmPocRawJson: string;
     officeWasmPocSheet: string;
     officeWasmPocSlide: string;
+    officeWasmPocPlaySlideshow: string;
+    officeWasmPocPreviousSlide: string;
+    officeWasmPocNextSlide: string;
+    officeWasmPocCloseSlideshow: string;
     officeWasmPocNoSheets: string;
     officeWasmPocNoSlides: string;
     officeWasmPocNoDocumentBlocks: string;

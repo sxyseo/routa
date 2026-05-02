@@ -1,6 +1,7 @@
 "use client";
 
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { Play, X } from "lucide-react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   asArray,
@@ -41,6 +42,7 @@ export function PresentationPreview({
   const imageSources = useOfficeImageSources(root);
   const imageElements = useLoadedOfficeImages(imageSources);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
   const [thumbnailRailOpen, setThumbnailRailOpen] = useState(false);
   const selectedSlideIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
   const selectedSlide = slides[selectedSlideIndex] ?? {};
@@ -96,9 +98,20 @@ export function PresentationPreview({
       <SlideStage
         images={imageElements}
         labels={labels}
+        onPlaySlideshow={() => setIsSlideshowOpen(true)}
         slide={selectedSlide}
         slideIndex={selectedSlideIndex}
       />
+      {isSlideshowOpen ? (
+        <SlideshowOverlay
+          activeSlideIndex={selectedSlideIndex}
+          images={imageElements}
+          labels={labels}
+          onClose={() => setIsSlideshowOpen(false)}
+          setActiveSlideIndex={setActiveSlideIndex}
+          slides={slides}
+        />
+      ) : null}
     </div>
   );
 }
@@ -106,11 +119,13 @@ export function PresentationPreview({
 function SlideStage({
   images,
   labels,
+  onPlaySlideshow,
   slide,
   slideIndex,
 }: {
   images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
+  onPlaySlideshow: () => void;
   slide: RecordValue;
   slideIndex: number;
 }) {
@@ -122,10 +137,11 @@ function SlideStage({
   const frame = getSlideFrameSize(slide);
   const fit = computePresentationFit(
     {
-      height: Math.max(1, stageSize.height - (footnote ? Math.min(48, footnoteHeight) : 0)),
+      height: Math.max(1, stageSize.height - (footnote ? footnoteHeight + 18 : 0)),
       width: stageSize.width,
     },
     frame,
+    { padding: 24 },
   );
   const canvasWidth = Math.max(1, fit.width);
   const canvasHeight = Math.max(1, fit.height);
@@ -140,12 +156,11 @@ function SlideStage({
   return (
     <main className={styles.mainPanel}>
       <div className={styles.stage} ref={stageRef}>
+        <button className={styles.playButton} onClick={onPlaySlideshow} type="button">
+          <Play aria-hidden="true" size={15} strokeWidth={2} />
+          <span>{labels.playSlideshow}</span>
+        </button>
         <div className={styles.viewport}>
-          <div className={styles.slideHeading}>
-            <strong>
-              {labels.slide} {asNumber(slide.index, slideIndex + 1)}
-            </strong>
-          </div>
           <div
             className={styles.slideSurface}
             style={{ height: canvasHeight, width: canvasWidth }}
@@ -197,6 +212,138 @@ function SlideStage({
         </div>
       </div>
     </main>
+  );
+}
+
+function SlideshowOverlay({
+  activeSlideIndex,
+  images,
+  labels,
+  onClose,
+  setActiveSlideIndex,
+  slides,
+}: {
+  activeSlideIndex: number;
+  images: ReadonlyMap<string, CanvasImageSource>;
+  labels: PreviewLabels;
+  onClose: () => void;
+  setActiveSlideIndex: (index: number) => void;
+  slides: RecordValue[];
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLButtonElement>(null);
+  const frameSize = useElementSize(frameRef);
+  const didEnterFullscreenRef = useRef(false);
+  const selectedIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
+  const slide = slides[selectedIndex] ?? {};
+  const frame = getSlideFrameSize(slide);
+  const fit = computePresentationFit(frameSize, frame, { padding: 20 });
+  const canvasWidth = Math.max(1, fit.width);
+
+  const goPrevious = useCallback(() => {
+    setActiveSlideIndex(Math.max(0, selectedIndex - 1));
+  }, [selectedIndex, setActiveSlideIndex]);
+
+  const goNext = useCallback(() => {
+    setActiveSlideIndex(Math.min(slides.length - 1, selectedIndex + 1));
+  }, [selectedIndex, setActiveSlideIndex, slides.length]);
+
+  const closeSlideshow = useCallback(() => {
+    if (document.fullscreenElement === overlayRef.current) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const handleFullscreenChange = () => {
+      if (didEnterFullscreenRef.current && document.fullscreenElement !== overlay) {
+        onClose();
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    const fullscreenRequest = overlay.requestFullscreen?.({ navigationUI: "hide" });
+    void fullscreenRequest?.then(
+      () => {
+        didEnterFullscreenRef.current = true;
+      },
+      () => undefined,
+    );
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeSlideshow();
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        goPrevious();
+        return;
+      }
+
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+        event.preventDefault();
+        goNext();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeSlideshow, goNext, goPrevious]);
+
+  return (
+    <div
+      aria-label={labels.playSlideshow}
+      aria-modal="true"
+      className={styles.slideshowOverlay}
+      data-testid="presentation-slideshow"
+      ref={overlayRef}
+      role="dialog"
+    >
+      <div className={styles.slideshowChrome}>
+        <div className={styles.slideshowCounter}>
+          {labels.slide} {asNumber(slide.index, selectedIndex + 1)} / {slides.length}
+        </div>
+        <button aria-label={labels.closeSlideshow} className={styles.slideshowIconButton} onClick={closeSlideshow} type="button">
+          <X aria-hidden="true" size={18} strokeWidth={2} />
+        </button>
+      </div>
+      <button
+        aria-label={labels.nextSlide}
+        className={styles.slideshowFrame}
+        onClick={goNext}
+        ref={frameRef}
+        type="button"
+      >
+        <SlideCanvasFrame
+          className={styles.slideshowCanvas}
+          images={images}
+          slide={slide}
+          textOverflow="visible"
+          width={canvasWidth}
+        />
+      </button>
+    </div>
   );
 }
 

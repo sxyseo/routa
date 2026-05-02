@@ -488,6 +488,10 @@ export function OfficeWasmPocPageClient() {
   const preview =
     artifact == null ? "" : truncateJson(JSON.stringify(artifact.rawProto ?? artifact.proto, null, 2));
   const labels: PreviewLabels = {
+    closeSlideshow: t.debug.officeWasmPocCloseSlideshow,
+    nextSlide: t.debug.officeWasmPocNextSlide,
+    playSlideshow: t.debug.officeWasmPocPlaySlideshow,
+    previousSlide: t.debug.officeWasmPocPreviousSlide,
     visualPreview: t.debug.officeWasmPocVisualPreview,
     rawJson: t.debug.officeWasmPocRawJson,
     sheet: t.debug.officeWasmPocSheet,
@@ -499,6 +503,7 @@ export function OfficeWasmPocPageClient() {
     shapes: t.debug.officeWasmPocShapes,
     textRuns: t.debug.officeWasmPocTextRuns,
   };
+  const showDebugDetails = artifact?.kind !== "presentation";
 
   return (
     <main
@@ -507,13 +512,13 @@ export function OfficeWasmPocPageClient() {
         display: "grid",
         fontFamily:
           "var(--font-sans, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif)",
-        gap: 16,
-        gridTemplateRows: "auto minmax(0, 1fr)",
+        gap: 0,
+        gridTemplateRows: "52px minmax(0, 1fr)",
         height: "100vh",
         maxWidth: "none",
         minHeight: "100vh",
         overflow: "hidden",
-        padding: 24,
+        padding: 0,
         width: "100%",
       }}
     >
@@ -522,9 +527,11 @@ export function OfficeWasmPocPageClient() {
           alignItems: "center",
           borderBottom: "1px solid #e2e8f0",
           display: "flex",
-          flexWrap: "wrap",
+          flexWrap: "nowrap",
           gap: 12,
-          paddingBottom: 12,
+          minWidth: 0,
+          overflow: "hidden",
+          padding: "0 16px",
         }}
       >
         <label style={{ alignItems: "center", display: "flex", gap: 8 }}>
@@ -549,11 +556,11 @@ export function OfficeWasmPocPageClient() {
             <option value="routa">{t.debug.officeWasmPocReaderGenerated}</option>
           </select>
         </label>
-        <div style={{ color: "#475569", fontSize: 13 }}>
+        <div style={{ color: "#475569", flex: "0 0 auto", fontSize: 13 }}>
           <strong>{t.debug.officeWasmPocStatus}</strong> {statusLabel(t, status)}
         </div>
         {selectedFileName ? (
-          <div style={{ color: "#475569", fontSize: 13 }}>
+          <div style={{ color: "#475569", flex: "1 1 auto", fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             <code>{selectedFileName}</code>
             {lastBytes !== null ? <> ({lastBytes} {t.debug.officeWasmPocBytes})</> : null}
           </div>
@@ -563,7 +570,15 @@ export function OfficeWasmPocPageClient() {
 
       <section style={{ minHeight: 0, overflow: "hidden" }}>
         {artifact ? (
-          <div style={{ display: "grid", gap: 12, gridTemplateRows: "minmax(0, 1fr) auto", height: "100%", minHeight: 0 }}>
+          <div
+            style={{
+              display: "grid",
+              gap: showDebugDetails ? 12 : 0,
+              gridTemplateRows: showDebugDetails ? "minmax(0, 1fr) auto" : "minmax(0, 1fr)",
+              height: "100%",
+              minHeight: 0,
+            }}
+          >
             <section
               data-testid="office-preview"
               style={{
@@ -575,65 +590,67 @@ export function OfficeWasmPocPageClient() {
             >
               <OfficePreview artifact={artifact} labels={labels} />
             </section>
-            <details
-              data-testid="office-wasm-debug-details"
-              style={{
-                borderColor: "#e2e8f0",
-                borderRadius: 8,
-                borderStyle: "solid",
-                borderWidth: 1,
-                overflow: "hidden",
-              }}
-            >
-              <summary style={{ cursor: "pointer", padding: "10px 12px" }}>
-                {t.debug.officeWasmPocDebugDetails}
-              </summary>
-              <div style={{ display: "grid", gap: 12, padding: "0 12px 12px" }}>
-                {artifact.generatedSummary ? (
+            {showDebugDetails ? (
+              <details
+                data-testid="office-wasm-debug-details"
+                style={{
+                  borderColor: "#e2e8f0",
+                  borderRadius: 8,
+                  borderStyle: "solid",
+                  borderWidth: 1,
+                  overflow: "hidden",
+                }}
+              >
+                <summary style={{ cursor: "pointer", padding: "10px 12px" }}>
+                  {t.debug.officeWasmPocDebugDetails}
+                </summary>
+                <div style={{ display: "grid", gap: 12, padding: "0 12px 12px" }}>
+                  {artifact.generatedSummary ? (
+                    <section>
+                      <div style={{ color: "#475569", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                        {t.debug.officeWasmPocGeneratedSummary}
+                      </div>
+                      <pre
+                        data-testid="office-wasm-generated-summary"
+                        style={{
+                          background: "#eef6ff",
+                          borderColor: "#bfdbfe",
+                          borderRadius: 8,
+                          borderStyle: "solid",
+                          borderWidth: 1,
+                          color: "#0f172a",
+                          margin: 0,
+                          maxHeight: "220px",
+                          overflow: "auto",
+                          padding: 12,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {JSON.stringify(artifact.generatedSummary, null, 2)}
+                      </pre>
+                    </section>
+                  ) : null}
                   <section>
                     <div style={{ color: "#475569", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                      {t.debug.officeWasmPocGeneratedSummary}
+                      {labels.rawJson}
                     </div>
-                    <pre
-                      data-testid="office-wasm-generated-summary"
-                      style={{
-                        background: "#eef6ff",
-                        borderColor: "#bfdbfe",
-                        borderRadius: 8,
-                        borderStyle: "solid",
-                        borderWidth: 1,
-                        color: "#0f172a",
-                        margin: 0,
-                        maxHeight: "220px",
-                        overflow: "auto",
-                        padding: 12,
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {JSON.stringify(artifact.generatedSummary, null, 2)}
+                    <pre style={{
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      maxHeight: "420px",
+                      overflow: "auto",
+                      background: "#0b1020",
+                      color: "#f8fafc",
+                      padding: 12,
+                      borderRadius: 8,
+                    }}>
+                      {preview}
                     </pre>
                   </section>
-                ) : null}
-                <section>
-                  <div style={{ color: "#475569", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    {labels.rawJson}
-                  </div>
-                  <pre style={{
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    maxHeight: "420px",
-                    overflow: "auto",
-                    background: "#0b1020",
-                    color: "#f8fafc",
-                    padding: 12,
-                    borderRadius: 8,
-                  }}>
-                    {preview}
-                  </pre>
-                </section>
-              </div>
-            </details>
+                </div>
+              </details>
+            ) : null}
           </div>
         ) : (
           <p>{t.debug.officeWasmPocNoResult}</p>

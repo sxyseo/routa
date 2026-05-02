@@ -5,6 +5,10 @@ import { type CSSProperties, useMemo } from "react";
 export type RecordValue = Record<string, unknown>;
 
 export type PreviewLabels = {
+  closeSlideshow: string;
+  nextSlide: string;
+  playSlideshow: string;
+  previousSlide: string;
   visualPreview: string;
   rawJson: string;
   sheet: string;
@@ -202,21 +206,12 @@ export function paragraphText(paragraph: unknown): string {
 export function paragraphView(paragraph: unknown, styleMaps: DocumentStyleMaps): ParagraphView {
   const record = asRecord(paragraph);
   const styleId = asString(record?.styleId);
-  const styleRecord = styleMaps.textStyles.get(styleId);
   const style = {
-    ...(asRecord(styleRecord?.textStyle) ?? {}),
+    ...resolvedTextStyle(styleId, styleMaps),
     ...(asRecord(record?.paragraphStyle) ?? {}),
     ...(asRecord(record?.style) ?? {}),
     ...(asRecord(record?.textStyle) ?? {}),
-    ...definedRecordProperties(record, [
-      "bulletCharacter",
-      "indent",
-      "lineSpacing",
-      "lineSpacingPercent",
-      "marginLeft",
-      "spaceAfter",
-      "spaceBefore",
-    ]),
+    ...definedRecordProperties(record, TEXT_STYLE_FIELDS),
   };
   const runs = asArray(record?.runs)
     .map(asRecord)
@@ -237,6 +232,35 @@ export function paragraphView(paragraph: unknown, styleMaps: DocumentStyleMaps):
     style,
   };
 }
+
+function resolvedTextStyle(styleId: string, styleMaps: DocumentStyleMaps, visited = new Set<string>()): RecordValue {
+  if (!styleId || visited.has(styleId)) return {};
+
+  const styleRecord = styleMaps.textStyles.get(styleId);
+  if (!styleRecord) return {};
+
+  const basedOn = asString(styleRecord.basedOn);
+  const nextVisited = new Set(visited);
+  nextVisited.add(styleId);
+
+  return {
+    ...resolvedTextStyle(basedOn, styleMaps, nextVisited),
+    ...(asRecord(styleRecord.textStyle) ?? {}),
+    ...(asRecord(styleRecord.paragraphStyle) ?? {}),
+    ...definedRecordProperties(styleRecord, TEXT_STYLE_FIELDS),
+  };
+}
+
+const TEXT_STYLE_FIELDS = [
+  "alignment",
+  "bulletCharacter",
+  "indent",
+  "lineSpacing",
+  "lineSpacingPercent",
+  "marginLeft",
+  "spaceAfter",
+  "spaceBefore",
+];
 
 function definedRecordProperties(record: RecordValue | null, keys: string[]): RecordValue {
   const values: RecordValue = {};

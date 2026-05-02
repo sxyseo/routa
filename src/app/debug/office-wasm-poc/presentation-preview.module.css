@@ -1,14 +1,12 @@
 .shell {
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  background: #ffffff;
   color: #0f172a;
   container: presentation-editor / inline-size;
   display: grid;
   font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 252px minmax(0, 1fr);
   height: 100%;
-  min-height: 560px;
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
@@ -32,25 +30,29 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-height: 0;
   overflow: hidden auto;
-  padding: 12px 12px 48px;
+  padding: 12px 14px 48px 8px;
   scrollbar-color: #cbd5e1 transparent;
 }
 
 .thumbnailButton {
   align-items: flex-start;
   background: transparent;
-  border: 0;
-  border-radius: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: inherit;
   cursor: pointer;
   display: flex;
   gap: 8px;
-  padding: 2px;
+  padding: 7px 8px 7px 0;
   text-align: left;
   touch-action: manipulation;
+}
+
+.thumbnailButton:hover {
+  background: #f8fafc;
 }
 
 .thumbnailLabel {
@@ -71,7 +73,7 @@
 }
 
 .thumbnailCanvas {
-  border: 1px solid #cbd5e1;
+  border: 0;
   border-radius: 4px;
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
   flex: 0 0 auto;
@@ -80,8 +82,13 @@
 }
 
 .thumbnailButton[data-active="true"] .thumbnailCanvas {
-  border-color: #0285ff;
-  box-shadow: 0 0 0 2px rgba(2, 133, 255, 0.18);
+  box-shadow: none;
+}
+
+.thumbnailButton[data-active="true"] {
+  background: #ffffff;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.45);
 }
 
 .mainPanel {
@@ -114,32 +121,45 @@
 
 .stage {
   align-items: center;
+  background: #f8fafc;
   display: flex;
   justify-content: center;
   min-height: 0;
   min-width: 0;
   overflow: auto;
-  padding: 20px 24px 22px;
+  padding: 16px 24px 20px;
+  position: relative;
   scrollbar-color: #cbd5e1 transparent;
 }
 
 .viewport {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   justify-items: center;
 }
 
-.slideHeading {
-  color: #475569;
-  font-size: 14px;
-  justify-self: stretch;
-  line-height: 1.35;
-  min-width: 0;
+.playButton {
+  align-items: center;
+  background: #0f172a;
+  border: 1px solid #0f172a;
+  border-radius: 6px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: 600 12px/1 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  position: absolute;
+  right: 24px;
+  top: 12px;
+  z-index: 4;
 }
 
-.slideHeading strong {
-  color: #334155;
-  font-weight: 700;
+.playButton:hover {
+  background: #1e293b;
+  border-color: #1e293b;
 }
 
 .slideSurface {
@@ -214,6 +234,91 @@
   overflow: auto;
   padding: 12px 14px;
   white-space: pre-wrap;
+}
+
+.slideshowOverlay {
+  align-items: center;
+  background: #000000;
+  color: #f8fafc;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  min-height: 0;
+  padding: 20px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.slideshowChrome {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.84);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 9999px;
+  display: flex;
+  gap: 10px;
+  opacity: 0;
+  padding: 4px 5px 4px 12px;
+  position: absolute;
+  right: 20px;
+  top: 18px;
+  transition: opacity 0.16s ease-out;
+  z-index: 2;
+}
+
+.slideshowOverlay:hover .slideshowChrome,
+.slideshowChrome:focus-within {
+  opacity: 1;
+}
+
+.slideshowCounter {
+  color: #cbd5e1;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.slideshowIconButton {
+  align-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  font: 600 13px/1 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  justify-content: center;
+}
+
+.slideshowIconButton {
+  background: rgba(15, 23, 42, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  color: #f8fafc;
+  height: 34px;
+  width: 34px;
+}
+
+.slideshowIconButton:hover {
+  background: rgba(30, 41, 59, 0.94);
+  border-color: rgba(203, 213, 225, 0.52);
+}
+
+.slideshowFrame {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  width: 100%;
+}
+
+.slideshowCanvas {
+  background: #ffffff;
+  border-radius: 0;
+  box-shadow: none;
+  display: block;
 }
 
 @container presentation-editor (width <= 748px) {
@@ -306,11 +411,19 @@
   .stage {
     padding: 18px;
   }
+
+  .playButton span {
+    display: none;
+  }
 }
 
 @media (width <= 748px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
     min-height: 520px;
+  }
+
+  .slideshowOverlay {
+    padding: 10px;
   }
 }
