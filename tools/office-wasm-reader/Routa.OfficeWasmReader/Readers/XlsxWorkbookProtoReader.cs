@@ -234,7 +234,11 @@ internal static class XlsxWorkbookProtoReader
             WriteString(output, 1, address);
             WriteString(output, 2, text);
             WriteString(output, 3, formulaText);
-            WriteInt32(output, 4, CellDataType(cell, text));
+            if (ShouldWriteCellDataType(cell, formulaText))
+            {
+                WriteInt32(output, 4, CellDataType(cell, text));
+            }
+
             WriteInt32IncludingZero(output, 5, (int)(cell.StyleIndex?.Value ?? 0));
 
             if (formulaText.Length > 0 && formula is not null)
@@ -3234,6 +3238,18 @@ internal static class XlsxWorkbookProtoReader
         if (cell.DataType?.Value == S.CellValues.Error) return 6;
         if (!string.IsNullOrEmpty(text) && double.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _)) return 5;
         return string.IsNullOrEmpty(text) ? 0 : 3;
+    }
+
+    private static bool ShouldWriteCellDataType(S.Cell cell, string formulaText)
+    {
+        return cell.DataType is not null || !IsExternalWorkbookFormula(formulaText);
+    }
+
+    private static bool IsExternalWorkbookFormula(string formulaText)
+    {
+        var trimmed = formulaText.TrimStart();
+        return trimmed.StartsWith("[", StringComparison.Ordinal) ||
+            trimmed.StartsWith("'[", StringComparison.Ordinal);
     }
 
     private static string ConditionalRuleId(S.ConditionalFormattingRule rule)
