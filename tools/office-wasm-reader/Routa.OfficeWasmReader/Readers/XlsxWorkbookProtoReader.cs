@@ -990,7 +990,7 @@ internal static class XlsxWorkbookProtoReader
             var extent = anchor.Descendants<A.Extents>().FirstOrDefault();
             var extentCx = extent?.Cx?.Value ?? 0;
             var extentCy = extent?.Cy?.Value ?? 0;
-            if ((chart is not null || shape is not null) && !isSlicerShape)
+            if (shape is not null && !isSlicerShape)
             {
                 WriteString(output, 5, extentCx.ToString());
                 WriteString(output, 6, extentCy.ToString());
@@ -1620,23 +1620,45 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteInt32(output, 5, chart.Type);
-            WriteMessage(output, 8, WriteChartAxis(4, chart.CategoryAxisTitle, chart.CategoryMajorGridline, false));
-            WriteMessage(output, 9, WriteChartAxis(1, chart.ValueAxisTitle, chart.ValueMajorGridline, true));
+            if (chart.CategoryAxis is not null)
+            {
+                WriteMessage(output, 8, WriteChartAxis(chart.CategoryAxis, false));
+            }
+
+            if (chart.ValueAxis is not null)
+            {
+                WriteMessage(output, 9, WriteChartAxis(chart.ValueAxis, true));
+            }
+
             if (chart.HasLegend)
             {
                 WriteBool(output, 11, true);
                 WriteMessage(output, 12, WriteChartLegend(chart.LegendPosition));
             }
 
-            WriteMessageIncludingEmpty(output, 13, Message(_ => { }));
-            WriteMessage(output, 14, WriteChartDataLabels());
-            WriteMessageIncludingEmpty(output, 25, chart.ChartSpaceLine ?? Message(_ => { }));
-            WriteBool(output, 26, false);
-            WriteMessageIncludingEmpty(output, 41, Message(_ => { }));
+            if (chart.HasTitleTextStyle)
+            {
+                WriteMessageIncludingEmpty(output, 13, Message(_ => { }));
+            }
+
+            if (chart.HasDataLabels)
+            {
+                WriteMessage(output, 14, WriteChartDataLabels());
+            }
+
+            WriteMessage(output, 25, chart.ChartSpaceLine ?? []);
+            WriteBoolValue(output, 26, chart.RoundedCorners);
+            if (chart.HasView3D)
+            {
+                WriteMessageIncludingEmpty(output, 41, Message(_ => { }));
+            }
+
             if (chart.Type == 4)
             {
                 WriteMessage(output, 50, WriteBarOptions(chart));
             }
+
+            WriteChartFamilyOptions(output, chart);
         });
     }
 
@@ -1659,27 +1681,31 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
-    private static byte[] WriteChartAxis(int position, string title, byte[]? majorGridline, bool isValueAxis)
+    private static byte[] WriteChartAxis(ChartAxisReadModel axis, bool isValueAxis)
     {
         return Message(output =>
         {
-            WriteMessageIncludingEmpty(output, 5, majorGridline ?? Message(_ => { }));
-            WriteStringIncludingEmpty(output, 7, "");
-            WriteInt32(output, 10, position);
+            WriteMessage(output, 5, axis.MajorGridline ?? []);
+            if (axis.NumberFormatCode is not null)
+            {
+                WriteStringIncludingEmpty(output, 7, axis.NumberFormatCode);
+            }
+            WriteBoolValue(output, 21, axis.NumberFormatSourceLinked);
+            WriteInt32(output, 10, axis.Position);
             WriteInt32(output, 11, 1);
-            WriteInt32(output, 12, 1);
-            WriteInt32(output, 13, 1);
-            WriteInt32IncludingZero(output, 14, isValueAxis ? 0 : 3);
+            WriteInt32Value(output, 12, axis.MajorTickMark);
+            WriteInt32Value(output, 13, axis.MinorTickMark);
+            WriteInt32Value(output, 14, axis.TickLabelPosition);
             if (isValueAxis)
             {
                 WriteInt32(output, 15, 1);
                 WriteInt32(output, 16, 1);
             }
 
-            WriteBool(output, 18, false);
-            if (!string.IsNullOrEmpty(title))
+            WriteBoolValue(output, 18, axis.Deleted);
+            if (!string.IsNullOrEmpty(axis.Title))
             {
-                WriteString(output, 19, title);
+                WriteString(output, 19, axis.Title);
                 WriteMessageIncludingEmpty(output, 20, Message(_ => { }));
             }
         });
@@ -1715,28 +1741,151 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
+    private static void WriteChartFamilyOptions(CodedOutputStream output, ChartReadModel chart)
+    {
+        if (chart.AreaGrouping is not null || chart.AreaVaryColors is not null)
+        {
+            WriteMessage(output, 52, Message(options =>
+            {
+                WriteInt32Value(options, 1, chart.AreaGrouping);
+                WriteBoolValue(options, 2, chart.AreaVaryColors);
+            }));
+        }
+
+        if (chart.PieFirstSliceAngle is not null || chart.PieVaryColors is not null)
+        {
+            WriteMessage(output, 53, Message(options =>
+            {
+                WriteInt32Value(options, 1, chart.PieFirstSliceAngle);
+                WriteBoolValue(options, 2, chart.PieVaryColors);
+            }));
+        }
+
+        if (chart.DoughnutHoleSize is not null || chart.DoughnutFirstSliceAngle is not null || chart.DoughnutVaryColors is not null)
+        {
+            WriteMessage(output, 54, Message(options =>
+            {
+                WriteInt32Value(options, 1, chart.DoughnutHoleSize);
+                WriteInt32Value(options, 2, chart.DoughnutFirstSliceAngle);
+                WriteBoolValue(options, 3, chart.DoughnutVaryColors);
+            }));
+        }
+
+        if (chart.ScatterStyle is not null || chart.ScatterVaryColors is not null)
+        {
+            WriteMessage(output, 55, Message(options =>
+            {
+                WriteInt32Value(options, 1, chart.ScatterStyle);
+                WriteBoolValue(options, 2, chart.ScatterVaryColors);
+            }));
+        }
+
+        if (chart.BubbleIs3D is not null || chart.BubbleScale is not null || chart.BubbleShowNegative is not null || chart.BubbleVaryColors is not null)
+        {
+            WriteMessage(output, 56, Message(options =>
+            {
+                WriteBoolValue(options, 1, chart.BubbleIs3D);
+                WriteInt32Value(options, 2, chart.BubbleScale);
+                WriteBoolValue(options, 3, chart.BubbleShowNegative);
+                WriteBoolValue(options, 4, chart.BubbleVaryColors);
+            }));
+        }
+
+        if (chart.RadarStyle is not null || chart.RadarVaryColors is not null)
+        {
+            WriteMessage(output, 57, Message(options =>
+            {
+                WriteInt32Value(options, 1, chart.RadarStyle);
+                WriteBoolValue(options, 2, chart.RadarVaryColors);
+            }));
+        }
+
+        if (chart.SurfaceWireframe is not null)
+        {
+            WriteMessage(output, 58, Message(options =>
+            {
+                WriteBoolValue(options, 1, chart.SurfaceWireframe);
+            }));
+        }
+    }
+
     private static ChartReadModel ReadChart(ChartPart chartPart)
     {
         var chartSpace = chartPart.ChartSpace;
         if (chartSpace is null)
         {
-            return new ChartReadModel("", 0, false, 0, "", "", null, null, null, 0, null, []);
+            return new ChartReadModel(
+                Title: "",
+                Type: 0,
+                HasLegend: false,
+                LegendPosition: 0,
+                CategoryAxis: null,
+                ValueAxis: null,
+                ChartSpaceLine: null,
+                HasTitleTextStyle: false,
+                HasDataLabels: false,
+                RoundedCorners: null,
+                HasView3D: false,
+                BarDirection: 0,
+                BarVaryColors: null,
+                AreaGrouping: null,
+                AreaVaryColors: null,
+                PieFirstSliceAngle: null,
+                PieVaryColors: null,
+                DoughnutHoleSize: null,
+                DoughnutFirstSliceAngle: null,
+                DoughnutVaryColors: null,
+                ScatterStyle: null,
+                ScatterVaryColors: null,
+                BubbleIs3D: null,
+                BubbleScale: null,
+                BubbleShowNegative: null,
+                BubbleVaryColors: null,
+                RadarStyle: null,
+                RadarVaryColors: null,
+                SurfaceWireframe: null,
+                Series: []);
         }
 
         var categoryAxis = chartSpace.Descendants<C.CategoryAxis>().FirstOrDefault();
         var valueAxis = chartSpace.Descendants<C.ValueAxis>().FirstOrDefault();
+        var areaChart = chartSpace.Descendants<C.AreaChart>().FirstOrDefault();
+        var pieChart = chartSpace.Descendants<C.PieChart>().FirstOrDefault();
+        var doughnutChart = chartSpace.Descendants<C.DoughnutChart>().FirstOrDefault();
+        var scatterChart = chartSpace.Descendants<C.ScatterChart>().FirstOrDefault();
+        var bubbleChart = chartSpace.Descendants<C.BubbleChart>().FirstOrDefault();
+        var radarChart = chartSpace.Descendants<C.RadarChart>().FirstOrDefault();
+        var surfaceChart = chartSpace.Descendants<C.SurfaceChart>().FirstOrDefault();
         return new ChartReadModel(
             ChartTitle(chartSpace),
             ChartType(chartSpace),
             chartSpace.Descendants<C.Legend>().Any(),
             LegendPosition(chartSpace.Descendants<C.LegendPosition>().FirstOrDefault()),
-            AxisTitle(categoryAxis),
-            AxisTitle(valueAxis),
+            ReadChartAxis(categoryAxis),
+            ReadChartAxis(valueAxis),
             ChartSpaceLine(chartSpace),
-            AxisMajorGridline(categoryAxis),
-            AxisMajorGridline(valueAxis),
+            ChartTitleHasTextStyle(chartSpace),
+            chartSpace.Descendants<C.DataLabels>().Any(),
+            RoundedCorners(chartSpace),
+            chartSpace.Descendants<C.View3D>().Any(),
             BarDirection(chartSpace.Descendants<C.BarDirection>().FirstOrDefault()),
             chartSpace.Descendants<C.VaryColors>().FirstOrDefault()?.Val?.Value,
+            areaChart is null ? null : AreaGrouping(ChildByLocalName(areaChart, "grouping")),
+            areaChart is null ? null : BoolValueFromChild(areaChart, "varyColors"),
+            pieChart is null ? null : IntValueFromChild(pieChart, "firstSliceAng"),
+            pieChart is null ? null : BoolValueFromChild(pieChart, "varyColors") ?? false,
+            doughnutChart is null ? null : IntValueFromChild(doughnutChart, "holeSize"),
+            doughnutChart is null ? null : IntValueFromChild(doughnutChart, "firstSliceAng"),
+            doughnutChart is null ? null : BoolValueFromChild(doughnutChart, "varyColors") ?? false,
+            scatterChart is null ? null : ScatterStyle(ChildByLocalName(scatterChart, "scatterStyle")),
+            scatterChart is null ? null : BoolValueFromChild(scatterChart, "varyColors"),
+            bubbleChart is null ? null : BoolValueFromChild(bubbleChart, "bubble3D"),
+            bubbleChart is null ? null : IntValueFromChild(bubbleChart, "bubbleScale"),
+            bubbleChart is null ? null : BoolValueFromChild(bubbleChart, "showNegBubbles"),
+            bubbleChart is null ? null : BoolValueFromChild(bubbleChart, "varyColors") ?? false,
+            radarChart is null ? null : RadarStyle(ChildByLocalName(radarChart, "radarStyle")),
+            radarChart is null ? null : BoolValueFromChild(radarChart, "varyColors"),
+            surfaceChart is null ? null : BoolValueFromChild(surfaceChart, "wireframe"),
             ExtractChartSeries(chartSpace).ToArray());
     }
 
@@ -1783,11 +1932,154 @@ internal static class XlsxWorkbookProtoReader
         };
     }
 
+    private static ChartAxisReadModel? ReadChartAxis(OpenXmlElement? axis)
+    {
+        if (axis is null)
+        {
+            return null;
+        }
+
+        var numberingFormat = ChildByLocalName(axis, "numFmt");
+        return new ChartAxisReadModel(
+            AxisPosition(ChildByLocalName(axis, "axPos")),
+            AxisTitle(axis),
+            AxisMajorGridline(axis),
+            numberingFormat is null ? null : AttributeValue(numberingFormat, "formatCode"),
+            BoolAttribute(numberingFormat, "sourceLinked"),
+            TickMark(ChildByLocalName(axis, "majorTickMark")) ?? 0,
+            TickMark(ChildByLocalName(axis, "minorTickMark")) ?? 0,
+            TickLabelPosition(ChildByLocalName(axis, "tickLblPos")) ?? 0,
+            BoolValueFromChild(axis, "delete"));
+    }
+
+    private static bool ChartTitleHasTextStyle(C.ChartSpace chartSpace)
+    {
+        var title = chartSpace.Descendants<C.Title>().FirstOrDefault();
+        return ChildByLocalName(title, "txPr") is not null ||
+               title?.Descendants<A.RunProperties>().Any() == true;
+    }
+
     private static string AxisTitle(OpenXmlElement? axis)
     {
         return TextNormalization.Clean(string.Concat(
             axis?.Elements<C.Title>().FirstOrDefault()?.Descendants<A.Text>().Select(item => item.Text) ??
             Enumerable.Empty<string>()));
+    }
+
+    private static int AxisPosition(OpenXmlElement? position)
+    {
+        return AttributeValue(position, "val") switch
+        {
+            "l" => 1,
+            "r" => 2,
+            "t" => 3,
+            "b" => 4,
+            _ => 0,
+        };
+    }
+
+    private static int? TickMark(OpenXmlElement? tickMark)
+    {
+        if (tickMark is null)
+        {
+            return null;
+        }
+
+        return AttributeValue(tickMark, "val") switch
+        {
+            "none" => 1,
+            "in" => 2,
+            "out" => 3,
+            "cross" => 4,
+            _ => 0,
+        };
+    }
+
+    private static int? TickLabelPosition(OpenXmlElement? tickLabelPosition)
+    {
+        if (tickLabelPosition is null)
+        {
+            return null;
+        }
+
+        return AttributeValue(tickLabelPosition, "val") switch
+        {
+            "high" => 1,
+            "low" => 2,
+            "nextTo" => 3,
+            _ => 0,
+        };
+    }
+
+    private static int? AreaGrouping(OpenXmlElement? grouping)
+    {
+        if (grouping is null)
+        {
+            return null;
+        }
+
+        return AttributeValue(grouping, "val") switch
+        {
+            "standard" => 1,
+            "stacked" => 2,
+            "percentStacked" => 3,
+            _ => 0,
+        };
+    }
+
+    private static int? ScatterStyle(OpenXmlElement? style)
+    {
+        if (style is null)
+        {
+            return null;
+        }
+
+        return AttributeValue(style, "val") switch
+        {
+            "lineMarker" => 1,
+            "line" => 2,
+            "marker" => 3,
+            "smooth" => 4,
+            "smoothMarker" => 5,
+            _ => 0,
+        };
+    }
+
+    private static int? RadarStyle(OpenXmlElement? style)
+    {
+        if (style is null)
+        {
+            return null;
+        }
+
+        return AttributeValue(style, "val") switch
+        {
+            "standard" => 1,
+            "marker" => 2,
+            "filled" => 3,
+            _ => 0,
+        };
+    }
+
+    private static int? IntValueFromChild(OpenXmlElement? element, string localName)
+    {
+        return Int32Attribute(ChildByLocalName(element, localName), "val");
+    }
+
+    private static bool? BoolValueFromChild(OpenXmlElement? element, string localName)
+    {
+        var child = ChildByLocalName(element, localName);
+        if (child is null)
+        {
+            return null;
+        }
+
+        return BoolAttribute(child, "val") ?? true;
+    }
+
+    private static bool? RoundedCorners(C.ChartSpace chartSpace)
+    {
+        return BoolValueFromChild(chartSpace, "roundedCorners");
     }
 
     private static byte[]? ChartSpaceLine(C.ChartSpace chartSpace)
@@ -1840,15 +2132,6 @@ internal static class XlsxWorkbookProtoReader
 
     private static IEnumerable<string> ExtractChartCategories(OpenXmlElement series)
     {
-        var xValues = series.Elements<C.XValues>().FirstOrDefault();
-        if (xValues is not null)
-        {
-            return xValues
-                .Descendants<C.NumericValue>()
-                .Select(value => TextNormalization.Clean(value.Text))
-                .Where(value => value.Length > 0);
-        }
-
         return series.Elements<C.CategoryAxisData>().FirstOrDefault()
             ?.Descendants<C.NumericValue>()
             .Select(value => TextNormalization.Clean(value.Text))
@@ -3412,14 +3695,43 @@ internal static class XlsxWorkbookProtoReader
         int Type,
         bool HasLegend,
         int LegendPosition,
-        string CategoryAxisTitle,
-        string ValueAxisTitle,
+        ChartAxisReadModel? CategoryAxis,
+        ChartAxisReadModel? ValueAxis,
         byte[]? ChartSpaceLine,
-        byte[]? CategoryMajorGridline,
-        byte[]? ValueMajorGridline,
+        bool HasTitleTextStyle,
+        bool HasDataLabels,
+        bool? RoundedCorners,
+        bool HasView3D,
         int BarDirection,
         bool? BarVaryColors,
+        int? AreaGrouping,
+        bool? AreaVaryColors,
+        int? PieFirstSliceAngle,
+        bool? PieVaryColors,
+        int? DoughnutHoleSize,
+        int? DoughnutFirstSliceAngle,
+        bool? DoughnutVaryColors,
+        int? ScatterStyle,
+        bool? ScatterVaryColors,
+        bool? BubbleIs3D,
+        int? BubbleScale,
+        bool? BubbleShowNegative,
+        bool? BubbleVaryColors,
+        int? RadarStyle,
+        bool? RadarVaryColors,
+        bool? SurfaceWireframe,
         IReadOnlyList<ChartSeriesReadModel> Series);
+
+    private sealed record ChartAxisReadModel(
+        int Position,
+        string Title,
+        byte[]? MajorGridline,
+        string? NumberFormatCode,
+        bool? NumberFormatSourceLinked,
+        int? MajorTickMark,
+        int? MinorTickMark,
+        int? TickLabelPosition,
+        bool? Deleted);
 
     private sealed record ChartSeriesReadModel(
         string Name,
