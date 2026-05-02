@@ -71,16 +71,18 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added table row striping and basic icon-set rendering after comparing the workbook against Microsoft Excel through Computer Use.
 - Added an XLSX render-contract comparator that compares decoded Workbook render inputs separately from proto/core parity: sheet layout, merged cells, tables, conditional formatting, data validations, drawings, charts, shapes, images, and style contracts.
 - Aligned `complex_excel_renderer_test.xlsx` non-byte render contract with Walnut: all render-facing checks pass, including chart metadata, worksheet drawings, shape geometry, conditional formatting, and styles. The remaining mismatch is byte-for-byte proto serialization only.
+- Confirmed the next protocol-level Walnut gap for XLSX drawings: the extracted schema includes workbook-level `images` and per-drawing `imageReference`, while Routa still only consumes chart/shape anchors.
+- Implemented Walnut-like worksheet image drawing support and added `xlsx_image_drawing_contract.xlsx` to the XLSX parity/render scripts. The fixture verifies workbook `images`, drawing `imageReference`, two-cell anchors, and Walnut's image-specific omission of `extentCx/extentCy`.
 
 ## Remaining XLSX Work
 
 - Precise table styles: table headers, row/column stripe flags, first/last column emphasis, and totals rows are now projected from protocol table style metadata. Full theme/table style color definitions are still approximated locally.
 - Icon-set details: Risk icons now honor `cfvo` type/value for `min`, `max`, `num`, `percent`, `percentile`, plus `gte`, `reverse`, `showValue`, and common rating/arrows/traffic/symbol icon families. Custom icon-image payloads are not supported.
 - Chart fidelity: Fitness charts now use a zero baseline, and the preview consumes sheet drawing chart anchors/series/legend directly from the Walnut-like protocol. Plot area sizing, gridlines, fonts, and Excel internal chart layout are still simplified.
-- Drawing overlays: sheet drawing chart/shape anchors and EMU extents are now consumed by the preview. Worksheet images and full drawing z-order, crop, and effects remain.
+- Drawing overlays: sheet drawing chart/shape/image anchors, workbook image payloads, and Walnut-style image references are now consumed by the preview. Full drawing z-order, crop, and effects remain.
 - Freeze panes and sticky headers: the prefix-sum layout adapter now drives fixed row/column header overlays during scroll. Worksheet freeze panes, viewport virtualization, and hit regions for cells/floating elements remain to be implemented.
 - Conditional formatting breadth: data bars now support negative values, explicit axis placement, and gradient/solid variants. Color scales now use cfvo thresholds for multi-stop interpolation; multi-rule layering still needs more coverage.
-- Protocol coverage: `complex_excel_renderer_test.xlsx` core parity and non-byte render contract both pass, but the generated proto is not byte-for-byte Walnut equivalent; add more XLSX fixtures and field-level assertions.
+- Protocol coverage: `complex_excel_renderer_test.xlsx` and `xlsx_image_drawing_contract.xlsx` parity/render checks pass, but the generated proto is not byte-for-byte Walnut equivalent for the complex workbook; add more XLSX fixtures and field-level assertions.
 
 ## References
 

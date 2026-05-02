@@ -37,11 +37,13 @@ export type SpreadsheetLayout = {
 export function buildSpreadsheetLayout(sheet: RecordValue | undefined): SpreadsheetLayout {
   const rows = asArray(sheet?.rows).map(asRecord).filter((row): row is RecordValue => row != null);
   let maxColumn = 0;
+  let maxRow = 1;
   const rowRecordsByIndex = new Map<number, RecordValue>();
   const rowsByIndex = new Map<number, Map<number, RecordValue>>();
 
   for (const row of rows) {
     const rowIndex = asNumber(row.index, 1);
+    maxRow = Math.max(maxRow, rowIndex);
     const cells = new Map<number, RecordValue>();
     rowRecordsByIndex.set(rowIndex, row);
     for (const cell of asArray(row.cells)) {
@@ -63,6 +65,17 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
     for (let index = min - 1; index <= max - 1; index += 1) {
       columnWidthByIndex.set(index, excelColumnWidthPx(width));
       maxColumn = Math.max(maxColumn, index);
+    }
+  }
+
+  for (const drawing of asArray(sheet?.drawings)) {
+    const drawingRecord = asRecord(drawing);
+    for (const anchor of [asRecord(drawingRecord?.fromAnchor), asRecord(drawingRecord?.toAnchor)]) {
+      if (!anchor) continue;
+      const columnIndex = protocolNumber(anchor.colId, -1);
+      const rowIndex = protocolNumber(anchor.rowId, -1);
+      if (columnIndex >= 0) maxColumn = Math.max(maxColumn, columnIndex);
+      if (rowIndex >= 0) maxRow = Math.max(maxRow, rowIndex + 1);
     }
   }
 
@@ -96,7 +109,7 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
     }
   }
 
-  const rowCount = Math.min(Math.max(...rowsByIndex.keys(), 1), 80);
+  const rowCount = Math.min(maxRow, 80);
   const columnCount = Math.min(Math.max(maxColumn + 1, 6), 32);
   const columnWidths = Array.from(
     { length: columnCount },
@@ -160,6 +173,16 @@ function excelRowHeightPx(heightPoints: number): number {
   return heightPoints && heightPoints > 0
     ? Math.max(18, Math.round(heightPoints * EXCEL_POINTS_TO_PX))
     : SPREADSHEET_DEFAULT_ROW_HEIGHT;
+}
+
+function protocolNumber(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
 }
 
 function knownSpreadsheetColumnWidths(sheetName: string): Map<number, number> {

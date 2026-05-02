@@ -18,6 +18,7 @@ import {
   rowIndexFromAddress,
   spreadsheetFillToCss,
   styleAt,
+  useOfficeImageSources,
 } from "./office-preview-utils";
 import {
   buildSpreadsheetConditionalVisuals,
@@ -25,7 +26,12 @@ import {
 } from "./spreadsheet-conditional-visuals";
 import { buildSpreadsheetCharts, SpreadsheetChartLayer } from "./spreadsheet-charts";
 import { SpreadsheetFrozenHeaders } from "./spreadsheet-frozen-headers";
-import { buildSpreadsheetShapes, SpreadsheetShapeLayer } from "./spreadsheet-shapes";
+import {
+  buildSpreadsheetImages,
+  buildSpreadsheetShapes,
+  SpreadsheetImageLayer,
+  SpreadsheetShapeLayer,
+} from "./spreadsheet-shapes";
 import {
   buildSpreadsheetLayout,
   SPREADSHEET_COLUMN_HEADER_HEIGHT,
@@ -43,6 +49,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const styles = asRecord(root?.styles);
   const charts = asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null);
   const shapes = asArray(root?.shapes).map(asRecord).filter((shape): shape is RecordValue => shape != null);
+  const imageSources = useOfficeImageSources(root);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
   const [viewportScroll, setViewportScroll] = useState({ left: 0, top: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -58,6 +65,11 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     activeSheet,
     layout,
     shapes,
+  });
+  const imageSpecs = buildSpreadsheetImages({
+    activeSheet,
+    imageSources,
+    layout,
   });
   const cellVisuals = buildSpreadsheetConditionalVisuals(activeSheet);
 
@@ -118,6 +130,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               layout={layout}
               styles={styles}
             />
+            <SpreadsheetImageLayer images={imageSpecs} />
             <SpreadsheetShapeLayer shapes={shapeSpecs} />
             <SpreadsheetChartLayer charts={chartSpecs} />
           </div>

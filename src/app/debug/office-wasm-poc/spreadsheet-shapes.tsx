@@ -1,6 +1,13 @@
 "use client";
 
-import { asArray, asNumber, asRecord, asString, type RecordValue } from "./office-preview-utils";
+import {
+  asArray,
+  asNumber,
+  asRecord,
+  asString,
+  imageReferenceId,
+  type RecordValue,
+} from "./office-preview-utils";
 import { protocolColorToCss } from "./spreadsheet-conditional-visuals";
 import {
   SPREADSHEET_FONT_FAMILY,
@@ -23,6 +30,15 @@ type SpreadsheetShapeSpec = {
   width: number;
 };
 
+type SpreadsheetImageSpec = {
+  height: number;
+  id: string;
+  left: number;
+  src: string;
+  top: number;
+  width: number;
+};
+
 export function buildSpreadsheetShapes({
   activeSheet,
   layout,
@@ -36,6 +52,22 @@ export function buildSpreadsheetShapes({
     ...buildSheetDrawingShapes(activeSheet, layout),
     ...buildRootSpreadsheetShapes(activeSheet, layout, shapes),
   ];
+}
+
+export function buildSpreadsheetImages({
+  activeSheet,
+  imageSources,
+  layout,
+}: {
+  activeSheet: RecordValue | undefined;
+  imageSources: ReadonlyMap<string, string>;
+  layout: SpreadsheetLayout;
+}): SpreadsheetImageSpec[] {
+  return asArray(activeSheet?.drawings)
+    .map(asRecord)
+    .filter((drawing): drawing is RecordValue => drawing != null)
+    .map((drawing) => imageFromSheetDrawing(drawing, imageSources, layout))
+    .filter((image): image is SpreadsheetImageSpec => image != null);
 }
 
 function buildSheetDrawingShapes(
@@ -78,6 +110,60 @@ function shapeFromSheetDrawing(
     top,
     width: Math.max(24, width),
   };
+}
+
+function imageFromSheetDrawing(
+  drawing: RecordValue,
+  imageSources: ReadonlyMap<string, string>,
+  layout: SpreadsheetLayout,
+): SpreadsheetImageSpec | null {
+  const imageId = imageReferenceId(drawing.imageReference);
+  const src = imageId ? imageSources.get(imageId) : undefined;
+  if (!imageId || !src) return null;
+
+  const bounds = drawingBounds(drawing, layout);
+  return {
+    height: bounds.height,
+    id: imageId,
+    left: bounds.left,
+    src,
+    top: bounds.top,
+    width: bounds.width,
+  };
+}
+
+function drawingBounds(drawing: RecordValue, layout: SpreadsheetLayout) {
+  const fromAnchor = asRecord(drawing.fromAnchor);
+  const toAnchor = asRecord(drawing.toAnchor);
+  const fromCol = protocolNumber(fromAnchor?.colId, 0);
+  const fromRow = protocolNumber(fromAnchor?.rowId, 0);
+  const left = spreadsheetColumnLeft(layout, fromCol) + spreadsheetEmuToPx(fromAnchor?.colOffset);
+  const top = spreadsheetRowTop(layout, fromRow) + spreadsheetEmuToPx(fromAnchor?.rowOffset);
+  const width = spreadsheetEmuToPx(drawing.extentCx) || anchorEdgePx(toAnchor, "column", layout) - left;
+  const height = spreadsheetEmuToPx(drawing.extentCy) || anchorEdgePx(toAnchor, "row", layout) - top;
+
+  return {
+    height: Math.max(24, height),
+    left,
+    top,
+    width: Math.max(24, width),
+  };
+}
+
+function anchorEdgePx(
+  anchor: RecordValue | null,
+  axis: "column" | "row",
+  layout: SpreadsheetLayout,
+): number {
+  if (!anchor) return 0;
+
+  if (axis === "column") {
+    return spreadsheetColumnLeft(layout, protocolNumber(anchor.colId, layout.columnCount)) +
+      spreadsheetEmuToPx(anchor.colOffset);
+  }
+
+  return spreadsheetRowTop(layout, protocolNumber(anchor.rowId, layout.rowCount)) +
+    spreadsheetEmuToPx(anchor.rowOffset);
 }
 
 function buildRootSpreadsheetShapes(
@@ -167,6 +253,33 @@ export function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec
         >
           {shape.text}
         </div>
+      ))}
+    </div>
+  );
+}
+
+export function SpreadsheetImageLayer({ images }: { images: SpreadsheetImageSpec[] }) {
+  if (images.length === 0) return null;
+
+  return (
+    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 3 }}>
+      {images.map((image) => (
+        <div
+          data-office-image={image.id}
+          key={image.id}
+          style={{
+            backgroundImage: `url("${image.src}")`,
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "100% 100%",
+            display: "block",
+            height: image.height,
+            left: image.left,
+            position: "absolute",
+            top: image.top,
+            width: image.width,
+          }}
+        />
       ))}
     </div>
   );

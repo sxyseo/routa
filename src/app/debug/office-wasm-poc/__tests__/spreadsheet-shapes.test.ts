@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetRowTop } from "../spreadsheet-layout";
-import { buildSpreadsheetShapes } from "../spreadsheet-shapes";
+import { buildSpreadsheetImages, buildSpreadsheetShapes } from "../spreadsheet-shapes";
 
 describe("spreadsheet shapes", () => {
   it("builds shape overlays from sheet drawing anchors", () => {
@@ -56,6 +56,76 @@ describe("spreadsheet shapes", () => {
         text: "",
         top: spreadsheetRowTop(layout, 3) + 2,
         width: 100,
+      },
+    ]);
+  });
+
+  it("builds image overlays from sheet drawing image references", () => {
+    const sheet = {
+      drawings: [
+        {
+          extentCx: "1905000",
+          extentCy: "952500",
+          fromAnchor: {
+            colId: "1",
+            colOffset: "9525",
+            rowId: "2",
+            rowOffset: "19050",
+          },
+          imageReference: { id: "/xl/media/image1.png" },
+        },
+      ],
+      name: "Images",
+      rows: [{ cells: [{ address: "B3" }], index: 3 }],
+    };
+    const layout = buildSpreadsheetLayout(sheet);
+
+    const images = buildSpreadsheetImages({
+      activeSheet: sheet,
+      imageSources: new Map([["/xl/media/image1.png", "blob:sheet-image"]]),
+      layout,
+    });
+
+    expect(images).toEqual([
+      {
+        height: 100,
+        id: "/xl/media/image1.png",
+        left: spreadsheetColumnLeft(layout, 1) + 1,
+        src: "blob:sheet-image",
+        top: spreadsheetRowTop(layout, 2) + 2,
+        width: 200,
+      },
+    ]);
+  });
+
+  it("falls back to two-cell anchors for drawing image dimensions", () => {
+    const sheet = {
+      drawings: [
+        {
+          fromAnchor: { colId: "1", rowId: "2" },
+          imageReference: { id: "/xl/media/image2.png" },
+          toAnchor: { colId: "3", rowId: "5" },
+        },
+      ],
+      name: "Images",
+      rows: [{ cells: [{ address: "B3" }], index: 3 }],
+    };
+    const layout = buildSpreadsheetLayout(sheet);
+
+    const images = buildSpreadsheetImages({
+      activeSheet: sheet,
+      imageSources: new Map([["/xl/media/image2.png", "blob:two-cell-image"]]),
+      layout,
+    });
+
+    expect(images).toEqual([
+      {
+        height: spreadsheetRowTop(layout, 5) - spreadsheetRowTop(layout, 2),
+        id: "/xl/media/image2.png",
+        left: spreadsheetColumnLeft(layout, 1),
+        src: "blob:two-cell-image",
+        top: spreadsheetRowTop(layout, 2),
+        width: spreadsheetColumnLeft(layout, 3) - spreadsheetColumnLeft(layout, 1),
       },
     ]);
   });

@@ -48,6 +48,11 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteMessage(output, 2, WriteStyles(stylesheet));
+
+            foreach (var image in WorkbookImages(workbookPart))
+            {
+                WriteMessage(output, 5, WriteWorkbookImage(image));
+            }
         });
     }
 
@@ -357,8 +362,9 @@ internal static class XlsxWorkbookProtoReader
     private static byte[]? WriteOneCellDrawing(DrawingsPart drawingPart, Xdr.OneCellAnchor anchor)
     {
         var chart = ChartFromAnchor(drawingPart, anchor);
+        var image = ImageFromAnchor(drawingPart, anchor);
         var shape = anchor.GetFirstChild<Xdr.Shape>();
-        if (chart is null && shape is null)
+        if (chart is null && image is null && shape is null)
         {
             return null;
         }
@@ -369,6 +375,11 @@ internal static class XlsxWorkbookProtoReader
             if (chart is not null)
             {
                 WriteMessage(output, 3, WriteChart(chart));
+            }
+
+            if (image is not null)
+            {
+                WriteMessage(output, 4, WriteImageReference(image.Id));
             }
 
             var extentCx = anchor.Extent?.Cx?.Value ?? 0;
@@ -385,8 +396,9 @@ internal static class XlsxWorkbookProtoReader
     private static byte[]? WriteTwoCellDrawing(DrawingsPart drawingPart, Xdr.TwoCellAnchor anchor)
     {
         var chart = ChartFromAnchor(drawingPart, anchor);
+        var image = ImageFromAnchor(drawingPart, anchor);
         var shape = anchor.GetFirstChild<Xdr.Shape>();
-        if (chart is null && shape is null)
+        if (chart is null && image is null && shape is null)
         {
             return null;
         }
@@ -400,11 +412,20 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 3, WriteChart(chart));
             }
 
+            if (image is not null)
+            {
+                WriteMessage(output, 4, WriteImageReference(image.Id));
+            }
+
             var extent = anchor.Descendants<A.Extents>().FirstOrDefault();
             var extentCx = extent?.Cx?.Value ?? 0;
             var extentCy = extent?.Cy?.Value ?? 0;
-            WriteString(output, 5, extentCx.ToString());
-            WriteString(output, 6, extentCy.ToString());
+            if (chart is not null || shape is not null)
+            {
+                WriteString(output, 5, extentCx.ToString());
+                WriteString(output, 6, extentCy.ToString());
+            }
+
             if (shape is not null)
             {
                 WriteMessage(output, 7, WriteShapeElement(shape, extentCx, extentCy));
@@ -421,6 +442,88 @@ internal static class XlsxWorkbookProtoReader
         }
 
         return ReadChart(chartPart);
+    }
+
+    private static WorksheetImageReference? ImageFromAnchor(DrawingsPart drawingPart, OpenXmlElement anchor)
+    {
+        var picture = anchor.GetFirstChild<Xdr.Picture>();
+        var blip = picture?.Descendants<A.Blip>().FirstOrDefault();
+        var relationshipId = blip?.Embed?.Value ?? blip?.Link?.Value;
+        if (string.IsNullOrEmpty(relationshipId) || drawingPart.GetPartById(relationshipId) is not ImagePart imagePart)
+        {
+            return null;
+        }
+
+        var imageId = imagePart.Uri.OriginalString;
+        return string.IsNullOrEmpty(imageId) ? null : new WorksheetImageReference(imageId, imagePart);
+    }
+
+    private static IEnumerable<WorksheetImageReference> WorkbookImages(WorkbookPart workbookPart)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var imageCount = 0;
+        foreach (var worksheetPart in WorksheetPartsInWorkbookOrder(workbookPart))
+        {
+            var drawingPart = worksheetPart.DrawingsPart;
+            if (drawingPart is null)
+            {
+                continue;
+            }
+
+            foreach (var imagePart in drawingPart.ImageParts)
+            {
+                var imageId = imagePart.Uri.OriginalString;
+                if (string.IsNullOrEmpty(imageId) || !seen.Add(imageId))
+                {
+                    continue;
+                }
+
+                yield return new WorksheetImageReference(imageId, imagePart);
+                imageCount += 1;
+                if (imageCount >= OpenXmlReaderLimits.MaxImages)
+                {
+                    yield break;
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<WorksheetPart> WorksheetPartsInWorkbookOrder(WorkbookPart workbookPart)
+    {
+        foreach (var sheetElement in workbookPart.Workbook.Sheets?.Elements<S.Sheet>() ?? [])
+        {
+            var relationshipId = sheetElement.Id?.Value;
+            if (!string.IsNullOrEmpty(relationshipId) && workbookPart.GetPartById(relationshipId) is WorksheetPart worksheetPart)
+            {
+                yield return worksheetPart;
+            }
+        }
+    }
+
+    private static byte[] WriteWorkbookImage(WorksheetImageReference image)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, NormalizeImageContentType(image.Part.ContentType));
+            using var stream = image.Part.GetStream();
+            using var memory = new MemoryStream();
+            stream.CopyTo(memory);
+            var bytes = memory.ToArray();
+            if (bytes.Length <= OpenXmlReaderLimits.MaxImageBytes)
+            {
+                WriteBytes(output, 2, bytes);
+            }
+
+            WriteString(output, 3, image.Id);
+        });
+    }
+
+    private static byte[] WriteImageReference(string imageId)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, imageId);
+        });
     }
 
     private static byte[] WriteAnchorMarker(Xdr.MarkerType? marker)
@@ -1068,6 +1171,11 @@ internal static class XlsxWorkbookProtoReader
         return value?.InnerText ?? "";
     }
 
+    private static string NormalizeImageContentType(string contentType)
+    {
+        return string.Equals(contentType, "image/jpeg", StringComparison.OrdinalIgnoreCase) ? "image/jpg" : contentType;
+    }
+
     private static byte[] Message(Action<CodedOutputStream> write)
     {
         using var stream = new MemoryStream();
@@ -1092,6 +1200,17 @@ internal static class XlsxWorkbookProtoReader
     {
         output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
         output.WriteBytes(ByteString.CopyFrom(bytes));
+    }
+
+    private static void WriteBytes(CodedOutputStream output, int fieldNumber, byte[] value)
+    {
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
+        output.WriteBytes(ByteString.CopyFrom(value));
     }
 
     private static void WriteString(CodedOutputStream output, int fieldNumber, string? value)
@@ -1166,6 +1285,8 @@ internal static class XlsxWorkbookProtoReader
         output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
         output.WriteBool(value);
     }
+
+    private sealed record WorksheetImageReference(string Id, ImagePart Part);
 
     private sealed record ChartReadModel(
         string Title,
