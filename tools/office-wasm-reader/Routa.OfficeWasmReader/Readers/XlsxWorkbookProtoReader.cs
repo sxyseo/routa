@@ -2212,13 +2212,23 @@ internal static class XlsxWorkbookProtoReader
         var nonVisual = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
         var shapeProperties = shape.ShapeProperties;
         var transform = shapeProperties?.GetFirstChild<A.Transform2D>();
+        var paragraphs = isSlicerShape ? [] : ExtractShapeParagraphs(shape.TextBody).ToList();
+        var hasText = ShapeTextBodyHasText(shape.TextBody);
         return Message(output =>
         {
             WriteMessage(output, 1, WriteBoundingBox(transform, extentCx, extentCy));
             WriteMessage(output, 4, WriteShape(shapeProperties, isSlicerShape));
-            if (isSlicerShape)
+
+            var wroteParagraph = false;
+            foreach (var paragraph in paragraphs)
             {
-                WriteMessage(output, 6, WriteEmptyParagraphWithTextStyle());
+                WriteMessageIncludingEmpty(output, 6, paragraph);
+                wroteParagraph = true;
+            }
+
+            if (isSlicerShape && !wroteParagraph)
+            {
+                WriteMessageIncludingEmpty(output, 6, WriteEmptyParagraphWithTextStyle());
             }
 
             foreach (var effect in ExtractEffects(shapeProperties))
@@ -2227,14 +2237,263 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteString(output, 10, nonVisual?.Name?.Value ?? "");
-            WriteInt32(output, 11, 1);
-            if (isSlicerShape)
+            WriteInt32(output, 11, !isSlicerShape && (shape.TextBody is null || hasText) ? 5 : 1);
+
+            var bodyTextStyle = isSlicerShape ? null : WriteShapeBodyTextStyle(shape.TextBody?.BodyProperties);
+            if (bodyTextStyle is not null)
+            {
+                WriteMessageIncludingEmpty(output, 14, bodyTextStyle);
+            }
+            else if (isSlicerShape)
             {
                 WriteMessageIncludingEmpty(output, 14, Message(_ => { }));
             }
 
             WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? "");
         });
+    }
+
+    private static bool ShapeTextBodyHasText(OpenXmlElement? textBody)
+    {
+        return textBody?.Descendants<A.Text>().Any(text => PreserveText(text.Text).Length > 0) ?? false;
+    }
+
+    private static IEnumerable<byte[]> ExtractShapeParagraphs(OpenXmlElement? textBody)
+    {
+        if (textBody is null)
+        {
+            yield break;
+        }
+
+        foreach (var paragraph in textBody.Elements<A.Paragraph>())
+        {
+            var paragraphProperties = paragraph.ParagraphProperties;
+            yield return Message(output =>
+            {
+                foreach (var run in ExtractShapeRuns(paragraph))
+                {
+                    WriteMessageIncludingEmpty(output, 1, run);
+                }
+
+                var paragraphTextStyle = WriteShapeParagraphTextStyle(paragraphProperties);
+                if (paragraphTextStyle is not null)
+                {
+                    WriteMessageIncludingEmpty(output, 2, paragraphTextStyle);
+                }
+
+                if (paragraphProperties?.LeftMargin?.Value is { } marginLeft)
+                {
+                    WriteInt32IncludingZero(output, 4, marginLeft);
+                }
+
+                if (paragraphProperties?.Indent?.Value is { } indent)
+                {
+                    WriteInt32IncludingZero(output, 5, indent);
+                }
+
+                var paragraphStyle = WriteShapeParagraphStyle(paragraphProperties);
+                if (paragraphStyle is not null)
+                {
+                    WriteMessageIncludingEmpty(output, 10, paragraphStyle);
+                }
+            });
+        }
+    }
+
+    private static IEnumerable<byte[]> ExtractShapeRuns(A.Paragraph paragraph)
+    {
+        foreach (var run in paragraph.Elements<A.Run>())
+        {
+            yield return Message(output =>
+            {
+                WriteStringIncludingEmpty(output, 1, PreserveText(run.Text?.Text));
+                if (run.RunProperties is not null)
+                {
+                    WriteMessage(output, 2, WriteShapeRunTextStyle(run.RunProperties));
+                }
+            });
+        }
+    }
+
+    private static byte[]? WriteShapeParagraphTextStyle(A.ParagraphProperties? paragraphProperties)
+    {
+        if (paragraphProperties is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteInt32(output, 8, AlignmentCode(AttributeValue(paragraphProperties, "algn")));
+        });
+    }
+
+    private static byte[]? WriteShapeParagraphStyle(OpenXmlElement? paragraphProperties)
+    {
+        if (paragraphProperties is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            var bulletCharacter = paragraphProperties.GetFirstChild<A.CharacterBullet>()?.Char?.Value;
+            if (bulletCharacter is not null || paragraphProperties.GetFirstChild<A.NoBullet>() is not null)
+            {
+                WriteStringIncludingEmpty(output, 1, bulletCharacter ?? "");
+            }
+
+            if (Int32Attribute(paragraphProperties, "marL") is { } marginLeft)
+            {
+                WriteInt32IncludingZero(output, 2, marginLeft);
+            }
+
+            if (Int32Attribute(paragraphProperties, "indent") is { } indent)
+            {
+                WriteInt32IncludingZero(output, 3, indent);
+            }
+
+            if (paragraphProperties.GetFirstChild<A.LineSpacing>()?.GetFirstChild<A.SpacingPercent>()?.Val?.Value is { } lineSpacing)
+            {
+                WriteInt32IncludingZero(output, 4, lineSpacing);
+            }
+        });
+    }
+
+    private static byte[] WriteShapeRunTextStyle(A.RunProperties runProperties)
+    {
+        return Message(output =>
+        {
+            WriteTextStyleProperties(output, runProperties, null);
+        });
+    }
+
+    private static byte[]? WriteShapeBodyTextStyle(A.BodyProperties? bodyProperties)
+    {
+        if (bodyProperties is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteInt32(output, 1, BodyAnchorCode(bodyProperties.Anchor));
+            WriteInt32(output, 2, VerticalTextCode(bodyProperties.Vertical));
+            WriteInt32IncludingZero(output, 10, bodyProperties.BottomInset?.Value ?? 0);
+            WriteInt32IncludingZero(output, 11, bodyProperties.LeftInset?.Value ?? 0);
+            WriteInt32IncludingZero(output, 12, bodyProperties.RightInset?.Value ?? 0);
+            WriteInt32IncludingZero(output, 13, bodyProperties.TopInset?.Value ?? 0);
+            WriteBoolValue(output, 14, BoolAttribute(bodyProperties, "spcFirstLastPara"));
+            WriteInt32(output, 20, TextWrappingCode(bodyProperties.Wrap));
+            var autoFit = WriteShapeAutoFit(bodyProperties);
+            if (autoFit is not null)
+            {
+                WriteMessageIncludingEmpty(output, 21, autoFit);
+            }
+        });
+    }
+
+    private static byte[]? WriteShapeAutoFit(OpenXmlElement bodyProperties)
+    {
+        if (bodyProperties.ChildElements.Any(element => string.Equals(element.LocalName, "normAutofit", StringComparison.Ordinal)))
+        {
+            return Message(output =>
+            {
+                WriteMessageIncludingEmpty(output, 2, Message(_ => { }));
+            });
+        }
+
+        if (bodyProperties.ChildElements.Any(element => string.Equals(element.LocalName, "spAutoFit", StringComparison.Ordinal)))
+        {
+            return Message(output =>
+            {
+                WriteMessageIncludingEmpty(output, 3, Message(_ => { }));
+            });
+        }
+
+        if (bodyProperties.ChildElements.Any(element => string.Equals(element.LocalName, "noAutofit", StringComparison.Ordinal)))
+        {
+            return Message(_ => { });
+        }
+
+        return null;
+    }
+
+    private static int? BodyAnchorCode(OpenXmlSimpleType? value)
+    {
+        return EnumText(value) switch
+        {
+            "t" => 1,
+            "ctr" => 2,
+            "b" => 3,
+            "just" => 4,
+            "dist" => 5,
+            _ => null,
+        };
+    }
+
+    private static int? TextWrappingCode(OpenXmlSimpleType? value)
+    {
+        return EnumText(value) switch
+        {
+            "none" => 1,
+            "square" => 2,
+            _ => null,
+        };
+    }
+
+    private static int? VerticalTextCode(OpenXmlSimpleType? value)
+    {
+        return EnumText(value) switch
+        {
+            "horz" => 1,
+            "vert" => 2,
+            "vert270" => 3,
+            "wordArtVert" => 4,
+            "eaVert" => 5,
+            _ => null,
+        };
+    }
+
+    private static int? AlignmentCode(string? value)
+    {
+        return value switch
+        {
+            "l" => 1,
+            "ctr" => 2,
+            "r" => 3,
+            "just" => 4,
+            "justLow" => 5,
+            "dist" => 6,
+            "thaiDist" => 7,
+            _ => null,
+        };
+    }
+
+    private static void WriteTextStyleProperties(CodedOutputStream output, OpenXmlElement? textProperties, OpenXmlElement? paragraphProperties)
+    {
+        WriteBoolValue(output, 4, BoolAttribute(textProperties, "b"));
+        WriteBoolValue(output, 5, BoolAttribute(textProperties, "i"));
+        WriteInt32(output, 6, Int32Attribute(textProperties, "sz"));
+        var fill = textProperties?.GetFirstChild<A.SolidFill>();
+        if (fill is not null)
+        {
+            WriteMessage(output, 7, WriteSolidFill(fill));
+        }
+
+        WriteInt32(output, 8, AlignmentCode(AttributeValue(paragraphProperties, "algn")));
+
+        var underline = AttributeValue(textProperties, "u");
+        if (!string.IsNullOrEmpty(underline) && underline != "none")
+        {
+            WriteString(output, 9, underline);
+        }
+
+        var typeface =
+            textProperties?.GetFirstChild<A.LatinFont>()?.Typeface?.Value ??
+            textProperties?.GetFirstChild<A.EastAsianFont>()?.Typeface?.Value ??
+            textProperties?.GetFirstChild<A.ComplexScriptFont>()?.Typeface?.Value;
+        WriteString(output, 18, typeface);
     }
 
     private static byte[] WriteEmptyParagraphWithTextStyle()
