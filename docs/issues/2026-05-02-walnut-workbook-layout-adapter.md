@@ -74,7 +74,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 
 ## Remaining XLSX Work
 
-- Precise table styles: table stripes are still rendered from a small local approximation for `TableStyleMedium2`; the reader and preview should parse theme/table style metadata and apply row/column stripe options from the protocol.
+- Precise table styles: table headers, row/column stripe flags, first/last column emphasis, and totals rows are now projected from protocol table style metadata. Full theme/table style color definitions are still approximated locally.
 - Icon-set details: Risk icons now honor `cfvo` type/value for `min`, `max`, `num`, `percent`, `percentile`, plus `gte`, `reverse`, and `showValue`. Custom icon glyph families are still rendered through the compact local bar icon approximation.
 - Chart fidelity: Fitness charts now use a zero baseline, but plot area sizing, legend placement, markers, gridlines, fonts, and Excel internal chart layout are still simplified.
 - Freeze panes and sticky headers: the prefix-sum layout adapter exists, but the preview still needs Walnut-like frozen pane projection, viewport scrolling, and hit regions for cells/floating elements.

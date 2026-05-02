@@ -216,12 +216,17 @@ function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<strin
     .filter((table): table is RecordValue => table != null)
     .map((table) => {
       const style = asRecord(table.style);
+      const styleName = asString(style?.name) || asString(table.styleName) || asString(table.style);
       return {
         headerRowCount: asNumber(table.headerRowCount, 1),
+        palette: tableStylePalette(styleName),
         reference: asString(table.reference) || asString(table.ref),
         showFilter: table.autoFilter !== false && table.showFilterButton !== false,
+        showColumnStripes: style?.showColumnStripes === true,
+        showFirstColumn: style?.showFirstColumn === true,
+        showLastColumn: style?.showLastColumn === true,
         showRowStripes: style?.showRowStripes !== false,
-        stripeColor: tableStripeColor(asString(style?.name) || asString(table.styleName) || asString(table.style)),
+        totalsRowCount: asNumber(table.totalsRowCount, table.totalsRowShown === true ? 1 : 0),
       };
     })
     .filter((table) => table.reference.length > 0);
@@ -229,10 +234,14 @@ function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<strin
   if (tableSpecs.length === 0) {
     tableSpecs.push(...knownSpreadsheetTableReferences(sheetName).map((reference) => ({
       headerRowCount: 1,
+      palette: tableStylePalette("TableStyleMedium2"),
       reference,
       showFilter: true,
+      showColumnStripes: false,
+      showFirstColumn: false,
+      showLastColumn: false,
       showRowStripes: true,
-      stripeColor: tableStripeColor("TableStyleMedium2"),
+      totalsRowCount: 0,
     })));
   }
 
@@ -240,17 +249,41 @@ function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<strin
     const range = parseCellRange(table.reference);
     if (!range) continue;
 
-    if (table.showFilter && table.headerRowCount > 0) {
+    const headerRowCount = Math.max(0, table.headerRowCount);
+    const totalsRowCount = Math.max(0, table.totalsRowCount);
+    const bodyStartRow = range.startRow + headerRowCount;
+    const bodyEndRow = Math.max(bodyStartRow, range.startRow + range.rowSpan - totalsRowCount);
+    const lastColumnIndex = range.startColumn + range.columnSpan - 1;
+
+    for (let headerOffset = 0; headerOffset < headerRowCount; headerOffset += 1) {
+      const headerRow = range.startRow + headerOffset;
       for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-        mergeSpreadsheetVisual(visuals, range.startRow, columnIndex, { filter: true });
+        mergeSpreadsheetVisual(visuals, headerRow, columnIndex, {
+          filter: table.showFilter && headerOffset === headerRowCount - 1 ? true : undefined,
+          fontWeight: 700,
+        });
       }
     }
 
-    if (!table.showRowStripes) continue;
-    for (let rowIndex = range.startRow + 1; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
-      if ((rowIndex - range.startRow - 1) % 2 !== 0) continue;
+    for (let rowIndex = bodyStartRow; rowIndex < bodyEndRow; rowIndex += 1) {
+      const rowStripe = table.showRowStripes && (rowIndex - bodyStartRow) % 2 === 0;
       for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, { background: table.stripeColor });
+        const columnStripe = table.showColumnStripes && (columnIndex - range.startColumn) % 2 === 0;
+        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, {
+          background: columnStripe ? table.palette.columnStripe : rowStripe ? table.palette.rowStripe : undefined,
+          fontWeight: (table.showFirstColumn && columnIndex === range.startColumn) || (table.showLastColumn && columnIndex === lastColumnIndex)
+            ? 700
+            : undefined,
+        });
+      }
+    }
+
+    for (let rowIndex = bodyEndRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
+      for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
+        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, {
+          background: table.palette.total,
+          fontWeight: 700,
+        });
       }
     }
   }
@@ -258,11 +291,20 @@ function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<strin
   return visuals;
 }
 
-function tableStripeColor(styleName: string): string {
-  if (/Medium2$/i.test(styleName)) return "#c7eaf7";
-  if (/Medium4$/i.test(styleName)) return "#dbeafe";
-  if (/Medium9$/i.test(styleName)) return "#d9ead3";
-  return "#e0f2fe";
+function tableStylePalette(styleName: string): { columnStripe: string; rowStripe: string; total: string } {
+  if (/Medium4$/i.test(styleName)) {
+    return { columnStripe: "#dbeafe", rowStripe: "#eff6ff", total: "#bfdbfe" };
+  }
+
+  if (/Medium9$/i.test(styleName)) {
+    return { columnStripe: "#d9ead3", rowStripe: "#eef7e8", total: "#b7dfae" };
+  }
+
+  if (/Medium2$/i.test(styleName)) {
+    return { columnStripe: "#d7f0f8", rowStripe: "#c7eaf7", total: "#9ed8ea" };
+  }
+
+  return { columnStripe: "#e0f2fe", rowStripe: "#f0f9ff", total: "#bae6fd" };
 }
 
 function knownSpreadsheetTableReferences(sheetName: string): string[] {

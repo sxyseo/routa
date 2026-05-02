@@ -36,4 +36,34 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("3:0")?.background).toBe("rgb(128, 255, 0)");
     expect(visuals.get("4:0")?.background).toBe("rgb(0, 255, 0)");
   });
+
+  it("applies table column stripes and edge-column emphasis", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      name: "Tables",
+      rows: [],
+      tables: [
+        {
+          headerRowCount: 1,
+          reference: "A1:C4",
+          style: {
+            name: "TableStyleMedium4",
+            showColumnStripes: true,
+            showFirstColumn: true,
+            showLastColumn: true,
+            showRowStripes: false,
+          },
+          totalsRowCount: 1,
+        },
+      ],
+    });
+
+    expect(visuals.get("1:0")?.filter).toBe(true);
+    expect(visuals.get("1:0")?.fontWeight).toBe(700);
+    expect(visuals.get("2:0")?.background).toBe("#dbeafe");
+    expect(visuals.get("2:0")?.fontWeight).toBe(700);
+    expect(visuals.get("2:1")?.background).toBeUndefined();
+    expect(visuals.get("2:2")?.fontWeight).toBe(700);
+    expect(visuals.get("4:1")?.background).toBe("#bfdbfe");
+    expect(visuals.get("4:1")?.fontWeight).toBe(700);
+  });
 });
