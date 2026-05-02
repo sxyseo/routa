@@ -3,35 +3,25 @@ import {
   asNumber,
   asRecord,
   asString,
-  colorToCss,
-  cssFontSize,
   elementImageReferenceId,
-  EMPTY_DOCUMENT_STYLE_MAPS,
   fillToCss,
   lineToCss,
-  officeFontFamily,
-  paragraphView,
   slideBackgroundToCss,
-  type ParagraphView,
   type RecordValue,
-  type TextRunView,
 } from "./office-preview-utils";
+import {
+  drawPresentationTextBox,
+  presentationScaledFontSize,
+  type PresentationRect,
+  type PresentationSize,
+  type PresentationTextOverflow,
+} from "./presentation-text-layout";
 
 const DEFAULT_SLIDE_BOUNDS = { width: 12_192_000, height: 6_858_000 };
 const EMU_PER_CSS_PIXEL = 9_525;
 const FIT_PADDING = 48;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
-
-export type PresentationSize = {
-  height: number;
-  width: number;
-};
-
-export type PresentationRect = PresentationSize & {
-  left: number;
-  top: number;
-};
 
 export type PresentationFit = PresentationSize & {
   scale: number;
@@ -45,34 +35,33 @@ export type PresentationElementTarget = {
   rect: PresentationRect;
 };
 
+export type PresentationImageSourceRect = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
 export type PresentationRenderImages = ReadonlyMap<string, CanvasImageSource>;
-export type PresentationTextOverflow = "clip" | "visible";
+export { presentationScaledFontSize, type PresentationRect, type PresentationSize, type PresentationTextOverflow };
 
 type SlideElementEntry = {
   element: RecordValue;
   index: number;
 };
 
-type DrawSegment = {
-  fontSize: number;
-  run: TextRunView;
-  text: string;
-  width: number;
-  x: number;
-  y: number;
-};
-
-type TextInsets = {
-  bottom: number;
-  left: number;
-  right: number;
-  top: number;
-};
-
-type TextLayout = {
-  height: number;
-  segments: DrawSegment[];
-};
+type PresentationShapeKind =
+  | "bracePair"
+  | "bracketPair"
+  | "diamond"
+  | "ellipse"
+  | "hexagon"
+  | "line"
+  | "parallelogram"
+  | "rect"
+  | "roundRect"
+  | "trapezoid"
+  | "triangle";
 
 export function computePresentationFit(
   viewport: PresentationSize,
@@ -127,6 +116,41 @@ export function emuRectToCanvasRect(bbox: RecordValue | null, bounds: Presentati
     top: asNumber(bbox?.yEmu) * scaleY,
     width: asNumber(bbox?.widthEmu) * scaleX,
   };
+}
+
+export function presentationShapeKind(shape: RecordValue | null, rect: PresentationRect): PresentationShapeKind {
+  const geometry = asNumber(shape?.geometry);
+  if (geometry === 1) return "line";
+  if (geometry === 23) return "triangle";
+  if (geometry === 26) return "roundRect";
+  if (geometry === 30) return "diamond";
+  if (geometry === 31) return "parallelogram";
+  if (geometry === 32) return "trapezoid";
+  if (geometry === 35 || geometry === 89 || isTransparentOutlineEllipse(shape, rect)) return "ellipse";
+  if (geometry === 39) return "hexagon";
+  if (geometry === 111) return "bracePair";
+  if (geometry === 112) return "bracketPair";
+  return "rect";
+}
+
+export function presentationImageSourceRect(
+  element: RecordValue,
+  naturalSize: PresentationSize,
+): PresentationImageSourceRect {
+  const sourceRect = elementImageSourceRect(element);
+  if (!sourceRect || naturalSize.width <= 0 || naturalSize.height <= 0) {
+    return { height: naturalSize.height, width: naturalSize.width, x: 0, y: 0 };
+  }
+
+  const left = cropRatio(sourceRect.left ?? sourceRect.l);
+  const top = cropRatio(sourceRect.top ?? sourceRect.t);
+  const right = cropRatio(sourceRect.right ?? sourceRect.r);
+  const bottom = cropRatio(sourceRect.bottom ?? sourceRect.b);
+  const x = naturalSize.width * left;
+  const y = naturalSize.height * top;
+  const width = naturalSize.width * Math.max(0.01, 1 - left - right);
+  const height = naturalSize.height * Math.max(0.01, 1 - top - bottom);
+  return { height, width, x, y };
 }
 
 export function collectPresentationTypefaces(slides: RecordValue[]): string[] {
@@ -230,7 +254,9 @@ function drawElement(
   const rect = emuRectToCanvasRect(bbox, bounds, canvas);
   if (rect.width <= 0 && rect.height <= 0) return;
 
-  const line = lineToCss(asRecord(element.shape)?.line);
+  const slideScale = presentationCanvasScale(bounds, canvas);
+  const shape = asRecord(element.shape);
+  const line = scaledLineStyle(lineToCss(shape?.line ?? element.line), slideScale);
   const isLine = rect.height === 0 && line.color != null;
   const rotation = asNumber(bbox?.rotation) / 60_000;
 
@@ -239,14 +265,14 @@ function drawElement(
   if (rotation !== 0) context.rotate((rotation * Math.PI) / 180);
   context.translate(-rect.width / 2, -rect.height / 2);
 
-  if (isLine) {
-    drawLine(context, rect.width, line);
+  const shapeKind = presentationShapeKind(shape, rect);
+  if (isLine || shapeKind === "line") {
+    drawLine(context, rect.width, rect.height, line);
     context.restore();
     return;
   }
 
-  const shape = asRecord(element.shape);
-  const path = elementPath(context, shape, rect);
+  const path = elementPath(shapeKind, rect);
   const fill = shapeFillToCss(shape, element, line.color, rect);
   if (fill) {
     context.fillStyle = fill;
@@ -258,7 +284,7 @@ function drawElement(
   if (image) {
     context.save();
     context.clip(path);
-    context.drawImage(image, 0, 0, rect.width, rect.height);
+    drawElementImage(context, image, element, rect);
     context.restore();
   }
 
@@ -268,35 +294,141 @@ function drawElement(
     context.stroke(path);
   }
 
-  drawTextBox(context, element, rect, bounds, canvas, options);
+  drawPresentationTextBox({
+    canvas,
+    context,
+    element,
+    rect,
+    slideBounds: bounds,
+    slideScale,
+    textOverflow: options.textOverflow,
+  });
   context.restore();
 }
 
-function drawLine(context: CanvasRenderingContext2D, width: number, line: { color?: string; width: number }): void {
+function drawLine(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  line: { color?: string; width: number },
+): void {
   context.beginPath();
   context.moveTo(0, 0);
-  context.lineTo(width, 0);
+  context.lineTo(width, height);
   context.strokeStyle = line.color ?? "#0f172a";
   context.lineWidth = line.width;
   context.stroke();
 }
 
-function elementPath(context: CanvasRenderingContext2D, shape: RecordValue | null, rect: PresentationRect): Path2D {
+function elementPath(kind: PresentationShapeKind, rect: PresentationRect): Path2D {
   const path = new Path2D();
-  const geometry = asNumber(shape?.geometry);
-  if (geometry === 35 || geometry === 89 || isTransparentOutlineEllipse(shape, rect)) {
+  if (kind === "ellipse") {
     path.ellipse(rect.width / 2, rect.height / 2, rect.width / 2, rect.height / 2, 0, 0, Math.PI * 2);
     return path;
   }
 
-  if (geometry === 26) {
+  if (kind === "roundRect") {
     const radius = Math.min(rect.width, rect.height) * 0.08;
     roundedRect(path, 0, 0, rect.width, rect.height, radius);
     return path;
   }
 
+  if (kind === "triangle") {
+    polygon(path, [
+      [rect.width / 2, 0],
+      [rect.width, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
+  if (kind === "diamond") {
+    polygon(path, [
+      [rect.width / 2, 0],
+      [rect.width, rect.height / 2],
+      [rect.width / 2, rect.height],
+      [0, rect.height / 2],
+    ]);
+    return path;
+  }
+
+  if (kind === "parallelogram") {
+    const skew = Math.min(rect.width / 3, rect.width * 0.18);
+    polygon(path, [
+      [skew, 0],
+      [rect.width, 0],
+      [rect.width - skew, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
+  if (kind === "trapezoid") {
+    const inset = Math.min(rect.width / 3, rect.width * 0.18);
+    polygon(path, [
+      [inset, 0],
+      [rect.width - inset, 0],
+      [rect.width, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
+  if (kind === "hexagon") {
+    const inset = Math.min(rect.width / 3, rect.width * 0.24);
+    polygon(path, [
+      [inset, 0],
+      [rect.width - inset, 0],
+      [rect.width, rect.height / 2],
+      [rect.width - inset, rect.height],
+      [inset, rect.height],
+      [0, rect.height / 2],
+    ]);
+    return path;
+  }
+
+  if (kind === "bracePair" || kind === "bracketPair") {
+    drawBracketLikePath(path, rect, kind);
+    return path;
+  }
+
   path.rect(0, 0, rect.width, rect.height);
   return path;
+}
+
+function polygon(path: Path2D, points: Array<[number, number]>): void {
+  const [first, ...rest] = points;
+  if (!first) return;
+  path.moveTo(first[0], first[1]);
+  for (const [x, y] of rest) {
+    path.lineTo(x, y);
+  }
+  path.closePath();
+}
+
+function drawBracketLikePath(path: Path2D, rect: PresentationRect, kind: "bracePair" | "bracketPair"): void {
+  const strokeWidth = Math.max(1, Math.min(rect.width, rect.height) * 0.08);
+  const inset = Math.min(rect.width * 0.2, strokeWidth * 2);
+  if (kind === "bracketPair") {
+    roundedRect(path, 0, 0, inset, rect.height, strokeWidth);
+    roundedRect(path, rect.width - inset, 0, inset, rect.height, strokeWidth);
+    return;
+  }
+
+  path.moveTo(inset, 0);
+  path.quadraticCurveTo(0, rect.height * 0.25, inset, rect.height * 0.5);
+  path.quadraticCurveTo(0, rect.height * 0.75, inset, rect.height);
+  path.lineTo(inset + strokeWidth, rect.height);
+  path.quadraticCurveTo(strokeWidth, rect.height * 0.75, inset + strokeWidth, rect.height * 0.5);
+  path.quadraticCurveTo(strokeWidth, rect.height * 0.25, inset + strokeWidth, 0);
+  path.closePath();
+  path.moveTo(rect.width - inset, 0);
+  path.quadraticCurveTo(rect.width, rect.height * 0.25, rect.width - inset, rect.height * 0.5);
+  path.quadraticCurveTo(rect.width, rect.height * 0.75, rect.width - inset, rect.height);
+  path.lineTo(rect.width - inset - strokeWidth, rect.height);
+  path.quadraticCurveTo(rect.width - strokeWidth, rect.height * 0.75, rect.width - inset - strokeWidth, rect.height * 0.5);
+  path.quadraticCurveTo(rect.width - strokeWidth, rect.height * 0.25, rect.width - inset - strokeWidth, 0);
+  path.closePath();
 }
 
 function roundedRect(path: Path2D, x: number, y: number, width: number, height: number, radius: number): void {
@@ -312,257 +444,55 @@ function roundedRect(path: Path2D, x: number, y: number, width: number, height: 
   path.quadraticCurveTo(x, y, x + r, y);
 }
 
-function drawTextBox(
+function drawElementImage(
   context: CanvasRenderingContext2D,
+  image: CanvasImageSource,
   element: RecordValue,
   rect: PresentationRect,
-  bounds: PresentationSize,
-  canvas: PresentationSize,
-  options: { textOverflow: PresentationTextOverflow },
 ): void {
-  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_DOCUMENT_STYLE_MAPS));
-  if (paragraphs.length === 0) return;
-
-  const textStyle = asRecord(element.textStyle);
-  const insets = textInsets(textStyle, rect, canvas.width / bounds.width, canvas.height / bounds.height);
-  const maxWidth = Math.max(1, rect.width - insets.left - insets.right);
-  const maxHeight = Math.max(1, rect.height - insets.top - insets.bottom);
-  const layout = layoutText(context, paragraphs, maxWidth);
-  const verticalOffset = verticalTextOffset(asNumber(textStyle?.anchor), layout.height, maxHeight);
-
-  context.save();
-  if (options.textOverflow === "clip") {
-    context.beginPath();
-    context.rect(0, 0, rect.width, rect.height);
-    context.clip();
-  }
-  context.textBaseline = "top";
-
-  for (const segment of layout.segments) {
-    applyRunFont(context, segment.run, segment.fontSize);
-    context.fillStyle = colorToCss(asRecord(segment.run.style?.fill)?.color) ?? "#0f172a";
-    const segmentX = insets.left + segment.x;
-    const segmentY = insets.top + verticalOffset + segment.y;
-    context.fillText(segment.text, segmentX, segmentY);
-    if (segment.run.style?.underline === true) {
-      const underlineY = segmentY + segment.fontSize * 1.08;
-      context.beginPath();
-      context.moveTo(segmentX, underlineY);
-      context.lineTo(segmentX + segment.width, underlineY);
-      context.lineWidth = Math.max(1, segment.fontSize / 18);
-      context.strokeStyle = context.fillStyle;
-      context.stroke();
-    }
+  const naturalSize = imageNaturalSize(image);
+  const source = presentationImageSourceRect(element, naturalSize);
+  if (source.width <= 0 || source.height <= 0) {
+    context.drawImage(image, 0, 0, rect.width, rect.height);
+    return;
   }
 
-  context.restore();
+  context.drawImage(image, source.x, source.y, source.width, source.height, 0, 0, rect.width, rect.height);
 }
 
-function layoutText(
-  context: CanvasRenderingContext2D,
-  paragraphs: ParagraphView[],
-  maxWidth: number,
-): TextLayout {
-  const segments: DrawSegment[] = [];
-  let y = 0;
-  let line: DrawSegment[] = [];
-  let lineAlignment = 1;
-  let lineHeight = 16;
-  let lineSpacing = 1;
-  let lineWidth = 0;
-  let activeAlignment = 1;
-  let activeLineSpacing = 1;
-
-  function resetLine(): void {
-    line = [];
-    lineAlignment = activeAlignment;
-    lineHeight = 16;
-    lineSpacing = activeLineSpacing;
-    lineWidth = 0;
-  }
-
-  function flushLine(includeEmptyLine = false): void {
-    if (line.length === 0) {
-      if (includeEmptyLine) {
-        y += lineHeight * lineSpacing;
-      }
-      resetLine();
-      return;
-    }
-
-    const offsetX = lineAlignmentOffset(lineAlignment, lineWidth, maxWidth);
-    for (const segment of line) {
-      segments.push({ ...segment, x: segment.x + offsetX, y });
-    }
-    y += lineHeight * lineSpacing;
-    resetLine();
-  }
-
-  function setParagraphOptions(paragraph: ParagraphView): void {
-    activeAlignment = paragraphAlignment(paragraph);
-    activeLineSpacing = paragraphLineSpacing(paragraph);
-    if (line.length === 0 && lineWidth === 0) {
-      lineAlignment = activeAlignment;
-      lineSpacing = activeLineSpacing;
-    }
-  }
-
-  function pushTextSegment(run: TextRunView, text: string, width: number, fontSize: number): void {
-    if (line.length === 0 && lineWidth === 0) {
-      lineAlignment = activeAlignment;
-      lineSpacing = activeLineSpacing;
-    }
-
-    const nextLineHeight = fontSize * 1.18;
-    line.push({
-      fontSize,
-      run,
-      text,
-      width,
-      x: lineWidth,
-      y: 0,
-    });
-    lineWidth += width;
-    lineHeight = Math.max(lineHeight, nextLineHeight);
-  }
-
-  for (const paragraph of paragraphs) {
-    setParagraphOptions(paragraph);
-    y += paragraphSpacingPx(paragraph.style?.spaceBefore);
-
-    for (const run of paragraph.runs) {
-      const fontSize = runFontSize(run);
-      applyRunFont(context, run, fontSize);
-      lineHeight = Math.max(lineHeight, fontSize * 1.18);
-
-      const tokens = textTokens(run.text);
-      for (const token of tokens) {
-        if (token === "\n") {
-          flushLine(true);
-          continue;
-        }
-
-        const tokenWidth = context.measureText(token).width;
-        if (lineWidth > 0 && lineWidth + tokenWidth > maxWidth) {
-          flushLine();
-        }
-
-        if (tokenWidth <= maxWidth || token.trim() === "" || (lineWidth === 0 && Array.from(token).length <= 4)) {
-          pushTextSegment(run, token, tokenWidth, fontSize);
-          continue;
-        }
-
-        for (const char of wrapCharacters(token)) {
-          const charWidth = context.measureText(char).width;
-          if (lineWidth > 0 && lineWidth + charWidth > maxWidth) {
-            flushLine();
-          }
-          pushTextSegment(run, char, charWidth, fontSize);
-        }
-      }
-    }
-
-    flushLine();
-    y += paragraphSpacingPx(paragraph.style?.spaceAfter);
-  }
-
-  return { height: y, segments };
-}
-
-function textInsets(
-  textStyle: RecordValue | null,
-  rect: PresentationRect,
-  scaleX: number,
-  scaleY: number,
-): TextInsets {
-  const defaultX = Math.max(2, Math.min(12, rect.height * 0.04));
-  const defaultY = Math.max(2, Math.min(12, rect.height * 0.035));
+function imageNaturalSize(image: CanvasImageSource): PresentationSize {
+  const record = image as unknown as Record<string, unknown>;
   return {
-    bottom: insetPx(textStyle?.bottomInset, scaleY, defaultY, rect.height * 0.45),
-    left: insetPx(textStyle?.leftInset, scaleX, defaultX, rect.width * 0.45),
-    right: insetPx(textStyle?.rightInset, scaleX, defaultX, rect.width * 0.45),
-    top: insetPx(textStyle?.topInset, scaleY, defaultY, rect.height * 0.45),
+    height: asNumber(record.naturalHeight, asNumber(record.videoHeight, asNumber(record.height))),
+    width: asNumber(record.naturalWidth, asNumber(record.videoWidth, asNumber(record.width))),
   };
 }
 
-function insetPx(value: unknown, scale: number, fallback: number, max: number): number {
-  const raw = asNumber(value, Number.NaN);
-  if (!Number.isFinite(raw) || raw <= 0) return fallback;
-  return clamp(raw * scale, 0, max);
+function elementImageSourceRect(element: RecordValue): RecordValue | null {
+  const shapeFill = asRecord(asRecord(element.shape)?.fill);
+  const fill = asRecord(element.fill) ?? shapeFill;
+  return asRecord(fill?.sourceRect) ?? asRecord(fill?.sourceRectangle) ?? asRecord(element.imageMask);
 }
 
-function verticalTextOffset(anchor: number, contentHeight: number, maxHeight: number): number {
-  if (contentHeight >= maxHeight) return 0;
-  if (anchor === 2 || anchor === 4 || anchor === 5) return (maxHeight - contentHeight) / 2;
-  if (anchor === 3) return maxHeight - contentHeight;
-  return 0;
-}
-
-function paragraphAlignment(paragraph: ParagraphView): number {
-  const alignment = asNumber(paragraph.style?.alignment);
-  return alignment > 0 ? alignment : 1;
-}
-
-function paragraphLineSpacing(paragraph: ParagraphView): number {
-  const raw = asNumber(paragraph.style?.lineSpacing);
-  if (raw > 10_000) return clamp(raw / 100_000, 0.6, 3);
-  if (raw > 0) return clamp(raw, 0.6, 3);
-  return 1;
-}
-
-function paragraphSpacingPx(value: unknown): number {
+function cropRatio(value: unknown): number {
   const raw = asNumber(value);
   if (raw <= 0) return 0;
-  return Math.min(24, raw / 20);
+  if (raw > 1) return clamp(raw / 100_000, 0, 0.99);
+  return clamp(raw, 0, 0.99);
 }
 
-function lineAlignmentOffset(alignment: number, lineWidth: number, maxWidth: number): number {
-  if (alignment === 2) return Math.max(0, (maxWidth - lineWidth) / 2);
-  if (alignment === 3) return Math.max(0, maxWidth - lineWidth);
-  return 0;
+function presentationCanvasScale(bounds: PresentationSize, canvas: PresentationSize): number {
+  const frameWidth = bounds.width / EMU_PER_CSS_PIXEL;
+  const frameHeight = bounds.height / EMU_PER_CSS_PIXEL;
+  if (frameWidth <= 0 || frameHeight <= 0) return 1;
+  return Math.min(canvas.width / frameWidth, canvas.height / frameHeight);
 }
 
-function textTokens(text: string): string[] {
-  const tokens: string[] = [];
-  for (const part of text.split(/(\n|\s+)/u)) {
-    if (!part) continue;
-    if (part === "\n") {
-      tokens.push(part);
-      continue;
-    }
-    if (/^\s+$/u.test(part)) {
-      tokens.push(part);
-      continue;
-    }
-    tokens.push(part);
-  }
-  return tokens;
-}
-
-function wrapCharacters(text: string): string[] {
-  const chunks: string[] = [];
-  for (const char of Array.from(text)) {
-    if (isClosingPunctuation(char) && chunks.length > 0) {
-      chunks[chunks.length - 1] += char;
-      continue;
-    }
-    chunks.push(char);
-  }
-  return chunks;
-}
-
-function isClosingPunctuation(char: string): boolean {
-  return /^[,.;:!?，。！？；：、）】》」』”’)]$/u.test(char);
-}
-
-function applyRunFont(context: CanvasRenderingContext2D, run: TextRunView, fontSize: number): void {
-  const fontStyle = run.style?.italic === true ? "italic" : "normal";
-  const fontWeight = run.style?.bold === true ? "700" : "400";
-  context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${officeFontFamily(asString(run.style?.typeface))}`;
-}
-
-function runFontSize(run: TextRunView): number {
-  return Math.max(2, cssFontSize(run.style?.fontSize, 14) * 1.333);
+function scaledLineStyle(line: { color?: string; width: number }, slideScale: number): { color?: string; width: number } {
+  return {
+    color: line.color,
+    width: Math.max(0.5, line.width * Math.max(0.01, slideScale)),
+  };
 }
 
 function shapeFillToCss(

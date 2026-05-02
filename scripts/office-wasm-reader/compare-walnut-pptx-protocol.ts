@@ -142,6 +142,11 @@ function summarizePresentation(presentation: Record<string, unknown>, protoBytes
     missingImageReferenceIds: [...new Set(allImageReferenceIds.filter((id) => !imageIds.has(id)))],
     chartReferenceCount: allChartReferenceIds.length,
     missingChartReferenceIds: [...new Set(allChartReferenceIds.filter((id) => !chartIds.has(id)))],
+    slideBboxDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementBbox)),
+    slideNotesTextDigests: slides.map((slide) => summarizeNotesTextDigest(slide)),
+    slideShapeGeometryCounts: slides.map((slide) => summarizeShapeGeometryCounts(slide)),
+    slideShapeStyleDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementShapeStyle)),
+    slideTextStyleDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementTextStyle)),
     slides: slides.map(summarizeSlide),
     firstSlide: summarizeSlide(slides[0] ?? {}),
   };
@@ -171,16 +176,26 @@ function summarizeSlide(slide: Record<string, unknown>) {
     chartReferenceCount: chartReferenceIds.length,
     chartReferenceIds,
     elementTypes: Object.fromEntries(elementTypes),
+    notesTextPreview: summarizeNotesText(slide),
+    shapeGeometryCounts: summarizeShapeGeometryCounts(slide),
     firstElements: elements.slice(0, 8).map((element) => ({
       id: element.id,
       name: element.name,
       type: element.type,
       zIndex: element.zIndex,
       bbox: element.bbox,
+      geometry: asRecord(element.shape)?.geometry,
+      fill: summarizeFill(asRecord(element.fill) ?? asRecord(asRecord(element.shape)?.fill)),
+      line: summarizeLine(asRecord(element.line) ?? asRecord(asRecord(element.shape)?.line)),
       hasShape: isRecord(element.shape),
       hasFill: isRecord(element.fill) || isRecord(asRecord(element.shape)?.fill),
       hasLine: isRecord(element.line) || isRecord(asRecord(element.shape)?.line),
       paragraphCount: arrayOfRecords(element.paragraphs).length,
+      runCount: arrayOfRecords(element.paragraphs).reduce(
+        (count, paragraph) => count + arrayOfRecords(paragraph.runs).length,
+        0,
+      ),
+      textStyleDigest: sha256Text(stableJson(summarizeElementTextStyle(element))),
       textPreview: collectTextPreview(element),
       hasImage: isRecord(element.image) || isRecord(element.imageReference),
       hasChartReference: isRecord(element.chartReference),
@@ -227,6 +242,15 @@ function summarizeEquivalence(
     slideChartReferenceIdsMatch:
       stableJson(walnutSummary.slides.map((slide) => slide.chartReferenceIds)) ===
       stableJson(routaSummary.slides.map((slide) => slide.chartReferenceIds)),
+    slideBboxDigestsMatch: stableJson(walnutSummary.slideBboxDigests) === stableJson(routaSummary.slideBboxDigests),
+    slideNotesTextDigestsMatch:
+      stableJson(walnutSummary.slideNotesTextDigests) === stableJson(routaSummary.slideNotesTextDigests),
+    slideShapeGeometryCountsMatch:
+      stableJson(walnutSummary.slideShapeGeometryCounts) === stableJson(routaSummary.slideShapeGeometryCounts),
+    slideShapeStyleDigestsMatch:
+      stableJson(walnutSummary.slideShapeStyleDigests) === stableJson(routaSummary.slideShapeStyleDigests),
+    slideTextStyleDigestsMatch:
+      stableJson(walnutSummary.slideTextStyleDigests) === stableJson(routaSummary.slideTextStyleDigests),
     themePresenceMatches: walnutSummary.hasTheme === routaSummary.hasTheme,
     firstSlideSizeMatches:
       walnutFirst.widthEmu === routaFirst.widthEmu &&
@@ -270,6 +294,127 @@ function elementChartReferenceIds(element: Record<string, unknown>): string[] {
   return id ? [id, ...children] : children;
 }
 
+function summarizeSlideDigest(
+  slide: Record<string, unknown>,
+  summarize: (element: Record<string, unknown>) => unknown,
+): string {
+  return sha256Text(stableJson(arrayOfRecords(slide.elements).map(summarize)));
+}
+
+function summarizeElementBbox(element: Record<string, unknown>) {
+  const bbox = asRecord(element.bbox) ?? {};
+  return {
+    id: stringValue(element.id),
+    name: stringValue(element.name),
+    type: element.type,
+    bbox: {
+      heightEmu: numberValue(bbox.heightEmu),
+      rotation: numberValue(bbox.rotation),
+      widthEmu: numberValue(bbox.widthEmu),
+      xEmu: numberValue(bbox.xEmu),
+      yEmu: numberValue(bbox.yEmu),
+    },
+  };
+}
+
+function summarizeElementShapeStyle(element: Record<string, unknown>) {
+  const shape = asRecord(element.shape) ?? {};
+  return {
+    id: stringValue(element.id),
+    name: stringValue(element.name),
+    type: element.type,
+    geometry: numberValue(shape.geometry),
+    fill: summarizeFill(asRecord(element.fill) ?? asRecord(shape.fill)),
+    line: summarizeLine(asRecord(element.line) ?? asRecord(shape.line)),
+    imageReferenceIds: elementImageReferenceIds(element),
+    chartReferenceIds: elementChartReferenceIds(element),
+  };
+}
+
+function summarizeElementTextStyle(element: Record<string, unknown>) {
+  return {
+    id: stringValue(element.id),
+    name: stringValue(element.name),
+    type: element.type,
+    textStyle: summarizeTextStyle(asRecord(element.textStyle)),
+    paragraphs: arrayOfRecords(element.paragraphs).map((paragraph) => ({
+      paragraphStyle: summarizeTextStyle(asRecord(paragraph.textStyle) ?? asRecord(paragraph.paragraphStyle)),
+      runCount: arrayOfRecords(paragraph.runs).length,
+      runs: arrayOfRecords(paragraph.runs).map((run) => ({
+        textLength: stringValue(run.text).length,
+        textStyle: summarizeTextStyle(asRecord(run.textStyle)),
+      })),
+    })),
+  };
+}
+
+function summarizeShapeGeometryCounts(slide: Record<string, unknown>): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const element of arrayOfRecords(slide.elements)) {
+    const shape = asRecord(element.shape);
+    if (!shape) continue;
+    const geometry = String(numberValue(shape.geometry));
+    counts.set(geometry, (counts.get(geometry) ?? 0) + 1);
+  }
+  return Object.fromEntries([...counts.entries()].sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function summarizeNotesTextDigest(slide: Record<string, unknown>): string {
+  return sha256Text(summarizeNotesText(slide));
+}
+
+function summarizeNotesText(slide: Record<string, unknown>): string {
+  const notesSlide = asRecord(slide.notesSlide);
+  if (!notesSlide) return "";
+  return collectTextPreview(notesSlide);
+}
+
+function summarizeFill(fill: Record<string, unknown> | null) {
+  return {
+    type: numberValue(fill?.type),
+    color: summarizeColor(asRecord(fill?.color)),
+    imageReferenceId: imageReferenceId(fill?.imageReference),
+    sourceRect: asRecord(fill?.sourceRect) ?? asRecord(fill?.sourceRectangle) ?? null,
+  };
+}
+
+function summarizeLine(line: Record<string, unknown> | null) {
+  const fill = asRecord(line?.fill);
+  return {
+    color: summarizeColor(asRecord(fill?.color)),
+    widthEmu: numberValue(line?.widthEmu),
+    cap: numberValue(line?.cap),
+    join: numberValue(line?.join),
+    headEnd: asRecord(line?.headEnd) ?? null,
+    tailEnd: asRecord(line?.tailEnd) ?? null,
+  };
+}
+
+function summarizeTextStyle(style: Record<string, unknown> | null) {
+  return {
+    anchor: numberValue(style?.anchor),
+    alignment: numberValue(style?.alignment),
+    bold: style?.bold === true,
+    fill: summarizeFill(asRecord(style?.fill)),
+    fontSize: numberValue(style?.fontSize),
+    italic: style?.italic === true,
+    lineSpacing: numberValue(style?.lineSpacing),
+    spaceAfter: numberValue(style?.spaceAfter),
+    spaceBefore: numberValue(style?.spaceBefore),
+    typeface: stringValue(style?.typeface),
+    underline: style?.underline === true,
+  };
+}
+
+function summarizeColor(color: Record<string, unknown> | null) {
+  return {
+    type: numberValue(color?.type),
+    value: stringValue(color?.value),
+    lastColor: stringValue(color?.lastColor),
+    transform: asRecord(color?.transform) ?? null,
+  };
+}
+
 function imageReferenceId(value: unknown): string {
   const record = asRecord(value);
   return typeof record?.id === "string" ? record.id : "";
@@ -309,6 +454,14 @@ function bytesFromUnknown(value: unknown): Uint8Array {
 
 function stableJson(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : "";
 }
 
 function collectTextPreview(value: unknown): string {
@@ -410,6 +563,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function sha256Text(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function assertFile(filePath: string, label: string): void {
