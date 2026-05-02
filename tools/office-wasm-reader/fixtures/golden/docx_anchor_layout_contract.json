@@ -1,0 +1,49 @@
+{
+  "elementCount": 2,
+  "elementTypes": {
+    "1": 1,
+    "7": 1
+  },
+  "heightEmu": 15840,
+  "imageCount": 1,
+  "images": [
+    {
+      "byteLength": 70,
+      "contentType": "image/png",
+      "id": "image-48602ac3e487064d",
+      "sha256": "48602ac3e487064df07c39b631908abfe01980d5edbbf578ea970a19e1f2fd72"
+    }
+  ],
+  "numberingDefinitionCount": 0,
+  "protocol": "oaiproto.coworker.docx.Document",
+  "sectionCount": 1,
+  "tableCount": 0,
+  "tableShapes": [],
+  "textStyleCount": 0,
+  "textStyleIds": [],
+  "previewElements": [
+    {
+      "hasImageReference": false,
+      "hasTable": false,
+      "paragraphCount": 1,
+      "textPreview": "Anchored image before.",
+      "type": 1
+    },
+    {
+      "bbox": {
+        "xEmu": 3429000,
+        "yEmu": 457200,
+        "widthEmu": 914400,
+        "heightEmu": 457200
+      },
+      "hasImageReference": true,
+      "hasTable": false,
+      "paragraphCount": 0,
+      "textPreview": "",
+      "type": 7
+    }
+  ],
+  "wasmProtoByteLength": 300,
+  "wasmProtoSha256": "60aa47e51988442fff6f6361937391ab5240da1fa4bca7051072045ed70e23cb",
+  "widthEmu": 12240
+}

@@ -51,14 +51,13 @@ internal static class DocxDocumentProtoReader
         }
 
         var page = PageMetrics.From(body);
-        var sectionProperties = LastSectionProperties(body);
         var context = new DocxReadContext(mainPart, page);
         var elements = ExtractBlockElements(body.ChildElements, context, mainPart)
             .Take(OpenXmlReaderLimits.MaxDocumentTextBlocks)
             .ToList();
         var footnotes = ExtractNotes(mainPart, context).ToList();
         var comments = ExtractComments(mainPart, context).ToList();
-        var section = WriteSection(page, sectionProperties, context);
+        var sections = ExtractSections(body, context).ToList();
         var charts = context.Charts.Values.OrderBy(chart => chart.Uri.OriginalString, StringComparer.Ordinal).ToList();
         var images = context.Images.Values.OrderBy(image => image.Id, StringComparer.Ordinal).ToList();
 
@@ -107,7 +106,10 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 12, WriteReviewMark(reviewMark));
             }
 
-            WriteMessage(output, 13, section);
+            foreach (var section in sections)
+            {
+                WriteMessage(output, 13, section);
+            }
 
             foreach (var numbering in ExtractNumberingDefinitions(mainPart))
             {
@@ -180,6 +182,7 @@ internal static class DocxDocumentProtoReader
 
         return Message(output =>
         {
+            var spacing = context.ResolveParagraphSpacing(paragraph.ParagraphProperties);
             foreach (var run in runs)
             {
                 WriteMessage(output, 1, run);
@@ -191,8 +194,8 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 2, paragraphStyle);
             }
 
-            WriteInt32(output, 6, IntFromString(paragraph.ParagraphProperties?.SpacingBetweenLines?.After?.Value));
-            WriteInt32(output, 7, IntFromString(paragraph.ParagraphProperties?.SpacingBetweenLines?.Before?.Value));
+            WriteInt32IfPresent(output, 6, spacing.After);
+            WriteInt32IfPresent(output, 7, spacing.Before);
             WriteString(output, 8, paragraph.ParagraphProperties?.ParagraphStyleId?.Val?.Value);
             WriteString(output, 9, id);
         });
@@ -363,7 +366,7 @@ internal static class DocxDocumentProtoReader
             var chartReference = drawing.Descendants<C.ChartReference>().FirstOrDefault();
             if (chartReference is not null)
             {
-                var chartElement = WriteChartReferenceElement(drawing, context, partContainer);
+                var chartElement = WriteChartReferenceElement(drawing, context, partContainer, paragraph);
                 if (chartElement is not null)
                 {
                     yield return chartElement;
@@ -388,20 +391,12 @@ internal static class DocxDocumentProtoReader
             var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
             var widthEmu = ToLong(extent?.Cx) ?? 0;
             var heightEmu = ToLong(extent?.Cy) ?? 0;
-            var anchor = drawing.GetFirstChild<DW.Anchor>();
-            var xEmu = ParseLong(anchor?.HorizontalPosition?.PositionOffset?.Text) ??
-                context.Page.LeftMarginTwips * EmuPerTwip;
-            var yEmu = ParseLong(anchor?.VerticalPosition?.PositionOffset?.Text) ?? 0;
-            var contentWidthEmu = context.Page.ContentWidthTwips * EmuPerTwip;
-            var alignment = paragraph.ParagraphProperties?.Justification?.Val?.ToString();
-            if (alignment == "center")
-            {
-                xEmu += Math.Max(0, contentWidthEmu - widthEmu) / 2;
-            }
-            else if (alignment == "right")
-            {
-                xEmu += Math.Max(0, contentWidthEmu - widthEmu);
-            }
+            var (xEmu, yEmu) = DrawingPosition(
+                drawing,
+                context.Page,
+                paragraph.ParagraphProperties?.Justification?.Val?.ToString(),
+                widthEmu,
+                heightEmu);
 
             yield return Message(output =>
             {
@@ -416,7 +411,8 @@ internal static class DocxDocumentProtoReader
     private static byte[]? WriteChartReferenceElement(
         W.Drawing drawing,
         DocxReadContext context,
-        OpenXmlPartContainer partContainer)
+        OpenXmlPartContainer partContainer,
+        W.Paragraph paragraph)
     {
         var chartReference = drawing.Descendants<C.ChartReference>().FirstOrDefault();
         var relationshipId = chartReference?.Id?.Value;
@@ -432,22 +428,108 @@ internal static class DocxDocumentProtoReader
 
         context.AddChart(chartPart);
         var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
-        var anchor = drawing.GetFirstChild<DW.Anchor>();
-        var xEmu = ParseLong(anchor?.HorizontalPosition?.PositionOffset?.Text) ??
-            context.Page.LeftMarginTwips * EmuPerTwip;
-        var yEmu = ParseLong(anchor?.VerticalPosition?.PositionOffset?.Text) ?? 0;
+        var widthEmu = ToLong(extent?.Cx) ?? 0;
+        var heightEmu = ToLong(extent?.Cy) ?? 0;
+        var (xEmu, yEmu) = DrawingPosition(
+            drawing,
+            context.Page,
+            paragraph.ParagraphProperties?.Justification?.Val?.ToString(),
+            widthEmu,
+            heightEmu);
 
         return Message(output =>
         {
             WriteMessage(output, 1, WriteBoundingBox(
                 xEmu,
                 yEmu,
-                ToLong(extent?.Cx) ?? 0,
-                ToLong(extent?.Cy) ?? 0));
+                widthEmu,
+                heightEmu));
             WriteMessage(output, 18, WriteChartReference(chartPart.Uri.OriginalString));
             WriteInt32(output, 11, ElementTypeChartReference);
             WriteString(output, 27, $"element-chart-{context.NextChartElementIndex():x8}");
         });
+    }
+
+    private static (long XEmu, long YEmu) DrawingPosition(
+        W.Drawing drawing,
+        PageMetrics page,
+        string? paragraphAlignment,
+        long widthEmu,
+        long heightEmu)
+    {
+        var anchor = drawing.GetFirstChild<DW.Anchor>();
+        var xEmu = AnchorHorizontalPosition(anchor?.HorizontalPosition, page, widthEmu);
+        var yEmu = AnchorVerticalPosition(anchor?.VerticalPosition, page, heightEmu);
+        xEmu ??= page.LeftMarginTwips * EmuPerTwip;
+        yEmu ??= 0;
+
+        if (anchor is null)
+        {
+            var contentWidthEmu = page.ContentWidthTwips * EmuPerTwip;
+            if (paragraphAlignment == "center")
+            {
+                xEmu += Math.Max(0, contentWidthEmu - widthEmu) / 2;
+            }
+            else if (paragraphAlignment == "right")
+            {
+                xEmu += Math.Max(0, contentWidthEmu - widthEmu);
+            }
+        }
+
+        return (xEmu.Value, yEmu.Value);
+    }
+
+    private static long? AnchorHorizontalPosition(DW.HorizontalPosition? position, PageMetrics page, long widthEmu)
+    {
+        var (originEmu, availableEmu) = HorizontalAnchorFrame(position?.RelativeFrom?.Value.ToString(), page);
+        if (ParseLong(position?.PositionOffset?.Text) is { } offset)
+        {
+            return originEmu + offset;
+        }
+
+        return AnchorAlignedPosition(position?.HorizontalAlignment?.Text, originEmu, availableEmu, widthEmu);
+    }
+
+    private static long? AnchorVerticalPosition(DW.VerticalPosition? position, PageMetrics page, long heightEmu)
+    {
+        var (originEmu, availableEmu) = VerticalAnchorFrame(position?.RelativeFrom?.Value.ToString(), page);
+        if (ParseLong(position?.PositionOffset?.Text) is { } offset)
+        {
+            return originEmu + offset;
+        }
+
+        return AnchorAlignedPosition(position?.VerticalAlignment?.Text, originEmu, availableEmu, heightEmu);
+    }
+
+    private static long? AnchorAlignedPosition(string? alignment, long originEmu, long availableEmu, long extentEmu)
+    {
+        return alignment?.ToLowerInvariant() switch
+        {
+            "center" => originEmu + Math.Max(0, availableEmu - extentEmu) / 2,
+            "right" or "bottom" => originEmu + Math.Max(0, availableEmu - extentEmu),
+            "left" or "top" or "inside" or "outside" => originEmu,
+            _ => null,
+        };
+    }
+
+    private static (long OriginEmu, long AvailableEmu) HorizontalAnchorFrame(string? relativeFrom, PageMetrics page)
+    {
+        return relativeFrom?.ToLowerInvariant() switch
+        {
+            "page" => (0, page.WidthTwips * EmuPerTwip),
+            "margin" or "column" => (page.LeftMarginTwips * EmuPerTwip, page.ContentWidthTwips * EmuPerTwip),
+            _ => (page.LeftMarginTwips * EmuPerTwip, page.ContentWidthTwips * EmuPerTwip),
+        };
+    }
+
+    private static (long OriginEmu, long AvailableEmu) VerticalAnchorFrame(string? relativeFrom, PageMetrics page)
+    {
+        return relativeFrom?.ToLowerInvariant() switch
+        {
+            "page" => (0, page.HeightTwips * EmuPerTwip),
+            "margin" => (page.TopMarginTwips * EmuPerTwip, page.ContentHeightTwips * EmuPerTwip),
+            _ => (0, page.ContentHeightTwips * EmuPerTwip),
+        };
     }
 
     private static byte[] WriteParagraphElement(byte[] paragraph)
@@ -461,6 +543,7 @@ internal static class DocxDocumentProtoReader
 
     private static byte[] WriteTableElement(W.Table table, DocxReadContext context, OpenXmlPartContainer partContainer)
     {
+        var tableWidthTwips = TableWidthTwips(table, context.Page) ?? context.Page.ContentWidthTwips;
         return Message(output =>
         {
             WriteMessage(
@@ -469,7 +552,7 @@ internal static class DocxDocumentProtoReader
                 WriteBoundingBox(
                     context.Page.LeftMarginTwips * EmuPerTwip,
                     0,
-                    context.Page.ContentWidthTwips * EmuPerTwip,
+                    tableWidthTwips * EmuPerTwip,
                     0));
             WriteInt32(output, 11, ElementTypeTable);
             WriteMessage(output, 21, WriteTable(table, context, partContainer));
@@ -485,14 +568,10 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 1, WriteTableRow(row, context, partContainer));
             }
 
-            var gridWidths = table.GetFirstChild<W.TableGrid>()?.Elements<W.GridColumn>()
-                .Select(column => IntFromString(column.Width?.Value))
-                .Where(width => width is > 0)
-                .Select(width => width!.Value)
-                .ToList() ?? [];
+            var gridWidths = TableGridWidths(table);
             if (gridWidths.Count == 0)
             {
-                var width = IntFromString(table.GetFirstChild<W.TableProperties>()?.TableWidth?.Width?.Value);
+                var width = TableWidthTwips(table, context.Page);
                 if (width is > 0)
                 {
                     gridWidths.Add(width.Value);
@@ -545,8 +624,39 @@ internal static class DocxDocumentProtoReader
         });
     }
 
+    private static int? TableWidthTwips(W.Table table, PageMetrics page)
+    {
+        var gridTotal = TableGridWidths(table).Sum();
+        if (gridTotal > 0)
+        {
+            return gridTotal;
+        }
+
+        var tableWidth = table.GetFirstChild<W.TableProperties>()?.TableWidth;
+        var rawWidth = IntFromString(tableWidth?.Width?.Value);
+        if (rawWidth is not > 0)
+        {
+            return null;
+        }
+
+        var widthType = tableWidth?.Type?.Value.ToString();
+        return string.Equals(widthType, "pct", StringComparison.OrdinalIgnoreCase)
+            ? (int)Math.Round(page.ContentWidthTwips * rawWidth.Value / 5000d)
+            : rawWidth.Value;
+    }
+
+    private static List<int> TableGridWidths(W.Table table)
+    {
+        return table.GetFirstChild<W.TableGrid>()?.Elements<W.GridColumn>()
+            .Select(column => IntFromString(column.Width?.Value))
+            .Where(width => width is > 0)
+            .Select(width => width!.Value)
+            .ToList() ?? [];
+    }
+
     private static IEnumerable<byte[]> ExtractTextStyles(MainDocumentPart mainPart)
     {
+        var defaultParagraphSpacing = ExtractDefaultParagraphSpacing(mainPart);
         foreach (var style in mainPart.StyleDefinitionsPart?.Styles?.Elements<W.Style>() ?? Enumerable.Empty<W.Style>())
         {
             if (style.Type?.Value != W.StyleValues.Paragraph)
@@ -571,7 +681,7 @@ internal static class DocxDocumentProtoReader
                     WriteMessage(output, 4, textStyle);
                 }
 
-                var paragraphStyle = WriteParagraphStyle(style.StyleParagraphProperties);
+                var paragraphStyle = WriteParagraphStyle(style.StyleParagraphProperties, defaultParagraphSpacing);
                 if (paragraphStyle is not null)
                 {
                     WriteMessage(output, 5, paragraphStyle);
@@ -579,8 +689,9 @@ internal static class DocxDocumentProtoReader
 
                 WriteString(output, 6, style.BasedOn?.Val?.Value);
                 WriteString(output, 8, style.NextParagraphStyle?.Val?.Value);
-                WriteInt32(output, 9, IntFromString(style.StyleParagraphProperties?.SpacingBetweenLines?.Before?.Value));
-                WriteInt32(output, 10, IntFromString(style.StyleParagraphProperties?.SpacingBetweenLines?.After?.Value));
+                var spacing = ParagraphStyleSpacingFrom(style.StyleParagraphProperties).WithFallback(defaultParagraphSpacing);
+                WriteInt32IfPresent(output, 9, spacing.Before);
+                WriteInt32IfPresent(output, 10, spacing.After);
             });
         }
     }
@@ -593,9 +704,15 @@ internal static class DocxDocumentProtoReader
             yield break;
         }
 
-        var abstractNums = numbering.Elements<W.AbstractNum>()
-            .Where(item => item.AbstractNumberId?.Value is not null)
-            .ToDictionary(item => item.AbstractNumberId!.Value!.ToString(), item => item);
+        var abstractNums = new Dictionary<string, W.AbstractNum>(StringComparer.Ordinal);
+        foreach (var abstractNum in numbering.Elements<W.AbstractNum>())
+        {
+            var abstractNumId = abstractNum.AbstractNumberId?.InnerText;
+            if (!string.IsNullOrEmpty(abstractNumId))
+            {
+                abstractNums.TryAdd(abstractNumId, abstractNum);
+            }
+        }
 
         foreach (var instance in numbering.Elements<W.NumberingInstance>())
         {
@@ -805,11 +922,52 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static byte[] WriteSection(PageMetrics page, W.SectionProperties? sectionProperties, DocxReadContext context)
+    private static IEnumerable<byte[]> ExtractSections(W.Body body, DocxReadContext context)
+    {
+        var fallbackPage = PageMetrics.From(body);
+        var previousPage = fallbackPage;
+        var index = 1;
+        var sectionProperties = DocumentSectionProperties(body).ToList();
+        if (sectionProperties.Count == 0)
+        {
+            yield return WriteSection("section-1", fallbackPage, LastSectionProperties(body), context);
+            yield break;
+        }
+
+        foreach (var section in sectionProperties)
+        {
+            var page = PageMetrics.FromSection(section, previousPage);
+            yield return WriteSection($"section-{index}", page, section, context);
+            previousPage = page;
+            index++;
+        }
+    }
+
+    private static IEnumerable<W.SectionProperties> DocumentSectionProperties(W.Body body)
+    {
+        foreach (var child in body.ChildElements)
+        {
+            if (child is W.Paragraph paragraph &&
+                paragraph.ParagraphProperties?.GetFirstChild<W.SectionProperties>() is { } paragraphSection)
+            {
+                yield return paragraphSection;
+            }
+            else if (child is W.SectionProperties bodySection)
+            {
+                yield return bodySection;
+            }
+        }
+    }
+
+    private static byte[] WriteSection(
+        string id,
+        PageMetrics page,
+        W.SectionProperties? sectionProperties,
+        DocxReadContext context)
     {
         return Message(output =>
         {
-            WriteString(output, 1, "section-1");
+            WriteString(output, 1, id);
             WriteInt32(output, 2, SectionBreakType(sectionProperties));
             WriteMessage(output, 3, Message(pageOutput =>
             {
@@ -830,7 +988,12 @@ internal static class DocxDocumentProtoReader
             {
                 var columns = sectionProperties?.GetFirstChild<W.Columns>();
                 var explicitColumns = columns?.Elements<W.Column>().ToList() ?? [];
-                WriteInt32(columnsOutput, 1, columns is null ? 0 : (int?)columns.ColumnCount?.Value ?? Math.Max(1, explicitColumns.Count));
+                WriteInt32(
+                    columnsOutput,
+                    1,
+                    columns is null
+                        ? 0
+                        : IntFromString(columns.ColumnCount?.InnerText) ?? Math.Max(1, explicitColumns.Count));
                 WriteInt32(columnsOutput, 2, page.ColumnSpaceTwips);
                 foreach (var column in explicitColumns)
                 {
@@ -929,13 +1092,35 @@ internal static class DocxDocumentProtoReader
 
     private static int SectionBreakType(W.SectionProperties? sectionProperties)
     {
-        return sectionProperties?.GetFirstChild<W.SectionType>()?.Val?.Value.ToString() switch
+        var rawType = sectionProperties?.ChildElements
+            .FirstOrDefault(element => element.LocalName == "type")
+            ?.GetAttribute("val", "http://schemas.openxmlformats.org/wordprocessingml/2006/main")
+            .Value;
+        rawType ??= sectionProperties?.GetFirstChild<W.SectionType>()?.Val?.Value.ToString();
+        if (string.IsNullOrEmpty(rawType))
+        {
+            rawType = SectionBreakTypeFromXml(sectionProperties?.OuterXml);
+        }
+        return rawType?.ToLowerInvariant() switch
         {
             "continuous" => SectionBreakContinuous,
             "evenPage" => SectionBreakEvenPage,
             "oddPage" => SectionBreakOddPage,
             _ => SectionBreakNextPage,
         };
+    }
+
+    private static string? SectionBreakTypeFromXml(string? xml)
+    {
+        if (string.IsNullOrEmpty(xml))
+        {
+            return null;
+        }
+
+        if (xml.Contains("continuous", StringComparison.OrdinalIgnoreCase)) return "continuous";
+        if (xml.Contains("evenPage", StringComparison.OrdinalIgnoreCase)) return "evenPage";
+        if (xml.Contains("oddPage", StringComparison.OrdinalIgnoreCase)) return "oddPage";
+        return null;
     }
 
     private static ParagraphNumberingData? ParagraphNumberingFrom(W.Paragraph paragraph, string paragraphId)
@@ -1236,14 +1421,12 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static byte[]? WriteParagraphStyle(W.StyleParagraphProperties? paragraphProperties)
+    private static byte[]? WriteParagraphStyle(
+        W.StyleParagraphProperties? paragraphProperties,
+        ParagraphSpacingData? fallbackSpacing = null)
     {
-        if (paragraphProperties is null)
-        {
-            return null;
-        }
-
-        var linePercent = IntFromString(paragraphProperties.SpacingBetweenLines?.Line?.Value);
+        var linePercent = LineSpacingPercent(paragraphProperties?.SpacingBetweenLines?.Line?.Value) ??
+            fallbackSpacing?.LineSpacingPercent;
         if (linePercent is null)
         {
             return null;
@@ -1251,8 +1434,58 @@ internal static class DocxDocumentProtoReader
 
         return Message(output =>
         {
-            WriteInt32(output, 4, linePercent * 50);
+            WriteInt32(output, 4, linePercent);
         });
+    }
+
+    private static Dictionary<string, ParagraphSpacingData> ExtractParagraphStyleSpacing(MainDocumentPart mainPart)
+    {
+        var defaultSpacing = ExtractDefaultParagraphSpacing(mainPart);
+        var styles = mainPart.StyleDefinitionsPart?.Styles?.Elements<W.Style>() ?? Enumerable.Empty<W.Style>();
+        var spacingByStyle = new Dictionary<string, ParagraphSpacingData>(StringComparer.Ordinal);
+        foreach (var style in styles)
+        {
+            var styleId = style.StyleId?.Value;
+            if (style.Type?.Value == W.StyleValues.Paragraph && !string.IsNullOrEmpty(styleId))
+            {
+                spacingByStyle.TryAdd(
+                    styleId,
+                    ParagraphStyleSpacingFrom(style.StyleParagraphProperties).WithFallback(defaultSpacing));
+            }
+        }
+
+        return spacingByStyle;
+    }
+
+    private static ParagraphSpacingData ParagraphSpacingFrom(W.ParagraphProperties? paragraphProperties)
+    {
+        return ParagraphSpacingFrom(paragraphProperties?.SpacingBetweenLines);
+    }
+
+    private static ParagraphSpacingData ParagraphStyleSpacingFrom(W.StyleParagraphProperties? paragraphProperties)
+    {
+        return ParagraphSpacingFrom(paragraphProperties?.SpacingBetweenLines);
+    }
+
+    private static ParagraphSpacingData ExtractDefaultParagraphSpacing(MainDocumentPart mainPart)
+    {
+        return ParagraphSpacingFrom(
+            mainPart.StyleDefinitionsPart?.Styles?.DocDefaults?.ParagraphPropertiesDefault
+                ?.ParagraphPropertiesBaseStyle?.SpacingBetweenLines);
+    }
+
+    private static ParagraphSpacingData ParagraphSpacingFrom(W.SpacingBetweenLines? spacing)
+    {
+        return new ParagraphSpacingData(
+            IntFromString(spacing?.Before?.Value),
+            IntFromString(spacing?.After?.Value),
+            LineSpacingPercent(spacing?.Line?.Value));
+    }
+
+    private static int? LineSpacingPercent(string? lineValue)
+    {
+        var line = IntFromString(lineValue);
+        return line is null ? null : (int)Math.Round(line.Value * 100000d / 240d);
     }
 
     private static byte[] WriteColorFill(string color)
@@ -1367,7 +1600,46 @@ internal static class DocxDocumentProtoReader
 
     private static int? IntFromString(string? value)
     {
-        return int.TryParse(value, out var parsed) ? parsed : null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+
+        if (!decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue) ||
+            decimalValue < int.MinValue ||
+            decimalValue > int.MaxValue)
+        {
+            return null;
+        }
+
+        return (int)Math.Round(decimalValue, 0, MidpointRounding.AwayFromZero);
+    }
+
+    private static long? LongFromString(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+
+        if (!decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue) ||
+            decimalValue < long.MinValue ||
+            decimalValue > long.MaxValue)
+        {
+            return null;
+        }
+
+        return (long)Math.Round(decimalValue, 0, MidpointRounding.AwayFromZero);
     }
 
     private static long? ToLong(Int64Value? value)
@@ -1375,9 +1647,19 @@ internal static class DocxDocumentProtoReader
         return value?.Value;
     }
 
+    private static int ToInt32(uint? value, int fallback)
+    {
+        return value is null ? fallback : (int)Math.Min(value.Value, int.MaxValue);
+    }
+
+    private static int ToInt32(int? value, int fallback)
+    {
+        return value ?? fallback;
+    }
+
     private static long? ParseLong(string? value)
     {
-        return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        return LongFromString(value);
     }
 
     private static double ParseDouble(string? value)
@@ -1448,6 +1730,17 @@ internal static class DocxDocumentProtoReader
         output.WriteInt32(value.Value);
     }
 
+    private static void WriteInt32IfPresent(CodedOutputStream output, int fieldNumber, int? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteInt32(value.Value);
+    }
+
     private static void WriteInt32Always(CodedOutputStream output, int fieldNumber, int value)
     {
         output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
@@ -1504,6 +1797,7 @@ internal static class DocxDocumentProtoReader
         public Dictionary<string, SortedSet<string>> FootnoteReferenceRunIds { get; } = [];
         public Dictionary<string, ReviewMarkData> ReviewMarks { get; } = [];
         public List<ParagraphNumberingData> ParagraphNumberings { get; } = [];
+        public Dictionary<string, ParagraphSpacingData> ParagraphStyleSpacing { get; } = ExtractParagraphStyleSpacing(mainPart);
         public IEnumerable<string> ActiveCommentIds => _activeCommentIds;
 
         public int NextParagraphIndex() => _paragraphIndex++;
@@ -1550,6 +1844,21 @@ internal static class DocxDocumentProtoReader
             ParagraphNumberings.Add(numbering);
         }
 
+        public ParagraphSpacingData ResolveParagraphSpacing(W.ParagraphProperties? paragraphProperties)
+        {
+            var direct = ParagraphSpacingFrom(paragraphProperties);
+            var styleId = paragraphProperties?.ParagraphStyleId?.Val?.Value;
+            var styleSpacing = !string.IsNullOrEmpty(styleId) &&
+                ParagraphStyleSpacing.TryGetValue(styleId, out var explicitStyleSpacing)
+                    ? explicitStyleSpacing
+                    : ParagraphStyleSpacing.GetValueOrDefault("Normal");
+
+            return new ParagraphSpacingData(
+                direct.Before ?? styleSpacing?.Before,
+                direct.After ?? styleSpacing?.After,
+                direct.LineSpacingPercent ?? styleSpacing?.LineSpacingPercent);
+        }
+
         public void AddChart(ChartPart chartPart)
         {
             Charts.TryAdd(chartPart.Uri.OriginalString, chartPart);
@@ -1591,6 +1900,17 @@ internal static class DocxDocumentProtoReader
 
     private sealed record ParagraphNumberingData(string ParagraphId, string NumId, int Level);
 
+    private sealed record ParagraphSpacingData(int? Before, int? After, int? LineSpacingPercent)
+    {
+        public ParagraphSpacingData WithFallback(ParagraphSpacingData fallback)
+        {
+            return new ParagraphSpacingData(
+                Before ?? fallback.Before,
+                After ?? fallback.After,
+                LineSpacingPercent ?? fallback.LineSpacingPercent);
+        }
+    }
+
     private sealed record ChartSeriesData(
         string Id,
         string Name,
@@ -1612,24 +1932,46 @@ internal static class DocxDocumentProtoReader
     {
         public long ContentWidthTwips => Math.Max(0, WidthTwips - LeftMarginTwips - RightMarginTwips);
 
+        public long ContentHeightTwips => Math.Max(0, HeightTwips - TopMarginTwips - BottomMarginTwips);
+
         public static PageMetrics From(W.Body body)
         {
-            var section = body.Elements<W.SectionProperties>().LastOrDefault() ??
+            var section = body.ChildElements
+                .Select(child => child is W.Paragraph paragraph
+                    ? paragraph.ParagraphProperties?.GetFirstChild<W.SectionProperties>()
+                    : child as W.SectionProperties)
+                .FirstOrDefault(item => item is not null) ??
+                body.Elements<W.SectionProperties>().LastOrDefault() ??
                 body.Descendants<W.SectionProperties>().LastOrDefault();
+            return FromSection(section, new PageMetrics(
+                12_240,
+                15_840,
+                1_440,
+                1_440,
+                1_440,
+                1_440,
+                720,
+                720,
+                0,
+                720));
+        }
+
+        public static PageMetrics FromSection(W.SectionProperties? section, PageMetrics fallback)
+        {
             var pageSize = section?.GetFirstChild<W.PageSize>();
             var margin = section?.GetFirstChild<W.PageMargin>();
             var columns = section?.GetFirstChild<W.Columns>();
             return new PageMetrics(
-                pageSize?.Width?.Value ?? 12_240,
-                pageSize?.Height?.Value ?? 15_840,
-                margin?.Top?.Value ?? 1_440,
-                margin?.Bottom?.Value ?? 1_440,
-                (int)(margin?.Left?.Value ?? 1_440),
-                (int)(margin?.Right?.Value ?? 1_440),
-                (int)(margin?.Header?.Value ?? 720),
-                (int)(margin?.Footer?.Value ?? 720),
-                (int)(margin?.Gutter?.Value ?? 0),
-                IntFromString(columns?.Space?.Value) ?? 720);
+                LongFromString(pageSize?.Width?.InnerText) ?? fallback.WidthTwips,
+                LongFromString(pageSize?.Height?.InnerText) ?? fallback.HeightTwips,
+                IntFromString(margin?.Top?.InnerText) ?? fallback.TopMarginTwips,
+                IntFromString(margin?.Bottom?.InnerText) ?? fallback.BottomMarginTwips,
+                IntFromString(margin?.Left?.InnerText) ?? fallback.LeftMarginTwips,
+                IntFromString(margin?.Right?.InnerText) ?? fallback.RightMarginTwips,
+                IntFromString(margin?.Header?.InnerText) ?? fallback.HeaderTwips,
+                IntFromString(margin?.Footer?.InnerText) ?? fallback.FooterTwips,
+                IntFromString(margin?.Gutter?.InnerText) ?? fallback.GutterTwips,
+                IntFromString(columns?.Space?.InnerText) ?? fallback.ColumnSpaceTwips);
         }
     }
 }

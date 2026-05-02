@@ -14,9 +14,12 @@ type ReaderExports = {
 type DocumentSummary = ReturnType<typeof summarizeDocument>;
 
 type ComparisonResult = {
+  byteComparison: ReturnType<typeof summarizeByteComparison>;
   equivalence: ReturnType<typeof summarizeEquivalence>;
   fixture: string;
+  parity: ReturnType<typeof summarizeParity>;
   routa: DocumentSummary;
+  routaProtocol: string;
   targetProtocol: string;
   walnut: DocumentSummary;
 };
@@ -62,9 +65,12 @@ async function compareFixture(fixturePath: string): Promise<ComparisonResult> {
   const routaDocument = await decodeWalnutDocument(routaProtoBytes);
 
   return {
+    byteComparison: summarizeByteComparison(walnutProtoBytes, routaProtoBytes),
     equivalence: summarizeEquivalence(walnutDocument, routaDocument),
     fixture: path.relative(repoRoot, fixturePath),
+    parity: summarizeParity(summarizeEquivalence(walnutDocument, routaDocument)),
     routa: summarizeDocument(routaDocument, routaProtoBytes),
+    routaProtocol: "oaiproto.coworker.docx.Document",
     targetProtocol: "oaiproto.coworker.docx.Document",
     walnut: summarizeDocument(walnutDocument, walnutProtoBytes),
   };
@@ -152,9 +158,12 @@ function summarizeDocument(document: Record<string, unknown>, protoBytes: Uint8A
     imageDigests: images.map(summarizeImage),
     imageReferenceCount: imageReferenceIds.length,
     imageReferenceIds,
+    imageBboxSignatures: elements.filter((element) => elementImageReferenceIds(element).length > 0).map(summarizeReferenceBbox),
     missingImageReferenceIds: [...new Set(imageReferenceIds.filter((id) => !imageIds.has(id)))],
     paragraphCount: paragraphs.length,
+    paragraphSpacingSignatures: paragraphs.map(summarizeParagraphSpacing),
     textRunCount: textRuns.length,
+    textRunStyleSignatures: textRuns.map(summarizeRunStyle),
     hyperlinkCount: textRuns.filter((run) => isRecord(run.hyperlink)).length,
     reviewMarkedRunCount: textRuns.filter((run) => arrayOfStrings(run.reviewMarkIds).length > 0).length,
     footnoteCount: footnotes.length,
@@ -180,6 +189,7 @@ function summarizeDocument(document: Record<string, unknown>, protoBytes: Uint8A
       level: Number(numbering.level ?? 0),
     })),
     tableShapes: elements.filter((element) => isRecord(element.table)).map(summarizeTableShape),
+    tableBboxSignatures: elements.filter((element) => isRecord(element.table)).map(summarizeTableBbox),
     tableColorSignatures: elements.filter((element) => isRecord(element.table)).map(summarizeTableColors),
     firstElements: elements.slice(0, 12).map(summarizeElement),
   };
@@ -193,6 +203,8 @@ function summarizeEquivalence(
   const routaSummary = summarizeDocument(routaDocument, new Uint8Array());
 
   return {
+    sameTopLevelProtocol: true,
+    topLevelKeysMatch: stableJson(walnutSummary.topLevelKeys) === stableJson(routaSummary.topLevelKeys),
     pageSizeMatches:
       walnutSummary.widthEmu === routaSummary.widthEmu &&
       walnutSummary.heightEmu === routaSummary.heightEmu,
@@ -201,10 +213,14 @@ function summarizeEquivalence(
     imageCountMatches: walnutSummary.imageCount === routaSummary.imageCount,
     imageDigestsMatch: stableJson(walnutSummary.imageDigests) === stableJson(routaSummary.imageDigests),
     imageReferenceIdsMatch: stableJson(walnutSummary.imageReferenceIds) === stableJson(routaSummary.imageReferenceIds),
+    imageBboxSignaturesMatch:
+      stableJson(walnutSummary.imageBboxSignatures) === stableJson(routaSummary.imageBboxSignatures),
     imageReferencesResolve: routaSummary.missingImageReferenceIds.length === 0,
     chartCountMatches: walnutSummary.chartCount === routaSummary.chartCount,
     chartReferenceIdsMatch: stableJson(walnutSummary.chartReferenceIds) === stableJson(routaSummary.chartReferenceIds),
     paragraphCountMatches: walnutSummary.paragraphCount === routaSummary.paragraphCount,
+    paragraphSpacingSignaturesMatch:
+      stableJson(walnutSummary.paragraphSpacingSignatures) === stableJson(routaSummary.paragraphSpacingSignatures),
     hyperlinkCountMatches: walnutSummary.hyperlinkCount === routaSummary.hyperlinkCount,
     footnoteCountMatches: walnutSummary.footnoteCount === routaSummary.footnoteCount,
     footnoteReferenceRunIdsMatch:
@@ -214,10 +230,15 @@ function summarizeEquivalence(
       stableJson(walnutSummary.commentReferenceRunIds) === stableJson(routaSummary.commentReferenceRunIds),
     reviewMarkCountMatches: walnutSummary.reviewMarkCount === routaSummary.reviewMarkCount,
     tableShapesMatch: stableJson(walnutSummary.tableShapes) === stableJson(routaSummary.tableShapes),
+    tableBboxSignaturesMatch:
+      stableJson(walnutSummary.tableBboxSignatures) === stableJson(routaSummary.tableBboxSignatures),
     tableColorSignaturesMatch:
       stableJson(walnutSummary.tableColorSignatures) === stableJson(routaSummary.tableColorSignatures),
     textRunCountMatches: walnutSummary.textRunCount === routaSummary.textRunCount,
+    textRunStyleSignaturesMatch:
+      stableJson(walnutSummary.textRunStyleSignatures) === stableJson(routaSummary.textRunStyleSignatures),
     textStyleCountMatches: walnutSummary.textStyleCount === routaSummary.textStyleCount,
+    textStyleIdsMatch: stableJson(walnutSummary.textStyleIds) === stableJson(routaSummary.textStyleIds),
     sectionCountMatches: walnutSummary.sectionCount === routaSummary.sectionCount,
     sectionShapesMatch: stableJson(walnutSummary.sectionShapes) === stableJson(routaSummary.sectionShapes),
     numberingDefinitionCountMatches:
@@ -228,13 +249,41 @@ function summarizeEquivalence(
 }
 
 function assertEquivalence(result: ComparisonResult): void {
-  const failed = Object.entries(result.equivalence)
-    .filter(([, value]) => typeof value === "boolean" && !value)
-    .map(([key]) => key);
+  const failed = requiredSemanticChecks(result.equivalence);
 
   if (failed.length > 0) {
     throw new Error(`${result.fixture} DOCX parity failed: ${failed.join(", ")}`);
   }
+}
+
+function summarizeParity(equivalence: ReturnType<typeof summarizeEquivalence>) {
+  const checks = Object.entries(equivalence).filter(([, value]) => typeof value === "boolean");
+  const failedChecks = checks.filter(([, value]) => value !== true).map(([key]) => key);
+  return {
+    failedChecks,
+    passedChecks: checks.length - failedChecks.length,
+    semanticParityPercent: checks.length === 0 ? 100 : Number((((checks.length - failedChecks.length) / checks.length) * 100).toFixed(2)),
+    totalChecks: checks.length,
+  };
+}
+
+function summarizeByteComparison(walnutProtoBytes: Uint8Array, routaProtoBytes: Uint8Array) {
+  return {
+    byteLengthDelta: routaProtoBytes.length - walnutProtoBytes.length,
+    protoBytesExactMatch:
+      walnutProtoBytes.length === routaProtoBytes.length &&
+      sha256(walnutProtoBytes) === sha256(routaProtoBytes),
+    routaByteLength: routaProtoBytes.length,
+    routaSha256: sha256(routaProtoBytes),
+    walnutByteLength: walnutProtoBytes.length,
+    walnutSha256: sha256(walnutProtoBytes),
+  };
+}
+
+function requiredSemanticChecks(equivalence: ReturnType<typeof summarizeEquivalence>): string[] {
+  return Object.entries(equivalence)
+    .filter(([, value]) => typeof value === "boolean" && !value)
+    .map(([key]) => key);
 }
 
 function summarizeElement(element: Record<string, unknown>) {
@@ -291,6 +340,28 @@ function summarizeTableColors(element: Record<string, unknown>) {
   );
 }
 
+function summarizeTableBbox(element: Record<string, unknown>) {
+  const bbox = asRecord(element.bbox) ?? {};
+  return {
+    heightEmu: numericOrZero(bbox.heightEmu),
+    tableTextHash: sha256(new TextEncoder().encode(collectTextPreview(asRecord(element.table) ?? {}))),
+    widthEmu: numericOrZero(bbox.widthEmu),
+    xEmu: numericOrZero(bbox.xEmu),
+    yEmu: numericOrZero(bbox.yEmu),
+  };
+}
+
+function summarizeReferenceBbox(element: Record<string, unknown>) {
+  const bbox = asRecord(element.bbox) ?? {};
+  return {
+    heightEmu: numericOrZero(bbox.heightEmu),
+    referenceIds: elementImageReferenceIds(element).concat(elementChartReferenceIds(element)).sort(),
+    widthEmu: numericOrZero(bbox.widthEmu),
+    xEmu: numericOrZero(bbox.xEmu),
+    yEmu: numericOrZero(bbox.yEmu),
+  };
+}
+
 function elementTypeKey(element: Record<string, unknown>): string {
   if (element.type != null) {
     return String(element.type);
@@ -336,6 +407,28 @@ function paragraphText(paragraph: Record<string, unknown>): string {
   return arrayOfRecords(paragraph.runs)
     .map((run) => typeof run.text === "string" ? run.text : "")
     .join("");
+}
+
+function summarizeParagraphSpacing(paragraph: Record<string, unknown>) {
+  return {
+    spaceAfter: numericOrNull(paragraph.spaceAfter),
+    spaceBefore: numericOrNull(paragraph.spaceBefore),
+    styleId: stringValue(paragraph.styleId),
+    textHash: sha256(new TextEncoder().encode(paragraphText(paragraph))),
+  };
+}
+
+function summarizeRunStyle(run: Record<string, unknown>) {
+  const textStyle = asRecord(run.textStyle) ?? {};
+  return {
+    bold: booleanOrNull(textStyle.bold),
+    fill: fillColorSignature(textStyle.fill),
+    fontSize: numericOrNull(textStyle.fontSize),
+    italic: booleanOrNull(textStyle.italic),
+    textHash: sha256(new TextEncoder().encode(typeof run.text === "string" ? run.text : "")),
+    typeface: stringValue(textStyle.typeface),
+    underline: stringValue(textStyle.underline),
+  };
 }
 
 function elementImageReferenceIds(element: Record<string, unknown>): string[] {
@@ -462,7 +555,23 @@ function bytesFromUnknown(value: unknown): Uint8Array {
 }
 
 function stableJson(value: unknown): string {
-  return JSON.stringify(value);
+  return JSON.stringify(sortForJson(value));
+}
+
+function sortForJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortForJson);
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortForJson(value[key])]),
+  );
 }
 
 function moduleWithExport(module: unknown, exportName: string): Record<string, unknown> {
@@ -512,6 +621,22 @@ function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
 
 function arrayOfStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function numericOrNull(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function numericOrZero(value: unknown): number {
+  return typeof value === "number" ? value : 0;
+}
+
+function booleanOrNull(value: unknown): boolean | null {
+  return value === true ? true : null;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

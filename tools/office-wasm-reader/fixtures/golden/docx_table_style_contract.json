@@ -1,0 +1,57 @@
+{
+  "elementCount": 1,
+  "elementTypes": {
+    "9": 1
+  },
+  "heightEmu": 15840,
+  "imageCount": 0,
+  "images": [],
+  "numberingDefinitionCount": 0,
+  "protocol": "oaiproto.coworker.docx.Document",
+  "sectionCount": 1,
+  "tableCount": 1,
+  "tableShapes": [
+    {
+      "rowCount": 3,
+      "cellCounts": [
+        2,
+        2,
+        2
+      ],
+      "preview": [
+        [
+          "Header A | Header A",
+          "Header B | Header B"
+        ],
+        [
+          "Band A1 | Band A1",
+          "Band B1 | Band B1"
+        ],
+        [
+          "Total A | Total A",
+          "Total B | Total B"
+        ]
+      ]
+    }
+  ],
+  "textStyleCount": 1,
+  "textStyleIds": [
+    "Normal"
+  ],
+  "previewElements": [
+    {
+      "bbox": {
+        "xEmu": 914400,
+        "widthEmu": 3048000
+      },
+      "hasImageReference": false,
+      "hasTable": true,
+      "paragraphCount": 6,
+      "textPreview": "Header A Header B Band A1 Band B1 Total A Total B",
+      "type": 9
+    }
+  ],
+  "wasmProtoByteLength": 619,
+  "wasmProtoSha256": "99856562a5b2bff2723662c21fe28f34a0c7a82ec1444dfd8691c3c4fd6d2ea1",
+  "widthEmu": 12240
+}

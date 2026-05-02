@@ -48,6 +48,21 @@ const fixtureCases: FixtureCase[] = [
     path: path.join(fixturesDir, "docx_advanced_contract.docx"),
   },
   {
+    kind: "docx",
+    name: "docx_style_section_contract",
+    path: path.join(fixturesDir, "docx_style_section_contract.docx"),
+  },
+  {
+    kind: "docx",
+    name: "docx_table_style_contract",
+    path: path.join(fixturesDir, "docx_table_style_contract.docx"),
+  },
+  {
+    kind: "docx",
+    name: "docx_anchor_layout_contract",
+    path: path.join(fixturesDir, "docx_anchor_layout_contract.docx"),
+  },
+  {
     kind: "xlsx",
     name: "complex_excel_renderer_test",
     path: path.join(fixturesDir, "complex_excel_renderer_test.xlsx"),
