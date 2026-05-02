@@ -21,11 +21,11 @@ import {
 } from "./office-preview-utils";
 import {
   buildSpreadsheetConditionalVisuals,
-  protocolColorToCss,
   type SpreadsheetCellVisual,
 } from "./spreadsheet-conditional-visuals";
 import { buildSpreadsheetCharts, SpreadsheetChartLayer } from "./spreadsheet-charts";
 import { SpreadsheetFrozenHeaders } from "./spreadsheet-frozen-headers";
+import { buildSpreadsheetShapes, SpreadsheetShapeLayer } from "./spreadsheet-shapes";
 import {
   buildSpreadsheetLayout,
   SPREADSHEET_COLUMN_HEADER_HEIGHT,
@@ -33,22 +33,9 @@ import {
   SPREADSHEET_ROW_HEADER_WIDTH,
   spreadsheetCellKey,
   spreadsheetColumnLeft,
-  spreadsheetEmuToPx,
   type SpreadsheetLayout,
   spreadsheetRowTop,
 } from "./spreadsheet-layout";
-
-type SpreadsheetShapeSpec = {
-  fill: string;
-  geometry: string;
-  height: number;
-  id: string;
-  left: number;
-  line: string;
-  text: string;
-  top: number;
-  width: number;
-};
 
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
@@ -552,40 +539,6 @@ function defaultSpreadsheetSheetIndex(sheets: RecordValue[]): number {
   return readmeFirst ? 1 : 0;
 }
 
-function buildSpreadsheetShapes({
-  activeSheet,
-  layout,
-  shapes,
-}: {
-  activeSheet: RecordValue | undefined;
-  layout: SpreadsheetLayout;
-  shapes: RecordValue[];
-}): SpreadsheetShapeSpec[] {
-  const sheetName = asString(activeSheet?.name);
-  return shapes
-    .filter((shape) => asString(shape.sheetName) === sheetName)
-    .map((shape, index) => {
-      const fromCol = asNumber(shape.fromCol, 0);
-      const fromRow = asNumber(shape.fromRow, 0);
-      const left = spreadsheetColumnLeft(layout, fromCol) + spreadsheetEmuToPx(shape.fromColOffsetEmu);
-      const top = spreadsheetRowTop(layout, fromRow) + spreadsheetEmuToPx(shape.fromRowOffsetEmu);
-      const width = Math.max(24, spreadsheetEmuToPx(shape.widthEmu));
-      const height = Math.max(24, spreadsheetEmuToPx(shape.heightEmu));
-
-      return {
-        fill: protocolColorToCss(shape.fillColor) ?? "#ffffff",
-        geometry: asString(shape.geometry),
-        height,
-        id: asString(shape.id) || `shape-${index}`,
-        left,
-        line: protocolColorToCss(shape.lineColor) ?? "#cbd5e1",
-        text: asString(shape.text),
-        top,
-        width,
-      };
-    });
-}
-
 function spreadsheetFontFamily(typeface: string): string {
   const normalized = typeface.trim();
   if (!normalized) return SPREADSHEET_FONT_FAMILY;
@@ -698,46 +651,6 @@ function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVis
         />
       ))}
     </span>
-  );
-}
-
-function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec[] }) {
-  if (shapes.length === 0) return null;
-
-  return (
-    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 4 }}>
-      {shapes.map((shape) => (
-        <div
-          data-office-shape={shape.id}
-          key={shape.id}
-          style={{
-            alignItems: "center",
-            background: shape.fill,
-            borderColor: shape.line,
-            borderRadius: shape.geometry === "roundRect" ? 18 : 0,
-            borderStyle: "solid",
-            borderWidth: 1,
-            color: "#0f172a",
-            display: "flex",
-            fontFamily: SPREADSHEET_FONT_FAMILY,
-            fontSize: 13,
-            height: shape.height,
-            justifyContent: "center",
-            left: shape.left,
-            lineHeight: 1.35,
-            overflow: "hidden",
-            padding: 12,
-            position: "absolute",
-            textAlign: "center",
-            top: shape.top,
-            whiteSpace: "pre-wrap",
-            width: shape.width,
-          }}
-        >
-          {shape.text}
-        </div>
-      ))}
-    </div>
   );
 }
 
