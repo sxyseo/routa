@@ -69,6 +69,12 @@ internal static class XlsxWorkbookProtoReader
             {
                 WriteMessage(output, 5, WriteWorkbookImage(image));
             }
+
+            var definedNames = WriteDefinedNames(workbookPart.Workbook.DefinedNames);
+            if (definedNames is not null)
+            {
+                WriteMessage(output, 26, definedNames);
+            }
         });
     }
 
@@ -264,6 +270,46 @@ internal static class XlsxWorkbookProtoReader
         {
             WriteInt32(output, 1, (int)(column.Id?.Value ?? 0));
             WriteString(output, 2, column.Name?.Value ?? "");
+        });
+    }
+
+    private static byte[]? WriteDefinedNames(S.DefinedNames? definedNames)
+    {
+        var names = definedNames?.Elements<S.DefinedName>().ToArray() ?? [];
+        if (names.Length == 0)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            foreach (var name in names)
+            {
+                WriteMessage(output, 1, WriteDefinedName(name));
+            }
+        });
+    }
+
+    private static byte[] WriteDefinedName(S.DefinedName definedName)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, definedName.Name?.Value ?? "");
+            WriteString(output, 2, TextNormalization.Clean(definedName.Text));
+            WriteInt32Value(output, 3, Int32Attribute(definedName, "localSheetId"));
+            WriteBoolValue(output, 4, BoolAttribute(definedName, "hidden"));
+            WriteString(output, 5, AttributeValue(definedName, "comment"));
+            WriteString(output, 6, AttributeValue(definedName, "description"));
+            WriteString(output, 7, AttributeValue(definedName, "customMenu"));
+            WriteString(output, 8, AttributeValue(definedName, "help"));
+            WriteString(output, 9, AttributeValue(definedName, "statusBar"));
+            WriteString(output, 10, AttributeValue(definedName, "shortcutKey"));
+            WriteBoolValue(output, 11, BoolAttribute(definedName, "function"));
+            WriteBoolValue(output, 12, BoolAttribute(definedName, "vbProcedure"));
+            WriteInt32Value(output, 13, Int32Attribute(definedName, "functionGroupId"));
+            WriteBoolValue(output, 14, BoolAttribute(definedName, "publishToServer"));
+            WriteBoolValue(output, 15, BoolAttribute(definedName, "workbookParameter"));
+            WriteBoolValue(output, 16, BoolAttribute(definedName, "xlm"));
         });
     }
 
@@ -2067,6 +2113,23 @@ internal static class XlsxWorkbookProtoReader
             : null;
     }
 
+    private static int? Int32Attribute(OpenXmlElement element, string localName)
+    {
+        var value = AttributeValue(element, localName);
+        if (value.Length == 0)
+        {
+            return null;
+        }
+
+        return int.TryParse(
+            value,
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+            ? parsed
+            : null;
+    }
+
     private static bool? BoolAttribute(OpenXmlElement element, string localName)
     {
         var value = AttributeValue(element, localName);
@@ -2189,6 +2252,17 @@ internal static class XlsxWorkbookProtoReader
     {
         output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
         output.WriteInt32(value);
+    }
+
+    private static void WriteInt32Value(CodedOutputStream output, int fieldNumber, int? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteInt32(value.Value);
     }
 
     private static void WriteInt64(CodedOutputStream output, int fieldNumber, long value)
