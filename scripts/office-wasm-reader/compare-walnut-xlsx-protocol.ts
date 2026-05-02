@@ -214,7 +214,7 @@ function summarizeWalnutSheet(sheet: Record<string, unknown>) {
     mergedRangeCount: arrayOfRecords(sheet.mergedCells).length,
     tableCount: arrayOfRecords(sheet.tables).length,
     conditionalFormatCount: arrayOfRecords(sheet.conditionalFormattings).length,
-    dataValidationCount: arrayOfRecords(sheet.dataValidations).length,
+    dataValidationCount: dataValidationItems(sheet.dataValidations).length,
     drawingCount: arrayOfRecords(sheet.drawings).length,
     chartDrawingCount: arrayOfRecords(sheet.drawings).filter((drawing) => isRecord(drawing.chart)).length,
     shapeDrawingCount: arrayOfRecords(sheet.drawings).filter((drawing) => isRecord(drawing.shape)).length,
@@ -475,6 +475,11 @@ function stringValue(value: unknown): string {
 
 function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function dataValidationItems(value: unknown): Array<Record<string, unknown>> {
+  const record = asRecord(value);
+  return record ? arrayOfRecords(record.items) : arrayOfRecords(value);
 }
 
 function arrayOfStrings(value: unknown): string[] {

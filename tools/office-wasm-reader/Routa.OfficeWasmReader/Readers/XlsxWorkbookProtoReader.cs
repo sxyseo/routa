@@ -130,6 +130,12 @@ internal static class XlsxWorkbookProtoReader
             {
                 WriteMessage(output, 15, WriteTable(tablePart.Table));
             }
+
+            var dataValidations = worksheetPart.Worksheet.Elements<S.DataValidations>().FirstOrDefault();
+            if (dataValidations is not null)
+            {
+                WriteMessage(output, 28, WriteDataValidations(dataValidations));
+            }
         });
     }
 
@@ -299,6 +305,72 @@ internal static class XlsxWorkbookProtoReader
             {
                 WriteMessage(output, 2, WriteFilterColumn(column));
             }
+        });
+    }
+
+    private static byte[] WriteDataValidations(S.DataValidations dataValidations)
+    {
+        return Message(output =>
+        {
+            foreach (var validation in dataValidations.Elements<S.DataValidation>())
+            {
+                WriteMessage(output, 1, WriteDataValidation(validation));
+            }
+        });
+    }
+
+    private static byte[] WriteDataValidation(S.DataValidation validation)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, validation.SequenceOfReferences?.InnerText ?? "");
+            if (validation.Type?.Value is { })
+            {
+                WriteInt32(output, 2, DataValidationType(EnumText(validation.Type)));
+            }
+
+            if (validation.ErrorStyle?.Value is { })
+            {
+                WriteInt32(output, 3, DataValidationErrorStyle(EnumText(validation.ErrorStyle)));
+            }
+
+            if (validation.ImeMode?.Value is { })
+            {
+                WriteInt32(output, 4, DataValidationImeMode(EnumText(validation.ImeMode)));
+            }
+
+            if (validation.Operator?.Value is { })
+            {
+                WriteInt32(output, 5, DataValidationOperator(EnumText(validation.Operator)));
+            }
+
+            if (validation.AllowBlank?.Value is { } allowBlank)
+            {
+                WriteBool(output, 6, allowBlank);
+            }
+
+            if (validation.ShowDropDown?.Value is { } showDropDown)
+            {
+                WriteBool(output, 7, showDropDown);
+            }
+
+            if (validation.ShowInputMessage?.Value is { } showInputMessage)
+            {
+                WriteBool(output, 8, showInputMessage);
+            }
+
+            if (validation.ShowErrorMessage?.Value is { } showErrorMessage)
+            {
+                WriteBool(output, 9, showErrorMessage);
+            }
+
+            WriteString(output, 10, validation.ErrorTitle?.Value ?? "");
+            WriteString(output, 11, validation.Error?.Value ?? "");
+            WriteString(output, 12, validation.PromptTitle?.Value ?? "");
+            WriteString(output, 13, validation.Prompt?.Value ?? "");
+            WriteString(output, 14, TextNormalization.Clean(validation.Elements<S.Formula1>().FirstOrDefault()?.Text));
+            WriteString(output, 15, TextNormalization.Clean(validation.Elements<S.Formula2>().FirstOrDefault()?.Text));
+            WriteString(output, 16, ExtendedAttributeValue(validation, "uid"));
         });
     }
 
@@ -1579,6 +1651,68 @@ internal static class XlsxWorkbookProtoReader
         return 1;
     }
 
+    private static int DataValidationType(string value)
+    {
+        return value switch
+        {
+            "none" => 1,
+            "whole" => 2,
+            "decimal" => 3,
+            "list" => 4,
+            "date" => 5,
+            "time" => 6,
+            "textLength" => 7,
+            "custom" => 8,
+            _ => 0,
+        };
+    }
+
+    private static int DataValidationErrorStyle(string value)
+    {
+        return value switch
+        {
+            "stop" => 1,
+            "warning" => 2,
+            "information" => 3,
+            _ => 0,
+        };
+    }
+
+    private static int DataValidationImeMode(string value)
+    {
+        return value switch
+        {
+            "noControl" => 1,
+            "off" => 2,
+            "on" => 3,
+            "disabled" => 4,
+            "hiragana" => 5,
+            "fullKatakana" => 6,
+            "halfKatakana" => 7,
+            "fullAlpha" => 8,
+            "halfAlpha" => 9,
+            "fullHangul" => 10,
+            "halfHangul" => 11,
+            _ => 0,
+        };
+    }
+
+    private static int DataValidationOperator(string value)
+    {
+        return value switch
+        {
+            "between" => 1,
+            "notBetween" => 2,
+            "equal" => 3,
+            "notEqual" => 4,
+            "lessThan" => 5,
+            "lessThanOrEqual" => 6,
+            "greaterThan" => 7,
+            "greaterThanOrEqual" => 8,
+            _ => 0,
+        };
+    }
+
     private static int CellDataType(S.Cell cell, string text)
     {
         if (cell.DataType?.Value == S.CellValues.SharedString) return 3;
@@ -1614,6 +1748,11 @@ internal static class XlsxWorkbookProtoReader
     private static string EnumText(OpenXmlSimpleType? value)
     {
         return value?.InnerText ?? "";
+    }
+
+    private static string ExtendedAttributeValue(OpenXmlElement element, string localName)
+    {
+        return element.ExtendedAttributes.FirstOrDefault(attribute => attribute.LocalName == localName).Value ?? "";
     }
 
     private static int? ToInt32(Int64Value? value)

@@ -201,7 +201,7 @@ function summarizeSheetRenderContract(sheet: Record<string, unknown>) {
     baseColWidth: numberValue(sheet.baseColWidth),
     columns: arrayOfRecords(sheet.columns).map(summarizeColumnLayout),
     conditionalFormattings: arrayOfRecords(sheet.conditionalFormattings).map(summarizeConditionalFormatting),
-    dataValidations: arrayOfRecords(sheet.dataValidations).map(summarizeDataValidation),
+    dataValidations: dataValidationItems(sheet.dataValidations).map(summarizeDataValidation),
     defaultColWidth: numberValue(sheet.defaultColWidth),
     defaultRowHeight: numberValue(sheet.defaultRowHeight),
     drawings,
@@ -912,6 +912,11 @@ function primitiveValue(value: unknown): string | number | boolean | null {
 
 function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function dataValidationItems(value: unknown): Array<Record<string, unknown>> {
+  const record = asRecord(value);
+  return record ? arrayOfRecords(record.items) : arrayOfRecords(value);
 }
 
 function arrayOfPrimitiveValues(value: unknown): Array<string | number | boolean | null> {
