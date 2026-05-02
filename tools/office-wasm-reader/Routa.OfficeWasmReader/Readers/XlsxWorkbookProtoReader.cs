@@ -1126,15 +1126,15 @@ internal static class XlsxWorkbookProtoReader
                 continue;
             }
 
-            foreach (var imagePart in drawingPart.ImageParts)
+            foreach (var anchor in drawingPart.WorksheetDrawing?.ChildElements ?? [])
             {
-                var imageId = imagePart.Uri.OriginalString;
-                if (string.IsNullOrEmpty(imageId) || !seen.Add(imageId))
+                var image = ImageFromAnchor(drawingPart, anchor);
+                if (image is null || !seen.Add(image.Id))
                 {
                     continue;
                 }
 
-                yield return new WorksheetImageReference(imageId, imagePart);
+                yield return image;
                 imageCount += 1;
                 if (imageCount >= OpenXmlReaderLimits.MaxImages)
                 {
