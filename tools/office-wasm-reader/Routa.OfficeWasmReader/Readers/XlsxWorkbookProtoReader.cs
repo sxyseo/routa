@@ -93,6 +93,11 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 22, note);
             }
 
+            foreach (var slicerCache in WorkbookSlicerCaches(workbookPart))
+            {
+                WriteMessage(output, 23, slicerCache);
+            }
+
             foreach (var pivotCache in WorkbookPivotCaches(workbookPart))
             {
                 WriteMessage(output, 24, pivotCache);
@@ -168,6 +173,11 @@ internal static class XlsxWorkbookProtoReader
             foreach (var pivotTablePart in worksheetPart.PivotTableParts)
             {
                 WriteMessage(output, 16, WritePivotTable(pivotTablePart.PivotTableDefinition));
+            }
+
+            foreach (var slicer in WorksheetSlicers(worksheetPart))
+            {
+                WriteMessage(output, 17, slicer);
             }
 
             var sparklineGroups = WriteSparklineGroups(worksheetPart.Worksheet);
@@ -591,6 +601,79 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
+    private static IEnumerable<byte[]> WorksheetSlicers(WorksheetPart worksheetPart)
+    {
+        var anchors = WorksheetSlicerAnchors(worksheetPart)
+            .GroupBy(anchor => anchor.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+        foreach (var slicersPart in worksheetPart.SlicersParts)
+        {
+            foreach (var slicer in slicersPart.Slicers?.Elements() ?? [])
+            {
+                if (!string.Equals(slicer.LocalName, "slicer", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var name = AttributeValue(slicer, "name");
+                anchors.TryGetValue(name, out var anchor);
+                yield return WriteSlicer(slicer, anchor);
+            }
+        }
+    }
+
+    private static IEnumerable<WorksheetSlicerAnchor> WorksheetSlicerAnchors(WorksheetPart worksheetPart)
+    {
+        var worksheetDrawing = worksheetPart.DrawingsPart?.WorksheetDrawing;
+        if (worksheetDrawing is null)
+        {
+            yield break;
+        }
+
+        foreach (var anchor in worksheetDrawing.ChildElements)
+        {
+            var name = AnchorSlicerName(anchor);
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            yield return new WorksheetSlicerAnchor(
+                name,
+                anchor.GetFirstChild<Xdr.FromMarker>(),
+                anchor.GetFirstChild<Xdr.ToMarker>());
+        }
+    }
+
+    private static byte[] WriteSlicer(OpenXmlElement slicer, WorksheetSlicerAnchor? anchor)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, AttributeValue(slicer, "name"));
+            WriteString(output, 2, AttributeValue(slicer, "caption"));
+            WriteString(output, 3, AttributeValue(slicer, "cache"));
+            WriteBoolValue(output, 4, BoolAttribute(slicer, "lockedPosition"));
+            WriteBoolValue(output, 5, BoolAttribute(slicer, "showCaption"));
+            WriteBoolValue(output, 6, BoolAttribute(slicer, "showNoDataItems"));
+
+            if (anchor?.From is not null)
+            {
+                WriteMessage(output, 9, WriteAnchorMarker(anchor.From));
+            }
+
+            if (anchor?.To is not null)
+            {
+                WriteMessage(output, 10, WriteAnchorMarker(anchor.To));
+            }
+
+            WriteInt32Value(output, 11, Int32Attribute(slicer, "cacheId"));
+            WriteDoubleValue(output, 12, DoubleAttribute(slicer, "width"));
+            WriteDoubleValue(output, 13, DoubleAttribute(slicer, "height"));
+            WriteBoolValue(output, 14, BoolAttribute(slicer, "isMultiSelect"));
+        });
+    }
+
     private static byte[] WriteDataValidations(S.DataValidations dataValidations)
     {
         return Message(output =>
@@ -840,6 +923,7 @@ internal static class XlsxWorkbookProtoReader
         var chart = ChartFromAnchor(drawingPart, anchor);
         var image = ImageFromAnchor(drawingPart, anchor);
         var shape = anchor.GetFirstChild<Xdr.Shape>();
+        var isSlicerShape = IsSlicerShape(shape);
         if (chart is null && image is null && shape is null)
         {
             return null;
@@ -860,11 +944,15 @@ internal static class XlsxWorkbookProtoReader
 
             var extentCx = anchor.Extent?.Cx?.Value ?? 0;
             var extentCy = anchor.Extent?.Cy?.Value ?? 0;
-            WriteString(output, 5, extentCx.ToString());
-            WriteString(output, 6, extentCy.ToString());
+            if (!isSlicerShape)
+            {
+                WriteString(output, 5, extentCx.ToString());
+                WriteString(output, 6, extentCy.ToString());
+            }
+
             if (shape is not null)
             {
-                WriteMessage(output, 7, WriteShapeElement(shape, extentCx, extentCy));
+                WriteMessage(output, 7, WriteShapeElement(shape, extentCx, extentCy, isSlicerShape));
             }
         });
     }
@@ -874,6 +962,7 @@ internal static class XlsxWorkbookProtoReader
         var chart = ChartFromAnchor(drawingPart, anchor);
         var image = ImageFromAnchor(drawingPart, anchor);
         var shape = anchor.GetFirstChild<Xdr.Shape>();
+        var isSlicerShape = IsSlicerShape(shape);
         if (chart is null && image is null && shape is null)
         {
             return null;
@@ -896,7 +985,7 @@ internal static class XlsxWorkbookProtoReader
             var extent = anchor.Descendants<A.Extents>().FirstOrDefault();
             var extentCx = extent?.Cx?.Value ?? 0;
             var extentCy = extent?.Cy?.Value ?? 0;
-            if (chart is not null || shape is not null)
+            if ((chart is not null || shape is not null) && !isSlicerShape)
             {
                 WriteString(output, 5, extentCx.ToString());
                 WriteString(output, 6, extentCy.ToString());
@@ -904,7 +993,7 @@ internal static class XlsxWorkbookProtoReader
 
             if (shape is not null)
             {
-                WriteMessage(output, 7, WriteShapeElement(shape, extentCx, extentCy));
+                WriteMessage(output, 7, WriteShapeElement(shape, extentCx, extentCy, isSlicerShape));
             }
         });
     }
@@ -932,6 +1021,27 @@ internal static class XlsxWorkbookProtoReader
 
         var imageId = imagePart.Uri.OriginalString;
         return string.IsNullOrEmpty(imageId) ? null : new WorksheetImageReference(imageId, imagePart);
+    }
+
+    private static string AnchorSlicerName(OpenXmlElement anchor)
+    {
+        return TextNormalization.Clean(anchor
+            .GetFirstChild<Xdr.Shape>()
+            ?.Descendants()
+            .FirstOrDefault(IsDrawingSlicerElement)
+            ?.GetAttribute("name", "")
+            .Value);
+    }
+
+    private static bool IsSlicerShape(Xdr.Shape? shape)
+    {
+        return shape?.Descendants().Any(IsDrawingSlicerElement) == true;
+    }
+
+    private static bool IsDrawingSlicerElement(OpenXmlElement element)
+    {
+        return string.Equals(element.LocalName, "slicer", StringComparison.Ordinal) &&
+            string.Equals(element.NamespaceUri, "http://schemas.microsoft.com/office/drawing/2010/slicer", StringComparison.Ordinal);
     }
 
     private static IEnumerable<WorksheetImageReference> WorkbookImages(WorkbookPart workbookPart)
@@ -962,6 +1072,61 @@ internal static class XlsxWorkbookProtoReader
                 }
             }
         }
+    }
+
+    private static IEnumerable<byte[]> WorkbookSlicerCaches(WorkbookPart workbookPart)
+    {
+        foreach (var slicerCachePart in workbookPart.SlicerCacheParts)
+        {
+            if (slicerCachePart.SlicerCacheDefinition is { } definition)
+            {
+                yield return WriteSlicerCache(definition);
+            }
+        }
+    }
+
+    private static byte[] WriteSlicerCache(OpenXmlElement definition)
+    {
+        var data = ChildByLocalName(definition, "data");
+        var tabular = ChildByLocalName(data, "tabular");
+        var olap = ChildByLocalName(data, "olap");
+        var cacheData = tabular ?? olap;
+
+        return Message(output =>
+        {
+            WriteString(output, 1, AttributeValue(definition, "name"));
+            WriteString(output, 2, AttributeValue(definition, "caption"));
+            WriteString(output, 3, AttributeValue(definition, "sourceName"));
+            if (cacheData is not null)
+            {
+                WriteString(output, 4, "pivot");
+            }
+
+            WriteInt32Value(output, 5, Int32Attribute(cacheData, "pivotCacheId"));
+            WritePackedInt32s(output, 6, SlicerPivotTableIds(definition));
+            WriteString(output, 10, SlicerCrossFilterText(cacheData));
+            WriteString(output, 11, SlicerSortOrderText(cacheData));
+
+            foreach (var item in ChildByLocalName(tabular, "items")?.Elements() ?? [])
+            {
+                if (string.Equals(item.LocalName, "i", StringComparison.Ordinal))
+                {
+                    WriteMessage(output, 12, WriteSlicerCacheItem(item));
+                }
+            }
+        });
+    }
+
+    private static byte[] WriteSlicerCacheItem(OpenXmlElement item)
+    {
+        return Message(output =>
+        {
+            WriteInt32Value(output, 1, Int32Attribute(item, "x"));
+            WriteString(output, 2, AttributeValue(item, "v"));
+            WriteBoolValue(output, 3, BoolAttribute(item, "s"));
+            WriteBoolValue(output, 4, BoolAttribute(item, "d"));
+            WriteBoolValue(output, 5, BoolAttribute(item, "nd"));
+        });
     }
 
     private static IEnumerable<byte[]> WorkbookPivotCaches(WorkbookPart workbookPart)
@@ -1658,22 +1823,40 @@ internal static class XlsxWorkbookProtoReader
             ?? [];
     }
 
-    private static byte[] WriteShapeElement(Xdr.Shape shape, long extentCx, long extentCy)
+    private static byte[] WriteShapeElement(Xdr.Shape shape, long extentCx, long extentCy, bool isSlicerShape)
     {
         var nonVisual = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
         var shapeProperties = shape.ShapeProperties;
         return Message(output =>
         {
             WriteMessage(output, 1, WriteBoundingBox(extentCx, extentCy));
-            WriteMessage(output, 4, WriteShape(shapeProperties));
+            WriteMessage(output, 4, WriteShape(shapeProperties, isSlicerShape));
+            if (isSlicerShape)
+            {
+                WriteMessage(output, 6, WriteEmptyParagraphWithTextStyle());
+            }
+
             foreach (var effect in ExtractEffects(shapeProperties))
             {
                 WriteMessage(output, 15, effect);
             }
 
             WriteString(output, 10, nonVisual?.Name?.Value ?? "");
-            WriteInt32(output, 11, 5);
+            WriteInt32(output, 11, isSlicerShape ? 1 : 5);
+            if (isSlicerShape)
+            {
+                WriteMessageIncludingEmpty(output, 14, Message(_ => { }));
+            }
+
             WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? "");
+        });
+    }
+
+    private static byte[] WriteEmptyParagraphWithTextStyle()
+    {
+        return Message(output =>
+        {
+            WriteMessageIncludingEmpty(output, 2, Message(_ => { }));
         });
     }
 
@@ -1688,13 +1871,13 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
-    private static byte[] WriteShape(OpenXmlElement? shapeProperties)
+    private static byte[] WriteShape(OpenXmlElement? shapeProperties, bool suppressLineStyle = false)
     {
         return Message(output =>
         {
             WriteInt32(output, 1, ShapeGeometry(shapeProperties?.GetFirstChild<A.PresetGeometry>()?.GetAttribute("prst", "").Value));
             WriteMessage(output, 5, WriteSolidFill(shapeProperties?.GetFirstChild<A.SolidFill>()));
-            WriteMessage(output, 6, WriteLine(shapeProperties?.GetFirstChild<A.Outline>()));
+            WriteMessage(output, 6, WriteLine(shapeProperties?.GetFirstChild<A.Outline>(), suppressLineStyle));
         });
     }
 
@@ -1723,7 +1906,7 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
-    private static byte[] WriteLine(A.Outline? line)
+    private static byte[] WriteLine(A.Outline? line, bool suppressLineStyle = false)
     {
         return Message(output =>
         {
@@ -1734,7 +1917,7 @@ internal static class XlsxWorkbookProtoReader
             }
 
             var lineStyle = LineStyle(line);
-            if (lineStyle != 0)
+            if (lineStyle != 0 && !suppressLineStyle)
             {
                 WriteInt32(output, 1, lineStyle);
             }
@@ -2764,10 +2947,30 @@ internal static class XlsxWorkbookProtoReader
             .ToArray() ?? [];
     }
 
+    private static IReadOnlyList<int> SlicerPivotTableIds(OpenXmlElement definition)
+    {
+        return ChildByLocalName(definition, "pivotTables")?.Elements()
+            .Where(table => table.LocalName == "pivotTable")
+            .Select(table => Int32Attribute(table, "tabId"))
+            .Where(id => id is not null)
+            .Select(id => id!.Value)
+            .ToArray() ?? [];
+    }
+
     private static string PivotRefreshedDate(S.PivotCacheDefinition definition)
     {
         var refreshedDate = AttributeValue(definition, "refreshedDate");
         return refreshedDate.Length > 0 ? refreshedDate : AttributeValue(definition, "refreshedDateIso");
+    }
+
+    private static string SlicerCrossFilterText(OpenXmlElement? cacheData)
+    {
+        return AttributeValue(cacheData, "crossFilter").Length == 0 ? "" : "SlicerCacheCrossFilterValues { }";
+    }
+
+    private static string SlicerSortOrderText(OpenXmlElement? cacheData)
+    {
+        return AttributeValue(cacheData, "sortOrder").Length == 0 ? "" : "TabularSlicerCacheSortOrderValues { }";
     }
 
     private static int SparklineType(string? value)
@@ -2808,9 +3011,9 @@ internal static class XlsxWorkbookProtoReader
         return value?.InnerText ?? "";
     }
 
-    private static OpenXmlElement? ChildByLocalName(OpenXmlElement element, string localName)
+    private static OpenXmlElement? ChildByLocalName(OpenXmlElement? element, string localName)
     {
-        return element.Elements().FirstOrDefault(child => child.LocalName == localName);
+        return element?.Elements().FirstOrDefault(child => child.LocalName == localName);
     }
 
     private static string AttributeValue(OpenXmlElement? element, string localName)
@@ -3111,6 +3314,8 @@ internal static class XlsxWorkbookProtoReader
     }
 
     private sealed record WorksheetImageReference(string Id, ImagePart Part);
+
+    private sealed record WorksheetSlicerAnchor(string Name, Xdr.MarkerType? From, Xdr.MarkerType? To);
 
     private sealed record WorksheetCommentSheet(WorksheetPart Part, string SheetName);
 
