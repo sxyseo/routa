@@ -43,6 +43,11 @@ const fixtureCases: FixtureCase[] = [
     path: path.join(fixturesDir, "dll_viewer_solution_test_document.docx"),
   },
   {
+    kind: "docx",
+    name: "docx_advanced_contract",
+    path: path.join(fixturesDir, "docx_advanced_contract.docx"),
+  },
+  {
     kind: "xlsx",
     name: "complex_excel_renderer_test",
     path: path.join(fixturesDir, "complex_excel_renderer_test.xlsx"),

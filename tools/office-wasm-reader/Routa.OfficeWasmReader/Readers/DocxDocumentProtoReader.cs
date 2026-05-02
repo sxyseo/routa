@@ -165,7 +165,8 @@ internal static class DocxDocumentProtoReader
             .Select(run => run!)
             .ToList();
         var hasDrawing = paragraph.Descendants<W.Drawing>().Any();
-        if (runs.Count == 0 && !hasDrawing && !HasParagraphProperties(paragraph))
+        var hasPlaceholderContent = HasParagraphPlaceholderContent(paragraph);
+        if (runs.Count == 0 && !hasDrawing && !hasPlaceholderContent && !HasParagraphProperties(paragraph))
         {
             return null;
         }
@@ -302,12 +303,7 @@ internal static class DocxDocumentProtoReader
 
                     break;
                 }
-                case W.SdtRun sdtRun:
-                    foreach (var run in ExtractRuns(sdtRun.SdtContentRun?.ChildElements ?? [], context, partContainer, hyperlink, reviewMark))
-                    {
-                        yield return run;
-                    }
-
+                case W.SdtRun:
                     break;
                 case W.InsertedRun insertedRun:
                 {
@@ -834,7 +830,7 @@ internal static class DocxDocumentProtoReader
             {
                 var columns = sectionProperties?.GetFirstChild<W.Columns>();
                 var explicitColumns = columns?.Elements<W.Column>().ToList() ?? [];
-                WriteInt32(columnsOutput, 1, (int?)columns?.ColumnCount?.Value ?? Math.Max(1, explicitColumns.Count));
+                WriteInt32(columnsOutput, 1, columns is null ? 0 : (int?)columns.ColumnCount?.Value ?? Math.Max(1, explicitColumns.Count));
                 WriteInt32(columnsOutput, 2, page.ColumnSpaceTwips);
                 foreach (var column in explicitColumns)
                 {
@@ -1311,6 +1307,13 @@ internal static class DocxDocumentProtoReader
         return properties?.ParagraphStyleId is not null ||
             properties?.Justification is not null ||
             properties?.SpacingBetweenLines is not null;
+    }
+
+    private static bool HasParagraphPlaceholderContent(W.Paragraph paragraph)
+    {
+        return paragraph.ChildElements.Any(child => child is W.SdtRun) ||
+            paragraph.Descendants().Any(element =>
+                element.NamespaceUri == "http://schemas.openxmlformats.org/officeDocument/2006/math");
     }
 
     private static string ParagraphText(W.Paragraph paragraph)

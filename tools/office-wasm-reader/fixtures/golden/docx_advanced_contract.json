@@ -1,0 +1,63 @@
+{
+  "elementCount": 6,
+  "elementTypes": {
+    "1": 6
+  },
+  "heightEmu": 15840,
+  "imageCount": 0,
+  "images": [],
+  "numberingDefinitionCount": 0,
+  "protocol": "oaiproto.coworker.docx.Document",
+  "sectionCount": 1,
+  "tableCount": 0,
+  "tableShapes": [],
+  "textStyleCount": 0,
+  "textStyleIds": [],
+  "previewElements": [
+    {
+      "hasImageReference": false,
+      "hasTable": false,
+      "paragraphCount": 1,
+      "textPreview": "Target bookmark text",
+      "type": 1
+    },
+    {
+      "hasImageReference": false,
+      "hasTable": false,
+      "paragraphCount": 1,
+      "textPreview": "Jump to bookmark",
+      "type": 1
+    },
+    {
+      "hasImageReference": false,
+      "hasTable": false,
+      "paragraphCount": 1,
+      "textPreview": "External link",
+      "type": 1
+    },
+    {
+      "hasImageReference": false,
+      "hasTable": false,
+      "paragraphCount": 1,
+      "textPreview": "",
+      "type": 1
+    },
+    {
+      "hasImageReference": false,
+      "hasTable": false,
+      "paragraphCount": 1,
+      "textPreview": "",
+      "type": 1
+    },
+    {
+      "hasImageReference": false,
+      "hasTable": false,
+      "paragraphCount": 1,
+      "textPreview": "After equation",
+      "type": 1
+    }
+  ],
+  "wasmProtoByteLength": 354,
+  "wasmProtoSha256": "df811855c7e6e59c080500165182a1cb67b69256c6a313bfaee089868051088a",
+  "widthEmu": 12240
+}
