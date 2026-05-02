@@ -46,9 +46,13 @@ export function PresentationPreview({
     () => asArray(root?.slides).map(asRecord).filter((slide): slide is RecordValue => slide != null),
     [root],
   );
+  const layouts = useMemo(
+    () => asArray(root?.layouts).map(asRecord).filter((layout): layout is RecordValue => layout != null),
+    [root],
+  );
   const imageSources = useOfficeImageSources(root);
   const imageElements = useLoadedOfficeImages(imageSources);
-  const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements);
+  const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements, layouts);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
   const [thumbnailRailOpen, setThumbnailRailOpen] = useState(false);
@@ -63,8 +67,8 @@ export function PresentationPreview({
   const closeSlideshow = useCallback(() => setIsSlideshowOpen(false), []);
 
   useEffect(() => {
-    void prewarmOfficeFonts(collectPresentationTypefaces(slides));
-  }, [slides]);
+    void prewarmOfficeFonts(collectPresentationTypefaces(slides, layouts));
+  }, [layouts, slides]);
 
   if (slides.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSlides}</p>;
@@ -105,6 +109,7 @@ export function PresentationPreview({
                 className={styles.thumbnailCanvas}
                 fallbackImages={imageElements}
                 fallbackTextOverflow="clip"
+                layouts={layouts}
                 slide={slide}
                 width={THUMBNAIL_WIDTH}
               />
@@ -115,6 +120,7 @@ export function PresentationPreview({
       <SlideStage
         images={imageElements}
         labels={labels}
+        layouts={layouts}
         onPlaySlideshow={openSlideshow}
         slideBitmap={slideBitmaps.get(slideRenderKey(selectedSlide, selectedSlideIndex))}
         slide={selectedSlide}
@@ -125,6 +131,7 @@ export function PresentationPreview({
           activeSlideIndex={selectedSlideIndex}
           images={imageElements}
           labels={labels}
+          layouts={layouts}
           onClose={closeSlideshow}
           setActiveSlideIndex={setActiveSlideIndex}
           slideBitmaps={slideBitmaps}
@@ -138,6 +145,7 @@ export function PresentationPreview({
 function SlideStage({
   images,
   labels,
+  layouts,
   onPlaySlideshow,
   slideBitmap,
   slide,
@@ -145,6 +153,7 @@ function SlideStage({
 }: {
   images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
+  layouts: RecordValue[];
   onPlaySlideshow: () => void;
   slideBitmap?: SlideBitmapSurface;
   slide: RecordValue;
@@ -155,7 +164,7 @@ function SlideStage({
   const stageSize = useElementSize(stageRef);
   const footnote = useMemo(() => slideFootnoteText(slide), [slide]);
   const footnoteHeight = footnoteReservePx(footnote);
-  const frame = getSlideFrameSize(slide);
+  const frame = getSlideFrameSize(slide, layouts);
   const fit = computePresentationFit(
     {
       height: Math.max(1, stageSize.height - (footnote ? footnoteHeight + 18 : 0)),
@@ -168,8 +177,8 @@ function SlideStage({
   const canvasHeight = Math.max(1, fit.height);
   const slideKey = `${asString(slide.id)}-${slideIndex}`;
   const elementTargets = useMemo(
-    () => getPresentationElementTargets(slide, { height: canvasHeight, width: canvasWidth }),
-    [canvasHeight, canvasWidth, slide],
+    () => getPresentationElementTargets(slide, { height: canvasHeight, width: canvasWidth }, layouts),
+    [canvasHeight, canvasWidth, layouts, slide],
   );
   const selectedTarget =
     selection?.slideKey === slideKey ? (elementTargets.find((target) => target.id === selection.elementId) ?? null) : null;
@@ -192,6 +201,7 @@ function SlideStage({
               className={styles.slideCanvas}
               fallbackImages={images}
               fallbackTextOverflow="visible"
+              layouts={layouts}
               slide={slide}
               width={canvasWidth}
             />
@@ -242,6 +252,7 @@ function SlideshowOverlay({
   activeSlideIndex,
   images,
   labels,
+  layouts,
   onClose,
   setActiveSlideIndex,
   slideBitmaps,
@@ -250,6 +261,7 @@ function SlideshowOverlay({
   activeSlideIndex: number;
   images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
+  layouts: RecordValue[];
   onClose: () => void;
   setActiveSlideIndex: (index: number) => void;
   slideBitmaps: ReadonlyMap<string, SlideBitmapSurface>;
@@ -260,7 +272,7 @@ function SlideshowOverlay({
   const didEnterFullscreenRef = useRef(typeof document !== "undefined" && document.fullscreenElement != null);
   const selectedIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
   const slide = slides[selectedIndex] ?? {};
-  const frame = getSlideFrameSize(slide);
+  const frame = getSlideFrameSize(slide, layouts);
   const fit = computePresentationFit(frameSize, frame, { padding: 20 });
   const canvasWidth = Math.max(1, fit.width);
 
@@ -358,6 +370,7 @@ function SlideshowOverlay({
           className={styles.slideshowCanvas}
           fallbackImages={images}
           fallbackTextOverflow="visible"
+          layouts={layouts}
           slide={slide}
           width={canvasWidth}
         />
@@ -372,6 +385,7 @@ function SlideRasterFrame({
   className,
   fallbackImages,
   fallbackTextOverflow,
+  layouts,
   slide,
   width,
 }: {
@@ -380,10 +394,11 @@ function SlideRasterFrame({
   className: string;
   fallbackImages: ReadonlyMap<string, CanvasImageSource>;
   fallbackTextOverflow: PresentationTextOverflow;
+  layouts: RecordValue[];
   slide: RecordValue;
   width: number;
 }) {
-  const frame = getSlideFrameSize(slide);
+  const frame = getSlideFrameSize(slide, layouts);
   const height = Math.max(1, (width / frame.width) * frame.height);
   if (bitmap) {
     return (
@@ -404,6 +419,7 @@ function SlideRasterFrame({
     <SlideCanvasFrame
       className={className}
       images={fallbackImages}
+      layouts={layouts}
       slide={slide}
       textOverflow={fallbackTextOverflow}
       width={width}
@@ -414,18 +430,20 @@ function SlideRasterFrame({
 function SlideCanvasFrame({
   className,
   images,
+  layouts,
   slide,
   textOverflow,
   width,
 }: {
   className: string;
   images: ReadonlyMap<string, CanvasImageSource>;
+  layouts: RecordValue[];
   slide: RecordValue;
   textOverflow: PresentationTextOverflow;
   width: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const frame = getSlideFrameSize(slide);
+  const frame = getSlideFrameSize(slide, layouts);
   const height = Math.max(1, (width / frame.width) * frame.height);
 
   useEffect(() => {
@@ -442,8 +460,8 @@ function SlideCanvasFrame({
     if (!context) return;
 
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    renderPresentationSlide({ context, height, images, slide, textOverflow, width });
-  }, [height, images, slide, textOverflow, width]);
+    renderPresentationSlide({ context, height, images, layouts, slide, textOverflow, width });
+  }, [height, images, layouts, slide, textOverflow, width]);
 
   return (
     <canvas
@@ -459,6 +477,7 @@ function SlideCanvasFrame({
 function useRenderedSlideBitmaps(
   slides: RecordValue[],
   images: ReadonlyMap<string, CanvasImageSource>,
+  layouts: RecordValue[],
 ): ReadonlyMap<string, SlideBitmapSurface> {
   const [bitmaps, setBitmaps] = useState<ReadonlyMap<string, SlideBitmapSurface>>(new Map());
 
@@ -479,7 +498,7 @@ function useRenderedSlideBitmaps(
       for (const [index, slide] of slides.entries()) {
         if (cancelled) return;
 
-        const frame = getSlideFrameSize(slide);
+        const frame = getSlideFrameSize(slide, layouts);
         const width = SLIDE_BITMAP_WIDTH;
         const height = Math.max(1, (width / frame.width) * frame.height);
         const canvas = document.createElement("canvas");
@@ -492,6 +511,7 @@ function useRenderedSlideBitmaps(
           context,
           height,
           images,
+          layouts,
           slide,
           textOverflow: "visible",
           width,
@@ -515,7 +535,7 @@ function useRenderedSlideBitmaps(
         URL.revokeObjectURL(url);
       }
     };
-  }, [images, slides]);
+  }, [images, layouts, slides]);
 
   return bitmaps;
 }

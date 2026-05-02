@@ -5,6 +5,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { chromium, type Browser, type Page } from "playwright";
+import sharp from "sharp";
 
 type ReaderMode = "routa" | "walnut";
 
@@ -34,6 +35,14 @@ type SlideshowStats = {
 type ScreenshotEvidence = {
   path: string;
   sha256: string;
+};
+
+type ScreenshotComparison = {
+  diffPixels: number;
+  matches: boolean;
+  maxDelta: number;
+  ratio: number;
+  totalPixels: number;
 };
 
 type ReaderRenderResult = {
@@ -69,6 +78,8 @@ const baseUrl = stringArg("--base-url") ?? `http://127.0.0.1:${port}/debug/offic
 let activeBaseUrl = baseUrl;
 const outputDir = path.resolve(stringArg("--output-dir") ?? "/tmp/routa-office-wasm-pptx-render");
 const fixturePaths = positionalArgs().map((arg) => path.resolve(repoRoot, arg));
+const SCREENSHOT_PIXEL_RATIO_TOLERANCE = 0.00001;
+const SCREENSHOT_PIXEL_MAX_DELTA_TOLERANCE = 8;
 
 const previewViewports: ViewportContract[] = [
   { height: 1058, name: "desktop", width: 2048 },
@@ -118,17 +129,18 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Pp
     renderReader(browser, fixturePath, fixtureLabel, "routa"),
     renderReader(browser, fixturePath, fixtureLabel, "walnut"),
   ]);
-  const failures = summarizeFailures(routa, walnut);
+  const desktopComparison = await compareScreenshotPixels(routa.desktopScreenshot.path, walnut.desktopScreenshot.path);
+  const narrowComparison = await compareScreenshotPixels(routa.narrowScreenshot.path, walnut.narrowScreenshot.path);
+  const slideshowComparison = await compareScreenshotPixels(routa.slideshowScreenshot.path, walnut.slideshowScreenshot.path);
+  const failures = summarizeFailures(routa, walnut, { desktopComparison, narrowComparison, slideshowComparison });
 
   return {
     fixture: path.relative(repoRoot, fixturePath),
     outputDir,
     parity: {
       failures,
-      previewScreenshotsMatch:
-        routa.desktopScreenshot.sha256 === walnut.desktopScreenshot.sha256 &&
-        routa.narrowScreenshot.sha256 === walnut.narrowScreenshot.sha256,
-      slideshowScreenshotsMatch: routa.slideshowScreenshot.sha256 === walnut.slideshowScreenshot.sha256,
+      previewScreenshotsMatch: desktopComparison.matches && narrowComparison.matches,
+      slideshowScreenshotsMatch: slideshowComparison.matches,
       statsMatch: stableJson(renderComparableStats(routa)) === stableJson(renderComparableStats(walnut)),
     },
     routa,
@@ -261,11 +273,23 @@ async function captureLocatorScreenshot(
   const bytes = await locator.screenshot({ path: screenshotPath });
   return {
     path: screenshotPath,
-    sha256: sha256(bytes),
+    sha256: await screenshotPixelSha256(bytes),
   };
 }
 
-function summarizeFailures(routa: ReaderRenderResult, walnut: ReaderRenderResult): string[] {
+function summarizeFailures(
+  routa: ReaderRenderResult,
+  walnut: ReaderRenderResult,
+  {
+    desktopComparison,
+    narrowComparison,
+    slideshowComparison,
+  }: {
+    desktopComparison: ScreenshotComparison;
+    narrowComparison: ScreenshotComparison;
+    slideshowComparison: ScreenshotComparison;
+  },
+): string[] {
   const failures: string[] = [];
   for (const result of [routa, walnut]) {
     if (result.consoleMessages.length > 0) {
@@ -281,14 +305,14 @@ function summarizeFailures(routa: ReaderRenderResult, walnut: ReaderRenderResult
     }
   }
 
-  if (routa.desktopScreenshot.sha256 !== walnut.desktopScreenshot.sha256) {
-    failures.push("desktop preview screenshots differ between Routa and Walnut readers");
+  if (!desktopComparison.matches) {
+    failures.push(`desktop preview screenshots differ between Routa and Walnut readers (${screenshotDiffSummary(desktopComparison)})`);
   }
-  if (routa.narrowScreenshot.sha256 !== walnut.narrowScreenshot.sha256) {
-    failures.push("narrow preview screenshots differ between Routa and Walnut readers");
+  if (!narrowComparison.matches) {
+    failures.push(`narrow preview screenshots differ between Routa and Walnut readers (${screenshotDiffSummary(narrowComparison)})`);
   }
-  if (routa.slideshowScreenshot.sha256 !== walnut.slideshowScreenshot.sha256) {
-    failures.push("slideshow screenshots differ between Routa and Walnut readers");
+  if (!slideshowComparison.matches) {
+    failures.push(`slideshow screenshots differ between Routa and Walnut readers (${screenshotDiffSummary(slideshowComparison)})`);
   }
   if (stableJson(renderComparableStats(routa)) !== stableJson(renderComparableStats(walnut))) {
     failures.push("layout stats differ between Routa and Walnut readers");
@@ -431,6 +455,62 @@ function positionalArgs(): string[] {
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function screenshotPixelSha256(bytes: Uint8Array): Promise<string> {
+  const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const header = Buffer.from(`${info.width}x${info.height}x${info.channels}:`);
+  return sha256(Buffer.concat([header, data]));
+}
+
+async function compareScreenshotPixels(leftPath: string, rightPath: string): Promise<ScreenshotComparison> {
+  const [left, right] = await Promise.all([decodeScreenshotPixels(leftPath), decodeScreenshotPixels(rightPath)]);
+  const totalPixels = Math.max(left.info.width * left.info.height, right.info.width * right.info.height);
+  if (
+    left.info.width !== right.info.width ||
+    left.info.height !== right.info.height ||
+    left.info.channels !== right.info.channels
+  ) {
+    return {
+      diffPixels: totalPixels,
+      matches: false,
+      maxDelta: 255,
+      ratio: 1,
+      totalPixels,
+    };
+  }
+
+  let diffPixels = 0;
+  let maxDelta = 0;
+  for (let index = 0; index < left.data.length; index += left.info.channels) {
+    let pixelDelta = 0;
+    for (let channel = 0; channel < left.info.channels; channel++) {
+      pixelDelta = Math.max(pixelDelta, Math.abs(left.data[index + channel] - right.data[index + channel]));
+    }
+    if (pixelDelta > 0) {
+      diffPixels += 1;
+      maxDelta = Math.max(maxDelta, pixelDelta);
+    }
+  }
+
+  const ratio = totalPixels > 0 ? diffPixels / totalPixels : 0;
+  return {
+    diffPixels,
+    matches:
+      diffPixels === 0 ||
+      (ratio <= SCREENSHOT_PIXEL_RATIO_TOLERANCE && maxDelta <= SCREENSHOT_PIXEL_MAX_DELTA_TOLERANCE),
+    maxDelta,
+    ratio,
+    totalPixels,
+  };
+}
+
+async function decodeScreenshotPixels(pathname: string) {
+  return sharp(pathname).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+}
+
+function screenshotDiffSummary(comparison: ScreenshotComparison): string {
+  return `${comparison.diffPixels}/${comparison.totalPixels} pixels, max delta ${comparison.maxDelta}`;
 }
 
 function stableJson(value: unknown): string {

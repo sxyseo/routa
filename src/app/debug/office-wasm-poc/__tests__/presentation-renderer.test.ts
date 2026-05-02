@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { EMPTY_DOCUMENT_STYLE_MAPS, officeFontFamily, paragraphView } from "../office-preview-utils";
 import {
+  applyPresentationLayoutInheritance,
   computePresentationFit,
   emuRectToCanvasRect,
   presentationGradientStops,
@@ -174,6 +175,112 @@ describe("presentation renderer helpers", () => {
     expect(paragraph.style?.indent).toBe(-90_000);
     expect(paragraph.style?.spaceAfter).toBe(120);
     expect(paragraph.runs[0]?.style?.marginLeft).toBe(180_000);
+  });
+
+  it("inherits PPT placeholder geometry and text styles from layouts and masters", () => {
+    const slide = {
+      elements: [
+        {
+          id: "body-1",
+          paragraphs: [
+            {
+              runs: [{ text: "Inherited body" }],
+            },
+          ],
+          placeholderIndex: 1,
+          placeholderType: "body",
+        },
+        {
+          id: "title-1",
+          paragraphs: [
+            {
+              textStyle: { fontSize: 1800 },
+              runs: [
+                {
+                  text: "Direct title",
+                  textStyle: { fill: { color: { type: 1, value: "AA0000" } } },
+                },
+              ],
+            },
+          ],
+          placeholderType: "title",
+        },
+      ],
+      useLayoutId: "layout-1",
+    };
+    const layouts = [
+      {
+        bodyLevelStyles: [
+          {
+            level: 1,
+            paragraphStyle: {
+              bulletCharacter: "•",
+              marginLeft: 342_900,
+            },
+            spaceAfter: 120,
+            textStyle: {
+              fill: { color: { type: 1, value: "111111" } },
+              fontSize: 2400,
+              typeface: "Aptos",
+            },
+          },
+        ],
+        id: "master-1",
+        titleLevelStyles: [
+          {
+            level: 1,
+            textStyle: {
+              fill: { color: { type: 1, value: "FFFFFF" } },
+              fontSize: 3200,
+            },
+          },
+        ],
+        type: "master",
+      },
+      {
+        elements: [
+          {
+            bbox: {
+              heightEmu: 1_000,
+              widthEmu: 2_000,
+              xEmu: 100,
+              yEmu: 200,
+            },
+            placeholderIndex: 1,
+            placeholderType: "body",
+            textStyle: { anchor: 2 },
+          },
+        ],
+        id: "layout-1",
+        parentLayoutId: "master-1",
+        type: "layout",
+      },
+    ];
+
+    const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
+    const effectiveElements = effectiveSlide.elements as Array<Record<string, unknown>>;
+    const body = effectiveElements[0];
+    const bodyParagraph = (body.paragraphs as Array<Record<string, unknown>>)[0];
+    const bodyTextStyle = bodyParagraph.textStyle as Record<string, unknown>;
+    const bodyParagraphStyle = bodyParagraph.paragraphStyle as Record<string, unknown>;
+    const title = effectiveElements[1];
+    const titleParagraph = (title.paragraphs as Array<Record<string, unknown>>)[0];
+    const titleTextStyle = titleParagraph.textStyle as Record<string, unknown>;
+
+    expect(body.bbox).toEqual({
+      heightEmu: 1_000,
+      widthEmu: 2_000,
+      xEmu: 100,
+      yEmu: 200,
+    });
+    expect(body.textStyle).toEqual({ anchor: 2 });
+    expect(bodyTextStyle.fontSize).toBe(2400);
+    expect(bodyTextStyle.typeface).toBe("Aptos");
+    expect(bodyParagraph.spaceAfter).toBe(120);
+    expect(bodyParagraphStyle.bulletCharacter).toBe("•");
+    expect(bodyParagraphStyle.marginLeft).toBe(342_900);
+    expect(titleTextStyle.fontSize).toBe(1800);
+    expect(titleTextStyle.fill).toEqual({ color: { type: 1, value: "FFFFFF" } });
   });
 
   it("inherits document text styles through basedOn chains", () => {

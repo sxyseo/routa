@@ -109,8 +109,30 @@ export function computePresentationFit(
   };
 }
 
-export function getSlideBounds(slide: RecordValue): PresentationSize {
-  const elements = presentationElements(slide);
+export function applyPresentationLayoutInheritance(slide: RecordValue, layouts: RecordValue[]): RecordValue {
+  if (layouts.length === 0) return slide;
+
+  const layoutChain = presentationLayoutChain(slide, layouts);
+  if (layoutChain.length === 0) return slide;
+
+  const inheritedBackground = [...layoutChain]
+    .reverse()
+    .map((layout) => asRecord(layout.background))
+    .find((background) => background != null);
+  const elements = asArray(slide.elements)
+    .map(asRecord)
+    .filter((element): element is RecordValue => element != null)
+    .map((element) => applyElementLayoutInheritance(element, layoutChain));
+
+  return {
+    ...slide,
+    ...(slide.background == null && inheritedBackground ? { background: inheritedBackground } : {}),
+    elements,
+  };
+}
+
+export function getSlideBounds(slide: RecordValue, layouts: RecordValue[] = []): PresentationSize {
+  const elements = presentationElements(slide, layouts);
   return elements.reduce<PresentationSize>(
     (acc, element) => {
       const bbox = asRecord(element.bbox);
@@ -123,8 +145,8 @@ export function getSlideBounds(slide: RecordValue): PresentationSize {
   );
 }
 
-export function getSlideFrameSize(slide: RecordValue): PresentationSize {
-  const bounds = getSlideBounds(slide);
+export function getSlideFrameSize(slide: RecordValue, layouts: RecordValue[] = []): PresentationSize {
+  const bounds = getSlideBounds(slide, layouts);
   return {
     height: bounds.height / EMU_PER_CSS_PIXEL,
     width: bounds.width / EMU_PER_CSS_PIXEL,
@@ -177,10 +199,10 @@ export function presentationImageSourceRect(
   return { height, width, x, y };
 }
 
-export function collectPresentationTypefaces(slides: RecordValue[]): string[] {
+export function collectPresentationTypefaces(slides: RecordValue[], layouts: RecordValue[] = []): string[] {
   const typefaces = new Set<string>();
   for (const slide of slides) {
-    for (const element of presentationElements(slide)) {
+    for (const element of presentationElements(slide, layouts)) {
       for (const paragraph of asArray(element.paragraphs)) {
         const paragraphRecord = asRecord(paragraph);
         const paragraphStyle = asRecord(paragraphRecord?.textStyle);
@@ -202,6 +224,7 @@ export function renderPresentationSlide({
   context,
   height,
   images,
+  layouts = [],
   slide,
   textOverflow = "visible",
   width,
@@ -209,18 +232,20 @@ export function renderPresentationSlide({
   context: CanvasRenderingContext2D;
   height: number;
   images: PresentationRenderImages;
+  layouts?: RecordValue[];
   slide: RecordValue;
   textOverflow?: PresentationTextOverflow;
   width: number;
 }): void {
-  const bounds = getSlideBounds(slide);
-  const elements = presentationElements(slide)
+  const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
+  const bounds = getSlideBounds(effectiveSlide);
+  const elements = presentationElements(effectiveSlide)
     .map((element, index) => ({ element, index }))
     .sort((left, right) => asNumber(left.element.zIndex, left.index) - asNumber(right.element.zIndex, right.index));
 
   context.save();
   context.clearRect(0, 0, width, height);
-  context.fillStyle = slideBackgroundToCss(slide);
+  context.fillStyle = slideBackgroundToCss(effectiveSlide);
   context.fillRect(0, 0, width, height);
 
   for (const entry of elements) {
@@ -230,9 +255,14 @@ export function renderPresentationSlide({
   context.restore();
 }
 
-export function getPresentationElementTargets(slide: RecordValue, canvas: PresentationSize): PresentationElementTarget[] {
-  const bounds = getSlideBounds(slide);
-  return presentationElements(slide)
+export function getPresentationElementTargets(
+  slide: RecordValue,
+  canvas: PresentationSize,
+  layouts: RecordValue[] = [],
+): PresentationElementTarget[] {
+  const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
+  const bounds = getSlideBounds(effectiveSlide);
+  return presentationElements(effectiveSlide)
     .map((element, index) => {
       const rect = emuRectToCanvasRect(asRecord(element.bbox), bounds, canvas);
       return {
@@ -247,7 +277,186 @@ export function getPresentationElementTargets(slide: RecordValue, canvas: Presen
     .sort((left, right) => asNumber(left.element.zIndex, left.index) - asNumber(right.element.zIndex, right.index));
 }
 
-function presentationElements(slide: RecordValue): RecordValue[] {
+function presentationLayoutChain(slide: RecordValue, layouts: RecordValue[]): RecordValue[] {
+  const byId = new Map<string, RecordValue>();
+  for (const layout of layouts) {
+    const id = asString(layout.id);
+    if (id) byId.set(id, layout);
+  }
+  const chain: RecordValue[] = [];
+  const visited = new Set<string>();
+
+  function addLayout(layoutId: string): void {
+    if (!layoutId || visited.has(layoutId)) return;
+    const layout = byId.get(layoutId);
+    if (!layout) return;
+
+    visited.add(layoutId);
+    addLayout(asString(layout.parentLayoutId));
+    chain.push(layout);
+  }
+
+  addLayout(asString(slide.useLayoutId));
+  return chain;
+}
+
+function applyElementLayoutInheritance(element: RecordValue, layoutChain: RecordValue[]): RecordValue {
+  const placeholderDefaults = layoutChain
+    .map((layout) => findMatchingPlaceholderElement(layout, element))
+    .filter((match): match is RecordValue => match != null)
+    .reduce<RecordValue | null>((acc, match) => mergeRecordDefaults(acc, match), null);
+  const mergedElement = mergeRecordDefaults(placeholderDefaults, element);
+  const inheritedLevelStyles = presentationLevelStylesForElement(element, layoutChain);
+  const paragraphs = mergeParagraphLevelStyles(asArray(mergedElement.paragraphs), inheritedLevelStyles);
+  const children = asArray(mergedElement.children)
+    .map(asRecord)
+    .filter((child): child is RecordValue => child != null)
+    .map((child) => applyElementLayoutInheritance(child, layoutChain));
+
+  return {
+    ...mergedElement,
+    ...(paragraphs.length > 0 ? { paragraphs } : {}),
+    ...(children.length > 0 ? { children } : {}),
+  };
+}
+
+function findMatchingPlaceholderElement(layout: RecordValue, element: RecordValue): RecordValue | null {
+  const candidates = flattenedLayoutElements(layout);
+  let best: { score: number; value: RecordValue } | null = null;
+  for (const candidate of candidates) {
+    const score = placeholderMatchScore(candidate, element);
+    if (score > (best?.score ?? 0)) {
+      best = { score, value: candidate };
+    }
+  }
+  return best?.value ?? null;
+}
+
+function flattenedLayoutElements(layout: RecordValue): RecordValue[] {
+  const elements: RecordValue[] = [];
+  function visit(value: unknown): void {
+    const record = asRecord(value);
+    if (!record) return;
+    elements.push(record);
+    for (const child of asArray(record.children)) {
+      visit(child);
+    }
+  }
+  for (const element of asArray(layout.elements)) {
+    visit(element);
+  }
+  return elements;
+}
+
+function placeholderMatchScore(candidate: RecordValue, element: RecordValue): number {
+  const candidateType = normalizedPlaceholderType(candidate);
+  const elementType = normalizedPlaceholderType(element);
+  const candidateIndex = asNumber(candidate.placeholderIndex, -1);
+  const elementIndex = asNumber(element.placeholderIndex, -1);
+  if (!candidateType && candidateIndex < 0) return 0;
+  if (candidateIndex >= 0 && elementIndex >= 0 && candidateIndex === elementIndex && candidateType === elementType) return 4;
+  if (candidateIndex > 0 && elementIndex > 0 && candidateIndex === elementIndex) return 3;
+  if (candidateType && elementType && candidateType === elementType) return 2;
+  if (!elementType && candidateIndex > 0 && candidateIndex === elementIndex) return 1;
+  return 0;
+}
+
+function presentationLevelStylesForElement(element: RecordValue, layoutChain: RecordValue[]): RecordValue[] {
+  const styleField = placeholderLevelStyleField(normalizedPlaceholderType(element));
+  const byLevel = new Map<number, RecordValue>();
+  for (const layout of layoutChain) {
+    for (const style of asArray(layout[styleField]).map(asRecord)) {
+      if (!style) continue;
+      const level = asNumber(style.level, 1);
+      byLevel.set(level, mergeRecordDefaults(byLevel.get(level) ?? null, style));
+    }
+  }
+  return Array.from(byLevel.values());
+}
+
+function placeholderLevelStyleField(placeholderType: string): "bodyLevelStyles" | "otherLevelStyles" | "titleLevelStyles" {
+  if (placeholderType === "title" || placeholderType === "ctrtitle") return "titleLevelStyles";
+  if (placeholderType === "body" || placeholderType === "subtitle" || placeholderType === "obj") return "bodyLevelStyles";
+  return "otherLevelStyles";
+}
+
+function mergeParagraphLevelStyles(paragraphs: unknown[], levelStyles: RecordValue[]): RecordValue[] {
+  if (paragraphs.length === 0) return [];
+  const byLevel = new Map(levelStyles.map((style) => [asNumber(style.level, 1), style]));
+  return paragraphs
+    .map(asRecord)
+    .filter((paragraph): paragraph is RecordValue => paragraph != null)
+    .map((paragraph) => {
+      const level = asNumber(paragraph.level, asNumber(asRecord(paragraph.textStyle)?.level, 1));
+      const style = byLevel.get(level) ?? byLevel.get(1);
+      if (!style) return paragraph;
+
+      const textStyle = mergeRecordDefaults(asRecord(style.textStyle), asRecord(paragraph.textStyle));
+      const paragraphStyle = mergeRecordDefaults(asRecord(style.paragraphStyle), asRecord(paragraph.paragraphStyle));
+      const next = {
+        ...copyMissingParagraphStyleFields(style, paragraph),
+        ...paragraph,
+        ...(Object.keys(textStyle).length > 0 ? { textStyle } : {}),
+        ...(Object.keys(paragraphStyle).length > 0 ? { paragraphStyle } : {}),
+      };
+      return next;
+    });
+}
+
+function copyMissingParagraphStyleFields(style: RecordValue, paragraph: RecordValue): RecordValue {
+  const copied: RecordValue = {};
+  for (const key of ["spaceBefore", "spaceAfter"] as const) {
+    if (!(key in paragraph) && key in style) {
+      copied[key] = style[key];
+    }
+  }
+
+  const paragraphStyle = asRecord(style.paragraphStyle);
+  for (const key of ["bulletCharacter", "indent", "lineSpacing", "marginLeft"] as const) {
+    if (!(key in paragraph) && paragraphStyle && key in paragraphStyle) {
+      copied[key] = paragraphStyle[key];
+    }
+  }
+  return copied;
+}
+
+function normalizedPlaceholderType(element: RecordValue): string {
+  return asString(element.placeholderType).replace(/[^a-z0-9]/giu, "").toLowerCase();
+}
+
+function mergeRecordDefaults(base: RecordValue | null, override: RecordValue | null): RecordValue {
+  if (!base && !override) return {};
+  if (!base) return { ...(override ?? {}) };
+  if (!override) return { ...base };
+
+  const result: RecordValue = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (value == null) {
+      result[key] = value;
+      continue;
+    }
+
+    const baseValue = result[key];
+    const baseRecord = asRecord(baseValue);
+    const overrideRecord = asRecord(value);
+    if (
+      baseRecord &&
+      overrideRecord &&
+      !Array.isArray(baseValue) &&
+      !Array.isArray(value) &&
+      key !== "fill" &&
+      key !== "line"
+    ) {
+      result[key] = mergeRecordDefaults(baseRecord, overrideRecord);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function presentationElements(slide: RecordValue, layouts: RecordValue[] = []): RecordValue[] {
+  const effectiveSlide = layouts.length > 0 ? applyPresentationLayoutInheritance(slide, layouts) : slide;
   const elements: RecordValue[] = [];
 
   function visit(value: unknown): void {
@@ -259,7 +468,7 @@ function presentationElements(slide: RecordValue): RecordValue[] {
     }
   }
 
-  for (const element of asArray(slide.elements)) {
+  for (const element of asArray(effectiveSlide.elements)) {
     visit(element);
   }
 
