@@ -4,6 +4,7 @@ using Google.Protobuf;
 using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using S = DocumentFormat.OpenXml.Spreadsheet;
+using T = DocumentFormat.OpenXml.Office2019.Excel.ThreadedComments;
 using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace Routa.OfficeWasmReader;
@@ -71,9 +72,20 @@ internal static class XlsxWorkbookProtoReader
             }
 
             var commentSheets = WorksheetCommentSheets(workbookPart).ToArray();
+            var threadedCommentSheets = WorksheetThreadedCommentSheets(workbookPart).ToArray();
             foreach (var person in commentSheets.SelectMany(WorkbookCommentAuthors))
             {
                 WriteMessage(output, 20, WritePerson(person.Id, person.DisplayName));
+            }
+
+            foreach (var person in WorkbookThreadedPeople(workbookPart))
+            {
+                WriteMessage(output, 20, WritePerson(person.Id, person.DisplayName));
+            }
+
+            foreach (var thread in threadedCommentSheets.SelectMany(WorkbookThreads))
+            {
+                WriteMessage(output, 21, thread);
             }
 
             foreach (var note in commentSheets.SelectMany(WorkbookNotes))
@@ -763,6 +775,44 @@ internal static class XlsxWorkbookProtoReader
         }
     }
 
+    private static IEnumerable<WorksheetCommentSheet> WorksheetThreadedCommentSheets(WorkbookPart workbookPart)
+    {
+        foreach (var sheetElement in workbookPart.Workbook.Sheets?.Elements<S.Sheet>() ?? [])
+        {
+            var relationshipId = sheetElement.Id?.Value;
+            if (string.IsNullOrEmpty(relationshipId) || workbookPart.GetPartById(relationshipId) is not WorksheetPart worksheetPart)
+            {
+                continue;
+            }
+
+            if (!worksheetPart.WorksheetThreadedCommentsParts.Any(part => part.ThreadedComments is not null))
+            {
+                continue;
+            }
+
+            var sheetName = TextNormalization.Clean(sheetElement.Name?.Value);
+            yield return new WorksheetCommentSheet(
+                worksheetPart,
+                sheetName.Length > 0 ? sheetName : $"Sheet {sheetElement.SheetId?.Value ?? 0}");
+        }
+    }
+
+    private static IEnumerable<WorkbookPerson> WorkbookThreadedPeople(WorkbookPart workbookPart)
+    {
+        foreach (var person in workbookPart.WorkbookPersonParts
+                     .SelectMany(part => part.PersonList?.Elements<T.Person>() ?? []))
+        {
+            var id = AttributeValue(person, "id");
+            var displayName = TextNormalization.Clean(AttributeValue(person, "displayName"));
+            if (id.Length == 0 && displayName.Length == 0)
+            {
+                continue;
+            }
+
+            yield return new WorkbookPerson(id, displayName);
+        }
+    }
+
     private static IEnumerable<WorkbookPerson> WorkbookCommentAuthors(WorksheetCommentSheet commentSheet)
     {
         var authorIndex = 0;
@@ -794,6 +844,135 @@ internal static class XlsxWorkbookProtoReader
                 CommentAuthorId(commentSheet.SheetName, authorId),
                 body);
         }
+    }
+
+    private static IEnumerable<byte[]> WorkbookThreads(WorksheetCommentSheet commentSheet)
+    {
+        foreach (var part in commentSheet.Part.WorksheetThreadedCommentsParts)
+        {
+            var comments = part.ThreadedComments?
+                .Elements<T.ThreadedComment>()
+                .Select(ReadThreadedComment)
+                .Where(comment => comment.Id.Length > 0 || comment.Address.Length > 0 || comment.Body.Length > 0)
+                .ToArray() ?? [];
+
+            foreach (var thread in GroupThreadedComments(commentSheet.SheetName, comments))
+            {
+                yield return WriteThread(thread);
+            }
+        }
+    }
+
+    private static ThreadedCommentReadModel ReadThreadedComment(T.ThreadedComment comment)
+    {
+        return new ThreadedCommentReadModel(
+            AttributeValue(comment, "id"),
+            AttributeValue(comment, "parentId"),
+            AttributeValue(comment, "personId"),
+            FormatThreadedDate(AttributeValue(comment, "dT")),
+            TextNormalization.Clean(ChildByLocalName(comment, "text")?.InnerText),
+            TextNormalization.Clean(AttributeValue(comment, "ref")),
+            BoolAttribute(comment, "done") == true);
+    }
+
+    private static IEnumerable<ThreadReadModel> GroupThreadedComments(
+        string sheetName,
+        IReadOnlyList<ThreadedCommentReadModel> comments)
+    {
+        var commentsById = comments
+            .Where(comment => comment.Id.Length > 0)
+            .ToDictionary(comment => comment.Id, StringComparer.Ordinal);
+        var groups = new Dictionary<string, List<ThreadedCommentReadModel>>(StringComparer.Ordinal);
+        var order = new List<string>();
+
+        foreach (var comment in comments)
+        {
+            var rootId = ThreadRootId(comment, commentsById);
+            if (!groups.TryGetValue(rootId, out var group))
+            {
+                group = [];
+                groups[rootId] = group;
+                order.Add(rootId);
+            }
+
+            group.Add(comment);
+        }
+
+        foreach (var rootId in order)
+        {
+            var group = groups[rootId];
+            var root = group.FirstOrDefault(comment => comment.ParentId.Length == 0)
+                ?? group.First();
+            var threadId = root.Id.Length > 0 ? root.Id : rootId;
+            var address = root.Address.Length > 0
+                ? root.Address
+                : group.Select(comment => comment.Address).FirstOrDefault(address => address.Length > 0) ?? "";
+
+            yield return new ThreadReadModel(
+                threadId,
+                sheetName,
+                address,
+                root.Done ? 2 : 1,
+                group);
+        }
+    }
+
+    private static string ThreadRootId(
+        ThreadedCommentReadModel comment,
+        IReadOnlyDictionary<string, ThreadedCommentReadModel> commentsById)
+    {
+        var current = comment;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        while (current.ParentId.Length > 0 && seen.Add(current.ParentId) && commentsById.TryGetValue(current.ParentId, out var parent))
+        {
+            current = parent;
+        }
+
+        if (current.Id.Length > 0)
+        {
+            return current.Id;
+        }
+
+        if (comment.ParentId.Length > 0)
+        {
+            return comment.ParentId;
+        }
+
+        return comment.Address;
+    }
+
+    private static byte[] WriteThread(ThreadReadModel thread)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, thread.Id);
+            WriteMessage(output, 2, Message(targetOutput =>
+            {
+                WriteMessage(targetOutput, 1, WriteCellTarget(thread.SheetName, thread.Address));
+            }));
+            foreach (var comment in thread.Comments)
+            {
+                WriteMessage(output, 3, WriteThreadComment(comment));
+            }
+
+            WriteInt32(output, 4, thread.Status);
+        });
+    }
+
+    private static byte[] WriteThreadComment(ThreadedCommentReadModel comment)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, comment.Id);
+            WriteString(output, 2, comment.ParentId);
+            WriteString(output, 3, comment.AuthorId);
+            WriteString(output, 4, comment.CreatedAt);
+            WriteStringIncludingEmpty(output, 5, "");
+            WriteMessage(output, 6, Message(bodyOutput =>
+            {
+                WriteString(bodyOutput, 1, comment.Body);
+            }));
+        });
     }
 
     private static byte[] WritePerson(string id, string displayName)
@@ -835,6 +1014,22 @@ internal static class XlsxWorkbookProtoReader
     private static string CommentAuthorId(string sheetName, int authorIndex)
     {
         return $"authors/{sheetName}/{authorIndex}";
+    }
+
+    private static string FormatThreadedDate(string value)
+    {
+        if (value.Length == 0)
+        {
+            return "";
+        }
+
+        return DateTimeOffset.TryParse(
+            value,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+            out var parsed)
+            ? parsed.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", System.Globalization.CultureInfo.InvariantCulture)
+            : value;
     }
 
     private static IEnumerable<WorksheetPart> WorksheetPartsInWorkbookOrder(WorkbookPart workbookPart)
@@ -2478,6 +2673,22 @@ internal static class XlsxWorkbookProtoReader
     private sealed record WorksheetCommentSheet(WorksheetPart Part, string SheetName);
 
     private sealed record WorkbookPerson(string Id, string DisplayName);
+
+    private sealed record ThreadReadModel(
+        string Id,
+        string SheetName,
+        string Address,
+        int Status,
+        IReadOnlyList<ThreadedCommentReadModel> Comments);
+
+    private sealed record ThreadedCommentReadModel(
+        string Id,
+        string ParentId,
+        string AuthorId,
+        string CreatedAt,
+        string Body,
+        string Address,
+        bool Done);
 
     private sealed record DrawingColorValue(
         int Type,
