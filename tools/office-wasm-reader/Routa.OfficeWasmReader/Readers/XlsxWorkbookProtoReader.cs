@@ -84,6 +84,7 @@ internal static class XlsxWorkbookProtoReader
         {
             WriteInt32(output, 1, sheetIndex);
             WriteString(output, 2, name.Length > 0 ? name : $"Sheet {sheetIndex + 1}");
+            WriteString(output, 20, sheetElement.SheetId?.Value.ToString() ?? "");
 
             foreach (var row in worksheetPart.Worksheet.Descendants<S.Row>().Take(OpenXmlReaderLimits.MaxRowsPerSheet))
             {
@@ -97,6 +98,7 @@ internal static class XlsxWorkbookProtoReader
 
             var format = worksheetPart.Worksheet.SheetFormatProperties;
             WriteFloat(output, 7, (float)(format?.DefaultRowHeight?.Value ?? 0));
+            WriteFloatIncludingZero(output, 21, (float)(format?.BaseColumnWidth?.Value ?? 0));
 
             foreach (var drawing in WorksheetDrawings(worksheetPart))
             {
@@ -104,6 +106,11 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteFloat(output, 9, (float)(format?.DefaultColumnWidth?.Value ?? 0));
+            var sheetView = worksheetPart.Worksheet.SheetViews?.Elements<S.SheetView>().FirstOrDefault();
+            if (sheetView?.ShowGridLines?.Value is { } showGridLines)
+            {
+                WriteBool(output, 10, showGridLines);
+            }
 
             foreach (var mergeCell in worksheetPart.Worksheet.Descendants<S.MergeCell>())
             {
@@ -143,7 +150,10 @@ internal static class XlsxWorkbookProtoReader
                 WriteInt32(output, 5, (int)styleIndex);
             }
 
-            WriteBool(output, 6, row.Hidden?.Value ?? false);
+            if (row.Hidden?.Value == true)
+            {
+                WriteBool(output, 6, true);
+            }
         });
     }
 
@@ -153,13 +163,30 @@ internal static class XlsxWorkbookProtoReader
         {
             var address = cell.CellReference?.Value ?? "";
             var text = ReadCellText(cell, sharedStrings);
+            var formula = cell.CellFormula;
+            var formulaText = TextNormalization.Clean(formula?.Text);
             WriteString(output, 1, address);
             WriteString(output, 2, text);
-            WriteString(output, 3, TextNormalization.Clean(cell.CellFormula?.Text));
+            WriteString(output, 3, formulaText);
             WriteInt32(output, 4, CellDataType(cell, text));
             if (cell.StyleIndex?.Value is { } styleIndex)
             {
                 WriteInt32(output, 5, (int)styleIndex);
+            }
+
+            if (formulaText.Length > 0 && formula is not null)
+            {
+                if (formula.SharedIndex?.Value is { } sharedIndex)
+                {
+                    WriteInt32(output, 8, (int)sharedIndex);
+                }
+
+                WriteInt32(output, 9, CellFormulaType(formula));
+                WriteString(output, 10, formula.Reference?.Value ?? "");
+                if (formula.AlwaysCalculateArray?.Value is { } alwaysCalculateArray)
+                {
+                    WriteBool(output, 11, alwaysCalculateArray);
+                }
             }
         });
     }
@@ -312,7 +339,16 @@ internal static class XlsxWorkbookProtoReader
                 WriteInt32IncludingZero(output, 3, (int)formatId);
             }
 
-            WriteString(output, 4, EnumText(rule.Operator));
+            var operatorText = EnumText(rule.Operator);
+            if (operatorText.Length > 0)
+            {
+                WriteString(output, 4, operatorText);
+            }
+            else
+            {
+                WriteStringIncludingEmpty(output, 4, "");
+            }
+
             foreach (var formula in rule.Elements<S.Formula>())
             {
                 WriteString(output, 5, TextNormalization.Clean(formula.Text));
@@ -716,6 +752,8 @@ internal static class XlsxWorkbookProtoReader
     {
         return Message(output =>
         {
+            WriteInt64IncludingZero(output, 1, 0);
+            WriteInt64IncludingZero(output, 2, 0);
             WriteInt64(output, 3, extentCx);
             WriteInt64(output, 4, extentCy);
         });
@@ -1105,6 +1143,7 @@ internal static class XlsxWorkbookProtoReader
         return Message(output =>
         {
             WriteString(output, 1, sheetName);
+            WriteStringIncludingEmpty(output, 2, "");
             WriteString(output, 3, startAddress);
             WriteString(output, 4, endAddress);
         });
@@ -1496,7 +1535,12 @@ internal static class XlsxWorkbookProtoReader
 
     private static string ReadCellText(S.Cell cell, S.SharedStringTable? sharedStrings)
     {
-        var raw = cell.CellValue?.Text ?? cell.InnerText;
+        var raw = cell.CellValue?.Text;
+        if (string.IsNullOrEmpty(raw) && cell.CellFormula is null)
+        {
+            raw = cell.InnerText;
+        }
+
         if (string.IsNullOrEmpty(raw))
         {
             return "";
@@ -1513,6 +1557,26 @@ internal static class XlsxWorkbookProtoReader
         }
 
         return TextNormalization.Clean(raw);
+    }
+
+    private static int CellFormulaType(S.CellFormula formula)
+    {
+        if (formula.FormulaType?.Value == S.CellFormulaValues.Array)
+        {
+            return 2;
+        }
+
+        if (formula.FormulaType?.Value == S.CellFormulaValues.DataTable)
+        {
+            return 3;
+        }
+
+        if (formula.FormulaType?.Value == S.CellFormulaValues.Shared)
+        {
+            return 4;
+        }
+
+        return 1;
     }
 
     private static int CellDataType(S.Cell cell, string text)
@@ -1620,6 +1684,12 @@ internal static class XlsxWorkbookProtoReader
         output.WriteString(value);
     }
 
+    private static void WriteStringIncludingEmpty(CodedOutputStream output, int fieldNumber, string value)
+    {
+        output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
+        output.WriteString(value);
+    }
+
     private static void WriteInt32(CodedOutputStream output, int fieldNumber, int value)
     {
         if (value == 0)
@@ -1659,6 +1729,12 @@ internal static class XlsxWorkbookProtoReader
         output.WriteInt64(value);
     }
 
+    private static void WriteInt64IncludingZero(CodedOutputStream output, int fieldNumber, long value)
+    {
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteInt64(value);
+    }
+
     private static void WriteInt64(CodedOutputStream output, int fieldNumber, long? value)
     {
         if (value is null or 0)
@@ -1694,6 +1770,12 @@ internal static class XlsxWorkbookProtoReader
             return;
         }
 
+        output.WriteTag(fieldNumber, WireFormat.WireType.Fixed32);
+        output.WriteFloat(value);
+    }
+
+    private static void WriteFloatIncludingZero(CodedOutputStream output, int fieldNumber, float value)
+    {
         output.WriteTag(fieldNumber, WireFormat.WireType.Fixed32);
         output.WriteFloat(value);
     }

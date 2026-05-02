@@ -79,6 +79,9 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Confirmed Walnut's spreadsheet reader ignores XLSX picture crop (`a:srcRect`) for image drawings: a cropped temp fixture produced the same Walnut proto hash as the uncropped image fixture. Crop remains a protocol limitation unless the target schema adds an image crop field.
 - Added workbook theme extraction for XLSX and switched table stripe palettes to derive from theme color-scheme accents when the protocol supplies a theme.
 - Tightened the debug chart renderer toward Excel/Walnut output with explicit tick values, wider y-axis plot margins, axis baselines, vertical/horizontal gridlines, larger line markers, and marker-aware legends.
+- Added decoded Workbook protocol diff reporting to `compare-walnut-xlsx-protocol.ts` via `--diff --diff-limit=N` so the remaining Walnut/Routa XLSX gaps can be grouped by protocol path instead of only byte length/hash.
+- Re-ran `complex_excel_renderer_test.xlsx` against Walnut after the protocol-default pass: all core protocol equivalence checks remain true, render contract still passes 13/14 checks with only `byteProtoExactMatch` failing, and raw proto length drift dropped from `+2951` bytes to `-40` bytes (`Routa 231714`, `Walnut 231754`).
+- Reduced decoded protocol diff count from `1221` to `116` by matching formula cell handling (`formulaType`, shared formula metadata, no `<f>` text as value), row hidden default omission, sheet ids, base column width defaults, explicit `showGridLines=false`, empty `RangeTarget.sheetId`, shape bbox zero origins, column `hidden=false`, and empty conditional-format operator fields.
 
 ## Remaining XLSX Work
 
@@ -88,7 +91,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Drawing overlays: sheet drawing chart/shape/image anchors, workbook image payloads, Walnut-style image references, sheet drawing order, and shape effect metadata are now consumed by the preview. Image crop is not currently representable in the Walnut spreadsheet `Drawing` schema based on the cropped-image probe.
 - Freeze panes and sticky headers: the prefix-sum layout adapter now drives fixed headers, frozen body overlays, viewport projection, and cell hit regions. Remaining work is extracting freeze panes from a future protocol source, viewport virtualization, and floating-element hit regions.
 - Conditional formatting breadth: data bars now support negative values, explicit axis placement, and gradient/solid variants. Color scales now use cfvo thresholds for multi-stop interpolation; multi-rule layering still needs more coverage.
-- Protocol coverage: `complex_excel_renderer_test.xlsx` and `xlsx_image_drawing_contract.xlsx` parity/render checks pass, but the generated proto is not byte-for-byte Walnut equivalent for the complex workbook; add more XLSX fixtures and field-level assertions.
+- Protocol coverage: `complex_excel_renderer_test.xlsx` and `xlsx_image_drawing_contract.xlsx` parity/render checks pass, but the generated proto is not byte-for-byte Walnut equivalent for the complex workbook. Remaining decoded protocol deltas are concentrated in chart payload depth (`barOptions`, `chartSpaceLine`, `dataLabels`, `titleTextStyle`, `view3d`, axis default fields/titles, series ids/markers), conditional-format generated rule ids, and the data-validations wrapper/items payload. Add more XLSX fixtures and field-level assertions before treating byte parity as complete.
 
 ## References
 
