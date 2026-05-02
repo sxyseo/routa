@@ -69,7 +69,8 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Reworked the debug workbook preview to render cells, headers, shapes, and charts from the shared pixel coordinate model instead of DOM table layout.
 - Verified `complex_excel_renderer_test.xlsx` protocol parity and captured browser evidence for the task table and Fitness chart.
 - Added table row striping and basic icon-set rendering after comparing the workbook against Microsoft Excel through Computer Use.
-- Added an XLSX render-contract comparator that compares decoded Workbook render inputs separately from proto/core parity: sheet layout, merged cells, tables, conditional formatting, data validations, drawings, and style contracts. Its assertion mode currently gates the stable layout/table/data-validation core while reporting known conditional-style, drawing, and style-contract gaps.
+- Added an XLSX render-contract comparator that compares decoded Workbook render inputs separately from proto/core parity: sheet layout, merged cells, tables, conditional formatting, data validations, drawings, charts, shapes, images, and style contracts.
+- Aligned `complex_excel_renderer_test.xlsx` non-byte render contract with Walnut: all render-facing checks pass, including chart metadata, worksheet drawings, shape geometry, conditional formatting, and styles. The remaining mismatch is byte-for-byte proto serialization only.
 
 ## Remaining XLSX Work
 
@@ -78,7 +79,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Chart fidelity: Fitness charts now use a zero baseline, but plot area sizing, legend placement, markers, gridlines, fonts, and Excel internal chart layout are still simplified.
 - Freeze panes and sticky headers: the prefix-sum layout adapter exists, but the preview still needs Walnut-like frozen pane projection, viewport scrolling, and hit regions for cells/floating elements.
 - Conditional formatting breadth: data bars need negative values, axis, gradient/solid variants, and multi-rule layering; color scales need fuller multi-stop handling.
-- Protocol coverage: `complex_excel_renderer_test.xlsx` core parity passes and render-contract comparison now exposes the remaining drawing/style gaps, but it is not byte-for-byte Walnut proto equivalence; add more XLSX fixtures and field-level assertions.
+- Protocol coverage: `complex_excel_renderer_test.xlsx` core parity and non-byte render contract both pass, but the generated proto is not byte-for-byte Walnut equivalent; add more XLSX fixtures and field-level assertions.
 
 ## References
 

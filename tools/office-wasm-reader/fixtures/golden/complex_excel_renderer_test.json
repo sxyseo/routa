@@ -1,5 +1,5 @@
 {
-  "chartCount": 0,
+  "chartCount": 3,
   "imageCount": 0,
   "protocol": "oaiproto.coworker.spreadsheet.Workbook",
   "sheetCount": 9,
@@ -9,7 +9,7 @@
       "columnCount": 9,
       "conditionalFormatCount": 0,
       "dataValidationCount": 0,
-      "drawingCount": 0,
+      "drawingCount": 2,
       "formulaCellCount": 2,
       "mergedRangeCount": 5,
       "name": "00_README",
@@ -84,7 +84,7 @@
       "columnCount": 14,
       "conditionalFormatCount": 1,
       "dataValidationCount": 0,
-      "drawingCount": 0,
+      "drawingCount": 3,
       "formulaCellCount": 24,
       "mergedRangeCount": 10,
       "name": "01_Dashboard",
@@ -240,7 +240,7 @@
       "columnCount": 12,
       "conditionalFormatCount": 3,
       "dataValidationCount": 0,
-      "drawingCount": 0,
+      "drawingCount": 1,
       "formulaCellCount": 18,
       "mergedRangeCount": 2,
       "name": "03_TimeSeries",
@@ -546,7 +546,7 @@
       "columnCount": 14,
       "conditionalFormatCount": 0,
       "dataValidationCount": 0,
-      "drawingCount": 0,
+      "drawingCount": 2,
       "formulaCellCount": 0,
       "mergedRangeCount": 6,
       "name": "07_Layout_Stress",
@@ -618,13 +618,13 @@
     }
   ],
   "styleCounts": {
-    "borderCount": 0,
-    "cellFormatCount": 413,
-    "fillCount": 0,
-    "fontCount": 0,
+    "borderCount": 50,
+    "cellFormatCount": 414,
+    "fillCount": 19,
+    "fontCount": 24,
     "numberFormatCount": 7
   },
   "tableCount": 3,
-  "wasmProtoByteLength": 223178,
-  "wasmProtoSha256": "b200ab37fd719e84a8d110596d3d41dfe241cf9218cd8af2575184523475e546"
+  "wasmProtoByteLength": 234138,
+  "wasmProtoSha256": "1b1060592f9f47e19c4d2e6a9cd40e0923cc3906e3145f7ec906012e5a2b7a5a"
 }

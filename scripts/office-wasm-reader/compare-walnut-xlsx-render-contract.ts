@@ -769,7 +769,13 @@ function assertStableRenderContract(result: XlsxRenderContractResult): void {
     "layoutRowsMatch",
     "mergedCellsMatch",
     "tableRenderContractMatch",
+    "conditionalRenderContractMatch",
     "dataValidationContractMatch",
+    "drawingRenderContractMatch",
+    "imageRenderContractMatch",
+    "shapeRenderContractMatch",
+    "chartRenderContractMatch",
+    "styleRenderContractMatch",
   ];
   const failures = requiredChecks.filter((key) => result.equivalence[key] !== true);
   if (failures.length > 0) {
