@@ -167,11 +167,17 @@ function summarizeDocument(document: Record<string, unknown>, protoBytes: Uint8A
     hyperlinkCount: textRuns.filter((run) => isRecord(run.hyperlink)).length,
     reviewMarkedRunCount: textRuns.filter((run) => arrayOfStrings(run.reviewMarkIds).length > 0).length,
     footnoteCount: footnotes.length,
+    footnoteReferenceIds: footnotes.flatMap((footnote) =>
+      arrayOfStrings(footnote.referenceRunIds).map(() => String(footnote.id ?? ""))
+    ),
     footnoteReferenceRunIds: footnotes.flatMap((footnote) =>
       arrayOfStrings(footnote.referenceRunIds).map((runId) => `${String(footnote.id ?? "")}:${runId}`)
     ),
     commentCount: comments.length,
     commentReferenceCount: commentReferences.length,
+    commentReferenceIds: commentReferences.flatMap((reference) =>
+      arrayOfStrings(reference.runIds).map(() => String(reference.commentId ?? ""))
+    ),
     commentReferenceRunIds: commentReferences.flatMap((reference) =>
       arrayOfStrings(reference.runIds).map((runId) => `${String(reference.commentId ?? "")}:${runId}`)
     ),
@@ -223,11 +229,11 @@ function summarizeEquivalence(
       stableJson(walnutSummary.paragraphSpacingSignatures) === stableJson(routaSummary.paragraphSpacingSignatures),
     hyperlinkCountMatches: walnutSummary.hyperlinkCount === routaSummary.hyperlinkCount,
     footnoteCountMatches: walnutSummary.footnoteCount === routaSummary.footnoteCount,
-    footnoteReferenceRunIdsMatch:
-      stableJson(walnutSummary.footnoteReferenceRunIds) === stableJson(routaSummary.footnoteReferenceRunIds),
+    footnoteReferenceIdsMatch:
+      stableJson(walnutSummary.footnoteReferenceIds) === stableJson(routaSummary.footnoteReferenceIds),
     commentCountMatches: walnutSummary.commentCount === routaSummary.commentCount,
-    commentReferenceRunIdsMatch:
-      stableJson(walnutSummary.commentReferenceRunIds) === stableJson(routaSummary.commentReferenceRunIds),
+    commentReferenceIdsMatch:
+      stableJson(walnutSummary.commentReferenceIds) === stableJson(routaSummary.commentReferenceIds),
     reviewMarkCountMatches: walnutSummary.reviewMarkCount === routaSummary.reviewMarkCount,
     tableShapesMatch: stableJson(walnutSummary.tableShapes) === stableJson(routaSummary.tableShapes),
     tableBboxSignaturesMatch:
