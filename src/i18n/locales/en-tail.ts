@@ -134,6 +134,7 @@ export const enTail: TailTranslationDictionarySections = {
     officeWasmPocStatusReady: "Ready",
     officeWasmPocStatusError: "Error",
     officeWasmPocVisualPreview: "Visual preview",
+    officeWasmPocDebugDetails: "Debug details",
     officeWasmPocGeneratedSummary: "Generated WASM summary",
     officeWasmPocRawJson: "Raw proto JSON",
     officeWasmPocSheet: "Sheet",

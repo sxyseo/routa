@@ -205,6 +205,8 @@ export function paragraphView(paragraph: unknown, styleMaps: DocumentStyleMaps):
   const styleRecord = styleMaps.textStyles.get(styleId);
   const style = {
     ...(asRecord(styleRecord?.textStyle) ?? {}),
+    ...(asRecord(record?.paragraphStyle) ?? {}),
+    ...(asRecord(record?.style) ?? {}),
     ...(asRecord(record?.textStyle) ?? {}),
     spaceAfter: record?.spaceAfter,
     spaceBefore: record?.spaceBefore,

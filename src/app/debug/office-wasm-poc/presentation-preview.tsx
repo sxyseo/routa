@@ -7,7 +7,6 @@ import {
   asNumber,
   asRecord,
   asString,
-  collectTextBlocks,
   prewarmOfficeFonts,
   type PreviewLabels,
   type RecordValue,
@@ -27,7 +26,13 @@ import {
 const THUMBNAIL_WIDTH = 192;
 const STACK_BAR_COUNT = 12;
 
-export function PresentationPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
+export function PresentationPreview({
+  labels,
+  proto,
+}: {
+  labels: PreviewLabels;
+  proto: unknown;
+}) {
   const root = asRecord(proto);
   const slides = useMemo(
     () => asArray(root?.slides).map(asRecord).filter((slide): slide is RecordValue => slide != null),
@@ -112,12 +117,14 @@ function SlideStage({
   const stageRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<{ elementId: string; slideKey: string } | null>(null);
   const stageSize = useElementSize(stageRef);
-  const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
-  const textRunCount = elements.reduce((count, element) => count + collectTextBlocks(element, 20).length, 0);
   const footnote = useMemo(() => slideFootnoteText(slide), [slide]);
+  const footnoteHeight = footnoteReservePx(footnote);
   const frame = getSlideFrameSize(slide);
   const fit = computePresentationFit(
-    { height: Math.max(1, stageSize.height - (footnote ? 72 : 0)), width: stageSize.width },
+    {
+      height: Math.max(1, stageSize.height - (footnote ? Math.min(48, footnoteHeight) : 0)),
+      width: stageSize.width,
+    },
     frame,
   );
   const canvasWidth = Math.max(1, fit.width);
@@ -132,19 +139,13 @@ function SlideStage({
 
   return (
     <main className={styles.mainPanel}>
-      <div className={styles.meta}>
-        <strong className={styles.metaStrong}>
-          {labels.slide} {asNumber(slide.index, slideIndex + 1)}
-        </strong>
-        <span className={styles.metaText}>
-          {elements.length} {labels.shapes}
-        </span>
-        <span className={styles.metaText}>
-          {textRunCount} {labels.textRuns}
-        </span>
-      </div>
       <div className={styles.stage} ref={stageRef}>
         <div className={styles.viewport}>
+          <div className={styles.slideHeading}>
+            <strong>
+              {labels.slide} {asNumber(slide.index, slideIndex + 1)}
+            </strong>
+          </div>
           <div
             className={styles.slideSurface}
             style={{ height: canvasHeight, width: canvasWidth }}
@@ -189,7 +190,7 @@ function SlideStage({
             </button>
           </div>
           {footnote ? (
-            <pre className={styles.footnote} style={{ width: canvasWidth }}>
+            <pre className={styles.footnote} data-testid="presentation-footnote" style={{ maxHeight: footnoteHeight, width: canvasWidth }}>
               {footnote}
             </pre>
           ) : null}
@@ -335,8 +336,42 @@ function slideFootnoteText(slide: RecordValue): string {
   const notesSlide = asRecord(slide.notesSlide);
   if (!notesSlide) return "";
 
-  return collectTextBlocks(notesSlide.elements, 8)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .join("\n\n");
+  const blocks: string[] = [];
+  for (const element of asArray(notesSlide.elements)) {
+    const record = asRecord(element);
+    if (!record || !isNotesBodyPlaceholder(record)) {
+      continue;
+    }
+
+    const text = asArray(record.paragraphs)
+      .map((paragraph) =>
+        asArray(asRecord(paragraph)?.runs)
+          .map((run) => asString(asRecord(run)?.text))
+          .join("")
+          .trim(),
+      )
+      .filter((line) => line && !/^\d+$/u.test(line))
+      .join("\n")
+      .trim();
+    if (text && !blocks.includes(text)) {
+      blocks.push(text);
+    }
+  }
+
+  return blocks.join("\n\n");
+}
+
+function isNotesBodyPlaceholder(element: RecordValue): boolean {
+  const placeholderType = asString(element.placeholderType).toLowerCase();
+  const name = asString(element.name).toLowerCase();
+  if (placeholderType === "sldimg" || placeholderType === "sldnum") return false;
+  if (placeholderType === "body" || placeholderType === "notes") return true;
+  if (name.includes("notes") || name.includes("body")) return true;
+  return placeholderType === "" && asArray(element.paragraphs).length > 0;
+}
+
+function footnoteReservePx(footnote: string): number {
+  if (!footnote) return 0;
+  const lineCount = Math.max(1, footnote.split(/\n/u).length);
+  return Math.max(48, Math.min(96, lineCount * 18 + 24));
 }

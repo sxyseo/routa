@@ -57,8 +57,21 @@ type DrawSegment = {
   fontSize: number;
   run: TextRunView;
   text: string;
+  width: number;
   x: number;
   y: number;
+};
+
+type TextInsets = {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+};
+
+type TextLayout = {
+  height: number;
+  segments: DrawSegment[];
 };
 
 export function computePresentationFit(
@@ -255,7 +268,7 @@ function drawElement(
     context.stroke(path);
   }
 
-  drawTextBox(context, element, rect, options);
+  drawTextBox(context, element, rect, bounds, canvas, options);
   context.restore();
 }
 
@@ -303,14 +316,19 @@ function drawTextBox(
   context: CanvasRenderingContext2D,
   element: RecordValue,
   rect: PresentationRect,
+  bounds: PresentationSize,
+  canvas: PresentationSize,
   options: { textOverflow: PresentationTextOverflow },
 ): void {
   const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_DOCUMENT_STYLE_MAPS));
   if (paragraphs.length === 0) return;
 
-  const padding = Math.max(2, Math.min(12, rect.height * 0.04));
-  const maxWidth = Math.max(1, rect.width - padding * 2);
-  const segments = layoutText(context, paragraphs, maxWidth);
+  const textStyle = asRecord(element.textStyle);
+  const insets = textInsets(textStyle, rect, canvas.width / bounds.width, canvas.height / bounds.height);
+  const maxWidth = Math.max(1, rect.width - insets.left - insets.right);
+  const maxHeight = Math.max(1, rect.height - insets.top - insets.bottom);
+  const layout = layoutText(context, paragraphs, maxWidth);
+  const verticalOffset = verticalTextOffset(asNumber(textStyle?.anchor), layout.height, maxHeight);
 
   context.save();
   if (options.textOverflow === "clip") {
@@ -320,15 +338,17 @@ function drawTextBox(
   }
   context.textBaseline = "top";
 
-  for (const segment of segments) {
+  for (const segment of layout.segments) {
     applyRunFont(context, segment.run, segment.fontSize);
     context.fillStyle = colorToCss(asRecord(segment.run.style?.fill)?.color) ?? "#0f172a";
-    context.fillText(segment.text, padding + segment.x, padding + segment.y);
+    const segmentX = insets.left + segment.x;
+    const segmentY = insets.top + verticalOffset + segment.y;
+    context.fillText(segment.text, segmentX, segmentY);
     if (segment.run.style?.underline === true) {
-      const underlineY = padding + segment.y + segment.fontSize * 1.08;
+      const underlineY = segmentY + segment.fontSize * 1.08;
       context.beginPath();
-      context.moveTo(padding + segment.x, underlineY);
-      context.lineTo(padding + segment.x + context.measureText(segment.text).width, underlineY);
+      context.moveTo(segmentX, underlineY);
+      context.lineTo(segmentX + segment.width, underlineY);
       context.lineWidth = Math.max(1, segment.fontSize / 18);
       context.strokeStyle = context.fillStyle;
       context.stroke();
@@ -342,19 +362,74 @@ function layoutText(
   context: CanvasRenderingContext2D,
   paragraphs: ParagraphView[],
   maxWidth: number,
-): DrawSegment[] {
+): TextLayout {
   const segments: DrawSegment[] = [];
-  let x = 0;
   let y = 0;
+  let line: DrawSegment[] = [];
+  let lineAlignment = 1;
   let lineHeight = 16;
+  let lineSpacing = 1;
+  let lineWidth = 0;
+  let activeAlignment = 1;
+  let activeLineSpacing = 1;
 
-  function newLine(height: number): void {
-    x = 0;
-    y += Math.max(lineHeight, height);
-    lineHeight = height;
+  function resetLine(): void {
+    line = [];
+    lineAlignment = activeAlignment;
+    lineHeight = 16;
+    lineSpacing = activeLineSpacing;
+    lineWidth = 0;
+  }
+
+  function flushLine(includeEmptyLine = false): void {
+    if (line.length === 0) {
+      if (includeEmptyLine) {
+        y += lineHeight * lineSpacing;
+      }
+      resetLine();
+      return;
+    }
+
+    const offsetX = lineAlignmentOffset(lineAlignment, lineWidth, maxWidth);
+    for (const segment of line) {
+      segments.push({ ...segment, x: segment.x + offsetX, y });
+    }
+    y += lineHeight * lineSpacing;
+    resetLine();
+  }
+
+  function setParagraphOptions(paragraph: ParagraphView): void {
+    activeAlignment = paragraphAlignment(paragraph);
+    activeLineSpacing = paragraphLineSpacing(paragraph);
+    if (line.length === 0 && lineWidth === 0) {
+      lineAlignment = activeAlignment;
+      lineSpacing = activeLineSpacing;
+    }
+  }
+
+  function pushTextSegment(run: TextRunView, text: string, width: number, fontSize: number): void {
+    if (line.length === 0 && lineWidth === 0) {
+      lineAlignment = activeAlignment;
+      lineSpacing = activeLineSpacing;
+    }
+
+    const nextLineHeight = fontSize * 1.18;
+    line.push({
+      fontSize,
+      run,
+      text,
+      width,
+      x: lineWidth,
+      y: 0,
+    });
+    lineWidth += width;
+    lineHeight = Math.max(lineHeight, nextLineHeight);
   }
 
   for (const paragraph of paragraphs) {
+    setParagraphOptions(paragraph);
+    y += paragraphSpacingPx(paragraph.style?.spaceBefore);
+
     for (const run of paragraph.runs) {
       const fontSize = runFontSize(run);
       applyRunFont(context, run, fontSize);
@@ -363,36 +438,88 @@ function layoutText(
       const tokens = textTokens(run.text);
       for (const token of tokens) {
         if (token === "\n") {
-          newLine(fontSize * 1.18);
+          flushLine(true);
           continue;
         }
 
         const tokenWidth = context.measureText(token).width;
-        if (x > 0 && x + tokenWidth > maxWidth) {
-          newLine(fontSize * 1.18);
+        if (lineWidth > 0 && lineWidth + tokenWidth > maxWidth) {
+          flushLine();
         }
 
-        if (tokenWidth <= maxWidth || token.trim() === "" || (x === 0 && Array.from(token).length <= 4)) {
-          segments.push({ fontSize, run, text: token, x, y });
-          x += tokenWidth;
+        if (tokenWidth <= maxWidth || token.trim() === "" || (lineWidth === 0 && Array.from(token).length <= 4)) {
+          pushTextSegment(run, token, tokenWidth, fontSize);
           continue;
         }
 
         for (const char of wrapCharacters(token)) {
           const charWidth = context.measureText(char).width;
-          if (x > 0 && x + charWidth > maxWidth) {
-            newLine(fontSize * 1.18);
+          if (lineWidth > 0 && lineWidth + charWidth > maxWidth) {
+            flushLine();
           }
-          segments.push({ fontSize, run, text: char, x, y });
-          x += charWidth;
+          pushTextSegment(run, char, charWidth, fontSize);
         }
       }
     }
 
-    newLine(12);
+    flushLine();
+    y += paragraphSpacingPx(paragraph.style?.spaceAfter);
   }
 
-  return segments;
+  return { height: y, segments };
+}
+
+function textInsets(
+  textStyle: RecordValue | null,
+  rect: PresentationRect,
+  scaleX: number,
+  scaleY: number,
+): TextInsets {
+  const defaultX = Math.max(2, Math.min(12, rect.height * 0.04));
+  const defaultY = Math.max(2, Math.min(12, rect.height * 0.035));
+  return {
+    bottom: insetPx(textStyle?.bottomInset, scaleY, defaultY, rect.height * 0.45),
+    left: insetPx(textStyle?.leftInset, scaleX, defaultX, rect.width * 0.45),
+    right: insetPx(textStyle?.rightInset, scaleX, defaultX, rect.width * 0.45),
+    top: insetPx(textStyle?.topInset, scaleY, defaultY, rect.height * 0.45),
+  };
+}
+
+function insetPx(value: unknown, scale: number, fallback: number, max: number): number {
+  const raw = asNumber(value, Number.NaN);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return clamp(raw * scale, 0, max);
+}
+
+function verticalTextOffset(anchor: number, contentHeight: number, maxHeight: number): number {
+  if (contentHeight >= maxHeight) return 0;
+  if (anchor === 2 || anchor === 4 || anchor === 5) return (maxHeight - contentHeight) / 2;
+  if (anchor === 3) return maxHeight - contentHeight;
+  return 0;
+}
+
+function paragraphAlignment(paragraph: ParagraphView): number {
+  const alignment = asNumber(paragraph.style?.alignment);
+  return alignment > 0 ? alignment : 1;
+}
+
+function paragraphLineSpacing(paragraph: ParagraphView): number {
+  const raw = asNumber(paragraph.style?.lineSpacing);
+  if (raw > 10_000) return clamp(raw / 100_000, 0.6, 3);
+  if (raw > 0) return clamp(raw, 0.6, 3);
+  return 1;
+}
+
+function paragraphSpacingPx(value: unknown): number {
+  const raw = asNumber(value);
+  if (raw <= 0) return 0;
+  return Math.min(24, raw / 20);
+}
+
+function lineAlignmentOffset(alignment: number, lineWidth: number, maxWidth: number): number {
+  if (alignment === 2) return Math.max(0, (maxWidth - lineWidth) / 2);
+  if (alignment === 3) return Math.max(0, maxWidth - lineWidth);
+  return 0;
 }
 
 function textTokens(text: string): string[] {

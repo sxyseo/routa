@@ -627,12 +627,14 @@ export function OfficeWasmPocPageClient() {
       style={{
         boxSizing: "border-box",
         display: "grid",
-        fontFamily: "Arial, sans-serif",
+        fontFamily:
+          "var(--font-sans, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif)",
         gap: 16,
+        gridTemplateRows: "auto minmax(0, 1fr)",
         height: "100vh",
         maxWidth: "none",
         minHeight: "100vh",
-        overflowY: "auto",
+        overflow: "hidden",
         padding: 24,
         width: "100%",
       }}
@@ -681,51 +683,78 @@ export function OfficeWasmPocPageClient() {
         {errorMessage ? <div style={{ color: "#b91c1c", fontSize: 13 }}>{errorMessage}</div> : null}
       </header>
 
-      <section>
+      <section style={{ minHeight: 0, overflow: "hidden" }}>
         {artifact ? (
-          <div style={{ display: "grid", gap: 12 }}>
-            <section data-testid="office-preview">
+          <div style={{ display: "grid", gap: 12, gridTemplateRows: "minmax(0, 1fr) auto", height: "100%", minHeight: 0 }}>
+            <section
+              data-testid="office-preview"
+              style={{
+                minHeight: 0,
+                overflowX: "hidden",
+                overflowY: artifact.kind === "document" ? "auto" : "hidden",
+                paddingBottom: artifact.kind === "document" ? 8 : 0,
+              }}
+            >
               <OfficePreview artifact={artifact} labels={labels} />
             </section>
-            {artifact.generatedSummary ? (
-              <section>
-                <div style={{ color: "#475569", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                  {t.debug.officeWasmPocGeneratedSummary}
-                </div>
-                <pre
-                  data-testid="office-wasm-generated-summary"
-                  style={{
-                    background: "#eef6ff",
-                    borderColor: "#bfdbfe",
-                    borderRadius: 8,
-                    borderStyle: "solid",
-                    borderWidth: 1,
-                    color: "#0f172a",
-                    margin: 0,
-                    overflow: "auto",
-                    padding: 12,
+            <details
+              data-testid="office-wasm-debug-details"
+              style={{
+                borderColor: "#e2e8f0",
+                borderRadius: 8,
+                borderStyle: "solid",
+                borderWidth: 1,
+                overflow: "hidden",
+              }}
+            >
+              <summary style={{ cursor: "pointer", padding: "10px 12px" }}>
+                {t.debug.officeWasmPocDebugDetails}
+              </summary>
+              <div style={{ display: "grid", gap: 12, padding: "0 12px 12px" }}>
+                {artifact.generatedSummary ? (
+                  <section>
+                    <div style={{ color: "#475569", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                      {t.debug.officeWasmPocGeneratedSummary}
+                    </div>
+                    <pre
+                      data-testid="office-wasm-generated-summary"
+                      style={{
+                        background: "#eef6ff",
+                        borderColor: "#bfdbfe",
+                        borderRadius: 8,
+                        borderStyle: "solid",
+                        borderWidth: 1,
+                        color: "#0f172a",
+                        margin: 0,
+                        maxHeight: "220px",
+                        overflow: "auto",
+                        padding: 12,
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {JSON.stringify(artifact.generatedSummary, null, 2)}
+                    </pre>
+                  </section>
+                ) : null}
+                <section>
+                  <div style={{ color: "#475569", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    {labels.rawJson}
+                  </div>
+                  <pre style={{
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-word",
-                  }}
-                >
-                  {JSON.stringify(artifact.generatedSummary, null, 2)}
-                </pre>
-              </section>
-            ) : null}
-            <details style={{ marginTop: 18 }}>
-              <summary style={{ cursor: "pointer" }}>{labels.rawJson}</summary>
-              <pre style={{
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                maxHeight: "420px",
-                overflow: "auto",
-                background: "#0b1020",
-                color: "#f8fafc",
-                padding: 12,
-                borderRadius: 8,
-              }}>
-                {preview}
-              </pre>
+                    maxHeight: "420px",
+                    overflow: "auto",
+                    background: "#0b1020",
+                    color: "#f8fafc",
+                    padding: 12,
+                    borderRadius: 8,
+                  }}>
+                    {preview}
+                  </pre>
+                </section>
+              </div>
             </details>
           </div>
         ) : (

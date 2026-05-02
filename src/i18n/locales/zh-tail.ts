@@ -131,6 +131,7 @@ export const zhTail: TailTranslationDictionarySections = {
     officeWasmPocStatusReady: "已完成",
     officeWasmPocStatusError: "错误",
     officeWasmPocVisualPreview: "可视化预览",
+    officeWasmPocDebugDetails: "调试详情",
     officeWasmPocGeneratedSummary: "生成 WASM 摘要",
     officeWasmPocRawJson: "原始 Proto JSON",
     officeWasmPocSheet: "工作表",

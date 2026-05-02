@@ -132,6 +132,7 @@ export interface TailTranslationDictionarySections {
     officeWasmPocStatusReady: string;
     officeWasmPocStatusError: string;
     officeWasmPocVisualPreview: string;
+    officeWasmPocDebugDetails: string;
     officeWasmPocGeneratedSummary: string;
     officeWasmPocRawJson: string;
     officeWasmPocSheet: string;
