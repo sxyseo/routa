@@ -103,6 +103,11 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 24, pivotCache);
             }
 
+            foreach (var timelineCache in WorkbookTimelineCaches(workbookPart))
+            {
+                WriteMessage(output, 25, timelineCache);
+            }
+
             var definedNames = WriteDefinedNames(workbookPart.Workbook.DefinedNames);
             if (definedNames is not null)
             {
@@ -1035,13 +1040,22 @@ internal static class XlsxWorkbookProtoReader
 
     private static bool IsSlicerShape(Xdr.Shape? shape)
     {
-        return shape?.Descendants().Any(IsDrawingSlicerElement) == true;
+        return shape?.Descendants().Any(IsDrawingSlicerLikeElement) == true;
+    }
+
+    private static bool IsDrawingSlicerLikeElement(OpenXmlElement element)
+    {
+        return IsDrawingSlicerElement(element) || IsDrawingTimeSlicerElement(element);
     }
 
     private static bool IsDrawingSlicerElement(OpenXmlElement element)
     {
-        return string.Equals(element.LocalName, "slicer", StringComparison.Ordinal) &&
-            string.Equals(element.NamespaceUri, "http://schemas.microsoft.com/office/drawing/2010/slicer", StringComparison.Ordinal);
+        return IsElement(element, "slicer", "http://schemas.microsoft.com/office/drawing/2010/slicer");
+    }
+
+    private static bool IsDrawingTimeSlicerElement(OpenXmlElement element)
+    {
+        return IsElement(element, "timeslicer", "http://schemas.microsoft.com/office/drawing/2012/timeslicer");
     }
 
     private static IEnumerable<WorksheetImageReference> WorkbookImages(WorkbookPart workbookPart)
@@ -1126,6 +1140,25 @@ internal static class XlsxWorkbookProtoReader
             WriteBoolValue(output, 3, BoolAttribute(item, "s"));
             WriteBoolValue(output, 4, BoolAttribute(item, "d"));
             WriteBoolValue(output, 5, BoolAttribute(item, "nd"));
+        });
+    }
+
+    private static IEnumerable<byte[]> WorkbookTimelineCaches(WorkbookPart workbookPart)
+    {
+        foreach (var timelineCachePart in workbookPart.TimeLineCacheParts)
+        {
+            if (timelineCachePart.TimelineCacheDefinition is { } definition)
+            {
+                yield return WriteTimelineCache(definition);
+            }
+        }
+    }
+
+    private static byte[] WriteTimelineCache(OpenXmlElement definition)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, AttributeValue(definition, "name"));
         });
     }
 
@@ -3014,6 +3047,12 @@ internal static class XlsxWorkbookProtoReader
     private static OpenXmlElement? ChildByLocalName(OpenXmlElement? element, string localName)
     {
         return element?.Elements().FirstOrDefault(child => child.LocalName == localName);
+    }
+
+    private static bool IsElement(OpenXmlElement element, string localName, string namespaceUri)
+    {
+        return string.Equals(element.LocalName, localName, StringComparison.Ordinal) &&
+            string.Equals(element.NamespaceUri, namespaceUri, StringComparison.Ordinal);
     }
 
     private static string AttributeValue(OpenXmlElement? element, string localName)
