@@ -25,7 +25,14 @@ import {
 } from "./presentation-renderer";
 
 const THUMBNAIL_WIDTH = 192;
+const SLIDE_BITMAP_WIDTH = 1920;
 const STACK_BAR_COUNT = 12;
+
+type SlideBitmapSurface = {
+  height: number;
+  url: string;
+  width: number;
+};
 
 export function PresentationPreview({
   labels,
@@ -41,11 +48,19 @@ export function PresentationPreview({
   );
   const imageSources = useOfficeImageSources(root);
   const imageElements = useLoadedOfficeImages(imageSources);
+  const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
   const [thumbnailRailOpen, setThumbnailRailOpen] = useState(false);
   const selectedSlideIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
   const selectedSlide = slides[selectedSlideIndex] ?? {};
+  const openSlideshow = useCallback(() => {
+    if (!document.fullscreenElement) {
+      void document.documentElement.requestFullscreen?.({ navigationUI: "hide" }).catch(() => undefined);
+    }
+    setIsSlideshowOpen(true);
+  }, []);
+  const closeSlideshow = useCallback(() => setIsSlideshowOpen(false), []);
 
   useEffect(() => {
     void prewarmOfficeFonts(collectPresentationTypefaces(slides));
@@ -84,11 +99,13 @@ export function PresentationPreview({
               <span className={styles.thumbnailLabel}>
                 {asNumber(slide.index, index + 1)}
               </span>
-              <SlideCanvasFrame
+              <SlideRasterFrame
+                alt=""
+                bitmap={slideBitmaps.get(slideRenderKey(slide, index))}
                 className={styles.thumbnailCanvas}
-                images={imageElements}
+                fallbackImages={imageElements}
+                fallbackTextOverflow="clip"
                 slide={slide}
-                textOverflow="clip"
                 width={THUMBNAIL_WIDTH}
               />
             </button>
@@ -98,7 +115,8 @@ export function PresentationPreview({
       <SlideStage
         images={imageElements}
         labels={labels}
-        onPlaySlideshow={() => setIsSlideshowOpen(true)}
+        onPlaySlideshow={openSlideshow}
+        slideBitmap={slideBitmaps.get(slideRenderKey(selectedSlide, selectedSlideIndex))}
         slide={selectedSlide}
         slideIndex={selectedSlideIndex}
       />
@@ -107,8 +125,9 @@ export function PresentationPreview({
           activeSlideIndex={selectedSlideIndex}
           images={imageElements}
           labels={labels}
-          onClose={() => setIsSlideshowOpen(false)}
+          onClose={closeSlideshow}
           setActiveSlideIndex={setActiveSlideIndex}
+          slideBitmaps={slideBitmaps}
           slides={slides}
         />
       ) : null}
@@ -120,12 +139,14 @@ function SlideStage({
   images,
   labels,
   onPlaySlideshow,
+  slideBitmap,
   slide,
   slideIndex,
 }: {
   images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
   onPlaySlideshow: () => void;
+  slideBitmap?: SlideBitmapSurface;
   slide: RecordValue;
   slideIndex: number;
 }) {
@@ -165,11 +186,13 @@ function SlideStage({
             className={styles.slideSurface}
             style={{ height: canvasHeight, width: canvasWidth }}
           >
-            <SlideCanvasFrame
+            <SlideRasterFrame
+              alt={`${labels.slide} ${asNumber(slide.index, slideIndex + 1)}`}
+              bitmap={slideBitmap}
               className={styles.slideCanvas}
-              images={images}
+              fallbackImages={images}
+              fallbackTextOverflow="visible"
               slide={slide}
-              textOverflow="visible"
               width={canvasWidth}
             />
             <button
@@ -221,6 +244,7 @@ function SlideshowOverlay({
   labels,
   onClose,
   setActiveSlideIndex,
+  slideBitmaps,
   slides,
 }: {
   activeSlideIndex: number;
@@ -228,12 +252,12 @@ function SlideshowOverlay({
   labels: PreviewLabels;
   onClose: () => void;
   setActiveSlideIndex: (index: number) => void;
+  slideBitmaps: ReadonlyMap<string, SlideBitmapSurface>;
   slides: RecordValue[];
 }) {
-  const overlayRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLButtonElement>(null);
   const frameSize = useElementSize(frameRef);
-  const didEnterFullscreenRef = useRef(false);
+  const didEnterFullscreenRef = useRef(typeof document !== "undefined" && document.fullscreenElement != null);
   const selectedIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
   const slide = slides[selectedIndex] ?? {};
   const frame = getSlideFrameSize(slide);
@@ -249,7 +273,7 @@ function SlideshowOverlay({
   }, [selectedIndex, setActiveSlideIndex, slides.length]);
 
   const closeSlideshow = useCallback(() => {
-    if (document.fullscreenElement === overlayRef.current) {
+    if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined);
     }
     onClose();
@@ -264,24 +288,18 @@ function SlideshowOverlay({
   }, []);
 
   useEffect(() => {
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-
     const handleFullscreenChange = () => {
-      if (didEnterFullscreenRef.current && document.fullscreenElement !== overlay) {
+      if (document.fullscreenElement) {
+        didEnterFullscreenRef.current = true;
+        return;
+      }
+
+      if (didEnterFullscreenRef.current) {
         onClose();
       }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-    const fullscreenRequest = overlay.requestFullscreen?.({ navigationUI: "hide" });
-    void fullscreenRequest?.then(
-      () => {
-        didEnterFullscreenRef.current = true;
-      },
-      () => undefined,
-    );
-
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
@@ -317,7 +335,6 @@ function SlideshowOverlay({
       aria-modal="true"
       className={styles.slideshowOverlay}
       data-testid="presentation-slideshow"
-      ref={overlayRef}
       role="dialog"
     >
       <div className={styles.slideshowChrome}>
@@ -335,15 +352,62 @@ function SlideshowOverlay({
         ref={frameRef}
         type="button"
       >
-        <SlideCanvasFrame
+        <SlideRasterFrame
+          alt={`${labels.slide} ${asNumber(slide.index, selectedIndex + 1)}`}
+          bitmap={slideBitmaps.get(slideRenderKey(slide, selectedIndex))}
           className={styles.slideshowCanvas}
-          images={images}
+          fallbackImages={images}
+          fallbackTextOverflow="visible"
           slide={slide}
-          textOverflow="visible"
           width={canvasWidth}
         />
       </button>
     </div>
+  );
+}
+
+function SlideRasterFrame({
+  alt,
+  bitmap,
+  className,
+  fallbackImages,
+  fallbackTextOverflow,
+  slide,
+  width,
+}: {
+  alt: string;
+  bitmap?: SlideBitmapSurface;
+  className: string;
+  fallbackImages: ReadonlyMap<string, CanvasImageSource>;
+  fallbackTextOverflow: PresentationTextOverflow;
+  slide: RecordValue;
+  width: number;
+}) {
+  const frame = getSlideFrameSize(slide);
+  const height = Math.max(1, (width / frame.width) * frame.height);
+  if (bitmap) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- Runtime object URLs are generated from the canvas preview surface.
+      <img
+        alt={alt}
+        className={className}
+        draggable={false}
+        height={Math.round(height)}
+        src={bitmap.url}
+        style={{ height, width }}
+        width={Math.round(width)}
+      />
+    );
+  }
+
+  return (
+    <SlideCanvasFrame
+      className={className}
+      images={fallbackImages}
+      slide={slide}
+      textOverflow={fallbackTextOverflow}
+      width={width}
+    />
   );
 }
 
@@ -392,6 +456,81 @@ function SlideCanvasFrame({
   );
 }
 
+function useRenderedSlideBitmaps(
+  slides: RecordValue[],
+  images: ReadonlyMap<string, CanvasImageSource>,
+): ReadonlyMap<string, SlideBitmapSurface> {
+  const [bitmaps, setBitmaps] = useState<ReadonlyMap<string, SlideBitmapSurface>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    const objectUrls: string[] = [];
+    window.requestAnimationFrame(() => {
+      if (!cancelled) {
+        setBitmaps(new Map());
+      }
+    });
+
+    async function renderBitmaps(): Promise<void> {
+      if (slides.length === 0) return;
+
+      await waitForDocumentFonts();
+      const next = new Map<string, SlideBitmapSurface>();
+      for (const [index, slide] of slides.entries()) {
+        if (cancelled) return;
+
+        const frame = getSlideFrameSize(slide);
+        const width = SLIDE_BITMAP_WIDTH;
+        const height = Math.max(1, (width / frame.width) * frame.height);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(width));
+        canvas.height = Math.max(1, Math.round(height));
+        const context = canvas.getContext("2d");
+        if (!context) continue;
+
+        renderPresentationSlide({
+          context,
+          height,
+          images,
+          slide,
+          textOverflow: "visible",
+          width,
+        });
+        const blob = await canvasToBlob(canvas);
+        if (!blob || cancelled) continue;
+
+        const url = URL.createObjectURL(blob);
+        objectUrls.push(url);
+        next.set(slideRenderKey(slide, index), { height, url, width });
+        if (!cancelled) {
+          setBitmaps(new Map(next));
+        }
+      }
+    }
+
+    void renderBitmaps();
+    return () => {
+      cancelled = true;
+      for (const url of objectUrls) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [images, slides]);
+
+  return bitmaps;
+}
+
+async function waitForDocumentFonts(): Promise<void> {
+  if (typeof document === "undefined" || !("fonts" in document)) return;
+  await document.fonts.ready.catch(() => undefined);
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, "image/png");
+  });
+}
+
 function useLoadedOfficeImages(imageSources: Map<string, string>): ReadonlyMap<string, CanvasImageSource> {
   const [images, setImages] = useState<ReadonlyMap<string, CanvasImageSource>>(new Map());
 
@@ -430,6 +569,10 @@ function useLoadedOfficeImages(imageSources: Map<string, string>): ReadonlyMap<s
   }, [imageSources]);
 
   return images;
+}
+
+function slideRenderKey(slide: RecordValue, index: number): string {
+  return `${asString(slide.id) || "slide"}-${index}`;
 }
 
 function useElementSize<T extends HTMLElement>(ref: RefObject<T | null>): PresentationSize {

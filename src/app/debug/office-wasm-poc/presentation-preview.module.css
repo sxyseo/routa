@@ -70,6 +70,8 @@
 .slideCanvas {
   background: #ffffff;
   display: block;
+  object-fit: fill;
+  user-select: none;
 }
 
 .thumbnailCanvas {
@@ -319,6 +321,8 @@
   border-radius: 0;
   box-shadow: none;
   display: block;
+  object-fit: fill;
+  user-select: none;
 }
 
 @container presentation-editor (width <= 748px) {
