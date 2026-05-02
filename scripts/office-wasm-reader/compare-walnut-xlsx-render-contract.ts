@@ -184,6 +184,7 @@ function summarizeWorkbookRenderDigest(contract: WorkbookRenderContract) {
         customRowCount: sheet.rowLayout.customRows.length,
         hash: sheet.rowLayout.hash,
       },
+      sparklineGroupCount: sheet.sparklineGroups.length,
       tableCount: sheet.tables.length,
     })),
     styleContract: {
@@ -215,6 +216,7 @@ function summarizeSheetRenderContract(sheet: Record<string, unknown>) {
     name: stringValue(sheet.name),
     rowLayout: summarizeRowLayoutContract(arrayOfRecords(sheet.rows)),
     showGridLines: booleanValue(sheet.showGridLines),
+    sparklineGroups: summarizeSparklineGroups(sheet.sparklineGroups),
     tables: arrayOfRecords(sheet.tables).map(summarizeTable),
   };
 }
@@ -398,6 +400,45 @@ function summarizeDataValidation(validation: Record<string, unknown>) {
     showDropDown: booleanValue(validation.showDropDown),
     type: stringValue(validation.type),
   };
+}
+
+function summarizeSparklineGroups(value: unknown) {
+  const record = asRecord(value);
+  const groups = record ? arrayOfRecords(record.groups) : arrayOfRecords(value);
+
+  return groups.map((group) => ({
+    axisColor: summarizeColor(group.axisColor),
+    dateAxis: booleanValue(group.dateAxis),
+    displayEmptyCellsAs: nullableNumberValue(group.displayEmptyCellsAs),
+    displayHidden: booleanValue(group.displayHidden),
+    displayXAxis: booleanValue(group.displayXAxis),
+    first: booleanValue(group.first),
+    firstMarkerColor: summarizeColor(group.firstMarkerColor),
+    formula: stringValue(group.formula),
+    high: booleanValue(group.high),
+    highMarkerColor: summarizeColor(group.highMarkerColor),
+    last: booleanValue(group.last),
+    lastMarkerColor: summarizeColor(group.lastMarkerColor),
+    lineWeight: nullableNumberValue(group.lineWeight),
+    low: booleanValue(group.low),
+    lowMarkerColor: summarizeColor(group.lowMarkerColor),
+    manualMax: nullableNumberValue(group.manualMax),
+    manualMin: nullableNumberValue(group.manualMin),
+    markers: booleanValue(group.markers),
+    markersColor: summarizeColor(group.markersColor),
+    maxAxisType: nullableNumberValue(group.maxAxisType),
+    minAxisType: nullableNumberValue(group.minAxisType),
+    negative: booleanValue(group.negative),
+    negativeColor: summarizeColor(group.negativeColor),
+    rightToLeft: booleanValue(group.rightToLeft),
+    seriesColor: summarizeColor(group.seriesColor),
+    sparklines: arrayOfRecords(group.sparklines).map((sparkline) => ({
+      formula: stringValue(sparkline.formula),
+      reference: stringValue(sparkline.reference),
+    })),
+    type: nullableNumberValue(group.type),
+    uid: stringValue(group.uid),
+  }));
 }
 
 function summarizeDrawing(drawing: Record<string, unknown>) {
@@ -605,6 +646,9 @@ function summarizeRenderEquivalence(walnut: WorkbookRenderContract, routa: Workb
     sameTopLevelProtocol: walnut.protocol === routa.protocol,
     shapeRenderContractMatch: stableJson(sheetDrawingProjection(walnut, "shape")) === stableJson(sheetDrawingProjection(routa, "shape")),
     sheetNamesMatch: stableJson(walnut.sheets.map((sheet) => sheet.name)) === stableJson(routa.sheets.map((sheet) => sheet.name)),
+    sparklineRenderContractMatch:
+      stableJson(walnut.sheets.map((sheet) => ({ name: sheet.name, sparklineGroups: sheet.sparklineGroups }))) ===
+      stableJson(routa.sheets.map((sheet) => ({ name: sheet.name, sparklineGroups: sheet.sparklineGroups }))),
     styleRenderContractMatch: stableJson(walnut.styleContract) === stableJson(routa.styleContract),
     tableRenderContractMatch:
       stableJson(walnut.sheets.map((sheet) => ({ name: sheet.name, tables: sheet.tables }))) ===
@@ -661,6 +705,7 @@ function summarizeRenderGaps(
       routaSheet.conditionalFormattings,
     );
     addSheetGap(gaps, walnutSheet.name, "dataValidations", walnutSheet.dataValidations, routaSheet.dataValidations);
+    addSheetGap(gaps, walnutSheet.name, "sparklineGroups", walnutSheet.sparklineGroups, routaSheet.sparklineGroups);
     addSheetGap(gaps, walnutSheet.name, "drawings", walnutSheet.drawings, routaSheet.drawings, {
       routaSummary: routaSheet.drawingSummary,
       walnutSummary: walnutSheet.drawingSummary,
@@ -771,6 +816,7 @@ function assertStableRenderContract(result: XlsxRenderContractResult): void {
     "tableRenderContractMatch",
     "conditionalRenderContractMatch",
     "dataValidationContractMatch",
+    "sparklineRenderContractMatch",
     "drawingRenderContractMatch",
     "imageRenderContractMatch",
     "shapeRenderContractMatch",

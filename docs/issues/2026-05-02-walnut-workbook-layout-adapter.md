@@ -87,6 +87,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Aligned remaining decoded protocol fields for `complex_excel_renderer_test.xlsx`: chart payload defaults (`titleTextStyle`, `dataLabels`, `view3d`, `barOptions`), axis defaults/titles/gridlines, line-series marker presence, chart-space outline extraction from root `c:spPr`, cell style/style-xf blocks, pattern-fill foreground/background fallback, explicit conditional-format rule ids, and explicit cell `styleIndex: 0` for unstyled cells.
 - Re-ran Walnut protocol comparison with `--diff`: `complex_excel_renderer_test.xlsx` and `xlsx_image_drawing_contract.xlsx` now both report `protocolDiff.totalCount: 0`. The generated proto bytes are still not byte-identical (`complex`: Routa `232934` bytes vs Walnut `231754`; `image`: Routa `226` bytes vs Walnut `224`), so the current contract is decoded Workbook equivalence rather than raw protobuf byte equality.
 - Tightened `npm run test:office-wasm-reader:xlsx-parity` so `--assert` now fails on any decoded protocol diff, not only high-level count/shape mismatches.
+- Added Walnut-like XLSX `sparklineGroups` protocol extraction for x14 sparkline extensions, including group options, ARGB sparkline colors, and per-sparkline formula/reference pairs. `xlsx_sparkline_contract.xlsx` now covers this path in both decoded protocol and render-contract tests.
 
 ## Remaining XLSX Work
 
@@ -96,7 +97,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Drawing overlays: sheet drawing chart/shape/image anchors, workbook image payloads, Walnut-style image references, sheet drawing order, and shape effect metadata are now consumed by the preview. Image crop is not currently representable in the Walnut spreadsheet `Drawing` schema based on the cropped-image probe.
 - Freeze panes and sticky headers: the prefix-sum layout adapter now drives fixed headers, frozen body overlays, viewport projection, and cell hit regions. Remaining work is extracting freeze panes from a future protocol source, viewport virtualization, and floating-element hit regions.
 - Conditional formatting breadth: data bars now support negative values, explicit axis placement, and gradient/solid variants. Color scales now use cfvo thresholds for multi-stop interpolation; multi-rule layering still needs more coverage.
-- Protocol coverage: `complex_excel_renderer_test.xlsx` and `xlsx_image_drawing_contract.xlsx` now pass decoded Walnut Workbook protocol diff with zero field-level differences. Remaining work is raw protobuf byte exactness, understanding whether byte drift matters for downstream consumers, and adding more XLSX fixtures for pivot/slicer/timeline, sparklines, charts beyond line/bar, external links, comments/notes, and richer theme/style combinations.
+- Protocol coverage: `complex_excel_renderer_test.xlsx`, `xlsx_image_drawing_contract.xlsx`, and `xlsx_sparkline_contract.xlsx` now pass decoded Walnut Workbook protocol diff with zero field-level differences. Remaining work is raw protobuf byte exactness, understanding whether byte drift matters for downstream consumers, and adding more XLSX fixtures for pivot/slicer/timeline, charts beyond line/bar, external links, comments/notes, and richer theme/style combinations.
 
 ## References
 

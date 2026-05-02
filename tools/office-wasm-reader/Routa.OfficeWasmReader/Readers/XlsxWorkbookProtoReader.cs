@@ -131,6 +131,12 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 15, WriteTable(tablePart.Table));
             }
 
+            var sparklineGroups = WriteSparklineGroups(worksheetPart.Worksheet);
+            if (sparklineGroups is not null)
+            {
+                WriteMessage(output, 27, sparklineGroups);
+            }
+
             var dataValidations = worksheetPart.Worksheet.Elements<S.DataValidations>().FirstOrDefault();
             if (dataValidations is not null)
             {
@@ -368,6 +374,74 @@ internal static class XlsxWorkbookProtoReader
             WriteString(output, 14, TextNormalization.Clean(validation.Elements<S.Formula1>().FirstOrDefault()?.Text));
             WriteString(output, 15, TextNormalization.Clean(validation.Elements<S.Formula2>().FirstOrDefault()?.Text));
             WriteString(output, 16, ExtendedAttributeValue(validation, "uid"));
+        });
+    }
+
+    private static byte[]? WriteSparklineGroups(S.Worksheet worksheet)
+    {
+        var groups = worksheet
+            .Descendants()
+            .Where(element => element.LocalName == "sparklineGroup")
+            .ToArray();
+        if (groups.Length == 0)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            foreach (var group in groups)
+            {
+                WriteMessage(output, 1, WriteSparklineGroup(group));
+            }
+        });
+    }
+
+    private static byte[] WriteSparklineGroup(OpenXmlElement group)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, AttributeValue(group, "uid"));
+            WriteDoubleValue(output, 2, DoubleAttribute(group, "manualMax"));
+            WriteDoubleValue(output, 3, DoubleAttribute(group, "manualMin"));
+            WriteDoubleValue(output, 4, DoubleAttribute(group, "lineWeight"));
+            WriteInt32(output, 5, SparklineType(AttributeValue(group, "type")));
+            WriteBoolValue(output, 6, BoolAttribute(group, "dateAxis"));
+            WriteInt32(output, 7, SparklineDisplayEmptyCellsAs(AttributeValue(group, "displayEmptyCellsAs")));
+            WriteBoolValue(output, 8, BoolAttribute(group, "markers"));
+            WriteBoolValue(output, 9, BoolAttribute(group, "high"));
+            WriteBoolValue(output, 10, BoolAttribute(group, "low"));
+            WriteBoolValue(output, 11, BoolAttribute(group, "first"));
+            WriteBoolValue(output, 12, BoolAttribute(group, "last"));
+            WriteBoolValue(output, 13, BoolAttribute(group, "negative"));
+            WriteBoolValue(output, 14, BoolAttribute(group, "displayXAxis"));
+            WriteBoolValue(output, 15, BoolAttribute(group, "displayHidden"));
+            WriteInt32(output, 16, SparklineAxisType(AttributeValue(group, "minAxisType")));
+            WriteInt32(output, 17, SparklineAxisType(AttributeValue(group, "maxAxisType")));
+            WriteBoolValue(output, 18, BoolAttribute(group, "rightToLeft"));
+            WriteMessage(output, 19, WriteSparklineColor(ChildByLocalName(group, "colorSeries")));
+            WriteMessage(output, 20, WriteSparklineColor(ChildByLocalName(group, "colorNegative")));
+            WriteMessage(output, 21, WriteSparklineColor(ChildByLocalName(group, "colorAxis")));
+            WriteMessage(output, 22, WriteSparklineColor(ChildByLocalName(group, "colorMarkers")));
+            WriteMessage(output, 23, WriteSparklineColor(ChildByLocalName(group, "colorFirst")));
+            WriteMessage(output, 24, WriteSparklineColor(ChildByLocalName(group, "colorLast")));
+            WriteMessage(output, 25, WriteSparklineColor(ChildByLocalName(group, "colorHigh")));
+            WriteMessage(output, 26, WriteSparklineColor(ChildByLocalName(group, "colorLow")));
+            WriteString(output, 27, TextNormalization.Clean(group.Elements().FirstOrDefault(element => element.LocalName == "f")?.InnerText));
+
+            foreach (var sparkline in group.Descendants().Where(element => element.LocalName == "sparkline"))
+            {
+                WriteMessage(output, 28, WriteSparkline(sparkline));
+            }
+        });
+    }
+
+    private static byte[] WriteSparkline(OpenXmlElement sparkline)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, TextNormalization.Clean(sparkline.Elements().FirstOrDefault(element => element.LocalName == "f")?.InnerText));
+            WriteString(output, 2, TextNormalization.Clean(sparkline.Elements().FirstOrDefault(element => element.LocalName == "sqref")?.InnerText));
         });
     }
 
@@ -1654,7 +1728,17 @@ internal static class XlsxWorkbookProtoReader
         return WriteColor(value);
     }
 
+    private static byte[] WriteSparklineColor(OpenXmlElement? color)
+    {
+        return WriteColorValue(color is null ? "" : AttributeValue(color, "rgb"), preserveAlpha: true);
+    }
+
     private static byte[] WriteColor(string? value)
+    {
+        return WriteColorValue(value, preserveAlpha: false);
+    }
+
+    private static byte[] WriteColorValue(string? value, bool preserveAlpha)
     {
         return Message(output =>
         {
@@ -1663,7 +1747,7 @@ internal static class XlsxWorkbookProtoReader
                 return;
             }
 
-            var normalized = value.Length == 8 ? value[2..] : value;
+            var normalized = !preserveAlpha && value.Length == 8 ? value[2..] : value;
             WriteInt32(output, 1, 1);
             WriteString(output, 2, normalized);
         });
@@ -1918,9 +2002,86 @@ internal static class XlsxWorkbookProtoReader
             .ToArray();
     }
 
+    private static int SparklineType(string? value)
+    {
+        return value switch
+        {
+            "line" => 1,
+            "column" => 2,
+            "stacked" => 3,
+            _ => 0,
+        };
+    }
+
+    private static int SparklineAxisType(string? value)
+    {
+        return value switch
+        {
+            "individual" => 1,
+            "group" => 2,
+            "custom" => 3,
+            _ => 0,
+        };
+    }
+
+    private static int SparklineDisplayEmptyCellsAs(string? value)
+    {
+        return value switch
+        {
+            "span" => 1,
+            "gap" => 2,
+            "zero" => 3,
+            _ => 0,
+        };
+    }
+
     private static string EnumText(OpenXmlSimpleType? value)
     {
         return value?.InnerText ?? "";
+    }
+
+    private static OpenXmlElement? ChildByLocalName(OpenXmlElement element, string localName)
+    {
+        return element.Elements().FirstOrDefault(child => child.LocalName == localName);
+    }
+
+    private static string AttributeValue(OpenXmlElement element, string localName)
+    {
+        return element.GetAttributes().FirstOrDefault(attribute => attribute.LocalName == localName).Value ?? "";
+    }
+
+    private static double? DoubleAttribute(OpenXmlElement element, string localName)
+    {
+        var value = AttributeValue(element, localName);
+        if (value.Length == 0)
+        {
+            return null;
+        }
+
+        return double.TryParse(
+            value,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static bool? BoolAttribute(OpenXmlElement element, string localName)
+    {
+        var value = AttributeValue(element, localName);
+        if (value.Length == 0)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            "1" => true,
+            "0" => false,
+            _ when bool.TryParse(value, out var parsed) => parsed,
+            _ => null,
+        };
     }
 
     private static string ExtendedAttributeValue(OpenXmlElement element, string localName)
@@ -2101,6 +2262,17 @@ internal static class XlsxWorkbookProtoReader
 
         output.WriteTag(fieldNumber, WireFormat.WireType.Fixed64);
         output.WriteDouble(value);
+    }
+
+    private static void WriteDoubleValue(CodedOutputStream output, int fieldNumber, double? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Fixed64);
+        output.WriteDouble(value.Value);
     }
 
     private static void WriteBool(CodedOutputStream output, int fieldNumber, bool value)
