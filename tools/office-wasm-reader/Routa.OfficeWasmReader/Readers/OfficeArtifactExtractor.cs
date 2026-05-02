@@ -14,7 +14,14 @@ internal static class OfficeArtifactExtractor
 
     public static byte[] ExtractXlsxProto(byte[] bytes, bool ignoreErrors)
     {
-        return ExtractOrHandle("xlsx", ignoreErrors, () => XlsxArtifactReader.Read(bytes));
+        try
+        {
+            return XlsxWorkbookProtoReader.Read(bytes);
+        }
+        catch (Exception) when (ignoreErrors)
+        {
+            return [];
+        }
     }
 
     private static byte[] ExtractOrHandle(string sourceKind, bool ignoreErrors, Func<OfficeArtifactModel> read)
@@ -36,4 +43,3 @@ internal static class OfficeArtifactExtractor
         }
     }
 }
-

@@ -3,14 +3,7 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { resolveApiPath } from "@/client/config/backend";
-import { decodeRoutaOfficeArtifact } from "@/client/office-document-viewer/protocol/office-artifact-protobuf";
-import type {
-  OfficeWasmArtifactKind,
-  RoutaOfficeArtifact,
-  RoutaOfficeCell,
-  RoutaOfficeSheet,
-  RoutaOfficeSlide,
-} from "@/client/office-document-viewer/protocol/office-artifact-types";
+import type { OfficeWasmArtifactKind } from "@/client/office-document-viewer/protocol/office-artifact-types";
 import {
   extractOfficeArtifactProto,
   loadRoutaOfficeWasmReader,
@@ -24,7 +17,7 @@ import {
   OFFICE_WASM_READER_MODULES,
 } from "./office-wasm-config";
 import { DocumentPreview } from "./document-preview";
-import { type PreviewLabels, type RecordValue, rowIndexFromAddress } from "./office-preview-utils";
+import { type PreviewLabels } from "./office-preview-utils";
 import { PresentationPreview } from "./presentation-preview";
 import { SpreadsheetPreview } from "./spreadsheet-preview";
 
@@ -209,13 +202,16 @@ async function parseDocumentWithGeneratedReader(file: File, kind: OfficeWasmArti
     };
   }
 
-  const artifact = decodeRoutaOfficeArtifact(protoBytes);
+  const proto = await decodeWorkbookProto(protoBytes);
 
   return {
-    generatedSummary: await summarizeGeneratedWasmArtifact(artifact, protoBytes),
-    kind: kind === "xlsx" ? "spreadsheet" : "document",
-    proto: routaArtifactToPreviewProto(artifact, kind, file.name),
-    rawProto: artifact,
+    generatedSummary: await summarizeGeneratedWorkbookProto(proto, protoBytes),
+    kind: "spreadsheet",
+    proto: {
+      ...(proto && typeof proto === "object" ? proto as Record<string, unknown> : {}),
+      sourceName: file.name,
+    },
+    rawProto: proto,
     readerMode: "routa",
     sourceKind: kind,
   };
@@ -235,177 +231,11 @@ async function decodePresentationProto(protoBytes: Uint8Array): Promise<unknown>
   return Presentation.decode(protoBytes);
 }
 
-function routaArtifactToPreviewProto(artifact: RoutaOfficeArtifact, kind: OfficeWasmArtifactKind, sourceName = ""): unknown {
-  if (kind === "xlsx") {
-    return {
-      charts: artifact.charts,
-      diagnostics: artifact.diagnostics,
-      images: artifact.images,
-      metadata: artifact.metadata,
-      shapes: artifact.shapes,
-      sheets: artifact.sheets.map(routaSheetToPreviewSheet),
-      styles: routaStylesToPreviewStyles(artifact),
-      tables: artifact.tables,
-      title: artifact.title,
-      sourceName,
-    };
-  }
-
-  if (kind === "pptx") {
-    return {
-      diagnostics: artifact.diagnostics,
-      images: artifact.images,
-      metadata: artifact.metadata,
-      slides: artifact.slides.map(routaSlideToPreviewSlide),
-      tables: artifact.tables,
-      title: artifact.title,
-    };
-  }
-
-  return {
-    diagnostics: artifact.diagnostics,
-    elements: [
-      ...artifact.textBlocks.map((block) => ({
-        id: block.path,
-        paragraphs: [{ id: block.path, runs: [{ id: block.path, text: block.text }] }],
-      })),
-      ...artifact.tables.map((table) => ({
-        id: table.path,
-        table: {
-          rows: table.rows.map((row, rowIndex) => ({
-            cells: row.cells.map((cell, cellIndex) => ({
-              id: `${table.path}.r${rowIndex}.c${cellIndex}`,
-              paragraphs: [{ runs: [{ text: cell.text }] }],
-            })),
-          })),
-        },
-      })),
-    ],
-    images: artifact.images,
-    metadata: artifact.metadata,
-    title: artifact.title,
-  };
-}
-
-function routaSheetToPreviewSheet(sheet: RoutaOfficeSheet): RecordValue {
-  return {
-    conditionalFormats: sheet.conditionalFormats,
-    columns: sheet.columns,
-    defaultColWidth: sheet.defaultColWidth || 10,
-    defaultRowHeight: sheet.defaultRowHeight,
-    mergedCells: sheet.mergedRanges.map((range) => ({ reference: range.reference })),
-    name: sheet.name,
-    rows: sheet.rows.map((row, rowIndex) => ({
-      cells: row.cells.map(routaCellToPreviewCell),
-      height: row.height,
-      index: row.index || rowIndexFromAddress(row.cells[0]?.address ?? "") || rowIndex + 1,
-    })),
-    tables: sheet.tables,
-  };
-}
-
-function routaCellToPreviewCell(cell: RoutaOfficeCell): RecordValue {
-  return {
-    address: cell.address,
-    dataType: cell.dataType,
-    formula: cell.formula,
-    hasValue: cell.hasValue,
-    styleIndex: cell.styleIndex,
-    value: cell.text,
-  };
-}
-
-function routaColorToPreviewColor(color: string): RecordValue | undefined {
-  return color ? { value: color } : undefined;
-}
-
-function routaStylesToPreviewStyles(artifact: RoutaOfficeArtifact): RecordValue {
-  return {
-    borders: artifact.styles.borders.map((border) => ({
-      bottom: { color: routaColorToPreviewColor(border.bottomColor) },
-    })),
-    cellXfs: artifact.styles.cellXfs.map((format) => ({
-      alignment: {
-        horizontal: format.horizontalAlignment,
-        vertical: format.verticalAlignment,
-      },
-      borderId: format.borderId,
-      fillId: format.fillId,
-      fontId: format.fontId,
-      horizontalAlignment: format.horizontalAlignment,
-      numFmtId: format.numFmtId,
-      verticalAlignment: format.verticalAlignment,
-    })),
-    fills: artifact.styles.fills.map((fill) => ({
-      color: routaColorToPreviewColor(fill.color),
-      pattern: {
-        backgroundColor: routaColorToPreviewColor(fill.color),
-        foregroundColor: routaColorToPreviewColor(fill.color),
-      },
-    })),
-    fonts: artifact.styles.fonts.map((font) => ({
-      bold: font.bold,
-      color: routaColorToPreviewColor(font.color),
-      fontSize: font.fontSize,
-      italic: font.italic,
-      typeface: font.typeface,
-    })),
-    numberFormats: artifact.styles.numberFormats.map((format) => ({
-      formatCode: format.formatCode,
-      id: format.id,
-    })),
-  };
-}
-
-function routaSlideToPreviewSlide(slide: RoutaOfficeSlide): RecordValue {
-  return {
-    elements: slide.textBlocks.map((block, index) => ({
-      bbox: {
-        heightEmu: index === 0 ? 520_000 : 380_000,
-        widthEmu: 10_700_000,
-        xEmu: 620_000,
-        yEmu: 520_000 + index * 410_000,
-      },
-      id: block.path,
-      name: block.path,
-      paragraphs: [
-        {
-          id: block.path,
-          runs: [
-            {
-              id: block.path,
-              text: block.text,
-              textStyle: {
-                bold: index === 0,
-                fontSize: index === 0 ? 2200 : 1250,
-              },
-            },
-          ],
-        },
-      ],
-    })),
-    index: slide.index,
-    title: slide.title,
-  };
-}
-
-async function summarizeGeneratedWasmArtifact(
-  artifact: RoutaOfficeArtifact,
-  protoBytes: Uint8Array,
-): Promise<GeneratedWasmSummary> {
-  return {
-    chartCount: artifact.charts.length,
-    imageCount: artifact.images.length,
-    metadata: artifact.metadata,
-    sheetCount: artifact.sheets.length,
-    slideCount: artifact.slides.length,
-    sourceKind: artifact.sourceKind,
-    tableCount: artifact.tables.length,
-    textBlockCount: artifact.textBlocks.length,
-    title: artifact.title,
-    wasmProtoByteLength: protoBytes.length,
-    wasmProtoSha256: await sha256Hex(protoBytes),
-  };
+async function decodeWorkbookProto(protoBytes: Uint8Array): Promise<unknown> {
+  const { Workbook } = (await import(
+    /* webpackIgnore: true */ `${SPREADSHEET_MODULE}?v=generated-spreadsheet`
+  )) as { Workbook: { decode: (value: unknown) => unknown } };
+  return Workbook.decode(protoBytes);
 }
 
 async function summarizeGeneratedDocumentProto(
@@ -459,6 +289,54 @@ async function summarizeGeneratedPresentationProto(
     slideCount: slides.length,
     sourceKind: "pptx",
     tableCount: 0,
+    textBlockCount: 0,
+    title: "",
+    wasmProtoByteLength: protoBytes.length,
+    wasmProtoSha256: await sha256Hex(protoBytes),
+  };
+}
+
+async function summarizeGeneratedWorkbookProto(
+  proto: unknown,
+  protoBytes: Uint8Array,
+): Promise<GeneratedWasmSummary> {
+  const root = proto && typeof proto === "object" ? proto as Record<string, unknown> : {};
+  const sheets = Array.isArray(root.sheets) ? root.sheets.filter((sheet): sheet is Record<string, unknown> => (
+    sheet != null && typeof sheet === "object" && !Array.isArray(sheet)
+  )) : [];
+  const drawingCount = sheets.reduce((count, sheet) => {
+    const drawings = sheet.drawings;
+    return count + (Array.isArray(drawings) ? drawings.length : 0);
+  }, 0);
+  const chartCount = sheets.reduce((count, sheet) => {
+    const drawings = Array.isArray(sheet.drawings) ? sheet.drawings : [];
+    return count + drawings.filter((drawing) => (
+      drawing != null && typeof drawing === "object" && "chart" in drawing
+    )).length;
+  }, 0);
+  const tableCount = sheets.reduce((count, sheet) => {
+    const tables = sheet.tables;
+    return count + (Array.isArray(tables) ? tables.length : 0);
+  }, 0);
+  const cellCount = sheets.reduce((count, sheet) => {
+    const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    return count + rows.reduce((rowCount, row) => {
+      if (row == null || typeof row !== "object" || Array.isArray(row)) return rowCount;
+      const cells = (row as Record<string, unknown>).cells;
+      return rowCount + (Array.isArray(cells) ? cells.length : 0);
+    }, 0);
+  }, 0);
+
+  return {
+    chartCount,
+    elementCount: cellCount + drawingCount,
+    imageCount: Array.isArray(root.images) ? root.images.length : 0,
+    metadata: {},
+    protocol: "oaiproto.coworker.spreadsheet.Workbook",
+    sheetCount: sheets.length,
+    slideCount: 0,
+    sourceKind: "xlsx",
+    tableCount,
     textBlockCount: 0,
     title: "",
     wasmProtoByteLength: protoBytes.length,
