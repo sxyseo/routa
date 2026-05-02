@@ -747,31 +747,58 @@ function mergeSpreadsheetVisual(
 function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
   const visuals = new Map<string, SpreadsheetCellVisual>();
   const sheetName = asString(sheet?.name);
-  const tableReferences = asArray(sheet?.tables)
-    .map((table) => asString(asRecord(table)?.reference))
-    .filter(Boolean);
+  const tableSpecs = asArray(sheet?.tables)
+    .map(asRecord)
+    .filter((table): table is RecordValue => table != null)
+    .map((table) => {
+      const style = asRecord(table.style);
+      return {
+        headerRowCount: asNumber(table.headerRowCount, 1),
+        reference: asString(table.reference) || asString(table.ref),
+        showFilter: table.autoFilter !== false && table.showFilterButton !== false,
+        showRowStripes: style?.showRowStripes !== false,
+        stripeColor: tableStripeColor(asString(style?.name) || asString(table.styleName) || asString(table.style)),
+      };
+    })
+    .filter((table) => table.reference.length > 0);
 
-  if (tableReferences.length === 0) {
-    tableReferences.push(...knownSpreadsheetTableReferences(sheetName));
+  if (tableSpecs.length === 0) {
+    tableSpecs.push(...knownSpreadsheetTableReferences(sheetName).map((reference) => ({
+      headerRowCount: 1,
+      reference,
+      showFilter: true,
+      showRowStripes: true,
+      stripeColor: tableStripeColor("TableStyleMedium2"),
+    })));
   }
 
-  for (const reference of tableReferences) {
-    const range = parseCellRange(reference);
+  for (const table of tableSpecs) {
+    const range = parseCellRange(table.reference);
     if (!range) continue;
 
-    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-      mergeSpreadsheetVisual(visuals, range.startRow, columnIndex, { filter: true });
+    if (table.showFilter && table.headerRowCount > 0) {
+      for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
+        mergeSpreadsheetVisual(visuals, range.startRow, columnIndex, { filter: true });
+      }
     }
 
+    if (!table.showRowStripes) continue;
     for (let rowIndex = range.startRow + 1; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
       if ((rowIndex - range.startRow - 1) % 2 !== 0) continue;
       for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, { background: "#c7eaf7" });
+        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, { background: table.stripeColor });
       }
     }
   }
 
   return visuals;
+}
+
+function tableStripeColor(styleName: string): string {
+  if (/Medium2$/i.test(styleName)) return "#c7eaf7";
+  if (/Medium4$/i.test(styleName)) return "#dbeafe";
+  if (/Medium9$/i.test(styleName)) return "#d9ead3";
+  return "#e0f2fe";
 }
 
 function knownSpreadsheetTableReferences(sheetName: string): string[] {
@@ -842,7 +869,8 @@ function dataBarColorForRange(sheetName: string, reference: string): string {
 }
 
 function hexColorToRgb(value: string): { blue: number; green: number; red: number } | null {
-  const normalized = /^[0-9a-f]{8}$/i.test(value) ? value.slice(2) : value;
+  const trimmed = value.trim().replace(/^#/, "");
+  const normalized = /^[0-9a-f]{8}$/i.test(trimmed) ? trimmed.slice(2) : trimmed;
   if (!/^[0-9a-f]{6}$/i.test(normalized)) return null;
   return {
     blue: Number.parseInt(normalized.slice(4, 6), 16),
@@ -852,6 +880,8 @@ function hexColorToRgb(value: string): { blue: number; green: number; red: numbe
 }
 
 function protocolColorToCss(value: unknown): string | undefined {
+  const recordColor = colorToCss(value);
+  if (recordColor) return recordColor;
   const raw = asString(value);
   const rgb = hexColorToRgb(raw);
   return rgb ? `#${raw.slice(-6)}` : undefined;
@@ -901,9 +931,7 @@ function conditionalTextMatches(format: RecordValue, text: string, numericValue:
 function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
   const visuals = buildSpreadsheetTableVisuals(sheet);
   const sheetName = asString(sheet?.name);
-  const conditionalFormats = asArray(sheet?.conditionalFormats)
-    .map(asRecord)
-    .filter((format): format is RecordValue => format != null);
+  const conditionalFormats = normalizedConditionalFormats(sheet);
   const conditionalReferences = conditionalFormats
     .flatMap((format) => asArray(format.ranges))
     .map(asString)
@@ -923,7 +951,7 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
       const iconSet = asRecord(format.iconSet);
 
       if (colorScale) {
-        const colors = asArray(colorScale.colors).map(asString).filter(Boolean);
+        const colors = asArray(colorScale.colors).map(protocolColorToCss).filter((color): color is string => Boolean(color));
         for (const item of values) {
           mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
             background: colorScaleColor(item.value, minValue, maxValue, colors),
@@ -933,13 +961,16 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
       }
 
       if (dataBar) {
-        const maxAbs = Math.max(1, ...values.map((item) => Math.abs(item.value)));
+        const barMin = dataBarThresholdValue(dataBar, 0, minValue);
+        const barMax = dataBarThresholdValue(dataBar, 1, maxValue);
+        const span = Math.max(1, barMax - barMin);
         const color = protocolColorToCss(dataBar.color) ?? "#38bdf8";
+        const negativeColor = protocolColorToCss(dataBar.negativeFillColor) ?? color;
         for (const item of values) {
           mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
             dataBar: {
-              color,
-              percent: Math.max(0, Math.min(100, Math.abs(item.value) / maxAbs * 100)),
+              color: item.value < 0 ? negativeColor : color,
+              percent: Math.max(0, Math.min(100, (item.value - barMin) / span * 100)),
             },
           });
         }
@@ -955,6 +986,7 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
               maxValue,
               iconSet.showValue !== false,
               iconSet.reverse === true,
+              iconSet,
             ),
           });
         }
@@ -1009,16 +1041,71 @@ function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map
   return visuals;
 }
 
+function normalizedConditionalFormats(sheet: RecordValue | undefined): RecordValue[] {
+  const legacyFormats = asArray(sheet?.conditionalFormats)
+    .map(asRecord)
+    .filter((format): format is RecordValue => format != null);
+  const workbookFormats = asArray(sheet?.conditionalFormattings)
+    .map(asRecord)
+    .filter((format): format is RecordValue => format != null)
+    .flatMap((format) => {
+      const ranges = asArray(format.ranges).map(rangeTargetReference).filter(Boolean);
+      return asArray(format.rules)
+        .map(asRecord)
+        .filter((rule): rule is RecordValue => rule != null)
+        .map((rule) => ({
+          ...rule,
+          ranges,
+        }));
+    });
+
+  return [...legacyFormats, ...workbookFormats];
+}
+
+function rangeTargetReference(value: unknown): string {
+  const direct = asString(value);
+  if (direct) return direct;
+  const range = asRecord(value);
+  const start = asString(range?.startAddress);
+  const end = asString(range?.endAddress);
+  if (!start) return "";
+  return end && end !== start ? `${start}:${end}` : start;
+}
+
+function dataBarThresholdValue(dataBar: RecordValue, index: number, fallback: number): number {
+  const cfvo = asRecord(asArray(dataBar.cfvos)[index]);
+  const type = asString(cfvo?.type);
+  if (type === "min" || type === "max") return fallback;
+  const value = Number(asString(cfvo?.val));
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function spreadsheetIconSetVisual(
   value: number,
   minValue: number,
   maxValue: number,
   showValue: boolean,
   reverse: boolean,
+  iconSet?: RecordValue,
 ): SpreadsheetCellVisual["iconSet"] {
-  const ratio = maxValue > minValue ? (value - minValue) / (maxValue - minValue) : 0;
-  const normalized = reverse ? 1 - ratio : ratio;
-  const level = Math.max(1, Math.min(5, Math.floor(normalized * 5) + 1));
+  const cfvos = asArray(iconSet?.cfvos).map(asRecord).filter((cfvo): cfvo is RecordValue => cfvo != null);
+  const ratio = Math.max(0, Math.min(1, maxValue > minValue ? (value - minValue) / (maxValue - minValue) : 0));
+  const percentMode = iconSet?.percent === true || cfvos.some((cfvo) => asString(cfvo.type) === "percent");
+  const score = percentMode ? ratio * 100 : value;
+  const levelCount = Math.max(3, Math.min(5, cfvos.length || 5));
+  let level = 1;
+  cfvos.forEach((cfvo, index) => {
+    const threshold = Number(asString(cfvo.val));
+    if (Number.isFinite(threshold) && score >= threshold) {
+      level = Math.min(levelCount, index + 1);
+    }
+  });
+  if (cfvos.length === 0) {
+    level = Math.max(1, Math.min(levelCount, Math.floor(ratio * levelCount) + 1));
+  }
+  if (reverse) {
+    level = levelCount - level + 1;
+  }
   const palette = ["#9ca3af", "#94a3b8", "#6b9fc3", "#3b82b6", "#16638a"];
   return {
     color: palette[level - 1] ?? palette[0],
