@@ -52,9 +52,13 @@ export function PresentationPreview({
     () => asArray(root?.layouts).map(asRecord).filter((layout): layout is RecordValue => layout != null),
     [root],
   );
+  const charts = useMemo(
+    () => asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null),
+    [root],
+  );
   const imageSources = useOfficeImageSources(root);
   const imageElements = useLoadedOfficeImages(imageSources);
-  const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements, layouts);
+  const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements, layouts, charts);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
   const [headerActions, setHeaderActions] = useState<HTMLElement | null>(null);
@@ -119,6 +123,7 @@ export function PresentationPreview({
                 className={styles.thumbnailCanvas}
                 fallbackImages={imageElements}
                 fallbackTextOverflow="clip"
+                charts={charts}
                 layouts={layouts}
                 slide={slide}
                 width={THUMBNAIL_WIDTH}
@@ -128,6 +133,7 @@ export function PresentationPreview({
         </div>
       </aside>
       <SlideStage
+        charts={charts}
         images={imageElements}
         labels={labels}
         layouts={layouts}
@@ -147,6 +153,7 @@ export function PresentationPreview({
       {isSlideshowOpen ? (
         <SlideshowOverlay
           activeSlideIndex={selectedSlideIndex}
+          charts={charts}
           images={imageElements}
           labels={labels}
           layouts={layouts}
@@ -161,6 +168,7 @@ export function PresentationPreview({
 }
 
 function SlideStage({
+  charts,
   images,
   labels,
   layouts,
@@ -168,6 +176,7 @@ function SlideStage({
   slide,
   slideIndex,
 }: {
+  charts: RecordValue[];
   images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
   layouts: RecordValue[];
@@ -213,6 +222,7 @@ function SlideStage({
               className={styles.slideCanvas}
               fallbackImages={images}
               fallbackTextOverflow="visible"
+              charts={charts}
               layouts={layouts}
               slide={slide}
               width={canvasWidth}
@@ -262,6 +272,7 @@ function SlideStage({
 
 function SlideshowOverlay({
   activeSlideIndex,
+  charts,
   images,
   labels,
   layouts,
@@ -271,6 +282,7 @@ function SlideshowOverlay({
   slides,
 }: {
   activeSlideIndex: number;
+  charts: RecordValue[];
   images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
   layouts: RecordValue[];
@@ -382,6 +394,7 @@ function SlideshowOverlay({
           className={styles.slideshowCanvas}
           fallbackImages={images}
           fallbackTextOverflow="visible"
+          charts={charts}
           layouts={layouts}
           slide={slide}
           width={canvasWidth}
@@ -394,6 +407,7 @@ function SlideshowOverlay({
 function SlideRasterFrame({
   alt,
   bitmap,
+  charts,
   className,
   fallbackImages,
   fallbackTextOverflow,
@@ -403,6 +417,7 @@ function SlideRasterFrame({
 }: {
   alt: string;
   bitmap?: SlideBitmapSurface;
+  charts: RecordValue[];
   className: string;
   fallbackImages: ReadonlyMap<string, CanvasImageSource>;
   fallbackTextOverflow: PresentationTextOverflow;
@@ -430,6 +445,7 @@ function SlideRasterFrame({
   return (
     <SlideCanvasFrame
       className={className}
+      charts={charts}
       images={fallbackImages}
       layouts={layouts}
       slide={slide}
@@ -440,6 +456,7 @@ function SlideRasterFrame({
 }
 
 function SlideCanvasFrame({
+  charts,
   className,
   images,
   layouts,
@@ -447,6 +464,7 @@ function SlideCanvasFrame({
   textOverflow,
   width,
 }: {
+  charts: RecordValue[];
   className: string;
   images: ReadonlyMap<string, CanvasImageSource>;
   layouts: RecordValue[];
@@ -472,8 +490,8 @@ function SlideCanvasFrame({
     if (!context) return;
 
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    renderPresentationSlide({ context, height, images, layouts, slide, textOverflow, width });
-  }, [height, images, layouts, slide, textOverflow, width]);
+    renderPresentationSlide({ charts, context, height, images, layouts, slide, textOverflow, width });
+  }, [charts, height, images, layouts, slide, textOverflow, width]);
 
   return (
     <canvas
@@ -490,6 +508,7 @@ function useRenderedSlideBitmaps(
   slides: RecordValue[],
   images: ReadonlyMap<string, CanvasImageSource>,
   layouts: RecordValue[],
+  charts: RecordValue[],
 ): ReadonlyMap<string, SlideBitmapSurface> {
   const [bitmaps, setBitmaps] = useState<ReadonlyMap<string, SlideBitmapSurface>>(new Map());
 
@@ -520,6 +539,7 @@ function useRenderedSlideBitmaps(
         if (!context) continue;
 
         renderPresentationSlide({
+          charts,
           context,
           height,
           images,
@@ -547,7 +567,7 @@ function useRenderedSlideBitmaps(
         URL.revokeObjectURL(url);
       }
     };
-  }, [images, layouts, slides]);
+  }, [charts, images, layouts, slides]);
 
   return bitmaps;
 }

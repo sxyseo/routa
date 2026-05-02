@@ -6,12 +6,15 @@ import {
   computePresentationFit,
   emuRectToCanvasRect,
   presentationGradientStops,
+  presentationChartById,
+  presentationChartReferenceId,
   presentationImageSourceRect,
   presentationLineEndStyle,
   presentationLineStyle,
   presentationScaledFontSize,
   presentationShadowStyle,
   presentationShapeKind,
+  presentationTableGrid,
 } from "../presentation-renderer";
 
 describe("presentation renderer helpers", () => {
@@ -92,6 +95,34 @@ describe("presentation renderer helpers", () => {
     expect(crop.width).toBeCloseTo(600);
     expect(crop.x).toBeCloseTo(100);
     expect(crop.y).toBeCloseTo(25);
+  });
+
+  it("resolves PPT chart references by relationship or chart uri", () => {
+    const charts = [
+      { id: "/ppt/charts/chart1.xml", title: "One" },
+      { uri: "/ppt/charts/chart2.xml", title: "Two" },
+    ];
+
+    expect(presentationChartReferenceId({ id: "/ppt/charts/chart1.xml" })).toBe("/ppt/charts/chart1.xml");
+    expect(presentationChartReferenceId({ relationshipId: "rId9" })).toBe("rId9");
+    expect(presentationChartById(charts, "/ppt/charts/chart2.xml")?.title).toBe("Two");
+    expect(presentationChartById(charts, "missing")).toBeNull();
+  });
+
+  it("normalizes PPT table rows, columns, and spans into fitted cells", () => {
+    const grid = presentationTableGrid(
+      {
+        columns: [2_000, 1_000, 1_000],
+        rows: [
+          { cells: [{ gridSpan: 2 }, {}], height: 2_000 },
+          { cells: [{}, {}, {}], height: 1_000 },
+        ],
+      },
+      { height: 150, left: 0, top: 0, width: 300 },
+    );
+
+    expect(grid.columns).toEqual([150, 75, 75]);
+    expect(grid.rows).toEqual([100, 50]);
   });
 
   it("maps PPT line styles without clamping Office line widths", () => {

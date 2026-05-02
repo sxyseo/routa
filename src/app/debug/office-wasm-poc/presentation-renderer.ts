@@ -11,6 +11,12 @@ import {
   type RecordValue,
 } from "./office-preview-utils";
 import {
+  drawPresentationChart,
+  presentationChartById,
+  presentationChartReferenceId,
+} from "./presentation-chart-renderer";
+import { drawPresentationTable } from "./presentation-table-renderer";
+import {
   drawPresentationTextBox,
   presentationScaledFontSize,
   type PresentationRect,
@@ -68,6 +74,8 @@ export type PresentationShadowStyle = {
 
 export type PresentationRenderImages = ReadonlyMap<string, CanvasImageSource>;
 export { presentationScaledFontSize, type PresentationRect, type PresentationSize, type PresentationTextOverflow };
+export { presentationChartById, presentationChartReferenceId } from "./presentation-chart-renderer";
+export { presentationTableGrid } from "./presentation-table-renderer";
 
 type SlideElementEntry = {
   element: RecordValue;
@@ -221,6 +229,7 @@ export function collectPresentationTypefaces(slides: RecordValue[], layouts: Rec
 }
 
 export function renderPresentationSlide({
+  charts = [],
   context,
   height,
   images,
@@ -229,6 +238,7 @@ export function renderPresentationSlide({
   textOverflow = "visible",
   width,
 }: {
+  charts?: RecordValue[];
   context: CanvasRenderingContext2D;
   height: number;
   images: PresentationRenderImages;
@@ -249,7 +259,7 @@ export function renderPresentationSlide({
   context.fillRect(0, 0, width, height);
 
   for (const entry of elements) {
-    drawElement(context, entry, bounds, { height, width }, images, { textOverflow });
+    drawElement(context, entry, bounds, { height, width }, images, { charts, textOverflow });
   }
 
   context.restore();
@@ -481,7 +491,7 @@ function drawElement(
   bounds: PresentationSize,
   canvas: PresentationSize,
   images: PresentationRenderImages,
-  options: { textOverflow: PresentationTextOverflow },
+  options: { charts: RecordValue[]; textOverflow: PresentationTextOverflow },
 ): void {
   const bbox = asRecord(element.bbox);
   const rect = emuRectToCanvasRect(bbox, bounds, canvas);
@@ -526,6 +536,20 @@ function drawElement(
     applyLineStyle(context, line);
     context.stroke(path);
     context.setLineDash([]);
+  }
+
+  const table = asRecord(element.table);
+  if (table) {
+    drawPresentationTable(context, element, table, rect, bounds, canvas, slideScale);
+    context.restore();
+    return;
+  }
+
+  const chart = presentationChartById(options.charts, presentationChartReferenceId(element.chartReference));
+  if (chart) {
+    drawPresentationChart(context, chart, rect, slideScale);
+    context.restore();
+    return;
   }
 
   drawPresentationTextBox({
