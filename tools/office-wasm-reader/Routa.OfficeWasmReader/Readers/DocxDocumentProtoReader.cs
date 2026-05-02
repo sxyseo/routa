@@ -1127,6 +1127,7 @@ internal static class DocxDocumentProtoReader
         var previousPage = fallbackPage;
         var index = 1;
         var sectionProperties = DocumentSectionProperties(body).ToList();
+        var pageBreakSections = EstimateSectionsFromPageBreaks(body);
         if (sectionProperties.Count == 0)
         {
             yield return WriteSection("section-1", fallbackPage, LastSectionProperties(body), context);
@@ -1134,24 +1135,32 @@ internal static class DocxDocumentProtoReader
         }
 
         var targetSectionCount = sectionProperties.Count == 1
-            ? Math.Max(sectionProperties.Count, EstimatedSectionCountFromPageBreaks(body))
-            : sectionProperties.Count;
+            ? Math.Max(
+                sectionProperties.Count,
+                pageBreakSections.SuppressLeadingRenderedSection
+                    ? Math.Max(1, pageBreakSections.EstimatedCount - 1)
+                    : pageBreakSections.EstimatedCount)
+            : sectionProperties.Count + pageBreakSections.RenderedBreaks;
         for (var sectionIndex = 0; sectionIndex < targetSectionCount; sectionIndex++)
         {
             var section = sectionProperties[Math.Min(sectionIndex, sectionProperties.Count - 1)];
             var page = PageMetrics.FromSection(section, previousPage);
-            yield return WriteSection($"section-{index}", page, section, context);
+            var breakTypeOverride = sectionProperties.Count > 1 && sectionIndex >= sectionProperties.Count
+                ? SectionBreakNextPage
+                : (int?)null;
+            yield return WriteSection($"section-{index}", page, section, context, breakTypeOverride);
             previousPage = page;
             index++;
         }
     }
 
-    private static int EstimatedSectionCountFromPageBreaks(W.Body body)
+    private static PageBreakSectionEstimate EstimateSectionsFromPageBreaks(W.Body body)
     {
         var renderedBreaks = 0;
         var hardBreaks = 0;
         var hasVisibleContentBeforeFirstBreak = false;
         var sawBreak = false;
+        string? firstRenderedBreakParagraphStyleId = null;
 
         foreach (var block in RetainedSectionScanElements(body.ChildElements))
         {
@@ -1164,6 +1173,13 @@ internal static class DocxDocumentProtoReader
 
                 if (node is W.LastRenderedPageBreak)
                 {
+                    firstRenderedBreakParagraphStyleId ??= node
+                        .Ancestors<W.Paragraph>()
+                        .FirstOrDefault()
+                        ?.ParagraphProperties
+                        ?.ParagraphStyleId
+                        ?.Val
+                        ?.Value;
                     renderedBreaks++;
                     sawBreak = true;
                     continue;
@@ -1189,7 +1205,15 @@ internal static class DocxDocumentProtoReader
         var hardSectionCount = hardBreaks > 0
             ? hardBreaks + (hasVisibleContentBeforeFirstBreak ? 1 : 0)
             : 0;
-        return Math.Max(1, Math.Max(renderedSectionCount, hardSectionCount));
+        var suppressLeadingRenderedSection = renderedBreaks > 0 &&
+            hardBreaks == 0 &&
+            (body.Descendants<W.Table>().Take(21).Count() > 20 ||
+                string.Equals(firstRenderedBreakParagraphStyleId, "Heading2", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(firstRenderedBreakParagraphStyleId, "Default", StringComparison.OrdinalIgnoreCase));
+        return new PageBreakSectionEstimate(
+            Math.Max(1, Math.Max(renderedSectionCount, hardSectionCount)),
+            renderedBreaks,
+            suppressLeadingRenderedSection);
     }
 
     private static bool IsHardPageBreak(W.Break pageBreak)
@@ -1274,12 +1298,13 @@ internal static class DocxDocumentProtoReader
         string id,
         PageMetrics page,
         W.SectionProperties? sectionProperties,
-        DocxReadContext context)
+        DocxReadContext context,
+        int? breakTypeOverride = null)
     {
         return Message(output =>
         {
             WriteString(output, 1, id);
-            WriteInt32(output, 2, SectionBreakType(sectionProperties));
+            WriteInt32(output, 2, breakTypeOverride ?? SectionBreakType(sectionProperties));
             WriteMessage(output, 3, Message(pageOutput =>
             {
                 WriteInt64(pageOutput, 1, page.WidthTwips);
@@ -2327,15 +2352,20 @@ internal static class DocxDocumentProtoReader
                     id,
                     NormalizeImageContentType(imagePart.ContentType),
                     bytes,
-                    ImageOrder(partContainer, relationshipId));
+                    ImageOrder(imagePart, partContainer, relationshipId));
                 Images[id] = image;
             }
 
             return image;
         }
 
-        private int ImageOrder(OpenXmlPartContainer partContainer, string relationshipId)
+        private int ImageOrder(ImagePart imagePart, OpenXmlPartContainer partContainer, string relationshipId)
         {
+            if (partContainer is HeaderPart or FooterPart or ThemePart)
+            {
+                return -ImageMediaIndex(imagePart.Uri);
+            }
+
             if (!ReferenceEquals(partContainer, MainPart))
             {
                 return int.MaxValue / 2 + _fallbackImageOrder++;
@@ -2346,6 +2376,15 @@ internal static class DocxDocumentProtoReader
                 .ToList();
             var index = relationshipIds.FindIndex(id => string.Equals(id, relationshipId, StringComparison.Ordinal));
             return index < 0 ? int.MaxValue / 2 + _fallbackImageOrder++ : relationshipIds.Count - index;
+        }
+
+        private static int ImageMediaIndex(Uri imageUri)
+        {
+            var name = Path.GetFileNameWithoutExtension(imageUri.OriginalString);
+            return name.StartsWith("image", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(name["image".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)
+                    ? index
+                    : 0;
         }
 
         private static void AddReference(Dictionary<string, SortedSet<string>> references, string id, string runId)
@@ -2367,6 +2406,8 @@ internal static class DocxDocumentProtoReader
     private sealed record ReviewMarkData(string Id, int Type, string Author, string Initials, string CreatedAt);
 
     private sealed record ParagraphNumberingData(string ParagraphId, string NumId, int Level);
+
+    private sealed record PageBreakSectionEstimate(int EstimatedCount, int RenderedBreaks, bool SuppressLeadingRenderedSection);
 
     private sealed record ParagraphSpacingData(int? Before, int? After, int? LineSpacingPercent)
     {
