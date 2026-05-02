@@ -56,6 +56,7 @@ describe("spreadsheet shapes", () => {
         text: "",
         top: spreadsheetRowTop(layout, 3) + 2,
         width: 100,
+        zIndex: 0,
       },
     ]);
   });
@@ -94,6 +95,7 @@ describe("spreadsheet shapes", () => {
         src: "blob:sheet-image",
         top: spreadsheetRowTop(layout, 2) + 2,
         width: 200,
+        zIndex: 0,
       },
     ]);
   });
@@ -126,7 +128,42 @@ describe("spreadsheet shapes", () => {
         src: "blob:two-cell-image",
         top: spreadsheetRowTop(layout, 2),
         width: spreadsheetColumnLeft(layout, 3) - spreadsheetColumnLeft(layout, 1),
+        zIndex: 0,
       },
     ]);
+  });
+
+  it("preserves sheet drawing order across image and shape specs", () => {
+    const sheet = {
+      drawings: [
+        {
+          imageReference: { id: "/xl/media/image1.png" },
+          fromAnchor: { colId: "1", rowId: "1" },
+          toAnchor: { colId: "2", rowId: "2" },
+        },
+        {
+          extentCx: "952500",
+          extentCy: "476250",
+          fromAnchor: { colId: "1", rowId: "1" },
+          shape: {
+            id: "shape-over-image",
+            shape: { fill: { color: { value: "FFFFFF" } } },
+          },
+        },
+      ],
+      name: "Drawings",
+      rows: [{ cells: [{ address: "B2" }], index: 2 }],
+    };
+    const layout = buildSpreadsheetLayout(sheet);
+
+    const images = buildSpreadsheetImages({
+      activeSheet: sheet,
+      imageSources: new Map([["/xl/media/image1.png", "blob:sheet-image"]]),
+      layout,
+    });
+    const shapes = buildSpreadsheetShapes({ activeSheet: sheet, layout, shapes: [] });
+
+    expect(images[0]?.zIndex).toBe(0);
+    expect(shapes[0]?.zIndex).toBe(1);
   });
 });

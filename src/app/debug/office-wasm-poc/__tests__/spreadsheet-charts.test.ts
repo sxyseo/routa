@@ -57,6 +57,7 @@ describe("spreadsheet charts", () => {
       type: "line",
       width: 200,
       yAxis: { minimum: 0 },
+      zIndex: 0,
     });
     expect(charts[0]?.series[0]).toMatchObject({
       color: "#1f6f8b",

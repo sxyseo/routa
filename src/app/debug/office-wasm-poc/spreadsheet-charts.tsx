@@ -49,6 +49,7 @@ export type SpreadsheetChartSpec = {
   width: number;
   xAxis?: SpreadsheetChartAxisSpec;
   yAxis?: SpreadsheetChartAxisSpec;
+  zIndex: number;
 };
 
 export function buildSpreadsheetCharts({
@@ -94,6 +95,7 @@ export function buildSpreadsheetCharts({
       top: spreadsheetRowTop(layout, 16),
       type: "bar",
       width: 450,
+      zIndex: 0,
     });
   }
 
@@ -126,6 +128,7 @@ export function buildSpreadsheetCharts({
       top: spreadsheetRowTop(layout, 30),
       type: "line",
       width: 640,
+      zIndex: fallbackCharts.length,
     });
   }
 
@@ -139,11 +142,15 @@ function buildSheetDrawingCharts(
   return asArray(activeSheet?.drawings)
     .map(asRecord)
     .filter((drawing): drawing is RecordValue => drawing != null)
-    .map((drawing) => chartFromSheetDrawing(drawing, layout))
+    .map((drawing, index) => chartFromSheetDrawing(drawing, layout, index))
     .filter((chart): chart is SpreadsheetChartSpec => chart != null);
 }
 
-function chartFromSheetDrawing(drawing: RecordValue, layout: SpreadsheetLayout): SpreadsheetChartSpec | null {
+function chartFromSheetDrawing(
+  drawing: RecordValue,
+  layout: SpreadsheetLayout,
+  zIndex: number,
+): SpreadsheetChartSpec | null {
   const chart = asRecord(drawing.chart);
   if (!chart) return null;
 
@@ -163,6 +170,7 @@ function chartFromSheetDrawing(drawing: RecordValue, layout: SpreadsheetLayout):
     left,
     top,
     width: chartDimension(extentWidth, fallbackRight - left, 180),
+    zIndex,
   });
 }
 
@@ -174,7 +182,7 @@ function buildRootSpreadsheetCharts(
   const sheetName = asString(activeSheet?.name);
   return charts
     .filter((chart) => asString(chart.sheetName) === sheetName)
-    .map((chart) => {
+    .map((chart, index) => {
       const anchor = asRecord(chart.anchor);
       const fromCol = protocolNumber(anchor?.fromCol, 0);
       const fromRow = protocolNumber(anchor?.fromRow, 0);
@@ -192,6 +200,7 @@ function buildRootSpreadsheetCharts(
         left,
         top,
         width: chartDimension(extWidth, right - left, 360),
+        zIndex: 10_000 + index,
       });
     })
     .filter((chart): chart is SpreadsheetChartSpec => chart != null);
@@ -199,7 +208,7 @@ function buildRootSpreadsheetCharts(
 
 function chartFromRecord(
   chart: RecordValue,
-  bounds: { height: number; left: number; top: number; width: number },
+  bounds: { height: number; left: number; top: number; width: number; zIndex: number },
 ): SpreadsheetChartSpec | null {
   const seriesRecords = asArray(chart.series).map(asRecord).filter((item): item is RecordValue => item != null);
   const series = seriesRecords
@@ -225,6 +234,7 @@ function chartFromRecord(
     width: bounds.width,
     xAxis: spreadsheetChartAxis(chart.xAxis),
     yAxis: spreadsheetChartAxis(chart.yAxis),
+    zIndex: bounds.zIndex,
   };
 }
 
@@ -360,7 +370,7 @@ export function SpreadsheetChartLayer({ charts }: { charts: SpreadsheetChartSpec
   if (charts.length === 0) return null;
 
   return (
-    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 5 }}>
+    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
       {charts.map((chart, index) => (
         <SpreadsheetCanvasChart chart={chart} key={`${chart.type}-${chart.title}-${index}`} />
       ))}
@@ -400,6 +410,7 @@ function SpreadsheetCanvasChart({ chart }: { chart: SpreadsheetChartSpec }) {
         position: "absolute",
         top: chart.top,
         width: chart.width,
+        zIndex: chart.zIndex,
       }}
       title={chart.title}
     />

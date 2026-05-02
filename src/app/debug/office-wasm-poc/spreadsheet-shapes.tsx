@@ -28,6 +28,7 @@ type SpreadsheetShapeSpec = {
   text: string;
   top: number;
   width: number;
+  zIndex: number;
 };
 
 type SpreadsheetImageSpec = {
@@ -37,6 +38,7 @@ type SpreadsheetImageSpec = {
   src: string;
   top: number;
   width: number;
+  zIndex: number;
 };
 
 export function buildSpreadsheetShapes({
@@ -66,7 +68,7 @@ export function buildSpreadsheetImages({
   return asArray(activeSheet?.drawings)
     .map(asRecord)
     .filter((drawing): drawing is RecordValue => drawing != null)
-    .map((drawing) => imageFromSheetDrawing(drawing, imageSources, layout))
+    .map((drawing, index) => imageFromSheetDrawing(drawing, imageSources, layout, index))
     .filter((image): image is SpreadsheetImageSpec => image != null);
 }
 
@@ -109,6 +111,7 @@ function shapeFromSheetDrawing(
     text: asString(shapeElement.text),
     top,
     width: Math.max(24, width),
+    zIndex: index,
   };
 }
 
@@ -116,6 +119,7 @@ function imageFromSheetDrawing(
   drawing: RecordValue,
   imageSources: ReadonlyMap<string, string>,
   layout: SpreadsheetLayout,
+  zIndex: number,
 ): SpreadsheetImageSpec | null {
   const imageId = imageReferenceId(drawing.imageReference);
   const src = imageId ? imageSources.get(imageId) : undefined;
@@ -129,6 +133,7 @@ function imageFromSheetDrawing(
     src,
     top: bounds.top,
     width: bounds.width,
+    zIndex,
   };
 }
 
@@ -193,6 +198,7 @@ function buildRootSpreadsheetShapes(
         text: asString(shape.text),
         top,
         width,
+        zIndex: 10_000 + index,
       };
     });
 }
@@ -222,7 +228,7 @@ export function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec
   if (shapes.length === 0) return null;
 
   return (
-    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 4 }}>
+    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
       {shapes.map((shape) => (
         <div
           data-office-shape={shape.id}
@@ -249,6 +255,7 @@ export function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec
             top: shape.top,
             whiteSpace: "pre-wrap",
             width: shape.width,
+            zIndex: shape.zIndex,
           }}
         >
           {shape.text}
@@ -262,7 +269,7 @@ export function SpreadsheetImageLayer({ images }: { images: SpreadsheetImageSpec
   if (images.length === 0) return null;
 
   return (
-    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 3 }}>
+    <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
       {images.map((image) => (
         <div
           data-office-image={image.id}
@@ -278,6 +285,7 @@ export function SpreadsheetImageLayer({ images }: { images: SpreadsheetImageSpec
             position: "absolute",
             top: image.top,
             width: image.width,
+            zIndex: image.zIndex,
           }}
         />
       ))}
