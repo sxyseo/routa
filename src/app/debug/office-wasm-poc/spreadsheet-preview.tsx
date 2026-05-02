@@ -75,7 +75,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     imageSources,
     layout,
   });
-  const cellVisuals = buildSpreadsheetConditionalVisuals(activeSheet);
+  const cellVisuals = buildSpreadsheetConditionalVisuals(activeSheet, asRecord(root?.theme));
 
   useEffect(() => {
     const viewport = viewportRef.current;

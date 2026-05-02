@@ -18,6 +18,8 @@ internal static class XlsxWorkbookProtoReader
     private const int EffectTypeReflection = 4;
     private const int EffectTypeSoftEdges = 5;
     private const int FillTypeSolid = 1;
+    private const int FillTypeGradient = 2;
+    private const int GradientKindLinear = 1;
 
     public static byte[] Read(byte[] bytes)
     {
@@ -57,6 +59,11 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteMessage(output, 2, WriteStyles(stylesheet));
+            var theme = WriteTheme(workbookPart.ThemePart);
+            if (theme is not null)
+            {
+                WriteMessage(output, 3, theme);
+            }
 
             foreach (var image in WorkbookImages(workbookPart))
             {
@@ -753,8 +760,158 @@ internal static class XlsxWorkbookProtoReader
     {
         return Message(output =>
         {
+            var fill = line?.GetFirstChild<A.SolidFill>();
+            if (fill is null && line?.Width is null)
+            {
+                return;
+            }
+
+            if (fill is not null)
+            {
+                WriteInt32(output, 1, 1);
+            }
+
             WriteInt32(output, 2, line?.Width?.Value ?? 0);
-            WriteMessage(output, 3, WriteSolidFill(line?.GetFirstChild<A.SolidFill>()));
+            if (fill is not null)
+            {
+                WriteMessage(output, 3, WriteSolidFill(fill));
+            }
+        });
+    }
+
+    private static byte[]? WriteTheme(ThemePart? themePart)
+    {
+        var themeElements = themePart?.Theme?.ThemeElements;
+        if (themeElements is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            var colorScheme = themeElements.ColorScheme;
+            if (colorScheme is not null)
+            {
+                WriteMessage(output, 1, WriteColorScheme(colorScheme));
+            }
+
+            var formatScheme = themeElements.FormatScheme;
+            foreach (var fill in formatScheme?.BackgroundFillStyleList?.ChildElements ?? Enumerable.Empty<OpenXmlElement>())
+            {
+                var fillProto = WriteFillFromElement(fill);
+                if (fillProto is not null)
+                {
+                    WriteMessage(output, 2, fillProto);
+                }
+            }
+
+            foreach (var line in formatScheme?.LineStyleList?.Elements<A.Outline>() ?? Enumerable.Empty<A.Outline>())
+            {
+                WriteMessage(output, 3, WriteLine(line));
+            }
+
+            foreach (var effectStyle in formatScheme?.EffectStyleList?.Elements<A.EffectStyle>() ?? Enumerable.Empty<A.EffectStyle>())
+            {
+                WriteMessageIncludingEmpty(output, 4, WriteEffectStyle(effectStyle));
+            }
+        });
+    }
+
+    private static byte[] WriteColorScheme(A.ColorScheme colorScheme)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, colorScheme.Name?.Value);
+            foreach (var child in OrderedColorSchemeElements(colorScheme))
+            {
+                var color = ColorFromDrawingElement(child);
+                if (color is not null)
+                {
+                    WriteMessage(output, 2, WriteThemeColor(child.LocalName, color));
+                }
+            }
+        });
+    }
+
+    private static byte[] WriteThemeColor(string name, DrawingColorValue color)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, name);
+            WriteMessage(output, 2, WriteColor(color));
+        });
+    }
+
+    private static IEnumerable<OpenXmlElement> OrderedColorSchemeElements(A.ColorScheme colorScheme)
+    {
+        var byName = colorScheme.ChildElements
+            .GroupBy(element => element.LocalName, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        foreach (var name in new[] { "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "dk1", "lt1", "dk2", "lt2", "hlink", "folHlink" })
+        {
+            if (byName.TryGetValue(name, out var element))
+            {
+                yield return element;
+            }
+        }
+    }
+
+    private static byte[]? WriteFillFromElement(OpenXmlElement fill)
+    {
+        return fill switch
+        {
+            A.SolidFill solidFill => WriteSolidFill(solidFill),
+            A.GradientFill gradientFill => WriteGradientFill(gradientFill),
+            _ => null,
+        };
+    }
+
+    private static byte[] WriteGradientFill(A.GradientFill fill)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, FillTypeGradient);
+            foreach (var stop in fill.GradientStopList?.Elements<A.GradientStop>() ?? Enumerable.Empty<A.GradientStop>())
+            {
+                var color = ColorFromDrawingElement(stop);
+                if (color is null)
+                {
+                    continue;
+                }
+
+                WriteMessage(output, 3, Message(stopOutput =>
+                {
+                    if (stop.Position?.Value is { } position)
+                    {
+                        WriteInt32IncludingZero(stopOutput, 1, position);
+                    }
+
+                    WriteMessage(stopOutput, 2, WriteColor(color));
+                }));
+            }
+
+            var linear = fill.GetFirstChild<A.LinearGradientFill>();
+            if (linear is not null)
+            {
+                WriteInt32(output, 5, GradientKindLinear);
+                if (linear.Angle?.Value is { } angle)
+                {
+                    WriteDouble(output, 6, angle / 60000d);
+                }
+
+                WriteBoolValue(output, 7, linear.Scaled?.Value);
+            }
+        });
+    }
+
+    private static byte[] WriteEffectStyle(A.EffectStyle effectStyle)
+    {
+        return Message(output =>
+        {
+            foreach (var effect in ExtractEffects(effectStyle))
+            {
+                WriteMessage(output, 1, effect);
+            }
         });
     }
 
@@ -1539,6 +1696,17 @@ internal static class XlsxWorkbookProtoReader
 
         output.WriteTag(fieldNumber, WireFormat.WireType.Fixed32);
         output.WriteFloat(value);
+    }
+
+    private static void WriteDouble(CodedOutputStream output, int fieldNumber, double value)
+    {
+        if (value == 0)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Fixed64);
+        output.WriteDouble(value);
     }
 
     private static void WriteBool(CodedOutputStream output, int fieldNumber, bool value)

@@ -34,8 +34,11 @@ export type SpreadsheetCellVisual = {
   fontWeight?: CSSProperties["fontWeight"];
 };
 
-export function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
-  const visuals = buildSpreadsheetTableVisuals(sheet);
+export function buildSpreadsheetConditionalVisuals(
+  sheet: RecordValue | undefined,
+  theme?: RecordValue | null,
+): Map<string, SpreadsheetCellVisual> {
+  const visuals = buildSpreadsheetTableVisuals(sheet, theme);
   const sheetName = asString(sheet?.name);
   const conditionalFormats = normalizedConditionalFormats(sheet);
   const conditionalReferences = conditionalFormats
@@ -210,7 +213,10 @@ function mergeSpreadsheetVisual(
   visuals.set(key, next);
 }
 
-function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetCellVisual> {
+function buildSpreadsheetTableVisuals(
+  sheet: RecordValue | undefined,
+  theme?: RecordValue | null,
+): Map<string, SpreadsheetCellVisual> {
   const visuals = new Map<string, SpreadsheetCellVisual>();
   const sheetName = asString(sheet?.name);
   const tableSpecs = asArray(sheet?.tables)
@@ -221,7 +227,7 @@ function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<strin
       const styleName = asString(style?.name) || asString(table.styleName) || asString(table.style);
       return {
         headerRowCount: asNumber(table.headerRowCount, 1),
-        palette: tableStylePalette(styleName),
+        palette: tableStylePalette(styleName, theme),
         reference: asString(table.reference) || asString(table.ref),
         showFilter: table.autoFilter !== false && table.showFilterButton !== false,
         showColumnStripes: style?.showColumnStripes === true,
@@ -236,7 +242,7 @@ function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<strin
   if (tableSpecs.length === 0) {
     tableSpecs.push(...knownSpreadsheetTableReferences(sheetName).map((reference) => ({
       headerRowCount: 1,
-      palette: tableStylePalette("TableStyleMedium2"),
+      palette: tableStylePalette("TableStyleMedium2", theme),
       reference,
       showFilter: true,
       showColumnStripes: false,
@@ -293,7 +299,19 @@ function buildSpreadsheetTableVisuals(sheet: RecordValue | undefined): Map<strin
   return visuals;
 }
 
-function tableStylePalette(styleName: string): { columnStripe: string; rowStripe: string; total: string } {
+function tableStylePalette(
+  styleName: string,
+  theme?: RecordValue | null,
+): { columnStripe: string; rowStripe: string; total: string } {
+  const themeColor = tableStyleThemeColor(styleName, theme);
+  if (themeColor) {
+    return {
+      columnStripe: mixCssColorWithWhite(themeColor, 0.82),
+      rowStripe: mixCssColorWithWhite(themeColor, 0.74),
+      total: mixCssColorWithWhite(themeColor, 0.58),
+    };
+  }
+
   if (/Medium4$/i.test(styleName)) {
     return { columnStripe: "#dbeafe", rowStripe: "#eff6ff", total: "#bfdbfe" };
   }
@@ -307,6 +325,33 @@ function tableStylePalette(styleName: string): { columnStripe: string; rowStripe
   }
 
   return { columnStripe: "#e0f2fe", rowStripe: "#f0f9ff", total: "#bae6fd" };
+}
+
+function tableStyleThemeColor(styleName: string, theme?: RecordValue | null): string | undefined {
+  const styleIndex = Number(styleName.match(/Medium(\d+)/i)?.[1] ?? "");
+  const colorName = tableStyleThemeColorName(styleIndex);
+  const colorScheme = asRecord(theme?.colorScheme);
+  const colors = asArray(colorScheme?.colors).map(asRecord).filter((color): color is RecordValue => color != null);
+  const themeColor = colors.find((color) => asString(color.name).toLowerCase() === colorName);
+  return colorToCss(themeColor?.color);
+}
+
+function tableStyleThemeColorName(styleIndex: number): string {
+  if (styleIndex === 9) return "accent6";
+  if (styleIndex === 4) return "accent1";
+  if (styleIndex === 2) return "accent4";
+  if (styleIndex >= 1 && styleIndex <= 6) return `accent${styleIndex}`;
+  return "accent4";
+}
+
+function mixCssColorWithWhite(value: string, whiteRatio: number): string {
+  const rgb = hexColorToRgb(value);
+  if (!rgb) return value;
+  const ratio = Math.max(0, Math.min(1, whiteRatio));
+  const red = Math.round(rgb.red * (1 - ratio) + 255 * ratio);
+  const green = Math.round(rgb.green * (1 - ratio) + 255 * ratio);
+  const blue = Math.round(rgb.blue * (1 - ratio) + 255 * ratio);
+  return `rgb(${red}, ${green}, ${blue})`;
 }
 
 function knownSpreadsheetTableReferences(sheetName: string): string[] {

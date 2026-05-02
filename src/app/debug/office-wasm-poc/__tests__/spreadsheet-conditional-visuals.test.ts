@@ -67,6 +67,40 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:1")?.fontWeight).toBe(700);
   });
 
+  it("derives table stripe colors from workbook theme colors", () => {
+    const visuals = buildSpreadsheetConditionalVisuals(
+      {
+        name: "Tables",
+        rows: [],
+        tables: [
+          {
+            headerRowCount: 1,
+            reference: "A1:B4",
+            style: {
+              name: "TableStyleMedium2",
+              showRowStripes: true,
+            },
+            totalsRowCount: 1,
+          },
+        ],
+      },
+      {
+        colorScheme: {
+          colors: [
+            {
+              color: { type: 1, value: "0F9ED5" },
+              name: "accent4",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(visuals.get("2:0")?.background).toBe("rgb(193, 230, 244)");
+    expect(visuals.get("3:0")?.background).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("rgb(154, 214, 237)");
+  });
+
   it("preserves icon set family metadata for renderer glyphs", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
