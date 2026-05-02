@@ -64,6 +64,15 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Walnut computes prefix sums for `columnWidths` and `rowHeights`, then projects logical worksheet coordinates through camera/freeze-pane helpers.
 - Routa's debug POC can keep a smaller DOM-backed renderer for now, but it should consume an explicit layout adapter rather than mixing unit conversion, prefix sums, and rendering in the component.
 
+## Walnut Performance Notes
+
+- Walnut explicitly treats workbook rendering as a performance-sensitive viewport. `PopcornElectronWorkbookPanel-BZz8NPb4.js` requires `Worker`, `HTMLCanvasElement`, and `OffscreenCanvas`, then routes base workbook rendering through a worker-backed canvas frame instead of a DOM table.
+- The main thread coalesces expensive work with `requestAnimationFrame`: viewport redraw and canvas resize/sync are scheduled once per frame, and canvas bitmap resizing is skipped when width/height/DPR are unchanged.
+- Host size changes are tracked with `ResizeObserver` plus a window resize listener; canvas CSS size and intrinsic bitmap size are synced from one viewport metrics object.
+- Layout math is prefix-sum driven: `columnWidths`, `rowHeights`, camera scroll, freeze panes, row/column headers, selection rectangles, chart hover targets, and drawing hit regions all share the same logical coordinate system.
+- Worker state updates are partitioned by kind (`viewport`, `selection`, `editor`, `overlays`, `floating`, etc.). Overlay anchors and chart hover targets are shallow-compared before posting events back to the main thread, reducing needless React updates.
+- The remaining risk for a Routa implementation is large-sheet lookup cost. Walnut still has some linear scans for nearest row/column and resize hit testing in the extracted bundle, so our layout adapter should keep prefix arrays reusable and prefer binary search for viewport range lookup before adding more overlay hit regions.
+
 ## Progress
 
 - Added a spreadsheet layout adapter that normalizes column widths, row heights, merge coverage, and prefix-sum offsets.
@@ -96,7 +105,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added XLSX timeline cache protocol extraction and Walnut-style `tsle:timeslicer` drawing-shape normalization. `xlsx_timeline_contract.xlsx` passes decoded Walnut protocol diff with zero field-level differences; Walnut did not emit sheet-level `timelines` for this minimal fixture, so the contract currently mirrors that behavior.
 - Added richer XLSX chart-family preview routing for area, pie, doughnut, scatter, bubble, radar, and surface chart protocol ids, plus scatter/bubble X/Y value extraction from `c:xVal`/`c:yVal`. Existing decoded protocol and render-contract fixtures still pass; broader Excel-authored multi-chart fixtures are still needed.
 - Added `xlsx_multi_chart_contract.xlsx` and aligned Walnut decoded protocol for area, pie, doughnut, scatter, bubble, and radar chart families. The pass matched Walnut's chart option default-presence rules, omitted scatter/bubble category extraction from `c:xVal`, and preserved axis tick defaults; decoded protocol diff is zero for the fixture.
-- After the multi-chart protocol pass, inspect the extracted Walnut workbook bundle for performance-sensitive layout choices so the Routa adapter does not accidentally regress large-sheet behavior.
+- Inspected the extracted Walnut workbook bundle for performance-sensitive layout choices. The key architecture signal is worker-backed canvas rendering plus prefix-sum viewport math; Routa should avoid growing the debug preview into a DOM-table renderer for large sheets.
 
 ## Remaining XLSX Work
 
