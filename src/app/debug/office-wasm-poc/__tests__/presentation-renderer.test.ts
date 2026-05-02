@@ -8,6 +8,7 @@ import {
   presentationGradientStops,
   presentationChartById,
   presentationChartReferenceId,
+  presentationElementLineStyle,
   presentationImageSourceRect,
   presentationLineEndStyle,
   presentationLineStyle,
@@ -71,6 +72,7 @@ describe("presentation renderer helpers", () => {
   it("maps protocol geometry codes to canvas shape kinds", () => {
     const rect = { height: 100, left: 0, top: 0, width: 100 };
     expect(presentationShapeKind({ geometry: 35 }, rect)).toBe("ellipse");
+    expect(presentationShapeKind({ geometry: 96 }, rect)).toBe("line");
     expect(presentationShapeKind({ geometry: 23 }, rect)).toBe("triangle");
     expect(presentationShapeKind({ geometry: 30 }, rect)).toBe("diamond");
     expect(presentationShapeKind({ geometry: 39 }, rect)).toBe("hexagon");
@@ -144,6 +146,36 @@ describe("presentation renderer helpers", () => {
     expect(line.lineCap).toBe("round");
     expect(line.lineJoin).toBe("round");
     expect(line.dash.length).toBeGreaterThan(0);
+    expect(line.headEnd?.type).toBe(2);
+    expect(line.tailEnd?.type).toBe(5);
+  });
+
+  it("renders connector line-end metadata with the base shape line", () => {
+    const line = presentationElementLineStyle(
+      {
+        connector: {
+          lineStyle: {
+            cap: 2,
+            head: { length: 3, type: 2, width: 3 },
+            join: 2,
+            tail: { length: 1, type: 5, width: 1 },
+          },
+        },
+        shape: {
+          line: {
+            fill: { color: { type: 1, value: "C65F20" } },
+            style: 1,
+            widthEmu: 38_100,
+          },
+        },
+      },
+      1,
+    );
+
+    expect(line.color).toBe("#C65F20");
+    expect(line.width).toBeCloseTo(4);
+    expect(line.lineCap).toBe("square");
+    expect(line.lineJoin).toBe("bevel");
     expect(line.headEnd?.type).toBe(2);
     expect(line.tailEnd?.type).toBe(5);
   });

@@ -83,6 +83,7 @@ Progress - 2026-05-02:
 - PPT viewer shell now puts the slideshow action in the debug page header and computes slide fit independently from notes/sources footnote height, so long footnotes scroll below the slide instead of shrinking or covering the slide.
 - Latest validation on `/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx`: `compare:office-wasm-reader:pptx-render -- --assert` passes; browser measurement at `2048x1058` keeps slide 1/4 at `1703x958`, Play is in the 52px header, and hiding the footnote does not change slide size.
 - PPT group/connector protocol now mirrors Walnut's group-flattening behavior, transforms group child bboxes into slide coordinates, maps `straightConnector1`, and preserves connector endpoints plus head/tail line-end metadata.
+- PPT canvas renderer now treats `straightConnector1` as a line and merges connector line-end metadata with the base shape line, so arrowhead/cap/join styling is no longer dropped at render time.
 - Next PPT item is SmartArt/diagram/custom geometry and deeper table-style inheritance; pixel-level PowerPoint typography remains a renderer fidelity limitation until the viewer has a native screenshot/raster path or a deeper text layout engine.
 
 ## Expected Behavior

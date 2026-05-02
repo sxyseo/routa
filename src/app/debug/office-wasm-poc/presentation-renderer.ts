@@ -174,7 +174,7 @@ export function emuRectToCanvasRect(bbox: RecordValue | null, bounds: Presentati
 
 export function presentationShapeKind(shape: RecordValue | null, rect: PresentationRect): PresentationShapeKind {
   const geometry = asNumber(shape?.geometry);
-  if (geometry === 1) return "line";
+  if (geometry === 1 || geometry === 96) return "line";
   if (geometry === 23) return "triangle";
   if (geometry === 26) return "roundRect";
   if (geometry === 30) return "diamond";
@@ -499,7 +499,7 @@ function drawElement(
 
   const slideScale = presentationCanvasScale(bounds, canvas);
   const shape = asRecord(element.shape);
-  const line = presentationLineStyle(shape?.line ?? element.line, slideScale);
+  const line = presentationElementLineStyle(element, slideScale);
   const isLine = rect.height === 0 && line.color != null;
   const rotation = asNumber(bbox?.rotation) / 60_000;
 
@@ -764,12 +764,31 @@ export function presentationLineStyle(line: unknown, slideScale: number): Presen
   return {
     color: colorToCss(fillRecord?.color),
     dash: presentationLineDash(asNumber(lineRecord?.style), scaledWidth),
-    headEnd: presentationLineEndStyle(lineRecord?.headEnd, scaledWidth),
+    headEnd: presentationLineEndStyle(lineRecord?.headEnd ?? lineRecord?.head, scaledWidth),
     lineCap: presentationLineCap(asNumber(lineRecord?.cap)),
     lineJoin: presentationLineJoin(asNumber(lineRecord?.join)),
-    tailEnd: presentationLineEndStyle(lineRecord?.tailEnd, scaledWidth),
+    tailEnd: presentationLineEndStyle(lineRecord?.tailEnd ?? lineRecord?.tail, scaledWidth),
     width: scaledWidth,
   };
+}
+
+export function presentationElementLineStyle(element: RecordValue, slideScale: number): PresentationLineStyle {
+  const shapeLine = asRecord(asRecord(element.shape)?.line) ?? asRecord(element.line);
+  const connectorLine = asRecord(asRecord(element.connector)?.lineStyle);
+  if (!connectorLine) return presentationLineStyle(shapeLine, slideScale);
+
+  return presentationLineStyle(
+    {
+      ...shapeLine,
+      cap: connectorLine.cap ?? shapeLine?.cap,
+      head: connectorLine.head ?? connectorLine.headEnd ?? shapeLine?.head,
+      headEnd: connectorLine.headEnd ?? connectorLine.head ?? shapeLine?.headEnd,
+      join: connectorLine.join ?? shapeLine?.join,
+      tail: connectorLine.tail ?? connectorLine.tailEnd ?? shapeLine?.tail,
+      tailEnd: connectorLine.tailEnd ?? connectorLine.tail ?? shapeLine?.tailEnd,
+    },
+    slideScale,
+  );
 }
 
 function applyLineStyle(context: CanvasRenderingContext2D, line: PresentationLineStyle): void {
