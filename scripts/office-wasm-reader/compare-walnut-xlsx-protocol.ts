@@ -73,7 +73,7 @@ async function compareFixture(fixturePath: string): Promise<XlsxComparisonResult
   return {
     equivalence: summarizeEquivalence(walnutWorkbook, routaWorkbook),
     fixture: path.relative(repoRoot, fixturePath),
-    ...(diffMode ? { protocolDiff: summarizeProtocolDiff(walnutWorkbook, routaWorkbook, diffLimit) } : {}),
+    ...(diffMode || assertMode ? { protocolDiff: summarizeProtocolDiff(walnutWorkbook, routaWorkbook, diffLimit) } : {}),
     routa: summarizeWalnutWorkbook(routaWorkbook, routaProtoBytes),
     routaProtocol: "oaiproto.coworker.spreadsheet.Workbook",
     targetProtocol: "oaiproto.coworker.spreadsheet.Workbook",
@@ -276,6 +276,10 @@ function assertCoreEquivalence(result: XlsxComparisonResult): void {
   const failures = requiredChecks.filter((key) => equivalence[key] !== true);
   if (failures.length > 0) {
     throw new Error(`XLSX core equivalence failed for ${result.fixture}: ${failures.join(", ")}`);
+  }
+
+  if (result.protocolDiff && result.protocolDiff.totalCount > 0) {
+    throw new Error(`XLSX decoded protocol diff failed for ${result.fixture}: ${result.protocolDiff.totalCount} differences`);
   }
 }
 

@@ -175,10 +175,7 @@ internal static class XlsxWorkbookProtoReader
             WriteString(output, 2, text);
             WriteString(output, 3, formulaText);
             WriteInt32(output, 4, CellDataType(cell, text));
-            if (cell.StyleIndex?.Value is { } styleIndex)
-            {
-                WriteInt32(output, 5, (int)styleIndex);
-            }
+            WriteInt32IncludingZero(output, 5, (int)(cell.StyleIndex?.Value ?? 0));
 
             if (formulaText.Length > 0 && formula is not null)
             {
@@ -455,6 +452,7 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteString(output, 13, rule.Text?.Value ?? "");
+            WriteString(output, 18, ConditionalRuleId(rule));
         });
     }
 
@@ -666,40 +664,74 @@ internal static class XlsxWorkbookProtoReader
         return Message(output =>
         {
             WriteString(output, 1, chart.Title);
-            foreach (var series in chart.Series)
+            for (var index = 0; index < chart.Series.Count; index++)
             {
-                WriteMessage(output, 3, WriteChartSeries(series));
+                WriteMessage(output, 3, WriteChartSeries(chart.Series[index], index, chart.Type == 13));
             }
 
             WriteInt32(output, 5, chart.Type);
-            WriteMessage(output, 8, WriteChartAxis(4));
-            WriteMessage(output, 9, WriteChartAxis(1));
+            WriteMessage(output, 8, WriteChartAxis(4, chart.CategoryAxisTitle, chart.CategoryMajorGridline, false));
+            WriteMessage(output, 9, WriteChartAxis(1, chart.ValueAxisTitle, chart.ValueMajorGridline, true));
             if (chart.HasLegend)
             {
                 WriteBool(output, 11, true);
                 WriteMessage(output, 12, WriteChartLegend(chart.LegendPosition));
             }
+
+            WriteMessageIncludingEmpty(output, 13, Message(_ => { }));
+            WriteMessage(output, 14, WriteChartDataLabels());
+            WriteMessageIncludingEmpty(output, 25, chart.ChartSpaceLine ?? Message(_ => { }));
+            WriteBool(output, 26, false);
+            WriteMessageIncludingEmpty(output, 41, Message(_ => { }));
+            if (chart.Type == 4)
+            {
+                WriteMessage(output, 50, WriteBarOptions(chart));
+            }
         });
     }
 
-    private static byte[] WriteChartSeries(ChartSeriesReadModel series)
+    private static byte[] WriteChartSeries(ChartSeriesReadModel series, int index, bool includeMarker)
     {
         return Message(output =>
         {
+            WriteString(output, 8, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
             WriteString(output, 1, series.Name);
             WritePackedDoubles(output, 2, series.Values);
             foreach (var category in series.Categories)
             {
                 WriteString(output, 5, category);
             }
+
+            if (includeMarker && series.HasMarker)
+            {
+                WriteMessageIncludingEmpty(output, 16, Message(_ => { }));
+            }
         });
     }
 
-    private static byte[] WriteChartAxis(int position)
+    private static byte[] WriteChartAxis(int position, string title, byte[]? majorGridline, bool isValueAxis)
     {
         return Message(output =>
         {
+            WriteMessageIncludingEmpty(output, 5, majorGridline ?? Message(_ => { }));
+            WriteStringIncludingEmpty(output, 7, "");
             WriteInt32(output, 10, position);
+            WriteInt32(output, 11, 1);
+            WriteInt32(output, 12, 1);
+            WriteInt32(output, 13, 1);
+            WriteInt32IncludingZero(output, 14, isValueAxis ? 0 : 3);
+            if (isValueAxis)
+            {
+                WriteInt32(output, 15, 1);
+                WriteInt32(output, 16, 1);
+            }
+
+            WriteBool(output, 18, false);
+            if (!string.IsNullOrEmpty(title))
+            {
+                WriteString(output, 19, title);
+                WriteMessageIncludingEmpty(output, 20, Message(_ => { }));
+            }
         });
     }
 
@@ -712,19 +744,49 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
+    private static byte[] WriteChartDataLabels()
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 15, 127);
+        });
+    }
+
+    private static byte[] WriteBarOptions(ChartReadModel chart)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, chart.BarDirection);
+            WriteInt32IncludingZero(output, 2, 0);
+            if (chart.BarVaryColors is { } varyColors)
+            {
+                WriteBool(output, 3, varyColors);
+            }
+        });
+    }
+
     private static ChartReadModel ReadChart(ChartPart chartPart)
     {
         var chartSpace = chartPart.ChartSpace;
         if (chartSpace is null)
         {
-            return new ChartReadModel("", 0, false, 0, []);
+            return new ChartReadModel("", 0, false, 0, "", "", null, null, null, 0, null, []);
         }
 
+        var categoryAxis = chartSpace.Descendants<C.CategoryAxis>().FirstOrDefault();
+        var valueAxis = chartSpace.Descendants<C.ValueAxis>().FirstOrDefault();
         return new ChartReadModel(
             ChartTitle(chartSpace),
             ChartType(chartSpace),
             chartSpace.Descendants<C.Legend>().Any(),
             LegendPosition(chartSpace.Descendants<C.LegendPosition>().FirstOrDefault()),
+            AxisTitle(categoryAxis),
+            AxisTitle(valueAxis),
+            ChartSpaceLine(chartSpace),
+            AxisMajorGridline(categoryAxis),
+            AxisMajorGridline(valueAxis),
+            BarDirection(chartSpace.Descendants<C.BarDirection>().FirstOrDefault()),
+            chartSpace.Descendants<C.VaryColors>().FirstOrDefault()?.Val?.Value,
             ExtractChartSeries(chartSpace).ToArray());
     }
 
@@ -761,6 +823,48 @@ internal static class XlsxWorkbookProtoReader
         };
     }
 
+    private static int BarDirection(C.BarDirection? direction)
+    {
+        return direction?.Val?.InnerText switch
+        {
+            "col" => 1,
+            "bar" => 2,
+            _ => 0,
+        };
+    }
+
+    private static string AxisTitle(OpenXmlElement? axis)
+    {
+        return TextNormalization.Clean(string.Concat(
+            axis?.Elements<C.Title>().FirstOrDefault()?.Descendants<A.Text>().Select(item => item.Text) ??
+            Enumerable.Empty<string>()));
+    }
+
+    private static byte[]? ChartSpaceLine(C.ChartSpace chartSpace)
+    {
+        var line = chartSpace.ChildElements
+            .LastOrDefault(element => element.LocalName == "spPr")
+            ?.Descendants<A.Outline>()
+            .FirstOrDefault()
+            ?? chartSpace.Elements<C.Chart>()
+                .FirstOrDefault()
+                ?.ChildElements
+                .LastOrDefault(element => element.LocalName == "spPr")
+                ?.Descendants<A.Outline>()
+                .FirstOrDefault();
+        return line is null ? null : WriteLine(line);
+    }
+
+    private static byte[]? AxisMajorGridline(OpenXmlElement? axis)
+    {
+        var line = axis?.Elements<C.MajorGridlines>()
+            .FirstOrDefault()
+            ?.Elements<C.ChartShapeProperties>()
+            .FirstOrDefault()
+            ?.GetFirstChild<A.Outline>();
+        return line is null ? null : WriteLine(line);
+    }
+
     private static IEnumerable<ChartSeriesReadModel> ExtractChartSeries(C.ChartSpace chartSpace)
     {
         var seriesElements = chartSpace.Descendants<C.BarChartSeries>().Cast<OpenXmlElement>()
@@ -778,7 +882,8 @@ internal static class XlsxWorkbookProtoReader
             yield return new ChartSeriesReadModel(
                 name.Length > 0 ? name : $"Series {index + 1}",
                 ExtractChartCategories(series).ToArray(),
-                ExtractChartValues(series).ToArray());
+                ExtractChartValues(series).ToArray(),
+                series.Elements<C.Marker>().Any());
             index += 1;
         }
     }
@@ -876,9 +981,10 @@ internal static class XlsxWorkbookProtoReader
                 return;
             }
 
-            if (fill is not null)
+            var lineStyle = LineStyle(line);
+            if (lineStyle != 0)
             {
-                WriteInt32(output, 1, 1);
+                WriteInt32(output, 1, lineStyle);
             }
 
             WriteInt32(output, 2, line?.Width?.Value ?? 0);
@@ -887,6 +993,25 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 3, WriteSolidFill(fill));
             }
         });
+    }
+
+    private static int LineStyle(A.Outline? line)
+    {
+        return line?.GetFirstChild<A.PresetDash>()?.Val?.InnerText switch
+        {
+            "solid" => 1,
+            "dash" => 2,
+            "dot" => 3,
+            "dashDot" => 4,
+            "lgDash" => 6,
+            "sysDash" => 7,
+            "sysDot" => 8,
+            "lgDashDot" => 9,
+            "sysDashDot" => 10,
+            "lgDashDotDot" => 11,
+            "sysDashDotDot" => 12,
+            _ => line?.GetFirstChild<A.SolidFill>() is not null ? 1 : 0,
+        };
     }
 
     private static byte[]? WriteTheme(ThemePart? themePart)
@@ -1250,6 +1375,20 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessageIncludingEmpty(output, 4, WriteBorder(border));
             }
 
+            var cellStyleIndex = 0;
+            foreach (var style in stylesheet.CellStyles?.Elements<S.CellStyle>() ?? [])
+            {
+                WriteMessage(output, 5, WriteCellStyle(style, cellStyleIndex));
+                cellStyleIndex++;
+            }
+
+            var cellStyleFormatIndex = 0;
+            foreach (var format in stylesheet.CellStyleFormats?.Elements<S.CellFormat>() ?? [])
+            {
+                WriteMessage(output, 6, WriteCellStyleFormat(format, cellStyleFormatIndex));
+                cellStyleFormatIndex++;
+            }
+
             foreach (var format in stylesheet.NumberingFormats?.Elements<S.NumberingFormat>() ?? [])
             {
                 WriteMessage(output, 7, WriteNumberFormat(format));
@@ -1259,6 +1398,29 @@ internal static class XlsxWorkbookProtoReader
             {
                 WriteMessage(output, 8, WriteDifferentialFormat(format));
             }
+        });
+    }
+
+    private static byte[] WriteCellStyle(S.CellStyle style, int index)
+    {
+        return Message(output =>
+        {
+            WriteInt32IncludingZero(output, 1, index);
+            WriteString(output, 2, style.Name?.Value ?? "");
+            WriteString(output, 3, style.BuiltinId?.Value.ToString() ?? "");
+            if (style.FormatId?.Value is { } formatId)
+            {
+                WriteInt32IncludingZero(output, 4, (int)formatId);
+            }
+        });
+    }
+
+    private static byte[] WriteCellStyleFormat(S.CellFormat format, int index)
+    {
+        return Message(output =>
+        {
+            WriteInt32IncludingZero(output, 1, index);
+            WriteMessage(output, 2, WriteCellFormat(format));
         });
     }
 
@@ -1405,7 +1567,10 @@ internal static class XlsxWorkbookProtoReader
         return Message(output =>
         {
             WriteInt32(output, 1, 3);
-            WriteMessage(output, 2, WriteColor(fill.PatternFill?.ForegroundColor));
+            var fillColor =
+                (OpenXmlElement?)fill.PatternFill?.ForegroundColor ??
+                fill.PatternFill?.BackgroundColor;
+            WriteMessage(output, 2, WriteColor(fillColor));
             WriteMessage(output, 17, WritePattern(fill.PatternFill));
         });
     }
@@ -1717,10 +1882,18 @@ internal static class XlsxWorkbookProtoReader
     {
         if (cell.DataType?.Value == S.CellValues.SharedString) return 3;
         if (cell.DataType?.Value == S.CellValues.InlineString) return 2;
+        if (cell.DataType?.Value == S.CellValues.String) return 3;
         if (cell.DataType?.Value == S.CellValues.Boolean) return 4;
         if (cell.DataType?.Value == S.CellValues.Error) return 6;
         if (!string.IsNullOrEmpty(text) && double.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _)) return 5;
         return string.IsNullOrEmpty(text) ? 0 : 3;
+    }
+
+    private static string ConditionalRuleId(S.ConditionalFormattingRule rule)
+    {
+        return TextNormalization.Clean(rule.Descendants()
+            .FirstOrDefault(element => element.LocalName == "id")
+            ?.InnerText);
     }
 
     private static (string StartAddress, string EndAddress) SplitCellRange(string reference)
@@ -1974,10 +2147,18 @@ internal static class XlsxWorkbookProtoReader
         int Type,
         bool HasLegend,
         int LegendPosition,
+        string CategoryAxisTitle,
+        string ValueAxisTitle,
+        byte[]? ChartSpaceLine,
+        byte[]? CategoryMajorGridline,
+        byte[]? ValueMajorGridline,
+        int BarDirection,
+        bool? BarVaryColors,
         IReadOnlyList<ChartSeriesReadModel> Series);
 
     private sealed record ChartSeriesReadModel(
         string Name,
         IReadOnlyList<string> Categories,
-        IReadOnlyList<double> Values);
+        IReadOnlyList<double> Values,
+        bool HasMarker);
 }
