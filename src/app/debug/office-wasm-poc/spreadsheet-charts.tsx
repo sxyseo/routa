@@ -29,6 +29,15 @@ type SpreadsheetChartAxisSpec = {
 };
 
 type SpreadsheetChartLegendPosition = "bottom" | "left" | "none" | "right" | "top";
+type SpreadsheetChartType = "area" | "bar" | "bubble" | "doughnut" | "line" | "pie" | "radar" | "scatter" | "surface";
+type SpreadsheetChartLegendItem = {
+  color: string;
+  label: string;
+  marker: SpreadsheetChartSeries["marker"];
+  showLine: boolean;
+};
+
+const CHART_PALETTE = ["#1f6f8b", "#f9732a", "#5b7f2a", "#9467bd", "#8c564b", "#2ca02c", "#d62728"];
 
 export type SpreadsheetChartPlotArea = {
   bottom: number;
@@ -52,7 +61,7 @@ export type SpreadsheetChartSpec = {
   series: SpreadsheetChartSeries[];
   title: string;
   top: number;
-  type: "bar" | "line";
+  type: SpreadsheetChartType;
   width: number;
   xAxis?: SpreadsheetChartAxisSpec;
   yAxis?: SpreadsheetChartAxisSpec;
@@ -251,9 +260,8 @@ function spreadsheetChartSeries(
   index: number,
   color?: string,
 ): SpreadsheetChartSeries {
-  const palette = ["#1f6f8b", "#f9732a", "#5b7f2a", "#9467bd", "#8c564b"];
   return {
-    color: color ?? palette[index % palette.length] ?? "#1f6f8b",
+    color: color ?? chartPalette(index),
     label,
     marker: index % 2 === 0 ? "diamond" : "square",
     values,
@@ -285,10 +293,17 @@ function spreadsheetLegendPosition(value: unknown): SpreadsheetChartLegendPositi
   }
 }
 
-function spreadsheetChartType(chart: RecordValue): "bar" | "line" {
+function spreadsheetChartType(chart: RecordValue): SpreadsheetChartType {
   const chartType = asString(chart.chartType).toLowerCase();
   const chartTypeId = protocolNumber(chart.type, 0);
+  if (chartType === "area" || chartTypeId === 2) return "area";
+  if (chartType === "bubble" || chartTypeId === 5) return "bubble";
+  if (chartType === "doughnut" || chartTypeId === 8) return "doughnut";
   if (chartType === "line" || chartTypeId === 13) return "line";
+  if (chartType === "pie" || chartTypeId === 16) return "pie";
+  if (chartType === "radar" || chartTypeId === 17) return "radar";
+  if (chartType === "scatter" || chartTypeId === 18) return "scatter";
+  if (chartType === "surface" || chartTypeId === 22) return "surface";
   return "bar";
 }
 
@@ -441,12 +456,37 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
   context.textBaseline = "alphabetic";
   context.fillText(chart.title, width / 2, 30);
 
-  drawChartGrid(context, chart, plot, ticks);
+  if (isCartesianChart(chart.type)) {
+    drawChartGrid(context, chart, plot, ticks);
+  }
 
-  if (chart.type === "bar") {
-    drawBarChart(context, chart, plot, minValue, maxValue);
-  } else {
-    drawLineChart(context, chart, plot, minValue, maxValue);
+  switch (chart.type) {
+    case "area":
+    case "surface":
+      drawAreaChart(context, chart, plot, minValue, maxValue);
+      break;
+    case "bubble":
+      drawScatterChart(context, chart, plot, minValue, maxValue, true);
+      break;
+    case "doughnut":
+      drawPieChart(context, chart, plot, true);
+      break;
+    case "line":
+      drawLineChart(context, chart, plot, minValue, maxValue);
+      break;
+    case "pie":
+      drawPieChart(context, chart, plot, false);
+      break;
+    case "radar":
+      drawRadarChart(context, chart, plot, ticks);
+      break;
+    case "scatter":
+      drawScatterChart(context, chart, plot, minValue, maxValue, false);
+      break;
+    case "bar":
+    default:
+      drawBarChart(context, chart, plot, minValue, maxValue);
+      break;
   }
 
   drawChartLegend(context, chart, plot);
@@ -454,14 +494,14 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
 
 export function spreadsheetChartPlotArea(chart: SpreadsheetChartSpec): SpreadsheetChartPlotArea {
   const hasBottomLegend = chart.legendPosition === "bottom";
-  const categoryLabelHeight = chart.type === "line" ? 46 : 30;
+  const categoryLabelHeight = isLineAxisChart(chart.type) ? 46 : isCircularChart(chart.type) || chart.type === "radar" ? 8 : 30;
   const legendHeight = hasBottomLegend ? 42 : 0;
   const top = chart.title ? 58 : 24;
   const bottom = Math.max(top + 48, chart.height - categoryLabelHeight - legendHeight);
 
   return {
     bottom,
-    left: chart.type === "line" ? 64 : 52,
+    left: isLineAxisChart(chart.type) ? 64 : isCircularChart(chart.type) || chart.type === "radar" ? 28 : 52,
     right: chart.width - (chart.legendPosition === "right" ? 126 : 22),
     top,
   };
@@ -497,7 +537,7 @@ function drawChartGrid(
     context.fillText(formatChartTick(value), plot.left - 8, y);
   }
 
-  if (chart.type === "line" && chart.categories.length > 0) {
+  if (isLineAxisChart(chart.type) && chart.categories.length > 0) {
     const pointCount = Math.max(1, chart.categories.length - 1);
     for (let index = 0; index < chart.categories.length; index += 1) {
       const x = plot.left + (index / pointCount) * (plot.right - plot.left);
@@ -519,7 +559,7 @@ function drawChartGrid(
 }
 
 export function spreadsheetChartTickValues(chart: SpreadsheetChartSpec, values: number[]): number[] {
-  const tickCount = chart.type === "line" ? 6 : 5;
+  const tickCount = isLineAxisChart(chart.type) || chart.type === "radar" ? 6 : 5;
   const minValue = chart.yAxis?.minimum ?? 0;
   const observedMax = Math.max(minValue, ...values.filter(Number.isFinite));
   const majorUnit = chart.yAxis?.majorUnit;
@@ -660,19 +700,223 @@ function drawLineChart(
   context.restore();
 }
 
+function drawAreaChart(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  minValue: number,
+  maxValue: number,
+) {
+  const pointCount = Math.max(1, chart.categories.length - 1);
+  const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
+
+  context.save();
+  chart.series.forEach((series) => {
+    context.beginPath();
+    series.values.forEach((value, index) => {
+      const x = xForIndex(index);
+      const y = chartY(value, plot, minValue, maxValue);
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.lineTo(xForIndex(Math.max(0, series.values.length - 1)), plot.bottom);
+    context.lineTo(xForIndex(0), plot.bottom);
+    context.closePath();
+    context.globalAlpha = 0.22;
+    context.fillStyle = series.color;
+    context.fill();
+    context.globalAlpha = 1;
+    context.strokeStyle = series.color;
+    context.lineWidth = 2;
+    context.stroke();
+  });
+  drawLineCategoryLabels(context, chart, plot);
+  context.restore();
+}
+
+function drawPieChart(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  isDoughnut: boolean,
+) {
+  const values = chart.series[0]?.values.map((value) => Math.max(0, value)) ?? [];
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return;
+
+  const centerX = (plot.left + plot.right) / 2;
+  const centerY = (plot.top + plot.bottom) / 2;
+  const radius = Math.max(12, Math.min(plot.right - plot.left, plot.bottom - plot.top) * 0.42);
+  let startAngle = -Math.PI / 2;
+
+  context.save();
+  values.forEach((value, index) => {
+    const angle = (value / total) * Math.PI * 2;
+    context.beginPath();
+    context.moveTo(centerX, centerY);
+    context.arc(centerX, centerY, radius, startAngle, startAngle + angle);
+    context.closePath();
+    context.fillStyle = chartPalette(index);
+    context.fill();
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 1;
+    context.stroke();
+    startAngle += angle;
+  });
+
+  if (isDoughnut) {
+    context.beginPath();
+    context.arc(centerX, centerY, radius * 0.55, 0, Math.PI * 2);
+    context.fillStyle = "#ffffff";
+    context.fill();
+  }
+  context.restore();
+}
+
+function drawScatterChart(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  minValue: number,
+  maxValue: number,
+  isBubble: boolean,
+) {
+  const xValues = chart.categories.map((category, index) => {
+    const numeric = Number(category);
+    return Number.isFinite(numeric) ? numeric : index + 1;
+  });
+  const minX = Math.min(...xValues, 0);
+  const maxX = Math.max(...xValues, 1);
+  const xForValue = (value: number) => {
+    if (maxX <= minX) return plot.left;
+    return plot.left + ((value - minX) / (maxX - minX)) * (plot.right - plot.left);
+  };
+
+  context.save();
+  chart.series.forEach((series) => {
+    context.fillStyle = series.color;
+    series.values.forEach((value, index) => {
+      const x = xForValue(xValues[index] ?? index + 1);
+      const y = chartY(value, plot, minValue, maxValue);
+      const radius = isBubble ? 7 : 5;
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 1;
+      context.stroke();
+    });
+  });
+  drawLineCategoryLabels(context, chart, plot);
+  context.restore();
+}
+
+function drawRadarChart(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  ticks: number[],
+) {
+  const axisCount = Math.max(3, chart.categories.length, ...chart.series.map((series) => series.values.length));
+  const maxValue = ticks[ticks.length - 1] ?? Math.max(...chart.series.flatMap((series) => series.values), 1);
+  const centerX = (plot.left + plot.right) / 2;
+  const centerY = (plot.top + plot.bottom) / 2;
+  const radius = Math.max(12, Math.min(plot.right - plot.left, plot.bottom - plot.top) * 0.42);
+  const pointFor = (index: number, value: number) => {
+    const angle = -Math.PI / 2 + (index / axisCount) * Math.PI * 2;
+    const ratio = maxValue > 0 ? Math.max(0, value) / maxValue : 0;
+    return {
+      x: centerX + Math.cos(angle) * radius * ratio,
+      y: centerY + Math.sin(angle) * radius * ratio,
+    };
+  };
+  const axisPoint = (index: number) => pointFor(index, maxValue);
+
+  context.save();
+  context.strokeStyle = "#d1d5db";
+  context.lineWidth = 1;
+  for (let ring = 1; ring <= 4; ring += 1) {
+    context.beginPath();
+    for (let index = 0; index < axisCount; index += 1) {
+      const point = pointFor(index, (maxValue * ring) / 4);
+      if (index === 0) context.moveTo(point.x, point.y);
+      else context.lineTo(point.x, point.y);
+    }
+    context.closePath();
+    context.stroke();
+  }
+
+  context.fillStyle = "#737373";
+  context.font = "12px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  for (let index = 0; index < axisCount; index += 1) {
+    const point = axisPoint(index);
+    context.beginPath();
+    context.moveTo(centerX, centerY);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+    const label = chart.categories[index];
+    if (label) {
+      context.fillText(label, point.x, point.y);
+    }
+  }
+
+  chart.series.forEach((series) => {
+    context.beginPath();
+    series.values.forEach((value, index) => {
+      const point = pointFor(index, value);
+      if (index === 0) context.moveTo(point.x, point.y);
+      else context.lineTo(point.x, point.y);
+    });
+    context.closePath();
+    context.globalAlpha = 0.16;
+    context.fillStyle = series.color;
+    context.fill();
+    context.globalAlpha = 1;
+    context.strokeStyle = series.color;
+    context.lineWidth = 2;
+    context.stroke();
+  });
+  context.restore();
+}
+
+function drawLineCategoryLabels(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+) {
+  const pointCount = Math.max(1, chart.categories.length - 1);
+  const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
+
+  context.fillStyle = "#737373";
+  context.font = "12px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "alphabetic";
+  chart.categories.forEach((category, index) => {
+    const x = xForIndex(index);
+    const [first, ...rest] = category.split(/\s+/);
+    context.fillText(first, x, plot.bottom + 20);
+    if (rest.length > 0) {
+      context.fillText(rest.join(" "), x, plot.bottom + 36);
+    }
+  });
+}
+
 function drawChartLegend(
   context: CanvasRenderingContext2D,
   chart: SpreadsheetChartSpec,
   plot: SpreadsheetChartPlotArea,
 ) {
   if (chart.legendPosition === "none") return;
+  const items = chartLegendItems(chart);
 
   context.save();
   if (chart.legendPosition === "right") {
     let legendY = plot.top + 18;
     const legendX = plot.right + 18;
-    chart.series.forEach((series) => {
-      drawLegendEntry(context, series, legendX, legendY);
+    items.forEach((item) => {
+      drawLegendEntry(context, item, legendX, legendY);
       legendY += 20;
     });
     context.restore();
@@ -680,33 +924,56 @@ function drawChartLegend(
   }
 
   const legendY = chart.legendPosition === "top" ? 48 : chart.height - 18;
-  let legendX = chart.width / 2 - chart.series.length * 56;
-  chart.series.forEach((series) => {
-    drawLegendEntry(context, series, legendX, legendY);
+  let legendX = chart.width / 2 - items.length * 56;
+  items.forEach((item) => {
+    drawLegendEntry(context, item, legendX, legendY);
     legendX += 112;
   });
   context.restore();
 }
 
+function chartLegendItems(chart: SpreadsheetChartSpec): SpreadsheetChartLegendItem[] {
+  if (isCircularChart(chart.type)) {
+    return chart.categories.map((label, index) => ({
+      color: chartPalette(index),
+      label,
+      marker: "square",
+      showLine: false,
+    }));
+  }
+
+  return chart.series.map((series) => ({
+    color: series.color,
+    label: series.label,
+    marker: series.marker,
+    showLine: true,
+  }));
+}
+
 function drawLegendEntry(
   context: CanvasRenderingContext2D,
-  series: SpreadsheetChartSeries,
+  item: SpreadsheetChartLegendItem,
   x: number,
   y: number,
 ) {
-  context.strokeStyle = series.color;
+  context.strokeStyle = item.color;
   context.lineWidth = 3;
-  context.beginPath();
-  context.moveTo(x, y - 4);
-  context.lineTo(x + 18, y - 4);
-  context.stroke();
-  context.fillStyle = series.color;
-  drawChartMarker(context, series.marker, x + 9, y - 4, 4);
+  context.fillStyle = item.color;
+  if (item.showLine) {
+    context.beginPath();
+    context.moveTo(x, y - 4);
+    context.lineTo(x + 18, y - 4);
+    context.stroke();
+    drawChartMarker(context, item.marker, x + 9, y - 4, 4);
+  } else {
+    context.fillRect(x, y - 10, 12, 12);
+  }
+
   context.fillStyle = "#737373";
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
   context.font = "12px Arial, sans-serif";
-  context.fillText(series.label, x + 26, y);
+  context.fillText(item.label, x + 26, y);
 }
 
 function drawChartMarker(
@@ -727,6 +994,22 @@ function drawChartMarker(
   }
   context.closePath();
   context.fill();
+}
+
+function isCartesianChart(type: SpreadsheetChartType): boolean {
+  return type === "area" || type === "bar" || type === "bubble" || type === "line" || type === "scatter" || type === "surface";
+}
+
+function isLineAxisChart(type: SpreadsheetChartType): boolean {
+  return type === "area" || type === "bubble" || type === "line" || type === "scatter" || type === "surface";
+}
+
+function isCircularChart(type: SpreadsheetChartType): boolean {
+  return type === "doughnut" || type === "pie";
+}
+
+function chartPalette(index: number): string {
+  return CHART_PALETTE[index % CHART_PALETTE.length] ?? "#1f6f8b";
 }
 
 function formatChartTick(value: number): string {

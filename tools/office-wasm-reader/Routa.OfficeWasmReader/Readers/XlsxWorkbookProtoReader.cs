@@ -1840,6 +1840,15 @@ internal static class XlsxWorkbookProtoReader
 
     private static IEnumerable<string> ExtractChartCategories(OpenXmlElement series)
     {
+        var xValues = series.Elements<C.XValues>().FirstOrDefault();
+        if (xValues is not null)
+        {
+            return xValues
+                .Descendants<C.NumericValue>()
+                .Select(value => TextNormalization.Clean(value.Text))
+                .Where(value => value.Length > 0);
+        }
+
         return series.Elements<C.CategoryAxisData>().FirstOrDefault()
             ?.Descendants<C.NumericValue>()
             .Select(value => TextNormalization.Clean(value.Text))
@@ -1849,7 +1858,9 @@ internal static class XlsxWorkbookProtoReader
 
     private static IEnumerable<double> ExtractChartValues(OpenXmlElement series)
     {
-        return series.Elements<C.Values>().FirstOrDefault()
+        OpenXmlElement? values = series.Elements<C.YValues>().FirstOrDefault();
+        values ??= series.Elements<C.Values>().FirstOrDefault();
+        return values
             ?.Descendants<C.NumericValue>()
             .Select(value => double.TryParse(value.Text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : double.NaN)
             .Where(double.IsFinite)
