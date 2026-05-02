@@ -1370,13 +1370,22 @@ internal static class DocxDocumentProtoReader
     {
         var items = references?.ToList() ?? [];
         var selected =
-            items.FirstOrDefault(item => HeaderFooterType(item) == "default") ??
+            items.FirstOrDefault(item => string.Equals(HeaderFooterType(item), "default", StringComparison.OrdinalIgnoreCase)) ??
             items.FirstOrDefault();
         return HeaderFooterRelationshipId(selected);
     }
 
     private static string HeaderFooterType(OpenXmlElement reference)
     {
+        var rawType = reference
+            .GetAttributes()
+            .FirstOrDefault(attribute => string.Equals(attribute.LocalName, "type", StringComparison.OrdinalIgnoreCase))
+            .Value;
+        if (!string.IsNullOrEmpty(rawType))
+        {
+            return rawType;
+        }
+
         return reference switch
         {
             W.HeaderReference headerReference => headerReference.Type?.Value.ToString() ?? "",
