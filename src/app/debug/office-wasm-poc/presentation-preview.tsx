@@ -266,12 +266,16 @@ function SlideStage({
               ) : null}
             </button>
           </div>
-          {footnote ? (
-            <pre className={styles.footnote} data-testid="presentation-footnote" style={{ maxHeight: footnoteHeight, width: canvasWidth }}>
-              {footnote}
-            </pre>
-          ) : null}
         </div>
+        {footnote ? (
+          <pre
+            className={styles.footnote}
+            data-testid="presentation-footnote"
+            style={{ maxHeight: footnoteHeight, top: canvasHeight + 32, width: canvasWidth }}
+          >
+            {footnote}
+          </pre>
+        ) : null}
       </div>
     </main>
   );

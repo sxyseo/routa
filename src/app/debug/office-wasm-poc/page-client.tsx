@@ -1,5 +1,6 @@
 "use client";
 
+import { FileText } from "lucide-react";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { resolveApiPath } from "@/client/config/backend";
@@ -504,6 +505,7 @@ export function OfficeWasmPocPageClient() {
     textRuns: t.debug.officeWasmPocTextRuns,
   };
   const showDebugDetails = artifact?.kind !== "presentation";
+  const isPresentationArtifact = artifact?.kind === "presentation";
 
   return (
     <main
@@ -526,52 +528,131 @@ export function OfficeWasmPocPageClient() {
         style={{
           alignItems: "center",
           borderBottom: "1px solid #e2e8f0",
-          display: "flex",
-          flexWrap: "nowrap",
+          display: isPresentationArtifact ? "grid" : "flex",
+          flexWrap: isPresentationArtifact ? undefined : "nowrap",
+          gridTemplateColumns: isPresentationArtifact ? "minmax(0, 1fr) auto minmax(0, 1fr)" : undefined,
           gap: 12,
           minWidth: 0,
           overflow: "hidden",
           padding: "0 16px",
         }}
       >
-        <label style={{ alignItems: "center", display: "flex", gap: 8 }}>
-          <span style={{ color: "#475569", fontSize: 13 }}>{t.debug.officeWasmPocSelectFile}</span>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.tsv,.docx,.pptx,.xlsx"
-            onChange={parseFile}
-            disabled={isBusy}
-          />
-        </label>
-        <label style={{ alignItems: "center", display: "flex", gap: 8 }}>
-          <span style={{ color: "#475569", fontSize: 13 }}>{t.debug.officeWasmPocReader}</span>
-          <select
-            data-testid="office-wasm-reader-mode"
-            disabled={isBusy}
-            onChange={changeReaderMode}
-            value={readerMode}
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flex: isPresentationArtifact ? undefined : "0 0 auto",
+            gap: isPresentationArtifact ? 10 : 12,
+            minWidth: 0,
+          }}
+        >
+          <label
+            style={{
+              alignItems: "center",
+              color: "#475569",
+              cursor: isBusy ? "default" : "pointer",
+              display: "inline-flex",
+              fontSize: 13,
+              gap: 8,
+              minWidth: 0,
+            }}
           >
-            <option value="walnut">{t.debug.officeWasmPocReaderWalnut}</option>
-            <option value="routa">{t.debug.officeWasmPocReaderGenerated}</option>
-          </select>
-        </label>
-        <div style={{ color: "#475569", flex: "0 0 auto", fontSize: 13 }}>
-          <strong>{t.debug.officeWasmPocStatus}</strong> {statusLabel(t, status)}
+            <span>{t.debug.officeWasmPocSelectFile}</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.tsv,.docx,.pptx,.xlsx"
+              onChange={parseFile}
+              disabled={isBusy}
+              style={isPresentationArtifact ? { display: "none" } : undefined}
+            />
+          </label>
+          <label style={{ alignItems: "center", display: "flex", gap: 8, minWidth: 0 }}>
+            <span style={{ color: "#475569", fontSize: 13 }}>{t.debug.officeWasmPocReader}</span>
+            <select
+              data-testid="office-wasm-reader-mode"
+              disabled={isBusy}
+              onChange={changeReaderMode}
+              value={readerMode}
+              style={isPresentationArtifact ? { maxWidth: 156 } : undefined}
+            >
+              <option value="walnut">{t.debug.officeWasmPocReaderWalnut}</option>
+              <option value="routa">{t.debug.officeWasmPocReaderGenerated}</option>
+            </select>
+          </label>
         </div>
-        {selectedFileName ? (
-          <div style={{ color: "#475569", flex: "1 1 auto", fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            <code>{selectedFileName}</code>
-            {lastBytes !== null ? <> ({lastBytes} {t.debug.officeWasmPocBytes})</> : null}
-          </div>
-        ) : null}
-        {artifact?.kind === "presentation" ? (
+        {isPresentationArtifact ? (
           <div
-            id={PRESENTATION_HEADER_ACTIONS_ID}
-            style={{ alignItems: "center", display: "flex", flex: "0 0 auto", minWidth: 0 }}
-          />
-        ) : null}
-        {errorMessage ? <div style={{ color: "#b91c1c", fontSize: 13 }}>{errorMessage}</div> : null}
+            style={{
+              alignItems: "center",
+              color: "#111827",
+              display: "inline-flex",
+              fontSize: 13,
+              fontWeight: 600,
+              gap: 8,
+              justifySelf: "center",
+              maxWidth: "44vw",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                alignItems: "center",
+                background: "#fb923c",
+                borderRadius: 5,
+                color: "#ffffff",
+                display: "inline-flex",
+                height: 18,
+                justifyContent: "center",
+                width: 18,
+              }}
+            >
+              <FileText aria-hidden="true" size={12} strokeWidth={2.4} />
+            </span>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+              {selectedFileName}
+            </span>
+          </div>
+        ) : (
+          <>
+            <div style={{ color: "#475569", flex: "0 0 auto", fontSize: 13 }}>
+              <strong>{t.debug.officeWasmPocStatus}</strong> {statusLabel(t, status)}
+            </div>
+            {selectedFileName ? (
+              <div style={{ color: "#475569", flex: "1 1 auto", fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <code>{selectedFileName}</code>
+                {lastBytes !== null ? <> ({lastBytes} {t.debug.officeWasmPocBytes})</> : null}
+              </div>
+            ) : null}
+          </>
+        )}
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flex: isPresentationArtifact ? undefined : "0 0 auto",
+            gap: 10,
+            justifyContent: isPresentationArtifact ? "flex-end" : undefined,
+            minWidth: 0,
+          }}
+        >
+          {isPresentationArtifact ? (
+            <div style={{ color: "#475569", flex: "0 0 auto", fontSize: 13 }}>
+              <strong>{t.debug.officeWasmPocStatus}</strong> {statusLabel(t, status)}
+            </div>
+          ) : null}
+          {artifact?.kind === "presentation" ? (
+            <div
+              id={PRESENTATION_HEADER_ACTIONS_ID}
+              style={{ alignItems: "center", display: "flex", flex: "0 0 auto", minWidth: 0 }}
+            />
+          ) : null}
+          {errorMessage ? <div style={{ color: "#b91c1c", fontSize: 13 }}>{errorMessage}</div> : null}
+        </div>
       </header>
 
       <section style={{ minHeight: 0, overflow: "hidden" }}>
