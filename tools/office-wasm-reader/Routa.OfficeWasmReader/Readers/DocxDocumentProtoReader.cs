@@ -546,8 +546,8 @@ internal static class DocxDocumentProtoReader
 
     private static long? AnchorHorizontalPosition(DW.HorizontalPosition? position, PageMetrics page, long widthEmu)
     {
-        var (originEmu, availableEmu) = HorizontalAnchorFrame(position?.RelativeFrom?.Value.ToString(), page);
-        if (ParseLong(position?.PositionOffset?.Text) is { } offset)
+        var (originEmu, availableEmu) = HorizontalAnchorFrame(AnchorRelativeFrom(position), page);
+        if (AnchorPositionOffset(position?.PositionOffset) is { } offset)
         {
             return originEmu + offset;
         }
@@ -557,13 +557,32 @@ internal static class DocxDocumentProtoReader
 
     private static long? AnchorVerticalPosition(DW.VerticalPosition? position, PageMetrics page, long heightEmu)
     {
-        var (originEmu, availableEmu) = VerticalAnchorFrame(position?.RelativeFrom?.Value.ToString(), page);
-        if (ParseLong(position?.PositionOffset?.Text) is { } offset)
+        var relativeFrom = AnchorRelativeFrom(position);
+        var (originEmu, availableEmu) = VerticalAnchorFrame(relativeFrom, page);
+        if (AnchorPositionOffset(position?.PositionOffset) is { } offset)
         {
+            if (string.Equals(relativeFrom, "page", StringComparison.OrdinalIgnoreCase))
+            {
+                return originEmu;
+            }
+
             return originEmu + offset;
         }
 
         return AnchorAlignedPosition(position?.VerticalAlignment?.Text, originEmu, availableEmu, heightEmu);
+    }
+
+    private static long? AnchorPositionOffset(OpenXmlLeafTextElement? offset)
+    {
+        return ParseLong(offset?.InnerText) ?? ParseLong(offset?.Text);
+    }
+
+    private static string? AnchorRelativeFrom(OpenXmlElement? position)
+    {
+        return position?
+            .GetAttributes()
+            .FirstOrDefault(attribute => string.Equals(attribute.LocalName, "relativeFrom", StringComparison.OrdinalIgnoreCase))
+            .Value;
     }
 
     private static long? AnchorAlignedPosition(string? alignment, long originEmu, long availableEmu, long extentEmu)
@@ -592,7 +611,7 @@ internal static class DocxDocumentProtoReader
         return relativeFrom?.ToLowerInvariant() switch
         {
             "page" => (0, page.HeightTwips * EmuPerTwip),
-            "margin" => (page.TopMarginTwips * EmuPerTwip, page.ContentHeightTwips * EmuPerTwip),
+            "margin" => (0, page.ContentHeightTwips * EmuPerTwip),
             _ => (0, page.ContentHeightTwips * EmuPerTwip),
         };
     }
@@ -627,11 +646,14 @@ internal static class DocxDocumentProtoReader
 
     private static byte[] WriteTable(W.Table table, DocxReadContext context, OpenXmlPartContainer partContainer)
     {
+        var rows = table.Elements<W.TableRow>().Take(OpenXmlReaderLimits.MaxRowsPerTable).ToList();
+        var isSingleCellTable = rows.Count == 1 &&
+            rows[0].Elements<W.TableCell>().Take(2).Count() == 1;
         return Message(output =>
         {
-            foreach (var row in table.Elements<W.TableRow>().Take(OpenXmlReaderLimits.MaxRowsPerTable))
+            foreach (var row in rows)
             {
-                WriteMessage(output, 1, WriteTableRow(row, context, partContainer));
+                WriteMessage(output, 1, WriteTableRow(row, context, partContainer, !isSingleCellTable));
             }
 
             var gridWidths = TableGridWidths(table);
@@ -651,20 +673,28 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static byte[] WriteTableRow(W.TableRow row, DocxReadContext context, OpenXmlPartContainer partContainer)
+    private static byte[] WriteTableRow(
+        W.TableRow row,
+        DocxReadContext context,
+        OpenXmlPartContainer partContainer,
+        bool useImplicitBorderColor)
     {
         return Message(output =>
         {
             foreach (var cell in row.Elements<W.TableCell>().Take(OpenXmlReaderLimits.MaxCellsPerRow))
             {
-                WriteMessage(output, 1, WriteTableCell(cell, context, partContainer));
+                WriteMessage(output, 1, WriteTableCell(cell, context, partContainer, useImplicitBorderColor));
             }
 
             WriteString(output, 3, $"table-row-{context.NextTableRowIndex():x8}");
         });
     }
 
-    private static byte[] WriteTableCell(W.TableCell cell, DocxReadContext context, OpenXmlPartContainer partContainer)
+    private static byte[] WriteTableCell(
+        W.TableCell cell,
+        DocxReadContext context,
+        OpenXmlPartContainer partContainer,
+        bool useImplicitBorderColor)
     {
         return Message(output =>
         {
@@ -686,7 +716,7 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 5, WriteColorFill(fill!));
             }
 
-            var lines = WriteTableCellLines(cell.TableCellProperties?.TableCellBorders);
+            var lines = WriteTableCellLines(cell.TableCellProperties?.TableCellBorders, useImplicitBorderColor);
             if (lines is not null)
             {
                 WriteMessage(output, 6, lines);
@@ -698,19 +728,19 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static byte[]? WriteTableCellLines(W.TableCellBorders? borders)
+    private static byte[]? WriteTableCellLines(W.TableCellBorders? borders, bool useImplicitBorderColor)
     {
         if (borders is null)
         {
             return null;
         }
 
-        var top = WriteTableCellLine(borders.TopBorder);
-        var right = WriteTableCellLine(FirstBorder(borders.RightBorder, borders.EndBorder));
-        var bottom = WriteTableCellLine(borders.BottomBorder);
-        var left = WriteTableCellLine(FirstBorder(borders.LeftBorder, borders.StartBorder));
-        var diagonalDown = WriteTableCellLine(borders.TopLeftToBottomRightCellBorder);
-        var diagonalUp = WriteTableCellLine(borders.TopRightToBottomLeftCellBorder);
+        var top = WriteTableCellLine(borders.TopBorder, useImplicitBorderColor);
+        var right = WriteTableCellLine(FirstBorder(borders.RightBorder, borders.EndBorder), useImplicitBorderColor);
+        var bottom = WriteTableCellLine(borders.BottomBorder, useImplicitBorderColor);
+        var left = WriteTableCellLine(FirstBorder(borders.LeftBorder, borders.StartBorder), useImplicitBorderColor);
+        var diagonalDown = WriteTableCellLine(borders.TopLeftToBottomRightCellBorder, useImplicitBorderColor);
+        var diagonalUp = WriteTableCellLine(borders.TopRightToBottomLeftCellBorder, useImplicitBorderColor);
         if (top is null && right is null && bottom is null && left is null && diagonalDown is null && diagonalUp is null)
         {
             return null;
@@ -727,7 +757,7 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static byte[]? WriteTableCellLine(W.BorderType? border)
+    private static byte[]? WriteTableCellLine(W.BorderType? border, bool useImplicitBorderColor)
     {
         if (border is null || !IsVisibleBorder(border))
         {
@@ -738,7 +768,11 @@ internal static class DocxDocumentProtoReader
         {
             WriteInt32(output, 1, TableBorderLineStyle(border));
             WriteInt32(output, 2, TableBorderWidthEmu(border));
-            WriteMessage(output, 3, WriteColorFill(TableBorderColor(border)));
+            var color = TableBorderColor(border, useImplicitBorderColor);
+            if (color is not null)
+            {
+                WriteMessage(output, 3, WriteColorFill(color));
+            }
         });
     }
 
@@ -766,10 +800,10 @@ internal static class DocxDocumentProtoReader
         return border.Size is { } size ? (int)Math.Round(size.Value * 12700d / 8d) : null;
     }
 
-    private static string TableBorderColor(W.BorderType border)
+    private static string? TableBorderColor(W.BorderType border, bool useImplicitBorderColor)
     {
         var color = border.Color?.Value;
-        return IsHexColor(color) ? color! : "000000";
+        return IsHexColor(color) ? color! : useImplicitBorderColor ? "000000" : null;
     }
 
     private static string? TableBorderValue(W.BorderType border)
