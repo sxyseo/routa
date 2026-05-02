@@ -25,7 +25,8 @@ import {
   type PresentationTextOverflow,
 } from "./presentation-renderer";
 
-const THUMBNAIL_WIDTH = 192;
+const MAX_THUMBNAIL_WIDTH = 192;
+const MIN_THUMBNAIL_WIDTH = 96;
 const SLIDE_BITMAP_WIDTH = 1920;
 const STACK_BAR_COUNT = 12;
 export const PRESENTATION_HEADER_ACTIONS_ID = "office-wasm-presentation-header-actions";
@@ -59,6 +60,12 @@ export function PresentationPreview({
   const imageSources = useOfficeImageSources(root);
   const imageElements = useLoadedOfficeImages(imageSources);
   const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements, layouts, charts);
+  const railRef = useRef<HTMLElement>(null);
+  const railSize = useElementSize(railRef);
+  const thumbnailWidth = Math.max(
+    MIN_THUMBNAIL_WIDTH,
+    Math.min(MAX_THUMBNAIL_WIDTH, (railSize.width || 252) - 56),
+  );
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
   const [headerActions, setHeaderActions] = useState<HTMLElement | null>(null);
@@ -90,7 +97,7 @@ export function PresentationPreview({
 
   return (
     <div className={styles.shell} data-testid="presentation-preview">
-      <aside className={styles.rail} data-open={thumbnailRailOpen}>
+      <aside className={styles.rail} data-open={thumbnailRailOpen} ref={railRef}>
         <button
           aria-label={labels.slide}
           className={styles.stackButton}
@@ -126,7 +133,7 @@ export function PresentationPreview({
                 charts={charts}
                 layouts={layouts}
                 slide={slide}
-                width={THUMBNAIL_WIDTH}
+                width={thumbnailWidth}
               />
             </button>
           ))}
