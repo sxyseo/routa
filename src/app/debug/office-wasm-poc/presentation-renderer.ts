@@ -3,6 +3,7 @@ import {
   asNumber,
   asRecord,
   asString,
+  colorToCss,
   elementImageReferenceId,
   fillToCss,
   lineToCss,
@@ -40,6 +41,21 @@ export type PresentationImageSourceRect = {
   width: number;
   x: number;
   y: number;
+};
+
+export type PresentationLineStyle = {
+  color?: string;
+  dash: number[];
+  lineCap: CanvasLineCap;
+  lineJoin: CanvasLineJoin;
+  width: number;
+};
+
+export type PresentationShadowStyle = {
+  blur: number;
+  color: string;
+  offsetX: number;
+  offsetY: number;
 };
 
 export type PresentationRenderImages = ReadonlyMap<string, CanvasImageSource>;
@@ -256,7 +272,7 @@ function drawElement(
 
   const slideScale = presentationCanvasScale(bounds, canvas);
   const shape = asRecord(element.shape);
-  const line = scaledLineStyle(lineToCss(shape?.line ?? element.line), slideScale);
+  const line = presentationLineStyle(shape?.line ?? element.line, slideScale);
   const isLine = rect.height === 0 && line.color != null;
   const rotation = asNumber(bbox?.rotation) / 60_000;
 
@@ -264,6 +280,7 @@ function drawElement(
   context.translate(rect.left + rect.width / 2, rect.top + rect.height / 2);
   if (rotation !== 0) context.rotate((rotation * Math.PI) / 180);
   context.translate(-rect.width / 2, -rect.height / 2);
+  applyElementShadow(context, element, slideScale);
 
   const shapeKind = presentationShapeKind(shape, rect);
   if (isLine || shapeKind === "line") {
@@ -289,9 +306,9 @@ function drawElement(
   }
 
   if (line.color) {
-    context.strokeStyle = line.color;
-    context.lineWidth = line.width;
+    applyLineStyle(context, line);
     context.stroke(path);
+    context.setLineDash([]);
   }
 
   drawPresentationTextBox({
@@ -310,14 +327,14 @@ function drawLine(
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
-  line: { color?: string; width: number },
+  line: PresentationLineStyle,
 ): void {
+  applyLineStyle(context, line);
   context.beginPath();
   context.moveTo(0, 0);
   context.lineTo(width, height);
-  context.strokeStyle = line.color ?? "#0f172a";
-  context.lineWidth = line.width;
   context.stroke();
+  context.setLineDash([]);
 }
 
 function elementPath(kind: PresentationShapeKind, rect: PresentationRect): Path2D {
@@ -471,7 +488,13 @@ function imageNaturalSize(image: CanvasImageSource): PresentationSize {
 function elementImageSourceRect(element: RecordValue): RecordValue | null {
   const shapeFill = asRecord(asRecord(element.shape)?.fill);
   const fill = asRecord(element.fill) ?? shapeFill;
-  return asRecord(fill?.sourceRect) ?? asRecord(fill?.sourceRectangle) ?? asRecord(element.imageMask);
+  return (
+    asRecord(fill?.sourceRect) ??
+    asRecord(fill?.sourceRectangle) ??
+    asRecord(fill?.srcRect) ??
+    asRecord(fill?.stretchFillRect) ??
+    asRecord(element.imageMask)
+  );
 }
 
 function cropRatio(value: unknown): number {
@@ -488,11 +511,79 @@ function presentationCanvasScale(bounds: PresentationSize, canvas: PresentationS
   return Math.min(canvas.width / frameWidth, canvas.height / frameHeight);
 }
 
-function scaledLineStyle(line: { color?: string; width: number }, slideScale: number): { color?: string; width: number } {
+export function presentationLineStyle(line: unknown, slideScale: number): PresentationLineStyle {
+  const lineRecord = asRecord(line);
+  const fillRecord = asRecord(lineRecord?.fill);
+  const rawWidthEmu = asNumber(lineRecord?.widthEmu);
+  const width = rawWidthEmu > 0 ? rawWidthEmu / EMU_PER_CSS_PIXEL : 1;
+  const scaledWidth = Math.max(0.5, width * Math.max(0.01, slideScale));
   return {
-    color: line.color,
-    width: Math.max(0.5, line.width * Math.max(0.01, slideScale)),
+    color: colorToCss(fillRecord?.color),
+    dash: presentationLineDash(asNumber(lineRecord?.style), scaledWidth),
+    lineCap: presentationLineCap(asNumber(lineRecord?.cap)),
+    lineJoin: presentationLineJoin(asNumber(lineRecord?.join)),
+    width: scaledWidth,
   };
+}
+
+function applyLineStyle(context: CanvasRenderingContext2D, line: PresentationLineStyle): void {
+  context.strokeStyle = line.color ?? "#0f172a";
+  context.lineWidth = line.width;
+  context.lineCap = line.lineCap;
+  context.lineJoin = line.lineJoin;
+  context.setLineDash(line.dash);
+}
+
+function presentationLineCap(cap: number): CanvasLineCap {
+  if (cap === 2) return "square";
+  if (cap === 3) return "round";
+  return "butt";
+}
+
+function presentationLineJoin(join: number): CanvasLineJoin {
+  if (join === 1) return "round";
+  if (join === 2) return "bevel";
+  return "miter";
+}
+
+function presentationLineDash(style: number, width: number): number[] {
+  const unit = Math.max(1, width);
+  if (style === 2) return [unit * 4, unit * 2];
+  if (style === 3) return [unit, unit * 2];
+  if (style === 4) return [unit * 8, unit * 3];
+  if (style === 5) return [unit * 8, unit * 3, unit, unit * 3];
+  if (style === 6) return [unit * 8, unit * 3, unit, unit * 3, unit, unit * 3];
+  return [];
+}
+
+export function presentationShadowStyle(element: RecordValue, slideScale: number): PresentationShadowStyle | null {
+  for (const effect of asArray(element.effects)) {
+    const shadow = asRecord(asRecord(effect)?.shadow);
+    const color = colorToCss(shadow?.color);
+    if (!shadow || !color || colorAlphaFromCss(color) <= 0) {
+      continue;
+    }
+
+    const distance = (asNumber(shadow.distance) / EMU_PER_CSS_PIXEL) * Math.max(0.01, slideScale);
+    const direction = (asNumber(shadow.direction) / 60_000 / 180) * Math.PI;
+    return {
+      blur: Math.max(0, (asNumber(shadow.blurRadius) / EMU_PER_CSS_PIXEL) * Math.max(0.01, slideScale)),
+      color,
+      offsetX: Math.cos(direction) * distance,
+      offsetY: Math.sin(direction) * distance,
+    };
+  }
+
+  return null;
+}
+
+function applyElementShadow(context: CanvasRenderingContext2D, element: RecordValue, slideScale: number): void {
+  const shadow = presentationShadowStyle(element, slideScale);
+  if (!shadow) return;
+  context.shadowBlur = shadow.blur;
+  context.shadowColor = shadow.color;
+  context.shadowOffsetX = shadow.offsetX;
+  context.shadowOffsetY = shadow.offsetY;
 }
 
 function shapeFillToCss(

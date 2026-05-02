@@ -5,7 +5,9 @@ import {
   computePresentationFit,
   emuRectToCanvasRect,
   presentationImageSourceRect,
+  presentationLineStyle,
   presentationScaledFontSize,
+  presentationShadowStyle,
   presentationShapeKind,
 } from "../presentation-renderer";
 
@@ -87,5 +89,47 @@ describe("presentation renderer helpers", () => {
     expect(crop.width).toBeCloseTo(600);
     expect(crop.x).toBeCloseTo(100);
     expect(crop.y).toBeCloseTo(25);
+  });
+
+  it("maps PPT line styles without clamping Office line widths", () => {
+    const line = presentationLineStyle(
+      {
+        cap: 3,
+        fill: { color: { type: 1, value: "8FA69D" } },
+        join: 1,
+        style: 2,
+        widthEmu: 19_050,
+      },
+      2,
+    );
+
+    expect(line.color).toBe("#8FA69D");
+    expect(line.width).toBeCloseTo(4);
+    expect(line.lineCap).toBe("round");
+    expect(line.lineJoin).toBe("round");
+    expect(line.dash.length).toBeGreaterThan(0);
+  });
+
+  it("maps PPT shadow effects into canvas offsets", () => {
+    const shadow = presentationShadowStyle(
+      {
+        effects: [
+          {
+            shadow: {
+              blurRadius: 19_050,
+              color: { transform: { alpha: 50_000 }, type: 1, value: "000000" },
+              direction: 5_400_000,
+              distance: 9_525,
+            },
+          },
+        ],
+      },
+      1,
+    );
+
+    expect(shadow?.color).toBe("rgba(0, 0, 0, 0.5)");
+    expect(shadow?.blur).toBeCloseTo(2);
+    expect(shadow?.offsetX).toBeCloseTo(0, 5);
+    expect(shadow?.offsetY).toBeCloseTo(1);
   });
 });
