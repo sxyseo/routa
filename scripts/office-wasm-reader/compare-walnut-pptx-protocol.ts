@@ -326,6 +326,7 @@ function summarizeElementShapeStyle(element: Record<string, unknown>) {
     geometry: numberValue(shape.geometry),
     fill: summarizeFill(asRecord(element.fill) ?? asRecord(shape.fill)),
     line: summarizeLine(asRecord(element.line) ?? asRecord(shape.line)),
+    effects: summarizeEffects(element.effects),
     imageReferenceIds: elementImageReferenceIds(element),
     chartReferenceIds: elementChartReferenceIds(element),
   };
@@ -338,7 +339,7 @@ function summarizeElementTextStyle(element: Record<string, unknown>) {
     type: element.type,
     textStyle: summarizeTextStyle(asRecord(element.textStyle)),
     paragraphs: arrayOfRecords(element.paragraphs).map((paragraph) => ({
-      paragraphStyle: summarizeTextStyle(asRecord(paragraph.textStyle) ?? asRecord(paragraph.paragraphStyle)),
+      paragraphStyle: summarizeTextStyle(mergeRecords(asRecord(paragraph.paragraphStyle), asRecord(paragraph.textStyle))),
       runCount: arrayOfRecords(paragraph.runs).length,
       runs: arrayOfRecords(paragraph.runs).map((run) => ({
         textLength: stringValue(run.text).length,
@@ -374,7 +375,12 @@ function summarizeFill(fill: Record<string, unknown> | null) {
     type: numberValue(fill?.type),
     color: summarizeColor(asRecord(fill?.color)),
     imageReferenceId: imageReferenceId(fill?.imageReference),
-    sourceRect: asRecord(fill?.sourceRect) ?? asRecord(fill?.sourceRectangle) ?? null,
+    sourceRect:
+      asRecord(fill?.sourceRect) ??
+      asRecord(fill?.sourceRectangle) ??
+      asRecord(fill?.srcRect) ??
+      asRecord(fill?.stretchFillRect) ??
+      null,
   };
 }
 
@@ -383,6 +389,7 @@ function summarizeLine(line: Record<string, unknown> | null) {
   return {
     color: summarizeColor(asRecord(fill?.color)),
     widthEmu: numberValue(line?.widthEmu),
+    style: numberValue(line?.style),
     cap: numberValue(line?.cap),
     join: numberValue(line?.join),
     headEnd: asRecord(line?.headEnd) ?? null,
@@ -395,14 +402,50 @@ function summarizeTextStyle(style: Record<string, unknown> | null) {
     anchor: numberValue(style?.anchor),
     alignment: numberValue(style?.alignment),
     bold: style?.bold === true,
+    bottomInset: numberValue(style?.bottomInset),
     fill: summarizeFill(asRecord(style?.fill)),
     fontSize: numberValue(style?.fontSize),
     italic: style?.italic === true,
+    leftInset: numberValue(style?.leftInset),
     lineSpacing: numberValue(style?.lineSpacing),
+    lineSpacingPercent: numberValue(style?.lineSpacingPercent),
+    rightInset: numberValue(style?.rightInset),
     spaceAfter: numberValue(style?.spaceAfter),
     spaceBefore: numberValue(style?.spaceBefore),
+    topInset: numberValue(style?.topInset),
     typeface: stringValue(style?.typeface),
     underline: style?.underline === true,
+    wrap: numberValue(style?.wrap),
+  };
+}
+
+function summarizeEffects(effects: unknown) {
+  return arrayOfRecords(effects).map((effect) => {
+    const shadow = asRecord(effect.shadow);
+    return {
+      type: numberValue(effect.type),
+      shadow: shadow
+        ? {
+            alignment: stringValue(shadow.alignment),
+            blurRadius: numberValue(shadow.blurRadius),
+            color: summarizeColor(asRecord(shadow.color)),
+            direction: numberValue(shadow.direction),
+            distance: numberValue(shadow.distance),
+            rotateWithShape: shadow.rotateWithShape === true,
+          }
+        : null,
+    };
+  });
+}
+
+function mergeRecords(
+  base: Record<string, unknown> | null,
+  override: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!base && !override) return null;
+  return {
+    ...(base ?? {}),
+    ...(override ?? {}),
   };
 }
 
