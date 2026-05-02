@@ -18,7 +18,7 @@ import {
 } from "./office-wasm-config";
 import { DocumentPreview } from "./document-preview";
 import { type PreviewLabels } from "./office-preview-utils";
-import { PresentationPreview } from "./presentation-preview";
+import { PRESENTATION_HEADER_ACTIONS_ID, PresentationPreview } from "./presentation-preview";
 import { SpreadsheetPreview } from "./spreadsheet-preview";
 
 type ArtifactKind = "csv" | "tsv" | "docx" | "pptx" | "xlsx";
@@ -564,6 +564,12 @@ export function OfficeWasmPocPageClient() {
             <code>{selectedFileName}</code>
             {lastBytes !== null ? <> ({lastBytes} {t.debug.officeWasmPocBytes})</> : null}
           </div>
+        ) : null}
+        {artifact?.kind === "presentation" ? (
+          <div
+            id={PRESENTATION_HEADER_ACTIONS_ID}
+            style={{ alignItems: "center", display: "flex", flex: "0 0 auto", minWidth: 0 }}
+          />
         ) : null}
         {errorMessage ? <div style={{ color: "#b91c1c", fontSize: 13 }}>{errorMessage}</div> : null}
       </header>

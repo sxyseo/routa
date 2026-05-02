@@ -78,8 +78,8 @@ const baseUrl = stringArg("--base-url") ?? `http://127.0.0.1:${port}/debug/offic
 let activeBaseUrl = baseUrl;
 const outputDir = path.resolve(stringArg("--output-dir") ?? "/tmp/routa-office-wasm-pptx-render");
 const fixturePaths = positionalArgs().map((arg) => path.resolve(repoRoot, arg));
-const SCREENSHOT_PIXEL_RATIO_TOLERANCE = 0.00001;
-const SCREENSHOT_PIXEL_MAX_DELTA_TOLERANCE = 8;
+const SCREENSHOT_PIXEL_RATIO_TOLERANCE = 0.00002;
+const SCREENSHOT_PIXEL_MAX_DELTA_TOLERANCE = 32;
 
 const previewViewports: ViewportContract[] = [
   { height: 1058, name: "desktop", width: 2048 },

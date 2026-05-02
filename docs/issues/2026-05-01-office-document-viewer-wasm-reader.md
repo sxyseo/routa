@@ -60,6 +60,7 @@ Progress - 2026-05-02:
 
 - PPT preview renderer now applies `Presentation.layouts`/master placeholder inheritance before slide rendering, thumbnail bitmap generation, slideshow rendering, typeface prewarm, and selection hit-testing. The implementation keeps direct slide styles authoritative and fills missing placeholder geometry/text/list defaults from layout/master records.
 - PPT render contract now compares decoded screenshot pixels with a tiny antialias tolerance instead of raw PNG bytes, which removes false failures from identical-looking Walnut/Routa previews while still failing on real layout differences.
+- PPT viewer shell now puts the slideshow action in the debug page header and computes slide fit independently from notes/sources footnote height, so long footnotes scroll below the slide instead of shrinking the slide.
 - Next PPT item remains true chart parts: compare Walnut `c:chart` relationship output against Routa protocol, then render chart placeholders from decoded chart payloads instead of image-only fallbacks.
 
 ## Expected Behavior

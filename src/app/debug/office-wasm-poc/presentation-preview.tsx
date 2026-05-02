@@ -2,6 +2,7 @@
 
 import { Play, X } from "lucide-react";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   asArray,
@@ -27,6 +28,7 @@ import {
 const THUMBNAIL_WIDTH = 192;
 const SLIDE_BITMAP_WIDTH = 1920;
 const STACK_BAR_COUNT = 12;
+export const PRESENTATION_HEADER_ACTIONS_ID = "office-wasm-presentation-header-actions";
 
 type SlideBitmapSurface = {
   height: number;
@@ -55,6 +57,7 @@ export function PresentationPreview({
   const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements, layouts);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
+  const [headerActions, setHeaderActions] = useState<HTMLElement | null>(null);
   const [thumbnailRailOpen, setThumbnailRailOpen] = useState(false);
   const selectedSlideIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
   const selectedSlide = slides[selectedSlideIndex] ?? {};
@@ -69,6 +72,13 @@ export function PresentationPreview({
   useEffect(() => {
     void prewarmOfficeFonts(collectPresentationTypefaces(slides, layouts));
   }, [layouts, slides]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setHeaderActions(document.getElementById(PRESENTATION_HEADER_ACTIONS_ID));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   if (slides.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSlides}</p>;
@@ -121,11 +131,19 @@ export function PresentationPreview({
         images={imageElements}
         labels={labels}
         layouts={layouts}
-        onPlaySlideshow={openSlideshow}
         slideBitmap={slideBitmaps.get(slideRenderKey(selectedSlide, selectedSlideIndex))}
         slide={selectedSlide}
         slideIndex={selectedSlideIndex}
       />
+      {headerActions
+        ? createPortal(
+            <button className={styles.playButton} onClick={openSlideshow} type="button">
+              <Play aria-hidden="true" size={15} strokeWidth={2} />
+              <span>{labels.playSlideshow}</span>
+            </button>,
+            headerActions,
+          )
+        : null}
       {isSlideshowOpen ? (
         <SlideshowOverlay
           activeSlideIndex={selectedSlideIndex}
@@ -146,7 +164,6 @@ function SlideStage({
   images,
   labels,
   layouts,
-  onPlaySlideshow,
   slideBitmap,
   slide,
   slideIndex,
@@ -154,7 +171,6 @@ function SlideStage({
   images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
   layouts: RecordValue[];
-  onPlaySlideshow: () => void;
   slideBitmap?: SlideBitmapSurface;
   slide: RecordValue;
   slideIndex: number;
@@ -167,7 +183,7 @@ function SlideStage({
   const frame = getSlideFrameSize(slide, layouts);
   const fit = computePresentationFit(
     {
-      height: Math.max(1, stageSize.height - (footnote ? footnoteHeight + 18 : 0)),
+      height: stageSize.height,
       width: stageSize.width,
     },
     frame,
@@ -186,10 +202,6 @@ function SlideStage({
   return (
     <main className={styles.mainPanel}>
       <div className={styles.stage} ref={stageRef}>
-        <button className={styles.playButton} onClick={onPlaySlideshow} type="button">
-          <Play aria-hidden="true" size={15} strokeWidth={2} />
-          <span>{labels.playSlideshow}</span>
-        </button>
         <div className={styles.viewport}>
           <div
             className={styles.slideSurface}
