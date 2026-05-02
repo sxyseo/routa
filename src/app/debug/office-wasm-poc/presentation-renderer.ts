@@ -37,6 +37,14 @@ export type PresentationFit = PresentationSize & {
   scale: number;
 };
 
+export type PresentationElementTarget = {
+  element: RecordValue;
+  id: string;
+  index: number;
+  name: string;
+  rect: PresentationRect;
+};
+
 export type PresentationRenderImages = ReadonlyMap<string, CanvasImageSource>;
 export type PresentationTextOverflow = "clip" | "visible";
 
@@ -159,6 +167,23 @@ export function renderPresentationSlide({
   }
 
   context.restore();
+}
+
+export function getPresentationElementTargets(slide: RecordValue, canvas: PresentationSize): PresentationElementTarget[] {
+  const bounds = getSlideBounds(slide);
+  return presentationElements(slide)
+    .map((element, index) => {
+      const rect = emuRectToCanvasRect(asRecord(element.bbox), bounds, canvas);
+      return {
+        element,
+        id: asString(element.id) || `element-${index}`,
+        index,
+        name: asString(element.name) || asString(element.id) || String(index + 1),
+        rect,
+      };
+    })
+    .filter(({ rect }) => rect.width > 0 && rect.height > 0)
+    .sort((left, right) => asNumber(left.element.zIndex, left.index) - asNumber(right.element.zIndex, right.index));
 }
 
 function presentationElements(slide: RecordValue): RecordValue[] {

@@ -17,13 +17,14 @@ import styles from "./presentation-preview.module.css";
 import {
   collectPresentationTypefaces,
   computePresentationFit,
+  getPresentationElementTargets,
   getSlideFrameSize,
   renderPresentationSlide,
   type PresentationSize,
   type PresentationTextOverflow,
 } from "./presentation-renderer";
 
-const THUMBNAIL_WIDTH = 176;
+const THUMBNAIL_WIDTH = 192;
 const STACK_BAR_COUNT = 12;
 
 export function PresentationPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
@@ -63,6 +64,7 @@ export function PresentationPreview({ labels, proto }: { labels: PreviewLabels; 
         <div className={styles.thumbnailPanel}>
           {slides.map((slide, index) => (
             <button
+              aria-label={`${labels.slide} ${asNumber(slide.index, index + 1)}`}
               className={styles.thumbnailButton}
               data-active={index === selectedSlideIndex}
               key={`${asString(slide.id)}-${index}`}
@@ -73,7 +75,7 @@ export function PresentationPreview({ labels, proto }: { labels: PreviewLabels; 
               type="button"
             >
               <span className={styles.thumbnailLabel}>
-                {labels.slide} {asNumber(slide.index, index + 1)}
+                {asNumber(slide.index, index + 1)}
               </span>
               <SlideCanvasFrame
                 className={styles.thumbnailCanvas}
@@ -108,12 +110,25 @@ function SlideStage({
   slideIndex: number;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
+  const [selection, setSelection] = useState<{ elementId: string; slideKey: string } | null>(null);
   const stageSize = useElementSize(stageRef);
   const elements = asArray(slide.elements).map(asRecord).filter((element): element is RecordValue => element != null);
   const textRunCount = elements.reduce((count, element) => count + collectTextBlocks(element, 20).length, 0);
+  const footnote = useMemo(() => slideFootnoteText(slide), [slide]);
   const frame = getSlideFrameSize(slide);
-  const fit = computePresentationFit(stageSize, frame);
+  const fit = computePresentationFit(
+    { height: Math.max(1, stageSize.height - (footnote ? 72 : 0)), width: stageSize.width },
+    frame,
+  );
   const canvasWidth = Math.max(1, fit.width);
+  const canvasHeight = Math.max(1, fit.height);
+  const slideKey = `${asString(slide.id)}-${slideIndex}`;
+  const elementTargets = useMemo(
+    () => getPresentationElementTargets(slide, { height: canvasHeight, width: canvasWidth }),
+    [canvasHeight, canvasWidth, slide],
+  );
+  const selectedTarget =
+    selection?.slideKey === slideKey ? (elementTargets.find((target) => target.id === selection.elementId) ?? null) : null;
 
   return (
     <main className={styles.mainPanel}>
@@ -129,13 +144,56 @@ function SlideStage({
         </span>
       </div>
       <div className={styles.stage} ref={stageRef}>
-        <SlideCanvasFrame
-          className={styles.slideCanvas}
-          images={images}
-          slide={slide}
-          textOverflow="visible"
-          width={canvasWidth}
-        />
+        <div className={styles.viewport}>
+          <div
+            className={styles.slideSurface}
+            style={{ height: canvasHeight, width: canvasWidth }}
+          >
+            <SlideCanvasFrame
+              className={styles.slideCanvas}
+              images={images}
+              slide={slide}
+              textOverflow="visible"
+              width={canvasWidth}
+            />
+            <button
+              aria-label={selectedTarget?.name ?? labels.slide}
+              className={styles.interactionLayer}
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                const point = {
+                  x: event.clientX - rect.left,
+                  y: event.clientY - rect.top,
+                };
+                const target = hitTestElementTarget(elementTargets, point);
+                setSelection(target ? { elementId: target.id, slideKey } : null);
+              }}
+              type="button"
+            >
+              {selectedTarget ? (
+                <span
+                  aria-hidden="true"
+                  className={styles.selectionBox}
+                  style={{
+                    height: selectedTarget.rect.height,
+                    transform: `translate(${selectedTarget.rect.left}px, ${selectedTarget.rect.top}px)`,
+                    width: selectedTarget.rect.width,
+                  }}
+                >
+                  <span className={styles.selectionHandle} data-position="top-left" />
+                  <span className={styles.selectionHandle} data-position="top-right" />
+                  <span className={styles.selectionHandle} data-position="bottom-left" />
+                  <span className={styles.selectionHandle} data-position="bottom-right" />
+                </span>
+              ) : null}
+            </button>
+          </div>
+          {footnote ? (
+            <pre className={styles.footnote} style={{ width: canvasWidth }}>
+              {footnote}
+            </pre>
+          ) : null}
+        </div>
       </div>
     </main>
   );
@@ -250,4 +308,35 @@ function useElementSize<T extends HTMLElement>(ref: RefObject<T | null>): Presen
   }, [ref]);
 
   return size;
+}
+
+function hitTestElementTarget(
+  targets: ReturnType<typeof getPresentationElementTargets>,
+  point: { x: number; y: number },
+) {
+  for (let index = targets.length - 1; index >= 0; index--) {
+    const target = targets[index];
+    if (!target) {
+      continue;
+    }
+    if (
+      point.x >= target.rect.left &&
+      point.x <= target.rect.left + target.rect.width &&
+      point.y >= target.rect.top &&
+      point.y <= target.rect.top + target.rect.height
+    ) {
+      return target;
+    }
+  }
+  return null;
+}
+
+function slideFootnoteText(slide: RecordValue): string {
+  const notesSlide = asRecord(slide.notesSlide);
+  if (!notesSlide) return "";
+
+  return collectTextBlocks(notesSlide.elements, 8)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .join("\n\n");
 }
