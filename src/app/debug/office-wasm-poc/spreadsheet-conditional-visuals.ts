@@ -56,9 +56,11 @@ export function buildSpreadsheetConditionalVisuals(sheet: RecordValue | undefine
 
       if (colorScale) {
         const colors = asArray(colorScale.colors).map(protocolColorToCss).filter((color): color is string => Boolean(color));
+        const rangeValues = values.map((item) => item.value);
+        const stops = colorScaleStops(colorScale, rangeValues, minValue, maxValue, colors);
         for (const item of values) {
           mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
-            background: colorScaleColor(item.value, minValue, maxValue, colors),
+            background: colorScaleColor(item.value, stops),
           });
         }
         continue;
@@ -341,18 +343,68 @@ function hexColorToRgb(value: string): { blue: number; green: number; red: numbe
   };
 }
 
-function colorScaleColor(value: number, minValue: number, maxValue: number, colors: string[]): string {
-  const normalizedColors = colors.map(hexColorToRgb).filter((color): color is { blue: number; green: number; red: number } => color != null);
-  if (normalizedColors.length < 2 || maxValue <= minValue) {
-    return protocolColorToCss(colors[0]) ?? "#fff4c2";
+type RgbColor = { blue: number; green: number; red: number };
+
+type ColorScaleStop = {
+  color: RgbColor;
+  threshold: number;
+};
+
+function colorScaleStops(
+  colorScale: RecordValue,
+  rangeValues: number[],
+  minValue: number,
+  maxValue: number,
+  colors: string[],
+): ColorScaleStop[] {
+  const cfvos = asArray(colorScale.cfvos).map(asRecord);
+  return colors
+    .map((color, index) => {
+      const rgb = hexColorToRgb(color);
+      if (!rgb) return null;
+      const fallback = colorScaleFallbackThreshold(index, colors.length, minValue, maxValue);
+      const threshold = cfvoThresholdValue(cfvos[index] ?? null, rangeValues, minValue, maxValue, fallback);
+      return {
+        color: rgb,
+        threshold: Number.isFinite(threshold) ? threshold : fallback,
+      };
+    })
+    .filter((stop): stop is ColorScaleStop => stop != null)
+    .sort((left, right) => left.threshold - right.threshold);
+}
+
+function colorScaleFallbackThreshold(index: number, stopCount: number, minValue: number, maxValue: number): number {
+  if (stopCount <= 1 || maxValue <= minValue) return minValue;
+  return minValue + (maxValue - minValue) * index / (stopCount - 1);
+}
+
+function colorScaleColor(value: number, stops: ColorScaleStop[]): string {
+  if (stops.length === 0) {
+    return "#fff4c2";
   }
 
-  const ratio = Math.max(0, Math.min(1, (value - minValue) / (maxValue - minValue)));
-  if (normalizedColors.length === 2 || ratio <= 0.5) {
-    return interpolateColor(normalizedColors[0], normalizedColors[Math.min(1, normalizedColors.length - 1)], normalizedColors.length === 2 ? ratio : ratio * 2);
+  if (stops.length === 1) {
+    return rgbColorToCss(stops[0].color);
   }
 
-  return interpolateColor(normalizedColors[1], normalizedColors[2], (ratio - 0.5) * 2);
+  if (value <= stops[0].threshold) {
+    return rgbColorToCss(stops[0].color);
+  }
+
+  for (let index = 1; index < stops.length; index += 1) {
+    const previous = stops[index - 1];
+    const current = stops[index];
+    if (value > current.threshold) continue;
+    const span = current.threshold - previous.threshold;
+    const ratio = span > 0 ? (value - previous.threshold) / span : 1;
+    return interpolateColor(previous.color, current.color, ratio);
+  }
+
+  return rgbColorToCss(stops[stops.length - 1].color);
+}
+
+function rgbColorToCss(color: RgbColor): string {
+  return `rgb(${color.red}, ${color.green}, ${color.blue})`;
 }
 
 function conditionalTextMatches(format: RecordValue, text: string, numericValue: number | null): boolean {
