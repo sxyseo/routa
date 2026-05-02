@@ -14,6 +14,7 @@ import {
 import { protocolColorToCss } from "./spreadsheet-conditional-visuals";
 import {
   spreadsheetColumnLeft,
+  spreadsheetDrawingBounds,
   spreadsheetEmuToPx,
   type SpreadsheetLayout,
   spreadsheetRowTop,
@@ -170,22 +171,13 @@ function chartFromSheetDrawing(
   const chart = asRecord(drawing.chart);
   if (!chart) return null;
 
-  const fromAnchor = asRecord(drawing.fromAnchor);
-  const toAnchor = asRecord(drawing.toAnchor);
-  const fromCol = protocolNumber(fromAnchor?.colId, 0);
-  const fromRow = protocolNumber(fromAnchor?.rowId, 0);
-  const left = spreadsheetColumnLeft(layout, fromCol) + spreadsheetEmuToPx(fromAnchor?.colOffset);
-  const top = spreadsheetRowTop(layout, fromRow) + spreadsheetEmuToPx(fromAnchor?.rowOffset);
-  const extentWidth = spreadsheetEmuToPx(drawing.extentCx);
-  const extentHeight = spreadsheetEmuToPx(drawing.extentCy);
-  const fallbackRight = anchorEdgePx(toAnchor?.colId, toAnchor?.colOffset, "column", layout);
-  const fallbackBottom = anchorEdgePx(toAnchor?.rowId, toAnchor?.rowOffset, "row", layout);
+  const bounds = spreadsheetDrawingBounds(layout, drawing);
 
   return chartFromRecord(chart, {
-    height: chartDimension(extentHeight, fallbackBottom - top, 120),
-    left,
-    top,
-    width: chartDimension(extentWidth, fallbackRight - left, 180),
+    height: chartDimension(bounds.height > 24 ? bounds.height : 0, 0, 120),
+    left: bounds.left,
+    top: bounds.top,
+    width: chartDimension(bounds.width > 24 ? bounds.width : 0, 0, 180),
     zIndex,
   });
 }
@@ -320,20 +312,6 @@ function spreadsheetChartAxis(value: unknown): SpreadsheetChartAxisSpec | undefi
     numberFormat: asString(axis.numberFormat),
     position: asString(axis.position ?? axis.axisPosition),
   };
-}
-
-function anchorEdgePx(
-  indexValue: unknown,
-  offsetValue: unknown,
-  axis: "column" | "row",
-  layout: SpreadsheetLayout,
-): number {
-  const index = optionalProtocolNumber(indexValue);
-  if (index == null) return Number.NaN;
-  const offset = spreadsheetEmuToPx(offsetValue);
-  return axis === "column"
-    ? spreadsheetColumnLeft(layout, index) + offset
-    : spreadsheetRowTop(layout, index) + offset;
 }
 
 function chartDimension(exactValue: number, fallbackValue: number, minimum: number): number {

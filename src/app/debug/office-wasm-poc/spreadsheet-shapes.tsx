@@ -12,6 +12,7 @@ import { protocolColorToCss } from "./spreadsheet-conditional-visuals";
 import {
   SPREADSHEET_FONT_FAMILY,
   spreadsheetColumnLeft,
+  spreadsheetDrawingBounds,
   spreadsheetEmuToPx,
   type SpreadsheetLayout,
   spreadsheetRowTop,
@@ -93,27 +94,22 @@ function shapeFromSheetDrawing(
   if (!shapeElement) return null;
 
   const shape = asRecord(shapeElement.shape) ?? shapeElement;
-  const bbox = asRecord(shapeElement.bbox);
   const line = asRecord(shape.line);
-  const fromAnchor = asRecord(drawing.fromAnchor);
-  const left = spreadsheetColumnLeft(layout, protocolNumber(fromAnchor?.colId, 0)) + spreadsheetEmuToPx(fromAnchor?.colOffset);
-  const top = spreadsheetRowTop(layout, protocolNumber(fromAnchor?.rowId, 0)) + spreadsheetEmuToPx(fromAnchor?.rowOffset);
-  const width = spreadsheetEmuToPx(drawing.extentCx) || spreadsheetEmuToPx(bbox?.widthEmu);
-  const height = spreadsheetEmuToPx(drawing.extentCy) || spreadsheetEmuToPx(bbox?.heightEmu);
+  const bounds = spreadsheetDrawingBounds(layout, drawing);
   const boxShadow = spreadsheetShapeBoxShadow(shapeElement);
 
   return {
     ...(boxShadow ? { boxShadow } : {}),
     fill: nestedProtocolColor(shape.fill) ?? "#ffffff",
     geometry: asNumber(shape.geometry, 0),
-    height: Math.max(24, height),
+    height: bounds.height,
     id: asString(shapeElement.id) || asString(shapeElement.name) || `sheet-shape-${index}`,
-    left,
+    left: bounds.left,
     line: nestedProtocolColor(line?.fill) ?? "#cbd5e1",
     lineWidth: Math.max(1, Math.min(4, spreadsheetEmuToPx(line?.widthEmu))),
     text: asString(shapeElement.text),
-    top,
-    width: Math.max(24, width),
+    top: bounds.top,
+    width: bounds.width,
     zIndex: index,
   };
 }
@@ -128,7 +124,7 @@ function imageFromSheetDrawing(
   const src = imageId ? imageSources.get(imageId) : undefined;
   if (!imageId || !src) return null;
 
-  const bounds = drawingBounds(drawing, layout);
+  const bounds = spreadsheetDrawingBounds(layout, drawing);
   return {
     height: bounds.height,
     id: imageId,
@@ -138,40 +134,6 @@ function imageFromSheetDrawing(
     width: bounds.width,
     zIndex,
   };
-}
-
-function drawingBounds(drawing: RecordValue, layout: SpreadsheetLayout) {
-  const fromAnchor = asRecord(drawing.fromAnchor);
-  const toAnchor = asRecord(drawing.toAnchor);
-  const fromCol = protocolNumber(fromAnchor?.colId, 0);
-  const fromRow = protocolNumber(fromAnchor?.rowId, 0);
-  const left = spreadsheetColumnLeft(layout, fromCol) + spreadsheetEmuToPx(fromAnchor?.colOffset);
-  const top = spreadsheetRowTop(layout, fromRow) + spreadsheetEmuToPx(fromAnchor?.rowOffset);
-  const width = spreadsheetEmuToPx(drawing.extentCx) || anchorEdgePx(toAnchor, "column", layout) - left;
-  const height = spreadsheetEmuToPx(drawing.extentCy) || anchorEdgePx(toAnchor, "row", layout) - top;
-
-  return {
-    height: Math.max(24, height),
-    left,
-    top,
-    width: Math.max(24, width),
-  };
-}
-
-function anchorEdgePx(
-  anchor: RecordValue | null,
-  axis: "column" | "row",
-  layout: SpreadsheetLayout,
-): number {
-  if (!anchor) return 0;
-
-  if (axis === "column") {
-    return spreadsheetColumnLeft(layout, protocolNumber(anchor.colId, layout.columnCount)) +
-      spreadsheetEmuToPx(anchor.colOffset);
-  }
-
-  return spreadsheetRowTop(layout, protocolNumber(anchor.rowId, layout.rowCount)) +
-    spreadsheetEmuToPx(anchor.rowOffset);
 }
 
 function buildRootSpreadsheetShapes(
@@ -209,16 +171,6 @@ function buildRootSpreadsheetShapes(
 function nestedProtocolColor(value: unknown): string | undefined {
   const record = asRecord(value);
   return protocolColorToCss(record?.color ?? value);
-}
-
-function protocolNumber(value: unknown, fallback: number): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  }
-
-  return fallback;
 }
 
 function shapeBorderRadius(geometry: number | string): number | string {

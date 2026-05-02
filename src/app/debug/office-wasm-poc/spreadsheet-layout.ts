@@ -52,6 +52,11 @@ export type SpreadsheetViewportRect = {
   width: number;
 };
 
+export type SpreadsheetFloatingHitRegion = SpreadsheetViewportRect & {
+  frozenColumns: boolean;
+  frozenRows: boolean;
+};
+
 export type SpreadsheetViewportScroll = {
   left: number;
   top: number;
@@ -291,6 +296,70 @@ export function spreadsheetVisibleCellRange(
   };
 }
 
+export function spreadsheetDrawingBounds(layout: SpreadsheetLayout, drawing: RecordValue): SpreadsheetViewportRect {
+  const fromAnchor = asRecord(drawing.fromAnchor);
+  const toAnchor = asRecord(drawing.toAnchor);
+  const fromCol = protocolNumber(fromAnchor?.colId, 0);
+  const fromRow = protocolNumber(fromAnchor?.rowId, 0);
+  const left = spreadsheetColumnLeft(layout, fromCol) + spreadsheetEmuToPx(fromAnchor?.colOffset);
+  const top = spreadsheetRowTop(layout, fromRow) + spreadsheetEmuToPx(fromAnchor?.rowOffset);
+  const bbox = asRecord(asRecord(drawing.shape)?.bbox);
+  const width = firstPositiveDimension(
+    spreadsheetEmuToPx(drawing.extentCx),
+    spreadsheetAnchorEdgePx(toAnchor, "column", layout) - left,
+    spreadsheetEmuToPx(bbox?.widthEmu),
+  );
+  const height = firstPositiveDimension(
+    spreadsheetEmuToPx(drawing.extentCy),
+    spreadsheetAnchorEdgePx(toAnchor, "row", layout) - top,
+    spreadsheetEmuToPx(bbox?.heightEmu),
+  );
+
+  return {
+    height: Math.max(24, height),
+    left,
+    top,
+    width: Math.max(24, width),
+  };
+}
+
+export function spreadsheetFloatingHitRegions(
+  layout: SpreadsheetLayout,
+  rect: SpreadsheetViewportRect,
+  scroll: SpreadsheetViewportScroll,
+): SpreadsheetFloatingHitRegion[] {
+  const xSegments = spreadsheetAxisViewportSegments(
+    rect.left,
+    rect.width,
+    SPREADSHEET_ROW_HEADER_WIDTH,
+    spreadsheetFrozenBodyWidth(layout),
+    scroll.left,
+  );
+  const ySegments = spreadsheetAxisViewportSegments(
+    rect.top,
+    rect.height,
+    SPREADSHEET_COLUMN_HEADER_HEIGHT,
+    spreadsheetFrozenBodyHeight(layout),
+    scroll.top,
+  );
+
+  const regions: SpreadsheetFloatingHitRegion[] = [];
+  for (const xSegment of xSegments) {
+    for (const ySegment of ySegments) {
+      regions.push({
+        frozenColumns: xSegment.frozen,
+        frozenRows: ySegment.frozen,
+        height: ySegment.size,
+        left: xSegment.start,
+        top: ySegment.start,
+        width: xSegment.size,
+      });
+    }
+  }
+
+  return regions;
+}
+
 export function spreadsheetViewportRectSegments(
   layout: SpreadsheetLayout,
   rect: SpreadsheetViewportRect,
@@ -330,6 +399,26 @@ export function spreadsheetViewportRectSegments(
 export function spreadsheetEmuToPx(value: unknown): number {
   const numericValue = typeof value === "string" ? Number(value) : asNumber(value, 0);
   return Number.isFinite(numericValue) ? numericValue / SPREADSHEET_EMU_PER_PIXEL : 0;
+}
+
+function spreadsheetAnchorEdgePx(
+  anchor: RecordValue | null,
+  axis: "column" | "row",
+  layout: SpreadsheetLayout,
+): number {
+  if (!anchor) return 0;
+
+  if (axis === "column") {
+    return spreadsheetColumnLeft(layout, protocolNumber(anchor.colId, layout.columnCount)) +
+      spreadsheetEmuToPx(anchor.colOffset);
+  }
+
+  return spreadsheetRowTop(layout, protocolNumber(anchor.rowId, layout.rowCount)) +
+    spreadsheetEmuToPx(anchor.rowOffset);
+}
+
+function firstPositiveDimension(...values: number[]): number {
+  return values.find((value) => Number.isFinite(value) && value > 0) ?? 0;
 }
 
 function prefixSums(initial: number, sizes: number[]): number[] {

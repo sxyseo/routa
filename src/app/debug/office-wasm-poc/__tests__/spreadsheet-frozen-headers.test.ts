@@ -6,6 +6,8 @@ import {
 } from "../spreadsheet-frozen-headers";
 import {
   buildSpreadsheetLayout,
+  spreadsheetDrawingBounds,
+  spreadsheetFloatingHitRegions,
   spreadsheetFrozenBodyHeight,
   spreadsheetFrozenBodyWidth,
   spreadsheetHitCellAtViewportPoint,
@@ -121,5 +123,57 @@ describe("spreadsheet frozen headers", () => {
       startColumnIndex: 2,
       startRowOffset: 3,
     });
+  });
+
+  it("normalizes two-cell drawing anchors through the shared layout adapter", () => {
+    const layout = buildSpreadsheetLayout({
+      columns: Array.from({ length: 4 }, (_, index) => ({ max: index + 1, min: index + 1, width: 10 })),
+      rows: Array.from({ length: 6 }, (_, index) => ({
+        cells: [{ address: `A${index + 1}` }],
+        index: index + 1,
+      })),
+    });
+
+    expect(spreadsheetDrawingBounds(layout, {
+      fromAnchor: { colId: "1", rowId: "2" },
+      toAnchor: { colId: "3", rowId: "5" },
+    })).toEqual({
+      height: 60,
+      left: 115,
+      top: 60,
+      width: 150,
+    });
+
+    expect(spreadsheetDrawingBounds(layout, {
+      fromAnchor: { colId: "1", rowId: "2" },
+      shape: { bbox: { heightEmu: 381_000, widthEmu: 762_000 } },
+    })).toEqual({
+      height: 40,
+      left: 115,
+      top: 60,
+      width: 80,
+    });
+  });
+
+  it("segments floating drawing hit regions across frozen panes", () => {
+    const layout = buildSpreadsheetLayout({
+      columns: Array.from({ length: 4 }, (_, index) => ({ max: index + 1, min: index + 1, width: 10 })),
+      freezePanes: { columnCount: 1, rowCount: 1 },
+      rows: Array.from({ length: 6 }, (_, index) => ({
+        cells: [{ address: `A${index + 1}` }],
+        index: index + 1,
+      })),
+    });
+
+    expect(spreadsheetFloatingHitRegions(
+      layout,
+      { height: 60, left: 100, top: 30, width: 120 },
+      { left: 0, top: 0 },
+    )).toEqual([
+      { frozenColumns: true, frozenRows: true, height: 10, left: 100, top: 30, width: 15 },
+      { frozenColumns: true, frozenRows: false, height: 50, left: 100, top: 40, width: 15 },
+      { frozenColumns: false, frozenRows: true, height: 10, left: 115, top: 30, width: 105 },
+      { frozenColumns: false, frozenRows: false, height: 50, left: 115, top: 40, width: 105 },
+    ]);
   });
 });
