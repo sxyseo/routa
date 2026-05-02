@@ -70,6 +70,17 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 5, WriteWorkbookImage(image));
             }
 
+            var commentSheets = WorksheetCommentSheets(workbookPart).ToArray();
+            foreach (var person in commentSheets.SelectMany(WorkbookCommentAuthors))
+            {
+                WriteMessage(output, 20, WritePerson(person.Id, person.DisplayName));
+            }
+
+            foreach (var note in commentSheets.SelectMany(WorkbookNotes))
+            {
+                WriteMessage(output, 22, note);
+            }
+
             var definedNames = WriteDefinedNames(workbookPart.Workbook.DefinedNames);
             if (definedNames is not null)
             {
@@ -728,6 +739,102 @@ internal static class XlsxWorkbookProtoReader
                 }
             }
         }
+    }
+
+    private static IEnumerable<WorksheetCommentSheet> WorksheetCommentSheets(WorkbookPart workbookPart)
+    {
+        foreach (var sheetElement in workbookPart.Workbook.Sheets?.Elements<S.Sheet>() ?? [])
+        {
+            var relationshipId = sheetElement.Id?.Value;
+            if (string.IsNullOrEmpty(relationshipId) || workbookPart.GetPartById(relationshipId) is not WorksheetPart worksheetPart)
+            {
+                continue;
+            }
+
+            if (worksheetPart.WorksheetCommentsPart?.Comments is null)
+            {
+                continue;
+            }
+
+            var sheetName = TextNormalization.Clean(sheetElement.Name?.Value);
+            yield return new WorksheetCommentSheet(
+                worksheetPart,
+                sheetName.Length > 0 ? sheetName : $"Sheet {sheetElement.SheetId?.Value ?? 0}");
+        }
+    }
+
+    private static IEnumerable<WorkbookPerson> WorkbookCommentAuthors(WorksheetCommentSheet commentSheet)
+    {
+        var authorIndex = 0;
+        foreach (var author in commentSheet.Part.WorksheetCommentsPart?.Comments?.Authors?.Elements<S.Author>() ?? [])
+        {
+            yield return new WorkbookPerson(
+                CommentAuthorId(commentSheet.SheetName, authorIndex),
+                TextNormalization.Clean(author.Text));
+            authorIndex += 1;
+        }
+    }
+
+    private static IEnumerable<byte[]> WorkbookNotes(WorksheetCommentSheet commentSheet)
+    {
+        foreach (var comment in commentSheet.Part.WorksheetCommentsPart?.Comments?.CommentList?.Elements<S.Comment>() ?? [])
+        {
+            var reference = TextNormalization.Clean(comment.Reference?.Value);
+            var body = TextNormalization.Clean(comment.Elements<S.CommentText>().FirstOrDefault()?.InnerText);
+            if (reference.Length == 0 && body.Length == 0)
+            {
+                continue;
+            }
+
+            var authorId = (int)(comment.AuthorId?.Value ?? 0);
+            yield return WriteNote(
+                $"{commentSheet.SheetName}:{reference}",
+                commentSheet.SheetName,
+                reference,
+                CommentAuthorId(commentSheet.SheetName, authorId),
+                body);
+        }
+    }
+
+    private static byte[] WritePerson(string id, string displayName)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, id);
+            WriteString(output, 2, displayName);
+        });
+    }
+
+    private static byte[] WriteNote(string id, string sheetName, string address, string authorId, string body)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, id);
+            WriteMessage(output, 2, Message(targetOutput =>
+            {
+                WriteMessage(targetOutput, 1, WriteCellTarget(sheetName, address));
+            }));
+            WriteString(output, 3, authorId);
+            WriteMessage(output, 5, Message(bodyOutput =>
+            {
+                WriteString(bodyOutput, 1, body);
+            }));
+        });
+    }
+
+    private static byte[] WriteCellTarget(string sheetName, string address)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, sheetName);
+            WriteStringIncludingEmpty(output, 2, "");
+            WriteString(output, 3, address);
+        });
+    }
+
+    private static string CommentAuthorId(string sheetName, int authorIndex)
+    {
+        return $"authors/{sheetName}/{authorIndex}";
     }
 
     private static IEnumerable<WorksheetPart> WorksheetPartsInWorkbookOrder(WorkbookPart workbookPart)
@@ -2367,6 +2474,10 @@ internal static class XlsxWorkbookProtoReader
     }
 
     private sealed record WorksheetImageReference(string Id, ImagePart Part);
+
+    private sealed record WorksheetCommentSheet(WorksheetPart Part, string SheetName);
+
+    private sealed record WorkbookPerson(string Id, string DisplayName);
 
     private sealed record DrawingColorValue(
         int Type,
