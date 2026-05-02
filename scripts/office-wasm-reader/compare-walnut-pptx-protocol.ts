@@ -150,6 +150,7 @@ function summarizePresentation(presentation: Record<string, unknown>, protoBytes
     chartReferenceCount: allChartReferenceIds.length,
     missingChartReferenceIds: [...new Set(allChartReferenceIds.filter((id) => !chartIds.has(id)))],
     slideBboxDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementBbox)),
+    slideConnectorDigests: slides.map((slide) => summarizeSlideConnectorDigest(slide)),
     slideNotesTextDigests: slides.map((slide) => summarizeNotesTextDigest(slide)),
     slideShapeGeometryCounts: slides.map((slide) => summarizeShapeGeometryCounts(slide)),
     slideShapeStyleDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementShapeStyle)),
@@ -209,6 +210,7 @@ function summarizeSlide(slide: Record<string, unknown>) {
       hasImage: isRecord(element.image) || isRecord(element.imageReference),
       hasChartReference: isRecord(element.chartReference),
       hasTable: isRecord(element.table),
+      connectorDigest: isRecord(element.connector) ? sha256Text(stableJson(summarizeElementConnector(element))) : "",
       tableDigest: isRecord(element.table) ? sha256Text(stableJson(summarizeElementTable(element))) : "",
       childCount: arrayOfRecords(element.children).length,
     })),
@@ -253,6 +255,8 @@ function summarizeEquivalence(
       stableJson(walnutSummary.slides.map((slide) => slide.chartReferenceIds)) ===
       stableJson(routaSummary.slides.map((slide) => slide.chartReferenceIds)),
     slideBboxDigestsMatch: stableJson(walnutSummary.slideBboxDigests) === stableJson(routaSummary.slideBboxDigests),
+    slideConnectorDigestsMatch:
+      stableJson(walnutSummary.slideConnectorDigests) === stableJson(routaSummary.slideConnectorDigests),
     slideNotesTextDigestsMatch:
       stableJson(walnutSummary.slideNotesTextDigests) === stableJson(routaSummary.slideNotesTextDigests),
     slideShapeGeometryCountsMatch:
@@ -409,6 +413,45 @@ function summarizeNotesText(slide: Record<string, unknown>): string {
   const notesSlide = asRecord(slide.notesSlide);
   if (!notesSlide) return "";
   return collectTextPreview(notesSlide);
+}
+
+function summarizeSlideConnectorDigest(slide: Record<string, unknown>): string {
+  const connectors = arrayOfRecords(slide.elements)
+    .filter((element) => isRecord(element.connector))
+    .map(summarizeElementConnector);
+  return sha256Text(stableJson(connectors));
+}
+
+function summarizeElementConnector(element: Record<string, unknown>) {
+  const connector = asRecord(element.connector) ?? {};
+  const lineStyle = asRecord(connector.lineStyle) ?? {};
+  return {
+    id: stringValue(element.id),
+    name: stringValue(element.name),
+    type: element.type,
+    bbox: summarizeBbox(asRecord(element.bbox)),
+    shapeLine: summarizeLine(asRecord(asRecord(element.shape)?.line) ?? asRecord(element.line)),
+    connector: {
+      fromElementId: stringValue(connector.fromElementId ?? connector.fromId ?? connector.startElementId),
+      fromIdx: numberValue(connector.fromIdx ?? connector.startIdx),
+      toElementId: stringValue(connector.toElementId ?? connector.toId ?? connector.endElementId),
+      toIdx: numberValue(connector.toIdx ?? connector.endIdx),
+      lineStyle: {
+        cap: numberValue(lineStyle.cap),
+        join: numberValue(lineStyle.join),
+        head: summarizeConnectorLineEnd(asRecord(lineStyle.head) ?? asRecord(lineStyle.headEnd)),
+        tail: summarizeConnectorLineEnd(asRecord(lineStyle.tail) ?? asRecord(lineStyle.tailEnd)),
+      },
+    },
+  };
+}
+
+function summarizeConnectorLineEnd(end: Record<string, unknown> | null) {
+  return {
+    type: numberValue(end?.type),
+    width: numberValue(end?.width),
+    length: numberValue(end?.length),
+  };
 }
 
 function summarizeSlideTableDigest(slide: Record<string, unknown>): string {

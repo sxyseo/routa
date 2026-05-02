@@ -60,7 +60,7 @@ Routa 目前仅有 `file-output-viewer`（代码/搜索结果）和 `reposlide`�
 - [ ] XLSX conditional formatting breadth: negative data bars, axes, gradient/solid variants, and cfvo-driven color scale interpolation are implemented; layered rules still need more coverage.
 - [ ] XLSX protocol coverage: add more fixtures and deeper field assertions beyond the current `complex_excel_renderer_test.xlsx` core parity check.
 - [x] PPTX chart parts: emit `charts` and `chartReference` from `c:chart` / `ChartPart` relationships, and render basic bar/line/pie-style chart payloads in the debug preview.
-- [ ] PPTX group shapes, connectors, and SmartArt/diagram support.
+- [ ] PPTX group shapes, connectors, and SmartArt/diagram support: basic group flattening and connector endpoint/line-end parity are covered by `pptx_group_connector_contract.pptx`; SmartArt/diagrams and complex nested group transforms remain.
 - [ ] PPTX complete theme/layout/master inheritance for fills, lines, text styles, and placeholders.
 - [x] PPTX table parity against Walnut for the dedicated table fixture: protocol assertions now cover rows/columns, spans/merge placeholders, fills, borders, margins, anchors, and text styles.
 - [ ] PPTX picture crop, masks, tiling, duotone/advanced effects, and z-order metadata.
@@ -82,7 +82,8 @@ Progress - 2026-05-02:
 - PPT table protocol and preview rendering now cover graphic-frame tables with row/column grids, merged spans, cell fills/borders, margins, anchors, and text.
 - PPT viewer shell now puts the slideshow action in the debug page header and computes slide fit independently from notes/sources footnote height, so long footnotes scroll below the slide instead of shrinking or covering the slide.
 - Latest validation on `/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx`: `compare:office-wasm-reader:pptx-render -- --assert` passes; browser measurement at `2048x1058` keeps slide 1/4 at `1703x958`, Play is in the 52px header, and hiding the footnote does not change slide size.
-- Next PPT item is group/connectors/custom geometry and deeper table-style inheritance; pixel-level PowerPoint typography remains a renderer fidelity limitation until the viewer has a native screenshot/raster path or a deeper text layout engine.
+- PPT group/connector protocol now mirrors Walnut's group-flattening behavior, transforms group child bboxes into slide coordinates, maps `straightConnector1`, and preserves connector endpoints plus head/tail line-end metadata.
+- Next PPT item is SmartArt/diagram/custom geometry and deeper table-style inheritance; pixel-level PowerPoint typography remains a renderer fidelity limitation until the viewer has a native screenshot/raster path or a deeper text layout engine.
 
 ## Expected Behavior
 
@@ -529,7 +530,7 @@ npm run test:office-wasm-reader:pptx-render
 
 Remaining implementation gaps after the image-reference/theme/layout/chart/table pass:
 
-- Group shapes, connector endpoints, SmartArt/diagrams, video/audio, comments, notes mode, and custom geometry paths are still not fully modeled.
+- Basic group shapes and connector endpoints are covered by a dedicated Walnut fixture; SmartArt/diagrams, video/audio, comments, notes mode, deeply nested/rotated group transforms, and custom geometry paths are still not fully modeled.
 - Theme and layout payloads are structurally present but not byte-identical to Walnut; text style inheritance from master/layout placeholders is still shallower than PowerPoint.
 - Table support is protocol-tested against `pptx_table_contract.pptx`; render screenshots for that synthetic table fixture still have small anti-aliased text differences, so the default render gate stays on the real-world image-heavy PPTX fixture.
 - Chart rendering consumes decoded chart payloads but remains approximate for plot layout, axis typography, legends, labels, and non-basic chart families.

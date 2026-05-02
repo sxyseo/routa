@@ -323,7 +323,8 @@ internal static class PptxPresentationProtoReader
     private static IEnumerable<byte[]> ExtractElements(
         IEnumerable<OpenXmlElement>? childElements,
         OpenXmlPartContainer partContainer,
-        bool layoutLike = false)
+        bool layoutLike = false,
+        GroupTransformContext? groupTransform = null)
     {
         if (childElements is null)
         {
@@ -333,22 +334,54 @@ internal static class PptxPresentationProtoReader
         var zIndex = 0;
         foreach (var child in childElements)
         {
-            var element = child switch
-            {
-                P.Shape shape => WriteShapeElement(shape, zIndex, layoutLike),
-                P.Picture picture => WritePictureElement(partContainer, picture, zIndex),
-                P.GraphicFrame graphicFrame => WriteGraphicFrameElement(partContainer, graphicFrame, zIndex),
-                P.ConnectionShape connectionShape => WriteConnectionShapeElement(connectionShape, zIndex),
-                P.GroupShape groupShape => WriteGroupShapeElement(partContainer, groupShape, zIndex, layoutLike),
-                _ => null,
-            };
-
-            if (element is not null)
+            foreach (var element in ExtractElement(child, partContainer, zIndex, layoutLike, groupTransform))
             {
                 yield return element;
             }
 
             zIndex++;
+        }
+    }
+
+    private static IEnumerable<byte[]> ExtractElement(
+        OpenXmlElement child,
+        OpenXmlPartContainer partContainer,
+        int zIndex,
+        bool layoutLike,
+        GroupTransformContext? groupTransform)
+    {
+        switch (child)
+        {
+            case P.Shape shape:
+                if (WriteShapeElement(shape, zIndex, layoutLike, groupTransform) is { } shapeElement)
+                {
+                    yield return shapeElement;
+                }
+                break;
+            case P.Picture picture:
+                if (WritePictureElement(partContainer, picture, zIndex, groupTransform) is { } pictureElement)
+                {
+                    yield return pictureElement;
+                }
+                break;
+            case P.GraphicFrame graphicFrame:
+                if (WriteGraphicFrameElement(partContainer, graphicFrame, zIndex, groupTransform) is { } frameElement)
+                {
+                    yield return frameElement;
+                }
+                break;
+            case P.ConnectionShape connectionShape:
+                if (WriteConnectionShapeElement(connectionShape, zIndex, groupTransform) is { } connectorElement)
+                {
+                    yield return connectorElement;
+                }
+                break;
+            case P.GroupShape groupShape:
+                foreach (var groupElement in ExtractGroupShapeElements(partContainer, groupShape, layoutLike, groupTransform))
+                {
+                    yield return groupElement;
+                }
+                break;
         }
     }
 
@@ -388,7 +421,11 @@ internal static class PptxPresentationProtoReader
         }
     }
 
-    private static byte[]? WriteShapeElement(P.Shape shape, int zIndex, bool layoutLike = false)
+    private static byte[]? WriteShapeElement(
+        P.Shape shape,
+        int zIndex,
+        bool layoutLike = false,
+        GroupTransformContext? groupTransform = null)
     {
         var nonVisual = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
         var placeholder = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.GetFirstChild<P.PlaceholderShape>();
@@ -402,7 +439,7 @@ internal static class PptxPresentationProtoReader
         {
             if (bbox is not null)
             {
-                WriteMessage(output, 1, WriteBoundingBox(bbox));
+                WriteMessage(output, 1, WriteBoundingBox(bbox, groupTransform));
             }
 
             var fill = SolidFillFromProperties(shapeProperties);
@@ -515,7 +552,11 @@ internal static class PptxPresentationProtoReader
         }
     }
 
-    private static byte[]? WritePictureElement(OpenXmlPartContainer partContainer, P.Picture picture, int zIndex)
+    private static byte[]? WritePictureElement(
+        OpenXmlPartContainer partContainer,
+        P.Picture picture,
+        int zIndex,
+        GroupTransformContext? groupTransform = null)
     {
         var nonVisual = picture.NonVisualPictureProperties?.NonVisualDrawingProperties;
         var transform = picture.ShapeProperties?.Transform2D;
@@ -532,7 +573,7 @@ internal static class PptxPresentationProtoReader
         {
             if (transform is not null)
             {
-                WriteMessage(output, 1, WriteBoundingBox(transform));
+                WriteMessage(output, 1, WriteBoundingBox(transform, groupTransform));
             }
 
             if (!string.IsNullOrEmpty(imageId))
@@ -561,7 +602,11 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[]? WriteGraphicFrameElement(OpenXmlPartContainer partContainer, P.GraphicFrame graphicFrame, int zIndex)
+    private static byte[]? WriteGraphicFrameElement(
+        OpenXmlPartContainer partContainer,
+        P.GraphicFrame graphicFrame,
+        int zIndex,
+        GroupTransformContext? groupTransform = null)
     {
         var nonVisual = graphicFrame.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties;
         var transform = graphicFrame.Transform;
@@ -576,7 +621,7 @@ internal static class PptxPresentationProtoReader
         {
             if (transform is not null)
             {
-                WriteMessage(output, 1, WriteBoundingBox(transform));
+                WriteMessage(output, 1, WriteBoundingBox(transform, groupTransform));
             }
 
             if (chartReference is not null)
@@ -615,7 +660,10 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[]? WriteConnectionShapeElement(P.ConnectionShape connectionShape, int zIndex)
+    private static byte[]? WriteConnectionShapeElement(
+        P.ConnectionShape connectionShape,
+        int zIndex,
+        GroupTransformContext? groupTransform = null)
     {
         var nonVisual = connectionShape.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties;
         var properties = connectionShape.ShapeProperties;
@@ -626,7 +674,7 @@ internal static class PptxPresentationProtoReader
         {
             if (transform is not null)
             {
-                WriteMessage(output, 1, WriteBoundingBox(transform));
+                WriteMessage(output, 1, WriteBoundingBox(transform, groupTransform));
             }
 
             var shape = WriteShape(properties, null, line);
@@ -641,36 +689,18 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[]? WriteGroupShapeElement(
+    private static IEnumerable<byte[]> ExtractGroupShapeElements(
         OpenXmlPartContainer partContainer,
         P.GroupShape groupShape,
-        int zIndex,
-        bool layoutLike = false)
+        bool layoutLike,
+        GroupTransformContext? groupTransform)
     {
-        var nonVisual = groupShape.NonVisualGroupShapeProperties?.NonVisualDrawingProperties;
         var transform = groupShape.GroupShapeProperties?.GetFirstChild<A.TransformGroup>();
-        var children = ExtractElements(groupShape.ChildElements, partContainer, layoutLike).ToList();
-        if (transform is null && children.Count == 0)
+        var childTransform = transform is null ? groupTransform : GroupTransformContext.From(transform, groupTransform);
+        foreach (var child in ExtractElements(groupShape.ChildElements, partContainer, layoutLike, childTransform))
         {
-            return null;
+            yield return child;
         }
-
-        return Message(output =>
-        {
-            if (transform is not null)
-            {
-                WriteMessage(output, 1, WriteBoundingBox(transform));
-            }
-
-            WriteString(output, 10, nonVisual?.Name?.Value ?? $"Group {zIndex}");
-            WriteInt32(output, 11, ElementTypeShape);
-            foreach (var child in children)
-            {
-                WriteMessage(output, 17, child);
-            }
-
-            WriteString(output, 27, nonVisual?.Id?.Value.ToString() ?? (zIndex + 1).ToString());
-        });
     }
 
     private static IEnumerable<byte[]> ExtractParagraphs(OpenXmlElement? textBody)
@@ -742,28 +772,30 @@ internal static class PptxPresentationProtoReader
         }
     }
 
-    private static byte[] WriteBoundingBox(A.Transform2D transform)
+    private static byte[] WriteBoundingBox(A.Transform2D transform, GroupTransformContext? groupTransform = null)
     {
+        var box = BoundingBox.From(transform, groupTransform);
         return Message(output =>
         {
-            WriteInt64Always(output, 1, ToLong(transform.Offset?.X));
-            WriteInt64Always(output, 2, ToLong(transform.Offset?.Y));
-            WriteInt64Always(output, 3, ToLong(transform.Extents?.Cx));
-            WriteInt64Always(output, 4, ToLong(transform.Extents?.Cy));
-            WriteInt32(output, 5, transform.Rotation?.Value);
-            WriteBool(output, 6, transform.HorizontalFlip?.Value);
-            WriteBool(output, 7, transform.VerticalFlip?.Value);
+            WriteInt64Always(output, 1, box.X);
+            WriteInt64Always(output, 2, box.Y);
+            WriteInt64Always(output, 3, box.Width);
+            WriteInt64Always(output, 4, box.Height);
+            WriteInt32(output, 5, box.Rotation);
+            WriteBool(output, 6, box.HorizontalFlip);
+            WriteBool(output, 7, box.VerticalFlip);
         });
     }
 
-    private static byte[] WriteBoundingBox(P.Transform transform)
+    private static byte[] WriteBoundingBox(P.Transform transform, GroupTransformContext? groupTransform = null)
     {
+        var box = BoundingBox.From(transform, groupTransform);
         return Message(output =>
         {
-            WriteInt64Always(output, 1, ToLong(transform.Offset?.X));
-            WriteInt64Always(output, 2, ToLong(transform.Offset?.Y));
-            WriteInt64Always(output, 3, ToLong(transform.Extents?.Cx));
-            WriteInt64Always(output, 4, ToLong(transform.Extents?.Cy));
+            WriteInt64Always(output, 1, box.X);
+            WriteInt64Always(output, 2, box.Y);
+            WriteInt64Always(output, 3, box.Width);
+            WriteInt64Always(output, 4, box.Height);
         });
     }
 
@@ -1784,15 +1816,15 @@ internal static class PptxPresentationProtoReader
 
         return Message(output =>
         {
-            WriteInt32(output, 5, ConnectorLineCap(line.CapType?.Value.ToString()));
+            WriteInt32(output, 5, ConnectorLineCap(line.CapType?.Value.ToString(), AttributeValue(line, "cap") ?? ""));
             WriteInt32(output, 6, ConnectorLineJoin(line));
-            var head = WriteConnectorLineEnd(line.GetFirstChild<A.HeadEnd>());
+            var head = WriteConnectorLineEnd(line.GetFirstChild<A.HeadEnd>() ?? FirstChildByLocalName(line, "headEnd"));
             if (head is not null)
             {
                 WriteMessage(output, 7, head);
             }
 
-            var tail = WriteConnectorLineEnd(line.GetFirstChild<A.TailEnd>());
+            var tail = WriteConnectorLineEnd(line.GetFirstChild<A.TailEnd>() ?? FirstChildByLocalName(line, "tailEnd"));
             if (tail is not null)
             {
                 WriteMessage(output, 8, tail);
@@ -1800,24 +1832,17 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[]? WriteConnectorLineEnd(A.HeadEnd? end)
+    private static byte[]? WriteConnectorLineEnd(OpenXmlElement? end)
     {
         if (end is null)
         {
             return null;
         }
 
-        return WriteConnectorLineEnd(end.Type?.Value.ToString(), end.Width?.Value.ToString(), end.Length?.Value.ToString());
-    }
-
-    private static byte[]? WriteConnectorLineEnd(A.TailEnd? end)
-    {
-        if (end is null)
-        {
-            return null;
-        }
-
-        return WriteConnectorLineEnd(end.Type?.Value.ToString(), end.Width?.Value.ToString(), end.Length?.Value.ToString());
+        return WriteConnectorLineEnd(
+            AttributeValue(end, "type"),
+            AttributeValue(end, "w"),
+            AttributeValue(end, "len"));
     }
 
     private static byte[]? WriteConnectorLineEnd(string? type, string? width, string? length)
@@ -1838,15 +1863,21 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static int ConnectorLineCap(string? value)
+    private static int ConnectorLineCap(string? typedValue, string rawValue)
     {
-        return value switch
+        var value = string.IsNullOrWhiteSpace(rawValue) ? typedValue : rawValue;
+        return value?.ToLowerInvariant() switch
         {
             "flat" => ConnectorLineCapFlat,
             "round" => ConnectorLineCapRound,
-            "square" => ConnectorLineCapSquare,
+            "sq" or "square" => ConnectorLineCapSquare,
             _ => 0,
         };
+    }
+
+    private static OpenXmlElement? FirstChildByLocalName(OpenXmlElement? element, string localName)
+    {
+        return element?.ChildElements.FirstOrDefault(child => string.Equals(child.LocalName, localName, StringComparison.Ordinal));
     }
 
     private static int ConnectorLineJoin(A.Outline line)
@@ -1859,7 +1890,7 @@ internal static class PptxPresentationProtoReader
 
     private static int ConnectorLineEndType(string? value)
     {
-        return value switch
+        return value?.ToLowerInvariant() switch
         {
             "none" => ConnectorLineEndNone,
             "triangle" => ConnectorLineEndTriangle,
@@ -1873,11 +1904,11 @@ internal static class PptxPresentationProtoReader
 
     private static int ConnectorLineEndSize(string? value)
     {
-        return value switch
+        return value?.ToLowerInvariant() switch
         {
-            "sm" => ConnectorLineEndSmall,
-            "med" => ConnectorLineEndMedium,
-            "lg" => ConnectorLineEndLarge,
+            "sm" or "small" => ConnectorLineEndSmall,
+            "med" or "medium" => ConnectorLineEndMedium,
+            "lg" or "large" => ConnectorLineEndLarge,
             _ => 0,
         };
     }
@@ -2233,6 +2264,7 @@ internal static class PptxPresentationProtoReader
             "roundrect" => 26,
             "ellipse" => 35,
             "line" => 1,
+            "straightconnector1" => 96,
             "triangle" => 23,
             "diamond" => 30,
             "parallelogram" => 31,
@@ -2243,6 +2275,109 @@ internal static class PptxPresentationProtoReader
             "bracketpair" => 112,
             _ => 5,
         };
+    }
+
+    private readonly record struct BoundingBox(
+        long? X,
+        long? Y,
+        long? Width,
+        long? Height,
+        int? Rotation,
+        bool? HorizontalFlip,
+        bool? VerticalFlip)
+    {
+        public static BoundingBox From(A.Transform2D transform, GroupTransformContext? groupTransform)
+        {
+            return From(
+                ToLong(transform.Offset?.X),
+                ToLong(transform.Offset?.Y),
+                ToLong(transform.Extents?.Cx),
+                ToLong(transform.Extents?.Cy),
+                transform.Rotation?.Value,
+                transform.HorizontalFlip?.Value,
+                transform.VerticalFlip?.Value,
+                groupTransform);
+        }
+
+        public static BoundingBox From(P.Transform transform, GroupTransformContext? groupTransform)
+        {
+            return From(
+                ToLong(transform.Offset?.X),
+                ToLong(transform.Offset?.Y),
+                ToLong(transform.Extents?.Cx),
+                ToLong(transform.Extents?.Cy),
+                null,
+                null,
+                null,
+                groupTransform);
+        }
+
+        private static BoundingBox From(
+            long? x,
+            long? y,
+            long? width,
+            long? height,
+            int? rotation,
+            bool? horizontalFlip,
+            bool? verticalFlip,
+            GroupTransformContext? groupTransform)
+        {
+            if (groupTransform is null)
+            {
+                return new BoundingBox(x, y, width, height, rotation, horizontalFlip, verticalFlip);
+            }
+
+            return new BoundingBox(
+                groupTransform.TransformX(x),
+                groupTransform.TransformY(y),
+                groupTransform.TransformWidth(width),
+                groupTransform.TransformHeight(height),
+                rotation,
+                horizontalFlip,
+                verticalFlip);
+        }
+    }
+
+    private sealed record GroupTransformContext(
+        double X,
+        double Y,
+        double ChildX,
+        double ChildY,
+        double ScaleX,
+        double ScaleY)
+    {
+        public static GroupTransformContext From(A.TransformGroup transform, GroupTransformContext? parent)
+        {
+            var rawX = ToLong(transform.Offset?.X) ?? 0;
+            var rawY = ToLong(transform.Offset?.Y) ?? 0;
+            var rawWidth = ToLong(transform.Extents?.Cx) ?? ToLong(transform.ChildExtents?.Cx) ?? 0;
+            var rawHeight = ToLong(transform.Extents?.Cy) ?? ToLong(transform.ChildExtents?.Cy) ?? 0;
+            var childX = ToLong(transform.ChildOffset?.X) ?? 0;
+            var childY = ToLong(transform.ChildOffset?.Y) ?? 0;
+            var childWidth = ToLong(transform.ChildExtents?.Cx) ?? rawWidth;
+            var childHeight = ToLong(transform.ChildExtents?.Cy) ?? rawHeight;
+            var x = parent?.TransformX(rawX) ?? rawX;
+            var y = parent?.TransformY(rawY) ?? rawY;
+            var width = parent?.TransformWidth(rawWidth) ?? rawWidth;
+            var height = parent?.TransformHeight(rawHeight) ?? rawHeight;
+            var scaleX = childWidth == 0 ? parent?.ScaleX ?? 1 : width / childWidth;
+            var scaleY = childHeight == 0 ? parent?.ScaleY ?? 1 : height / childHeight;
+
+            return new GroupTransformContext(x, y, childX, childY, scaleX, scaleY);
+        }
+
+        public long? TransformX(long? value) => value is null ? null : RoundEmu(X + (value.Value - ChildX) * ScaleX);
+
+        public long? TransformY(long? value) => value is null ? null : RoundEmu(Y + (value.Value - ChildY) * ScaleY);
+
+        public long? TransformWidth(long? value) => value is null ? null : RoundEmu(value.Value * ScaleX);
+
+        public long? TransformHeight(long? value) => value is null ? null : RoundEmu(value.Value * ScaleY);
+
+        private static long RoundEmu(double value)
+        {
+            return (long)Math.Round(value, MidpointRounding.AwayFromZero);
+        }
     }
 
     private static string? PresetGeometryName(A.PresetGeometry? geometry)
