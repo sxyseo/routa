@@ -39,7 +39,7 @@ describe("spreadsheet cell formatting", () => {
       borders: [
         {
           bottom: { color: { value: "FF00AA00" } },
-          right: { color: { value: "FFFF0000" } },
+          right: { color: { value: "FFFF0000" }, style: "mediumDashed" },
         },
       ],
       cellXfs: [{ borderId: 0 }],
@@ -50,6 +50,8 @@ describe("spreadsheet cell formatting", () => {
     expect(spreadsheetCellStyle({ styleIndex: 0 }, explicitBorderStyles, undefined, undefined, 0, false)).toMatchObject({
       borderBottomColor: "#00AA00",
       borderRightColor: "#FF0000",
+      borderRightStyle: "dashed",
+      borderRightWidth: 2,
     });
   });
 

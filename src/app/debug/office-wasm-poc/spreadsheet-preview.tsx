@@ -733,9 +733,9 @@ export function spreadsheetCellStyle(
   const fontFill = resolveStyleRecord(font, ["fill", "color"]);
   const fillColor = spreadsheetFillToCss(fill);
   const fontColor = colorToCss(fontFill?.color ?? fontFill);
-  const explicitBottomBorderColor = colorToCss(asRecord(asRecord(border?.bottom)?.color));
-  const explicitRightBorderColor = colorToCss(asRecord(asRecord(border?.right)?.color));
   const gridLineColor = showGridLines ? "#e2e8f0" : "transparent";
+  const bottomBorder = spreadsheetBorderCss(border, "bottom", gridLineColor);
+  const rightBorder = spreadsheetBorderCss(border, "right", gridLineColor);
   const fallbackStyle = knownSpreadsheetCellStyle(cell, sheetName);
   const horizontalAlignment = asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment);
   const verticalAlignment = asString(alignment?.vertical) || asString(cellFormat?.verticalAlignment);
@@ -749,8 +749,12 @@ export function spreadsheetCellStyle(
     ...fallbackStyle,
     alignItems: spreadsheetVerticalAlignItems(verticalAlignment),
     background: visual?.background ?? fillColor ?? fallbackStyle.background,
-    borderBottomColor: explicitBottomBorderColor ?? gridLineColor,
-    borderRightColor: explicitRightBorderColor ?? gridLineColor,
+    borderBottomColor: bottomBorder.color,
+    borderBottomStyle: bottomBorder.style,
+    borderBottomWidth: bottomBorder.width,
+    borderRightColor: rightBorder.color,
+    borderRightStyle: rightBorder.style,
+    borderRightWidth: rightBorder.width,
     color: visual?.color ?? fontColor ?? fallbackStyle.color ?? sheetCellStyle.color,
     display: "flex",
     fontFamily: spreadsheetFontFamily(asString(font?.typeface)),
@@ -764,6 +768,64 @@ export function spreadsheetCellStyle(
     verticalAlign: spreadsheetVerticalAlign(verticalAlignment) ?? fallbackStyle.verticalAlign ?? sheetCellStyle.verticalAlign,
     whiteSpace: wrapText ? sheetCellStyle.whiteSpace : "nowrap",
   };
+}
+
+function spreadsheetBorderCss(
+  border: RecordValue | null,
+  side: "bottom" | "right",
+  gridLineColor: string,
+): {
+  color: CSSProperties["borderBottomColor"];
+  style: CSSProperties["borderBottomStyle"];
+  width: CSSProperties["borderBottomWidth"];
+} {
+  const line = spreadsheetBorderLine(border, side);
+  const rawStyle = asString(line?.style ?? border?.[`${side}Style`] ?? border?.[`${side}_style`]).toLowerCase();
+  if (rawStyle === "none") return { color: "transparent", style: "solid", width: 1 };
+
+  const explicitColor =
+    spreadsheetBorderColor(line?.color) ??
+    spreadsheetBorderColor(border?.[`${side}Color`]) ??
+    spreadsheetBorderColor(border?.[`${side}_color`]) ??
+    spreadsheetBorderColor(border?.[`${side}BorderColor`]) ??
+    spreadsheetBorderColor(border?.[`${side}_border_color`]);
+
+  return {
+    color: explicitColor ?? gridLineColor,
+    style: spreadsheetBorderStyle(rawStyle),
+    width: spreadsheetBorderWidth(rawStyle),
+  };
+}
+
+function spreadsheetBorderColor(value: unknown): string | null {
+  const structured = colorToCss(asRecord(value));
+  if (structured) return structured;
+  const text = asString(value);
+  if (/^#[0-9a-f]{6}$/i.test(text)) return text;
+  if (/^[0-9a-f]{6}$/i.test(text)) return `#${text}`;
+  if (/^[0-9a-f]{8}$/i.test(text)) return `#${text.slice(2)}`;
+  return null;
+}
+
+function spreadsheetBorderLine(border: RecordValue | null, side: "bottom" | "right"): RecordValue | null {
+  return (
+    asRecord(border?.[side]) ??
+    asRecord(border?.[`${side}Border`]) ??
+    asRecord(border?.[`${side}_border`])
+  );
+}
+
+function spreadsheetBorderStyle(value: string): CSSProperties["borderBottomStyle"] {
+  if (value.includes("dash")) return "dashed";
+  if (value.includes("dot")) return "dotted";
+  if (value === "double") return "double";
+  return "solid";
+}
+
+function spreadsheetBorderWidth(value: string): number {
+  if (value.includes("thick")) return 3;
+  if (value.includes("medium") || value === "double") return 2;
+  return 1;
 }
 
 function spreadsheetShowGridLines(sheet: RecordValue | undefined): boolean {
