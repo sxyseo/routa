@@ -82,7 +82,7 @@ export function buildSpreadsheetCanvasRenderPlan({
 }
 
 export function drawSpreadsheetCanvasRenderPlan(
-  context: CanvasRenderingContext2D,
+  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   plan: SpreadsheetCanvasRenderPlan,
 ) {
   const { bitmap } = plan;
@@ -132,7 +132,10 @@ function spreadsheetCanvasHeaderRect(
   };
 }
 
-function drawSpreadsheetCanvasRect(context: CanvasRenderingContext2D, rect: SpreadsheetCanvasDrawRect) {
+function drawSpreadsheetCanvasRect(
+  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  rect: SpreadsheetCanvasDrawRect,
+) {
   if (rect.width <= 0 || rect.height <= 0) return;
   context.fillStyle = rect.fill ?? "#ffffff";
   context.fillRect(rect.left, rect.top, rect.width, rect.height);

@@ -9,6 +9,10 @@ import {
   drawSpreadsheetCanvasRenderPlan,
   type SpreadsheetCanvasRenderPlan,
 } from "./spreadsheet-canvas-renderer";
+import {
+  createSpreadsheetCanvasWorkerRenderer,
+  type SpreadsheetCanvasWorkerRenderer,
+} from "./spreadsheet-canvas-worker-client";
 import { spreadsheetCanvasWorkerCapabilities } from "./spreadsheet-canvas-worker-protocol";
 import type {
   SpreadsheetLayout,
@@ -41,6 +45,7 @@ export function SpreadsheetCanvasLayer({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const schedulerRef = useRef<ReturnType<typeof createSpreadsheetCanvasFrameScheduler> | null>(null);
+  const workerRendererRef = useRef<SpreadsheetCanvasWorkerRenderer | null>(null);
   const renderer = useMemo(() => spreadsheetCanvasWorkerCapabilities().preferredRenderer, []);
   const plan = useMemo(() => buildSpreadsheetCanvasRenderPlan({
     commands: buildSpreadsheetCanvasCommands({ layout, scroll, viewportSize }),
@@ -52,13 +57,27 @@ export function SpreadsheetCanvasLayer({
   useEffect(() => {
     if (!schedulerRef.current) {
       schedulerRef.current = createSpreadsheetCanvasFrameScheduler({
-        draw: (nextPlan) => drawSpreadsheetCanvasPlanToCanvas(canvasRef.current, nextPlan),
+        draw: (nextPlan) => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          if (!workerRendererRef.current) {
+            workerRendererRef.current = createSpreadsheetCanvasWorkerRenderer(canvas);
+          }
+          if (workerRendererRef.current) {
+            workerRendererRef.current.render(nextPlan);
+            return;
+          }
+          drawSpreadsheetCanvasPlanToCanvas(canvas, nextPlan);
+        },
       });
     }
     schedulerRef.current.schedule(plan);
   }, [plan]);
 
-  useEffect(() => () => schedulerRef.current?.destroy(), []);
+  useEffect(() => () => {
+    schedulerRef.current?.destroy();
+    workerRendererRef.current?.destroy();
+  }, []);
 
   if (viewportSize.width <= 0 || viewportSize.height <= 0) return null;
   return (
