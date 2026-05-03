@@ -60,6 +60,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Changed conditional-format numeric range scans to traverse populated sheet cells and filter by range, avoiding dense iteration across sparse full-column/full-sheet rules. Empty cells now stay non-numeric instead of being treated as `0`.
 - Added Excel-style range parsing for absolute, sheet-qualified, full-column, and full-row references such as `$A$1:$B$2`, `Sheet1!A:A`, and `1:1`, so production conditional-format/table ranges expand to worksheet bounds without dense visual materialization.
 - Added a bounded cell visual cache for lazy table/conditional lookups so repeated body/frozen rendering does not rescan rules for the same visible cells while scrolling cannot grow the cache without limit.
+- Verified fixture protocol parity, fixture render contract, and the 21-file production XLSX corpus under `/Users/phodal/Downloads/excel` with `--assert`; all passed against Walnut after the lazy lookup/range parsing changes.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

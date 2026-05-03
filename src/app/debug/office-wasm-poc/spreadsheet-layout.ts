@@ -5,6 +5,8 @@ import {
   asString,
   type CellMerge,
   columnIndexFromAddress,
+  EXCEL_MAX_COLUMN_COUNT,
+  EXCEL_MAX_ROW_COUNT,
   parseCellRange,
   type RecordValue,
 } from "./office-preview-utils";
@@ -155,8 +157,8 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
     }
   }
 
-  const rowCount = clampInteger(maxRow, 1, 1_048_576);
-  const columnCount = clampInteger(Math.max(maxColumn + 1, 6), 1, 16_384);
+  const rowCount = clampInteger(maxRow, 1, EXCEL_MAX_ROW_COUNT);
+  const columnCount = clampInteger(Math.max(maxColumn + 1, 6), 1, EXCEL_MAX_COLUMN_COUNT);
   const columnWidths = Array.from(
     { length: columnCount },
     (_, index) => columnWidthByIndex.get(index) ?? SPREADSHEET_DEFAULT_COLUMN_WIDTH,

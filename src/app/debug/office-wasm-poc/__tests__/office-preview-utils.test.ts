@@ -39,5 +39,11 @@ describe("office preview cell references", () => {
       startColumn: 1,
       startRow: 1,
     });
+    expect(parseCellRange("Sheet1!3:5")).toEqual({
+      columnSpan: EXCEL_MAX_COLUMN_COUNT,
+      rowSpan: 3,
+      startColumn: 0,
+      startRow: 3,
+    });
   });
 });
