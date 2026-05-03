@@ -353,7 +353,7 @@ internal static class PptxPresentationProtoReader
         switch (child)
         {
             case P.Shape shape:
-                if (WriteShapeElement(shape, zIndex, layoutLike, groupTransform) is { } shapeElement)
+                if (WriteShapeElement(partContainer, shape, zIndex, layoutLike, groupTransform) is { } shapeElement)
                 {
                     yield return shapeElement;
                 }
@@ -422,6 +422,7 @@ internal static class PptxPresentationProtoReader
     }
 
     private static byte[]? WriteShapeElement(
+        OpenXmlPartContainer partContainer,
         P.Shape shape,
         int zIndex,
         bool layoutLike = false,
@@ -442,7 +443,7 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 1, WriteBoundingBox(bbox, groupTransform));
             }
 
-            var fill = SolidFillFromProperties(shapeProperties);
+            var fill = FillFromShapeProperties(partContainer, shapeProperties);
             var line = OutlineFromProperties(shapeProperties);
             var shapeProto = WriteShape(shapeProperties, fill, line, IsTextNamedShape(nonVisual), layoutLike && !isLayoutPlaceholder);
             if (shapeProto is not null)
@@ -824,7 +825,7 @@ internal static class PptxPresentationProtoReader
 
     private static byte[]? WriteShape(
         OpenXmlElement? properties,
-        A.SolidFill? fill,
+        byte[]? fill,
         A.Outline? line,
         bool suppressLineStyle = false,
         bool writeDefaultLine = false)
@@ -843,7 +844,7 @@ internal static class PptxPresentationProtoReader
             WriteInt32(output, 1, geometryCode);
             if (fill is not null)
             {
-                WriteMessage(output, 5, WriteFill(fill));
+                WriteMessage(output, 5, fill);
             }
             else if (properties?.GetFirstChild<A.NoFill>() is not null)
             {
@@ -1286,7 +1287,11 @@ internal static class PptxPresentationProtoReader
 
     private static byte[] WritePictureFill(P.Picture picture, string relationshipId, string imageId)
     {
-        var sourceRectangle = picture.BlipFill?.SourceRectangle;
+        return WriteImageFill(relationshipId, imageId, picture.BlipFill?.SourceRectangle);
+    }
+
+    private static byte[] WriteImageFill(string relationshipId, string imageId, A.SourceRectangle? sourceRectangle)
+    {
         var hasCrop =
             sourceRectangle?.Left is not null ||
             sourceRectangle?.Top is not null ||
@@ -2139,6 +2144,21 @@ internal static class PptxPresentationProtoReader
     private static A.SolidFill? SolidFillFromProperties(OpenXmlElement? properties)
     {
         return properties?.GetFirstChild<A.SolidFill>();
+    }
+
+    private static byte[]? FillFromShapeProperties(OpenXmlPartContainer partContainer, OpenXmlElement? properties)
+    {
+        if (properties?.GetFirstChild<A.BlipFill>() is { } blipFill)
+        {
+            var relationshipId = blipFill.Blip?.Embed?.Value;
+            if (!string.IsNullOrEmpty(relationshipId) && partContainer.GetPartById(relationshipId) is ImagePart imagePart)
+            {
+                return WriteImageFill(relationshipId, imagePart.Uri.OriginalString, blipFill.SourceRectangle);
+            }
+        }
+
+        var solidFill = SolidFillFromProperties(properties);
+        return solidFill is null ? null : WriteFill(solidFill);
     }
 
     private static A.Outline? OutlineFromProperties(OpenXmlElement? properties)
