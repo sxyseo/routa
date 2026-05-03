@@ -64,9 +64,8 @@ internal static class PptxPresentationProtoReader
         var heightEmu = ToLong(slideSize?.Cy) ?? 6_858_000L;
         var slideIds = presentationPart?.Presentation.SlideIdList?.Elements<P.SlideId>() ?? Enumerable.Empty<P.SlideId>();
         var slideParts = ResolveSlideParts(presentationPart, slideIds).Take(OpenXmlReaderLimits.MaxSlides).ToList();
-        var usedSlideLayoutParts = DistinctByUri(slideParts.Select(part => part.SlideLayoutPart)).ToList();
-        var slideMasterParts = DistinctByUri(usedSlideLayoutParts.Select(part => part?.SlideMasterPart)).ToList();
-        var slideLayoutParts = DistinctByUri(usedSlideLayoutParts.Concat(slideMasterParts.SelectMany(part => part.SlideLayoutParts))).ToList();
+        var slideMasterParts = DistinctByUri(presentationPart?.SlideMasterParts ?? Enumerable.Empty<SlideMasterPart>()).ToList();
+        var slideLayoutParts = DistinctByUri(slideMasterParts.SelectMany(part => part.SlideLayoutParts)).ToList();
         var themePart = slideMasterParts.Select(part => part.ThemePart).FirstOrDefault(part => part is not null);
         var tableStylesPart = presentationPart?.TableStylesPart;
         var presentationParts = slideParts.Cast<OpenXmlPart>()
