@@ -78,6 +78,7 @@ describe("spreadsheet charts", () => {
       series: [
         { color: "#1f6f8b", label: "Fitness Score", marker: "diamond" as const, values: [62.6, 78.1, 89.9] },
       ],
+      showDataLabels: false,
       title: "Fitness Score vs Coverage",
       top: 0,
       type: "line" as const,
@@ -101,6 +102,7 @@ describe("spreadsheet charts", () => {
       height: 240,
       left: 0,
       series: [{ color: "#1f6f8b", label: "Series", marker: "square" as const, values: [10, 20] }],
+      showDataLabels: false,
       title: "Legend Layout",
       top: 0,
       type: "line" as const,
@@ -203,5 +205,33 @@ describe("spreadsheet charts", () => {
     });
 
     expect(charts[0]?.series.map((series) => series.marker)).toEqual([null, "square"]);
+  });
+
+  it("preserves chart data-label visibility from protocol", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            dataLabels: {},
+            series: [{ categories: ["A", "B"], name: "Values", values: [1, 2] }],
+            title: "Data Labels",
+            type: 4,
+          },
+          extentCx: "1905000",
+          extentCy: "952500",
+          fromAnchor: { colId: "1", rowId: "1" },
+        },
+      ],
+      name: "Charts",
+      rows: [],
+    };
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [],
+      layout: buildSpreadsheetLayout(sheet),
+      sheets: [sheet],
+    });
+
+    expect(charts[0]?.showDataLabels).toBe(true);
   });
 });

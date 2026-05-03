@@ -61,6 +61,7 @@ export type SpreadsheetChartSpec = {
   legendOverlay: boolean;
   legendPosition: SpreadsheetChartLegendPosition;
   series: SpreadsheetChartSeries[];
+  showDataLabels: boolean;
   title: string;
   top: number;
   type: SpreadsheetChartType;
@@ -110,6 +111,7 @@ export function buildSpreadsheetCharts({
       legendOverlay: false,
       legendPosition: "none",
       series: [spreadsheetChartSeries("Count", statusValues, 0)],
+      showDataLabels: false,
       title: "Tasks by Status",
       top: spreadsheetRowTop(layout, 16),
       type: "bar",
@@ -144,6 +146,7 @@ export function buildSpreadsheetCharts({
         spreadsheetChartSeries("Fitness Score", fitnessValues, 0),
         spreadsheetChartSeries("Coverage %", coverageValues, 1),
       ],
+      showDataLabels: false,
       title: "Fitness Score vs Coverage",
       top: spreadsheetRowTop(layout, 30),
       type: "line",
@@ -241,6 +244,7 @@ function chartFromRecord(
     legendOverlay: spreadsheetLegendOverlay(chart.legend),
     legendPosition: spreadsheetLegendPosition(chart.legend),
     series,
+    showDataLabels: spreadsheetChartHasDataLabels(chart),
     title: asString(chart.title),
     top: bounds.top,
     type: spreadsheetChartType(chart),
@@ -298,6 +302,10 @@ function spreadsheetLegendPosition(value: unknown): SpreadsheetChartLegendPositi
 function spreadsheetLegendOverlay(value: unknown): boolean {
   const legend = asRecord(value);
   return legend?.overlay === true || asString(legend?.overlay).toLowerCase() === "true" || asString(legend?.overlay) === "1";
+}
+
+function spreadsheetChartHasDataLabels(chart: RecordValue): boolean {
+  return asRecord(chart.dataLabels) != null || chart.hasDataLabels === true;
 }
 
 function spreadsheetChartType(chart: RecordValue): SpreadsheetChartType {
@@ -482,6 +490,9 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
       break;
   }
 
+  if (chart.showDataLabels) {
+    drawChartDataLabels(context, chart, plot, minValue, maxValue);
+  }
   drawChartLegend(context, chart, plot);
 }
 
@@ -898,6 +909,84 @@ function drawLineCategoryLabels(
     if (rest.length > 0) {
       context.fillText(rest.join(" "), x, plot.bottom + 36);
     }
+  });
+}
+
+function drawChartDataLabels(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  minValue: number,
+  maxValue: number,
+) {
+  context.save();
+  context.fillStyle = "#374151";
+  context.font = "11px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+
+  if (isCircularChart(chart.type)) {
+    drawCircularDataLabels(context, chart, plot);
+  } else if (chart.type === "bar") {
+    drawBarDataLabels(context, chart, plot, minValue, maxValue);
+  } else if (isLineAxisChart(chart.type)) {
+    drawLineDataLabels(context, chart, plot, minValue, maxValue);
+  }
+
+  context.restore();
+}
+
+function drawLineDataLabels(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  minValue: number,
+  maxValue: number,
+) {
+  const pointCount = Math.max(1, chart.categories.length - 1);
+  const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
+  chart.series.forEach((series) => {
+    series.values.forEach((value, index) => {
+      context.fillText(formatChartTick(value, chart.yAxis?.numberFormat), xForIndex(index), chartY(value, plot, minValue, maxValue) - 14);
+    });
+  });
+}
+
+function drawBarDataLabels(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  minValue: number,
+  maxValue: number,
+) {
+  const series = chart.series[0];
+  const values = series?.values ?? [];
+  const slotWidth = (plot.right - plot.left) / Math.max(1, values.length);
+  values.forEach((value, index) => {
+    const centerX = plot.left + slotWidth * index + slotWidth / 2;
+    const y = chartY(value, plot, minValue, maxValue);
+    context.fillText(formatChartTick(value, chart.yAxis?.numberFormat), centerX, Math.max(plot.top + 10, y - 12));
+  });
+}
+
+function drawCircularDataLabels(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+) {
+  const values = chart.series[0]?.values.map((value) => Math.max(0, value)) ?? [];
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return;
+  const centerX = (plot.left + plot.right) / 2;
+  const centerY = (plot.top + plot.bottom) / 2;
+  const radius = Math.max(12, Math.min(plot.right - plot.left, plot.bottom - plot.top) * 0.32);
+  let startAngle = -Math.PI / 2;
+  values.forEach((value, index) => {
+    const angle = (value / total) * Math.PI * 2;
+    const midAngle = startAngle + angle / 2;
+    const label = chart.categories[index] || formatChartTick(value, chart.yAxis?.numberFormat);
+    context.fillText(label, centerX + Math.cos(midAngle) * radius, centerY + Math.sin(midAngle) * radius);
+    startAngle += angle;
   });
 }
 
