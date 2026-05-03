@@ -835,6 +835,7 @@ internal static class PptxPresentationProtoReader
         var customGeometry = properties?.GetFirstChild<A.CustomGeometry>();
         var geometryCode = customGeometry is not null ? ShapeGeometryCustom : GeometryCode(geometry);
         var adjustments = ExtractAdjustments(geometry).ToList();
+        var customPaths = ExtractCustomGeometryPaths(customGeometry).ToList();
         if (geometry is null && customGeometry is null && fill is null && line is null && properties?.GetFirstChild<A.NoFill>() is null && adjustments.Count == 0)
         {
             return null;
@@ -865,6 +866,124 @@ internal static class PptxPresentationProtoReader
             {
                 WriteMessage(output, 7, adjustment);
             }
+
+            var rectangle = customGeometry?.GetFirstChild<A.Rectangle>();
+            if (rectangle is not null)
+            {
+                WriteMessage(output, 8, WriteCustomGeometryRectangle(rectangle));
+            }
+
+            foreach (var path in customPaths)
+            {
+                WriteMessage(output, 9, path);
+            }
+        });
+    }
+
+    private static byte[] WriteCustomGeometryRectangle(A.Rectangle rectangle)
+    {
+        return Message(output =>
+        {
+            WriteString(output, 1, AttributeValue(rectangle, "t"));
+            WriteString(output, 2, AttributeValue(rectangle, "l"));
+            WriteString(output, 3, AttributeValue(rectangle, "r"));
+            WriteString(output, 4, AttributeValue(rectangle, "b"));
+        });
+    }
+
+    private static IEnumerable<byte[]> ExtractCustomGeometryPaths(A.CustomGeometry? geometry)
+    {
+        var pathList = geometry?.GetFirstChild<A.PathList>();
+        if (pathList is null)
+        {
+            yield break;
+        }
+
+        foreach (var path in pathList.Elements<A.Path>())
+        {
+            var commands = ExtractCustomPathCommands(path).ToList();
+            yield return Message(output =>
+            {
+                WriteInt64(output, 1, ToLong(path.Width));
+                WriteInt64(output, 2, ToLong(path.Height));
+                foreach (var command in commands)
+                {
+                    WriteMessage(output, 3, command);
+                }
+                WriteString(output, 4, AttributeValue(path, "id"));
+            });
+        }
+    }
+
+    private static IEnumerable<byte[]> ExtractCustomPathCommands(A.Path path)
+    {
+        foreach (var command in path.ChildElements)
+        {
+            switch (command.LocalName)
+            {
+                case "moveTo":
+                    yield return Message(output => WriteMessage(output, 1, WriteCustomPathPoint(command.GetFirstChild<A.Point>())));
+                    break;
+                case "lnTo":
+                    yield return Message(output => WriteMessage(output, 2, WriteCustomPathPoint(command.GetFirstChild<A.Point>())));
+                    break;
+                case "close":
+                    yield return Message(output => WriteMessageAlways(output, 3, Message(_ => { })));
+                    break;
+                case "quadBezTo":
+                    yield return Message(output => WriteMessage(output, 4, WriteQuadraticBezier(command.Elements<A.Point>().ToList())));
+                    break;
+                case "cubicBezTo":
+                    yield return Message(output => WriteMessage(output, 5, WriteCubicBezier(command.Elements<A.Point>().ToList())));
+                    break;
+                case "arcTo":
+                    yield return Message(output => WriteMessage(output, 6, WriteCustomPathArc(command)));
+                    break;
+            }
+        }
+    }
+
+    private static byte[] WriteCustomPathPoint(A.Point? point)
+    {
+        return Message(output =>
+        {
+            WriteInt64(output, 1, ToLong(AttributeValue(point, "x")));
+            WriteInt64(output, 2, ToLong(AttributeValue(point, "y")));
+        });
+    }
+
+    private static byte[] WriteQuadraticBezier(IReadOnlyList<A.Point> points)
+    {
+        return Message(output =>
+        {
+            WriteInt64(output, 1, ToLong(AttributeValue(points.ElementAtOrDefault(0), "x")));
+            WriteInt64(output, 2, ToLong(AttributeValue(points.ElementAtOrDefault(0), "y")));
+            WriteInt64(output, 3, ToLong(AttributeValue(points.ElementAtOrDefault(1), "x")));
+            WriteInt64(output, 4, ToLong(AttributeValue(points.ElementAtOrDefault(1), "y")));
+        });
+    }
+
+    private static byte[] WriteCubicBezier(IReadOnlyList<A.Point> points)
+    {
+        return Message(output =>
+        {
+            WriteInt64(output, 1, ToLong(AttributeValue(points.ElementAtOrDefault(0), "x")));
+            WriteInt64(output, 2, ToLong(AttributeValue(points.ElementAtOrDefault(0), "y")));
+            WriteInt64(output, 3, ToLong(AttributeValue(points.ElementAtOrDefault(1), "x")));
+            WriteInt64(output, 4, ToLong(AttributeValue(points.ElementAtOrDefault(1), "y")));
+            WriteInt64(output, 5, ToLong(AttributeValue(points.ElementAtOrDefault(2), "x")));
+            WriteInt64(output, 6, ToLong(AttributeValue(points.ElementAtOrDefault(2), "y")));
+        });
+    }
+
+    private static byte[] WriteCustomPathArc(OpenXmlElement arc)
+    {
+        return Message(output =>
+        {
+            WriteInt64(output, 1, ToLong(AttributeValue(arc, "wR")));
+            WriteInt64(output, 2, ToLong(AttributeValue(arc, "hR")));
+            WriteInt64(output, 3, ToLong(AttributeValue(arc, "stAng")));
+            WriteInt64(output, 4, ToLong(AttributeValue(arc, "swAng")));
         });
     }
 
@@ -1356,19 +1475,25 @@ internal static class PptxPresentationProtoReader
             var fill = line.GetFirstChild<A.SolidFill>();
             var noFill = line.GetFirstChild<A.NoFill>() is not null;
             var lineStyle = LineStyle(line);
+            if (noFill)
+            {
+                WriteMessageAlways(output, 3, Message(_ => { }));
+                return;
+            }
+
             if (lineStyle != 0 && !suppressStyle)
             {
                 WriteInt32(output, 1, lineStyle);
             }
 
-            WriteInt32(output, 2, LineWidth(line));
             if (fill is not null)
             {
+                WriteInt32(output, 2, LineWidth(line));
                 WriteMessage(output, 3, WriteFill(fill));
             }
-            else if (noFill)
+            else
             {
-                WriteMessageAlways(output, 3, Message(_ => { }));
+                WriteInt32(output, 2, LineWidth(line));
             }
 
             if (!suppressDetails)
@@ -2581,6 +2706,11 @@ internal static class PptxPresentationProtoReader
     private static long? ToLong(Int32Value? value)
     {
         return value?.Value;
+    }
+
+    private static long? ToLong(string? value)
+    {
+        return long.TryParse(value, out var parsed) ? parsed : null;
     }
 
     private static int? ToInt32(Int64Value? value)
