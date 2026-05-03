@@ -12,6 +12,7 @@ import {
   columnLabel,
   colorToCss,
   cssFontSize,
+  parseCellRange,
   type PreviewLabels,
   type RecordValue,
   resolveStyleRecord,
@@ -22,6 +23,7 @@ import {
 } from "./office-preview-utils";
 import {
   buildSpreadsheetConditionalVisuals,
+  protocolColorToCss,
   type SpreadsheetCellVisual,
   type SpreadsheetCellVisualLookup,
 } from "./spreadsheet-conditional-visuals";
@@ -61,6 +63,14 @@ type SpreadsheetFloatingSpec = {
   left: number;
   top: number;
   width: number;
+};
+
+type SpreadsheetSparklineVisual = {
+  color: string;
+  lineWeight: number;
+  markers: boolean;
+  type: "column" | "line" | "stacked";
+  values: number[];
 };
 
 const EXCEL_BUILT_IN_NUMBER_FORMATS = new Map<number, string>([
@@ -151,6 +161,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     [imageSpecs, viewportScroll, viewportSize],
   );
   const cellVisuals = useMemo(() => buildSpreadsheetConditionalVisuals(activeSheet, theme), [activeSheet, theme]);
+  const sparklineVisuals = useMemo(() => buildSpreadsheetSparklineVisuals(activeSheet), [activeSheet]);
 
   const applyViewportState = useCallback((next: SpreadsheetViewportState) => {
     setViewportScroll((current) => {
@@ -270,6 +281,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               cellVisuals={cellVisuals}
               layout={layout}
               scroll={viewportScroll}
+              sparklineVisuals={sparklineVisuals}
               styles={styles}
               viewportSize={viewportSize}
             />
@@ -283,6 +295,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           cellVisuals={cellVisuals}
           layout={layout}
           scroll={viewportScroll}
+          sparklineVisuals={sparklineVisuals}
           styles={styles}
           viewportSize={viewportSize}
         />
@@ -340,6 +353,7 @@ function SpreadsheetFrozenBodyLayer({
   cellVisuals,
   layout,
   scroll,
+  sparklineVisuals,
   styles,
   viewportSize,
 }: {
@@ -347,6 +361,7 @@ function SpreadsheetFrozenBodyLayer({
   cellVisuals: SpreadsheetCellVisualLookup;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
+  sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
   viewportSize: SpreadsheetViewportSize;
 }) {
@@ -394,6 +409,7 @@ function SpreadsheetFrozenBodyLayer({
           if (rects.length === 0) return null;
 
           const visual = cellVisuals.get(cellKey);
+          const sparkline = sparklineVisuals.get(cellKey);
           const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
           const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
           return rects.map((rect, segmentIndex) => (
@@ -410,7 +426,7 @@ function SpreadsheetFrozenBodyLayer({
                 width: rect.width,
               }}
             >
-              <SpreadsheetCellContent text={text} visual={visual} />
+              <SpreadsheetCellContent sparkline={sparkline} text={text} visual={visual} />
             </div>
           ));
         });
@@ -424,6 +440,7 @@ function SpreadsheetGrid({
   cellVisuals,
   layout,
   scroll,
+  sparklineVisuals,
   styles,
   viewportSize,
 }: {
@@ -431,6 +448,7 @@ function SpreadsheetGrid({
   cellVisuals: SpreadsheetCellVisualLookup;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
+  sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
   viewportSize: SpreadsheetViewportSize;
 }) {
@@ -501,6 +519,7 @@ function SpreadsheetGrid({
               const width = spreadsheetColumnLeft(layout, columnIndex + (merge?.columnSpan ?? 1)) - left;
               const cellHeight = spreadsheetRowTop(layout, rowOffset + (merge?.rowSpan ?? 1)) - top;
               const visual = cellVisuals.get(cellKey);
+              const sparkline = sparklineVisuals.get(cellKey);
               const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
               const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
               return (
@@ -517,7 +536,7 @@ function SpreadsheetGrid({
                     width,
                   }}
                 >
-                  <SpreadsheetCellContent text={text} visual={visual} />
+                  <SpreadsheetCellContent sparkline={sparkline} text={text} visual={visual} />
                 </div>
               );
             })}
@@ -1139,6 +1158,56 @@ function cellAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: n
   return rowsByIndexForSheet(sheet).get(rowIndex)?.get(columnIndex) ?? null;
 }
 
+export function buildSpreadsheetSparklineVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetSparklineVisual> {
+  const visuals = new Map<string, SpreadsheetSparklineVisual>();
+  const rows = rowsByIndexForSheet(sheet);
+  const groupRoot = asRecord(sheet?.sparklineGroups);
+  const groups = (groupRoot ? asArray(groupRoot.groups) : asArray(sheet?.sparklineGroups))
+    .map(asRecord)
+    .filter((group): group is RecordValue => group != null);
+
+  for (const group of groups) {
+    const sparklines = asArray(group.sparklines).map(asRecord).filter((sparkline): sparkline is RecordValue => sparkline != null);
+    for (const sparkline of sparklines) {
+      const targetRange = parseCellRange(asString(sparkline.reference));
+      if (!targetRange) continue;
+      const values = sparklineValues(rows, asString(sparkline.formula) || asString(group.formula));
+      if (values.length === 0) continue;
+      visuals.set(spreadsheetCellKey(targetRange.startRow, targetRange.startColumn), {
+        color: protocolColorToCss(group.seriesColor) ?? "#1f6f8b",
+        lineWeight: Math.max(1, asNumber(group.lineWeight, 1.25)),
+        markers: group.markers === true,
+        type: spreadsheetSparklineType(group.type),
+        values,
+      });
+    }
+  }
+
+  return visuals;
+}
+
+function sparklineValues(rows: Map<number, Map<number, RecordValue>>, reference: string): number[] {
+  const range = parseCellRange(reference);
+  if (!range) return [];
+  const values: number[] = [];
+  for (let rowIndex = range.startRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
+    const row = rows.get(rowIndex);
+    if (!row) continue;
+    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
+      const value = Number(cellText(row.get(columnIndex)));
+      if (Number.isFinite(value)) values.push(value);
+    }
+  }
+  return values;
+}
+
+function spreadsheetSparklineType(value: unknown): SpreadsheetSparklineVisual["type"] {
+  const raw = asNumber(value, 1);
+  if (raw === 2) return "column";
+  if (raw === 3) return "stacked";
+  return "line";
+}
+
 function defaultSpreadsheetSheetIndex(sheets: RecordValue[]): number {
   if (sheets.length <= 1) return 0;
   const readmeFirst = /^00[_ -]?readme$/i.test(asString(sheets[0]?.name));
@@ -1153,14 +1222,17 @@ function spreadsheetFontFamily(typeface: string): string {
 }
 
 function SpreadsheetCellContent({
+  sparkline,
   text,
   visual,
 }: {
+  sparkline?: SpreadsheetSparklineVisual;
   text: string;
   visual?: SpreadsheetCellVisual;
 }) {
   return (
     <>
+      {sparkline ? <SpreadsheetSparkline visual={sparkline} /> : null}
       {visual?.dataBar ? (
         <>
           <span
@@ -1195,7 +1267,7 @@ function SpreadsheetCellContent({
         </>
       ) : null}
       {visual?.iconSet ? <SpreadsheetIconSet visual={visual.iconSet} /> : null}
-      {visual?.iconSet?.showValue === false ? null : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
+      {sparkline || visual?.iconSet?.showValue === false ? null : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
       {visual?.filter ? (
         <span
           aria-hidden="true"
@@ -1224,6 +1296,53 @@ function SpreadsheetCellContent({
         </span>
       ) : null}
     </>
+  );
+}
+
+function SpreadsheetSparkline({ visual }: { visual: SpreadsheetSparklineVisual }) {
+  const width = 100;
+  const height = 28;
+  const values = visual.values;
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 1);
+  const span = Math.max(1, max - min);
+  const xForIndex = (index: number) => 4 + (index / Math.max(1, values.length - 1)) * (width - 8);
+  const yForValue = (value: number) => height - 4 - ((value - min) / span) * (height - 8);
+  const points = values.map((value, index) => `${xForIndex(index)},${yForValue(value)}`).join(" ");
+
+  return (
+    <svg
+      aria-hidden="true"
+      preserveAspectRatio="none"
+      style={{ inset: "3px 5px", pointerEvents: "none", position: "absolute", zIndex: 1 }}
+      viewBox={`0 0 ${width} ${height}`}
+    >
+      {visual.type === "line" ? (
+        <>
+          <polyline fill="none" points={points} stroke={visual.color} strokeLinejoin="round" strokeWidth={visual.lineWeight} />
+          {visual.markers ? values.map((value, index) => (
+            <circle cx={xForIndex(index)} cy={yForValue(value)} fill={visual.color} key={index} r="1.8" />
+          )) : null}
+        </>
+      ) : (
+        values.map((value, index) => {
+          const barWidth = Math.max(2, (width - 8) / Math.max(1, values.length) * 0.55);
+          const x = xForIndex(index) - barWidth / 2;
+          const zeroY = yForValue(0);
+          const valueY = yForValue(visual.type === "stacked" ? Math.abs(value) : value);
+          return (
+            <rect
+              fill={visual.color}
+              height={Math.max(1, Math.abs(zeroY - valueY))}
+              key={index}
+              width={barWidth}
+              x={x}
+              y={Math.min(zeroY, valueY)}
+            />
+          );
+        })
+      )}
+    </svg>
   );
 }
 

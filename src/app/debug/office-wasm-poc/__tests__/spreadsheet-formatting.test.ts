@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSpreadsheetSparklineVisuals,
   spreadsheetCellStyle,
   spreadsheetCellText,
   spreadsheetNumberFormatCode,
@@ -101,6 +102,33 @@ describe("spreadsheet cell formatting", () => {
       textOverflow: "ellipsis",
       verticalAlign: "bottom",
       whiteSpace: "nowrap",
+    });
+  });
+
+  it("builds visible sparkline cells from sheet sparkline groups", () => {
+    const sheet = {
+      rows: [
+        { cells: [{ address: "A1", value: 1 }, { address: "B1", value: 2 }, { address: "C1", value: 3 }], index: 1 },
+      ],
+      sparklineGroups: {
+        groups: [
+          {
+            lineWeight: 2,
+            markers: true,
+            seriesColor: { value: "FF00AA00" },
+            sparklines: [{ formula: "A1:C1", reference: "D1" }],
+            type: 1,
+          },
+        ],
+      },
+    };
+
+    expect(buildSpreadsheetSparklineVisuals(sheet).get("1:3")).toEqual({
+      color: "#00AA00",
+      lineWeight: 2,
+      markers: true,
+      type: "line",
+      values: [1, 2, 3],
     });
   });
 });
