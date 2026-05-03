@@ -159,4 +159,40 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("1048576:0")?.background).toBe("rgb(0, 255, 0)");
     expect(visuals.get("1000:0")).toBeUndefined();
   });
+
+  it("honors stop-if-true conditional format precedence", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A2"],
+          rules: [
+            {
+              bold: true,
+              fillColor: "FF0000",
+              formulas: ["10"],
+              operator: "greaterThan",
+              stopIfTrue: true,
+              type: "cellIs",
+            },
+            {
+              fillColor: "00FF00",
+              formulas: ["0"],
+              operator: "greaterThan",
+              type: "cellIs",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: 12 }], index: 1 },
+        { cells: [{ address: "A2", value: 5 }], index: 2 },
+      ],
+    });
+
+    expect(visuals.get("1:0")).toMatchObject({
+      background: "#FF0000",
+      fontWeight: 700,
+    });
+    expect(visuals.get("2:0")?.background).toBe("#00FF00");
+  });
 });

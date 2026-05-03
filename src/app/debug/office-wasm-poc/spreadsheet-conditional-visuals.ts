@@ -82,6 +82,7 @@ type SpreadsheetConditionalVisualSpec =
     format: RecordValue;
     kind: "format";
     range: SpreadsheetCellRange;
+    stopIfTrue: boolean;
   }
   | {
     kind: "fallbackColorScale";
@@ -154,7 +155,7 @@ export function buildSpreadsheetConditionalVisuals(
         continue;
       }
 
-      conditionalVisuals.push({ format, kind: "format", range });
+      conditionalVisuals.push({ format, kind: "format", range, stopIfTrue: format.stopIfTrue === true });
     }
   }
 
@@ -399,6 +400,7 @@ function spreadsheetConditionalCellVisual(
           color: protocolColorToCss(rule.format.fontColor),
           fontWeight: rule.format.bold === true ? 700 : undefined,
         });
+        if (rule.stopIfTrue) return visual;
         break;
       }
       case "fallbackColorScale":
