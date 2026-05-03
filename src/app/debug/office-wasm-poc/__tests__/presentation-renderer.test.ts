@@ -17,6 +17,10 @@ import {
   presentationShapeKind,
   presentationTableGrid,
 } from "../presentation-renderer";
+import {
+  presentationEffectiveTextMaxWidth,
+  presentationParagraphSpacingPx,
+} from "../presentation-text-layout";
 
 describe("presentation renderer helpers", () => {
   it("quotes source typefaces and appends Office/CJK fallbacks", () => {
@@ -238,6 +242,14 @@ describe("presentation renderer helpers", () => {
     expect(paragraph.style?.indent).toBe(-90_000);
     expect(paragraph.style?.spaceAfter).toBe(120);
     expect(paragraph.runs[0]?.style?.marginLeft).toBe(180_000);
+  });
+
+  it("uses PPT text frame paragraph spacing and conservative wrap width", () => {
+    expect(presentationParagraphSpacingPx(undefined, 2, false)).toBe(0);
+    expect(presentationParagraphSpacingPx(undefined, 2, true)).toBe(18);
+    expect(presentationParagraphSpacingPx(120, 2, true)).toBe(12);
+    expect(presentationEffectiveTextMaxWidth(500, false)).toBe(500);
+    expect(presentationEffectiveTextMaxWidth(500, true)).toBeCloseTo(470);
   });
 
   it("inherits PPT placeholder geometry and text styles from layouts and masters", () => {

@@ -14,6 +14,7 @@ import {
 } from "./office-preview-utils";
 
 const PRESENTATION_POINT_TO_CSS_PIXEL = 1.333;
+const POWERPOINT_WRAP_WIDTH_FACTOR = 0.94;
 
 export type PresentationTextOverflow = "clip" | "visible";
 
@@ -49,6 +50,7 @@ type TextFrameOptions = {
   maxHeight: number;
   maxWidth: number;
   slideScale: number;
+  useParagraphSpacing: boolean;
   wrap: boolean;
 };
 
@@ -90,8 +92,9 @@ export function drawPresentationTextBox({
     autoFit: asRecord(textStyle?.autoFit) != null,
     emuScaleX: canvas.width / slideBounds.width,
     maxHeight,
-    maxWidth,
+    maxWidth: presentationEffectiveTextMaxWidth(maxWidth, asNumber(textStyle?.wrap, 2) !== 1),
     slideScale,
+    useParagraphSpacing: textStyle?.useParagraphSpacing !== false && paragraphs.length > 1,
     wrap: asNumber(textStyle?.wrap, 2) !== 1,
   });
   const verticalOffset = verticalTextOffset(asNumber(textStyle?.anchor), layout.height, maxHeight);
@@ -221,9 +224,9 @@ function layoutTextRuns(
     inheritedEmptyLineHeight = lineHeight;
   }
 
-  for (const paragraph of paragraphs) {
+  for (const [paragraphIndex, paragraph] of paragraphs.entries()) {
     setParagraphOptions(paragraph);
-    y += paragraphSpacingPx(paragraph.style?.spaceBefore, slideScale);
+    y += presentationParagraphSpacingPx(paragraph.style?.spaceBefore, slideScale, false);
     const bullet = paragraphBullet(paragraph);
     if (bullet) {
       const bulletRun = paragraph.runs[0] ?? { id: `${paragraph.id}-bullet`, style: paragraph.style, text: bullet };
@@ -235,7 +238,11 @@ function layoutTextRuns(
     if (paragraph.runs.length === 0) {
       lineHeight = Math.max(lineHeight, inheritedEmptyLineHeight);
       flushLine(true);
-      y += paragraphSpacingPx(paragraph.style?.spaceAfter, slideScale);
+      y += presentationParagraphSpacingPx(
+        paragraph.style?.spaceAfter,
+        slideScale,
+        options.useParagraphSpacing && paragraphIndex < paragraphs.length - 1,
+      );
       continue;
     }
 
@@ -273,7 +280,11 @@ function layoutTextRuns(
     }
 
     flushLine();
-    y += paragraphSpacingPx(paragraph.style?.spaceAfter, slideScale);
+    y += presentationParagraphSpacingPx(
+      paragraph.style?.spaceAfter,
+      slideScale,
+      options.useParagraphSpacing && paragraphIndex < paragraphs.length - 1,
+    );
   }
 
   return { height: y, segments };
@@ -337,9 +348,18 @@ function paragraphBullet(paragraph: ParagraphView): string {
   return bullet.trim();
 }
 
-function paragraphSpacingPx(value: unknown, slideScale: number): number {
+export function presentationEffectiveTextMaxWidth(maxWidth: number, wrap: boolean): number {
+  if (!wrap) return maxWidth;
+  return Math.max(1, maxWidth * POWERPOINT_WRAP_WIDTH_FACTOR);
+}
+
+export function presentationParagraphSpacingPx(
+  value: unknown,
+  slideScale: number,
+  useDefaultParagraphSpacing = false,
+): number {
   const raw = asNumber(value);
-  if (raw <= 0) return 0;
+  if (raw <= 0) return useDefaultParagraphSpacing ? 9 * Math.max(0.01, slideScale) : 0;
   return Math.min(24, raw / 20) * Math.max(0.01, slideScale);
 }
 

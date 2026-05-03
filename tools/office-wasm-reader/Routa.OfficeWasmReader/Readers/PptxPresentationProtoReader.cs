@@ -539,7 +539,7 @@ internal static class PptxPresentationProtoReader
 
         foreach (var paragraph in textBody.Elements<A.Paragraph>())
         {
-            var runs = ExtractRuns(paragraph, true).ToList();
+            var runs = ExtractRuns(paragraph, includeEmptyText: true, preserveBreaks: false, preserveFields: false).ToList();
             yield return Message(output =>
             {
                 foreach (var run in runs)
@@ -748,18 +748,31 @@ internal static class PptxPresentationProtoReader
         }
     }
 
-    private static IEnumerable<byte[]> ExtractRuns(A.Paragraph paragraph, bool includeEmptyText = false)
+    private static IEnumerable<byte[]> ExtractRuns(
+        A.Paragraph paragraph,
+        bool includeEmptyText = false,
+        bool preserveBreaks = true,
+        bool preserveFields = false)
     {
-        var runIndex = 0;
-        foreach (var run in paragraph.Elements<A.Run>())
+        foreach (var child in paragraph.ChildElements)
         {
-            var text = PreservePresentationText(run.Text?.Text);
+            var text = child switch
+            {
+                A.Run run => PreservePresentationText(run.Text?.Text),
+                A.Break => preserveBreaks ? "\n" : "",
+                A.Field field => preserveFields ? PreservePresentationText(field.Text?.Text) : "",
+                _ => "",
+            };
             if (text.Length == 0 && !includeEmptyText)
             {
                 continue;
             }
 
-            var runProperties = run.RunProperties;
+            var runProperties = child switch
+            {
+                A.Run run => run.RunProperties,
+                _ => null,
+            };
             yield return Message(output =>
             {
                 WriteString(output, 1, text);
@@ -768,7 +781,6 @@ internal static class PptxPresentationProtoReader
                     WriteMessage(output, 2, WriteTextStyle(runProperties));
                 }
             });
-            runIndex++;
         }
     }
 
@@ -2192,7 +2204,7 @@ internal static class PptxPresentationProtoReader
 
     private static string NormalizeImageContentType(string contentType)
     {
-        return string.Equals(contentType, "image/jpeg", StringComparison.OrdinalIgnoreCase) ? "image/jpg" : contentType;
+        return contentType;
     }
 
     private static string PreservePresentationText(string? value)
