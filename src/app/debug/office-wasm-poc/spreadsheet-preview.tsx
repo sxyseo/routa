@@ -225,8 +225,13 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           return spreadsheetCellText(cell, styles, asString(activeSheet?.name), styleIndex);
         },
       },
+      visibleRange: buildSpreadsheetRenderSnapshot({
+        layout,
+        scroll: viewportScroll,
+        viewportSize,
+      }).visibleRange,
     }),
-    [activeSheet, cellEdits, cellVisuals, layout, styles],
+    [activeSheet, cellEdits, cellVisuals, layout, styles, viewportScroll, viewportSize],
   );
 
   useEffect(() => () => viewportStore.destroy(), [viewportStore]);
