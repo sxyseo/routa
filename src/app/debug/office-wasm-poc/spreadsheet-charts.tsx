@@ -39,6 +39,17 @@ type SpreadsheetChartLegendItem = {
   showLine: boolean;
 };
 
+type SpreadsheetChartErrorBars = {
+  amount: number;
+  color: string;
+  direction: "both" | "minus" | "plus";
+};
+
+type SpreadsheetChartTrendline = {
+  color: string;
+  type: string;
+};
+
 const CHART_PALETTE = ["#1f6f8b", "#f9732a", "#5b7f2a", "#9467bd", "#8c564b", "#2ca02c", "#d62728"];
 
 export type SpreadsheetChartPlotArea = {
@@ -50,8 +61,10 @@ export type SpreadsheetChartPlotArea = {
 
 export type SpreadsheetChartSeries = {
   color: string;
+  errorBars?: SpreadsheetChartErrorBars;
   label: string;
   marker: "diamond" | "square" | null;
+  trendlines: SpreadsheetChartTrendline[];
   values: number[];
 };
 
@@ -240,6 +253,7 @@ function chartFromRecord(
       index,
       protocolColorToCss(item.color),
       chartSeriesHasMarker(item),
+      item,
     ))
     .filter((item) => item.values.length > 0);
   if (series.length === 0) return null;
@@ -269,17 +283,49 @@ function spreadsheetChartSeries(
   index: number,
   color?: string,
   markerVisible = true,
+  source?: RecordValue,
 ): SpreadsheetChartSeries {
+  const seriesColor = color ?? chartPalette(index);
+  const errorBars = source ? chartSeriesErrorBars(source, seriesColor) : undefined;
   return {
-    color: color ?? chartPalette(index),
+    color: seriesColor,
+    ...(errorBars ? { errorBars } : {}),
     label,
     marker: markerVisible ? (index % 2 === 0 ? "diamond" : "square") : null,
+    trendlines: source ? chartSeriesTrendlines(source, seriesColor) : [],
     values,
   };
 }
 
 function chartSeriesHasMarker(series: RecordValue): boolean {
   return series.marker === true || asRecord(series.marker) != null;
+}
+
+function chartSeriesErrorBars(series: RecordValue, color: string): SpreadsheetChartErrorBars | undefined {
+  const record = asRecord(series.errorBars) ?? asRecord(series.yErrorBars);
+  if (!record) return undefined;
+  const amount = protocolNumber(record.amount ?? record.value ?? record.fixedValue ?? record.val, Number.NaN);
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+  const direction = asString(record.direction || record.type).toLowerCase();
+  return {
+    amount,
+    color: protocolColorToCss(record.color) ?? color,
+    direction: direction.includes("plus") ? "plus" : direction.includes("minus") ? "minus" : "both",
+  };
+}
+
+function chartSeriesTrendlines(series: RecordValue, color: string): SpreadsheetChartTrendline[] {
+  return recordList(series.trendlines ?? series.trendline)
+    .map((record) => ({
+      color: protocolColorToCss(record.color) ?? color,
+      type: asString(record.type || record.name) || "linear",
+    }));
+}
+
+function recordList(value: unknown): RecordValue[] {
+  const records = asArray(value).map(asRecord).filter((record): record is RecordValue => record != null);
+  const single = asRecord(value);
+  return records.length > 0 ? records : single ? [single] : [];
 }
 
 function spreadsheetLegendPosition(value: unknown): SpreadsheetChartLegendPosition {
@@ -738,6 +784,8 @@ function drawLineChart(
       else context.lineTo(x, y);
     });
     context.stroke();
+    drawLineSeriesErrorBars(context, series, xForIndex, plot, minValue, maxValue);
+    drawLineSeriesTrendlines(context, series, xForIndex, plot, minValue, maxValue);
   });
 
   context.fillStyle = "#737373";
@@ -773,6 +821,84 @@ function drawLineChart(
     });
   });
   context.restore();
+}
+
+function drawLineSeriesErrorBars(
+  context: CanvasRenderingContext2D,
+  series: SpreadsheetChartSeries,
+  xForIndex: (index: number) => number,
+  plot: SpreadsheetChartPlotArea,
+  minValue: number,
+  maxValue: number,
+) {
+  const errorBars = series.errorBars;
+  if (!errorBars) return;
+
+  context.save();
+  context.strokeStyle = errorBars.color;
+  context.lineWidth = 1;
+  series.values.forEach((value, index) => {
+    const x = xForIndex(index);
+    const y = chartY(value, plot, minValue, maxValue);
+    const top = errorBars.direction === "minus" ? y : chartY(value + errorBars.amount, plot, minValue, maxValue);
+    const bottom = errorBars.direction === "plus" ? y : chartY(value - errorBars.amount, plot, minValue, maxValue);
+    context.beginPath();
+    context.moveTo(x, top);
+    context.lineTo(x, bottom);
+    context.moveTo(x - 4, top);
+    context.lineTo(x + 4, top);
+    context.moveTo(x - 4, bottom);
+    context.lineTo(x + 4, bottom);
+    context.stroke();
+  });
+  context.restore();
+}
+
+function drawLineSeriesTrendlines(
+  context: CanvasRenderingContext2D,
+  series: SpreadsheetChartSeries,
+  xForIndex: (index: number) => number,
+  plot: SpreadsheetChartPlotArea,
+  minValue: number,
+  maxValue: number,
+) {
+  if (series.trendlines.length === 0 || series.values.length < 2) return;
+  const regression = linearRegression(series.values);
+  if (!regression) return;
+  const firstIndex = 0;
+  const lastIndex = series.values.length - 1;
+
+  context.save();
+  context.lineWidth = 1.5;
+  context.setLineDash([6, 4]);
+  for (const trendline of series.trendlines) {
+    context.strokeStyle = trendline.color;
+    context.beginPath();
+    context.moveTo(xForIndex(firstIndex), chartY(regression.intercept, plot, minValue, maxValue));
+    context.lineTo(xForIndex(lastIndex), chartY(regression.slope * lastIndex + regression.intercept, plot, minValue, maxValue));
+    context.stroke();
+  }
+  context.restore();
+}
+
+function linearRegression(values: number[]): { intercept: number; slope: number } | null {
+  const points = values
+    .map((value, index) => ({ value, x: index }))
+    .filter((point) => Number.isFinite(point.value));
+  if (points.length < 2) return null;
+
+  const count = points.length;
+  const sumX = points.reduce((sum, point) => sum + point.x, 0);
+  const sumY = points.reduce((sum, point) => sum + point.value, 0);
+  const sumXY = points.reduce((sum, point) => sum + point.x * point.value, 0);
+  const sumXX = points.reduce((sum, point) => sum + point.x * point.x, 0);
+  const denominator = count * sumXX - sumX * sumX;
+  if (denominator === 0) return null;
+  const slope = (count * sumXY - sumX * sumY) / denominator;
+  return {
+    intercept: (sumY - slope * sumX) / count,
+    slope,
+  };
 }
 
 function drawAreaChart(

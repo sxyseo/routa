@@ -271,6 +271,43 @@ describe("spreadsheet charts", () => {
     expect(charts[0]?.yAxis?.title).toBe("USD");
   });
 
+  it("preserves protocol trendline and error bar hints for chart rendering", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            series: [
+              {
+                categories: ["Q1", "Q2", "Q3"],
+                errorBars: { amount: 2, direction: "both" },
+                name: "Revenue",
+                trendlines: [{ type: "linear" }],
+                values: [10, 20, 30],
+              },
+            ],
+            title: "Revenue Trend",
+            type: 13,
+            yAxis: { minimum: 0 },
+          },
+          extentCx: "1905000",
+          extentCy: "952500",
+          fromAnchor: { colId: "1", rowId: "1" },
+        },
+      ],
+      name: "Charts",
+      rows: [],
+    };
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [],
+      layout: buildSpreadsheetLayout(sheet),
+      sheets: [sheet],
+    });
+
+    expect(charts[0]?.series[0]?.errorBars).toMatchObject({ amount: 2, direction: "both" });
+    expect(charts[0]?.series[0]?.trendlines).toEqual([{ color: "#1f6f8b", type: "linear" }]);
+  });
+
   it("clusters bar geometry for every protocol series", () => {
     const chart = {
       categories: ["Q1", "Q2"],
