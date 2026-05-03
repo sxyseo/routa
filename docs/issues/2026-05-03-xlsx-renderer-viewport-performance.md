@@ -66,6 +66,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Row and column `styleIndex` values are now preserved in the layout adapter and participate in renderer style/number-format fallback when a cell has no direct style.
 - Built-in Excel number formats now participate in cell text rendering, covering common date, percent, decimal, thousands, and currency `numFmtId` values even when no custom `numberFormats[]` entry exists.
 - `showGridLines=false` now suppresses fallback worksheet gridline borders in the debug preview while preserving explicit cell border colors.
+- Excel alignment flags now feed the viewport renderer for common horizontal/vertical alignment, wrap suppression, shrink-to-fit, and indent styling.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

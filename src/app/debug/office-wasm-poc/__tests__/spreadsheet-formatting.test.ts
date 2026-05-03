@@ -52,4 +52,33 @@ describe("spreadsheet cell formatting", () => {
       borderRightColor: "#FF0000",
     });
   });
+
+  it("maps Excel alignment flags into viewport cell styles", () => {
+    const styles = {
+      cellXfs: [
+        {
+          alignment: {
+            horizontal: "centerContinuous",
+            indent: 2,
+            shrinkToFit: true,
+            vertical: "bottom",
+            wrapText: false,
+          },
+          fontId: 0,
+        },
+      ],
+      fonts: [{ fontSize: 20 }],
+    };
+
+    expect(spreadsheetCellStyle({ styleIndex: 0 }, styles, undefined, undefined, 0)).toMatchObject({
+      alignItems: "flex-end",
+      fontSize: 17.6,
+      justifyContent: "center",
+      paddingLeft: 33,
+      textAlign: "center",
+      textOverflow: "ellipsis",
+      verticalAlign: "bottom",
+      whiteSpace: "nowrap",
+    });
+  });
 });

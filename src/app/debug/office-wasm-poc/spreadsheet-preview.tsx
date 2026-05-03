@@ -737,20 +737,32 @@ export function spreadsheetCellStyle(
   const explicitRightBorderColor = colorToCss(asRecord(asRecord(border?.right)?.color));
   const gridLineColor = showGridLines ? "#e2e8f0" : "transparent";
   const fallbackStyle = knownSpreadsheetCellStyle(cell, sheetName);
+  const horizontalAlignment = asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment);
+  const verticalAlignment = asString(alignment?.vertical) || asString(cellFormat?.verticalAlignment);
+  const wrapText = spreadsheetBool(alignment?.wrapText ?? cellFormat?.wrapText, true);
+  const shrinkToFit = spreadsheetBool(alignment?.shrinkToFit ?? cellFormat?.shrinkToFit, false);
+  const indent = Math.max(0, asNumber(alignment?.indent ?? cellFormat?.indent, 0));
+  const fontSize = font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize;
 
   return {
     ...sheetCellStyle,
     ...fallbackStyle,
+    alignItems: spreadsheetVerticalAlignItems(verticalAlignment),
     background: visual?.background ?? fillColor ?? fallbackStyle.background,
     borderBottomColor: explicitBottomBorderColor ?? gridLineColor,
     borderRightColor: explicitRightBorderColor ?? gridLineColor,
     color: visual?.color ?? fontColor ?? fallbackStyle.color ?? sheetCellStyle.color,
+    display: "flex",
     fontFamily: spreadsheetFontFamily(asString(font?.typeface)),
-    fontSize: font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize,
+    fontSize: shrinkToFit && typeof fontSize === "number" ? Math.max(8, fontSize * 0.88) : fontSize,
     fontStyle: font?.italic === true ? "italic" : fallbackStyle.fontStyle,
     fontWeight: visual?.fontWeight ?? (font?.bold === true ? 700 : fallbackStyle.fontWeight),
-    textAlign: (asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment)) as CSSProperties["textAlign"] || fallbackStyle.textAlign,
-    verticalAlign: asString(alignment?.vertical) as CSSProperties["verticalAlign"] || fallbackStyle.verticalAlign || sheetCellStyle.verticalAlign,
+    justifyContent: spreadsheetHorizontalJustifyContent(horizontalAlignment),
+    paddingLeft: indent > 0 ? 9 + indent * 12 : sheetCellStyle.paddingLeft,
+    textAlign: spreadsheetHorizontalTextAlign(horizontalAlignment, fallbackStyle.textAlign),
+    textOverflow: wrapText ? undefined : "ellipsis",
+    verticalAlign: spreadsheetVerticalAlign(verticalAlignment) ?? fallbackStyle.verticalAlign ?? sheetCellStyle.verticalAlign,
+    whiteSpace: wrapText ? sheetCellStyle.whiteSpace : "nowrap",
   };
 }
 
@@ -758,6 +770,48 @@ function spreadsheetShowGridLines(sheet: RecordValue | undefined): boolean {
   if (sheet?.showGridLines === false) return false;
   const value = asString(sheet?.showGridLines).toLowerCase();
   return value !== "false" && value !== "0";
+}
+
+function spreadsheetBool(value: unknown, fallback: boolean): boolean {
+  if (value === true || value === false) return value;
+  const normalized = asString(value).toLowerCase();
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  return fallback;
+}
+
+function spreadsheetHorizontalTextAlign(
+  value: string,
+  fallback: CSSProperties["textAlign"],
+): CSSProperties["textAlign"] {
+  const normalized = value.toLowerCase();
+  if (normalized === "center" || normalized === "centercontinuous" || normalized === "distributed") return "center";
+  if (normalized === "right") return "right";
+  if (normalized === "justify") return "justify";
+  if (normalized === "left" || normalized === "fill") return "left";
+  return fallback;
+}
+
+function spreadsheetHorizontalJustifyContent(value: string): CSSProperties["justifyContent"] {
+  const normalized = value.toLowerCase();
+  if (normalized === "center" || normalized === "centercontinuous" || normalized === "distributed") return "center";
+  if (normalized === "right") return "flex-end";
+  return "flex-start";
+}
+
+function spreadsheetVerticalAlign(value: string): CSSProperties["verticalAlign"] | undefined {
+  const normalized = value.toLowerCase();
+  if (normalized === "center") return "middle";
+  if (normalized === "bottom") return "bottom";
+  if (normalized === "top") return "top";
+  return undefined;
+}
+
+function spreadsheetVerticalAlignItems(value: string): CSSProperties["alignItems"] {
+  const normalized = value.toLowerCase();
+  if (normalized === "center") return "center";
+  if (normalized === "bottom") return "flex-end";
+  return "flex-start";
 }
 
 function spreadsheetEffectiveStyleIndex(
