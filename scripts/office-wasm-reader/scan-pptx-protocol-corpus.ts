@@ -14,15 +14,16 @@ type ScanResult = {
 const repoRoot = process.cwd();
 const roots = positionalArgs().map((arg) => path.resolve(repoRoot, arg));
 const limit = numberArg("--limit");
+const skip = numberArg("--skip") ?? 0;
 const assertMode = process.argv.includes("--assert");
 const compareScript = path.resolve(repoRoot, "scripts/office-wasm-reader/compare-walnut-pptx-protocol.ts");
 
 if (roots.length === 0) {
-  console.error("Usage: npm run scan:office-wasm-reader:pptx -- <pptx-file-or-directory> [--limit=N] [--assert]");
+  console.error("Usage: npm run scan:office-wasm-reader:pptx -- <pptx-file-or-directory> [--skip=N] [--limit=N] [--assert]");
   process.exit(1);
 }
 
-const files = roots.flatMap(collectPptxFiles).slice(0, limit ?? undefined);
+const files = roots.flatMap(collectPptxFiles).slice(skip, limit == null ? undefined : skip + limit);
 const startedAt = Date.now();
 const results = files.map(scanFile);
 const failedCheckCounts = new Map<string, number>();
