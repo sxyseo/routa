@@ -101,6 +101,39 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:0")?.background).toBe("rgb(154, 214, 237)");
   });
 
+  it("projects broader built-in medium table styles from theme accents", () => {
+    const visuals = buildSpreadsheetConditionalVisuals(
+      {
+        name: "Tables",
+        rows: [],
+        tables: [
+          {
+            headerRowCount: 1,
+            reference: "A1:B3",
+            style: {
+              name: "TableStyleMedium14",
+              showRowStripes: true,
+            },
+          },
+        ],
+      },
+      {
+        colorScheme: {
+          colors: [
+            {
+              color: { type: 1, value: "4472C4" },
+              name: "accent2",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(visuals.get("2:0")?.background).toBe("rgb(191, 207, 235)");
+    expect(visuals.get("3:0")).toBeUndefined();
+  });
+
+
   it("preserves icon set family metadata for renderer glyphs", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

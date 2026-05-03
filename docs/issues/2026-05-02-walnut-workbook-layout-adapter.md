@@ -126,6 +126,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added a conservative formula-driven conditional-format evaluator for `expression` rules, including relative/absolute cell references, comparisons, `AND`/`OR`/`NOT`, `ISBLANK`/`ISNUMBER`/`ISTEXT`, `ROW`/`COLUMN`, `LEN`, and `MOD`.
 - Probed a temporary workbook with OpenXML frozen panes (`xSplit`/`ySplit`/`state=frozen`) and confirmed Walnut's decoded Workbook protocol still emits no freeze-pane fields. The preview can consume `freezePanes`, but reader extraction should remain disabled unless the target schema changes.
 - Tightened data-bar rendering to consume protocol `showValue`, `direction`, `minLength`, and `maxLength` options in addition to axis, negative color, and gradient settings.
+- Replaced the ad hoc table-style color branches with a structured built-in `TableStyleMedium1`-`TableStyleMedium28` family mapper. Existing high-confidence fallback colors for Medium2/4/9 are preserved, while other Medium styles derive stripe/total palettes from workbook theme accents and family intensity.
 
 ## Remaining XLSX Work
 
@@ -151,7 +152,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 3. Full built-in table style definitions
 
-   Table headers, row/column stripes, first/last column emphasis, totals rows, and theme-derived palettes are projected. Still missing exact Excel built-in table-style definitions and broader fixtures for more table styles beyond the common medium styles.
+   Table headers, row/column stripes, first/last column emphasis, totals rows, common Medium fallback palettes, and a structured `TableStyleMedium1`-`TableStyleMedium28` theme-accent mapper are projected. Still missing exact Excel built-in table-style definitions for every built-in style family and broader fixtures for Light/Dark styles.
 
 4. Formula-driven conditional formatting
 

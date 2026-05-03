@@ -12,6 +12,7 @@ import {
   type RecordValue,
 } from "./office-preview-utils";
 import { conditionalFormulaMatches } from "./spreadsheet-conditional-formula";
+import { tableStylePalette, type SpreadsheetTablePalette } from "./spreadsheet-table-styles";
 
 export type SpreadsheetCellVisual = {
   background?: string;
@@ -45,7 +46,7 @@ type SpreadsheetTableVisualSpec = {
   bodyStartRow: number;
   headerRowCount: number;
   lastColumnIndex: number;
-  palette: { columnStripe: string; rowStripe: string; total: string };
+  palette: SpreadsheetTablePalette;
   range: NonNullable<ReturnType<typeof parseCellRange>>;
   showColumnStripes: boolean;
   showFilter: boolean;
@@ -501,11 +502,13 @@ function mergeSpreadsheetCellVisuals(
   base: SpreadsheetCellVisual | undefined,
   override: SpreadsheetCellVisual | undefined,
 ): SpreadsheetCellVisual | undefined {
-  if (!base) return override;
   if (!override) return base;
+  const fields = definedSpreadsheetVisualFields(override);
+  if (Object.keys(fields).length === 0) return base;
+  if (!base) return fields;
   return {
     ...base,
-    ...definedSpreadsheetVisualFields(override),
+    ...fields,
   };
 }
 
@@ -518,61 +521,6 @@ function definedSpreadsheetVisualFields(visual: SpreadsheetCellVisual): Spreadsh
   if (visual.fontWeight !== undefined) next.fontWeight = visual.fontWeight;
   if (visual.iconSet !== undefined) next.iconSet = visual.iconSet;
   return next;
-}
-
-function tableStylePalette(
-  styleName: string,
-  theme?: RecordValue | null,
-): { columnStripe: string; rowStripe: string; total: string } {
-  const themeColor = tableStyleThemeColor(styleName, theme);
-  if (themeColor) {
-    return {
-      columnStripe: mixCssColorWithWhite(themeColor, 0.82),
-      rowStripe: mixCssColorWithWhite(themeColor, 0.74),
-      total: mixCssColorWithWhite(themeColor, 0.58),
-    };
-  }
-
-  if (/Medium4$/i.test(styleName)) {
-    return { columnStripe: "#dbeafe", rowStripe: "#eff6ff", total: "#bfdbfe" };
-  }
-
-  if (/Medium9$/i.test(styleName)) {
-    return { columnStripe: "#d9ead3", rowStripe: "#eef7e8", total: "#b7dfae" };
-  }
-
-  if (/Medium2$/i.test(styleName)) {
-    return { columnStripe: "#d7f0f8", rowStripe: "#c7eaf7", total: "#9ed8ea" };
-  }
-
-  return { columnStripe: "#e0f2fe", rowStripe: "#f0f9ff", total: "#bae6fd" };
-}
-
-function tableStyleThemeColor(styleName: string, theme?: RecordValue | null): string | undefined {
-  const styleIndex = Number(styleName.match(/Medium(\d+)/i)?.[1] ?? "");
-  const colorName = tableStyleThemeColorName(styleIndex);
-  const colorScheme = asRecord(theme?.colorScheme);
-  const colors = asArray(colorScheme?.colors).map(asRecord).filter((color): color is RecordValue => color != null);
-  const themeColor = colors.find((color) => asString(color.name).toLowerCase() === colorName);
-  return colorToCss(themeColor?.color);
-}
-
-function tableStyleThemeColorName(styleIndex: number): string {
-  if (styleIndex === 9) return "accent6";
-  if (styleIndex === 4) return "accent1";
-  if (styleIndex === 2) return "accent4";
-  if (styleIndex >= 1 && styleIndex <= 6) return `accent${styleIndex}`;
-  return "accent4";
-}
-
-function mixCssColorWithWhite(value: string, whiteRatio: number): string {
-  const rgb = hexColorToRgb(value);
-  if (!rgb) return value;
-  const ratio = Math.max(0, Math.min(1, whiteRatio));
-  const red = Math.round(rgb.red * (1 - ratio) + 255 * ratio);
-  const green = Math.round(rgb.green * (1 - ratio) + 255 * ratio);
-  const blue = Math.round(rgb.blue * (1 - ratio) + 255 * ratio);
-  return `rgb(${red}, ${green}, ${blue})`;
 }
 
 function knownSpreadsheetTableReferences(sheetName: string): string[] {
