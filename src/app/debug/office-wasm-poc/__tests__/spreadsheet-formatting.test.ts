@@ -4,6 +4,8 @@ import {
   buildSpreadsheetCommentVisuals,
   buildSpreadsheetSparklineVisuals,
   buildSpreadsheetValidationVisuals,
+} from "../spreadsheet-cell-overlays";
+import {
   spreadsheetCellStyle,
   spreadsheetCellText,
   spreadsheetNumberFormatCode,
