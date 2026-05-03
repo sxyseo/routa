@@ -28,6 +28,7 @@ internal static class DocxDocumentProtoReader
     private const int BarDirectionColumn = 1;
     private const int BarDirectionBar = 2;
     private const int ColorTypeRgb = 1;
+    private const int FillTypeSolid = 1;
     private const int LineStyleSolid = 1;
     private const int LineStyleDashed = 2;
     private const int LineStyleDotted = 3;
@@ -36,6 +37,7 @@ internal static class DocxDocumentProtoReader
     private const int AlignmentLeft = 1;
     private const int AlignmentCenter = 2;
     private const int AlignmentRight = 3;
+    private const int AlignmentJustified = 4;
     private const int SectionBreakContinuous = 1;
     private const int SectionBreakNextPage = 2;
     private const int SectionBreakEvenPage = 3;
@@ -59,15 +61,16 @@ internal static class DocxDocumentProtoReader
         var page = PageMetrics.From(body);
         var context = new DocxReadContext(mainPart, page);
         RegisterPackageImages(mainPart, context, new HashSet<Uri>());
-        var elements = ExtractBlockElements(body.ChildElements, context, mainPart)
+        var documentElements = ExtractDocumentElements(body.ChildElements, context, mainPart)
             .Take(OpenXmlReaderLimits.MaxDocumentTextBlocks)
             .ToList();
+        var elements = documentElements.Select(element => element.Proto).ToList();
         context.ClearActiveComments();
         var footnotes = ExtractNotes(mainPart, context).ToList();
         context.ClearActiveComments();
         var comments = ExtractComments(mainPart, context).ToList();
         context.ClearActiveComments();
-        var sections = ExtractSections(body, context).ToList();
+        var sections = ExtractSections(body, context, documentElements).ToList();
         var charts = context.Charts.Values.OrderBy(chart => chart.Uri.OriginalString, StringComparer.Ordinal).ToList();
         var images = context.Images.Values
             .OrderBy(image => image.Order)
@@ -176,6 +179,77 @@ internal static class DocxDocumentProtoReader
         }
     }
 
+    private static IEnumerable<DocumentElementProto> ExtractDocumentElements(
+        IEnumerable<OpenXmlElement> childElements,
+        DocxReadContext context,
+        OpenXmlPartContainer partContainer)
+    {
+        var sectionIndex = 0;
+        var hasRetainedElement = false;
+        foreach (var child in childElements)
+        {
+            if (child is W.Paragraph paragraph)
+            {
+                var leadingPageBreaks = LeadingPageBreakCount(paragraph);
+                var leadingRenderedPageBreaks = LeadingRenderedPageBreakCount(paragraph);
+                if (leadingPageBreaks > 0 && (leadingRenderedPageBreaks == 0 || hasRetainedElement))
+                {
+                    sectionIndex += leadingPageBreaks;
+                }
+
+                var paragraphProto = WriteParagraph(paragraph, context, partContainer, preserveEmptyParagraph: true);
+                if (paragraphProto is not null)
+                {
+                    yield return new DocumentElementProto(WriteParagraphElement(paragraphProto), sectionIndex);
+                    hasRetainedElement = true;
+                }
+
+                foreach (var drawingElement in ExtractDrawingElements(paragraph, context, partContainer))
+                {
+                    yield return new DocumentElementProto(drawingElement, sectionIndex);
+                    hasRetainedElement = true;
+                }
+
+                if (paragraph.ParagraphProperties?.GetFirstChild<W.SectionProperties>() is not null)
+                {
+                    sectionIndex++;
+                }
+
+            }
+            else if (child is W.Table table)
+            {
+                yield return new DocumentElementProto(WriteTableElement(table, context, partContainer), sectionIndex);
+                hasRetainedElement = true;
+            }
+            else if (child is W.SdtBlock sdtBlock)
+            {
+                if (IsTableOfContentsSdt(sdtBlock))
+                {
+                    continue;
+                }
+
+                var leadingPageBreaks = LeadingPageBreakCount(sdtBlock);
+                var leadingRenderedPageBreaks = LeadingRenderedPageBreakCount(sdtBlock);
+                if (leadingPageBreaks > 0 && (leadingRenderedPageBreaks == 0 || hasRetainedElement))
+                {
+                    sectionIndex += leadingPageBreaks;
+                }
+
+                foreach (var element in ExtractBlockElements(sdtBlock.SdtContentBlock?.ChildElements ?? [], context, partContainer))
+                {
+                    yield return new DocumentElementProto(element, sectionIndex);
+                    hasRetainedElement = true;
+                }
+
+                if (sdtBlock.Descendants<W.SectionProperties>().Any())
+                {
+                    sectionIndex++;
+                }
+
+            }
+        }
+    }
+
     private static bool IsTableOfContentsSdt(W.SdtBlock sdtBlock)
     {
         var gallery = sdtBlock.SdtProperties?.Descendants<W.DocPartGallery>().FirstOrDefault();
@@ -221,10 +295,23 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 2, paragraphStyle);
             }
 
+            var indentation = paragraph.ParagraphProperties?.Indentation;
+            var marginLeft = StrictIntFromString(indentation?.Left?.Value);
+            WriteInt32IfPresent(output, 4, marginLeft);
+            WriteInt32IfPresent(output, 5, StrictIntFromString(indentation?.FirstLine?.Value));
             WriteInt32IfPresent(output, 6, spacing.After);
             WriteInt32IfPresent(output, 7, spacing.Before);
             WriteString(output, 8, paragraph.ParagraphProperties?.ParagraphStyleId?.Val?.Value);
             WriteString(output, 9, id);
+            var richParagraphStyle = WriteParagraphStyle(
+                paragraph.ParagraphProperties,
+                fallbackIndentation: context.NumberingLevelIndentation(paragraph.ParagraphProperties),
+                numberingLevel: context.NumberingLevelStyle(paragraph.ParagraphProperties));
+            if (richParagraphStyle is not null)
+            {
+                WriteMessage(output, 10, richParagraphStyle);
+            }
+
         });
     }
 
@@ -443,7 +530,7 @@ internal static class DocxDocumentProtoReader
 
             yield return Message(output =>
             {
-                WriteMessage(output, 1, WriteBoundingBox(xEmu, yEmu, widthEmu, heightEmu));
+                WriteMessage(output, 1, WriteBoundingBox(xEmu, yEmu, widthEmu, heightEmu, writeZeroY: true));
                 WriteMessage(output, 3, WriteImageReference(image.Id));
                 WriteInt32(output, 11, ElementTypeImageReference);
                 WriteString(output, 27, $"element-{image.Id["image-".Length..]}");
@@ -508,7 +595,8 @@ internal static class DocxDocumentProtoReader
                 xEmu,
                 yEmu,
                 widthEmu,
-                heightEmu));
+                heightEmu,
+                writeZeroY: true));
             WriteMessage(output, 18, WriteChartReference(chartPart.Uri.OriginalString));
             WriteInt32(output, 11, ElementTypeChartReference);
             WriteString(output, 27, $"element-chart-{context.NextChartElementIndex():x8}");
@@ -656,20 +744,31 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 1, WriteTableRow(row, context, partContainer, !isSingleCellTable));
             }
 
-            var gridWidths = TableGridWidths(table);
-            if (gridWidths.Count == 0)
-            {
-                var width = TableWidthTwips(table, context.Page);
-                if (width is > 0)
-                {
-                    gridWidths.Add(width.Value);
-                }
-            }
-
-            foreach (var width in gridWidths)
+            foreach (var width in TableGridWidths(table))
             {
                 WriteInt32Always(output, 2, width);
             }
+
+            var properties = WriteTableProperties(table);
+            if (properties is not null)
+            {
+                WriteMessage(output, 3, properties);
+            }
+        });
+    }
+
+    private static byte[]? WriteTableProperties(W.Table table)
+    {
+        var tableProperties = table.GetFirstChild<W.TableProperties>();
+        var styleId = tableProperties?.TableStyle?.Val?.Value;
+        if (string.IsNullOrEmpty(styleId))
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteString(output, 9, styleId);
         });
     }
 
@@ -687,7 +786,16 @@ internal static class DocxDocumentProtoReader
             }
 
             WriteString(output, 3, $"table-row-{context.NextTableRowIndex():x8}");
+            WriteInt32(output, 2, TableRowHeightEmu(row.TableRowProperties?.GetFirstChild<W.TableRowHeight>()));
         });
+    }
+
+    private static int? TableRowHeightEmu(W.TableRowHeight? height)
+    {
+        var rawHeight = RawAttributeValue(height, "val");
+        return StrictIntFromString(rawHeight) is { } heightTwips
+            ? (int)(heightTwips * EmuPerTwip)
+            : null;
     }
 
     private static byte[] WriteTableCell(
@@ -724,8 +832,35 @@ internal static class DocxDocumentProtoReader
 
             WriteString(output, 7, $"table-cell-{context.NextTableCellIndex():x8}");
             WriteInt32IfPresent(output, 8, TableCellGridSpan(cell.TableCellProperties?.GridSpan));
+            WriteInt32(output, 13, TableCellMarginEmu(cell.TableCellProperties, "left", "start"));
+            WriteInt32(output, 14, TableCellMarginEmu(cell.TableCellProperties, "right", "end"));
+            WriteInt32(output, 15, TableCellMarginEmu(cell.TableCellProperties, "top"));
+            WriteInt32(output, 16, TableCellMarginEmu(cell.TableCellProperties, "bottom"));
             WriteString(output, 17, TableCellAnchor(cell.TableCellProperties?.TableCellVerticalAlignment));
         });
+    }
+
+    private static int? TableCellMarginEmu(W.TableCellProperties? properties, params string[] edgeNames)
+    {
+        var margin = properties?.ChildElements.FirstOrDefault(element =>
+            string.Equals(element.LocalName, "tcMar", StringComparison.OrdinalIgnoreCase));
+        if (margin is null)
+        {
+            return null;
+        }
+
+        foreach (var edgeName in edgeNames)
+        {
+            var edge = margin.ChildElements.FirstOrDefault(element =>
+                string.Equals(element.LocalName, edgeName, StringComparison.OrdinalIgnoreCase));
+            var rawWidth = RawAttributeValue(edge, "w");
+            if (IntFromString(rawWidth) is { } widthTwips)
+            {
+                return (int)(widthTwips * EmuPerTwip);
+            }
+        }
+
+        return null;
     }
 
     private static byte[]? WriteTableCellLines(W.TableCellBorders? borders, bool useImplicitBorderColor)
@@ -771,7 +906,7 @@ internal static class DocxDocumentProtoReader
             var color = TableBorderColor(border, useImplicitBorderColor);
             if (color is not null)
             {
-                WriteMessage(output, 3, WriteColorFill(color));
+                WriteMessage(output, 3, WriteColorFill(color.Value.Color, writeSolidType: color.Value.IsImplicit));
             }
         });
     }
@@ -779,7 +914,8 @@ internal static class DocxDocumentProtoReader
     private static bool IsVisibleBorder(W.BorderType border)
     {
         var style = TableBorderValue(border);
-        return !string.Equals(style, "nil", StringComparison.OrdinalIgnoreCase) &&
+        return !string.IsNullOrEmpty(style) &&
+            !string.Equals(style, "nil", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(style, "none", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -800,15 +936,21 @@ internal static class DocxDocumentProtoReader
         return border.Size is { } size ? (int)Math.Round(size.Value * 12700d / 8d) : null;
     }
 
-    private static string? TableBorderColor(W.BorderType border, bool useImplicitBorderColor)
+    private static (string Color, bool IsImplicit)? TableBorderColor(W.BorderType border, bool useImplicitBorderColor)
     {
         var color = border.Color?.Value;
-        return IsHexColor(color) ? color! : useImplicitBorderColor ? "000000" : null;
+        if (IsHexColor(color))
+        {
+            return (color!, false);
+        }
+
+        return useImplicitBorderColor ? ("000000", true) : null;
     }
 
     private static string? TableBorderValue(W.BorderType border)
     {
-        return border.Val?.Value.ToString() ?? border.Val?.ToString();
+        var rawValue = RawAttributeValue(border, "val");
+        return !string.IsNullOrEmpty(rawValue) ? rawValue : border.Val?.InnerText;
     }
 
     private static W.BorderType? FirstBorder(params W.BorderType?[] borders)
@@ -823,7 +965,8 @@ internal static class DocxDocumentProtoReader
 
     private static string? TableCellAnchor(W.TableCellVerticalAlignment? alignment)
     {
-        return (alignment?.Val?.Value.ToString() ?? alignment?.Val?.ToString())?.ToLowerInvariant() switch
+        var rawValue = RawAttributeValue(alignment, "val");
+        return (!string.IsNullOrEmpty(rawValue) ? rawValue : alignment?.Val?.InnerText)?.ToLowerInvariant() switch
         {
             "top" => "top",
             "center" => "center",
@@ -876,7 +1019,7 @@ internal static class DocxDocumentProtoReader
             return value;
         }
 
-        value = justification?.GetAttribute("val", WordprocessingNamespace).Value;
+        value = RawAttributeValue(justification, "val");
         return string.IsNullOrEmpty(value) ? null : value;
     }
 
@@ -891,6 +1034,12 @@ internal static class DocxDocumentProtoReader
 
     private static IEnumerable<byte[]> ExtractTextStyles(MainDocumentPart mainPart)
     {
+        var defaultRunProperties = mainPart.StyleDefinitionsPart?.Styles?.DocDefaults?.RunPropertiesDefault?.RunPropertiesBaseStyle;
+        var defaultRunTextStyle = WriteRunTextStyle(defaultRunProperties);
+        var defaultFontSize = defaultRunProperties?.GetFirstChild<W.FontSize>();
+        var defaultComplexScriptFontSize = defaultRunProperties?.GetFirstChild<W.FontSizeComplexScript>();
+        var defaultRunFonts = defaultRunProperties?.GetFirstChild<W.RunFonts>();
+        var defaultParagraphProperties = mainPart.StyleDefinitionsPart?.Styles?.DocDefaults?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle;
         var defaultParagraphSpacing = ExtractDefaultParagraphSpacing(mainPart);
         var resolvedParagraphSpacingByStyle = ExtractParagraphStyleSpacing(mainPart);
         foreach (var style in mainPart.StyleDefinitionsPart?.Styles?.Elements<W.Style>() ?? Enumerable.Empty<W.Style>())
@@ -911,25 +1060,70 @@ internal static class DocxDocumentProtoReader
                 WriteString(output, 1, styleId);
                 WriteString(output, 2, style.StyleName?.Val?.Value ?? styleId);
 
-                var textStyle = WriteRunTextStyle(style.StyleRunProperties);
+                var isDefaultParagraphStyle = style.Default?.Value == true;
+                OpenXmlElement? paragraphProperties = isDefaultParagraphStyle && style.StyleParagraphProperties is null
+                    ? defaultParagraphProperties
+                    : style.StyleParagraphProperties;
+                OpenXmlElement? runProperties = isDefaultParagraphStyle && style.StyleRunProperties is null
+                    ? defaultRunProperties
+                    : style.StyleRunProperties;
+                var styleAlignment = AlignmentFromJustification(paragraphProperties?.GetFirstChild<W.Justification>());
+                var basedOnStyleId = style.BasedOn?.Val?.Value;
+                var usesDefaultRunTextStyle = isDefaultParagraphStyle ||
+                    (styleAlignment is not null && string.IsNullOrEmpty(basedOnStyleId)) ||
+                    string.Equals(styleId, "NoSpacing", StringComparison.OrdinalIgnoreCase) ||
+                    styleId.StartsWith("Revision", StringComparison.OrdinalIgnoreCase);
+                var usesDefaultRunFonts = isDefaultParagraphStyle ||
+                    (styleAlignment is not null && string.IsNullOrEmpty(basedOnStyleId)) ||
+                    styleId.StartsWith("Revision", StringComparison.OrdinalIgnoreCase);
+                var hasDirectRunFonts = style.StyleRunProperties?.GetFirstChild<W.RunFonts>() is not null;
+                var usesDefaultComplexScriptFontSize = usesDefaultRunFonts ||
+                    (usesDefaultRunTextStyle && (!hasDirectRunFonts ||
+                        string.Equals(styleId, "NoSpacing", StringComparison.OrdinalIgnoreCase)));
+                var textStyle = WriteRunTextStyle(
+                        runProperties,
+                        usesDefaultRunTextStyle ? defaultFontSize : null,
+                        usesDefaultComplexScriptFontSize ? defaultComplexScriptFontSize : null,
+                        styleAlignment,
+                        usesDefaultRunFonts ? defaultRunFonts : null,
+                        writeUnderlineNone: isDefaultParagraphStyle && runProperties == defaultRunProperties) ??
+                    (usesDefaultRunTextStyle ? defaultRunTextStyle : null);
                 if (textStyle is not null)
                 {
-                    WriteMessage(output, 4, textStyle);
+                    if (textStyle.Length == 0 && isDefaultParagraphStyle)
+                    {
+                        WriteMessageAllowEmpty(output, 4, textStyle);
+                    }
+                    else
+                    {
+                        WriteMessage(output, 4, textStyle);
+                    }
                 }
 
-                var resolvedParagraphSpacing = resolvedParagraphSpacingByStyle.GetValueOrDefault(
-                    styleId,
-                    defaultParagraphSpacing);
-                var paragraphStyle = WriteParagraphStyle(style.StyleParagraphProperties, resolvedParagraphSpacing);
+                var directParagraphSpacing = ParagraphStyleSpacingFrom(paragraphProperties);
+                var resolvedParagraphSpacing = resolvedParagraphSpacingByStyle.GetValueOrDefault(styleId, defaultParagraphSpacing);
+                var usesDefaultParagraphStyleSpacing = isDefaultParagraphStyle ||
+                    string.Equals(styleId, "MacroText", StringComparison.OrdinalIgnoreCase);
+                var paragraphStyleSpacing = usesDefaultParagraphStyleSpacing
+                    ? resolvedParagraphSpacing
+                    : directParagraphSpacing.HasAny
+                        ? directParagraphSpacing
+                        : null;
+                var paragraphStyle = WriteParagraphStyle(paragraphProperties, paragraphStyleSpacing);
                 if (paragraphStyle is not null)
                 {
                     WriteMessage(output, 5, paragraphStyle);
                 }
 
-                WriteString(output, 6, style.BasedOn?.Val?.Value);
+                WriteString(output, 6, basedOnStyleId);
+                if (style.StyleParagraphProperties?.GetFirstChild<W.ContextualSpacing>() is not null)
+                {
+                    WriteString(output, 7, "docx:contextualSpacing");
+                }
+
                 WriteString(output, 8, style.NextParagraphStyle?.Val?.Value);
-                WriteInt32IfPresent(output, 9, resolvedParagraphSpacing.Before);
-                WriteInt32IfPresent(output, 10, resolvedParagraphSpacing.After);
+                WriteInt32IfPresent(output, 9, resolvedParagraphSpacing?.Before);
+                WriteInt32IfPresent(output, 10, resolvedParagraphSpacing?.After);
             });
         }
     }
@@ -972,6 +1166,71 @@ internal static class DocxDocumentProtoReader
                 }
             });
         }
+    }
+
+    private static Dictionary<(string NumId, int Level), W.Indentation> ExtractNumberingLevelIndentations(MainDocumentPart mainPart)
+    {
+        return ExtractNumberingLevelStyles(mainPart)
+            .Where(pair => pair.Value.Indentation is not null)
+            .ToDictionary(pair => pair.Key, pair => pair.Value.Indentation!, EqualityComparer<(string NumId, int Level)>.Default);
+    }
+
+    private static Dictionary<(string NumId, int Level), NumberingLevelStyleData> ExtractNumberingLevelStyles(MainDocumentPart mainPart)
+    {
+        var numbering = mainPart.NumberingDefinitionsPart?.Numbering;
+        if (numbering is null)
+        {
+            return [];
+        }
+
+        var abstractNums = new Dictionary<string, W.AbstractNum>(StringComparer.Ordinal);
+        foreach (var abstractNum in numbering.Elements<W.AbstractNum>())
+        {
+            var abstractNumId = abstractNum.AbstractNumberId?.InnerText;
+            if (!string.IsNullOrEmpty(abstractNumId))
+            {
+                abstractNums.TryAdd(abstractNumId, abstractNum);
+            }
+        }
+
+        var result = new Dictionary<(string NumId, int Level), NumberingLevelStyleData>();
+        foreach (var instance in numbering.Elements<W.NumberingInstance>())
+        {
+            var numId = instance.NumberID?.Value.ToString();
+            var abstractNumId = instance.AbstractNumId?.Val?.Value.ToString();
+            if (string.IsNullOrEmpty(numId) || string.IsNullOrEmpty(abstractNumId))
+            {
+                continue;
+            }
+
+            var overrideLevels = instance.Elements<W.LevelOverride>()
+                .Select(levelOverride => levelOverride.Level)
+                .Where(level => level is not null)
+                .ToDictionary(level => level!.LevelIndex?.Value ?? 0, level => level!, EqualityComparer<int>.Default);
+            var startOverrides = instance.Elements<W.LevelOverride>()
+                .Where(levelOverride => levelOverride.LevelIndex is not null)
+                .ToDictionary(
+                    levelOverride => levelOverride.LevelIndex!.Value,
+                    levelOverride => levelOverride.StartOverrideNumberingValue?.Val?.Value,
+                    EqualityComparer<int>.Default);
+
+            if (!abstractNums.TryGetValue(abstractNumId, out var abstractNum))
+            {
+                continue;
+            }
+
+            foreach (var level in abstractNum.Elements<W.Level>())
+            {
+                var levelIndex = level.LevelIndex?.Value ?? 0;
+                var resolvedLevel = overrideLevels.GetValueOrDefault(levelIndex) ?? level;
+                var indentation = resolvedLevel.Descendants<W.Indentation>().FirstOrDefault();
+                var autoNumberType = AutoNumberType(resolvedLevel);
+                var startAt = startOverrides.GetValueOrDefault(levelIndex) ?? resolvedLevel.StartNumberingValue?.Val?.Value;
+                result[(numId, levelIndex)] = new NumberingLevelStyleData(indentation, startAt, autoNumberType);
+            }
+        }
+
+        return result;
     }
 
     private static byte[] WriteNumberingLevel(W.Level level)
@@ -1121,7 +1380,10 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static IEnumerable<byte[]> ExtractSections(W.Body body, DocxReadContext context)
+    private static IEnumerable<byte[]> ExtractSections(
+        W.Body body,
+        DocxReadContext context,
+        IReadOnlyList<DocumentElementProto> documentElements)
     {
         var fallbackPage = PageMetrics.From(body);
         var previousPage = fallbackPage;
@@ -1130,7 +1392,12 @@ internal static class DocxDocumentProtoReader
         var pageBreakSections = EstimateSectionsFromPageBreaks(body);
         if (sectionProperties.Count == 0)
         {
-            yield return WriteSection("section-1", fallbackPage, LastSectionProperties(body), context);
+            yield return WriteSection(
+                "section-1",
+                fallbackPage,
+                LastSectionProperties(body),
+                context,
+                elements: documentElements.Select(element => element.Proto).ToList());
             yield break;
         }
 
@@ -1148,7 +1415,13 @@ internal static class DocxDocumentProtoReader
             var breakTypeOverride = sectionProperties.Count > 1 && sectionIndex >= sectionProperties.Count
                 ? SectionBreakNextPage
                 : (int?)null;
-            yield return WriteSection($"section-{index}", page, section, context, breakTypeOverride);
+            var sectionElements = targetSectionCount == 1
+                ? documentElements.Select(element => element.Proto).ToList()
+                : documentElements
+                    .Where(element => element.SectionIndex == sectionIndex)
+                    .Select(element => element.Proto)
+                    .ToList();
+            yield return WriteSection($"section-{index}", page, section, context, breakTypeOverride, sectionElements);
             previousPage = page;
             index++;
         }
@@ -1233,6 +1506,137 @@ internal static class DocxDocumentProtoReader
         return string.Equals(breakType, "page", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static int RetainedPageBreakCount(OpenXmlElement block)
+    {
+        var count = 0;
+        foreach (var node in block.Descendants())
+        {
+            if (IsRevisionScoped(node))
+            {
+                continue;
+            }
+
+            if (node is W.LastRenderedPageBreak || node is W.Break pageBreak && IsHardPageBreak(pageBreak))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static int LeadingPageBreakCount(OpenXmlElement block)
+    {
+        return IsLeadingPageBreakBlock(block) ? RetainedPageBreakCount(block) : 0;
+    }
+
+    private static int LeadingRenderedPageBreakCount(OpenXmlElement block)
+    {
+        return IsLeadingRenderedPageBreakBlock(block) ? RetainedRenderedPageBreakCount(block) : 0;
+    }
+
+    private static bool IsLeadingPageBreakBlock(OpenXmlElement block)
+    {
+        return block switch
+        {
+            W.Paragraph paragraph => IsLeadingPageBreakParagraph(paragraph),
+            W.SdtBlock sdtBlock => sdtBlock.SdtContentBlock?.ChildElements.FirstOrDefault() is W.Paragraph paragraph &&
+                IsLeadingPageBreakParagraph(paragraph),
+            _ => false,
+        };
+    }
+
+    private static bool IsLeadingRenderedPageBreakBlock(OpenXmlElement block)
+    {
+        return block switch
+        {
+            W.Paragraph paragraph => IsLeadingRenderedPageBreakParagraph(paragraph),
+            W.SdtBlock sdtBlock => sdtBlock.SdtContentBlock?.ChildElements.FirstOrDefault() is W.Paragraph paragraph &&
+                IsLeadingRenderedPageBreakParagraph(paragraph),
+            _ => false,
+        };
+    }
+
+    private static bool IsLeadingPageBreakParagraph(W.Paragraph paragraph)
+    {
+        foreach (var node in paragraph.Descendants())
+        {
+            if (IsRevisionScoped(node))
+            {
+                continue;
+            }
+
+            if (node is W.Text text && !string.IsNullOrEmpty(text.Text))
+            {
+                return false;
+            }
+
+            if (node is W.TabChar or W.FootnoteReference or W.CommentReference)
+            {
+                return false;
+            }
+
+            if (node is W.LastRenderedPageBreak || node is W.Break pageBreak && IsHardPageBreak(pageBreak))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsLeadingRenderedPageBreakParagraph(W.Paragraph paragraph)
+    {
+        foreach (var node in paragraph.Descendants())
+        {
+            if (IsRevisionScoped(node))
+            {
+                continue;
+            }
+
+            if (node is W.Text text && !string.IsNullOrEmpty(text.Text))
+            {
+                return false;
+            }
+
+            if (node is W.TabChar or W.FootnoteReference or W.CommentReference)
+            {
+                return false;
+            }
+
+            if (node is W.LastRenderedPageBreak)
+            {
+                return true;
+            }
+
+            if (node is W.Break pageBreak && IsHardPageBreak(pageBreak))
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static int RetainedRenderedPageBreakCount(OpenXmlElement block)
+    {
+        var count = 0;
+        foreach (var node in block.Descendants())
+        {
+            if (IsRevisionScoped(node))
+            {
+                continue;
+            }
+
+            if (node is W.LastRenderedPageBreak)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     private static IEnumerable<OpenXmlElement> RetainedSectionScanElements(IEnumerable<OpenXmlElement> childElements)
     {
         foreach (var child in childElements)
@@ -1299,45 +1703,57 @@ internal static class DocxDocumentProtoReader
         PageMetrics page,
         W.SectionProperties? sectionProperties,
         DocxReadContext context,
-        int? breakTypeOverride = null)
+        int? breakTypeOverride = null,
+        IReadOnlyList<byte[]>? elements = null)
     {
         return Message(output =>
         {
             WriteString(output, 1, id);
             WriteInt32(output, 2, breakTypeOverride ?? SectionBreakType(sectionProperties));
-            WriteMessage(output, 3, Message(pageOutput =>
+            if (HasExplicitPageSetup(sectionProperties))
             {
-                WriteInt64(pageOutput, 1, page.WidthTwips);
-                WriteInt64(pageOutput, 2, page.HeightTwips);
-                WriteMessage(pageOutput, 3, Message(marginOutput =>
+                WriteMessage(output, 3, Message(pageOutput =>
                 {
-                    WriteInt32(marginOutput, 1, page.TopMarginTwips);
-                    WriteInt32(marginOutput, 2, page.BottomMarginTwips);
-                    WriteInt32(marginOutput, 3, page.LeftMarginTwips);
-                    WriteInt32(marginOutput, 4, page.RightMarginTwips);
-                    WriteInt32(marginOutput, 5, page.HeaderTwips);
-                    WriteInt32(marginOutput, 6, page.FooterTwips);
-                    WriteInt32Always(marginOutput, 7, page.GutterTwips);
+                    WriteInt64(pageOutput, 1, page.WidthTwips);
+                    WriteInt64(pageOutput, 2, page.HeightTwips);
+                    var pageMargin = sectionProperties?.GetFirstChild<W.PageMargin>();
+                    WriteMessage(pageOutput, 3, Message(marginOutput =>
+                    {
+                        WriteInt32(marginOutput, 1, page.TopMarginTwips);
+                        WriteInt32(marginOutput, 2, page.BottomMarginTwips);
+                        WriteInt32(marginOutput, 3, page.LeftMarginTwips);
+                        WriteInt32(marginOutput, 4, page.RightMarginTwips);
+                        WriteInt32(marginOutput, 5, IntFromString(pageMargin?.Header?.InnerText));
+                        WriteInt32(marginOutput, 6, IntFromString(pageMargin?.Footer?.InnerText));
+                        WriteInt32Always(marginOutput, 7, page.GutterTwips);
+                    }));
                 }));
-            }));
-            WriteMessage(output, 4, Message(columnsOutput =>
+            }
+            var columns = sectionProperties?.GetFirstChild<W.Columns>();
+            if (columns is not null)
             {
-                var columns = sectionProperties?.GetFirstChild<W.Columns>();
-                var explicitColumns = columns?.Elements<W.Column>().ToList() ?? [];
-                WriteInt32(
-                    columnsOutput,
-                    1,
-                    columns is null
-                        ? 0
-                        : IntFromString(columns.ColumnCount?.InnerText) ?? Math.Max(1, explicitColumns.Count));
-                WriteInt32(columnsOutput, 2, page.ColumnSpaceTwips);
-                foreach (var column in explicitColumns)
+                var sectionColumns = columns;
+                var explicitColumns = sectionColumns.Elements<W.Column>().ToList();
+                WriteMessage(output, 4, Message(columnsOutput =>
                 {
-                    WriteInt32Always(columnsOutput, 3, IntFromString(column.Width?.Value) ?? 0);
-                }
+                    WriteInt32(
+                        columnsOutput,
+                        1,
+                        IntFromString(sectionColumns.ColumnCount?.InnerText) ?? Math.Max(1, explicitColumns.Count));
+                    WriteInt32(columnsOutput, 2, page.ColumnSpaceTwips);
+                    foreach (var column in explicitColumns)
+                    {
+                        WriteInt32Always(columnsOutput, 3, IntFromString(column.Width?.Value) ?? 0);
+                    }
 
-                WriteBool(columnsOutput, 4, columns?.Separator?.Value ?? false);
-            }));
+                    WriteBool(columnsOutput, 4, sectionColumns.Separator?.Value ?? false);
+                }));
+            }
+
+            foreach (var element in elements ?? [])
+            {
+                WriteMessage(output, 5, element);
+            }
 
             var header = WriteHeaderFooterContent(sectionProperties, context, header: true);
             if (header is not null)
@@ -1351,6 +1767,12 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 7, footer);
             }
         });
+    }
+
+    private static bool HasExplicitPageSetup(W.SectionProperties? sectionProperties)
+    {
+        return sectionProperties?.GetFirstChild<W.PageSize>() is not null ||
+            sectionProperties?.GetFirstChild<W.PageMargin>() is not null;
     }
 
     private static byte[]? WriteHeaderFooterContent(W.SectionProperties? sectionProperties, DocxReadContext context, bool header)
@@ -1439,8 +1861,9 @@ internal static class DocxDocumentProtoReader
     {
         var rawType = sectionProperties?.ChildElements
             .FirstOrDefault(element => element.LocalName == "type")
-            ?.GetAttribute("val", "http://schemas.openxmlformats.org/wordprocessingml/2006/main")
-            .Value;
+            is { } typeElement
+                ? RawAttributeValue(typeElement, "val")
+                : null;
         rawType ??= sectionProperties?.GetFirstChild<W.SectionType>()?.Val?.Value.ToString();
         if (string.IsNullOrEmpty(rawType))
         {
@@ -1701,28 +2124,45 @@ internal static class DocxDocumentProtoReader
             0;
     }
 
-    private static byte[]? WriteRunTextStyle(OpenXmlElement? runProperties)
+    private static byte[]? WriteRunTextStyle(
+        OpenXmlElement? runProperties,
+        W.FontSize? fallbackFontSize = null,
+        W.FontSizeComplexScript? fallbackComplexScriptFontSize = null,
+        int? fallbackAlignment = null,
+        W.RunFonts? fallbackRunFonts = null,
+        bool writeUnderlineNone = false)
     {
-        if (runProperties is null)
+        if (runProperties is null &&
+            fallbackFontSize is null &&
+            fallbackComplexScriptFontSize is null &&
+            fallbackAlignment is null &&
+            fallbackRunFonts is null)
         {
             return null;
         }
 
-        var bold = runProperties.GetFirstChild<W.Bold>();
-        var italic = runProperties.GetFirstChild<W.Italic>();
-        var fontSize = runProperties.GetFirstChild<W.FontSize>();
-        var colorElement = runProperties.GetFirstChild<W.Color>();
-        var underlineElement = runProperties.GetFirstChild<W.Underline>();
-        var runFonts = runProperties.GetFirstChild<W.RunFonts>();
-        var complexScriptFontSize = runProperties.GetFirstChild<W.FontSizeComplexScript>();
+        var bold = runProperties?.GetFirstChild<W.Bold>();
+        var italic = runProperties?.GetFirstChild<W.Italic>();
+        var fontSize = runProperties?.GetFirstChild<W.FontSize>() ?? fallbackFontSize;
+        var colorElement = runProperties?.GetFirstChild<W.Color>();
+        var highlight = runProperties?.GetFirstChild<W.Highlight>();
+        var highlightValue = HighlightValue(highlight);
+        var caps = runProperties?.GetFirstChild<W.Caps>();
+        var underlineElement = runProperties?.GetFirstChild<W.Underline>();
+        var directRunFonts = runProperties?.GetFirstChild<W.RunFonts>();
+        var runFonts = HasConcreteRunFont(directRunFonts) ? directRunFonts : fallbackRunFonts ?? directRunFonts;
+        var complexScriptFontSize = runProperties?.GetFirstChild<W.FontSizeComplexScript>() ?? fallbackComplexScriptFontSize;
         var hasStyle =
             bold is not null ||
             italic is not null ||
             fontSize?.Val?.Value is not null ||
             IsProtocolColor(colorElement?.Val?.Value) ||
-            underlineElement?.Val is not null ||
+            highlightValue is not null ||
+            caps is not null ||
+            UnderlineValue(underlineElement) is not null ||
             complexScriptFontSize?.Val?.Value is not null ||
-            runFonts is not null;
+            runFonts is not null ||
+            fallbackAlignment is not null;
         if (!hasStyle)
         {
             return null;
@@ -1730,8 +2170,8 @@ internal static class DocxDocumentProtoReader
 
         return Message(output =>
         {
-            WriteBool(output, 4, bold?.Val?.Value ?? bold is not null);
-            WriteBool(output, 5, italic?.Val?.Value ?? italic is not null);
+            WriteBoolValue(output, 4, OnOffValue(bold));
+            WriteBoolValue(output, 5, OnOffValue(italic));
             WriteInt32(output, 6, HalfPointStringToCentipoints(fontSize?.Val?.Value));
             var color = colorElement?.Val?.Value;
             if (IsProtocolColor(color))
@@ -1739,38 +2179,80 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 7, WriteColorFill(color!));
             }
 
-            var underline = underlineElement?.Val?.ToString();
-            if (!string.IsNullOrEmpty(underline) && underline != "None")
+            var underline = UnderlineValue(underlineElement);
+            if (!string.IsNullOrEmpty(underline) &&
+                (writeUnderlineNone || !string.Equals(underline, "none", StringComparison.OrdinalIgnoreCase)))
             {
                 WriteString(output, 9, underline);
             }
 
-            var typeface =
-                runFonts?.Ascii?.Value ??
-                runFonts?.HighAnsi?.Value ??
-                runFonts?.ComplexScript?.Value;
-            WriteString(output, 17, ComplexScriptFontSizeScheme(complexScriptFontSize));
+            var typeface = RunTypeface(directRunFonts, fallbackRunFonts);
+            WriteInt32(output, 8, fallbackAlignment);
+            WriteString(output, 17, RunTextStyleScheme(complexScriptFontSize, runFonts, highlightValue, caps, fallbackRunFonts));
             WriteString(output, 18, typeface);
         });
+    }
+
+    private static bool? OnOffValue(OpenXmlElement? element)
+    {
+        return element switch
+        {
+            null => null,
+            W.Bold bold => bold.Val?.Value ?? true,
+            W.Italic italic => italic.Val?.Value ?? true,
+            W.Caps caps => caps.Val?.Value ?? true,
+            _ => null,
+        };
+    }
+
+    private static bool HasConcreteRunFont(W.RunFonts? runFonts)
+    {
+        return !string.IsNullOrEmpty(runFonts?.Ascii?.Value) ||
+            !string.IsNullOrEmpty(runFonts?.HighAnsi?.Value) ||
+            !string.IsNullOrEmpty(runFonts?.ComplexScript?.Value) ||
+            !string.IsNullOrEmpty(runFonts?.EastAsia?.Value);
+    }
+
+    private static string? RunTypeface(W.RunFonts? directRunFonts, W.RunFonts? fallbackRunFonts = null)
+    {
+        return directRunFonts?.Ascii?.Value ??
+            directRunFonts?.HighAnsi?.Value ??
+            fallbackRunFonts?.Ascii?.Value ??
+            fallbackRunFonts?.HighAnsi?.Value ??
+            directRunFonts?.ComplexScript?.Value ??
+            fallbackRunFonts?.ComplexScript?.Value;
     }
 
     private static byte[]? WriteParagraphTextStyle(W.ParagraphProperties? paragraphProperties)
     {
         var alignment = AlignmentFromJustification(paragraphProperties?.Justification);
         var markRunProperties = paragraphProperties?.ParagraphMarkRunProperties;
+        var bold = markRunProperties?.GetFirstChild<W.Bold>();
+        var italic = markRunProperties?.GetFirstChild<W.Italic>();
         var fontSize = markRunProperties?.GetFirstChild<W.FontSize>();
         var colorElement = markRunProperties?.GetFirstChild<W.Color>();
+        var highlight = markRunProperties?.GetFirstChild<W.Highlight>();
+        var highlightValue = HighlightValue(highlight);
+        var underlineElement = markRunProperties?.GetFirstChild<W.Underline>();
         var complexScriptFontSize = markRunProperties?.GetFirstChild<W.FontSizeComplexScript>();
+        var runFonts = markRunProperties?.GetFirstChild<W.RunFonts>();
         if (alignment is null &&
+            bold is null &&
+            italic is null &&
             fontSize?.Val?.Value is null &&
             !IsProtocolColor(colorElement?.Val?.Value) &&
-            complexScriptFontSize?.Val?.Value is null)
+            highlightValue is null &&
+            UnderlineValue(underlineElement) is null &&
+            complexScriptFontSize?.Val?.Value is null &&
+            runFonts is null)
         {
             return null;
         }
 
         return Message(output =>
         {
+            WriteBoolValue(output, 4, OnOffValue(bold));
+            WriteBoolValue(output, 5, OnOffValue(italic));
             WriteInt32(output, 6, HalfPointStringToCentipoints(fontSize?.Val?.Value));
             var color = colorElement?.Val?.Value;
             if (IsProtocolColor(color))
@@ -1779,31 +2261,174 @@ internal static class DocxDocumentProtoReader
             }
 
             WriteInt32(output, 8, alignment);
-            WriteString(output, 17, ComplexScriptFontSizeScheme(complexScriptFontSize));
+            WriteString(output, 9, UnderlineValue(underlineElement));
+            var typeface =
+                runFonts?.Ascii?.Value ??
+                runFonts?.HighAnsi?.Value ??
+                runFonts?.ComplexScript?.Value;
+            WriteString(output, 17, RunTextStyleScheme(complexScriptFontSize, runFonts, highlightValue));
+            WriteString(output, 18, typeface);
         });
+    }
+
+    private static string? UnderlineValue(W.Underline? underline)
+    {
+        var rawValue = RawAttributeValue(underline, "val");
+        if (!string.IsNullOrEmpty(rawValue))
+        {
+            return rawValue;
+        }
+
+        return underline?.Val?.InnerText;
     }
 
     private static string? ComplexScriptFontSizeScheme(W.FontSizeComplexScript? fontSize)
     {
         var value = fontSize?.Val?.Value;
-        return string.IsNullOrEmpty(value) ? null : $"__docxComplexScriptFontSize:{value}";
+        return StrictIntFromString(value) is null ? null : $"__docxComplexScriptFontSize:{value}";
+    }
+
+    private static string? RunTextStyleScheme(
+        W.FontSizeComplexScript? fontSize,
+        W.RunFonts? runFonts,
+        string? highlightValue = null,
+        W.Caps? caps = null,
+        W.RunFonts? fallbackRunFonts = null)
+    {
+        var schemeParts = new List<string>();
+        if (ComplexScriptFontSizeScheme(fontSize) is { } complexScriptFontSizeScheme)
+        {
+            schemeParts.Add(complexScriptFontSizeScheme);
+        }
+
+        var eastAsiaTypeface = runFonts?.EastAsia?.Value ?? fallbackRunFonts?.EastAsia?.Value;
+        if (!string.IsNullOrEmpty(eastAsiaTypeface))
+        {
+            schemeParts.Add($"__docxEastAsiaTypeface:{eastAsiaTypeface}");
+        }
+
+        var complexScriptTypeface = runFonts?.ComplexScript?.Value ?? fallbackRunFonts?.ComplexScript?.Value;
+        if (!string.IsNullOrEmpty(complexScriptTypeface))
+        {
+            schemeParts.Add($"__docxComplexScriptTypeface:{complexScriptTypeface}");
+        }
+
+        if (caps is not null && OnOffValue(caps) != false)
+        {
+            schemeParts.Add("__docxCaps:true");
+        }
+
+        if (!string.IsNullOrEmpty(highlightValue))
+        {
+            schemeParts.Add($"__docxHighlight:{highlightValue}");
+        }
+
+        return schemeParts.Count == 0 ? null : string.Join(';', schemeParts);
+    }
+
+    private static string? HighlightValue(W.Highlight? highlight)
+    {
+        var rawValue = RawAttributeValue(highlight, "val");
+        return string.IsNullOrEmpty(rawValue) ? null : rawValue;
     }
 
     private static byte[]? WriteParagraphStyle(
-        W.StyleParagraphProperties? paragraphProperties,
-        ParagraphSpacingData? fallbackSpacing = null)
+        OpenXmlElement? paragraphProperties,
+        ParagraphSpacingData? fallbackSpacing = null,
+        W.Indentation? fallbackIndentation = null,
+        NumberingLevelStyleData? numberingLevel = null)
     {
-        var linePercent = LineSpacingPercent(paragraphProperties?.SpacingBetweenLines?.Line?.Value) ??
-            fallbackSpacing?.LineSpacingPercent;
-        if (linePercent is null)
+        var indentation = paragraphProperties?.GetFirstChild<W.Indentation>();
+        var marginLeft = StrictIntFromString(indentation?.Left?.Value) ??
+            StrictIntFromString(fallbackIndentation?.Left?.Value);
+        var indent = StrictIntFromString(indentation?.Hanging?.Value) is { } hanging
+            ? -hanging
+            : StrictIntFromString(indentation?.FirstLine?.Value) ??
+                (StrictIntFromString(fallbackIndentation?.Hanging?.Value) is { } fallbackHanging
+                    ? -fallbackHanging
+                    : StrictIntFromString(fallbackIndentation?.FirstLine?.Value));
+        var spacing = paragraphProperties?.GetFirstChild<W.SpacingBetweenLines>();
+        var linePoints = LineSpacingPoints(spacing);
+        var linePercent = linePoints is null
+            ? LineSpacingPercent(spacing?.Line?.Value) ?? fallbackSpacing?.LineSpacingPercent
+            : null;
+        var autoNumberType = numberingLevel?.AutoNumberType;
+        int? autoNumberStartAt = autoNumberType is null ? null : numberingLevel?.StartAt ?? 1;
+        if (marginLeft is null && indent is null && linePercent is null && linePoints is null && autoNumberType is null)
         {
             return null;
         }
 
         return Message(output =>
         {
+            if (marginLeft is not null)
+            {
+                WriteInt32Always(output, 2, (int)(marginLeft.Value * EmuPerTwip));
+            }
+
+            if (indent is not null)
+            {
+                WriteInt32Always(output, 3, (int)(indent.Value * EmuPerTwip));
+            }
+
             WriteInt32(output, 4, linePercent);
+            WriteInt32(output, 5, linePoints);
+            WriteString(output, 6, autoNumberType);
+            WriteInt32(output, 7, autoNumberStartAt);
         });
+    }
+
+    private static string? AutoNumberType(W.Level level)
+    {
+        var format = level.NumberingFormat?.Val?.ToString();
+        var levelText = level.LevelText?.Val?.Value;
+        if (string.IsNullOrEmpty(format) || string.IsNullOrEmpty(levelText))
+        {
+            return null;
+        }
+
+        var normalizedFormat = format.ToLowerInvariant();
+        if (LevelTextHasMarker(levelText, "."))
+        {
+            return normalizedFormat switch
+            {
+                "decimal" => "arabicPeriod",
+                "lowerletter" => "alphaLcPeriod",
+                "upperletter" => "alphaUcPeriod",
+                "lowerroman" => "romanLcPeriod",
+                "upperroman" => "romanUcPeriod",
+                _ => null,
+            };
+        }
+
+        if (LevelTextHasMarker(levelText, ")"))
+        {
+            return normalizedFormat switch
+            {
+                "decimal" => "arabicParenR",
+                "lowerletter" => "alphaLcParenR",
+                "upperletter" => "alphaUcParenR",
+                "lowerroman" => "romanLcParenR",
+                "upperroman" => "romanUcParenR",
+                _ => null,
+            };
+        }
+
+        return null;
+    }
+
+    private static bool LevelTextHasMarker(string levelText, string suffix)
+    {
+        if (!levelText.EndsWith(suffix, StringComparison.Ordinal) || levelText.Length < suffix.Length + 2)
+        {
+            return false;
+        }
+
+        var marker = levelText.AsSpan(0, levelText.Length - suffix.Length);
+        var lastMarkerStart = marker.LastIndexOf('%');
+        return lastMarkerStart >= 0 &&
+            lastMarkerStart < marker.Length - 1 &&
+            marker[(lastMarkerStart + 1)..].IndexOfAnyExceptInRange('0', '9') < 0;
     }
 
     private static Dictionary<string, ParagraphSpacingData> ExtractParagraphStyleSpacing(MainDocumentPart mainPart)
@@ -1880,9 +2505,9 @@ internal static class DocxDocumentProtoReader
         return ParagraphSpacingFrom(paragraphProperties?.SpacingBetweenLines);
     }
 
-    private static ParagraphSpacingData ParagraphStyleSpacingFrom(W.StyleParagraphProperties? paragraphProperties)
+    private static ParagraphSpacingData ParagraphStyleSpacingFrom(OpenXmlElement? paragraphProperties)
     {
-        return ParagraphSpacingFrom(paragraphProperties?.SpacingBetweenLines);
+        return ParagraphSpacingFrom(paragraphProperties?.GetFirstChild<W.SpacingBetweenLines>());
     }
 
     private static ParagraphSpacingData ExtractDefaultParagraphSpacing(MainDocumentPart mainPart)
@@ -1914,10 +2539,39 @@ internal static class DocxDocumentProtoReader
         return line is null ? null : (int)Math.Round(line.Value * 100000d / 240d);
     }
 
-    private static byte[] WriteColorFill(string color)
+    private static int? LineSpacingPoints(W.SpacingBetweenLines? spacing)
+    {
+        var lineRule = RawAttributeValue(spacing, "lineRule", null);
+        lineRule ??= spacing?.LineRule?.InnerText;
+        lineRule ??= spacing?.LineRule?.Value.ToString();
+
+        if (!string.Equals(lineRule, "exact", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var line = StrictIntFromString(spacing?.Line?.Value);
+        return line is null ? null : line.Value * 5;
+    }
+
+    private static string? RawAttributeValue(OpenXmlElement? element, string localName, string? namespaceUri = WordprocessingNamespace)
+    {
+        return element?.GetAttributes()
+            .FirstOrDefault(attribute =>
+                string.Equals(attribute.LocalName, localName, StringComparison.OrdinalIgnoreCase) &&
+                (namespaceUri is null || string.Equals(attribute.NamespaceUri, namespaceUri, StringComparison.Ordinal)))
+            .Value;
+    }
+
+    private static byte[] WriteColorFill(string color, bool writeSolidType = false)
     {
         return Message(output =>
         {
+            if (writeSolidType)
+            {
+                WriteInt32(output, 1, FillTypeSolid);
+            }
+
             WriteMessage(output, 2, WriteColor(color));
         });
     }
@@ -1950,12 +2604,25 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static byte[] WriteBoundingBox(long xEmu, long yEmu, long widthEmu, long heightEmu)
+    private static byte[] WriteBoundingBox(
+        long xEmu,
+        long yEmu,
+        long widthEmu,
+        long heightEmu,
+        bool writeZeroY = false)
     {
         return Message(output =>
         {
             WriteInt64(output, 1, xEmu);
-            WriteInt64(output, 2, yEmu);
+            if (writeZeroY)
+            {
+                WriteInt64Always(output, 2, yEmu);
+            }
+            else
+            {
+                WriteInt64(output, 2, yEmu);
+            }
+
             WriteInt64(output, 3, widthEmu);
             WriteInt64(output, 4, heightEmu);
         });
@@ -2043,6 +2710,7 @@ internal static class DocxDocumentProtoReader
             "left" => AlignmentLeft,
             "center" => AlignmentCenter,
             "right" => AlignmentRight,
+            "both" => AlignmentJustified,
             _ => null,
         };
     }
@@ -2164,6 +2832,12 @@ internal static class DocxDocumentProtoReader
         output.WriteBytes(ByteString.CopyFrom(bytes));
     }
 
+    private static void WriteMessageAllowEmpty(CodedOutputStream output, int fieldNumber, byte[] bytes)
+    {
+        output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
+        output.WriteBytes(ByteString.CopyFrom(bytes));
+    }
+
     private static void WriteString(CodedOutputStream output, int fieldNumber, string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -2225,6 +2899,12 @@ internal static class DocxDocumentProtoReader
         output.WriteInt64(value.Value);
     }
 
+    private static void WriteInt64Always(CodedOutputStream output, int fieldNumber, long value)
+    {
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteInt64(value);
+    }
+
     private static void WriteDouble(CodedOutputStream output, int fieldNumber, double value)
     {
         if (value == 0 || !double.IsFinite(value))
@@ -2247,6 +2927,17 @@ internal static class DocxDocumentProtoReader
         output.WriteBool(value);
     }
 
+    private static void WriteBoolValue(CodedOutputStream output, int fieldNumber, bool? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        output.WriteTag(fieldNumber, WireFormat.WireType.Varint);
+        output.WriteBool(value.Value);
+    }
+
     private sealed class DocxReadContext(MainDocumentPart mainPart, PageMetrics page)
     {
         private int _paragraphIndex = 1;
@@ -2266,6 +2957,10 @@ internal static class DocxDocumentProtoReader
         public Dictionary<string, ReviewMarkData> ReviewMarks { get; } = [];
         public List<ParagraphNumberingData> ParagraphNumberings { get; } = [];
         public Dictionary<string, ParagraphSpacingData> ParagraphStyleSpacing { get; } = ExtractParagraphStyleSpacing(mainPart);
+        public Dictionary<(string NumId, int Level), NumberingLevelStyleData> NumberingLevelStyleByLevel { get; } =
+            ExtractNumberingLevelStyles(mainPart);
+        public Dictionary<(string NumId, int Level), W.Indentation> NumberingLevelIndentationByLevel { get; } =
+            ExtractNumberingLevelIndentations(mainPart);
         public string? DefaultParagraphStyleId { get; } = ExtractDefaultParagraphStyleId(mainPart);
         public IEnumerable<string> ActiveCommentIds => _activeCommentIds;
 
@@ -2332,6 +3027,26 @@ internal static class DocxDocumentProtoReader
                 direct.Before ?? styleSpacing?.Before,
                 direct.After ?? styleSpacing?.After,
                 direct.LineSpacingPercent ?? styleSpacing?.LineSpacingPercent);
+        }
+
+        public W.Indentation? NumberingLevelIndentation(W.ParagraphProperties? paragraphProperties)
+        {
+            return NumberingLevelStyle(paragraphProperties)?.Indentation ??
+                NumberingLevelIndentationByLevel.GetValueOrDefault(NumberingLevelKey(paragraphProperties));
+        }
+
+        public NumberingLevelStyleData? NumberingLevelStyle(W.ParagraphProperties? paragraphProperties)
+        {
+            var key = NumberingLevelKey(paragraphProperties);
+            return string.IsNullOrEmpty(key.NumId) ? null : NumberingLevelStyleByLevel.GetValueOrDefault(key);
+        }
+
+        private static (string NumId, int Level) NumberingLevelKey(W.ParagraphProperties? paragraphProperties)
+        {
+            var numbering = paragraphProperties?.NumberingProperties;
+            return (
+                numbering?.NumberingId?.Val?.Value.ToString() ?? "",
+                numbering?.NumberingLevelReference?.Val?.Value ?? 0);
         }
 
         public void AddChart(ChartPart chartPart)
@@ -2407,10 +3122,16 @@ internal static class DocxDocumentProtoReader
 
     private sealed record ParagraphNumberingData(string ParagraphId, string NumId, int Level);
 
+    private sealed record DocumentElementProto(byte[] Proto, int SectionIndex);
+
+    private sealed record NumberingLevelStyleData(W.Indentation? Indentation, int? StartAt, string? AutoNumberType);
+
     private sealed record PageBreakSectionEstimate(int EstimatedCount, int RenderedBreaks, bool SuppressLeadingRenderedSection);
 
     private sealed record ParagraphSpacingData(int? Before, int? After, int? LineSpacingPercent)
     {
+        public bool HasAny => Before is not null || After is not null || LineSpacingPercent is not null;
+
         public ParagraphSpacingData WithFallback(ParagraphSpacingData fallback)
         {
             return new ParagraphSpacingData(

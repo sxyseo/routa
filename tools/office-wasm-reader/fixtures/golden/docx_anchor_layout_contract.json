@@ -43,7 +43,7 @@
       "type": 7
     }
   ],
-  "wasmProtoByteLength": 300,
-  "wasmProtoSha256": "60aa47e51988442fff6f6361937391ab5240da1fa4bca7051072045ed70e23cb",
+  "wasmProtoByteLength": 431,
+  "wasmProtoSha256": "35f3d9fee3b9f9dc35ff05a4661a41704e8a81e58d2a50caee25d513fd110262",
   "widthEmu": 12240
 }

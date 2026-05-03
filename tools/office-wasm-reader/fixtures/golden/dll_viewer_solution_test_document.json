@@ -220,6 +220,7 @@
     {
       "bbox": {
         "xEmu": 777240,
+        "yEmu": 0,
         "widthEmu": 6217920,
         "heightEmu": 3730752
       },
@@ -304,7 +305,7 @@
       "type": 1
     }
   ],
-  "wasmProtoByteLength": 143463,
-  "wasmProtoSha256": "6dc80940f79af643c1a5d12ec1b4799e1b071e76beb12dbb4d2eb5dc97762d1b",
+  "wasmProtoByteLength": 167075,
+  "wasmProtoSha256": "205635f4cf24669aba1ce156f3cefad0bdf2add5e5cee8cba4c83899f2a12d35",
   "widthEmu": 12240
 }
