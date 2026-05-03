@@ -525,7 +525,7 @@ function drawChartGrid(
       context.stroke();
     }
 
-    context.fillText(formatChartTick(value), plot.left - 8, y);
+    context.fillText(formatChartTick(value, chart.yAxis?.numberFormat), plot.left - 8, y);
   }
 
   if (isLineAxisChart(chart.type) && chart.categories.length > 0) {
@@ -1014,8 +1014,39 @@ function chartPalette(index: number): string {
   return CHART_PALETTE[index % CHART_PALETTE.length] ?? "#1f6f8b";
 }
 
-function formatChartTick(value: number): string {
+export function formatChartTick(value: number, numberFormat = ""): string {
+  const normalized = numberFormat.toLowerCase();
+  if (normalized.includes("%")) {
+    const decimals = chartFormatDecimalPlaces(numberFormat);
+    return `${(value * 100).toFixed(decimals)}%`;
+  }
+
+  if (numberFormat.includes("$")) {
+    const decimals = chartFormatDecimalPlaces(numberFormat);
+    const formatted = Math.abs(value).toLocaleString("en-US", {
+      maximumFractionDigits: decimals,
+      minimumFractionDigits: decimals,
+    });
+    return `${value < 0 ? "-" : ""}$${formatted}`;
+  }
+
+  if (numberFormat.includes("#,##0.00")) {
+    return value.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  }
+
+  if (numberFormat.includes("#,##0")) {
+    return Math.round(value).toLocaleString("en-US");
+  }
+
+  if (/^0\.0+$/.test(numberFormat)) {
+    return value.toFixed(chartFormatDecimalPlaces(numberFormat));
+  }
+
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function chartFormatDecimalPlaces(numberFormat: string): number {
+  return numberFormat.match(/\.([0#]+)/)?.[1]?.length ?? 0;
 }
 
 function roundChartNumber(value: number): number {

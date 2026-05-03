@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSpreadsheetCharts, spreadsheetChartPlotArea, spreadsheetChartTickValues } from "../spreadsheet-charts";
+import { buildSpreadsheetCharts, formatChartTick, spreadsheetChartPlotArea, spreadsheetChartTickValues } from "../spreadsheet-charts";
 import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetRowTop } from "../spreadsheet-layout";
 
 describe("spreadsheet charts", () => {
@@ -121,6 +121,14 @@ describe("spreadsheet charts", () => {
     expect(spreadsheetChartPlotArea({ ...baseChart, legendOverlay: false, legendPosition: "top" })).toMatchObject({
       top: 86,
     });
+  });
+
+  it("formats chart tick labels from axis number formats", () => {
+    expect(formatChartTick(0.42, "0%")).toBe("42%");
+    expect(formatChartTick(0.125, "0.00%")).toBe("12.50%");
+    expect(formatChartTick(1234.5, "$#,##0.00")).toBe("$1,234.50");
+    expect(formatChartTick(1234.5, "#,##0")).toBe("1,235");
+    expect(formatChartTick(12.345, "0.0")).toBe("12.3");
   });
 
   it("preserves non-line chart families from protocol ids", () => {
