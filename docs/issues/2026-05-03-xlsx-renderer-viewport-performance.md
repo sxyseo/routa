@@ -74,7 +74,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Line chart series markers are now protocol-driven instead of being forced for every series; fallback demo charts still opt into markers.
 - Sheet `sparklineGroups` now render as per-cell inline SVG sparklines from the protocol ranges, with line/column/stacked types, series color, line weight, and marker flags.
 - Cells targeted by XLSX notes or threaded comment threads now render a lightweight top-right comment indicator in the viewport.
-- XLSX data-validation ranges now build a bounded per-cell lookup and render list dropdown or validation indicators for visible cells.
+- XLSX data-validation ranges now use a lazy bounded lookup and render list dropdown or validation indicators for visible cells, including full-column ranges without dense materialization.
 - Workbook sheet `tabColor` values now feed the bottom sheet-tab chrome instead of being ignored by the preview.
 - Sheet-level slicer protocol objects now get a fallback worksheet overlay when no drawing shape already represents the slicer.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.

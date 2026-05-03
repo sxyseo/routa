@@ -161,10 +161,30 @@ describe("spreadsheet cell formatting", () => {
       },
     };
 
-    expect([...buildSpreadsheetValidationVisuals(sheet)]).toEqual([
-      ["2:1", { formula: "\"Open,Closed\"", prompt: "Pick a status", type: "dropdown" }],
-      ["3:1", { formula: "\"Open,Closed\"", prompt: "Pick a status", type: "dropdown" }],
-    ]);
+    const visuals = buildSpreadsheetValidationVisuals(sheet);
+
+    expect(visuals.get("2:1")).toEqual({ formula: "\"Open,Closed\"", prompt: "Pick a status", type: "dropdown" });
+    expect(visuals.get("3:1")).toEqual({ formula: "\"Open,Closed\"", prompt: "Pick a status", type: "dropdown" });
+    expect(visuals.get("4:1")).toBeUndefined();
+  });
+
+  it("resolves large validation ranges lazily for viewport cells", () => {
+    const visuals = buildSpreadsheetValidationVisuals({
+      dataValidations: {
+        items: [
+          {
+            formula1: "\"Yes,No\"",
+            ranges: ["A:A"],
+            showDropDown: false,
+            type: 4,
+          },
+        ],
+      },
+    });
+
+    expect(visuals.get("1:0")).toEqual({ formula: "\"Yes,No\"", prompt: "", type: "dropdown" });
+    expect(visuals.get("1048576:0")).toEqual({ formula: "\"Yes,No\"", prompt: "", type: "dropdown" });
+    expect(visuals.get("1:1")).toBeUndefined();
   });
 
   it("maps sheet tab colors into CSS colors", () => {

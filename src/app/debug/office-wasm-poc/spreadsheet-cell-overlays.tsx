@@ -28,6 +28,16 @@ export type SpreadsheetValidationVisual = {
   type: "dropdown" | "validation";
 };
 
+export type SpreadsheetValidationVisualLookup = {
+  get(key: string): SpreadsheetValidationVisual | undefined;
+};
+
+type SpreadsheetValidationVisualSpec = SpreadsheetValidationVisual & {
+  ranges: NonNullable<ReturnType<typeof parseCellRange>>[];
+};
+
+const MAX_VALIDATION_VISUAL_CACHE_SIZE = 5_000;
+
 export function buildSpreadsheetSparklineVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetSparklineVisual> {
   const visuals = new Map<string, SpreadsheetSparklineVisual>();
   const rows = rowsByIndexForSheet(sheet);
@@ -69,28 +79,68 @@ export function buildSpreadsheetCommentVisuals(root: RecordValue | null, sheet: 
   return comments;
 }
 
-export function buildSpreadsheetValidationVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetValidationVisual> {
-  const visuals = new Map<string, SpreadsheetValidationVisual>();
+export function buildSpreadsheetValidationVisuals(sheet: RecordValue | undefined): SpreadsheetValidationVisualLookup {
+  const specs: SpreadsheetValidationVisualSpec[] = [];
   for (const validation of spreadsheetDataValidationItems(sheet)) {
-    const references = spreadsheetDataValidationReferences(validation);
-    if (references.length === 0) continue;
+    const ranges = spreadsheetDataValidationReferences(validation)
+      .map(parseCellRange)
+      .filter((range): range is NonNullable<ReturnType<typeof parseCellRange>> => range != null);
+    if (ranges.length === 0) continue;
     const typeCode = asNumber(validation.type, 0);
     const isDropdown = typeCode === 4 && validation.showDropDown !== true;
-    for (const reference of references) {
-      const range = parseCellRange(reference);
-      if (!range) continue;
-      for (let rowIndex = range.startRow; rowIndex < range.startRow + Math.min(range.rowSpan, 2048); rowIndex += 1) {
-        for (let columnIndex = range.startColumn; columnIndex < range.startColumn + Math.min(range.columnSpan, 256); columnIndex += 1) {
-          visuals.set(spreadsheetCellKey(rowIndex, columnIndex), {
-            formula: asString(validation.formula1),
-            prompt: asString(validation.prompt) || asString(validation.promptTitle),
-            type: isDropdown ? "dropdown" : "validation",
-          });
-        }
-      }
-    }
+    specs.push({
+      formula: asString(validation.formula1),
+      prompt: asString(validation.prompt) || asString(validation.promptTitle),
+      ranges,
+      type: isDropdown ? "dropdown" : "validation",
+    });
   }
-  return visuals;
+
+  const cache = new Map<string, SpreadsheetValidationVisual | null>();
+  return {
+    get(key: string) {
+      if (cache.has(key)) return cache.get(key) ?? undefined;
+      const visual = spreadsheetValidationVisualAt(specs, key);
+      if (cache.size >= MAX_VALIDATION_VISUAL_CACHE_SIZE) {
+        const firstKey = cache.keys().next().value;
+        if (firstKey != null) cache.delete(firstKey);
+      }
+      cache.set(key, visual ?? null);
+      return visual;
+    },
+  };
+}
+
+function spreadsheetValidationVisualAt(
+  specs: SpreadsheetValidationVisualSpec[],
+  key: string,
+): SpreadsheetValidationVisual | undefined {
+  const [rowValue, columnValue] = key.split(":");
+  const rowIndex = Number(rowValue);
+  const columnIndex = Number(columnValue);
+  if (!Number.isFinite(rowIndex) || !Number.isFinite(columnIndex)) return undefined;
+
+  for (const spec of specs) {
+    if (!spec.ranges.some((range) => cellRangeContains(range, rowIndex, columnIndex))) continue;
+    return {
+      formula: spec.formula,
+      prompt: spec.prompt,
+      type: spec.type,
+    };
+  }
+
+  return undefined;
+}
+
+function cellRangeContains(
+  range: NonNullable<ReturnType<typeof parseCellRange>>,
+  rowIndex: number,
+  columnIndex: number,
+): boolean {
+  return rowIndex >= range.startRow &&
+    rowIndex < range.startRow + range.rowSpan &&
+    columnIndex >= range.startColumn &&
+    columnIndex < range.startColumn + range.columnSpan;
 }
 
 export function SpreadsheetCellContent({

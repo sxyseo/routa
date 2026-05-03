@@ -31,7 +31,7 @@ import {
   buildSpreadsheetValidationVisuals,
   SpreadsheetCellContent,
   type SpreadsheetSparklineVisual,
-  type SpreadsheetValidationVisual,
+  type SpreadsheetValidationVisualLookup,
 } from "./spreadsheet-cell-overlays";
 import { buildSpreadsheetCharts, SpreadsheetChartLayer } from "./spreadsheet-charts";
 import { SpreadsheetFrozenHeaders } from "./spreadsheet-frozen-headers";
@@ -376,7 +376,7 @@ function SpreadsheetFrozenBodyLayer({
   scroll: SpreadsheetViewportScroll;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
-  validationVisuals: Map<string, SpreadsheetValidationVisual>;
+  validationVisuals: SpreadsheetValidationVisualLookup;
   viewportSize: SpreadsheetViewportSize;
 }) {
   if (layout.freezePanes.columnCount === 0 && layout.freezePanes.rowCount === 0) {
@@ -475,7 +475,7 @@ function SpreadsheetGrid({
   scroll: SpreadsheetViewportScroll;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
-  validationVisuals: Map<string, SpreadsheetValidationVisual>;
+  validationVisuals: SpreadsheetValidationVisualLookup;
   viewportSize: SpreadsheetViewportSize;
 }) {
   const sheetName = asString(activeSheet?.name);
