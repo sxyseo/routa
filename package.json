@@ -60,6 +60,8 @@
     "lint:color-system:strict": "node scripts/lint-design-system-css.mjs --color-system-strict",
     "debug:office-wasm:check": "node --import tsx scripts/debug/check-office-wasm-poc-consistency.ts",
     "build:office-wasm-reader": "node scripts/office-wasm-reader/build-office-wasm-reader.mjs",
+    "build:office-package": "node scripts/office-wasm-reader/build-office-package.mjs",
+    "publish:office-package": "npm run build:office-package && npm publish packages/office --access public",
     "check:office-wasm-reader:deps": "node scripts/office-wasm-reader/check-office-wasm-reader-dependencies.mjs",
     "compare:office-wasm-reader:docx": "node --import tsx scripts/office-wasm-reader/compare-walnut-docx-protocol.ts",
     "compare:office-wasm-reader:pptx": "node --import tsx scripts/office-wasm-reader/compare-walnut-pptx-protocol.ts",

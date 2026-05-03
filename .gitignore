@@ -131,6 +131,8 @@ dogfood-output
 docs/issues/*-gh-*.md
 docs/product-specs/feature-tree.index.json
 public/office-wasm-reader/
+packages/office/wasm/
+packages/office/dist/
 tools/ppt-template/output/
 tools/ppt-template/node_modules/
 .agents
