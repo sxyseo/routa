@@ -22,11 +22,14 @@ type ComparisonResult = {
   routaProtocol: string;
   parity: ReturnType<typeof summarizeParity>;
   equivalence: ReturnType<typeof summarizeEquivalence>;
+  protocolDiff?: ReturnType<typeof summarizeProtocolDiff>;
 };
 
 const repoRoot = process.cwd();
 const assetDir = path.resolve(repoRoot, officeWasmConfig.OFFICE_WASM_TMP_ASSET_DIR);
 const assertMode = process.argv.includes("--assert");
+const diffMode = process.argv.includes("--diff");
+const diffLimit = parseDiffLimit(process.argv);
 const fixturePaths = process.argv
   .slice(2)
   .filter((arg) => !arg.startsWith("--"))
@@ -70,6 +73,7 @@ async function compareFixture(fixturePath: string): Promise<ComparisonResult> {
     equivalence,
     fixture: path.relative(repoRoot, fixturePath),
     parity: summarizeParity(equivalence),
+    ...(diffMode ? { protocolDiff: summarizeProtocolDiff(walnutPresentation, routaPresentation, diffLimit) } : {}),
     routa: summarizePresentation(routaPresentation, routaProtoBytes),
     routaProtocol: "oaiproto.coworker.presentation.Presentation",
     targetProtocol: "oaiproto.coworker.presentation.Presentation",
@@ -325,6 +329,144 @@ function requiredSemanticChecks(equivalence: ReturnType<typeof summarizeEquivale
   return Object.entries(equivalence)
     .filter(([, value]) => typeof value === "boolean" && !value)
     .map(([key]) => key);
+}
+
+function summarizeProtocolDiff(
+  walnutPresentation: Record<string, unknown>,
+  routaPresentation: Record<string, unknown>,
+  limit: number,
+) {
+  const diffs: ProtocolDiffEntry[] = [];
+  const state = { total: 0 };
+  compareProtocolValue(walnutPresentation, routaPresentation, "$", diffs, state, limit);
+  return {
+    shown: diffs,
+    shownCount: diffs.length,
+    totalCount: state.total,
+  };
+}
+
+type ProtocolDiffEntry = {
+  kind: "array_length" | "missing_in_routa" | "missing_in_walnut" | "type" | "value";
+  path: string;
+  routa: unknown;
+  walnut: unknown;
+};
+
+function compareProtocolValue(
+  walnut: unknown,
+  routa: unknown,
+  pathName: string,
+  diffs: ProtocolDiffEntry[],
+  state: { total: number },
+  limit: number,
+): void {
+  if (Object.is(walnut, routa)) {
+    return;
+  }
+
+  const walnutKind = protocolValueKind(walnut);
+  const routaKind = protocolValueKind(routa);
+  if (walnutKind !== routaKind) {
+    pushProtocolDiff(diffs, state, limit, {
+      kind: "type",
+      path: pathName,
+      routa: summarizeProtocolValue(routa),
+      walnut: summarizeProtocolValue(walnut),
+    });
+    return;
+  }
+
+  if (Array.isArray(walnut) && Array.isArray(routa)) {
+    if (walnut.length !== routa.length) {
+      pushProtocolDiff(diffs, state, limit, {
+        kind: "array_length",
+        path: pathName,
+        routa: routa.length,
+        walnut: walnut.length,
+      });
+    }
+
+    const length = Math.min(walnut.length, routa.length);
+    for (let index = 0; index < length; index += 1) {
+      compareProtocolValue(walnut[index], routa[index], `${pathName}[${index}]`, diffs, state, limit);
+    }
+    return;
+  }
+
+  if (isRecord(walnut) && isRecord(routa)) {
+    const keys = new Set([...Object.keys(walnut), ...Object.keys(routa)]);
+    for (const key of [...keys].sort()) {
+      const childPath = `${pathName}.${key}`;
+      const walnutHasKey = Object.prototype.hasOwnProperty.call(walnut, key);
+      const routaHasKey = Object.prototype.hasOwnProperty.call(routa, key);
+      if (!walnutHasKey) {
+        pushProtocolDiff(diffs, state, limit, {
+          kind: "missing_in_walnut",
+          path: childPath,
+          routa: summarizeProtocolValue(routa[key]),
+          walnut: undefined,
+        });
+        continue;
+      }
+
+      if (!routaHasKey) {
+        pushProtocolDiff(diffs, state, limit, {
+          kind: "missing_in_routa",
+          path: childPath,
+          routa: undefined,
+          walnut: summarizeProtocolValue(walnut[key]),
+        });
+        continue;
+      }
+
+      compareProtocolValue(walnut[key], routa[key], childPath, diffs, state, limit);
+    }
+    return;
+  }
+
+  pushProtocolDiff(diffs, state, limit, {
+    kind: "value",
+    path: pathName,
+    routa,
+    walnut,
+  });
+}
+
+function pushProtocolDiff(
+  diffs: ProtocolDiffEntry[],
+  state: { total: number },
+  limit: number,
+  diff: ProtocolDiffEntry,
+): void {
+  state.total += 1;
+  if (diffs.length < limit) {
+    diffs.push(diff);
+  }
+}
+
+function protocolValueKind(value: unknown): string {
+  if (Array.isArray(value)) return "array";
+  if (value === null) return "null";
+  return typeof value;
+}
+
+function summarizeProtocolValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return { arrayLength: value.length };
+  }
+
+  if (isRecord(value)) {
+    return { keys: Object.keys(value).sort() };
+  }
+
+  return value;
+}
+
+function parseDiffLimit(args: string[]): number {
+  const raw = args.find((arg) => arg.startsWith("--diff-limit="))?.slice("--diff-limit=".length);
+  const parsed = raw ? Number(raw) : 80;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 80;
 }
 
 function elementImageReferenceIds(element: Record<string, unknown>): string[] {
