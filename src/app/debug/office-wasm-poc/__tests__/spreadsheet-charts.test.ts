@@ -241,6 +241,36 @@ describe("spreadsheet charts", () => {
     expect(charts[0]?.showDataLabels).toBe(true);
   });
 
+  it("preserves protocol axis titles for chart rendering", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            series: [{ categories: ["Q1", "Q2"], name: "Revenue", values: [10, 20] }],
+            title: "Revenue Trend",
+            type: 13,
+            xAxis: { title: "Quarter" },
+            yAxis: { minimum: 0, title: "USD" },
+          },
+          extentCx: "1905000",
+          extentCy: "952500",
+          fromAnchor: { colId: "1", rowId: "1" },
+        },
+      ],
+      name: "Charts",
+      rows: [],
+    };
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [],
+      layout: buildSpreadsheetLayout(sheet),
+      sheets: [sheet],
+    });
+
+    expect(charts[0]?.xAxis?.title).toBe("Quarter");
+    expect(charts[0]?.yAxis?.title).toBe("USD");
+  });
+
   it("clusters bar geometry for every protocol series", () => {
     const chart = {
       categories: ["Q1", "Q2"],

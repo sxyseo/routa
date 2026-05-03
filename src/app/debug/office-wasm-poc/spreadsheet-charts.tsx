@@ -27,6 +27,7 @@ type SpreadsheetChartAxisSpec = {
   minimum?: number;
   numberFormat: string;
   position: string;
+  title?: string;
 };
 
 type SpreadsheetChartLegendPosition = "bottom" | "left" | "none" | "right" | "top";
@@ -341,6 +342,7 @@ function spreadsheetChartAxis(value: unknown): SpreadsheetChartAxisSpec | undefi
     minimum: optionalProtocolNumber(axis.minimum ?? axis.min ?? scaling.minimum ?? scaling.min),
     numberFormat: asString(axis.numberFormat),
     position: asString(axis.position ?? axis.axisPosition),
+    ...(asString(axis.title) ? { title: asString(axis.title) } : {}),
   };
 }
 
@@ -570,6 +572,35 @@ function drawChartGrid(
   context.lineTo(plot.left, plot.bottom);
   context.lineTo(plot.right, plot.bottom);
   context.stroke();
+
+  drawChartAxisTitles(context, chart, plot);
+  context.restore();
+}
+
+function drawChartAxisTitles(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+) {
+  context.save();
+  context.fillStyle = "#4b5563";
+  context.font = "12px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+
+  if (chart.yAxis?.title) {
+    context.save();
+    context.translate(14, (plot.top + plot.bottom) / 2);
+    context.rotate(-Math.PI / 2);
+    context.fillText(chart.yAxis.title, 0, 0);
+    context.restore();
+  }
+
+  if (chart.xAxis?.title) {
+    const offset = isLineAxisChart(chart.type) ? 48 : 38;
+    context.fillText(chart.xAxis.title, (plot.left + plot.right) / 2, plot.bottom + offset);
+  }
+
   context.restore();
 }
 

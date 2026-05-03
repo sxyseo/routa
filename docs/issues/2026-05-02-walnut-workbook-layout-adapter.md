@@ -132,6 +132,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Bar chart preview now renders clustered bars for every protocol series instead of dropping all but the first series; data labels use the same multi-series geometry.
 - Table style mapping now recognizes built-in `TableStyleLight1`-`TableStyleLight21` and `TableStyleDark1`-`TableStyleDark11` families in addition to Medium styles, deriving their stripe and total palettes from workbook theme accents.
 - Formula conditional-format preview now resolves table structured references for current-row table columns such as `[@Status]` and `Table1[Status]`, using decoded table ranges/columns and the current cell row.
+- Chart preview now consumes protocol axis titles and renders x/y title text on the canvas chart layer.
 
 ## Remaining XLSX Work
 
@@ -153,7 +154,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 2. Pixel-level chart fidelity
 
-   Chart protocol and preview coverage now include line, clustered bar, area, pie, doughnut, scatter, bubble, radar, surface families, protocol-driven markers, axis formats, legends, and basic data labels. Still missing Excel/Walnut internal layout parity for plot-area auto sizing, typography, detailed data-label positioning/options, trendlines/error bars, multi-axis/combo charts, and detailed chart style inheritance.
+   Chart protocol and preview coverage now include line, clustered bar, area, pie, doughnut, scatter, bubble, radar, surface families, protocol-driven markers, axis formats/titles, legends, and basic data labels. Still missing Excel/Walnut internal layout parity for plot-area auto sizing, typography, detailed data-label positioning/options, trendlines/error bars, multi-axis/combo charts, and detailed chart style inheritance.
 
 3. Full built-in table style definitions
 
