@@ -543,6 +543,37 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("3:0")).toBeUndefined();
   });
 
+  it("evaluates aggregate functions over ranges in formula conditional formats", () => {
+    const visuals = buildSpreadsheetConditionalVisuals(
+      {
+        conditionalFormattings: [
+          {
+            ranges: ["A2:A4"],
+            rules: [
+              {
+                fillColor: "DCFCE7",
+                formulas: ["=A2>AVERAGE(TargetScores)"],
+                type: "expression",
+              },
+            ],
+          },
+        ],
+        name: "AggregateFormula",
+        rows: [
+          { cells: [{ address: "A2", value: "10" }, { address: "B2", value: "10" }], index: 2 },
+          { cells: [{ address: "A3", value: "20" }, { address: "B3", value: "20" }], index: 3 },
+          { cells: [{ address: "A4", value: "30" }, { address: "B4", value: "30" }], index: 4 },
+        ],
+      },
+      null,
+      [{ name: "TargetScores", text: "$B$2:$B$4" }],
+    );
+
+    expect(visuals.get("2:0")).toBeUndefined();
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#DCFCE7");
+  });
+
   it("uses data-bar direction, visibility, and length options", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

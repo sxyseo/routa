@@ -116,6 +116,24 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
     const divisor = Number(evaluateFormulaValue(args[1] ?? "", context));
     return Number.isFinite(dividend) && Number.isFinite(divisor) && divisor !== 0 ? dividend % divisor : Number.NaN;
   }
+  if (normalizedName === "SUM") {
+    return formulaNumericArgs(args, context).reduce((sum, value) => sum + value, 0);
+  }
+  if (normalizedName === "AVERAGE") {
+    const values = formulaNumericArgs(args, context);
+    return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : Number.NaN;
+  }
+  if (normalizedName === "MIN") {
+    const values = formulaNumericArgs(args, context);
+    return values.length > 0 ? Math.min(...values) : Number.NaN;
+  }
+  if (normalizedName === "MAX") {
+    const values = formulaNumericArgs(args, context);
+    return values.length > 0 ? Math.max(...values) : Number.NaN;
+  }
+  if (normalizedName === "COUNT") {
+    return formulaNumericArgs(args, context).length;
+  }
 
   return "";
 }
@@ -145,6 +163,37 @@ function cellValueAtReference(reference: CellReference, context: ConditionalForm
     : context.columnIndex + reference.columnIndex - context.range.startColumn;
   const cell = context.rowsByIndex.get(rowIndex)?.get(columnIndex) ?? null;
   return cellText(cell);
+}
+
+function formulaNumericArgs(args: string[], context: ConditionalFormulaContext): number[] {
+  const values: number[] = [];
+  for (const arg of args) {
+    const rangeValues = formulaRangeValues(arg, context);
+    if (rangeValues) {
+      values.push(...rangeValues.map(Number).filter(Number.isFinite));
+      continue;
+    }
+
+    const value = Number(evaluateFormulaValue(arg, context));
+    if (Number.isFinite(value)) values.push(value);
+  }
+  return values;
+}
+
+function formulaRangeValues(expression: string, context: ConditionalFormulaContext): string[] | null {
+  const target = definedNameTarget(stripFormulaPrefix(expression), context) ?? stripFormulaPrefix(expression);
+  if (!/[A-Z]+\$?\d/i.test(target) && !target.includes(":")) return null;
+  const range = parseCellRange(target);
+  if (!range) return null;
+
+  const values: string[] = [];
+  for (let rowIndex = range.startRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
+    const row = context.rowsByIndex.get(rowIndex);
+    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
+      values.push(cellText(row?.get(columnIndex) ?? null));
+    }
+  }
+  return values;
 }
 
 function resolvedCellReferenceValue(
@@ -254,22 +303,25 @@ function structuredReferenceColumnIndex(
 }
 
 function definedNameValue(name: string, context: ConditionalFormulaContext): string | null {
-  const normalizedName = name.toLowerCase();
   if (!/^[A-Z_][A-Z0-9_.]*$/i.test(name)) return null;
-  const records = definedNameRecords(context.definedNames);
-  const record = records.find((item) => asString(item.name).toLowerCase() === normalizedName);
-  if (!record) return null;
-
-  const target = asString(record.text) || asString(record.formula) || asString(record.value) || asString(record.reference);
+  const target = definedNameTarget(name, context);
   if (!target) return "";
 
-  const normalizedTarget = stripFormulaPrefix(target);
-  const range = /[A-Z]+\$?\d/i.test(normalizedTarget) ? parseCellRange(normalizedTarget) : null;
+  const range = /[A-Z]+\$?\d/i.test(target) ? parseCellRange(target) : null;
   if (range) {
     return cellText(context.rowsByIndex.get(range.startRow)?.get(range.startColumn) ?? null);
   }
 
-  return normalizedTarget;
+  return target;
+}
+
+function definedNameTarget(name: string, context: ConditionalFormulaContext): string | null {
+  const normalizedName = name.toLowerCase();
+  const records = definedNameRecords(context.definedNames);
+  const record = records.find((item) => asString(item.name).toLowerCase() === normalizedName);
+  if (!record) return null;
+  const target = asString(record.text) || asString(record.formula) || asString(record.value) || asString(record.reference);
+  return target ? stripFormulaPrefix(target) : "";
 }
 
 function definedNameRecords(definedNames: unknown): RecordValue[] {

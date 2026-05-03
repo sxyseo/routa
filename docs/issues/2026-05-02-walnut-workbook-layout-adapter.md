@@ -134,6 +134,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Formula conditional-format preview now resolves table structured references for current-row table columns such as `[@Status]` and `Table1[Status]`, using decoded table ranges/columns and the current cell row.
 - Chart preview now consumes protocol axis titles and renders x/y title text on the canvas chart layer.
 - Formula conditional-format preview now receives root `definedNames` and can resolve simple named references to decoded workbook cells.
+- Formula conditional-format preview now evaluates common aggregate functions (`SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`) over cell ranges and simple named ranges.
 
 ## Remaining XLSX Work
 
@@ -163,7 +164,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 4. Formula-driven conditional formatting
 
-   Common expression rules are now rendered with a conservative evaluator for cell references, simple defined-name cell references, current-row table structured references, comparisons, logical functions, blank/type checks, row/column lookup, length, and modulo. Still missing broad Excel formula-language parity for arbitrary functions, multi-cell named arrays, cross-sheet references beyond address normalization, full table reference arrays/totals, and more unusual layered-rule precedence combinations.
+   Common expression rules are now rendered with a conservative evaluator for cell references, simple defined-name cell/range references, current-row table structured references, comparisons, logical functions, blank/type checks, row/column lookup, length, modulo, and common range aggregates. Still missing broad Excel formula-language parity for arbitrary functions, cross-sheet references beyond address normalization, full table reference arrays/totals, and more unusual layered-rule precedence combinations.
 
 5. Freeze-pane extraction and interaction behavior
 
