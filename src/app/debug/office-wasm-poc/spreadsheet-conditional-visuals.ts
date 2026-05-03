@@ -11,7 +11,6 @@ import {
   parseCellRange,
   type RecordValue,
 } from "./office-preview-utils";
-import { spreadsheetCellKey } from "./spreadsheet-layout";
 
 export type SpreadsheetCellVisual = {
   background?: string;
@@ -53,12 +52,58 @@ type SpreadsheetTableVisualSpec = {
   totalsStartRow: number;
 };
 
+type SpreadsheetCellRange = NonNullable<ReturnType<typeof parseCellRange>>;
+
+type SpreadsheetConditionalVisualSpec =
+  | {
+    kind: "colorScale";
+    range: SpreadsheetCellRange;
+    stops: ColorScaleStop[];
+  }
+  | {
+    barMax: number;
+    barMin: number;
+    color: string;
+    dataBar: RecordValue;
+    kind: "dataBar";
+    negativeColor: string;
+    range: SpreadsheetCellRange;
+    span: number;
+  }
+  | {
+    iconSet: RecordValue;
+    kind: "iconSet";
+    maxValue: number;
+    minValue: number;
+    range: SpreadsheetCellRange;
+    rangeValues: number[];
+  }
+  | {
+    format: RecordValue;
+    kind: "format";
+    range: SpreadsheetCellRange;
+  }
+  | {
+    kind: "fallbackColorScale";
+    maxValue: number;
+    minValue: number;
+    range: SpreadsheetCellRange;
+  }
+  | {
+    color: string;
+    kind: "fallbackDataBar";
+    maxValue: number;
+    minValue: number;
+    range: SpreadsheetCellRange;
+    span: number;
+  };
+
 export function buildSpreadsheetConditionalVisuals(
   sheet: RecordValue | undefined,
   theme?: RecordValue | null,
 ): SpreadsheetCellVisualLookup {
   const tableVisuals = buildSpreadsheetTableVisuals(sheet, theme);
-  const visuals = new Map<string, SpreadsheetCellVisual>();
+  const conditionalVisuals: SpreadsheetConditionalVisualSpec[] = [];
   const rowsByIndex = rowsByIndexForSheet(sheet);
   const sheetName = asString(sheet?.name);
   const conditionalFormats = normalizedConditionalFormats(sheet);
@@ -73,6 +118,8 @@ export function buildSpreadsheetConditionalVisuals(
 
   for (const format of conditionalFormats) {
     for (const reference of asArray(format.ranges).map(asString).filter(Boolean)) {
+      const range = parseCellRange(reference);
+      if (!range) continue;
       const values = numericValuesInRange(rowsByIndex, reference);
       const minValue = values.length > 0 ? Math.min(...values.map((item) => item.value)) : 0;
       const maxValue = values.length > 0 ? Math.max(...values.map((item) => item.value)) : 0;
@@ -84,11 +131,7 @@ export function buildSpreadsheetConditionalVisuals(
         const colors = asArray(colorScale.colors).map(protocolColorToCss).filter((color): color is string => Boolean(color));
         const rangeValues = values.map((item) => item.value);
         const stops = colorScaleStops(colorScale, rangeValues, minValue, maxValue, colors);
-        for (const item of values) {
-          mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
-            background: colorScaleColor(item.value, stops),
-          });
-        }
+        conditionalVisuals.push({ kind: "colorScale", range, stops });
         continue;
       }
 
@@ -99,62 +142,34 @@ export function buildSpreadsheetConditionalVisuals(
         const span = Math.max(1, barMax - barMin);
         const color = protocolColorToCss(dataBar.color) ?? "#38bdf8";
         const negativeColor = protocolColorToCss(dataBar.negativeFillColor) ?? color;
-        for (const item of values) {
-          mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
-            dataBar: spreadsheetDataBarVisual(item.value, barMin, barMax, span, color, negativeColor, dataBar),
-          });
-        }
+        conditionalVisuals.push({ barMax, barMin, color, dataBar, kind: "dataBar", negativeColor, range, span });
         continue;
       }
 
       if (iconSet) {
         const rangeValues = values.map((item) => item.value);
-        for (const item of values) {
-          mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
-            iconSet: spreadsheetIconSetVisual(
-              item.value,
-              rangeValues,
-              minValue,
-              maxValue,
-              iconSet.showValue !== false,
-              iconSet.reverse === true,
-              iconSet,
-            ),
-          });
-        }
+        conditionalVisuals.push({ iconSet, kind: "iconSet", maxValue, minValue, range, rangeValues });
         continue;
       }
 
-      forEachCellInRange(reference, (rowIndex, columnIndex) => {
-        const cell = cellAt(rowsByIndex, rowIndex, columnIndex);
-        const text = cellText(cell);
-        const numericValue = cellNumberAt(rowsByIndex, rowIndex, columnIndex);
-        if (!conditionalTextMatches(format, text, numericValue)) return;
-        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, {
-          background: protocolColorToCss(format.fillColor),
-          color: protocolColorToCss(format.fontColor),
-          fontWeight: format.bold === true ? 700 : undefined,
-        });
-      });
+      conditionalVisuals.push({ format, kind: "format", range });
     }
   }
 
   if (conditionalFormats.length > 0) {
-    return spreadsheetVisualLookup(tableVisuals, visuals);
+    return spreadsheetVisualLookup(tableVisuals, conditionalVisuals, rowsByIndex);
   }
 
   for (const reference of conditionalReferences) {
+    const range = parseCellRange(reference);
+    if (!range) continue;
     const values = numericValuesInRange(rowsByIndex, reference);
     if (values.length === 0) continue;
 
     const minValue = Math.min(...values.map((item) => item.value));
     const maxValue = Math.max(...values.map((item) => item.value));
     if (isColorScaleRange(sheetName, reference)) {
-      for (const item of values) {
-        mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
-          background: spreadsheetHeatColor(item.value, minValue, maxValue),
-        });
-      }
+      conditionalVisuals.push({ kind: "fallbackColorScale", maxValue, minValue, range });
       continue;
     }
 
@@ -162,14 +177,17 @@ export function buildSpreadsheetConditionalVisuals(
     const fallbackMax = Math.max(0, maxValue);
     const fallbackSpan = Math.max(1, fallbackMax - fallbackMin);
     const color = dataBarColorForRange(sheetName, reference);
-    for (const item of values) {
-      mergeSpreadsheetVisual(visuals, item.rowIndex, item.columnIndex, {
-        dataBar: spreadsheetDataBarVisual(item.value, fallbackMin, fallbackMax, fallbackSpan, color, color, { gradient: true }),
-      });
-    }
+    conditionalVisuals.push({
+      color,
+      kind: "fallbackDataBar",
+      maxValue: fallbackMax,
+      minValue: fallbackMin,
+      range,
+      span: fallbackSpan,
+    });
   }
 
-  return spreadsheetVisualLookup(tableVisuals, visuals);
+  return spreadsheetVisualLookup(tableVisuals, conditionalVisuals, rowsByIndex);
 }
 
 export function protocolColorToCss(value: unknown): string | undefined {
@@ -212,34 +230,6 @@ function cellNumberAt(
 ): number | null {
   const value = Number(cellText(cellAt(rowsByIndex, rowIndex, columnIndex)));
   return Number.isFinite(value) ? value : null;
-}
-
-function forEachCellInRange(reference: string, visit: (rowIndex: number, columnIndex: number) => void) {
-  const range = parseCellRange(reference);
-  if (!range) return;
-
-  for (let rowIndex = range.startRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
-    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-      visit(rowIndex, columnIndex);
-    }
-  }
-}
-
-function mergeSpreadsheetVisual(
-  visuals: Map<string, SpreadsheetCellVisual>,
-  rowIndex: number,
-  columnIndex: number,
-  visual: SpreadsheetCellVisual,
-) {
-  const key = spreadsheetCellKey(rowIndex, columnIndex);
-  const next = { ...(visuals.get(key) ?? {}) };
-  if (visual.background !== undefined) next.background = visual.background;
-  if (visual.color !== undefined) next.color = visual.color;
-  if (visual.dataBar !== undefined) next.dataBar = visual.dataBar;
-  if (visual.filter !== undefined) next.filter = visual.filter;
-  if (visual.fontWeight !== undefined) next.fontWeight = visual.fontWeight;
-  if (visual.iconSet !== undefined) next.iconSet = visual.iconSet;
-  visuals.set(key, next);
 }
 
 function buildSpreadsheetTableVisuals(
@@ -312,7 +302,8 @@ function buildSpreadsheetTableVisuals(
 
 function spreadsheetVisualLookup(
   tableVisuals: SpreadsheetTableVisualSpec[],
-  conditionalVisuals: ReadonlyMap<string, SpreadsheetCellVisual>,
+  conditionalVisuals: SpreadsheetConditionalVisualSpec[],
+  rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
 ): SpreadsheetCellVisualLookup {
   return {
     get(key: string) {
@@ -322,9 +313,91 @@ function spreadsheetVisualLookup(
       const tableVisual = Number.isFinite(rowIndex) && Number.isFinite(columnIndex)
         ? spreadsheetTableCellVisual(tableVisuals, rowIndex, columnIndex)
         : undefined;
-      return mergeSpreadsheetCellVisuals(tableVisual, conditionalVisuals.get(key));
+      const conditionalVisual = Number.isFinite(rowIndex) && Number.isFinite(columnIndex)
+        ? spreadsheetConditionalCellVisual(conditionalVisuals, rowsByIndex, rowIndex, columnIndex)
+        : undefined;
+      return mergeSpreadsheetCellVisuals(tableVisual, conditionalVisual);
     },
   };
+}
+
+function spreadsheetConditionalCellVisual(
+  conditionalVisuals: SpreadsheetConditionalVisualSpec[],
+  rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
+  rowIndex: number,
+  columnIndex: number,
+): SpreadsheetCellVisual | undefined {
+  let visual: SpreadsheetCellVisual | undefined;
+  for (const rule of conditionalVisuals) {
+    if (!cellRangeContains(rule.range, rowIndex, columnIndex)) continue;
+    const value = cellNumberAt(rowsByIndex, rowIndex, columnIndex);
+    switch (rule.kind) {
+      case "colorScale":
+        if (value == null) break;
+        visual = mergeSpreadsheetCellVisuals(visual, { background: colorScaleColor(value, rule.stops) });
+        break;
+      case "dataBar":
+        if (value == null) break;
+        visual = mergeSpreadsheetCellVisuals(visual, {
+          dataBar: spreadsheetDataBarVisual(
+            value,
+            rule.barMin,
+            rule.barMax,
+            rule.span,
+            rule.color,
+            rule.negativeColor,
+            rule.dataBar,
+          ),
+        });
+        break;
+      case "iconSet":
+        if (value == null) break;
+        visual = mergeSpreadsheetCellVisuals(visual, {
+          iconSet: spreadsheetIconSetVisual(
+            value,
+            rule.rangeValues,
+            rule.minValue,
+            rule.maxValue,
+            rule.iconSet.showValue !== false,
+            rule.iconSet.reverse === true,
+            rule.iconSet,
+          ),
+        });
+        break;
+      case "format": {
+        const cell = cellAt(rowsByIndex, rowIndex, columnIndex);
+        const text = cellText(cell);
+        if (!conditionalTextMatches(rule.format, text, value)) break;
+        visual = mergeSpreadsheetCellVisuals(visual, {
+          background: protocolColorToCss(rule.format.fillColor),
+          color: protocolColorToCss(rule.format.fontColor),
+          fontWeight: rule.format.bold === true ? 700 : undefined,
+        });
+        break;
+      }
+      case "fallbackColorScale":
+        if (value == null) break;
+        visual = mergeSpreadsheetCellVisuals(visual, {
+          background: spreadsheetHeatColor(value, rule.minValue, rule.maxValue),
+        });
+        break;
+      case "fallbackDataBar":
+        if (value == null) break;
+        visual = mergeSpreadsheetCellVisuals(visual, {
+          dataBar: spreadsheetDataBarVisual(value, rule.minValue, rule.maxValue, rule.span, rule.color, rule.color, { gradient: true }),
+        });
+        break;
+    }
+  }
+
+  return visual;
+}
+
+function cellRangeContains(range: SpreadsheetCellRange, rowIndex: number, columnIndex: number): boolean {
+  return rowIndex >= range.startRow &&
+    rowIndex < range.startRow + range.rowSpan &&
+    columnIndex >= range.startColumn &&
+    columnIndex < range.startColumn + range.columnSpan;
 }
 
 function spreadsheetTableCellVisual(
@@ -500,10 +573,15 @@ function numericValuesInRange(
   reference: string,
 ): Array<{ columnIndex: number; rowIndex: number; value: number }> {
   const values: Array<{ columnIndex: number; rowIndex: number; value: number }> = [];
-  forEachCellInRange(reference, (rowIndex, columnIndex) => {
-    const value = cellNumberAt(rowsByIndex, rowIndex, columnIndex);
-    if (value != null) values.push({ columnIndex, rowIndex, value });
-  });
+  const range = parseCellRange(reference);
+  if (!range) return values;
+
+  for (let rowIndex = range.startRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
+    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
+      const value = cellNumberAt(rowsByIndex, rowIndex, columnIndex);
+      if (value != null) values.push({ columnIndex, rowIndex, value });
+    }
+  }
   return values;
 }
 
