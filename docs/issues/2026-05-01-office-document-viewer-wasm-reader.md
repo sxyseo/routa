@@ -88,6 +88,7 @@ Progress - 2026-05-02:
 - PPT root images now preserve OpenXML content types such as `image/jpeg` instead of normalizing to `image/jpg`, matching Walnut image digest summaries.
 - Real Workbench validation sample `/Users/phodal/write/blog-cache/Workbench/25. TW Differentiators/Copy of Thoughtworks  Differentiators_.pptx` now passes decoded Walnut PPT protocol equivalence. Its render contract still fails on screenshot pixels because the debug canvas text layout does not yet match Walnut/PowerPoint typography exactly.
 - The canvas text renderer now applies default inter-paragraph spacing for multi-paragraph PPT text frames and keeps the conservative wrap-width heuristic that best matched Walnut on the current Workbench sample.
+- PPT protocol comparison now includes slide visible-text digests, not only text-style digests and notes text, so future line-break/field/text regressions fail before they surface only as screenshot drift.
 - Next PPT item is SmartArt/diagram/custom geometry and deeper table-style inheritance; pixel-level PowerPoint typography remains a renderer fidelity limitation until the viewer has a native screenshot/raster path or a deeper text layout engine.
 
 ## Expected Behavior

@@ -156,6 +156,7 @@ function summarizePresentation(presentation: Record<string, unknown>, protoBytes
     slideShapeStyleDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementShapeStyle)),
     slideTableDigests: slides.map((slide) => summarizeSlideTableDigest(slide)),
     slideTableSummaries: slides.map(summarizeSlideTables),
+    slideTextDigests: slides.map((slide) => summarizeSlideTextDigest(slide)),
     slideTextStyleDigests: slides.map((slide) => summarizeSlideDigest(slide, summarizeElementTextStyle)),
     slides: slides.map(summarizeSlide),
     firstSlide: summarizeSlide(slides[0] ?? {}),
@@ -259,6 +260,8 @@ function summarizeEquivalence(
       stableJson(walnutSummary.slideConnectorDigests) === stableJson(routaSummary.slideConnectorDigests),
     slideNotesTextDigestsMatch:
       stableJson(walnutSummary.slideNotesTextDigests) === stableJson(routaSummary.slideNotesTextDigests),
+    slideTextDigestsMatch:
+      stableJson(walnutSummary.slideTextDigests) === stableJson(routaSummary.slideTextDigests),
     slideShapeGeometryCountsMatch:
       stableJson(walnutSummary.slideShapeGeometryCounts) === stableJson(routaSummary.slideShapeGeometryCounts),
     slideShapeStyleDigestsMatch:
@@ -413,6 +416,36 @@ function summarizeNotesText(slide: Record<string, unknown>): string {
   const notesSlide = asRecord(slide.notesSlide);
   if (!notesSlide) return "";
   return collectTextPreview(notesSlide);
+}
+
+function summarizeSlideTextDigest(slide: Record<string, unknown>): string {
+  return sha256Text(
+    stableJson(arrayOfRecords(slide.elements).map((element) => summarizeElementVisibleText(element))),
+  );
+}
+
+function summarizeElementVisibleText(element: Record<string, unknown>): unknown {
+  return {
+    id: stringValue(element.id),
+    name: stringValue(element.name),
+    type: element.type,
+    text: arrayOfRecords(element.paragraphs).map(summarizeParagraphText),
+    table: isRecord(element.table) ? summarizeTableVisibleText(asRecord(element.table) ?? {}) : [],
+    children: arrayOfRecords(element.children).map(summarizeElementVisibleText),
+  };
+}
+
+function summarizeParagraphText(paragraph: Record<string, unknown>): string {
+  return arrayOfRecords(paragraph.runs).map((run) => stringValue(run.text)).join("");
+}
+
+function summarizeTableVisibleText(table: Record<string, unknown>): unknown {
+  return arrayOfRecords(table.rows).map((row) =>
+    arrayOfRecords(row.cells).map((cell) => ({
+      text: stringValue(cell.text),
+      paragraphs: arrayOfRecords(cell.paragraphs).map(summarizeParagraphText),
+    })),
+  );
 }
 
 function summarizeSlideConnectorDigest(slide: Record<string, unknown>): string {
