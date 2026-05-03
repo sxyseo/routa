@@ -57,6 +57,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Reworked conditional-format visual calculation to build the sheet row/cell index once and reuse it across range scans, avoiding repeated full-sheet map construction for large conditional-format ranges.
 - Changed table style visuals from eager full-table materialization to a lazy lookup model. Header/filter, stripe, edge-column, and totals styling now resolve for visible cells on demand instead of allocating a visual entry for every table cell.
 - Changed conditional-format visuals to the same lazy lookup model. Color scales, data bars, icon sets, text/cell rules, and known fallback rules now keep compact rule specs plus range statistics and resolve only for visible cells.
+- Changed conditional-format numeric range scans to traverse populated sheet cells and filter by range, avoiding dense iteration across sparse full-column/full-sheet rules. Empty cells now stay non-numeric instead of being treated as `0`.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

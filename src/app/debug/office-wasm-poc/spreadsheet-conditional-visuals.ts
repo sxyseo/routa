@@ -228,7 +228,11 @@ function cellNumberAt(
   rowIndex: number,
   columnIndex: number,
 ): number | null {
-  const value = Number(cellText(cellAt(rowsByIndex, rowIndex, columnIndex)));
+  const cell = cellAt(rowsByIndex, rowIndex, columnIndex);
+  if (!cell) return null;
+  const text = cellText(cell);
+  if (text.trim().length === 0) return null;
+  const value = Number(text);
   return Number.isFinite(value) ? value : null;
 }
 
@@ -576,10 +580,12 @@ function numericValuesInRange(
   const range = parseCellRange(reference);
   if (!range) return values;
 
-  for (let rowIndex = range.startRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
-    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-      const value = cellNumberAt(rowsByIndex, rowIndex, columnIndex);
-      if (value != null) values.push({ columnIndex, rowIndex, value });
+  for (const [rowIndex, cells] of rowsByIndex) {
+    if (rowIndex < range.startRow || rowIndex >= range.startRow + range.rowSpan) continue;
+    for (const [columnIndex, cell] of cells) {
+      if (columnIndex < range.startColumn || columnIndex >= range.startColumn + range.columnSpan) continue;
+      const value = Number(cellText(cell));
+      if (Number.isFinite(value)) values.push({ columnIndex, rowIndex, value });
     }
   }
   return values;

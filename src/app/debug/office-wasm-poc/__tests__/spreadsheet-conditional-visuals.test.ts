@@ -133,4 +133,30 @@ describe("spreadsheet conditional visuals", () => {
       showValue: false,
     });
   });
+
+  it("resolves sparse full-column-scale rules without dense materialization", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A1048576"],
+          rules: [
+            {
+              colorScale: {
+                cfvos: [{ type: "min" }, { type: "max" }],
+                colors: ["FF0000", "00FF00"],
+              },
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: 0 }], index: 1 },
+        { cells: [{ address: "A1048576", value: 100 }], index: 1048576 },
+      ],
+    });
+
+    expect(visuals.get("1:0")?.background).toBe("rgb(255, 0, 0)");
+    expect(visuals.get("1048576:0")?.background).toBe("rgb(0, 255, 0)");
+    expect(visuals.get("1000:0")).toBeUndefined();
+  });
 });
