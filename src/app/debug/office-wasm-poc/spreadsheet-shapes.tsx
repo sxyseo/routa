@@ -47,14 +47,16 @@ export function buildSpreadsheetShapes({
   activeSheet,
   layout,
   shapes,
+  slicerCaches = [],
 }: {
   activeSheet: RecordValue | undefined;
   layout: SpreadsheetLayout;
   shapes: RecordValue[];
+  slicerCaches?: RecordValue[];
 }): SpreadsheetShapeSpec[] {
   return [
     ...buildSheetDrawingShapes(activeSheet, layout),
-    ...buildSheetSlicerShapes(activeSheet, layout),
+    ...buildSheetSlicerShapes(activeSheet, layout, slicerCaches),
     ...buildRootSpreadsheetShapes(activeSheet, layout, shapes),
   ];
 }
@@ -89,6 +91,7 @@ function buildSheetDrawingShapes(
 function buildSheetSlicerShapes(
   activeSheet: RecordValue | undefined,
   layout: SpreadsheetLayout,
+  slicerCaches: RecordValue[],
 ): SpreadsheetShapeSpec[] {
   const existingKeys = new Set(
     asArray(activeSheet?.drawings)
@@ -107,16 +110,21 @@ function buildSheetSlicerShapes(
       const caption = asString(slicer.caption);
       return !existingKeys.has(name) && !existingKeys.has(caption);
     })
-    .map((slicer, index) => slicerShapeFromRecord(slicer, layout, index));
+    .map((slicer, index) => slicerShapeFromRecord(slicer, layout, index, slicerCaches));
 }
 
 function slicerShapeFromRecord(
   slicer: RecordValue,
   layout: SpreadsheetLayout,
   index: number,
+  slicerCaches: RecordValue[],
 ): SpreadsheetShapeSpec {
   const bounds = spreadsheetDrawingBounds(layout, slicer);
   const caption = asString(slicer.caption) || asString(slicer.name) || "Slicer";
+  const cache = slicerCacheForRecord(slicer, slicerCaches);
+  const items = cache ? slicerCacheItemLabels(cache).slice(0, 8) : [];
+  const text = items.length > 0 ? [caption, ...items].join("\n") : caption;
+
   return {
     fill: "#ffffff",
     geometry: "roundRect",
@@ -125,11 +133,40 @@ function slicerShapeFromRecord(
     left: bounds.left,
     line: "#94a3b8",
     lineWidth: 1,
-    text: caption,
+    text,
     top: bounds.top,
     width: bounds.width,
     zIndex: 5_000 + index,
   };
+}
+
+function slicerCacheForRecord(slicer: RecordValue, slicerCaches: RecordValue[]): RecordValue | null {
+  const cacheKey = asString(slicer.cache) || asString(slicer.cacheName) || asString(slicer.name);
+  const cacheId = asNumber(slicer.cacheId, Number.NaN);
+  return slicerCaches.find((cache) => {
+    const names = [
+      asString(cache.name),
+      asString(cache.caption),
+      asString(cache.sourceName),
+      asString(cache.cache),
+      asString(cache.cacheName),
+    ];
+    if (cacheKey && names.includes(cacheKey)) return true;
+    return Number.isFinite(cacheId) && asNumber(cache.id, Number.NaN) === cacheId;
+  }) ?? null;
+}
+
+function slicerCacheItemLabels(cache: RecordValue): string[] {
+  return asArray(cache.items)
+    .map(asRecord)
+    .filter((item): item is RecordValue => item != null)
+    .map((item) => {
+      const label = asString(item.value) || asString(item.caption) || asString(item.name) || asString(item.x);
+      if (!label) return "";
+      const inactive = item.selected === false || item.disabled === true || item.noData === true;
+      return `${inactive ? "- " : "* "}${label}`;
+    })
+    .filter(Boolean);
 }
 
 function shapeFromSheetDrawing(

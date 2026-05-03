@@ -120,6 +120,10 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     () => asArray(root?.shapes).map(asRecord).filter((shape): shape is RecordValue => shape != null),
     [root],
   );
+  const slicerCaches = useMemo(
+    () => asArray(root?.slicerCaches).map(asRecord).filter((cache): cache is RecordValue => cache != null),
+    [root],
+  );
   const theme = useMemo(() => asRecord(root?.theme), [root]);
   const imageSources = useOfficeImageSources(root);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
@@ -140,7 +144,8 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     activeSheet,
     layout,
     shapes,
-  }), [activeSheet, layout, shapes]);
+    slicerCaches,
+  }), [activeSheet, layout, shapes, slicerCaches]);
   const imageSpecs = useMemo(() => buildSpreadsheetImages({
     activeSheet,
     imageSources,

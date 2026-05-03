@@ -128,6 +128,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Tightened data-bar rendering to consume protocol `showValue`, `direction`, `minLength`, and `maxLength` options in addition to axis, negative color, and gradient settings.
 - Replaced the ad hoc table-style color branches with a structured built-in `TableStyleMedium1`-`TableStyleMedium28` family mapper. Existing high-confidence fallback colors for Medium2/4/9 are preserved, while other Medium styles derive stripe/total palettes from workbook theme accents and family intensity.
 - Chart preview now consumes protocol `dataLabels` presence and renders lightweight value/category labels for bar, line/area/scatter/bubble/surface, pie, and doughnut previews.
+- Slicer fallback overlays now consume root `slicerCaches` and render a compact item-state list when no drawing shape exists for the slicer, so protocol-visible cache items are no longer dropped by the preview layer.
 
 ## Remaining XLSX Work
 
@@ -165,7 +166,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 6. Timeline, slicer, and pivot interactivity
 
-   Pivot, slicer, and timeline protocol fixtures pass, and slicers get a fallback visual overlay. Still missing production interaction semantics: filtering, active item states, pivot expand/collapse/drill behavior, and a real Excel-authored sheet-level timeline fixture.
+   Pivot, slicer, and timeline protocol fixtures pass, and slicers get a fallback visual overlay with cache item-state text when the sheet has no drawing-backed slicer shape. Still missing production interaction semantics: filtering, clickable active item state changes, pivot expand/collapse/drill behavior, and a real Excel-authored sheet-level timeline fixture.
 
 7. Drawing and effect edge cases
 

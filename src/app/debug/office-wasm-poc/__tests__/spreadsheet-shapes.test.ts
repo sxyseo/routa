@@ -237,4 +237,38 @@ describe("spreadsheet shapes", () => {
       },
     ]);
   });
+
+  it("adds slicer cache item states to fallback shapes", () => {
+    const sheet = {
+      name: "Slicers",
+      rows: [{ cells: [{ address: "B2" }], index: 2 }],
+      slicers: [
+        {
+          cache: "Slicer_Category",
+          caption: "Category",
+          fromAnchor: { colId: "1", rowId: "1" },
+          name: "CategorySlicer",
+          toAnchor: { colId: "3", rowId: "4" },
+        },
+      ],
+    };
+    const layout = buildSpreadsheetLayout(sheet);
+
+    const shapes = buildSpreadsheetShapes({
+      activeSheet: sheet,
+      layout,
+      shapes: [],
+      slicerCaches: [
+        {
+          items: [
+            { selected: true, value: "Hardware" },
+            { selected: false, value: "Software" },
+          ],
+          name: "Slicer_Category",
+        },
+      ],
+    });
+
+    expect(shapes[0]?.text).toBe("Category\n* Hardware\n- Software");
+  });
 });
