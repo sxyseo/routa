@@ -139,6 +139,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Chart preview can now consume protocol trendline and error-bar hints on line series, rendering linear trendlines and fixed-value error bars when those fields are present.
 - Chart preview now preserves protocol secondary-axis series hints, reserves right-axis plot space, draws right-axis tick labels, and scales secondary line series separately from the primary y-axis.
 - Chart preview now preserves series-level chart type hints and can render basic bar+line combo charts instead of forcing every series through the root chart type.
+- Chart preview now preserves data-label position and show flags (`showValue`, `showCategoryName`, `showSeriesName`, `showPercent`) and uses them for bar, line, pie, and doughnut label text/placement instead of only treating labels as a boolean.
 - Table style projection now applies theme-derived header fills in addition to body stripes and total-row fills.
 - Spreadsheet viewport state is now managed through a frame-coalesced external store hook, giving the current DOM preview and a future canvas/worker renderer the same scroll/size snapshot contract.
 - Visible row/column windows, merge-start overscan, and cell-intersection checks are now built through a pure render snapshot adapter shared by the DOM grid/frozen layer and future canvas/worker rendering.
@@ -172,7 +173,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 2. Pixel-level chart fidelity
 
-   Chart protocol and preview coverage now include line, clustered bar, area, pie, doughnut, scatter, bubble, radar, surface families, basic bar+line combo rendering, protocol-driven markers, axis formats/titles, legends, basic data labels, protocol-present line-series trendlines/error bars, and secondary-axis line scaling. Still missing Excel/Walnut internal layout parity for plot-area auto sizing, typography, detailed data-label positioning/options, advanced combo variants, and detailed chart style inheritance.
+   Chart protocol and preview coverage now include line, clustered bar, area, pie, doughnut, scatter, bubble, radar, surface families, basic bar+line combo rendering, protocol-driven markers, axis formats/titles, legends, data-label show flags/position, protocol-present line-series trendlines/error bars, and secondary-axis line scaling. Still missing Excel/Walnut internal layout parity for plot-area auto sizing, typography, advanced data-label options, advanced combo variants, and detailed chart style inheritance.
 
 3. Full built-in table style definitions
 

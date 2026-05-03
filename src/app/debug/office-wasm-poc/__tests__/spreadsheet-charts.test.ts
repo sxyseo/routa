@@ -241,6 +241,47 @@ describe("spreadsheet charts", () => {
     expect(charts[0]?.showDataLabels).toBe(true);
   });
 
+  it("preserves chart data-label flags and position from protocol", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            dataLabels: {
+              position: "outEnd",
+              showCategoryName: true,
+              showPercent: true,
+              showSeriesName: true,
+              showValue: false,
+            },
+            series: [{ categories: ["A", "B"], name: "Values", values: [1, 2] }],
+            title: "Data Labels",
+            type: 16,
+          },
+          extentCx: "1905000",
+          extentCy: "952500",
+          fromAnchor: { colId: "1", rowId: "1" },
+        },
+      ],
+      name: "Charts",
+      rows: [],
+    };
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [],
+      layout: buildSpreadsheetLayout(sheet),
+      sheets: [sheet],
+    });
+
+    expect(charts[0]?.dataLabels).toEqual({
+      position: "outsideEnd",
+      showCategoryName: true,
+      showPercent: true,
+      showSeriesName: true,
+      showValue: false,
+    });
+  });
+
+
   it("does not show chart data labels when protocol show flags are false", () => {
     const sheet = {
       drawings: [

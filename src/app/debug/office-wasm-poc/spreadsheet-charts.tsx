@@ -32,6 +32,7 @@ type SpreadsheetChartAxisSpec = {
 
 type SpreadsheetChartLegendPosition = "bottom" | "left" | "none" | "right" | "top";
 type SpreadsheetChartType = "area" | "bar" | "bubble" | "doughnut" | "line" | "pie" | "radar" | "scatter" | "surface";
+type SpreadsheetChartDataLabelPosition = "above" | "below" | "bestFit" | "center" | "insideEnd" | "outsideEnd";
 type SpreadsheetChartLegendItem = {
   color: string;
   label: string;
@@ -53,6 +54,14 @@ type SpreadsheetChartTrendline = {
 type SpreadsheetChartScale = {
   maxValue: number;
   minValue: number;
+};
+
+type SpreadsheetChartDataLabels = {
+  position: SpreadsheetChartDataLabelPosition;
+  showCategoryName: boolean;
+  showPercent: boolean;
+  showSeriesName: boolean;
+  showValue: boolean;
 };
 
 const CHART_PALETTE = ["#1f6f8b", "#f9732a", "#5b7f2a", "#9467bd", "#8c564b", "#2ca02c", "#d62728"];
@@ -77,6 +86,7 @@ export type SpreadsheetChartSeries = {
 
 export type SpreadsheetBarGeometry = {
   barWidth: number;
+  categoryIndex: number;
   centerX: number;
   series: SpreadsheetChartSeries;
   value: number;
@@ -88,6 +98,7 @@ export type SpreadsheetChartSpec = {
   left: number;
   legendOverlay: boolean;
   legendPosition: SpreadsheetChartLegendPosition;
+  dataLabels?: SpreadsheetChartDataLabels;
   series: SpreadsheetChartSeries[];
   showDataLabels: boolean;
   title: string;
@@ -267,14 +278,16 @@ function chartFromRecord(
   if (series.length === 0) return null;
 
   const categories = asArray(seriesRecords[0]?.categories).map(asString).filter(Boolean);
+  const dataLabels = spreadsheetChartDataLabels(chart);
   return {
     categories: categories.length > 0 ? categories : series[0].values.map((_, index) => String(index + 1)),
     height: bounds.height,
     left: bounds.left,
     legendOverlay: spreadsheetLegendOverlay(chart.legend),
     legendPosition: spreadsheetLegendPosition(chart.legend),
+    dataLabels,
     series,
-    showDataLabels: spreadsheetChartHasDataLabels(chart),
+    showDataLabels: dataLabels != null,
     title: asString(chart.title),
     top: bounds.top,
     type: spreadsheetChartType(chart),
@@ -381,20 +394,51 @@ function spreadsheetLegendOverlay(value: unknown): boolean {
   return legend?.overlay === true || asString(legend?.overlay).toLowerCase() === "true" || asString(legend?.overlay) === "1";
 }
 
-function spreadsheetChartHasDataLabels(chart: RecordValue): boolean {
-  if (chart.hasDataLabels === true || chart.dataLabels === true) return true;
+function spreadsheetChartDataLabels(chart: RecordValue): SpreadsheetChartDataLabels | undefined {
+  if (chart.hasDataLabels === true || chart.dataLabels === true) {
+    return {
+      position: "bestFit",
+      showCategoryName: false,
+      showPercent: false,
+      showSeriesName: false,
+      showValue: true,
+    };
+  }
+
   const dataLabels = asRecord(chart.dataLabels);
-  if (!dataLabels) return false;
-  return [
-    "showValue",
-    "showVal",
-    "showCategoryName",
-    "showCatName",
-    "showSeriesName",
-    "showSerName",
-    "showPercent",
-    "showBubbleSize",
-  ].some((key) => chartBooleanFlag(dataLabels[key]));
+  if (!dataLabels) return undefined;
+  const spec = {
+    position: spreadsheetChartDataLabelPosition(dataLabels.position ?? dataLabels.labelPosition ?? dataLabels.dLblPos),
+    showCategoryName: chartBooleanFlag(dataLabels.showCategoryName ?? dataLabels.showCatName),
+    showPercent: chartBooleanFlag(dataLabels.showPercent),
+    showSeriesName: chartBooleanFlag(dataLabels.showSeriesName ?? dataLabels.showSerName),
+    showValue: chartBooleanFlag(dataLabels.showValue ?? dataLabels.showVal ?? dataLabels.showBubbleSize),
+  };
+  return spec.showCategoryName || spec.showPercent || spec.showSeriesName || spec.showValue ? spec : undefined;
+}
+
+function spreadsheetChartDataLabelPosition(value: unknown): SpreadsheetChartDataLabelPosition {
+  switch (asString(value).trim().toLowerCase()) {
+    case "above":
+      return "above";
+    case "below":
+      return "below";
+    case "center":
+    case "ctr":
+      return "center";
+    case "inend":
+    case "insideend":
+    case "insideEnd":
+      return "insideEnd";
+    case "outend":
+    case "outsideend":
+    case "outsideEnd":
+      return "outsideEnd";
+    case "bestfit":
+    case "bestFit":
+    default:
+      return "bestFit";
+  }
 }
 
 function spreadsheetChartType(chart: RecordValue): SpreadsheetChartType {
@@ -877,7 +921,7 @@ export function spreadsheetBarChartGeometry(
       const centerX = seriesCount === 1
         ? categoryCenter
         : categoryCenter - groupWidth / 2 + barStep * seriesIndex + barStep / 2;
-      bars.push({ barWidth, centerX, series, value });
+      bars.push({ barWidth, categoryIndex, centerX, series, value });
     });
   }
 
@@ -1272,7 +1316,10 @@ function drawLineDataLabels(
   const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
   chart.series.forEach((series) => {
     series.values.forEach((value, index) => {
-      context.fillText(formatChartTick(value, chart.yAxis?.numberFormat), xForIndex(index), chartY(value, plot, minValue, maxValue) - 14);
+      const pointY = chartY(value, plot, minValue, maxValue);
+      const offset = chartDataLabelPointOffset(chart.dataLabels?.position ?? "above");
+      const label = chartDataLabelText(chart, series, value, index);
+      if (label) context.fillText(label, xForIndex(index), pointY + offset);
     });
   });
 }
@@ -1284,9 +1331,17 @@ function drawBarDataLabels(
   minValue: number,
   maxValue: number,
 ) {
-  spreadsheetBarChartGeometry(chart, plot).forEach(({ centerX, value }) => {
+  spreadsheetBarChartGeometry(chart, plot).forEach(({ categoryIndex, centerX, series, value }) => {
     const y = chartY(value, plot, minValue, maxValue);
-    context.fillText(formatChartTick(value, chart.yAxis?.numberFormat), centerX, Math.max(plot.top + 10, y - 12));
+    const label = chartDataLabelText(chart, series, value, categoryIndex);
+    if (!label) return;
+    const position = chart.dataLabels?.position ?? "outsideEnd";
+    const labelY = position === "center"
+      ? y + (plot.bottom - y) / 2
+      : position === "insideEnd"
+        ? y + 12
+        : Math.max(plot.top + 10, y - 12);
+    context.fillText(label, centerX, labelY);
   });
 }
 
@@ -1305,10 +1360,35 @@ function drawCircularDataLabels(
   values.forEach((value, index) => {
     const angle = (value / total) * Math.PI * 2;
     const midAngle = startAngle + angle / 2;
-    const label = chart.categories[index] || formatChartTick(value, chart.yAxis?.numberFormat);
+    const label = chartDataLabelText(chart, chart.series[0], value, index, total) ||
+      chart.categories[index] ||
+      formatChartTick(value, chart.yAxis?.numberFormat);
     context.fillText(label, centerX + Math.cos(midAngle) * radius, centerY + Math.sin(midAngle) * radius);
     startAngle += angle;
   });
+}
+
+function chartDataLabelPointOffset(position: SpreadsheetChartDataLabelPosition): number {
+  if (position === "below") return 14;
+  if (position === "center") return 0;
+  return -14;
+}
+
+function chartDataLabelText(
+  chart: SpreadsheetChartSpec,
+  series: SpreadsheetChartSeries | undefined,
+  value: number,
+  index: number,
+  total?: number,
+): string {
+  const labels = chart.dataLabels;
+  if (!labels) return "";
+  const parts: string[] = [];
+  if (labels.showSeriesName && series?.label) parts.push(series.label);
+  if (labels.showCategoryName && chart.categories[index]) parts.push(chart.categories[index] ?? "");
+  if (labels.showValue) parts.push(formatChartTick(value, chart.yAxis?.numberFormat));
+  if (labels.showPercent && total != null && total > 0) parts.push(`${Math.round((value / total) * 100)}%`);
+  return parts.join(" ");
 }
 
 function drawChartLegend(
