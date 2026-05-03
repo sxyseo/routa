@@ -4,6 +4,7 @@ import { buildSpreadsheetLayout } from "../spreadsheet-layout";
 import {
   spreadsheetFrozenSelectionSegments,
   spreadsheetMergeStartForCell,
+  spreadsheetMoveSelection,
   spreadsheetSelectionFromViewportPoint,
   spreadsheetSelectionWorldRect,
 } from "../spreadsheet-selection";
@@ -81,5 +82,33 @@ describe("spreadsheet selection controller", () => {
         width: 75,
       },
     ]);
+  });
+
+  it("moves keyboard selection through merged cells and clamps to the sheet bounds", () => {
+    const layout = buildSpreadsheetLayout({
+      mergedCells: [{ reference: "B2:C3" }],
+      rows: [
+        { cells: [{ address: "A1" }], index: 1 },
+        { cells: [{ address: "B2" }], index: 2 },
+        { cells: [{ address: "C3" }], index: 3 },
+        { cells: [{ address: "B4" }], index: 4 },
+      ],
+    });
+
+    expect(spreadsheetMoveSelection(layout, { columnIndex: 1, rowIndex: 2, rowOffset: 1 }, "right")).toEqual({
+      columnIndex: 3,
+      rowIndex: 2,
+      rowOffset: 1,
+    });
+    expect(spreadsheetMoveSelection(layout, { columnIndex: 1, rowIndex: 2, rowOffset: 1 }, "down")).toEqual({
+      columnIndex: 1,
+      rowIndex: 4,
+      rowOffset: 3,
+    });
+    expect(spreadsheetMoveSelection(layout, { columnIndex: 0, rowIndex: 1, rowOffset: 0 }, "left")).toEqual({
+      columnIndex: 0,
+      rowIndex: 1,
+      rowOffset: 0,
+    });
   });
 });

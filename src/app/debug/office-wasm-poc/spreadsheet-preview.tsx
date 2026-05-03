@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type PointerEvent, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type KeyboardEvent, type PointerEvent, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   asArray,
@@ -71,8 +71,10 @@ import {
 } from "./spreadsheet-resize";
 import {
   spreadsheetFrozenSelectionSegments,
+  spreadsheetMoveSelection,
   spreadsheetSelectionFromViewportPoint,
   spreadsheetSelectionWorldRect,
+  type SpreadsheetSelectionDirection,
   type SpreadsheetSelection,
 } from "./spreadsheet-selection";
 import { useSpreadsheetViewportStore } from "./spreadsheet-viewport-store";
@@ -232,6 +234,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
 
   const handleViewportPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     const viewport = event.currentTarget;
+    viewport.focus();
     const point = viewportPointFromPointer(event);
     const scroll = { left: viewport.scrollLeft, top: viewport.scrollTop };
     const resizeHit = spreadsheetResizeHitAtViewportPoint(layout, point, scroll);
@@ -282,6 +285,16 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     });
   };
 
+  const handleViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const direction = spreadsheetSelectionDirectionFromKey(event.key, event.shiftKey);
+    if (!direction) return;
+    event.preventDefault();
+    const nextSelection = spreadsheetMoveSelection(layout, selection, direction);
+    setSelection(nextSelection);
+    const viewport = viewportRef.current;
+    if (viewport) scrollSpreadsheetSelectionIntoView(viewport, layout, nextSelection);
+  };
+
   if (sheets.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSheets}</p>;
   }
@@ -305,9 +318,10 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       }}
     >
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
-      <SpreadsheetFormulaBar activeSheet={activeSheet} styles={styles} />
+      <SpreadsheetFormulaBar activeSheet={activeSheet} selection={selection} styles={styles} />
       <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
         <div
+          onKeyDown={handleViewportKeyDown}
           onPointerDown={handleViewportPointerDown}
           onPointerMove={handleViewportPointerMove}
           onPointerCancel={handleViewportPointerUp}
@@ -315,6 +329,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           onScroll={handleViewportScroll}
           ref={viewportRef}
           style={{ cursor: resizeDrag ? spreadsheetResizeCursor(resizeDrag.axis) : resizeCursor, height: "100%", overflow: "auto" }}
+          tabIndex={0}
         >
           <div style={{ height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }}>
             <SpreadsheetGrid
@@ -407,6 +422,36 @@ function viewportPointFromPointer(event: PointerEvent<HTMLDivElement>) {
     x: event.clientX - bounds.left,
     y: event.clientY - bounds.top,
   };
+}
+
+function spreadsheetSelectionDirectionFromKey(key: string, shiftKey = false): SpreadsheetSelectionDirection | null {
+  if (key === "ArrowDown" || key === "Enter") return "down";
+  if (key === "ArrowLeft") return "left";
+  if (key === "ArrowRight" || key === "Tab") return shiftKey ? "left" : "right";
+  if (key === "ArrowUp") return "up";
+  return null;
+}
+
+function scrollSpreadsheetSelectionIntoView(
+  viewport: HTMLDivElement,
+  layout: SpreadsheetLayout,
+  selection: SpreadsheetSelection,
+) {
+  const rect = spreadsheetSelectionWorldRect(layout, selection);
+  const margin = 16;
+  const right = rect.left + rect.width;
+  const bottom = rect.top + rect.height;
+  if (rect.left < viewport.scrollLeft + SPREADSHEET_ROW_HEADER_WIDTH) {
+    viewport.scrollLeft = Math.max(0, rect.left - SPREADSHEET_ROW_HEADER_WIDTH - margin);
+  } else if (right > viewport.scrollLeft + viewport.clientWidth) {
+    viewport.scrollLeft = Math.max(0, right - viewport.clientWidth + margin);
+  }
+
+  if (rect.top < viewport.scrollTop + SPREADSHEET_COLUMN_HEADER_HEIGHT) {
+    viewport.scrollTop = Math.max(0, rect.top - SPREADSHEET_COLUMN_HEADER_HEIGHT - margin);
+  } else if (bottom > viewport.scrollTop + viewport.clientHeight) {
+    viewport.scrollTop = Math.max(0, bottom - viewport.clientHeight + margin);
+  }
 }
 
 function spreadsheetResizeCursor(axis: SpreadsheetResizeAxis): string {
@@ -763,14 +808,19 @@ function SpreadsheetWorkbookBar({ title }: { title: string }) {
 
 function SpreadsheetFormulaBar({
   activeSheet,
+  selection,
   styles,
 }: {
   activeSheet: RecordValue | undefined;
+  selection: SpreadsheetSelection | null;
   styles: RecordValue | null;
 }) {
-  const activeCell = cellAt(activeSheet, 1, 0);
+  const activeRow = selection?.rowIndex ?? 1;
+  const activeColumn = selection?.columnIndex ?? 0;
+  const activeCell = cellAt(activeSheet, activeRow, activeColumn);
   const sheetName = asString(activeSheet?.name);
   const value = spreadsheetCellText(activeCell, styles, sheetName);
+  const address = asString(activeCell?.address) || `${columnLabel(activeColumn)}${activeRow}`;
 
   return (
     <div
@@ -794,7 +844,7 @@ function SpreadsheetFormulaBar({
           paddingLeft: 2,
         }}
       >
-        A1
+        {address}
       </div>
       <div
         style={{
