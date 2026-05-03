@@ -71,6 +71,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Built-in number formatting now covers common scientific, fraction, elapsed/clock time, and negative-section number/currency formats.
 - Chart plot-area layout now honors non-overlay top/left/right/bottom legend space, while overlay legends no longer shrink the plot area.
 - Chart y-axis tick labels now consume common axis number formats for percent, currency, fixed decimal, and thousands display.
+- Line chart series markers are now protocol-driven instead of being forced for every series; fallback demo charts still opt into markers.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

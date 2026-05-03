@@ -50,7 +50,7 @@ export type SpreadsheetChartPlotArea = {
 export type SpreadsheetChartSeries = {
   color: string;
   label: string;
-  marker: "diamond" | "square";
+  marker: "diamond" | "square" | null;
   values: number[];
 };
 
@@ -228,6 +228,7 @@ function chartFromRecord(
       asArray(item.values).map((value) => protocolNumber(value, Number.NaN)).filter(Number.isFinite),
       index,
       protocolColorToCss(item.color),
+      chartSeriesHasMarker(item),
     ))
     .filter((item) => item.values.length > 0);
   if (series.length === 0) return null;
@@ -255,13 +256,18 @@ function spreadsheetChartSeries(
   values: number[],
   index: number,
   color?: string,
+  markerVisible = true,
 ): SpreadsheetChartSeries {
   return {
     color: color ?? chartPalette(index),
     label,
-    marker: index % 2 === 0 ? "diamond" : "square",
+    marker: markerVisible ? (index % 2 === 0 ? "diamond" : "square") : null,
     values,
   };
+}
+
+function chartSeriesHasMarker(series: RecordValue): boolean {
+  return series.marker === true || asRecord(series.marker) != null;
 }
 
 function spreadsheetLegendPosition(value: unknown): SpreadsheetChartLegendPosition {
@@ -671,6 +677,7 @@ function drawLineChart(
   });
 
   chart.series.forEach((series) => {
+    if (!series.marker) return;
     context.fillStyle = series.color;
     series.values.forEach((value, index) => {
       const x = xForIndex(index);
@@ -966,7 +973,7 @@ function drawLegendEntry(
     context.moveTo(x, y - 4);
     context.lineTo(x + 18, y - 4);
     context.stroke();
-    drawChartMarker(context, item.marker, x + 9, y - 4, 4);
+    if (item.marker) drawChartMarker(context, item.marker, x + 9, y - 4, 4);
   } else {
     context.fillRect(x, y - 10, 12, 12);
   }

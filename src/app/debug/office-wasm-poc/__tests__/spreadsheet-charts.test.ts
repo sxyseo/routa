@@ -13,6 +13,7 @@ describe("spreadsheet charts", () => {
             series: [
               {
                 categories: ["Jan 25", "Feb 25"],
+                marker: {},
                 name: "Fitness Score",
                 values: [62.6, 64.5],
               },
@@ -172,5 +173,35 @@ describe("spreadsheet charts", () => {
       right: 178,
     });
     expect(spreadsheetChartTickValues(charts[0]!, charts[0]?.series[0]?.values ?? [])).toHaveLength(6);
+  });
+
+  it("uses chart series markers only when the protocol exposes them", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            series: [
+              { categories: ["A", "B"], name: "No markers", values: [1, 2] },
+              { categories: ["A", "B"], marker: {}, name: "With markers", values: [2, 3] },
+            ],
+            title: "Series markers",
+            type: 13,
+          },
+          extentCx: "1905000",
+          extentCy: "952500",
+          fromAnchor: { colId: "1", rowId: "1" },
+        },
+      ],
+      name: "Charts",
+      rows: [],
+    };
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [],
+      layout: buildSpreadsheetLayout(sheet),
+      sheets: [sheet],
+    });
+
+    expect(charts[0]?.series.map((series) => series.marker)).toEqual([null, "square"]);
   });
 });
