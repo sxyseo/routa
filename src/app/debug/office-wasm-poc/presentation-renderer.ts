@@ -516,7 +516,7 @@ function drawElement(
     return;
   }
 
-  const path = elementPath(shapeKind, rect);
+  const path = customGeometryPath(shape, rect) ?? elementPath(shapeKind, rect);
   const fill = shapeFillToPaint(context, shape, element, line.color, rect);
   if (fill) {
     context.fillStyle = fill;
@@ -655,6 +655,60 @@ function elementPath(kind: PresentationShapeKind, rect: PresentationRect): Path2
 
   path.rect(0, 0, rect.width, rect.height);
   return path;
+}
+
+function customGeometryPath(shape: RecordValue | null, rect: PresentationRect): Path2D | null {
+  const paths = Array.isArray(shape?.customPaths) ? shape.customPaths : [];
+  if (paths.length === 0) return null;
+
+  const result = new Path2D();
+  let hasCommands = false;
+  for (const rawPath of paths) {
+    const customPath = asRecord(rawPath);
+    const width = asNumber(customPath?.widthEmu, rect.width);
+    const height = asNumber(customPath?.heightEmu, rect.height);
+    const scaleX = width === 0 ? 1 : rect.width / width;
+    const scaleY = height === 0 ? 1 : rect.height / height;
+    const commands = Array.isArray(customPath?.commands) ? customPath.commands : [];
+    for (const rawCommand of commands) {
+      const command = asRecord(rawCommand);
+      if (!command) continue;
+      const moveTo = asRecord(command.moveTo);
+      const lineTo = asRecord(command.lineTo);
+      const close = asRecord(command.close);
+      const quadBezTo = asRecord(command.quadBezTo);
+      const cubicBezTo = asRecord(command.cubicBezTo);
+      if (moveTo) {
+        result.moveTo(asNumber(moveTo.x) * scaleX, asNumber(moveTo.y) * scaleY);
+        hasCommands = true;
+      } else if (lineTo) {
+        result.lineTo(asNumber(lineTo.x) * scaleX, asNumber(lineTo.y) * scaleY);
+        hasCommands = true;
+      } else if (quadBezTo) {
+        result.quadraticCurveTo(
+          asNumber(quadBezTo.x1) * scaleX,
+          asNumber(quadBezTo.y1) * scaleY,
+          asNumber(quadBezTo.x) * scaleX,
+          asNumber(quadBezTo.y) * scaleY,
+        );
+        hasCommands = true;
+      } else if (cubicBezTo) {
+        result.bezierCurveTo(
+          asNumber(cubicBezTo.x1) * scaleX,
+          asNumber(cubicBezTo.y1) * scaleY,
+          asNumber(cubicBezTo.x2) * scaleX,
+          asNumber(cubicBezTo.y2) * scaleY,
+          asNumber(cubicBezTo.x) * scaleX,
+          asNumber(cubicBezTo.y) * scaleY,
+        );
+        hasCommands = true;
+      } else if (close) {
+        result.closePath();
+      }
+    }
+  }
+
+  return hasCommands ? result : null;
 }
 
 function polygon(path: Path2D, points: Array<[number, number]>): void {
