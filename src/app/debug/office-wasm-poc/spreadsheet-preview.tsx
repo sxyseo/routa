@@ -50,7 +50,6 @@ import {
   spreadsheetColumnLeft,
   spreadsheetFrozenBodyHeight,
   spreadsheetFrozenBodyWidth,
-  spreadsheetVisibleCellRange,
   spreadsheetViewportIntersectsRect,
   spreadsheetViewportRectSegments,
   type SpreadsheetLayout,
@@ -58,6 +57,10 @@ import {
   type SpreadsheetViewportScroll,
   type SpreadsheetViewportSize,
 } from "./spreadsheet-layout";
+import {
+  buildSpreadsheetRenderSnapshot,
+  visibleCellIntersectsRange,
+} from "./spreadsheet-render-snapshot";
 import { useSpreadsheetViewportStore } from "./spreadsheet-viewport-store";
 
 type SpreadsheetFloatingSpec = {
@@ -356,20 +359,11 @@ function SpreadsheetFrozenBodyLayer({
   const frozenHeight = spreadsheetFrozenBodyHeight(layout);
   if (frozenWidth <= 0 && frozenHeight <= 0) return null;
   const showGridLines = spreadsheetShowGridLines(activeSheet);
-  const visibleRange = spreadsheetVisibleCellRange(layout, viewportSize, scroll);
-  const visibleMergeStarts = visibleMergedCellStarts(layout, visibleRange);
-  const visibleColumnIndexes = sortedVisibleIndexes(
-    visibleRange.startColumnIndex,
-    visibleRange.endColumnIndex,
-    visibleMergeStarts,
-    "column",
-  );
-  const visibleRowOffsets = sortedVisibleIndexes(
-    visibleRange.startRowOffset,
-    visibleRange.endRowOffset,
-    visibleMergeStarts,
-    "row",
-  );
+  const { visibleColumnIndexes, visibleRange, visibleRowOffsets } = buildSpreadsheetRenderSnapshot({
+    layout,
+    scroll,
+    viewportSize,
+  });
 
   return (
     <div aria-hidden="true" style={{ inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 11 }}>
@@ -448,17 +442,11 @@ function SpreadsheetGrid({
 }) {
   const sheetName = asString(activeSheet?.name);
   const showGridLines = spreadsheetShowGridLines(activeSheet);
-  const visibleRange = useMemo(
-    () => spreadsheetVisibleCellRange(layout, viewportSize, scroll),
+  const renderSnapshot = useMemo(
+    () => buildSpreadsheetRenderSnapshot({ layout, scroll, viewportSize }),
     [layout, scroll, viewportSize],
   );
-  const visibleMergeStarts = useMemo(() => visibleMergedCellStarts(layout, visibleRange), [layout, visibleRange]);
-  const visibleColumnIndexes = useMemo(() => {
-    return sortedVisibleIndexes(visibleRange.startColumnIndex, visibleRange.endColumnIndex, visibleMergeStarts, "column");
-  }, [visibleMergeStarts, visibleRange]);
-  const visibleRowOffsets = useMemo(() => {
-    return sortedVisibleIndexes(visibleRange.startRowOffset, visibleRange.endRowOffset, visibleMergeStarts, "row");
-  }, [visibleMergeStarts, visibleRange]);
+  const { visibleColumnIndexes, visibleRange, visibleRowOffsets } = renderSnapshot;
 
   return (
     <div
@@ -546,69 +534,6 @@ function SpreadsheetGrid({
         );
       })}
     </div>
-  );
-}
-
-function rangeIndexes(start: number, end: number): Set<number> {
-  const indexes = new Set<number>();
-  for (let index = Math.max(0, start); index <= end; index += 1) {
-    indexes.add(index);
-  }
-  return indexes;
-}
-
-function visibleMergedCellStarts(
-  layout: SpreadsheetLayout,
-  visibleRange: ReturnType<typeof spreadsheetVisibleCellRange>,
-): Set<string> {
-  const keys = new Set<string>();
-  for (const [key, merge] of layout.mergeByStart) {
-    const rowStart = merge.startRow - 1;
-    const rowEnd = rowStart + merge.rowSpan - 1;
-    const columnStart = merge.startColumn;
-    const columnEnd = columnStart + merge.columnSpan - 1;
-    if (
-      rowStart <= visibleRange.endRowOffset &&
-      rowEnd >= visibleRange.startRowOffset &&
-      columnStart <= visibleRange.endColumnIndex &&
-      columnEnd >= visibleRange.startColumnIndex
-    ) {
-      keys.add(key);
-    }
-  }
-
-  return keys;
-}
-
-function sortedVisibleIndexes(
-  start: number,
-  end: number,
-  mergeStarts: Set<string>,
-  axis: "column" | "row",
-): number[] {
-  const indexes = rangeIndexes(start, end);
-  for (const key of mergeStarts) {
-    const [row, column] = key.split(":");
-    indexes.add(axis === "column" ? Number(column ?? 0) : Math.max(0, Number(row ?? 1) - 1));
-  }
-
-  return [...indexes].sort((a, b) => a - b);
-}
-
-function visibleCellIntersectsRange(
-  layout: SpreadsheetLayout,
-  rowOffset: number,
-  columnIndex: number,
-  range: ReturnType<typeof spreadsheetVisibleCellRange>,
-): boolean {
-  const merge = layout.mergeByStart.get(spreadsheetCellKey(rowOffset + 1, columnIndex));
-  const rowEnd = rowOffset + (merge?.rowSpan ?? 1) - 1;
-  const columnEnd = columnIndex + (merge?.columnSpan ?? 1) - 1;
-  return (
-    rowOffset <= range.endRowOffset &&
-    rowEnd >= range.startRowOffset &&
-    columnIndex <= range.endColumnIndex &&
-    columnEnd >= range.startColumnIndex
   );
 }
 
