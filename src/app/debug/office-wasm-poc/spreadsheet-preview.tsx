@@ -44,6 +44,7 @@ import {
   type SpreadsheetSparklineVisual,
   type SpreadsheetValidationVisualLookup,
 } from "./spreadsheet-cell-overlays";
+import { SpreadsheetCanvasLayer } from "./spreadsheet-canvas-layer";
 import { buildSpreadsheetCharts, SpreadsheetChartLayer } from "./spreadsheet-charts";
 import { SpreadsheetFrozenHeaders } from "./spreadsheet-frozen-headers";
 import {
@@ -365,6 +366,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
       <SpreadsheetFormulaBar activeSheet={activeSheet} cellEdits={cellEdits} selection={selection} styles={styles} />
       <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
+        <SpreadsheetCanvasLayer layout={layout} scroll={viewportScroll} viewportSize={viewportSize} />
         <div
           onDoubleClick={handleViewportDoubleClick}
           onKeyDown={handleViewportKeyDown}
@@ -374,7 +376,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           onPointerUp={handleViewportPointerUp}
           onScroll={handleViewportScroll}
           ref={viewportRef}
-          style={{ cursor: resizeDrag ? spreadsheetResizeCursor(resizeDrag.axis) : resizeCursor, height: "100%", overflow: "auto" }}
+          style={{ cursor: resizeDrag ? spreadsheetResizeCursor(resizeDrag.axis) : resizeCursor, height: "100%", overflow: "auto", position: "relative", zIndex: 1 }}
           tabIndex={0}
         >
           <div style={{ height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }}>

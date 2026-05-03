@@ -143,6 +143,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Spreadsheet viewport state is now managed through a frame-coalesced external store hook, giving the current DOM preview and a future canvas/worker renderer the same scroll/size snapshot contract.
 - Visible row/column windows, merge-start overscan, and cell-intersection checks are now built through a pure render snapshot adapter shared by the DOM grid/frozen layer and future canvas/worker rendering.
 - Added a pure canvas command adapter that projects visible cell/header rectangles from the shared render snapshot, so a worker-backed renderer can consume stable draw commands without walking React DOM state.
+- Added a pure canvas render-plan adapter plus a mounted preview canvas layer. The layer syncs CSS/intrinsic bitmap size from viewport metrics and DPR, draws only visible worksheet cells/headers, and keeps the DOM grid as the current content layer while establishing the same draw-plan boundary needed for worker/offscreen rendering.
 - Added a pure XLSX selection controller and wired the preview to hit-test cells through the prefix-sum layout, including merged-cell normalization and frozen-pane selection overlay segments.
 - Added a pure row/column resize controller and preview-side size override layer. Header boundary hit testing, resize cursors, drag sizing, and rebuilt offsets now use the same worksheet-space layout math without mutating decoded protocol data.
 - Added keyboard selection navigation for arrow keys, Enter, Tab, and Shift+Tab, with formula-bar address/value updates and scroll-into-view behavior driven by the same selection rectangle projection.
@@ -192,7 +193,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 8. Production renderer architecture
 
-   The current DOM viewport is virtualized, memoized, frame-coalesced, backed by a small external viewport store, uses pure render/selection/resize snapshots, has keyboard/edit-mode interaction boundaries, and has a first canvas-command projection layer. It is still not Walnut's worker-backed canvas architecture. Production-grade parity would require a canvas/worker renderer and moving more draw-state snapshots out of React component state.
+   The current DOM viewport is virtualized, memoized, frame-coalesced, backed by a small external viewport store, uses pure render/selection/resize snapshots, has keyboard/edit-mode interaction boundaries, and now mounts a viewport canvas fed by pure draw plans. It is still not Walnut's worker-backed canvas architecture. Production-grade parity would require moving the mounted canvas plan to a worker/offscreen pipeline and shifting more draw-state snapshots out of React component state.
 
 9. Coverage expansion
 
