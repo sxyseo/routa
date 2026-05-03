@@ -704,12 +704,35 @@ function rgbColorToCss(color: RgbColor): string {
 
 function conditionalTextMatches(format: RecordValue, text: string, numericValue: number | null): boolean {
   const type = asString(format.type);
+  const matchText = asString(format.text);
   if (type === "containsText") {
-    return text.includes(asString(format.text));
+    return text.includes(matchText);
+  }
+
+  if (type === "notContainsText") {
+    return !text.includes(matchText);
+  }
+
+  if (type === "beginsWith") {
+    return text.startsWith(matchText);
+  }
+
+  if (type === "endsWith") {
+    return text.endsWith(matchText);
+  }
+
+  if (type === "containsBlanks") {
+    return text.trim().length === 0;
+  }
+
+  if (type === "notContainsBlanks") {
+    return text.trim().length > 0;
   }
 
   if (type === "cellIs" && numericValue != null) {
-    const formula = Number(asArray(format.formulas).map(asString)[0] ?? "");
+    const formulas = asArray(format.formulas).map(asString);
+    const formula = Number(formulas[0] ?? "");
+    const secondFormula = Number(formulas[1] ?? "");
     const operator = asString(format.operator);
     if (!Number.isFinite(formula)) return false;
     if (operator === "lessThan") return numericValue < formula;
@@ -717,6 +740,13 @@ function conditionalTextMatches(format: RecordValue, text: string, numericValue:
     if (operator === "greaterThan") return numericValue > formula;
     if (operator === "greaterThanOrEqual") return numericValue >= formula;
     if (operator === "equal") return numericValue === formula;
+    if (operator === "notEqual") return numericValue !== formula;
+    if (operator === "between" && Number.isFinite(secondFormula)) {
+      return numericValue >= Math.min(formula, secondFormula) && numericValue <= Math.max(formula, secondFormula);
+    }
+    if (operator === "notBetween" && Number.isFinite(secondFormula)) {
+      return numericValue < Math.min(formula, secondFormula) || numericValue > Math.max(formula, secondFormula);
+    }
   }
 
   return false;

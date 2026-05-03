@@ -195,4 +195,70 @@ describe("spreadsheet conditional visuals", () => {
     });
     expect(visuals.get("2:0")?.background).toBe("#00FF00");
   });
+
+  it("applies common text and range conditional format rules", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A2"],
+          rules: [
+            {
+              fillColor: "FFCC00",
+              formulas: ["10", "20"],
+              operator: "between",
+              type: "cellIs",
+            },
+            {
+              fillColor: "CC0000",
+              formulas: ["10", "20"],
+              operator: "notBetween",
+              type: "cellIs",
+            },
+          ],
+        },
+        {
+          ranges: ["A3:A3"],
+          rules: [
+            {
+              fillColor: "00AA00",
+              text: "Done",
+              type: "beginsWith",
+            },
+          ],
+        },
+        {
+          ranges: ["A4:A4"],
+          rules: [
+            {
+              fillColor: "0000CC",
+              text: "blocked",
+              type: "notContainsText",
+            },
+          ],
+        },
+        {
+          ranges: ["A5:A5"],
+          rules: [
+            {
+              fillColor: "999999",
+              type: "containsBlanks",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: 15 }], index: 1 },
+        { cells: [{ address: "A2", value: 25 }], index: 2 },
+        { cells: [{ address: "A3", value: "Done today" }], index: 3 },
+        { cells: [{ address: "A4", value: "still active" }], index: 4 },
+        { cells: [{ address: "A5", value: "" }], index: 5 },
+      ],
+    });
+
+    expect(visuals.get("1:0")?.background).toBe("#FFCC00");
+    expect(visuals.get("2:0")?.background).toBe("#CC0000");
+    expect(visuals.get("3:0")?.background).toBe("#00AA00");
+    expect(visuals.get("4:0")?.background).toBe("#0000CC");
+    expect(visuals.get("5:0")?.background).toBe("#999999");
+  });
 });
