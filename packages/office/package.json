@@ -1,0 +1,47 @@
+{
+  "name": "@autodev/office",
+  "version": "0.1.0",
+  "description": "Office document reader powered by .NET browser-wasm — reads DOCX, PPTX, XLSX and returns protobuf bytes.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Phodal Huang",
+  "homepage": "https://github.com/phodal/routa#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phodal/routa.git",
+    "directory": "packages/office"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "office",
+    "docx",
+    "pptx",
+    "xlsx",
+    "wasm",
+    "dotnet",
+    "protobuf"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "wasm",
+    "README.md"
+  ],
+  "scripts": {
+    "build:ts": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

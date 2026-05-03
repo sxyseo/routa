@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net9.0-browser1.0": {
+      "DocumentFormat.OpenXml": {
+        "type": "Direct",
+        "requested": "[3.3.0, )",
+        "resolved": "3.3.0",
+        "contentHash": "JogRPJNiE6kKvbuCqVRX691pPWeGMqdQgjrUwRYkdpfkMmtElfqAgcRR73geYj7OtBeEpstldZXXzJw27LUI9w==",
+        "dependencies": {
+          "DocumentFormat.OpenXml.Framework": "3.3.0"
+        }
+      },
+      "DocumentFormat.OpenXml.Framework": {
+        "type": "Direct",
+        "requested": "[3.3.0, )",
+        "resolved": "3.3.0",
+        "contentHash": "R5CLzEoeyr7XDB7g3NTxRobcU19agaxVAhGZm+fZUShJGiU4bw8oUgnA2BNFepigJckfFMayOBMAbV3kDXNInA==",
+        "dependencies": {
+          "System.IO.Packaging": "8.0.1"
+        }
+      },
+      "Google.Protobuf": {
+        "type": "Direct",
+        "requested": "[3.31.0, )",
+        "resolved": "3.31.0",
+        "contentHash": "OZXSf6igaJBeo+kAzMhYF0R5zp0nRgf4G0Uis/IsGKACc4RGP9bQPLpHLengIFuASl0lY92utMB8rRpTx4TaOg=="
+      },
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[9.0.14, )",
+        "resolved": "9.0.14",
+        "contentHash": "8YxYatC2E9FlSI2BNkCIlTQk8t9YpcjuRMi3AMCz0mfaJNlzj1x6WgtvDCzZ8DzQ6z6sGAmRVoWuf34yPjRR8g=="
+      },
+      "Microsoft.NET.Runtime.WebAssembly.Sdk": {
+        "type": "Direct",
+        "requested": "[9.0.14, )",
+        "resolved": "9.0.14",
+        "contentHash": "XiNOaathPPNmCppJxZWXZJaiKc9xvHRqCPPlNAHlmpOGGEEj0TNIh5Q2WAon1N46crstpKxCAuMiVWNoZ9w+dw=="
+      },
+      "System.IO.Packaging": {
+        "type": "Direct",
+        "requested": "[8.0.1, )",
+        "resolved": "8.0.1",
+        "contentHash": "KYkIOAvPexQOLDxPO2g0BVoWInnQhPpkFzRqvNrNrMhVT6kqhVr0zEb6KCHlptLFukxnZrjuMVAnxK7pOGUYrw=="
+      }
+    },
+    "net9.0-browser1.0/browser-wasm": {}
+  }
+}

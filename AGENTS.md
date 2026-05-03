@@ -33,6 +33,7 @@ The project is intentionally not "two separate products". Web and desktop differ
 - If Tauri routes look wrong, verify fallback mapping in `crates/routa-server/src/lib.rs` and placeholders in `out/workspace/__placeholder__/`.
 - For large or cross-core changes, run graph probes first: `entrix graph impact`, `entrix graph test-radius`, or `entrix graph review-context`.
 - Temporary frontend debug `console.log` is allowed during diagnosis; remove all debug logs before finish.
+- Do not commit screenshots, recordings, large generated binaries, or other non-automated-test artifacts. Keep manual QA evidence in ignored temp paths or attach it externally to the PR.
 - Shared repo-level agent skills live under `.agents/skills/`. The canonical release automation skill is `.agents/skills/release/` and should be invoked as `/release`.
 
 ## Validation
@@ -66,7 +67,7 @@ entrix run --tier normal   # when behavior/shared modules/APIs/workflow orchestr
 
 Format example:
 
-Co-authored-by: <AgentName> (<Model>) <Email>
+Co-authored-by: <AgentName> (<You-Model>) <Email>
 
 Valid examples (choose EXACTLY ONE):
 
@@ -74,7 +75,7 @@ Co-authored-by: Kiro AI (Claude Opus 4.6) <kiro@kiro.dev>
 Co-authored-by: GitHub Copilot Agent (GPT 5.4) <198982749+copilot@users.noreply.github.com>
 Co-authored-by: QoderAI (Qwen 3.5 Max) <qoder_ai@qoder.com>
 Co-authored-by: gemini-cli (...) <218195315+gemini-cli@users.noreply.github.com>
-Co-authored-by: Codex (GPT 5.4) <codex@openai.com>
+Co-authored-by: Codex (GPT 5.5) <codex@openai.com>
 
 ## Pull Request
 
