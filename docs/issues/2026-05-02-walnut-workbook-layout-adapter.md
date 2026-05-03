@@ -123,6 +123,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Expanded conditional-format preview rule coverage for common Excel text and cell comparison variants, including `beginsWith`, `endsWith`, `notContainsText`, blank/nonblank checks, `notEqual`, `between`, and `notBetween`.
 - Added duplicate/unique value conditional-format rendering by computing lightweight range text-frequency stats for only the affected rule ranges.
 - Added top/bottom and above/below-average conditional-format rendering using per-rule numeric range stats, including rank, percent, bottom, equal-average, and standard-deviation thresholds when those protocol fields are present.
+- Added a conservative formula-driven conditional-format evaluator for `expression` rules, including relative/absolute cell references, comparisons, `AND`/`OR`/`NOT`, `ISBLANK`/`ISNUMBER`/`ISTEXT`, `ROW`/`COLUMN`, `LEN`, and `MOD`.
 
 ## Remaining XLSX Work
 
@@ -134,7 +135,7 @@ This issue is still `in_progress`, but the core XLSX contract is no longer block
 - The committed render-contract suite is also green for the core workbook, image drawing, sparkline, multi-chart, and surface-chart fixtures.
 - Recent preview additions cover visible overlays for `sparklineGroups`, notes/threaded comment targets, data-validation dropdown/validation markers, sheet `tabColor`, and sheet-level slicer fallback shapes.
 - `src/app/debug/office-wasm-poc/spreadsheet-preview.tsx` was split so cell overlays live in `spreadsheet-cell-overlays.tsx`; the main preview file is back under the file-budget limit.
-- Conditional-format rendering now consumes color scales, data bars, icon sets, common text/cell rules, duplicate/unique rules, top/bottom rules, above/below-average rules, cfvo thresholds, negative data bars, data-bar axes, and `stopIfTrue` precedence for matched format rules.
+- Conditional-format rendering now consumes color scales, data bars, icon sets, common text/cell rules, duplicate/unique rules, top/bottom rules, above/below-average rules, formula-driven expression rules, cfvo thresholds, negative data bars, data-bar axes, and `stopIfTrue` precedence for matched format rules.
 
 Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or production renderer architecture:
 
@@ -152,7 +153,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 4. Formula-driven conditional formatting
 
-   The common rule families are now rendered, including ranked and duplicate/unique rules. Still missing formula-driven custom rules and more unusual layered-rule precedence combinations.
+   Common expression rules are now rendered with a conservative evaluator for cell references, comparisons, logical functions, blank/type checks, row/column lookup, length, and modulo. Still missing broad Excel formula-language parity for arbitrary functions, cross-sheet references, named ranges, structured table references, and more unusual layered-rule precedence combinations.
 
 5. Freeze-pane extraction and interaction behavior
 

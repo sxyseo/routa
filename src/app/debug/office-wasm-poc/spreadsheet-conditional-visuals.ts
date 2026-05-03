@@ -11,6 +11,7 @@ import {
   parseCellRange,
   type RecordValue,
 } from "./office-preview-utils";
+import { conditionalFormulaMatches } from "./spreadsheet-conditional-formula";
 
 export type SpreadsheetCellVisual = {
   background?: string;
@@ -403,7 +404,17 @@ function spreadsheetConditionalCellVisual(
       case "format": {
         const cell = cellAt(rowsByIndex, rowIndex, columnIndex);
         const text = cellText(cell);
-        if (!conditionalTextMatches(rule.format, text, value, rule.textCounts, rule.numericValues)) break;
+        if (!conditionalTextMatches(
+          rule.format,
+          text,
+          value,
+          rule.textCounts,
+          rule.numericValues,
+          rowsByIndex,
+          rule.range,
+          rowIndex,
+          columnIndex,
+        )) break;
         visual = mergeSpreadsheetCellVisuals(visual, {
           background: protocolColorToCss(rule.format.fillColor),
           color: protocolColorToCss(rule.format.fontColor),
@@ -738,6 +749,10 @@ function conditionalTextMatches(
   numericValue: number | null,
   textCounts?: ReadonlyMap<string, number>,
   numericValues?: readonly number[],
+  rowsByIndex?: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
+  range?: SpreadsheetCellRange,
+  rowIndex?: number,
+  columnIndex?: number,
 ): boolean {
   const type = asString(format.type);
   const matchText = asString(format.text);
@@ -780,6 +795,16 @@ function conditionalTextMatches(
 
   if (type === "aboveAverage" && numericValue != null) {
     return averageRuleMatches(format, numericValue, numericValues ?? []);
+  }
+
+  if (type === "expression" && rowsByIndex && range && rowIndex != null && columnIndex != null) {
+    return conditionalFormulaMatches({
+      columnIndex,
+      formulas: format.formulas ?? format.formula,
+      range,
+      rowsByIndex,
+      rowIndex,
+    });
   }
 
   if (type === "cellIs" && numericValue != null) {

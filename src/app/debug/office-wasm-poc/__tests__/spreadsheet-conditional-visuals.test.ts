@@ -354,4 +354,43 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("3:2")?.background).toBe("#14B8A6");
     expect(visuals.get("4:2")).toBeUndefined();
   });
+
+  it("applies formula-driven conditional format rules with relative cell references", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["B2:B4"],
+          rules: [
+            {
+              fillColor: "FACC15",
+              formulas: ["=AND($A2=\"Open\",B2>10)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["C2:C4"],
+          rules: [
+            {
+              fillColor: "22C55E",
+              formulas: ["=MOD(ROW(),2)=0"],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A2", value: "Open" }, { address: "B2", value: 12 }, { address: "C2", value: "even" }], index: 2 },
+        { cells: [{ address: "A3", value: "Closed" }, { address: "B3", value: 30 }, { address: "C3", value: "odd" }], index: 3 },
+        { cells: [{ address: "A4", value: "Open" }, { address: "B4", value: 8 }, { address: "C4", value: "even" }], index: 4 },
+      ],
+    });
+
+    expect(visuals.get("2:1")?.background).toBe("#FACC15");
+    expect(visuals.get("3:1")).toBeUndefined();
+    expect(visuals.get("4:1")).toBeUndefined();
+    expect(visuals.get("2:2")?.background).toBe("#22C55E");
+    expect(visuals.get("3:2")).toBeUndefined();
+    expect(visuals.get("4:2")?.background).toBe("#22C55E");
+  });
 });
