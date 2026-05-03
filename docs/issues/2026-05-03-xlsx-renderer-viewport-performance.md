@@ -81,8 +81,11 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 
 ## Remaining Work
 
-- Add stress fixtures or synthetic benchmark data for larger sheets without committing production files.
-- Decide whether to keep a DOM viewport for debug-only usage or introduce a canvas/worker renderer for production workbook previews. Walnut's production bundle still goes further with a controller/worker boundary, narrowed external-store snapshots, and canvas-centric pointer/hover target handling.
+- Add synthetic stress fixtures and benchmark data for larger sheets without committing production files. The current validation corpus proves protocol parity, but it does not measure sustained scroll/resize/editor workload.
+- Decide whether the debug DOM viewport is sufficient for the intended product surface. It is virtualized, memoized, and frame-coalesced, but Walnut's production bundle still goes further with a worker-backed canvas renderer, narrowed external-store snapshots, and canvas-centric pointer/hover target handling.
+- If XLSX preview becomes a production surface, the next architecture step is a canvas/worker renderer fed by the existing layout adapter rather than further expanding DOM cell rendering. The adapter should remain the contract boundary for column/row prefix sums, freeze panes, floating hit regions, and overlay geometry.
+- Add performance gates that exercise large visible ranges, dense conditional-format/table rules, sparkline groups, drawing overlays, and frozen-pane segmentation. Current tests lock behavior but not runtime budgets.
+- Keep `/Users/phodal/Downloads/excel` as validation-only input. Any future stress corpus should be generated synthetic data or small committed fixtures that avoid customer/production content.
 
 ## References
 
