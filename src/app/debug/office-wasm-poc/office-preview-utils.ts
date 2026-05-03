@@ -46,6 +46,9 @@ export type CellMerge = {
   rowSpan: number;
 };
 
+export const EXCEL_MAX_COLUMN_COUNT = 16_384;
+export const EXCEL_MAX_ROW_COUNT = 1_048_576;
+
 export const EMPTY_DOCUMENT_STYLE_MAPS: DocumentStyleMaps = {
   textStyles: new Map(),
   images: new Map(),
@@ -369,11 +372,11 @@ export function collectTextBlocks(value: unknown, limit = 80): string[] {
 }
 
 export function columnIndexFromAddress(address: string): number {
-  const match = address.match(/^[A-Z]+/i);
+  const match = normalizedCellReference(address).match(/^\$?([A-Z]+)/i);
   if (!match) return 0;
 
   let index = 0;
-  for (const char of match[0].toUpperCase()) {
+  for (const char of (match[1] ?? "").toUpperCase()) {
     index = index * 26 + char.charCodeAt(0) - 64;
   }
 
@@ -381,24 +384,56 @@ export function columnIndexFromAddress(address: string): number {
 }
 
 export function rowIndexFromAddress(address: string): number {
-  const match = address.match(/\d+/);
+  const match = normalizedCellReference(address).match(/\$?(\d+)/);
   if (!match) return 1;
-  return Math.max(1, Number.parseInt(match[0], 10));
+  return Math.max(1, Number.parseInt(match[1] ?? "1", 10));
 }
 
 export function parseCellRange(reference: string): CellMerge | null {
-  const [start, end = start] = reference.split(":");
-  if (!start) return null;
+  const normalizedReference = normalizedCellReference(reference);
+  const hasRangeSeparator = normalizedReference.includes(":");
+  const [startRaw, endRaw = startRaw] = normalizedReference.split(":");
+  if (!startRaw) return null;
 
-  const startColumn = columnIndexFromAddress(start);
-  const startRow = rowIndexFromAddress(start);
-  const endColumn = columnIndexFromAddress(end);
-  const endRow = rowIndexFromAddress(end);
+  const start = parseCellRangeEndpoint(startRaw);
+  const end = parseCellRangeEndpoint(endRaw);
+  if (!start.hasColumn && !start.hasRow && !end.hasColumn && !end.hasRow) return null;
+
+  const startColumn = start.columnIndex ?? 0;
+  const startRow = start.rowIndex ?? 1;
+  const endColumn = end.columnIndex ?? (hasRangeSeparator ? EXCEL_MAX_COLUMN_COUNT - 1 : startColumn);
+  const endRow = end.rowIndex ?? (hasRangeSeparator ? EXCEL_MAX_ROW_COUNT : startRow);
   return {
     startColumn: Math.min(startColumn, endColumn),
     startRow: Math.min(startRow, endRow),
     columnSpan: Math.abs(endColumn - startColumn) + 1,
     rowSpan: Math.abs(endRow - startRow) + 1,
+  };
+}
+
+function normalizedCellReference(reference: string): string {
+  const sheetSeparator = reference.lastIndexOf("!");
+  return (sheetSeparator >= 0 ? reference.slice(sheetSeparator + 1) : reference)
+    .replace(/^'|'$/g, "")
+    .trim();
+}
+
+function parseCellRangeEndpoint(reference: string): {
+  columnIndex?: number;
+  hasColumn: boolean;
+  hasRow: boolean;
+  rowIndex?: number;
+} {
+  const trimmed = reference.trim();
+  const columnMatch = trimmed.match(/^\$?([A-Z]+)/i);
+  const rowMatch = trimmed.match(/\$?(\d+)/);
+  const columnIndex = columnMatch ? columnIndexFromAddress(trimmed) : undefined;
+  const rowIndex = rowMatch ? rowIndexFromAddress(trimmed) : undefined;
+  return {
+    ...(columnIndex != null ? { columnIndex } : {}),
+    hasColumn: columnMatch != null,
+    hasRow: rowMatch != null,
+    ...(rowIndex != null ? { rowIndex } : {}),
   };
 }
 

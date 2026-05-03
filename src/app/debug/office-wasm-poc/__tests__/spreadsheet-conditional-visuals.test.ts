@@ -138,7 +138,7 @@ describe("spreadsheet conditional visuals", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
         {
-          ranges: ["A1:A1048576"],
+          ranges: ["A:A"],
           rules: [
             {
               colorScale: {
