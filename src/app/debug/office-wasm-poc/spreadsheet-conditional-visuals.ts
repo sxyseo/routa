@@ -98,6 +98,8 @@ type SpreadsheetConditionalVisualSpec =
     span: number;
   };
 
+const MAX_CELL_VISUAL_CACHE_SIZE = 5_000;
+
 export function buildSpreadsheetConditionalVisuals(
   sheet: RecordValue | undefined,
   theme?: RecordValue | null,
@@ -309,8 +311,13 @@ function spreadsheetVisualLookup(
   conditionalVisuals: SpreadsheetConditionalVisualSpec[],
   rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
 ): SpreadsheetCellVisualLookup {
+  const visualCache = new Map<string, SpreadsheetCellVisual | null>();
   return {
     get(key: string) {
+      if (visualCache.has(key)) {
+        return visualCache.get(key) ?? undefined;
+      }
+
       const [rowValue, columnValue] = key.split(":");
       const rowIndex = Number(rowValue);
       const columnIndex = Number(columnValue);
@@ -320,9 +327,24 @@ function spreadsheetVisualLookup(
       const conditionalVisual = Number.isFinite(rowIndex) && Number.isFinite(columnIndex)
         ? spreadsheetConditionalCellVisual(conditionalVisuals, rowsByIndex, rowIndex, columnIndex)
         : undefined;
-      return mergeSpreadsheetCellVisuals(tableVisual, conditionalVisual);
+      const visual = mergeSpreadsheetCellVisuals(tableVisual, conditionalVisual);
+      cacheSpreadsheetCellVisual(visualCache, key, visual);
+      return visual;
     },
   };
+}
+
+function cacheSpreadsheetCellVisual(
+  cache: Map<string, SpreadsheetCellVisual | null>,
+  key: string,
+  visual: SpreadsheetCellVisual | undefined,
+) {
+  if (cache.size >= MAX_CELL_VISUAL_CACHE_SIZE) {
+    const firstKey = cache.keys().next().value;
+    if (firstKey != null) cache.delete(firstKey);
+  }
+
+  cache.set(key, visual ?? null);
 }
 
 function spreadsheetConditionalCellVisual(
