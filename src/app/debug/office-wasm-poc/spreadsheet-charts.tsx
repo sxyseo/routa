@@ -50,6 +50,11 @@ type SpreadsheetChartTrendline = {
   type: string;
 };
 
+type SpreadsheetChartScale = {
+  maxValue: number;
+  minValue: number;
+};
+
 const CHART_PALETTE = ["#1f6f8b", "#f9732a", "#5b7f2a", "#9467bd", "#8c564b", "#2ca02c", "#d62728"];
 
 export type SpreadsheetChartPlotArea = {
@@ -60,6 +65,7 @@ export type SpreadsheetChartPlotArea = {
 };
 
 export type SpreadsheetChartSeries = {
+  axis?: "primary" | "secondary";
   color: string;
   errorBars?: SpreadsheetChartErrorBars;
   label: string;
@@ -88,6 +94,7 @@ export type SpreadsheetChartSpec = {
   type: SpreadsheetChartType;
   width: number;
   xAxis?: SpreadsheetChartAxisSpec;
+  secondaryYAxis?: SpreadsheetChartAxisSpec;
   yAxis?: SpreadsheetChartAxisSpec;
   zIndex: number;
 };
@@ -272,6 +279,7 @@ function chartFromRecord(
     type: spreadsheetChartType(chart),
     width: bounds.width,
     xAxis: spreadsheetChartAxis(chart.xAxis),
+    secondaryYAxis: spreadsheetChartAxis(chart.secondaryYAxis ?? chart.y2Axis ?? chart.rightAxis),
     yAxis: spreadsheetChartAxis(chart.yAxis),
     zIndex: bounds.zIndex,
   };
@@ -288,6 +296,7 @@ function spreadsheetChartSeries(
   const seriesColor = color ?? chartPalette(index);
   const errorBars = source ? chartSeriesErrorBars(source, seriesColor) : undefined;
   return {
+    axis: chartSeriesAxis(source),
     color: seriesColor,
     ...(errorBars ? { errorBars } : {}),
     label,
@@ -295,6 +304,13 @@ function spreadsheetChartSeries(
     trendlines: source ? chartSeriesTrendlines(source, seriesColor) : [],
     values,
   };
+}
+
+function chartSeriesAxis(series: RecordValue | undefined): SpreadsheetChartSeries["axis"] {
+  if (!series) return "primary";
+  if (series.useSecondaryAxis === true || series.secondaryAxis === true) return "secondary";
+  const axis = asString(series.axis ?? series.axisId ?? series.yAxisId).toLowerCase();
+  return axis === "2" || axis === "secondary" || axis === "right" ? "secondary" : "primary";
 }
 
 function chartSeriesHasMarker(series: RecordValue): boolean {
@@ -500,9 +516,14 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
   const height = chart.height;
   const plot = spreadsheetChartPlotArea(chart);
   const values = chart.series.flatMap((series) => series.values);
-  const ticks = spreadsheetChartTickValues(chart, values);
-  const minValue = ticks[0] ?? 0;
-  const maxValue = ticks[ticks.length - 1] ?? 1;
+  const primaryValues = chart.series.filter((series) => series.axis !== "secondary").flatMap((series) => series.values);
+  const secondaryValues = chart.series.filter((series) => series.axis === "secondary").flatMap((series) => series.values);
+  const ticks = spreadsheetChartTickValues(chart, primaryValues.length > 0 ? primaryValues : values);
+  const secondaryTicks = secondaryValues.length > 0
+    ? spreadsheetChartTickValues({ ...chart, yAxis: chart.secondaryYAxis ?? chart.yAxis }, secondaryValues)
+    : [];
+  const primaryScale = chartScaleFromTicks(ticks);
+  const secondaryScale = secondaryTicks.length > 0 ? chartScaleFromTicks(secondaryTicks) : undefined;
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
@@ -513,22 +534,22 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
   context.fillText(chart.title, width / 2, 30);
 
   if (isCartesianChart(chart.type)) {
-    drawChartGrid(context, chart, plot, ticks);
+    drawChartGrid(context, chart, plot, ticks, secondaryTicks);
   }
 
   switch (chart.type) {
     case "area":
     case "surface":
-      drawAreaChart(context, chart, plot, minValue, maxValue);
+      drawAreaChart(context, chart, plot, primaryScale.minValue, primaryScale.maxValue);
       break;
     case "bubble":
-      drawScatterChart(context, chart, plot, minValue, maxValue, true);
+      drawScatterChart(context, chart, plot, primaryScale.minValue, primaryScale.maxValue, true);
       break;
     case "doughnut":
       drawPieChart(context, chart, plot, true);
       break;
     case "line":
-      drawLineChart(context, chart, plot, minValue, maxValue);
+      drawLineChart(context, chart, plot, primaryScale, secondaryScale);
       break;
     case "pie":
       drawPieChart(context, chart, plot, false);
@@ -537,18 +558,25 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
       drawRadarChart(context, chart, plot, ticks);
       break;
     case "scatter":
-      drawScatterChart(context, chart, plot, minValue, maxValue, false);
+      drawScatterChart(context, chart, plot, primaryScale.minValue, primaryScale.maxValue, false);
       break;
     case "bar":
     default:
-      drawBarChart(context, chart, plot, minValue, maxValue);
+      drawBarChart(context, chart, plot, primaryScale.minValue, primaryScale.maxValue);
       break;
   }
 
   if (chart.showDataLabels) {
-    drawChartDataLabels(context, chart, plot, minValue, maxValue);
+    drawChartDataLabels(context, chart, plot, primaryScale.minValue, primaryScale.maxValue);
   }
   drawChartLegend(context, chart, plot);
+}
+
+function chartScaleFromTicks(ticks: number[]): SpreadsheetChartScale {
+  return {
+    maxValue: ticks[ticks.length - 1] ?? 1,
+    minValue: ticks[0] ?? 0,
+  };
 }
 
 export function spreadsheetChartPlotArea(chart: SpreadsheetChartSpec): SpreadsheetChartPlotArea {
@@ -557,6 +585,7 @@ export function spreadsheetChartPlotArea(chart: SpreadsheetChartSpec): Spreadshe
   const hasTopLegend = reservesLegendSpace && chart.legendPosition === "top";
   const hasLeftLegend = reservesLegendSpace && chart.legendPosition === "left";
   const hasRightLegend = reservesLegendSpace && chart.legendPosition === "right";
+  const hasSecondaryAxis = chart.series.some((series) => series.axis === "secondary");
   const categoryLabelHeight = isLineAxisChart(chart.type) ? 46 : isCircularChart(chart.type) || chart.type === "radar" ? 8 : 30;
   const legendHeight = hasBottomLegend ? 42 : 0;
   const top = (chart.title ? 58 : 24) + (hasTopLegend ? 28 : 0);
@@ -565,7 +594,7 @@ export function spreadsheetChartPlotArea(chart: SpreadsheetChartSpec): Spreadshe
   return {
     bottom,
     left: (isLineAxisChart(chart.type) ? 64 : isCircularChart(chart.type) || chart.type === "radar" ? 28 : 52) + (hasLeftLegend ? 108 : 0),
-    right: chart.width - (hasRightLegend ? 126 : 22),
+    right: chart.width - (hasRightLegend ? 126 : 22) - (hasSecondaryAxis ? 42 : 0),
     top,
   };
 }
@@ -575,6 +604,7 @@ function drawChartGrid(
   chart: SpreadsheetChartSpec,
   plot: SpreadsheetChartPlotArea,
   ticks: number[],
+  secondaryTicks: number[] = [],
 ) {
   context.save();
   context.strokeStyle = "#c7c7c7";
@@ -619,7 +649,39 @@ function drawChartGrid(
   context.lineTo(plot.right, plot.bottom);
   context.stroke();
 
+  drawSecondaryChartAxis(context, chart, plot, secondaryTicks);
   drawChartAxisTitles(context, chart, plot);
+  context.restore();
+}
+
+function drawSecondaryChartAxis(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  ticks: number[],
+) {
+  if (ticks.length === 0) return;
+  const minValue = ticks[0] ?? 0;
+  const maxValue = ticks[ticks.length - 1] ?? 1;
+
+  context.save();
+  context.strokeStyle = "#111827";
+  context.beginPath();
+  context.moveTo(plot.right, plot.top);
+  context.lineTo(plot.right, plot.bottom);
+  context.stroke();
+
+  context.fillStyle = "#737373";
+  context.font = "12px Arial, sans-serif";
+  context.textAlign = "left";
+  context.textBaseline = "middle";
+  for (const value of ticks) {
+    context.fillText(
+      formatChartTick(value, chart.secondaryYAxis?.numberFormat),
+      plot.right + 8,
+      chartY(value, plot, minValue, maxValue),
+    );
+  }
   context.restore();
 }
 
@@ -765,27 +827,31 @@ function drawLineChart(
   context: CanvasRenderingContext2D,
   chart: SpreadsheetChartSpec,
   plot: SpreadsheetChartPlotArea,
-  minValue: number,
-  maxValue: number,
+  primaryScale: SpreadsheetChartScale,
+  secondaryScale?: SpreadsheetChartScale,
 ) {
   const pointCount = Math.max(1, chart.categories.length - 1);
   const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
+  const scaleForSeries = (series: SpreadsheetChartSeries) => (
+    series.axis === "secondary" && secondaryScale ? secondaryScale : primaryScale
+  );
 
   context.save();
   chart.series.forEach((series) => {
+    const scale = scaleForSeries(series);
     context.strokeStyle = series.color;
     context.lineWidth = 3;
     context.setLineDash([]);
     context.beginPath();
     series.values.forEach((value, index) => {
       const x = xForIndex(index);
-      const y = chartY(value, plot, minValue, maxValue);
+      const y = chartY(value, plot, scale.minValue, scale.maxValue);
       if (index === 0) context.moveTo(x, y);
       else context.lineTo(x, y);
     });
     context.stroke();
-    drawLineSeriesErrorBars(context, series, xForIndex, plot, minValue, maxValue);
-    drawLineSeriesTrendlines(context, series, xForIndex, plot, minValue, maxValue);
+    drawLineSeriesErrorBars(context, series, xForIndex, plot, scale);
+    drawLineSeriesTrendlines(context, series, xForIndex, plot, scale);
   });
 
   context.fillStyle = "#737373";
@@ -803,10 +869,11 @@ function drawLineChart(
 
   chart.series.forEach((series) => {
     if (!series.marker) return;
+    const scale = scaleForSeries(series);
     context.fillStyle = series.color;
     series.values.forEach((value, index) => {
       const x = xForIndex(index);
-      const y = chartY(value, plot, minValue, maxValue);
+      const y = chartY(value, plot, scale.minValue, scale.maxValue);
       context.beginPath();
       if (series.marker === "diamond") {
         context.moveTo(x, y - 5);
@@ -828,8 +895,7 @@ function drawLineSeriesErrorBars(
   series: SpreadsheetChartSeries,
   xForIndex: (index: number) => number,
   plot: SpreadsheetChartPlotArea,
-  minValue: number,
-  maxValue: number,
+  scale: SpreadsheetChartScale,
 ) {
   const errorBars = series.errorBars;
   if (!errorBars) return;
@@ -839,9 +905,9 @@ function drawLineSeriesErrorBars(
   context.lineWidth = 1;
   series.values.forEach((value, index) => {
     const x = xForIndex(index);
-    const y = chartY(value, plot, minValue, maxValue);
-    const top = errorBars.direction === "minus" ? y : chartY(value + errorBars.amount, plot, minValue, maxValue);
-    const bottom = errorBars.direction === "plus" ? y : chartY(value - errorBars.amount, plot, minValue, maxValue);
+    const y = chartY(value, plot, scale.minValue, scale.maxValue);
+    const top = errorBars.direction === "minus" ? y : chartY(value + errorBars.amount, plot, scale.minValue, scale.maxValue);
+    const bottom = errorBars.direction === "plus" ? y : chartY(value - errorBars.amount, plot, scale.minValue, scale.maxValue);
     context.beginPath();
     context.moveTo(x, top);
     context.lineTo(x, bottom);
@@ -859,8 +925,7 @@ function drawLineSeriesTrendlines(
   series: SpreadsheetChartSeries,
   xForIndex: (index: number) => number,
   plot: SpreadsheetChartPlotArea,
-  minValue: number,
-  maxValue: number,
+  scale: SpreadsheetChartScale,
 ) {
   if (series.trendlines.length === 0 || series.values.length < 2) return;
   const regression = linearRegression(series.values);
@@ -874,8 +939,11 @@ function drawLineSeriesTrendlines(
   for (const trendline of series.trendlines) {
     context.strokeStyle = trendline.color;
     context.beginPath();
-    context.moveTo(xForIndex(firstIndex), chartY(regression.intercept, plot, minValue, maxValue));
-    context.lineTo(xForIndex(lastIndex), chartY(regression.slope * lastIndex + regression.intercept, plot, minValue, maxValue));
+    context.moveTo(xForIndex(firstIndex), chartY(regression.intercept, plot, scale.minValue, scale.maxValue));
+    context.lineTo(
+      xForIndex(lastIndex),
+      chartY(regression.slope * lastIndex + regression.intercept, plot, scale.minValue, scale.maxValue),
+    );
     context.stroke();
   }
   context.restore();

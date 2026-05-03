@@ -308,6 +308,40 @@ describe("spreadsheet charts", () => {
     expect(charts[0]?.series[0]?.trendlines).toEqual([{ color: "#1f6f8b", type: "linear" }]);
   });
 
+  it("preserves secondary-axis series and reserves right-axis plot space", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            secondaryYAxis: { maximum: 1, minimum: 0, numberFormat: "0%" },
+            series: [
+              { categories: ["Q1", "Q2"], name: "Revenue", values: [100, 120] },
+              { axis: "secondary", categories: ["Q1", "Q2"], name: "Margin", values: [0.3, 0.4] },
+            ],
+            title: "Revenue and Margin",
+            type: 13,
+            yAxis: { minimum: 0 },
+          },
+          extentCx: "3810000",
+          extentCy: "1905000",
+          fromAnchor: { colId: "1", rowId: "1" },
+        },
+      ],
+      name: "Charts",
+      rows: [],
+    };
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [],
+      layout: buildSpreadsheetLayout(sheet),
+      sheets: [sheet],
+    });
+
+    expect(charts[0]?.series.map((series) => series.axis)).toEqual(["primary", "secondary"]);
+    expect(charts[0]?.secondaryYAxis).toMatchObject({ maximum: 1, minimum: 0, numberFormat: "0%" });
+    expect(spreadsheetChartPlotArea(charts[0]!).right).toBe(336);
+  });
+
   it("clusters bar geometry for every protocol series", () => {
     const chart = {
       categories: ["Q1", "Q2"],

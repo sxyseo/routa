@@ -137,6 +137,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Formula conditional-format preview now evaluates common aggregate functions (`SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`) over cell ranges and simple named ranges.
 - Re-ran committed XLSX parity fixtures and the validation-only production corpus under `/Users/phodal/Downloads/excel` after the latest renderer work: all committed fixtures and all 21 production XLSX files still report decoded Workbook protocol equivalence against Walnut.
 - Chart preview can now consume protocol trendline and error-bar hints on line series, rendering linear trendlines and fixed-value error bars when those fields are present.
+- Chart preview now preserves protocol secondary-axis series hints, reserves right-axis plot space, draws right-axis tick labels, and scales secondary line series separately from the primary y-axis.
 
 ## Remaining XLSX Work
 
@@ -158,7 +159,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 2. Pixel-level chart fidelity
 
-   Chart protocol and preview coverage now include line, clustered bar, area, pie, doughnut, scatter, bubble, radar, surface families, protocol-driven markers, axis formats/titles, legends, basic data labels, and protocol-present line-series trendlines/error bars. Still missing Excel/Walnut internal layout parity for plot-area auto sizing, typography, detailed data-label positioning/options, combo charts, multi-axis charts, and detailed chart style inheritance.
+   Chart protocol and preview coverage now include line, clustered bar, area, pie, doughnut, scatter, bubble, radar, surface families, protocol-driven markers, axis formats/titles, legends, basic data labels, protocol-present line-series trendlines/error bars, and secondary-axis line scaling. Still missing Excel/Walnut internal layout parity for plot-area auto sizing, typography, detailed data-label positioning/options, mixed chart-type combo rendering, and detailed chart style inheritance.
 
 3. Full built-in table style definitions
 
