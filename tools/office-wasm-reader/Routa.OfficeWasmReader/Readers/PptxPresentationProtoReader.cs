@@ -1353,9 +1353,10 @@ internal static class PptxPresentationProtoReader
         return Message(output =>
         {
             var fill = line.GetFirstChild<A.SolidFill>();
-            if (fill is not null && !suppressStyle)
+            var lineStyle = LineStyle(line);
+            if (lineStyle != 0 && !suppressStyle)
             {
-                WriteInt32(output, 1, 1);
+                WriteInt32(output, 1, lineStyle);
             }
 
             WriteInt32(output, 2, LineWidth(line));
@@ -1364,6 +1365,25 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 3, WriteFill(fill));
             }
         });
+    }
+
+    private static int LineStyle(OpenXmlElement line)
+    {
+        return line.GetFirstChild<A.PresetDash>()?.Val?.InnerText switch
+        {
+            "solid" => 1,
+            "dash" => 2,
+            "dot" => 3,
+            "dashDot" => 4,
+            "lgDash" => 6,
+            "sysDash" => 7,
+            "sysDot" => 8,
+            "lgDashDot" => 9,
+            "sysDashDot" => 10,
+            "lgDashDotDot" => 11,
+            "sysDashDotDot" => 12,
+            _ => line.GetFirstChild<A.SolidFill>() is not null ? 1 : 0,
+        };
     }
 
     private static int? LineWidth(OpenXmlElement line)
