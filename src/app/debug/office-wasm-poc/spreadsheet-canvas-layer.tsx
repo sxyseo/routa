@@ -9,6 +9,7 @@ import {
   drawSpreadsheetCanvasRenderPlan,
   type SpreadsheetCanvasRenderPlan,
 } from "./spreadsheet-canvas-renderer";
+import { spreadsheetCanvasWorkerCapabilities } from "./spreadsheet-canvas-worker-protocol";
 import type {
   SpreadsheetLayout,
   SpreadsheetViewportScroll,
@@ -40,6 +41,7 @@ export function SpreadsheetCanvasLayer({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const schedulerRef = useRef<ReturnType<typeof createSpreadsheetCanvasFrameScheduler> | null>(null);
+  const renderer = useMemo(() => spreadsheetCanvasWorkerCapabilities().preferredRenderer, []);
   const plan = useMemo(() => buildSpreadsheetCanvasRenderPlan({
     commands: buildSpreadsheetCanvasCommands({ layout, scroll, viewportSize }),
     pixelRatio: typeof window === "undefined" ? 1 : window.devicePixelRatio,
@@ -62,6 +64,7 @@ export function SpreadsheetCanvasLayer({
   return (
     <canvas
       aria-hidden="true"
+      data-renderer={renderer}
       ref={canvasRef}
       style={{
         height: viewportSize.height,
