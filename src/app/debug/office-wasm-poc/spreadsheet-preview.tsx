@@ -50,35 +50,45 @@ import {
 } from "./spreadsheet-layout";
 
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
-  const root = asRecord(proto);
-  const sheets = asArray(root?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null);
-  const styles = asRecord(root?.styles);
-  const charts = asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null);
-  const shapes = asArray(root?.shapes).map(asRecord).filter((shape): shape is RecordValue => shape != null);
+  const root = useMemo(() => asRecord(proto), [proto]);
+  const sheets = useMemo(
+    () => asArray(root?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null),
+    [root],
+  );
+  const styles = useMemo(() => asRecord(root?.styles), [root]);
+  const charts = useMemo(
+    () => asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null),
+    [root],
+  );
+  const shapes = useMemo(
+    () => asArray(root?.shapes).map(asRecord).filter((shape): shape is RecordValue => shape != null),
+    [root],
+  );
+  const theme = useMemo(() => asRecord(root?.theme), [root]);
   const imageSources = useOfficeImageSources(root);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
   const [viewportScroll, setViewportScroll] = useState({ left: 0, top: 0 });
   const [viewportSize, setViewportSize] = useState({ height: 0, width: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
-  const layout = buildSpreadsheetLayout(activeSheet);
-  const chartSpecs = buildSpreadsheetCharts({
+  const layout = useMemo(() => buildSpreadsheetLayout(activeSheet), [activeSheet]);
+  const chartSpecs = useMemo(() => buildSpreadsheetCharts({
     activeSheet,
     charts,
     layout,
     sheets,
-  });
-  const shapeSpecs = buildSpreadsheetShapes({
+  }), [activeSheet, charts, layout, sheets]);
+  const shapeSpecs = useMemo(() => buildSpreadsheetShapes({
     activeSheet,
     layout,
     shapes,
-  });
-  const imageSpecs = buildSpreadsheetImages({
+  }), [activeSheet, layout, shapes]);
+  const imageSpecs = useMemo(() => buildSpreadsheetImages({
     activeSheet,
     imageSources,
     layout,
-  });
-  const cellVisuals = buildSpreadsheetConditionalVisuals(activeSheet, asRecord(root?.theme));
+  }), [activeSheet, imageSources, layout]);
+  const cellVisuals = useMemo(() => buildSpreadsheetConditionalVisuals(activeSheet, theme), [activeSheet, theme]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -175,6 +185,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           layout={layout}
           scroll={viewportScroll}
           styles={styles}
+          viewportSize={viewportSize}
         />
         <SpreadsheetFrozenHeaders layout={layout} scrollLeft={viewportScroll.left} scrollTop={viewportScroll.top} />
       </div>
@@ -226,12 +237,14 @@ function SpreadsheetFrozenBodyLayer({
   layout,
   scroll,
   styles,
+  viewportSize,
 }: {
   activeSheet: RecordValue | undefined;
   cellVisuals: Map<string, SpreadsheetCellVisual>;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
   styles: RecordValue | null;
+  viewportSize: SpreadsheetViewportSize;
 }) {
   if (layout.freezePanes.columnCount === 0 && layout.freezePanes.rowCount === 0) {
     return null;
@@ -241,16 +254,31 @@ function SpreadsheetFrozenBodyLayer({
   const frozenWidth = spreadsheetFrozenBodyWidth(layout);
   const frozenHeight = spreadsheetFrozenBodyHeight(layout);
   if (frozenWidth <= 0 && frozenHeight <= 0) return null;
+  const visibleRange = spreadsheetVisibleCellRange(layout, viewportSize, scroll);
+  const visibleMergeStarts = visibleMergedCellStarts(layout, visibleRange);
+  const visibleColumnIndexes = sortedVisibleIndexes(
+    visibleRange.startColumnIndex,
+    visibleRange.endColumnIndex,
+    visibleMergeStarts,
+    "column",
+  );
+  const visibleRowOffsets = sortedVisibleIndexes(
+    visibleRange.startRowOffset,
+    visibleRange.endRowOffset,
+    visibleMergeStarts,
+    "row",
+  );
 
   return (
     <div aria-hidden="true" style={{ inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 11 }}>
-      {Array.from({ length: layout.rowCount }, (_, rowOffset) => {
+      {visibleRowOffsets.map((rowOffset) => {
         const rowIndex = rowOffset + 1;
         const row = layout.rowsByIndex.get(rowIndex);
         const top = spreadsheetRowTop(layout, rowOffset);
-        return Array.from({ length: layout.columnCount }, (_, columnIndex) => {
+        return visibleColumnIndexes.map((columnIndex) => {
           const cellKey = spreadsheetCellKey(rowIndex, columnIndex);
           if (layout.coveredCells.has(cellKey)) return null;
+          if (!visibleCellIntersectsRange(layout, rowOffset, columnIndex, visibleRange)) return null;
           const cell = row?.get(columnIndex) ?? null;
           const merge = layout.mergeByStart.get(cellKey);
           const left = spreadsheetColumnLeft(layout, columnIndex);
@@ -304,37 +332,12 @@ function SpreadsheetGrid({
     () => spreadsheetVisibleCellRange(layout, viewportSize, scroll),
     [layout, scroll, viewportSize],
   );
-  const visibleMergeStarts = useMemo(() => {
-    const keys = new Set<string>();
-    for (const [key, merge] of layout.mergeByStart) {
-      const rowStart = merge.startRow - 1;
-      const rowEnd = rowStart + merge.rowSpan - 1;
-      const columnStart = merge.startColumn;
-      const columnEnd = columnStart + merge.columnSpan - 1;
-      if (
-        rowStart <= visibleRange.endRowOffset &&
-        rowEnd >= visibleRange.startRowOffset &&
-        columnStart <= visibleRange.endColumnIndex &&
-        columnEnd >= visibleRange.startColumnIndex
-      ) {
-        keys.add(key);
-      }
-    }
-    return keys;
-  }, [layout.mergeByStart, visibleRange]);
+  const visibleMergeStarts = useMemo(() => visibleMergedCellStarts(layout, visibleRange), [layout, visibleRange]);
   const visibleColumnIndexes = useMemo(() => {
-    const indexes = rangeIndexes(visibleRange.startColumnIndex, visibleRange.endColumnIndex);
-    for (const key of visibleMergeStarts) {
-      indexes.add(Number(key.split(":")[1] ?? 0));
-    }
-    return [...indexes].sort((a, b) => a - b);
+    return sortedVisibleIndexes(visibleRange.startColumnIndex, visibleRange.endColumnIndex, visibleMergeStarts, "column");
   }, [visibleMergeStarts, visibleRange]);
   const visibleRowOffsets = useMemo(() => {
-    const offsets = rangeIndexes(visibleRange.startRowOffset, visibleRange.endRowOffset);
-    for (const key of visibleMergeStarts) {
-      offsets.add(Math.max(0, Number(key.split(":")[0] ?? 1) - 1));
-    }
-    return [...offsets].sort((a, b) => a - b);
+    return sortedVisibleIndexes(visibleRange.startRowOffset, visibleRange.endRowOffset, visibleMergeStarts, "row");
   }, [visibleMergeStarts, visibleRange]);
 
   return (
@@ -421,6 +424,44 @@ function rangeIndexes(start: number, end: number): Set<number> {
     indexes.add(index);
   }
   return indexes;
+}
+
+function visibleMergedCellStarts(
+  layout: SpreadsheetLayout,
+  visibleRange: ReturnType<typeof spreadsheetVisibleCellRange>,
+): Set<string> {
+  const keys = new Set<string>();
+  for (const [key, merge] of layout.mergeByStart) {
+    const rowStart = merge.startRow - 1;
+    const rowEnd = rowStart + merge.rowSpan - 1;
+    const columnStart = merge.startColumn;
+    const columnEnd = columnStart + merge.columnSpan - 1;
+    if (
+      rowStart <= visibleRange.endRowOffset &&
+      rowEnd >= visibleRange.startRowOffset &&
+      columnStart <= visibleRange.endColumnIndex &&
+      columnEnd >= visibleRange.startColumnIndex
+    ) {
+      keys.add(key);
+    }
+  }
+
+  return keys;
+}
+
+function sortedVisibleIndexes(
+  start: number,
+  end: number,
+  mergeStarts: Set<string>,
+  axis: "column" | "row",
+): number[] {
+  const indexes = rangeIndexes(start, end);
+  for (const key of mergeStarts) {
+    const [row, column] = key.split(":");
+    indexes.add(axis === "column" ? Number(column ?? 0) : Math.max(0, Number(row ?? 1) - 1));
+  }
+
+  return [...indexes].sort((a, b) => a - b);
 }
 
 function visibleCellIntersectsRange(
