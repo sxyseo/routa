@@ -164,16 +164,18 @@ describe("spreadsheet frozen headers", () => {
   it("keeps hidden rows and columns in prefix sums as zero-size layout entries", () => {
     const layout = buildSpreadsheetLayout({
       columns: [
-        { hidden: true, max: 1, min: 1, width: 10 },
-        { max: 2, min: 2, width: 10 },
+        { hidden: true, max: 1, min: 1, styleIndex: 5, width: 10 },
+        { max: 2, min: 2, styleIndex: 6, width: 10 },
       ],
       rows: [
         { cells: [{ address: "A1" }], hidden: true, index: 1 },
-        { cells: [{ address: "B2" }], height: 30, index: 2 },
+        { cells: [{ address: "B2" }], height: 30, index: 2, styleIndex: 7 },
       ],
     });
 
     expect(layout.columnWidths.slice(0, 2)).toEqual([0, 75]);
+    expect(layout.columnStyleIndexes.slice(0, 2)).toEqual([5, 6]);
+    expect(layout.rowRecordsByIndex.get(2)?.styleIndex).toBe(7);
     expect(layout.rowHeights.slice(0, 2)).toEqual([0, 40]);
     expect(layout.columnOffsets.slice(0, 3)).toEqual([40, 40, 115]);
     expect(layout.rowOffsets.slice(0, 3)).toEqual([20, 20, 60]);

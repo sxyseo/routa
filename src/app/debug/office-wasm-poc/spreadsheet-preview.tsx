@@ -344,6 +344,7 @@ function SpreadsheetFrozenBodyLayer({
       {visibleRowOffsets.map((rowOffset) => {
         const rowIndex = rowOffset + 1;
         const row = layout.rowsByIndex.get(rowIndex);
+        const rowRecord = layout.rowRecordsByIndex.get(rowIndex);
         const top = spreadsheetRowTop(layout, rowOffset);
         return visibleColumnIndexes.map((columnIndex) => {
           const cellKey = spreadsheetCellKey(rowIndex, columnIndex);
@@ -358,13 +359,14 @@ function SpreadsheetFrozenBodyLayer({
           if (rects.length === 0) return null;
 
           const visual = cellVisuals.get(cellKey);
-          const text = spreadsheetCellText(cell, styles, sheetName);
+          const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
+          const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
           return rects.map((rect, segmentIndex) => (
             <div
               data-frozen-cell-address={asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`}
               key={`${rowIndex}:${columnIndex}:${segmentIndex}`}
               style={{
-                ...spreadsheetCellStyle(cell, styles, visual, sheetName),
+                ...spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex),
                 height: rect.height,
                 left: rect.left,
                 overflow: "hidden",
@@ -438,6 +440,7 @@ function SpreadsheetGrid({
       {visibleRowOffsets.map((rowOffset) => {
         const rowIndex = rowOffset + 1;
         const row = layout.rowsByIndex.get(rowIndex);
+        const rowRecord = layout.rowRecordsByIndex.get(rowIndex);
         const top = spreadsheetRowTop(layout, rowOffset);
         const height = layout.rowHeights[rowOffset];
         return (
@@ -462,14 +465,15 @@ function SpreadsheetGrid({
               const width = spreadsheetColumnLeft(layout, columnIndex + (merge?.columnSpan ?? 1)) - left;
               const cellHeight = spreadsheetRowTop(layout, rowOffset + (merge?.rowSpan ?? 1)) - top;
               const visual = cellVisuals.get(cellKey);
-              const text = spreadsheetCellText(cell, styles, sheetName);
+              const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
+              const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
               return (
                 <div
                   data-cell-address={asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`}
                   key={columnIndex}
                   role="gridcell"
                   style={{
-                    ...spreadsheetCellStyle(cell, styles, visual, sheetName),
+                    ...spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex),
                     height: cellHeight,
                     left,
                     position: "absolute",
@@ -682,8 +686,9 @@ function spreadsheetCellStyle(
   styles: RecordValue | null,
   visual?: SpreadsheetCellVisual,
   sheetName?: string,
+  styleIndex?: number | null,
 ): CSSProperties {
-  const cellFormat = styleAt(styles?.cellXfs, cell?.styleIndex);
+  const cellFormat = styleAt(styles?.cellXfs, styleIndex ?? cell?.styleIndex);
   const font = styleAt(styles?.fonts, cellFormat?.fontId);
   const fill = styleAt(styles?.fills, cellFormat?.fillId);
   const border = styleAt(styles?.borders, cellFormat?.borderId);
@@ -708,6 +713,24 @@ function spreadsheetCellStyle(
     textAlign: (asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment)) as CSSProperties["textAlign"] || fallbackStyle.textAlign,
     verticalAlign: asString(alignment?.vertical) as CSSProperties["verticalAlign"] || fallbackStyle.verticalAlign || sheetCellStyle.verticalAlign,
   };
+}
+
+function spreadsheetEffectiveStyleIndex(
+  cell: RecordValue | null,
+  row: RecordValue | undefined,
+  layout: SpreadsheetLayout,
+  columnIndex: number,
+): number | null {
+  return spreadsheetStyleIndex(cell?.styleIndex) ??
+    spreadsheetStyleIndex(row?.styleIndex) ??
+    layout.columnStyleIndexes[columnIndex] ??
+    null;
+}
+
+function spreadsheetStyleIndex(value: unknown): number | null {
+  if (value == null) return null;
+  const index = asNumber(value, -1);
+  return index >= 0 ? index : null;
 }
 
 function knownSpreadsheetCellStyle(cell: RecordValue | null, sheetName?: string): CSSProperties {
@@ -775,7 +798,12 @@ function shouldFormatAsMonthSerial(cell: RecordValue | null, sheetName?: string)
   return columnIndexFromAddress(address) === 0 && rowIndexFromAddress(address) >= 5;
 }
 
-function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | null, sheetName?: string): string {
+function spreadsheetCellText(
+  cell: RecordValue | null,
+  styles: RecordValue | null,
+  sheetName?: string,
+  styleIndex?: number | null,
+): string {
   const text = cellText(cell);
   const address = asString(cell?.address);
   const rowIndex = rowIndexFromAddress(address);
@@ -786,7 +814,7 @@ function spreadsheetCellText(cell: RecordValue | null, styles: RecordValue | nul
   if (cell == null || !Number.isFinite(numberValue)) return text;
 
   const columnIndex = columnIndexFromAddress(address);
-  const cellFormat = styleAt(styles?.cellXfs, cell.styleIndex);
+  const cellFormat = styleAt(styles?.cellXfs, styleIndex ?? cell.styleIndex);
   const numberFormatId = asNumber(cellFormat?.numFmtId, -1);
   const numberFormat = asArray(styles?.numberFormats)
     .map(asRecord)

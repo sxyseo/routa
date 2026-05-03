@@ -23,6 +23,7 @@ const EXCEL_POINTS_TO_PX = 96 / 72;
 export type SpreadsheetLayout = {
   columnCount: number;
   columnOffsets: number[];
+  columnStyleIndexes: Array<number | null>;
   columnWidths: number[];
   coveredCells: Set<string>;
   freezePanes: SpreadsheetFreezePanes;
@@ -33,6 +34,7 @@ export type SpreadsheetLayout = {
   rowCount: number;
   rowHeights: number[];
   rowOffsets: number[];
+  rowRecordsByIndex: Map<number, RecordValue>;
   rows: RecordValue[];
   rowsByIndex: Map<number, Map<number, RecordValue>>;
 };
@@ -105,13 +107,16 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
   }
 
   const columnWidthByIndex = new Map<number, number>();
+  const columnStyleIndexByIndex = new Map<number, number | null>();
   const columns = asArray(sheet?.columns).map(asRecord).filter((column): column is RecordValue => column != null);
   for (const column of columns) {
     const min = Math.max(1, asNumber(column.min, asNumber(column.index, 1)));
     const max = Math.max(min, asNumber(column.max, min));
     const width = spreadsheetColumnHidden(column) ? 0 : excelColumnWidthPx(asNumber(column.width, asNumber(sheet?.defaultColWidth, 10)));
+    const styleIndex = spreadsheetStyleIndex(column.styleIndex);
     for (let index = min - 1; index <= max - 1; index += 1) {
       columnWidthByIndex.set(index, width);
+      columnStyleIndexByIndex.set(index, styleIndex);
       maxColumn = Math.max(maxColumn, index);
     }
   }
@@ -163,6 +168,10 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
     { length: columnCount },
     (_, index) => columnWidthByIndex.get(index) ?? SPREADSHEET_DEFAULT_COLUMN_WIDTH,
   );
+  const columnStyleIndexes = Array.from(
+    { length: columnCount },
+    (_, index) => columnStyleIndexByIndex.get(index) ?? null,
+  );
   const rowHeights = Array.from({ length: rowCount }, (_, index) => {
     const row = rowRecordsByIndex.get(index + 1);
     return spreadsheetRowHidden(row) ? 0 : excelRowHeightPx(asNumber(row?.height));
@@ -174,6 +183,7 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
   return {
     columnCount,
     columnOffsets,
+    columnStyleIndexes,
     columnWidths,
     coveredCells,
     freezePanes,
@@ -184,6 +194,7 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
     rowCount,
     rowHeights,
     rowOffsets,
+    rowRecordsByIndex,
     rows,
     rowsByIndex,
   };
@@ -471,6 +482,12 @@ function spreadsheetColumnHidden(column: RecordValue): boolean {
 
 function spreadsheetRowHidden(row: RecordValue | undefined): boolean {
   return row?.hidden === true || asString(row?.hidden).toLowerCase() === "true" || asNumber(row?.hidden) === 1;
+}
+
+function spreadsheetStyleIndex(value: unknown): number | null {
+  if (value == null) return null;
+  const index = asNumber(value, -1);
+  return index >= 0 ? index : null;
 }
 
 function protocolNumber(value: unknown, fallback: number): number {
