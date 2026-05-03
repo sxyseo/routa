@@ -64,6 +64,8 @@
     "publish:office-package": "npm run build:office-package && npm publish packages/office --access public",
     "check:office-wasm-reader:deps": "node scripts/office-wasm-reader/check-office-wasm-reader-dependencies.mjs",
     "compare:office-wasm-reader:docx": "node --import tsx scripts/office-wasm-reader/compare-walnut-docx-protocol.ts",
+    "compare:office-wasm-reader:docx-json": "node --import tsx scripts/office-wasm-reader/compare-walnut-docx-protocol.ts --json-contract-only",
+    "test:office-wasm-reader:docx-json-contract": "node --import tsx scripts/office-wasm-reader/compare-walnut-docx-protocol.ts --assert --assert-json-contract tools/office-wasm-reader/fixtures/dll_viewer_solution_test_document.docx tools/office-wasm-reader/fixtures/docx_advanced_contract.docx tools/office-wasm-reader/fixtures/docx_style_section_contract.docx tools/office-wasm-reader/fixtures/docx_anchor_layout_contract.docx tools/office-wasm-reader/fixtures/docx_table_style_contract.docx",
     "compare:office-wasm-reader:pptx": "node --import tsx scripts/office-wasm-reader/compare-walnut-pptx-protocol.ts",
     "compare:office-wasm-reader:pptx-render": "node --import tsx scripts/office-wasm-reader/compare-walnut-pptx-render-contract.ts",
     "compare:office-wasm-reader:xlsx": "node --import tsx scripts/office-wasm-reader/compare-walnut-xlsx-protocol.ts",
@@ -141,6 +143,7 @@
     "rust:cov:lcov": "node --import tsx scripts/fitness/rust-coverage.ts routa-core lcov",
     "rust:cov:html": "node --import tsx scripts/fitness/rust-coverage.ts routa-core html",
     "prepare": "node scripts/install/run-hooks-sync.mjs",
+    "scan:office-wasm-reader:docx": "node --import tsx scripts/office-wasm-reader/scan-docx-protocol-corpus.ts",
     "scan:office-wasm-reader:pptx": "node --import tsx scripts/office-wasm-reader/scan-pptx-protocol-corpus.ts"
   },
   "dependencies": {

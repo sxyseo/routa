@@ -12,11 +12,19 @@ type ReaderExports = {
 };
 
 type DocumentSummary = ReturnType<typeof summarizeDocument>;
+type JsonContractSummary = ReturnType<typeof summarizeJsonContract>;
+type JsonDiff = {
+  actual: unknown;
+  expected: unknown;
+  path: string;
+  type: "missing-in-routa" | "missing-in-walnut" | "type-mismatch" | "value-mismatch";
+};
 
 type ComparisonResult = {
   byteComparison: ReturnType<typeof summarizeByteComparison>;
   equivalence: ReturnType<typeof summarizeEquivalence>;
   fixture: string;
+  jsonContract?: JsonContractSummary;
   parity: ReturnType<typeof summarizeParity>;
   routa: DocumentSummary;
   routaProtocol: string;
@@ -27,9 +35,16 @@ type ComparisonResult = {
 const repoRoot = process.cwd();
 const assetDir = path.resolve(repoRoot, officeWasmConfig.OFFICE_WASM_TMP_ASSET_DIR);
 const assertMode = process.argv.includes("--assert");
+const jsonContractOnlyMode = process.argv.includes("--json-contract-only");
+const jsonContractMode =
+  process.argv.includes("--json-contract") ||
+  process.argv.includes("--assert-json-contract") ||
+  jsonContractOnlyMode;
+const assertJsonContractMode = process.argv.includes("--assert-json-contract");
+const jsonDiffLimit = numberArg("--json-diff-limit") ?? 40;
 const fixturePaths = process.argv
   .slice(2)
-  .filter((arg) => !arg.startsWith("--"))
+  .filter((arg, index, args) => !arg.startsWith("--") && args[index - 1] !== "--json-diff-limit")
   .map((arg) => path.resolve(repoRoot, arg));
 if (fixturePaths.length === 0) {
   fixturePaths.push(path.resolve(repoRoot, "tools/office-wasm-reader/fixtures/dll_viewer_solution_test_document.docx"));
@@ -49,12 +64,16 @@ async function main(): Promise<void> {
   if (assertMode) {
     for (const result of results) {
       assertEquivalence(result);
+      if (assertJsonContractMode) {
+        assertJsonContract(result);
+      }
       console.log(`ok ${result.fixture}`);
     }
     return;
   }
 
-  console.log(JSON.stringify(results.length === 1 ? results[0] : results, null, 2));
+  const output = jsonContractOnlyMode ? results.map(summarizeJsonContractOutput) : results;
+  console.log(JSON.stringify(output.length === 1 ? output[0] : output, null, 2));
 }
 
 async function compareFixture(fixturePath: string): Promise<ComparisonResult> {
@@ -68,6 +87,7 @@ async function compareFixture(fixturePath: string): Promise<ComparisonResult> {
     byteComparison: summarizeByteComparison(walnutProtoBytes, routaProtoBytes),
     equivalence: summarizeEquivalence(walnutDocument, routaDocument),
     fixture: path.relative(repoRoot, fixturePath),
+    jsonContract: jsonContractMode ? summarizeJsonContract(walnutDocument, routaDocument) : undefined,
     parity: summarizeParity(summarizeEquivalence(walnutDocument, routaDocument)),
     routa: summarizeDocument(routaDocument, routaProtoBytes),
     routaProtocol: "oaiproto.coworker.docx.Document",
@@ -262,6 +282,29 @@ function assertEquivalence(result: ComparisonResult): void {
   }
 }
 
+function assertJsonContract(result: ComparisonResult): void {
+  if (!result.jsonContract) {
+    throw new Error(`${result.fixture} DOCX JSON contract was not computed.`);
+  }
+
+  if (!result.jsonContract.exactMatch) {
+    const diffSummary = result.jsonContract.diffs.map((diff) => diff.path).join(", ");
+    throw new Error(
+      `${result.fixture} DOCX JSON contract failed: ${result.jsonContract.diffCount} decoded Proto JSON diffs` +
+        (diffSummary ? ` (${diffSummary})` : ""),
+    );
+  }
+}
+
+function summarizeJsonContractOutput(result: ComparisonResult) {
+  return {
+    byteComparison: result.byteComparison,
+    fixture: result.fixture,
+    jsonContract: result.jsonContract,
+    parity: result.parity,
+  };
+}
+
 function summarizeParity(equivalence: ReturnType<typeof summarizeEquivalence>) {
   const checks = Object.entries(equivalence).filter(([, value]) => typeof value === "boolean");
   const failedChecks = checks.filter(([, value]) => value !== true).map(([key]) => key);
@@ -270,6 +313,39 @@ function summarizeParity(equivalence: ReturnType<typeof summarizeEquivalence>) {
     passedChecks: checks.length - failedChecks.length,
     semanticParityPercent: checks.length === 0 ? 100 : Number((((checks.length - failedChecks.length) / checks.length) * 100).toFixed(2)),
     totalChecks: checks.length,
+  };
+}
+
+function summarizeJsonContract(
+  walnutDocument: Record<string, unknown>,
+  routaDocument: Record<string, unknown>,
+) {
+  const walnutCanonical = normalizeDecodedProtoJson(walnutDocument, "$");
+  const routaCanonical = normalizeDecodedProtoJson(routaDocument, "$");
+  const diffs = diffJson(walnutCanonical, routaCanonical, "$", []);
+  const serializedWalnut = stableJson(walnutCanonical);
+  const serializedRouta = stableJson(routaCanonical);
+
+  return {
+    diffCount: diffs.length,
+    diffLimit: jsonDiffLimit,
+    diffs: diffs.slice(0, jsonDiffLimit),
+    exactMatch: diffs.length === 0,
+    normalization: {
+      binaryPayloads: "converted to byteLength/sha256 summaries",
+      unstableIds: [
+        "document element ids",
+        "paragraph ids",
+        "run ids",
+        "section ids",
+        "table row ids",
+        "table cell ids",
+        "footnote reference run ids",
+        "comment reference run ids",
+      ],
+    },
+    routaCanonicalSha256: sha256(new TextEncoder().encode(serializedRouta)),
+    walnutCanonicalSha256: sha256(new TextEncoder().encode(serializedWalnut)),
   };
 }
 
@@ -492,6 +568,165 @@ function summarizeImage(image: Record<string, unknown>) {
   };
 }
 
+function normalizeDecodedProtoJson(value: unknown, pathName: string): unknown {
+  const bytes = bytesFromUnknown(value);
+  if (bytes.length > 0 && (pathName.endsWith(".data") || pathName.endsWith(".bytes"))) {
+    return {
+      __bytes: {
+        byteLength: bytes.length,
+        sha256: sha256(bytes),
+      },
+    };
+  }
+
+  if (Array.isArray(value)) {
+    if (isUnstableReferenceArrayPath(pathName)) {
+      return { __unstableReferenceIds: value.length };
+    }
+
+    const normalizedItems = value.map((item, index) => normalizeDecodedProtoJson(item, `${pathName}[${index}]`));
+    if (isStableSortedArrayPath(pathName)) {
+      return normalizedItems.sort((left, right) => stableJson(left).localeCompare(stableJson(right)));
+    }
+
+    return normalizedItems;
+  }
+
+  if (!isRecord(value)) {
+    if (typeof value === "string" && pathName.endsWith(".scheme")) {
+      return normalizeDocxScheme(value);
+    }
+
+    return value;
+  }
+
+  const normalizedEntries: Array<[string, unknown]> = [];
+  for (const key of Object.keys(value).sort()) {
+    const childPath = `${pathName}.${key}`;
+    if (isUnstableIdPath(childPath)) {
+      normalizedEntries.push([key, "__unstable__"]);
+      continue;
+    }
+
+    normalizedEntries.push([key, normalizeDecodedProtoJson(value[key], childPath)]);
+  }
+
+  return Object.fromEntries(normalizedEntries);
+}
+
+function isUnstableIdPath(pathName: string): boolean {
+  return (
+    /\.elements\[\d+\]\.id$/u.test(pathName) ||
+    /^\$\.sections\[\d+\]\.id$/u.test(pathName) ||
+    /\.table\.rows\[\d+\]\.id$/u.test(pathName) ||
+    /\.table\.rows\[\d+\]\.cells\[\d+\]\.id$/u.test(pathName) ||
+    /\.paragraphs\[\d+\]\.id$/u.test(pathName) ||
+    /\.runs\[\d+\]\.id$/u.test(pathName) ||
+    /^\$\.paragraphNumberings\[\d+\]\.paragraphId$/u.test(pathName) ||
+    /^\$\.reviewMarks\[\d+\]\.id$/u.test(pathName) ||
+    /\.runs\[\d+\]\.reviewMarkIds\[\d+\]$/u.test(pathName)
+  );
+}
+
+function isStableSortedArrayPath(pathName: string): boolean {
+  return pathName === "$.reviewMarks";
+}
+
+function normalizeDocxScheme(value: string): string {
+  const parts = value.split(";").filter(Boolean);
+  if (parts.length < 2 || !parts.every((part) => part.startsWith("__docx"))) {
+    return value;
+  }
+
+  return parts.sort((left, right) => left.localeCompare(right)).join(";");
+}
+
+function isUnstableReferenceArrayPath(pathName: string): boolean {
+  return (
+    /\.footnotes\[\d+\]\.referenceRunIds$/u.test(pathName) ||
+    /\.commentReferences\[\d+\]\.runIds$/u.test(pathName) ||
+    /\.runs\[\d+\]\.reviewMarkIds$/u.test(pathName)
+  );
+}
+
+function diffJson(expected: unknown, actual: unknown, pathName: string, diffs: JsonDiff[]): JsonDiff[] {
+  if (Object.is(expected, actual)) {
+    return diffs;
+  }
+
+  if (Array.isArray(expected) || Array.isArray(actual)) {
+    if (!Array.isArray(expected) || !Array.isArray(actual)) {
+      diffs.push({ actual: previewJsonValue(actual), expected: previewJsonValue(expected), path: pathName, type: "type-mismatch" });
+      return diffs;
+    }
+
+    const maxLength = Math.max(expected.length, actual.length);
+    for (let index = 0; index < maxLength; index++) {
+      if (index >= expected.length) {
+        diffs.push({ actual: previewJsonValue(actual[index]), expected: undefined, path: `${pathName}[${index}]`, type: "missing-in-walnut" });
+        continue;
+      }
+      if (index >= actual.length) {
+        diffs.push({ actual: undefined, expected: previewJsonValue(expected[index]), path: `${pathName}[${index}]`, type: "missing-in-routa" });
+        continue;
+      }
+
+      diffJson(expected[index], actual[index], `${pathName}[${index}]`, diffs);
+    }
+    return diffs;
+  }
+
+  if (isRecord(expected) || isRecord(actual)) {
+    if (!isRecord(expected) || !isRecord(actual)) {
+      diffs.push({ actual: previewJsonValue(actual), expected: previewJsonValue(expected), path: pathName, type: "type-mismatch" });
+      return diffs;
+    }
+
+    const keys = [...new Set(Object.keys(expected).concat(Object.keys(actual)))].sort();
+    for (const key of keys) {
+      if (!(key in expected)) {
+        diffs.push({ actual: previewJsonValue(actual[key]), expected: undefined, path: `${pathName}.${key}`, type: "missing-in-walnut" });
+        continue;
+      }
+      if (!(key in actual)) {
+        diffs.push({ actual: undefined, expected: previewJsonValue(expected[key]), path: `${pathName}.${key}`, type: "missing-in-routa" });
+        continue;
+      }
+
+      diffJson(expected[key], actual[key], `${pathName}.${key}`, diffs);
+    }
+    return diffs;
+  }
+
+  diffs.push({ actual: previewJsonValue(actual), expected: previewJsonValue(expected), path: pathName, type: "value-mismatch" });
+  return diffs;
+}
+
+function previewJsonValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.length > 160 ? `${value.slice(0, 157)}...` : value;
+  }
+
+  if (Array.isArray(value)) {
+    return { arrayLength: value.length };
+  }
+
+  if (isRecord(value)) {
+    const textPreview = collectTextPreview(value);
+    return {
+      keys: Object.keys(value).sort().slice(0, 12),
+      scalars: Object.fromEntries(
+        Object.entries(value)
+          .filter(([, entryValue]) => entryValue == null || ["boolean", "number", "string"].includes(typeof entryValue))
+          .slice(0, 12),
+      ),
+      textPreview: textPreview || undefined,
+    };
+  }
+
+  return value;
+}
+
 function collectTextPreview(value: unknown): string {
   const items: string[] = [];
   const seen = new WeakSet<object>();
@@ -661,6 +896,15 @@ function assertFile(filePath: string, label: string): void {
   if (!existsSync(filePath)) {
     throw new Error(`Missing ${label}: ${filePath}`);
   }
+}
+
+function numberArg(name: string): number | null {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return null;
+  const value = process.argv[index + 1];
+  if (!value || value.startsWith("--")) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 main().catch((error: unknown) => {
