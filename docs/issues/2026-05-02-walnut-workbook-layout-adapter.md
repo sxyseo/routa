@@ -143,6 +143,8 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Spreadsheet viewport state is now managed through a frame-coalesced external store hook, giving the current DOM preview and a future canvas/worker renderer the same scroll/size snapshot contract.
 - Visible row/column windows, merge-start overscan, and cell-intersection checks are now built through a pure render snapshot adapter shared by the DOM grid/frozen layer and future canvas/worker rendering.
 - Added a pure canvas command adapter that projects visible cell/header rectangles from the shared render snapshot, so a worker-backed renderer can consume stable draw commands without walking React DOM state.
+- Added a pure XLSX selection controller and wired the preview to hit-test cells through the prefix-sum layout, including merged-cell normalization and frozen-pane selection overlay segments.
+- Added a pure row/column resize controller and preview-side size override layer. Header boundary hit testing, resize cursors, drag sizing, and rebuilt offsets now use the same worksheet-space layout math without mutating decoded protocol data.
 
 ## Remaining XLSX Work
 
@@ -176,7 +178,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 5. Freeze-pane extraction and interaction behavior
 
-   The layout adapter and preview can render frozen body/header regions when a sheet supplies `freezePanes`, but a temporary OpenXML pane probe shows Walnut currently does not expose freeze panes in its decoded Workbook protocol. Reader extraction should stay disabled for protocol parity; remaining work is pointer/edit/resize hit-region behavior if a future schema exposes this field.
+   The layout adapter and preview can render frozen body/header regions when a sheet supplies `freezePanes`, and cell selection/row-column resize hit testing now share the same worksheet-space layout math. A temporary OpenXML pane probe shows Walnut currently does not expose freeze panes in its decoded Workbook protocol, so reader extraction should stay disabled for protocol parity. Remaining work is editor/keyboard behavior and richer overlay hit regions if a future schema exposes freeze panes.
 
 6. Timeline, slicer, and pivot interactivity
 
@@ -188,7 +190,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 8. Production renderer architecture
 
-   The current DOM viewport is virtualized, memoized, frame-coalesced, backed by a small external viewport store, uses a pure render snapshot adapter for visible ranges, and has a first canvas-command projection layer. It is still not Walnut's worker-backed canvas architecture. Production-grade parity would require a canvas/worker renderer, richer selection/pointer/editor controller boundaries, and moving more draw-state snapshots out of React component state.
+   The current DOM viewport is virtualized, memoized, frame-coalesced, backed by a small external viewport store, uses pure render/selection/resize snapshots, and has a first canvas-command projection layer. It is still not Walnut's worker-backed canvas architecture. Production-grade parity would require a canvas/worker renderer, keyboard/editor controller boundaries, and moving more draw-state snapshots out of React component state.
 
 9. Coverage expansion
 

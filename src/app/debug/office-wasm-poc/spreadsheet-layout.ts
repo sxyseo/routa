@@ -39,6 +39,11 @@ export type SpreadsheetLayout = {
   rowsByIndex: Map<number, Map<number, RecordValue>>;
 };
 
+export type SpreadsheetLayoutOverrides = {
+  columnWidths?: Record<number, number | undefined>;
+  rowHeights?: Record<number, number | undefined>;
+};
+
 export type SpreadsheetFreezePanes = {
   columnCount: number;
   rowCount: number;
@@ -84,7 +89,10 @@ export type SpreadsheetCellHit = {
   rowOffset: number;
 };
 
-export function buildSpreadsheetLayout(sheet: RecordValue | undefined): SpreadsheetLayout {
+export function buildSpreadsheetLayout(
+  sheet: RecordValue | undefined,
+  overrides: SpreadsheetLayoutOverrides = {},
+): SpreadsheetLayout {
   const rows = asArray(sheet?.rows).map(asRecord).filter((row): row is RecordValue => row != null);
   let maxColumn = 0;
   let maxRow = 1;
@@ -176,6 +184,8 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
     const row = rowRecordsByIndex.get(index + 1);
     return spreadsheetRowHidden(row) ? 0 : excelRowHeightPx(asNumber(row?.height));
   });
+  applySpreadsheetSizeOverrides(columnWidths, overrides.columnWidths);
+  applySpreadsheetSizeOverrides(rowHeights, overrides.rowHeights);
   const columnOffsets = prefixSums(SPREADSHEET_ROW_HEADER_WIDTH, columnWidths);
   const rowOffsets = prefixSums(SPREADSHEET_COLUMN_HEADER_HEIGHT, rowHeights);
   const freezePanes = clampSpreadsheetFreezePanes(readSpreadsheetFreezePanes(sheet), columnCount, rowCount);
@@ -198,6 +208,16 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
     rows,
     rowsByIndex,
   };
+}
+
+function applySpreadsheetSizeOverrides(sizes: number[], overrides: Record<number, number | undefined> | undefined) {
+  if (!overrides) return;
+  for (const [rawIndex, rawSize] of Object.entries(overrides)) {
+    const index = Number(rawIndex);
+    const size = typeof rawSize === "number" ? rawSize : Number.NaN;
+    if (!Number.isInteger(index) || index < 0 || index >= sizes.length || !Number.isFinite(size)) continue;
+    sizes[index] = Math.max(0, size);
+  }
 }
 
 export function spreadsheetCellKey(rowIndex: number, columnIndex: number): string {

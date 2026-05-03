@@ -53,6 +53,7 @@ import {
   spreadsheetViewportIntersectsRect,
   spreadsheetViewportRectSegments,
   type SpreadsheetLayout,
+  type SpreadsheetLayoutOverrides,
   spreadsheetRowTop,
   type SpreadsheetViewportScroll,
   type SpreadsheetViewportSize,
@@ -61,6 +62,13 @@ import {
   buildSpreadsheetRenderSnapshot,
   visibleCellIntersectsRange,
 } from "./spreadsheet-render-snapshot";
+import {
+  spreadsheetResizeDragFromHit,
+  spreadsheetResizeHitAtViewportPoint,
+  spreadsheetResizeSizeFromPoint,
+  type SpreadsheetResizeAxis,
+  type SpreadsheetResizeDrag,
+} from "./spreadsheet-resize";
 import {
   spreadsheetFrozenSelectionSegments,
   spreadsheetSelectionFromViewportPoint,
@@ -133,13 +141,16 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const theme = useMemo(() => asRecord(root?.theme), [root]);
   const imageSources = useOfficeImageSources(root);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
+  const [sizeOverrides, setSizeOverrides] = useState<SpreadsheetLayoutOverrides>({});
+  const [resizeCursor, setResizeCursor] = useState<string | undefined>();
+  const [resizeDrag, setResizeDrag] = useState<SpreadsheetResizeDrag | null>(null);
   const [selection, setSelection] = useState<SpreadsheetSelection | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const { state: viewportState, store: viewportStore } = useSpreadsheetViewportStore();
   const viewportScroll = viewportState.scroll;
   const viewportSize = viewportState.size;
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
-  const layout = useMemo(() => buildSpreadsheetLayout(activeSheet), [activeSheet]);
+  const layout = useMemo(() => buildSpreadsheetLayout(activeSheet, sizeOverrides), [activeSheet, sizeOverrides]);
   const chartSpecs = useMemo(() => buildSpreadsheetCharts({
     activeSheet,
     charts,
@@ -212,24 +223,55 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
 
   const handleSheetSelect = (index: number) => {
     viewportStore.reset();
+    setSizeOverrides({});
+    setResizeDrag(null);
+    setResizeCursor(undefined);
     setSelection(null);
     setActiveSheetIndex(index);
   };
 
   const handleViewportPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     const viewport = event.currentTarget;
-    const bounds = viewport.getBoundingClientRect();
-    setSelection(spreadsheetSelectionFromViewportPoint(
-      layout,
-      {
-        x: event.clientX - bounds.left,
-        y: event.clientY - bounds.top,
-      },
-      {
-        left: viewport.scrollLeft,
-        top: viewport.scrollTop,
-      },
-    ));
+    const point = viewportPointFromPointer(event);
+    const scroll = { left: viewport.scrollLeft, top: viewport.scrollTop };
+    const resizeHit = spreadsheetResizeHitAtViewportPoint(layout, point, scroll);
+    if (resizeHit) {
+      event.preventDefault();
+      viewport.setPointerCapture(event.pointerId);
+      setResizeDrag(spreadsheetResizeDragFromHit(layout, resizeHit, point, scroll));
+      return;
+    }
+
+    setSelection(spreadsheetSelectionFromViewportPoint(layout, point, scroll));
+  };
+
+  const handleViewportPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const viewport = event.currentTarget;
+    const point = viewportPointFromPointer(event);
+    const scroll = { left: viewport.scrollLeft, top: viewport.scrollTop };
+    if (resizeDrag) {
+      event.preventDefault();
+      const size = spreadsheetResizeSizeFromPoint(layout, resizeDrag, point, scroll);
+      setSizeOverrides((current) => applySpreadsheetInteractiveSizeOverride(
+        current,
+        resizeDrag.axis,
+        resizeDrag.index,
+        size,
+      ));
+      return;
+    }
+
+    const resizeHit = spreadsheetResizeHitAtViewportPoint(layout, point, scroll);
+    const nextCursor = resizeHit ? spreadsheetResizeCursor(resizeHit.axis) : undefined;
+    setResizeCursor((current) => (current === nextCursor ? current : nextCursor));
+  };
+
+  const handleViewportPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (!resizeDrag) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setResizeDrag(null);
   };
 
   const handleViewportScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -267,9 +309,12 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
         <div
           onPointerDown={handleViewportPointerDown}
+          onPointerMove={handleViewportPointerMove}
+          onPointerCancel={handleViewportPointerUp}
+          onPointerUp={handleViewportPointerUp}
           onScroll={handleViewportScroll}
           ref={viewportRef}
-          style={{ height: "100%", overflow: "auto" }}
+          style={{ cursor: resizeDrag ? spreadsheetResizeCursor(resizeDrag.axis) : resizeCursor, height: "100%", overflow: "auto" }}
         >
           <div style={{ height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }}>
             <SpreadsheetGrid
@@ -354,6 +399,35 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       </div>
     </div>
   );
+}
+
+function viewportPointFromPointer(event: PointerEvent<HTMLDivElement>) {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  return {
+    x: event.clientX - bounds.left,
+    y: event.clientY - bounds.top,
+  };
+}
+
+function spreadsheetResizeCursor(axis: SpreadsheetResizeAxis): string {
+  return axis === "column" ? "col-resize" : "row-resize";
+}
+
+function applySpreadsheetInteractiveSizeOverride(
+  current: SpreadsheetLayoutOverrides,
+  axis: SpreadsheetResizeAxis,
+  index: number,
+  size: number,
+): SpreadsheetLayoutOverrides {
+  const bucket = axis === "column" ? "columnWidths" : "rowHeights";
+  if (current[bucket]?.[index] === size) return current;
+  return {
+    ...current,
+    [bucket]: {
+      ...current[bucket],
+      [index]: size,
+    },
+  };
 }
 
 function SpreadsheetSelectionLayer({
