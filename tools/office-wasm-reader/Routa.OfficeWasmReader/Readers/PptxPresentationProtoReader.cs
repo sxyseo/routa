@@ -2327,7 +2327,7 @@ internal static class PptxPresentationProtoReader
 
     private static string PreservePresentationText(string? value)
     {
-        return string.IsNullOrWhiteSpace(value) ? "" : value;
+        return value ?? "";
     }
 
     private static string? AttributeValue(OpenXmlElement? element, string localName)
