@@ -71,6 +71,7 @@ export type SpreadsheetChartSeries = {
   label: string;
   marker: "diamond" | "square" | null;
   trendlines: SpreadsheetChartTrendline[];
+  type?: SpreadsheetChartType;
   values: number[];
 };
 
@@ -302,6 +303,7 @@ function spreadsheetChartSeries(
     label,
     marker: markerVisible ? (index % 2 === 0 ? "diamond" : "square") : null,
     trendlines: source ? chartSeriesTrendlines(source, seriesColor) : [],
+    ...(source ? chartSeriesType(source) : {}),
     values,
   };
 }
@@ -311,6 +313,11 @@ function chartSeriesAxis(series: RecordValue | undefined): SpreadsheetChartSerie
   if (series.useSecondaryAxis === true || series.secondaryAxis === true) return "secondary";
   const axis = asString(series.axis ?? series.axisId ?? series.yAxisId).toLowerCase();
   return axis === "2" || axis === "secondary" || axis === "right" ? "secondary" : "primary";
+}
+
+function chartSeriesType(series: RecordValue): Pick<SpreadsheetChartSeries, "type"> {
+  if (series.chartType == null && series.type == null) return {};
+  return { type: spreadsheetChartType(series) };
 }
 
 function chartSeriesHasMarker(series: RecordValue): boolean {
@@ -379,7 +386,7 @@ function spreadsheetChartHasDataLabels(chart: RecordValue): boolean {
 }
 
 function spreadsheetChartType(chart: RecordValue): SpreadsheetChartType {
-  const chartType = asString(chart.chartType).toLowerCase();
+  const chartType = asString(chart.chartType ?? chart.type).toLowerCase();
   const chartTypeId = protocolNumber(chart.type, 0);
   if (chartType === "area" || chartTypeId === 2) return "area";
   if (chartType === "bubble" || chartTypeId === 5) return "bubble";
@@ -537,7 +544,10 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
     drawChartGrid(context, chart, plot, ticks, secondaryTicks);
   }
 
-  switch (chart.type) {
+  if (isComboChart(chart)) {
+    drawComboChart(context, chart, plot, primaryScale, secondaryScale);
+  } else {
+    switch (chart.type) {
     case "area":
     case "surface":
       drawAreaChart(context, chart, plot, primaryScale.minValue, primaryScale.maxValue);
@@ -564,12 +574,46 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
     default:
       drawBarChart(context, chart, plot, primaryScale.minValue, primaryScale.maxValue);
       break;
+    }
   }
 
   if (chart.showDataLabels) {
     drawChartDataLabels(context, chart, plot, primaryScale.minValue, primaryScale.maxValue);
   }
   drawChartLegend(context, chart, plot);
+}
+
+function isComboChart(chart: SpreadsheetChartSpec): boolean {
+  return chart.series.some((series) => series.type != null && series.type !== chart.type);
+}
+
+function drawComboChart(
+  context: CanvasRenderingContext2D,
+  chart: SpreadsheetChartSpec,
+  plot: SpreadsheetChartPlotArea,
+  primaryScale: SpreadsheetChartScale,
+  secondaryScale?: SpreadsheetChartScale,
+) {
+  const barSeries = chart.series.filter((series) => effectiveSeriesType(series, chart) === "bar");
+  const lineSeries = chart.series.filter((series) => effectiveSeriesType(series, chart) === "line");
+
+  if (barSeries.length > 0) {
+    drawBarChart(
+      context,
+      { ...chart, categories: lineSeries.length > 0 ? [] : chart.categories, series: barSeries, type: "bar" },
+      plot,
+      primaryScale.minValue,
+      primaryScale.maxValue,
+    );
+  }
+
+  if (lineSeries.length > 0) {
+    drawLineChart(context, { ...chart, series: lineSeries, type: "line" }, plot, primaryScale, secondaryScale);
+  }
+}
+
+function effectiveSeriesType(series: SpreadsheetChartSeries, chart: SpreadsheetChartSpec): SpreadsheetChartType {
+  return series.type ?? chart.type;
 }
 
 function chartScaleFromTicks(ticks: number[]): SpreadsheetChartScale {

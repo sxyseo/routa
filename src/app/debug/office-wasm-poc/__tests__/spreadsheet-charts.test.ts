@@ -342,6 +342,38 @@ describe("spreadsheet charts", () => {
     expect(spreadsheetChartPlotArea(charts[0]!).right).toBe(336);
   });
 
+  it("preserves series-level chart types for combo rendering", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            series: [
+              { categories: ["Q1", "Q2"], name: "Revenue", type: "bar", values: [100, 120] },
+              { categories: ["Q1", "Q2"], name: "Margin", type: "line", values: [30, 40] },
+            ],
+            title: "Combo",
+            type: 4,
+            yAxis: { minimum: 0 },
+          },
+          extentCx: "3810000",
+          extentCy: "1905000",
+          fromAnchor: { colId: "1", rowId: "1" },
+        },
+      ],
+      name: "Charts",
+      rows: [],
+    };
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [],
+      layout: buildSpreadsheetLayout(sheet),
+      sheets: [sheet],
+    });
+
+    expect(charts[0]?.type).toBe("bar");
+    expect(charts[0]?.series.map((series) => series.type)).toEqual(["bar", "line"]);
+  });
+
   it("clusters bar geometry for every protocol series", () => {
     const chart = {
       categories: ["Q1", "Q2"],
