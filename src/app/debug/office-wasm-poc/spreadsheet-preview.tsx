@@ -980,6 +980,7 @@ export function spreadsheetCellText(
   const formatCode = spreadsheetNumberFormatCode(styles, numberFormatId);
 
   if (isExcelMonthYearFormat(formatCode)) return excelSerialMonthYearLabel(numberValue);
+  if (isExcelTimeFormat(formatCode)) return excelSerialTimeLabel(numberValue, formatCode);
   if (isExcelDateFormat(formatCode)) return excelSerialDateLabel(numberValue);
   if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
 
@@ -995,9 +996,11 @@ export function spreadsheetCellText(
   }
 
   if (formatCode.includes("%")) return `${(numberValue * 100).toFixed(spreadsheetDecimalPlaces(formatCode))}%`;
-  if (formatCode.includes("$")) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
-  if (formatCode.includes("#,##0.00")) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
-  if (formatCode.includes("#,##0")) return Math.round(numberValue).toLocaleString("en-US");
+  if (/e\+?0+/i.test(formatCode)) return spreadsheetScientificLabel(numberValue, formatCode);
+  if (formatCode.includes("?/?")) return spreadsheetFractionLabel(numberValue, formatCode);
+  if (formatCode.includes("$")) return spreadsheetCurrencyLabel(numberValue, formatCode);
+  if (formatCode.includes("#,##0.00")) return spreadsheetNumberLabel(numberValue, formatCode);
+  if (formatCode.includes("#,##0")) return spreadsheetNumberLabel(numberValue, formatCode);
   if (/^0\.0+$/.test(formatCode)) return numberValue.toFixed(formatCode.split(".")[1]?.length ?? 0);
   if (/\d+\.\d{4,}/.test(text)) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 1 });
   return text;
@@ -1025,8 +1028,94 @@ function isExcelDateFormat(formatCode: string): boolean {
     /(^|[^a-z])y{2,4}([^a-z]|$)/.test(normalized);
 }
 
+function isExcelTimeFormat(formatCode: string): boolean {
+  const normalized = formatCode.toLowerCase();
+  return /\[?h\]?:mm/.test(normalized) || /^mm:ss/.test(normalized);
+}
+
+function excelSerialTimeLabel(value: number, formatCode: string): string {
+  const normalized = formatCode.toLowerCase();
+  const totalSeconds = Math.max(0, Math.round(value * 86_400));
+  const hoursTotal = Math.floor(totalSeconds / 3600);
+  const hours = normalized.includes("[h]") ? hoursTotal : hoursTotal % 24;
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (normalized.includes("am/pm")) {
+    const suffix = hours >= 12 ? "PM" : "AM";
+    const hour12 = hours % 12 || 12;
+    const withSeconds = normalized.includes(":ss");
+    return `${hour12}:${String(minutes).padStart(2, "0")}${withSeconds ? `:${String(seconds).padStart(2, "0")}` : ""} ${suffix}`;
+  }
+  if (/^mm:ss/.test(normalized)) return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  if (normalized.includes(":ss")) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return `${hours}:${String(minutes).padStart(2, "0")}`;
+}
+
 function spreadsheetDecimalPlaces(formatCode: string): number {
   return formatCode.match(/\.([0#]+)/)?.[1]?.length ?? 0;
+}
+
+function spreadsheetScientificLabel(value: number, formatCode: string): string {
+  const decimals = spreadsheetDecimalPlaces(formatCode);
+  return value.toExponential(decimals).replace("e", "E").replace(/E\+?(-?\d+)$/, (_match, exponent: string) => {
+    const numericExponent = Number(exponent);
+    const sign = numericExponent < 0 ? "-" : "+";
+    return `E${sign}${String(Math.abs(numericExponent)).padStart(2, "0")}`;
+  });
+}
+
+function spreadsheetFractionLabel(value: number, formatCode: string): string {
+  const denominatorLimit = formatCode.includes("??/??") ? 99 : 9;
+  const sign = value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  const whole = Math.floor(absolute);
+  const fraction = absolute - whole;
+  let bestNumerator = 0;
+  let bestDenominator = 1;
+  let bestError = Number.POSITIVE_INFINITY;
+  for (let denominator = 1; denominator <= denominatorLimit; denominator += 1) {
+    const numerator = Math.round(fraction * denominator);
+    const error = Math.abs(fraction - numerator / denominator);
+    if (error < bestError) {
+      bestError = error;
+      bestNumerator = numerator;
+      bestDenominator = denominator;
+    }
+  }
+  if (bestNumerator === 0) return `${sign}${whole}`;
+  if (bestNumerator === bestDenominator) return `${sign}${whole + 1}`;
+  return `${sign}${whole > 0 ? `${whole} ` : ""}${bestNumerator}/${bestDenominator}`;
+}
+
+function spreadsheetCurrencyLabel(value: number, formatCode: string): string {
+  const section = spreadsheetNumberFormatSection(value, formatCode);
+  const decimals = spreadsheetDecimalPlaces(section);
+  const absolute = Math.abs(value);
+  const formatted = absolute.toLocaleString("en-US", {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals,
+  });
+  if (value < 0 && section.includes("(")) return `($${formatted})`;
+  return `${value < 0 ? "-" : ""}$${formatted}`;
+}
+
+function spreadsheetNumberLabel(value: number, formatCode: string): string {
+  const section = spreadsheetNumberFormatSection(value, formatCode);
+  const decimals = spreadsheetDecimalPlaces(section);
+  const absolute = Math.abs(value);
+  const formatted = absolute.toLocaleString("en-US", {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals,
+  });
+  if (value < 0 && section.includes("(")) return `(${formatted})`;
+  return `${value < 0 ? "-" : ""}${formatted}`;
+}
+
+function spreadsheetNumberFormatSection(value: number, formatCode: string): string {
+  const sections = formatCode.split(";").map((section) => section.replace(/\[[^\]]+\]/g, ""));
+  if (value < 0 && sections[1]) return sections[1];
+  if (value === 0 && sections[2]) return sections[2];
+  return sections[0] ?? formatCode;
 }
 
 function rowsByIndexForSheet(sheet: RecordValue | undefined): Map<number, Map<number, RecordValue>> {

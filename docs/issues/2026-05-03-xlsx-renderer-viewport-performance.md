@@ -68,6 +68,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - `showGridLines=false` now suppresses fallback worksheet gridline borders in the debug preview while preserving explicit cell border colors.
 - Excel alignment flags now feed the viewport renderer for common horizontal/vertical alignment, wrap suppression, shrink-to-fit, and indent styling.
 - Explicit cell border colors, line styles, and common Excel border widths now map into the viewport renderer instead of always falling back to a thin solid gridline.
+- Built-in number formatting now covers common scientific, fraction, elapsed/clock time, and negative-section number/currency formats.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

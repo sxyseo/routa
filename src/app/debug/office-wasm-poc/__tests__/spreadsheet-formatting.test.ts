@@ -14,6 +14,10 @@ describe("spreadsheet cell formatting", () => {
         { numFmtId: 9 },
         { numFmtId: 4 },
         { numFmtId: 5 },
+        { numFmtId: 11 },
+        { numFmtId: 12 },
+        { numFmtId: 18 },
+        { numFmtId: 46 },
       ],
     };
 
@@ -22,6 +26,10 @@ describe("spreadsheet cell formatting", () => {
     expect(spreadsheetCellText({ address: "A2", styleIndex: 1, value: 0.42 }, styles)).toBe("42%");
     expect(spreadsheetCellText({ address: "A3", styleIndex: 2, value: 1234.5 }, styles)).toBe("1,234.50");
     expect(spreadsheetCellText({ address: "A4", styleIndex: 3, value: 1234.5 }, styles)).toBe("$1,235");
+    expect(spreadsheetCellText({ address: "A5", styleIndex: 4, value: 12345 }, styles)).toBe("1.23E+04");
+    expect(spreadsheetCellText({ address: "A6", styleIndex: 5, value: 1.25 }, styles)).toBe("1 1/4");
+    expect(spreadsheetCellText({ address: "A7", styleIndex: 6, value: 0.5625 }, styles)).toBe("1:30 PM");
+    expect(spreadsheetCellText({ address: "A8", styleIndex: 7, value: 1.5 }, styles)).toBe("36:00:00");
   });
 
   it("prefers custom number formats over built-in ids", () => {
@@ -32,6 +40,18 @@ describe("spreadsheet cell formatting", () => {
 
     expect(spreadsheetNumberFormatCode(styles, 165)).toBe("0.00%");
     expect(spreadsheetCellText({ address: "B1", styleIndex: 0, value: 0.125 }, styles)).toBe("12.50%");
+  });
+
+  it("uses negative sections for built-in numeric and currency formats", () => {
+    const styles = {
+      cellXfs: [
+        { numFmtId: 5 },
+        { numFmtId: 39 },
+      ],
+    };
+
+    expect(spreadsheetCellText({ address: "C1", styleIndex: 0, value: -1234.5 }, styles)).toBe("($1,235)");
+    expect(spreadsheetCellText({ address: "C2", styleIndex: 1, value: -1234.5 }, styles)).toBe("(1,234.50)");
   });
 
   it("suppresses fallback gridlines without hiding explicit borders", () => {
