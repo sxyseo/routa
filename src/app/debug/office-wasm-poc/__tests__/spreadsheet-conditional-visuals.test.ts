@@ -133,6 +133,58 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("3:0")).toBeUndefined();
   });
 
+  it("projects built-in light and dark table styles from theme accents", () => {
+    const light = buildSpreadsheetConditionalVisuals(
+      {
+        name: "Tables",
+        rows: [],
+        tables: [
+          {
+            headerRowCount: 1,
+            reference: "A1:B3",
+            style: {
+              name: "TableStyleLight13",
+              showRowStripes: true,
+            },
+            totalsRowCount: 1,
+          },
+        ],
+      },
+      {
+        colorScheme: {
+          colors: [{ color: { type: 1, value: "70AD47" }, name: "accent6" }],
+        },
+      },
+    );
+    const dark = buildSpreadsheetConditionalVisuals(
+      {
+        name: "Tables",
+        rows: [],
+        tables: [
+          {
+            headerRowCount: 1,
+            reference: "A1:B3",
+            style: {
+              name: "TableStyleDark6",
+              showRowStripes: true,
+            },
+            totalsRowCount: 1,
+          },
+        ],
+      },
+      {
+        colorScheme: {
+          colors: [{ color: { type: 1, value: "4472C4" }, name: "accent1" }],
+        },
+      },
+    );
+
+    expect(light.get("2:0")?.background).toBe("rgb(235, 244, 229)");
+    expect(light.get("3:0")?.background).toBe("rgb(212, 230, 200)");
+    expect(dark.get("2:0")?.background).toBe("rgb(135, 165, 217)");
+    expect(dark.get("3:0")?.background).toBe("rgb(90, 131, 203)");
+  });
+
 
   it("preserves icon set family metadata for renderer glyphs", () => {
     const visuals = buildSpreadsheetConditionalVisuals({

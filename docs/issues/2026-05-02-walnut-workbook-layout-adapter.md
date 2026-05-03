@@ -130,6 +130,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Chart preview now consumes protocol `dataLabels` presence and renders lightweight value/category labels for bar, line/area/scatter/bubble/surface, pie, and doughnut previews.
 - Slicer fallback overlays now consume root `slicerCaches` and render a compact item-state list when no drawing shape exists for the slicer, so protocol-visible cache items are no longer dropped by the preview layer.
 - Bar chart preview now renders clustered bars for every protocol series instead of dropping all but the first series; data labels use the same multi-series geometry.
+- Table style mapping now recognizes built-in `TableStyleLight1`-`TableStyleLight21` and `TableStyleDark1`-`TableStyleDark11` families in addition to Medium styles, deriving their stripe and total palettes from workbook theme accents.
 
 ## Remaining XLSX Work
 
@@ -155,7 +156,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 3. Full built-in table style definitions
 
-   Table headers, row/column stripes, first/last column emphasis, totals rows, common Medium fallback palettes, and a structured `TableStyleMedium1`-`TableStyleMedium28` theme-accent mapper are projected. Still missing exact Excel built-in table-style definitions for every built-in style family and broader fixtures for Light/Dark styles.
+   Table headers, row/column stripes, first/last column emphasis, totals rows, common Medium fallback palettes, and structured theme-accent mappers for `TableStyleLight1`-`TableStyleLight21`, `TableStyleMedium1`-`TableStyleMedium28`, and `TableStyleDark1`-`TableStyleDark11` are projected. Still missing exact Excel built-in table-style element definitions and broader real-world fixtures for every style family.
 
 4. Formula-driven conditional formatting
 

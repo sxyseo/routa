@@ -22,6 +22,20 @@ const BUILT_IN_MEDIUM_STYLES = new Map<number, BuiltInTableStyle>(
   }),
 );
 
+const BUILT_IN_LIGHT_STYLES = new Map<number, BuiltInTableStyle>(
+  Array.from({ length: 21 }, (_, offset) => {
+    const styleIndex = offset + 1;
+    return [styleIndex, builtInLightStyle(styleIndex)];
+  }),
+);
+
+const BUILT_IN_DARK_STYLES = new Map<number, BuiltInTableStyle>(
+  Array.from({ length: 11 }, (_, offset) => {
+    const styleIndex = offset + 1;
+    return [styleIndex, builtInDarkStyle(styleIndex)];
+  }),
+);
+
 export function tableStylePalette(
   styleName: string,
   theme?: RecordValue | null,
@@ -42,9 +56,27 @@ export function tableStylePalette(
 }
 
 function builtInTableStyle(styleName: string): BuiltInTableStyle | undefined {
+  const lightIndex = Number(styleName.match(/TableStyleLight(\d+)/i)?.[1] ?? styleName.match(/Light(\d+)/i)?.[1] ?? "");
+  if (Number.isFinite(lightIndex) && lightIndex > 0) return BUILT_IN_LIGHT_STYLES.get(lightIndex);
+
   const mediumIndex = Number(styleName.match(/TableStyleMedium(\d+)/i)?.[1] ?? styleName.match(/Medium(\d+)/i)?.[1] ?? "");
   if (Number.isFinite(mediumIndex) && mediumIndex > 0) return BUILT_IN_MEDIUM_STYLES.get(mediumIndex);
+
+  const darkIndex = Number(styleName.match(/TableStyleDark(\d+)/i)?.[1] ?? styleName.match(/Dark(\d+)/i)?.[1] ?? "");
+  if (Number.isFinite(darkIndex) && darkIndex > 0) return BUILT_IN_DARK_STYLES.get(darkIndex);
+
   return undefined;
+}
+
+function builtInLightStyle(styleIndex: number): BuiltInTableStyle {
+  const accentIndex = lightAccentIndex(styleIndex);
+  return {
+    accent: `accent${accentIndex}`,
+    columnStripeRatio: 0.92,
+    fallback: fallbackAccentColor(accentIndex),
+    rowStripeRatio: styleIndex <= 7 ? 0.9 : 0.86,
+    totalRatio: styleIndex <= 7 ? 0.78 : 0.7,
+  };
 }
 
 function builtInMediumStyle(styleIndex: number): BuiltInTableStyle {
@@ -61,11 +93,32 @@ function builtInMediumStyle(styleIndex: number): BuiltInTableStyle {
   };
 }
 
+function builtInDarkStyle(styleIndex: number): BuiltInTableStyle {
+  const accentIndex = darkAccentIndex(styleIndex);
+  return {
+    accent: `accent${accentIndex}`,
+    columnStripeRatio: styleIndex <= 5 ? 0.58 : 0.48,
+    fallback: fallbackAccentColor(accentIndex),
+    rowStripeRatio: styleIndex <= 5 ? 0.46 : 0.36,
+    totalRatio: styleIndex <= 5 ? 0.22 : 0.12,
+  };
+}
+
+function lightAccentIndex(styleIndex: number): number {
+  if (styleIndex <= 7) return 1;
+  return ((styleIndex - 8) % 6) + 1;
+}
+
 function mediumAccentIndex(styleIndex: number): number {
   if (styleIndex === 2) return 4;
   if (styleIndex === 4) return 1;
   if (styleIndex === 9) return 6;
   return ((styleIndex - 1) % 6) + 1;
+}
+
+function darkAccentIndex(styleIndex: number): number {
+  if (styleIndex <= 5) return styleIndex;
+  return ((styleIndex - 6) % 6) + 1;
 }
 
 function mediumIntensity(familyIndex: number, styleIndex: number): {
