@@ -1310,7 +1310,9 @@ export function spreadsheetCellText(
   const rowIndex = rowIndexFromAddress(address);
 
   if (cell != null && cell.hasValue === false && !asString(cell.formula)) return "";
-  const numberValue = Number(text);
+  const numericText = text.trim();
+  if (numericText.length === 0) return text;
+  const numberValue = Number(numericText);
   if (sheetName && rowIndex === 3 && Number.isFinite(numberValue)) return "";
   if (cell == null || !Number.isFinite(numberValue)) return text;
 

@@ -586,7 +586,9 @@ function numericValuesInRange(
     if (rowIndex < range.startRow || rowIndex >= range.startRow + range.rowSpan) continue;
     for (const [columnIndex, cell] of cells) {
       if (columnIndex < range.startColumn || columnIndex >= range.startColumn + range.columnSpan) continue;
-      const value = Number(cellText(cell));
+      const text = cellText(cell).trim();
+      if (text.length === 0) continue;
+      const value = Number(text);
       if (Number.isFinite(value)) values.push({ columnIndex, rowIndex, value });
     }
   }

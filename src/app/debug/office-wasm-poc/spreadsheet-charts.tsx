@@ -382,7 +382,19 @@ function spreadsheetLegendOverlay(value: unknown): boolean {
 }
 
 function spreadsheetChartHasDataLabels(chart: RecordValue): boolean {
-  return asRecord(chart.dataLabels) != null || chart.hasDataLabels === true;
+  if (chart.hasDataLabels === true || chart.dataLabels === true) return true;
+  const dataLabels = asRecord(chart.dataLabels);
+  if (!dataLabels) return false;
+  return [
+    "showValue",
+    "showVal",
+    "showCategoryName",
+    "showCatName",
+    "showSeriesName",
+    "showSerName",
+    "showPercent",
+    "showBubbleSize",
+  ].some((key) => chartBooleanFlag(dataLabels[key]));
 }
 
 function spreadsheetChartType(chart: RecordValue): SpreadsheetChartType {
@@ -458,8 +470,17 @@ function cellAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: n
 }
 
 function cellNumberAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: number): number | null {
-  const value = Number(cellText(cellAt(sheet, rowIndex, columnIndex)));
+  const text = cellText(cellAt(sheet, rowIndex, columnIndex)).trim();
+  if (text.length === 0) return null;
+  const value = Number(text);
   return Number.isFinite(value) ? value : null;
+}
+
+function chartBooleanFlag(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === "number") return value === 1;
+  const normalized = asString(value).trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
 }
 
 function excelSerialMonthLabel(value: number): string {

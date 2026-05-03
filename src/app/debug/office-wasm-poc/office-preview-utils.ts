@@ -474,10 +474,66 @@ export function cellText(cell: unknown): string {
   if (value) return value;
 
   const formula = asString(record.formula) || asString(record.formulaText);
-  if (formula) return `=${formula.replace(/^=/, "")}`;
+  if (formula) return spreadsheetFormulaDisplayText(formula);
 
   const paragraphs = asArray(record.paragraphs);
   return paragraphs.map(paragraphText).filter(Boolean).join("\n");
+}
+
+function spreadsheetFormulaDisplayText(formula: string): string {
+  const hyperlinkLabel = spreadsheetHyperlinkFormulaLabel(formula);
+  if (hyperlinkLabel) return hyperlinkLabel;
+  return `=${formula.replace(/^=/, "")}`;
+}
+
+function spreadsheetHyperlinkFormulaLabel(formula: string): string | null {
+  const normalized = formula.trim().replace(/^=/, "");
+  const openIndex = normalized.indexOf("(");
+  const closeIndex = normalized.lastIndexOf(")");
+  if (openIndex < 0 || closeIndex <= openIndex) return null;
+  if (normalized.slice(0, openIndex).trim().toUpperCase() !== "HYPERLINK") return null;
+
+  const args = splitSpreadsheetFormulaArgs(normalized.slice(openIndex + 1, closeIndex));
+  const displayArg = args[1]?.trim() || args[0]?.trim();
+  if (!displayArg) return null;
+  return spreadsheetStringLiteralValue(displayArg) ?? displayArg;
+}
+
+function splitSpreadsheetFormulaArgs(source: string): string[] {
+  const args: string[] = [];
+  let current = "";
+  let inString = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '"') {
+      current += char;
+      if (inString && source[index + 1] === '"') {
+        current += source[index + 1];
+        index += 1;
+      } else {
+        inString = !inString;
+      }
+      continue;
+    }
+
+    if (char === "," && !inString) {
+      args.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  args.push(current.trim());
+  return args;
+}
+
+function spreadsheetStringLiteralValue(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return null;
+  return trimmed.slice(1, -1).replaceAll('""', '"');
 }
 
 export function styleAt(values: unknown, index: unknown): RecordValue | null {

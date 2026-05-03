@@ -253,7 +253,9 @@ function sparklineValues(rows: Map<number, Map<number, RecordValue>>, reference:
     const row = rows.get(rowIndex);
     if (!row) continue;
     for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-      const value = Number(cellText(row.get(columnIndex)));
+      const text = cellText(row.get(columnIndex)).trim();
+      if (text.length === 0) continue;
+      const value = Number(text);
       if (Number.isFinite(value)) values.push(value);
     }
   }

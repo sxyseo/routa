@@ -218,7 +218,7 @@ describe("spreadsheet charts", () => {
       drawings: [
         {
           chart: {
-            dataLabels: {},
+            dataLabels: { showValue: true },
             series: [{ categories: ["A", "B"], name: "Values", values: [1, 2] }],
             title: "Data Labels",
             type: 4,
@@ -239,6 +239,41 @@ describe("spreadsheet charts", () => {
     });
 
     expect(charts[0]?.showDataLabels).toBe(true);
+  });
+
+  it("does not show chart data labels when protocol show flags are false", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            dataLabels: {
+              showBubbleSize: false,
+              showCategoryName: false,
+              showLegendKey: false,
+              showPercent: false,
+              showSeriesName: false,
+              showValue: false,
+            },
+            series: [{ categories: ["A", "B"], name: "Values", values: [1, 2] }],
+            title: "Hidden Data Labels",
+            type: 13,
+          },
+          extentCx: "1905000",
+          extentCy: "952500",
+          fromAnchor: { colId: "1", rowId: "1" },
+        },
+      ],
+      name: "Charts",
+      rows: [],
+    };
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [],
+      layout: buildSpreadsheetLayout(sheet),
+      sheets: [sheet],
+    });
+
+    expect(charts[0]?.showDataLabels).toBe(false);
   });
 
   it("preserves protocol axis titles for chart rendering", () => {

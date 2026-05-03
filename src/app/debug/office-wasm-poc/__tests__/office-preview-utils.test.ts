@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  cellText,
   columnIndexFromAddress,
   EXCEL_MAX_COLUMN_COUNT,
   EXCEL_MAX_ROW_COUNT,
@@ -45,5 +46,20 @@ describe("office preview cell references", () => {
       startColumn: 0,
       startRow: 3,
     });
+  });
+});
+
+describe("office preview cell text", () => {
+  it("uses friendly text for hyperlink formulas without cached values", () => {
+    expect(cellText({
+      formula: 'HYPERLINK("https://github.com/phodal/routa","Routa repo")',
+    })).toBe("Routa repo");
+    expect(cellText({
+      formula: 'HYPERLINK("https://example.com/a,b","OpenXML ""SDK""")',
+    })).toBe('OpenXML "SDK"');
+  });
+
+  it("keeps non-hyperlink formulas visible when no cached value exists", () => {
+    expect(cellText({ formula: "SUM(A1:A3)" })).toBe("=SUM(A1:A3)");
   });
 });

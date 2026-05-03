@@ -263,45 +263,117 @@ function shapeBorderRadius(geometry: number | string): number | string {
   return 0;
 }
 
+function isRightTriangleGeometry(geometry: number | string): boolean {
+  return geometry === 4 || geometry === "rtTriangle";
+}
+
 export function SpreadsheetShapeLayer({ shapes }: { shapes: SpreadsheetShapeSpec[] }) {
   if (shapes.length === 0) return null;
 
   return (
     <div aria-hidden="true" style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
       {shapes.map((shape) => (
-        <div
-          data-office-shape={shape.id}
-          key={shape.id}
-          style={{
-            alignItems: "center",
-            background: shape.fill,
-            borderColor: shape.line,
-            borderRadius: shapeBorderRadius(shape.geometry),
-            borderStyle: "solid",
-            borderWidth: shape.lineWidth,
-            boxShadow: shape.boxShadow,
-            color: "#0f172a",
-            display: "flex",
-            fontFamily: SPREADSHEET_FONT_FAMILY,
-            fontSize: 13,
-            height: shape.height,
-            justifyContent: "center",
-            left: shape.left,
-            lineHeight: 1.35,
-            overflow: "hidden",
-            padding: 12,
-            position: "absolute",
-            textAlign: "center",
-            top: shape.top,
-            whiteSpace: "pre-wrap",
-            width: shape.width,
-            zIndex: shape.zIndex,
-          }}
-        >
-          {shape.text}
-        </div>
+        <SpreadsheetShapeView key={shape.id} shape={shape} />
       ))}
     </div>
+  );
+}
+
+function SpreadsheetShapeView({ shape }: { shape: SpreadsheetShapeSpec }) {
+  if (isRightTriangleGeometry(shape.geometry)) {
+    return <SpreadsheetRightTriangleShape shape={shape} />;
+  }
+
+  return (
+    <div
+      data-office-shape={shape.id}
+      style={{
+        alignItems: "center",
+        background: shape.fill,
+        borderColor: shape.line,
+        borderRadius: shapeBorderRadius(shape.geometry),
+        borderStyle: "solid",
+        borderWidth: shape.lineWidth,
+        boxShadow: shape.boxShadow,
+        color: "#0f172a",
+        display: "flex",
+        fontFamily: SPREADSHEET_FONT_FAMILY,
+        fontSize: 13,
+        height: shape.height,
+        justifyContent: "center",
+        left: shape.left,
+        lineHeight: 1.35,
+        overflow: "hidden",
+        padding: 12,
+        position: "absolute",
+        textAlign: "center",
+        top: shape.top,
+        whiteSpace: "pre-wrap",
+        width: shape.width,
+        zIndex: shape.zIndex,
+      }}
+    >
+      {shape.text}
+    </div>
+  );
+}
+
+function SpreadsheetRightTriangleShape({ shape }: { shape: SpreadsheetShapeSpec }) {
+  const halfStroke = Math.max(0.5, shape.lineWidth / 2);
+  const points = [
+    `${halfStroke},${halfStroke}`,
+    `${halfStroke},${Math.max(halfStroke, shape.height - halfStroke)}`,
+    `${Math.max(halfStroke, shape.width - halfStroke)},${Math.max(halfStroke, shape.height - halfStroke)}`,
+  ].join(" ");
+
+  return (
+    <svg
+      data-office-shape={shape.id}
+      height={shape.height}
+      style={{
+        boxShadow: shape.boxShadow,
+        height: shape.height,
+        left: shape.left,
+        overflow: "visible",
+        position: "absolute",
+        top: shape.top,
+        width: shape.width,
+        zIndex: shape.zIndex,
+      }}
+      viewBox={`0 0 ${shape.width} ${shape.height}`}
+      width={shape.width}
+    >
+      <polygon
+        fill={shape.fill}
+        points={points}
+        stroke={shape.line}
+        strokeLinejoin="round"
+        strokeWidth={shape.lineWidth}
+        vectorEffect="non-scaling-stroke"
+      />
+      {shape.text ? (
+        <foreignObject height={shape.height} width={shape.width} x={0} y={0}>
+          <div
+            style={{
+              alignItems: "center",
+              color: "#0f172a",
+              display: "flex",
+              fontFamily: SPREADSHEET_FONT_FAMILY,
+              fontSize: 13,
+              height: "100%",
+              justifyContent: "center",
+              lineHeight: 1.35,
+              padding: 12,
+              textAlign: "center",
+              whiteSpace: "pre-wrap",
+              width: "100%",
+            }}
+          >
+            {shape.text}
+          </div>
+        </foreignObject>
+      ) : null}
+    </svg>
   );
 }
 

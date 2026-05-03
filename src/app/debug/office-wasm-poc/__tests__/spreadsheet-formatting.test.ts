@@ -60,6 +60,13 @@ describe("spreadsheet cell formatting", () => {
     expect(spreadsheetCellText({ address: "C2", styleIndex: 1, value: -1234.5 }, styles)).toBe("(1,234.50)");
   });
 
+  it("does not format blank dashboard cells as zero values", () => {
+    expect(spreadsheetCellText({ address: "C5", styleIndex: 0 }, null, "01_Dashboard")).toBe("");
+    expect(spreadsheetCellText({ address: "D5", styleIndex: 0 }, null, "01_Dashboard")).toBe("");
+    expect(spreadsheetCellText({ address: "C5", value: 0 }, null, "01_Dashboard")).toBe("0%");
+    expect(spreadsheetCellText({ address: "D5", value: 0 }, null, "01_Dashboard")).toBe("$0");
+  });
+
   it("suppresses fallback gridlines without hiding explicit borders", () => {
     const explicitBorderStyles = {
       borders: [
