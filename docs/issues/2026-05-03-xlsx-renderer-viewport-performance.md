@@ -73,6 +73,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Chart y-axis tick labels now consume common axis number formats for percent, currency, fixed decimal, and thousands display.
 - Line chart series markers are now protocol-driven instead of being forced for every series; fallback demo charts still opt into markers.
 - Sheet `sparklineGroups` now render as per-cell inline SVG sparklines from the protocol ranges, with line/column/stacked types, series color, line weight, and marker flags.
+- Cells targeted by XLSX notes or threaded comment threads now render a lightweight top-right comment indicator in the viewport.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

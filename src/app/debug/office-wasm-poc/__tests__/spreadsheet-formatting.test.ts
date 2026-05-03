@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSpreadsheetCommentVisuals,
   buildSpreadsheetSparklineVisuals,
   spreadsheetCellStyle,
   spreadsheetCellText,
@@ -130,5 +131,14 @@ describe("spreadsheet cell formatting", () => {
       type: "line",
       values: [1, 2, 3],
     });
+  });
+
+  it("builds comment indicators from note and threaded comment targets", () => {
+    const root = {
+      notes: [{ target: { cell: { address: "B2", sheetName: "Comments" } } }],
+      threads: [{ target: { cell: { address: "C3", sheetName: "Other" } } }],
+    };
+
+    expect([...buildSpreadsheetCommentVisuals(root, { name: "Comments" })]).toEqual(["2:1"]);
   });
 });

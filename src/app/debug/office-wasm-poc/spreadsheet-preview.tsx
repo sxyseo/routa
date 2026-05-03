@@ -162,6 +162,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   );
   const cellVisuals = useMemo(() => buildSpreadsheetConditionalVisuals(activeSheet, theme), [activeSheet, theme]);
   const sparklineVisuals = useMemo(() => buildSpreadsheetSparklineVisuals(activeSheet), [activeSheet]);
+  const commentVisuals = useMemo(() => buildSpreadsheetCommentVisuals(root, activeSheet), [activeSheet, root]);
 
   const applyViewportState = useCallback((next: SpreadsheetViewportState) => {
     setViewportScroll((current) => {
@@ -279,6 +280,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
             <SpreadsheetGrid
               activeSheet={activeSheet}
               cellVisuals={cellVisuals}
+              commentVisuals={commentVisuals}
               layout={layout}
               scroll={viewportScroll}
               sparklineVisuals={sparklineVisuals}
@@ -293,6 +295,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
         <SpreadsheetFrozenBodyLayer
           activeSheet={activeSheet}
           cellVisuals={cellVisuals}
+          commentVisuals={commentVisuals}
           layout={layout}
           scroll={viewportScroll}
           sparklineVisuals={sparklineVisuals}
@@ -351,6 +354,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
 function SpreadsheetFrozenBodyLayer({
   activeSheet,
   cellVisuals,
+  commentVisuals,
   layout,
   scroll,
   sparklineVisuals,
@@ -359,6 +363,7 @@ function SpreadsheetFrozenBodyLayer({
 }: {
   activeSheet: RecordValue | undefined;
   cellVisuals: SpreadsheetCellVisualLookup;
+  commentVisuals: Set<string>;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
@@ -409,6 +414,7 @@ function SpreadsheetFrozenBodyLayer({
           if (rects.length === 0) return null;
 
           const visual = cellVisuals.get(cellKey);
+          const hasComment = commentVisuals.has(cellKey);
           const sparkline = sparklineVisuals.get(cellKey);
           const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
           const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
@@ -426,7 +432,7 @@ function SpreadsheetFrozenBodyLayer({
                 width: rect.width,
               }}
             >
-              <SpreadsheetCellContent sparkline={sparkline} text={text} visual={visual} />
+              <SpreadsheetCellContent hasComment={hasComment} sparkline={sparkline} text={text} visual={visual} />
             </div>
           ));
         });
@@ -438,6 +444,7 @@ function SpreadsheetFrozenBodyLayer({
 function SpreadsheetGrid({
   activeSheet,
   cellVisuals,
+  commentVisuals,
   layout,
   scroll,
   sparklineVisuals,
@@ -446,6 +453,7 @@ function SpreadsheetGrid({
 }: {
   activeSheet: RecordValue | undefined;
   cellVisuals: SpreadsheetCellVisualLookup;
+  commentVisuals: Set<string>;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
@@ -519,6 +527,7 @@ function SpreadsheetGrid({
               const width = spreadsheetColumnLeft(layout, columnIndex + (merge?.columnSpan ?? 1)) - left;
               const cellHeight = spreadsheetRowTop(layout, rowOffset + (merge?.rowSpan ?? 1)) - top;
               const visual = cellVisuals.get(cellKey);
+              const hasComment = commentVisuals.has(cellKey);
               const sparkline = sparklineVisuals.get(cellKey);
               const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
               const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
@@ -536,7 +545,7 @@ function SpreadsheetGrid({
                     width,
                   }}
                 >
-                  <SpreadsheetCellContent sparkline={sparkline} text={text} visual={visual} />
+                  <SpreadsheetCellContent hasComment={hasComment} sparkline={sparkline} text={text} visual={visual} />
                 </div>
               );
             })}
@@ -1186,6 +1195,28 @@ export function buildSpreadsheetSparklineVisuals(sheet: RecordValue | undefined)
   return visuals;
 }
 
+export function buildSpreadsheetCommentVisuals(root: RecordValue | null, sheet: RecordValue | undefined): Set<string> {
+  const sheetName = asString(sheet?.name);
+  const comments = new Set<string>();
+  for (const item of [...asArray(root?.notes), ...asArray(root?.threads)]) {
+    const record = asRecord(item);
+    if (!record) continue;
+    const target = spreadsheetCommentTarget(record);
+    if (!target.address || (target.sheetName && sheetName && target.sheetName !== sheetName)) continue;
+    comments.add(spreadsheetCellKey(rowIndexFromAddress(target.address), columnIndexFromAddress(target.address)));
+  }
+  return comments;
+}
+
+function spreadsheetCommentTarget(record: RecordValue): { address: string; sheetName: string } {
+  const target = asRecord(record.target);
+  const cell = asRecord(target?.cell) ?? asRecord(target?.cellTarget) ?? asRecord(record.cell);
+  return {
+    address: asString(record.address) || asString(record.reference) || asString(target?.address) || asString(cell?.address),
+    sheetName: asString(record.sheetName) || asString(target?.sheetName) || asString(cell?.sheetName),
+  };
+}
+
 function sparklineValues(rows: Map<number, Map<number, RecordValue>>, reference: string): number[] {
   const range = parseCellRange(reference);
   if (!range) return [];
@@ -1222,10 +1253,12 @@ function spreadsheetFontFamily(typeface: string): string {
 }
 
 function SpreadsheetCellContent({
+  hasComment,
   sparkline,
   text,
   visual,
 }: {
+  hasComment?: boolean;
   sparkline?: SpreadsheetSparklineVisual;
   text: string;
   visual?: SpreadsheetCellVisual;
@@ -1233,6 +1266,7 @@ function SpreadsheetCellContent({
   return (
     <>
       {sparkline ? <SpreadsheetSparkline visual={sparkline} /> : null}
+      {hasComment ? <SpreadsheetCommentIndicator /> : null}
       {visual?.dataBar ? (
         <>
           <span
@@ -1296,6 +1330,28 @@ function SpreadsheetCellContent({
         </span>
       ) : null}
     </>
+  );
+}
+
+function SpreadsheetCommentIndicator() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        borderLeftColor: "transparent",
+        borderLeftStyle: "solid",
+        borderLeftWidth: 8,
+        borderTopColor: "#f97316",
+        borderTopStyle: "solid",
+        borderTopWidth: 8,
+        height: 0,
+        position: "absolute",
+        right: 0,
+        top: 0,
+        width: 0,
+        zIndex: 3,
+      }}
+    />
   );
 }
 
