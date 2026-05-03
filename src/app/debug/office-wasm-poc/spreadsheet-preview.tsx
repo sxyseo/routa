@@ -73,6 +73,12 @@ type SpreadsheetSparklineVisual = {
   values: number[];
 };
 
+type SpreadsheetValidationVisual = {
+  formula: string;
+  prompt: string;
+  type: "dropdown" | "validation";
+};
+
 const EXCEL_BUILT_IN_NUMBER_FORMATS = new Map<number, string>([
   [1, "0"],
   [2, "0.00"],
@@ -163,6 +169,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const cellVisuals = useMemo(() => buildSpreadsheetConditionalVisuals(activeSheet, theme), [activeSheet, theme]);
   const sparklineVisuals = useMemo(() => buildSpreadsheetSparklineVisuals(activeSheet), [activeSheet]);
   const commentVisuals = useMemo(() => buildSpreadsheetCommentVisuals(root, activeSheet), [activeSheet, root]);
+  const validationVisuals = useMemo(() => buildSpreadsheetValidationVisuals(activeSheet), [activeSheet]);
 
   const applyViewportState = useCallback((next: SpreadsheetViewportState) => {
     setViewportScroll((current) => {
@@ -285,6 +292,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               scroll={viewportScroll}
               sparklineVisuals={sparklineVisuals}
               styles={styles}
+              validationVisuals={validationVisuals}
               viewportSize={viewportSize}
             />
             <SpreadsheetImageLayer images={visibleImageSpecs} />
@@ -300,6 +308,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           scroll={viewportScroll}
           sparklineVisuals={sparklineVisuals}
           styles={styles}
+          validationVisuals={validationVisuals}
           viewportSize={viewportSize}
         />
         <SpreadsheetFrozenHeaders
@@ -359,6 +368,7 @@ function SpreadsheetFrozenBodyLayer({
   scroll,
   sparklineVisuals,
   styles,
+  validationVisuals,
   viewportSize,
 }: {
   activeSheet: RecordValue | undefined;
@@ -368,6 +378,7 @@ function SpreadsheetFrozenBodyLayer({
   scroll: SpreadsheetViewportScroll;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
+  validationVisuals: Map<string, SpreadsheetValidationVisual>;
   viewportSize: SpreadsheetViewportSize;
 }) {
   if (layout.freezePanes.columnCount === 0 && layout.freezePanes.rowCount === 0) {
@@ -416,6 +427,7 @@ function SpreadsheetFrozenBodyLayer({
           const visual = cellVisuals.get(cellKey);
           const hasComment = commentVisuals.has(cellKey);
           const sparkline = sparklineVisuals.get(cellKey);
+          const validation = validationVisuals.get(cellKey);
           const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
           const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
           return rects.map((rect, segmentIndex) => (
@@ -432,7 +444,13 @@ function SpreadsheetFrozenBodyLayer({
                 width: rect.width,
               }}
             >
-              <SpreadsheetCellContent hasComment={hasComment} sparkline={sparkline} text={text} visual={visual} />
+              <SpreadsheetCellContent
+                hasComment={hasComment}
+                sparkline={sparkline}
+                text={text}
+                validation={validation}
+                visual={visual}
+              />
             </div>
           ));
         });
@@ -449,6 +467,7 @@ function SpreadsheetGrid({
   scroll,
   sparklineVisuals,
   styles,
+  validationVisuals,
   viewportSize,
 }: {
   activeSheet: RecordValue | undefined;
@@ -458,6 +477,7 @@ function SpreadsheetGrid({
   scroll: SpreadsheetViewportScroll;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
+  validationVisuals: Map<string, SpreadsheetValidationVisual>;
   viewportSize: SpreadsheetViewportSize;
 }) {
   const sheetName = asString(activeSheet?.name);
@@ -529,6 +549,7 @@ function SpreadsheetGrid({
               const visual = cellVisuals.get(cellKey);
               const hasComment = commentVisuals.has(cellKey);
               const sparkline = sparklineVisuals.get(cellKey);
+              const validation = validationVisuals.get(cellKey);
               const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
               const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
               return (
@@ -545,7 +566,13 @@ function SpreadsheetGrid({
                     width,
                   }}
                 >
-                  <SpreadsheetCellContent hasComment={hasComment} sparkline={sparkline} text={text} visual={visual} />
+                  <SpreadsheetCellContent
+                    hasComment={hasComment}
+                    sparkline={sparkline}
+                    text={text}
+                    validation={validation}
+                    visual={visual}
+                  />
                 </div>
               );
             })}
@@ -1208,6 +1235,51 @@ export function buildSpreadsheetCommentVisuals(root: RecordValue | null, sheet: 
   return comments;
 }
 
+export function buildSpreadsheetValidationVisuals(sheet: RecordValue | undefined): Map<string, SpreadsheetValidationVisual> {
+  const visuals = new Map<string, SpreadsheetValidationVisual>();
+  for (const validation of spreadsheetDataValidationItems(sheet)) {
+    const references = spreadsheetDataValidationReferences(validation);
+    if (references.length === 0) continue;
+    const typeCode = asNumber(validation.type, 0);
+    const isDropdown = typeCode === 4 && validation.showDropDown !== true;
+    for (const reference of references) {
+      const range = parseCellRange(reference);
+      if (!range) continue;
+      for (let rowIndex = range.startRow; rowIndex < range.startRow + Math.min(range.rowSpan, 2048); rowIndex += 1) {
+        for (let columnIndex = range.startColumn; columnIndex < range.startColumn + Math.min(range.columnSpan, 256); columnIndex += 1) {
+          visuals.set(spreadsheetCellKey(rowIndex, columnIndex), {
+            formula: asString(validation.formula1),
+            prompt: asString(validation.prompt) || asString(validation.promptTitle),
+            type: isDropdown ? "dropdown" : "validation",
+          });
+        }
+      }
+    }
+  }
+  return visuals;
+}
+
+function spreadsheetDataValidationItems(sheet: RecordValue | undefined): RecordValue[] {
+  const dataValidations = asRecord(sheet?.dataValidations);
+  const rawItems = dataValidations ? asArray(dataValidations.items) : asArray(sheet?.dataValidations);
+  return rawItems.map(asRecord).filter((validation): validation is RecordValue => validation != null);
+}
+
+function spreadsheetDataValidationReferences(validation: RecordValue): string[] {
+  const ranges = asArray(validation.ranges);
+  if (ranges.length > 0) {
+    return ranges.map((range) => {
+      if (typeof range === "string") return range;
+      const record = asRecord(range);
+      if (!record) return "";
+      const startAddress = asString(record.startAddress);
+      const endAddress = asString(record.endAddress);
+      return startAddress && endAddress && startAddress !== endAddress ? `${startAddress}:${endAddress}` : startAddress;
+    }).filter(Boolean);
+  }
+  return asString(validation.range || validation.reference || validation.sqref).split(/\s+/).filter(Boolean);
+}
+
 function spreadsheetCommentTarget(record: RecordValue): { address: string; sheetName: string } {
   const target = asRecord(record.target);
   const cell = asRecord(target?.cell) ?? asRecord(target?.cellTarget) ?? asRecord(record.cell);
@@ -1256,11 +1328,13 @@ function SpreadsheetCellContent({
   hasComment,
   sparkline,
   text,
+  validation,
   visual,
 }: {
   hasComment?: boolean;
   sparkline?: SpreadsheetSparklineVisual;
   text: string;
+  validation?: SpreadsheetValidationVisual;
   visual?: SpreadsheetCellVisual;
 }) {
   return (
@@ -1302,6 +1376,7 @@ function SpreadsheetCellContent({
       ) : null}
       {visual?.iconSet ? <SpreadsheetIconSet visual={visual.iconSet} /> : null}
       {sparkline || visual?.iconSet?.showValue === false ? null : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
+      {validation ? <SpreadsheetValidationIndicator validation={validation} /> : null}
       {visual?.filter ? (
         <span
           aria-hidden="true"
@@ -1330,6 +1405,36 @@ function SpreadsheetCellContent({
         </span>
       ) : null}
     </>
+  );
+}
+
+function SpreadsheetValidationIndicator({ validation }: { validation: SpreadsheetValidationVisual }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        alignItems: "center",
+        background: validation.type === "dropdown" ? "#f8fafc" : "#ffffff",
+        borderColor: "#cbd5e1",
+        borderRadius: 3,
+        borderStyle: "solid",
+        borderWidth: 1,
+        bottom: 4,
+        color: "#475569",
+        display: "inline-flex",
+        fontSize: 9,
+        height: 14,
+        justifyContent: "center",
+        lineHeight: 1,
+        position: "absolute",
+        right: 4,
+        width: 14,
+        zIndex: 2,
+      }}
+      title={validation.prompt || validation.formula}
+    >
+      {validation.type === "dropdown" ? "▾" : "!"}
+    </span>
   );
 }
 

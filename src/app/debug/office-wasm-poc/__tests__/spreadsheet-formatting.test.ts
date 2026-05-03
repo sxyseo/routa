@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSpreadsheetCommentVisuals,
   buildSpreadsheetSparklineVisuals,
+  buildSpreadsheetValidationVisuals,
   spreadsheetCellStyle,
   spreadsheetCellText,
   spreadsheetNumberFormatCode,
@@ -140,5 +141,26 @@ describe("spreadsheet cell formatting", () => {
     };
 
     expect([...buildSpreadsheetCommentVisuals(root, { name: "Comments" })]).toEqual(["2:1"]);
+  });
+
+  it("builds validation indicators for list dropdown ranges", () => {
+    const sheet = {
+      dataValidations: {
+        items: [
+          {
+            formula1: "\"Open,Closed\"",
+            prompt: "Pick a status",
+            ranges: [{ endAddress: "B3", startAddress: "B2" }],
+            showDropDown: false,
+            type: 4,
+          },
+        ],
+      },
+    };
+
+    expect([...buildSpreadsheetValidationVisuals(sheet)]).toEqual([
+      ["2:1", { formula: "\"Open,Closed\"", prompt: "Pick a status", type: "dropdown" }],
+      ["3:1", { formula: "\"Open,Closed\"", prompt: "Pick a status", type: "dropdown" }],
+    ]);
   });
 });
