@@ -1655,7 +1655,7 @@ internal static class PptxPresentationProtoReader
             WriteInt32(cellOutput, 14, ToInt32(cell.TableCellProperties?.RightMargin));
             WriteInt32(cellOutput, 15, ToInt32(cell.TableCellProperties?.TopMargin));
             WriteInt32(cellOutput, 16, ToInt32(cell.TableCellProperties?.BottomMargin));
-            WriteString(cellOutput, 17, cell.TableCellProperties?.Anchor?.Value.ToString());
+            WriteString(cellOutput, 17, AttributeValue(cell.TableCellProperties, "anchor"));
             WriteBoolValue(cellOutput, 18, cell.TableCellProperties?.AnchorCenter?.Value);
             WriteString(cellOutput, 19, cell.TableCellProperties?.HorizontalOverflow?.Value.ToString());
         });
@@ -1712,13 +1712,21 @@ internal static class PptxPresentationProtoReader
 
         return Message(output =>
         {
-            if (top is not null) WriteMessage(output, 1, WriteLine(top, suppressStyle: true));
-            if (right is not null) WriteMessage(output, 2, WriteLine(right, suppressStyle: true));
-            if (bottom is not null) WriteMessage(output, 3, WriteLine(bottom, suppressStyle: true));
-            if (left is not null) WriteMessage(output, 4, WriteLine(left, suppressStyle: true));
-            if (diagonalDown is not null) WriteMessage(output, 5, WriteLine(diagonalDown, suppressStyle: true));
-            if (diagonalUp is not null) WriteMessage(output, 6, WriteLine(diagonalUp, suppressStyle: true));
+            if (top is not null) WriteMessage(output, 1, WriteTableCellLine(top));
+            if (right is not null) WriteMessage(output, 2, WriteTableCellLine(right));
+            if (bottom is not null) WriteMessage(output, 3, WriteTableCellLine(bottom));
+            if (left is not null) WriteMessage(output, 4, WriteTableCellLine(left));
+            if (diagonalDown is not null) WriteMessage(output, 5, WriteTableCellLine(diagonalDown));
+            if (diagonalUp is not null) WriteMessage(output, 6, WriteTableCellLine(diagonalUp));
         });
+    }
+
+    private static byte[] WriteTableCellLine(OpenXmlElement line)
+    {
+        return WriteLine(
+            line,
+            suppressStyle: line.GetFirstChild<A.PresetDash>() is null,
+            suppressDetails: true);
     }
 
     private static OpenXmlElement? TableLineFromProperties(OpenXmlElement? properties)
