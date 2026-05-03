@@ -62,6 +62,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Added a bounded cell visual cache for lazy table/conditional lookups so repeated body/frozen rendering does not rescan rules for the same visible cells while scrolling cannot grow the cache without limit.
 - Verified fixture protocol parity, fixture render contract, chart-heavy render contract, and the 21-file production XLSX corpus under `/Users/phodal/Downloads/excel` with `--assert`; all passed against Walnut after the lazy lookup/range parsing changes.
 - Expanded `test:office-wasm-reader:xlsx-render` to include `xlsx_multi_chart_contract.xlsx` and `xlsx_surface_chart_contract.xlsx`, so common render checks now cover multi-chart and surface chart protocol/layout contracts.
+- Hidden rows and columns now stay in the prefix-sum layout as zero-size entries, matching Excel/Walnut viewport semantics without shifting later row/column indexes.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

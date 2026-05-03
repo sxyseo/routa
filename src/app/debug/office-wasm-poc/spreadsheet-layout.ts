@@ -109,9 +109,9 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
   for (const column of columns) {
     const min = Math.max(1, asNumber(column.min, asNumber(column.index, 1)));
     const max = Math.max(min, asNumber(column.max, min));
-    const width = asNumber(column.width, asNumber(sheet?.defaultColWidth, 10));
+    const width = spreadsheetColumnHidden(column) ? 0 : excelColumnWidthPx(asNumber(column.width, asNumber(sheet?.defaultColWidth, 10)));
     for (let index = min - 1; index <= max - 1; index += 1) {
-      columnWidthByIndex.set(index, excelColumnWidthPx(width));
+      columnWidthByIndex.set(index, width);
       maxColumn = Math.max(maxColumn, index);
     }
   }
@@ -165,7 +165,7 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
   );
   const rowHeights = Array.from({ length: rowCount }, (_, index) => {
     const row = rowRecordsByIndex.get(index + 1);
-    return excelRowHeightPx(asNumber(row?.height));
+    return spreadsheetRowHidden(row) ? 0 : excelRowHeightPx(asNumber(row?.height));
   });
   const columnOffsets = prefixSums(SPREADSHEET_ROW_HEADER_WIDTH, columnWidths);
   const rowOffsets = prefixSums(SPREADSHEET_COLUMN_HEADER_HEIGHT, rowHeights);
@@ -463,6 +463,14 @@ function excelRowHeightPx(heightPoints: number): number {
   return heightPoints && heightPoints > 0
     ? Math.max(18, Math.round(heightPoints * EXCEL_POINTS_TO_PX))
     : SPREADSHEET_DEFAULT_ROW_HEIGHT;
+}
+
+function spreadsheetColumnHidden(column: RecordValue): boolean {
+  return column.hidden === true || asString(column.hidden).toLowerCase() === "true" || asNumber(column.hidden) === 1;
+}
+
+function spreadsheetRowHidden(row: RecordValue | undefined): boolean {
+  return row?.hidden === true || asString(row?.hidden).toLowerCase() === "true" || asNumber(row?.hidden) === 1;
 }
 
 function protocolNumber(value: unknown, fallback: number): number {
