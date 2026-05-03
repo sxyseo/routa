@@ -83,6 +83,7 @@ type SpreadsheetConditionalVisualSpec =
     rangeValues: number[];
   }
   | {
+    definedNames?: unknown;
     format: RecordValue;
     kind: "format";
     numericValues?: readonly number[];
@@ -111,6 +112,7 @@ const MAX_CELL_VISUAL_CACHE_SIZE = 5_000;
 export function buildSpreadsheetConditionalVisuals(
   sheet: RecordValue | undefined,
   theme?: RecordValue | null,
+  definedNames?: unknown,
 ): SpreadsheetCellVisualLookup {
   const tableVisuals = buildSpreadsheetTableVisuals(sheet, theme);
   const conditionalVisuals: SpreadsheetConditionalVisualSpec[] = [];
@@ -163,6 +165,7 @@ export function buildSpreadsheetConditionalVisuals(
       }
 
       conditionalVisuals.push({
+        definedNames,
         format,
         kind: "format",
         numericValues: conditionalRuleNeedsNumericValues(format) ? values.map((item) => item.value) : undefined,
@@ -415,6 +418,7 @@ function spreadsheetConditionalCellVisual(
           value,
           rule.textCounts,
           rule.numericValues,
+          rule.definedNames,
           rowsByIndex,
           rule.range,
           rowIndex,
@@ -702,6 +706,7 @@ function conditionalTextMatches(
   numericValue: number | null,
   textCounts?: ReadonlyMap<string, number>,
   numericValues?: readonly number[],
+  definedNames?: unknown,
   rowsByIndex?: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
   range?: SpreadsheetCellRange,
   rowIndex?: number,
@@ -754,6 +759,7 @@ function conditionalTextMatches(
   if (type === "expression" && rowsByIndex && range && rowIndex != null && columnIndex != null) {
     return conditionalFormulaMatches({
       columnIndex,
+      definedNames,
       formulas: format.formulas ?? format.formula,
       range,
       rowsByIndex,

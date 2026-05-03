@@ -124,6 +124,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     () => asArray(root?.slicerCaches).map(asRecord).filter((cache): cache is RecordValue => cache != null),
     [root],
   );
+  const definedNames = useMemo(() => root?.definedNames, [root]);
   const theme = useMemo(() => asRecord(root?.theme), [root]);
   const imageSources = useOfficeImageSources(root);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
@@ -163,7 +164,10 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     () => visibleFloatingSpecs(imageSpecs, viewportSize, viewportScroll),
     [imageSpecs, viewportScroll, viewportSize],
   );
-  const cellVisuals = useMemo(() => buildSpreadsheetConditionalVisuals(activeSheet, theme), [activeSheet, theme]);
+  const cellVisuals = useMemo(
+    () => buildSpreadsheetConditionalVisuals(activeSheet, theme, definedNames),
+    [activeSheet, definedNames, theme],
+  );
   const sparklineVisuals = useMemo(() => buildSpreadsheetSparklineVisuals(activeSheet), [activeSheet]);
   const commentVisuals = useMemo(() => buildSpreadsheetCommentVisuals(root, activeSheet), [activeSheet, root]);
   const validationVisuals = useMemo(() => buildSpreadsheetValidationVisuals(activeSheet), [activeSheet]);

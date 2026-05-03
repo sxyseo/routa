@@ -514,6 +514,35 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:2")?.background).toBe("#C6EFCE");
   });
 
+  it("resolves defined names in formula conditional formats", () => {
+    const visuals = buildSpreadsheetConditionalVisuals(
+      {
+        conditionalFormattings: [
+          {
+            ranges: ["A2:A3"],
+            rules: [
+              {
+                fillColor: "FACC15",
+                formulas: ["=A2>Limit"],
+                type: "expression",
+              },
+            ],
+          },
+        ],
+        name: "DefinedNames",
+        rows: [
+          { cells: [{ address: "A2", value: "12" }, { address: "B2", value: "10" }], index: 2 },
+          { cells: [{ address: "A3", value: "8" }], index: 3 },
+        ],
+      },
+      null,
+      [{ name: "Limit", text: "$B$2" }],
+    );
+
+    expect(visuals.get("2:0")?.background).toBe("#FACC15");
+    expect(visuals.get("3:0")).toBeUndefined();
+  });
+
   it("uses data-bar direction, visibility, and length options", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

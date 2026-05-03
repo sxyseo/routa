@@ -16,6 +16,7 @@ type ConditionalFormulaRange = {
 
 type ConditionalFormulaContext = {
   columnIndex: number;
+  definedNames?: unknown;
   formulas: unknown;
   range: ConditionalFormulaRange;
   rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>;
@@ -69,6 +70,9 @@ function evaluateFormulaValue(expression: string, context: ConditionalFormulaCon
 
   const structuredReference = parseStructuredReference(trimmed);
   if (structuredReference) return structuredReferenceValue(structuredReference, context);
+
+  const definedName = definedNameValue(trimmed, context);
+  if (definedName != null) return definedName;
 
   const call = parseFunctionCall(trimmed);
   if (call) return evaluateFormulaFunction(call.name, call.args, context);
@@ -247,6 +251,34 @@ function structuredReferenceColumnIndex(
   }
 
   return null;
+}
+
+function definedNameValue(name: string, context: ConditionalFormulaContext): string | null {
+  const normalizedName = name.toLowerCase();
+  if (!/^[A-Z_][A-Z0-9_.]*$/i.test(name)) return null;
+  const records = definedNameRecords(context.definedNames);
+  const record = records.find((item) => asString(item.name).toLowerCase() === normalizedName);
+  if (!record) return null;
+
+  const target = asString(record.text) || asString(record.formula) || asString(record.value) || asString(record.reference);
+  if (!target) return "";
+
+  const normalizedTarget = stripFormulaPrefix(target);
+  const range = /[A-Z]+\$?\d/i.test(normalizedTarget) ? parseCellRange(normalizedTarget) : null;
+  if (range) {
+    return cellText(context.rowsByIndex.get(range.startRow)?.get(range.startColumn) ?? null);
+  }
+
+  return normalizedTarget;
+}
+
+function definedNameRecords(definedNames: unknown): RecordValue[] {
+  const wrapper = asRecord(definedNames);
+  return [
+    ...asArray(definedNames),
+    ...asArray(wrapper?.items),
+    ...asArray(wrapper?.definedNames),
+  ].map(asRecord).filter((item): item is RecordValue => item != null);
 }
 
 function cleanStructuredReferenceName(value: unknown): string {
