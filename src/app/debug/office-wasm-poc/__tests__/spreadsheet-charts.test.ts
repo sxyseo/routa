@@ -82,7 +82,7 @@ describe("spreadsheet charts", () => {
       legendOverlay: false,
       legendPosition: "bottom" as const,
       series: [
-        { color: "#1f6f8b", label: "Fitness Score", marker: "diamond" as const, values: [62.6, 78.1, 89.9] },
+        { color: "#1f6f8b", label: "Fitness Score", marker: "diamond" as const, trendlines: [], values: [62.6, 78.1, 89.9] },
       ],
       showDataLabels: false,
       title: "Fitness Score vs Coverage",
@@ -107,7 +107,7 @@ describe("spreadsheet charts", () => {
       categories: ["Jan", "Feb"],
       height: 240,
       left: 0,
-      series: [{ color: "#1f6f8b", label: "Series", marker: "square" as const, values: [10, 20] }],
+      series: [{ color: "#1f6f8b", label: "Series", marker: "square" as const, trendlines: [], values: [10, 20] }],
       showDataLabels: false,
       title: "Legend Layout",
       top: 0,
@@ -382,8 +382,8 @@ describe("spreadsheet charts", () => {
       legendOverlay: false,
       legendPosition: "bottom" as const,
       series: [
-        { color: "#1f6f8b", label: "Backlog", marker: null, values: [10, 20] },
-        { color: "#f9732a", label: "Done", marker: null, values: [5, 15] },
+        { color: "#1f6f8b", label: "Backlog", marker: null, trendlines: [], values: [10, 20] },
+        { color: "#f9732a", label: "Done", marker: null, trendlines: [], values: [5, 15] },
       ],
       showDataLabels: false,
       title: "Multi-series bar",
