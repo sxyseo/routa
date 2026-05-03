@@ -831,9 +831,10 @@ internal static class PptxPresentationProtoReader
         bool writeDefaultLine = false)
     {
         var geometry = properties?.GetFirstChild<A.PresetGeometry>();
-        var geometryCode = properties?.GetFirstChild<A.CustomGeometry>() is not null ? ShapeGeometryCustom : GeometryCode(geometry);
+        var customGeometry = properties?.GetFirstChild<A.CustomGeometry>();
+        var geometryCode = customGeometry is not null ? ShapeGeometryCustom : GeometryCode(geometry);
         var adjustments = ExtractAdjustments(geometry).ToList();
-        if (geometry is null && fill is null && line is null && properties?.GetFirstChild<A.NoFill>() is null && adjustments.Count == 0)
+        if (geometry is null && customGeometry is null && fill is null && line is null && properties?.GetFirstChild<A.NoFill>() is null && adjustments.Count == 0)
         {
             return null;
         }
