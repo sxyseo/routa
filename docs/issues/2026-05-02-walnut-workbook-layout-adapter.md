@@ -139,6 +139,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Chart preview can now consume protocol trendline and error-bar hints on line series, rendering linear trendlines and fixed-value error bars when those fields are present.
 - Chart preview now preserves protocol secondary-axis series hints, reserves right-axis plot space, draws right-axis tick labels, and scales secondary line series separately from the primary y-axis.
 - Chart preview now preserves series-level chart type hints and can render basic bar+line combo charts instead of forcing every series through the root chart type.
+- Table style projection now applies theme-derived header fills in addition to body stripes and total-row fills.
 
 ## Remaining XLSX Work
 

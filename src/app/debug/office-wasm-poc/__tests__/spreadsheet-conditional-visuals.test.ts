@@ -59,6 +59,7 @@ describe("spreadsheet conditional visuals", () => {
 
     expect(visuals.get("1:0")?.filter).toBe(true);
     expect(visuals.get("1:0")?.fontWeight).toBe(700);
+    expect(visuals.get("1:0")?.background).toBe("#bfdbfe");
     expect(visuals.get("2:0")?.background).toBe("#dbeafe");
     expect(visuals.get("2:0")?.fontWeight).toBe(700);
     expect(visuals.get("2:1")?.background).toBeUndefined();

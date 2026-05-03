@@ -476,6 +476,7 @@ function spreadsheetTableCellVisual(
 
     if (rowIndex < table.range.startRow + table.headerRowCount) {
       visual = mergeSpreadsheetCellVisuals(visual, {
+        background: table.palette.header,
         filter: table.showFilter && rowIndex === table.range.startRow + table.headerRowCount - 1 ? true : undefined,
         fontWeight: 700,
       });

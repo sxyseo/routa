@@ -2,6 +2,7 @@ import { asArray, asRecord, asString, colorToCss, type RecordValue } from "./off
 
 export type SpreadsheetTablePalette = {
   columnStripe: string;
+  header: string;
   rowStripe: string;
   total: string;
 };
@@ -47,12 +48,13 @@ export function tableStylePalette(
   if (baseColor) {
     return {
       columnStripe: mixCssColorWithWhite(baseColor, builtIn?.columnStripeRatio ?? 0.82),
+      header: mixCssColorWithWhite(baseColor, builtIn?.totalRatio ?? 0.58),
       rowStripe: mixCssColorWithWhite(baseColor, builtIn?.rowStripeRatio ?? 0.74),
       total: mixCssColorWithWhite(baseColor, builtIn?.totalRatio ?? 0.58),
     };
   }
 
-  return { columnStripe: "#e0f2fe", rowStripe: "#f0f9ff", total: "#bae6fd" };
+  return { columnStripe: "#e0f2fe", header: "#bae6fd", rowStripe: "#f0f9ff", total: "#bae6fd" };
 }
 
 function builtInTableStyle(styleName: string): BuiltInTableStyle | undefined {
@@ -137,9 +139,9 @@ function mediumIntensity(familyIndex: number, styleIndex: number): {
 }
 
 function mediumExactFallback(styleIndex: number): SpreadsheetTablePalette | undefined {
-  if (styleIndex === 2) return { columnStripe: "#d7f0f8", rowStripe: "#c7eaf7", total: "#9ed8ea" };
-  if (styleIndex === 4) return { columnStripe: "#dbeafe", rowStripe: "#eff6ff", total: "#bfdbfe" };
-  if (styleIndex === 9) return { columnStripe: "#d9ead3", rowStripe: "#eef7e8", total: "#b7dfae" };
+  if (styleIndex === 2) return { columnStripe: "#d7f0f8", header: "#9ed8ea", rowStripe: "#c7eaf7", total: "#9ed8ea" };
+  if (styleIndex === 4) return { columnStripe: "#dbeafe", header: "#bfdbfe", rowStripe: "#eff6ff", total: "#bfdbfe" };
+  if (styleIndex === 9) return { columnStripe: "#d9ead3", header: "#b7dfae", rowStripe: "#eef7e8", total: "#b7dfae" };
   return undefined;
 }
 
