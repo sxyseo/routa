@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type PointerEvent, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   asArray,
@@ -61,6 +61,12 @@ import {
   buildSpreadsheetRenderSnapshot,
   visibleCellIntersectsRange,
 } from "./spreadsheet-render-snapshot";
+import {
+  spreadsheetFrozenSelectionSegments,
+  spreadsheetSelectionFromViewportPoint,
+  spreadsheetSelectionWorldRect,
+  type SpreadsheetSelection,
+} from "./spreadsheet-selection";
 import { useSpreadsheetViewportStore } from "./spreadsheet-viewport-store";
 
 type SpreadsheetFloatingSpec = {
@@ -127,6 +133,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const theme = useMemo(() => asRecord(root?.theme), [root]);
   const imageSources = useOfficeImageSources(root);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
+  const [selection, setSelection] = useState<SpreadsheetSelection | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const { state: viewportState, store: viewportStore } = useSpreadsheetViewportStore();
   const viewportScroll = viewportState.scroll;
@@ -205,7 +212,24 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
 
   const handleSheetSelect = (index: number) => {
     viewportStore.reset();
+    setSelection(null);
     setActiveSheetIndex(index);
+  };
+
+  const handleViewportPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const viewport = event.currentTarget;
+    const bounds = viewport.getBoundingClientRect();
+    setSelection(spreadsheetSelectionFromViewportPoint(
+      layout,
+      {
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top,
+      },
+      {
+        left: viewport.scrollLeft,
+        top: viewport.scrollTop,
+      },
+    ));
   };
 
   const handleViewportScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -242,6 +266,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       <SpreadsheetFormulaBar activeSheet={activeSheet} styles={styles} />
       <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
         <div
+          onPointerDown={handleViewportPointerDown}
           onScroll={handleViewportScroll}
           ref={viewportRef}
           style={{ height: "100%", overflow: "auto" }}
@@ -261,6 +286,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
             <SpreadsheetImageLayer images={visibleImageSpecs} />
             <SpreadsheetShapeLayer shapes={visibleShapeSpecs} />
             <SpreadsheetChartLayer charts={visibleChartSpecs} />
+            <SpreadsheetSelectionLayer layout={layout} selection={selection} />
           </div>
         </div>
         <SpreadsheetFrozenBodyLayer
@@ -280,6 +306,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           scrollTop={viewportScroll.top}
           viewportSize={viewportSize}
         />
+        <SpreadsheetFrozenSelectionLayer layout={layout} scroll={viewportScroll} selection={selection} />
       </div>
       <div
         style={{
@@ -325,6 +352,60 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SpreadsheetSelectionLayer({
+  layout,
+  selection,
+}: {
+  layout: SpreadsheetLayout;
+  selection: SpreadsheetSelection | null;
+}) {
+  if (!selection) return null;
+  const rect = spreadsheetSelectionWorldRect(layout, selection);
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        ...spreadsheetSelectionStyle,
+        height: rect.height,
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+      }}
+    />
+  );
+}
+
+function SpreadsheetFrozenSelectionLayer({
+  layout,
+  scroll,
+  selection,
+}: {
+  layout: SpreadsheetLayout;
+  scroll: SpreadsheetViewportScroll;
+  selection: SpreadsheetSelection | null;
+}) {
+  if (!selection) return null;
+  const segments = spreadsheetFrozenSelectionSegments(layout, selection, scroll);
+  if (segments.length === 0) return null;
+  return (
+    <div aria-hidden="true" style={{ inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 13 }}>
+      {segments.map((segment, index) => (
+        <div
+          key={`${selection.rowIndex}:${selection.columnIndex}:${index}`}
+          style={{
+            ...spreadsheetSelectionStyle,
+            height: segment.height,
+            left: segment.left,
+            top: segment.top,
+            width: segment.width,
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -1122,6 +1203,17 @@ const spreadsheetHeaderBaseStyle: CSSProperties = {
   padding: "0 4px",
   position: "absolute",
   zIndex: 2,
+};
+
+const spreadsheetSelectionStyle: CSSProperties = {
+  borderColor: "#0f9d58",
+  borderStyle: "solid",
+  borderWidth: 2,
+  boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.8)",
+  boxSizing: "border-box",
+  pointerEvents: "none",
+  position: "absolute",
+  zIndex: 30_000,
 };
 
 const spreadsheetCornerStyle: CSSProperties = {
