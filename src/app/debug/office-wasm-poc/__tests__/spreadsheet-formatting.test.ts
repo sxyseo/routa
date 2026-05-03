@@ -9,6 +9,7 @@ import {
   spreadsheetCellStyle,
   spreadsheetCellText,
   spreadsheetNumberFormatCode,
+  spreadsheetSheetTabColor,
 } from "../spreadsheet-preview";
 
 describe("spreadsheet cell formatting", () => {
@@ -164,5 +165,9 @@ describe("spreadsheet cell formatting", () => {
       ["2:1", { formula: "\"Open,Closed\"", prompt: "Pick a status", type: "dropdown" }],
       ["3:1", { formula: "\"Open,Closed\"", prompt: "Pick a status", type: "dropdown" }],
     ]);
+  });
+
+  it("maps sheet tab colors into CSS colors", () => {
+    expect(spreadsheetSheetTabColor({ tabColor: { type: 1, value: "FF00AA00" } })).toBe("#00AA00");
   });
 });

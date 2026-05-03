@@ -322,31 +322,37 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           padding: "0 10px",
         }}
       >
-        {sheets.map((sheet, index) => (
-          <button
-            key={`${asString(sheet.sheetId)}-${index}`}
-            onClick={() => handleSheetSelect(index)}
-            style={{
-              background: index === activeSheetIndex ? "#ffffff" : "transparent",
-              borderBottomColor: index === activeSheetIndex ? "#111827" : "transparent",
-              borderBottomStyle: "solid",
-              borderBottomWidth: 3,
-              borderLeftWidth: 0,
-              borderRightWidth: 0,
-              borderTopWidth: 0,
-              color: index === activeSheetIndex ? "#111827" : "#5f6368",
-              cursor: "pointer",
-              flex: "0 0 auto",
-              fontSize: 13,
-              fontWeight: index === activeSheetIndex ? 600 : 500,
-              minHeight: 44,
-              padding: "0 16px",
-            }}
-            type="button"
-          >
-            {asString(sheet.name) || `${labels.sheet} ${index + 1}`}
-          </button>
-        ))}
+        {sheets.map((sheet, index) => {
+          const tabColor = spreadsheetSheetTabColor(sheet);
+          const active = index === activeSheetIndex;
+          return (
+            <button
+              key={`${asString(sheet.sheetId)}-${index}`}
+              onClick={() => handleSheetSelect(index)}
+              style={{
+                background: active ? "#ffffff" : "transparent",
+                borderBottomColor: active ? (tabColor ?? "#111827") : "transparent",
+                borderBottomStyle: "solid",
+                borderBottomWidth: 3,
+                borderLeftWidth: 0,
+                borderRightWidth: 0,
+                borderTopColor: !active && tabColor ? tabColor : "transparent",
+                borderTopStyle: "solid",
+                borderTopWidth: 3,
+                color: active ? "#111827" : "#5f6368",
+                cursor: "pointer",
+                flex: "0 0 auto",
+                fontSize: 13,
+                fontWeight: active ? 600 : 500,
+                minHeight: 44,
+                padding: "0 16px",
+              }}
+              type="button"
+            >
+              {asString(sheet.name) || `${labels.sheet} ${index + 1}`}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -1190,6 +1196,10 @@ function defaultSpreadsheetSheetIndex(sheets: RecordValue[]): number {
   if (sheets.length <= 1) return 0;
   const readmeFirst = /^00[_ -]?readme$/i.test(asString(sheets[0]?.name));
   return readmeFirst ? 1 : 0;
+}
+
+export function spreadsheetSheetTabColor(sheet: RecordValue | undefined): string | undefined {
+  return colorToCss(asRecord(sheet?.tabColor) ?? sheet?.tabColor);
 }
 
 function spreadsheetFontFamily(typeface: string): string {
