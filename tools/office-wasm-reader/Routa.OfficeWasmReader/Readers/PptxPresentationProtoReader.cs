@@ -2350,6 +2350,7 @@ internal static class PptxPresentationProtoReader
             "diamond" => 30,
             "parallelogram" => 31,
             "trapezoid" => 32,
+            "homeplate" => 37,
             "hexagon" => 39,
             "arc" => 89,
             "bracepair" => 111,
