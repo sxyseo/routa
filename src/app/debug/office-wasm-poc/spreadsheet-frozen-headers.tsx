@@ -10,6 +10,8 @@ import {
   spreadsheetColumnLeft,
   type SpreadsheetLayout,
   spreadsheetRowTop,
+  spreadsheetVisibleCellRange,
+  type SpreadsheetViewportSize,
 } from "./spreadsheet-layout";
 
 type SpreadsheetHeaderRect = {
@@ -24,9 +26,10 @@ export function spreadsheetFrozenColumnHeaderRect(
   columnIndex: number,
   scrollLeft: number,
 ): SpreadsheetHeaderRect {
+  const frozen = columnIndex < layout.freezePanes.columnCount;
   return {
     height: SPREADSHEET_COLUMN_HEADER_HEIGHT,
-    left: spreadsheetColumnLeft(layout, columnIndex) - SPREADSHEET_ROW_HEADER_WIDTH - scrollLeft,
+    left: spreadsheetColumnLeft(layout, columnIndex) - SPREADSHEET_ROW_HEADER_WIDTH - (frozen ? 0 : scrollLeft),
     width: layout.columnWidths[columnIndex] ?? 0,
   };
 }
@@ -36,9 +39,10 @@ export function spreadsheetFrozenRowHeaderRect(
   rowOffset: number,
   scrollTop: number,
 ): SpreadsheetHeaderRect {
+  const frozen = rowOffset < layout.freezePanes.rowCount;
   return {
     height: layout.rowHeights[rowOffset] ?? 0,
-    top: spreadsheetRowTop(layout, rowOffset) - SPREADSHEET_COLUMN_HEADER_HEIGHT - scrollTop,
+    top: spreadsheetRowTop(layout, rowOffset) - SPREADSHEET_COLUMN_HEADER_HEIGHT - (frozen ? 0 : scrollTop),
     width: SPREADSHEET_ROW_HEADER_WIDTH,
   };
 }
@@ -47,11 +51,25 @@ export function SpreadsheetFrozenHeaders({
   layout,
   scrollLeft,
   scrollTop,
+  viewportSize,
 }: {
   layout: SpreadsheetLayout;
   scrollLeft: number;
   scrollTop: number;
+  viewportSize: SpreadsheetViewportSize;
 }) {
+  const visibleRange = spreadsheetVisibleCellRange(layout, viewportSize, { left: scrollLeft, top: scrollTop });
+  const visibleColumnIndexes = visibleHeaderIndexes(
+    visibleRange.startColumnIndex,
+    visibleRange.endColumnIndex,
+    layout.freezePanes.columnCount,
+  );
+  const visibleRowOffsets = visibleHeaderIndexes(
+    visibleRange.startRowOffset,
+    visibleRange.endRowOffset,
+    layout.freezePanes.rowCount,
+  );
+
   return (
     <div
       aria-hidden="true"
@@ -80,7 +98,7 @@ export function SpreadsheetFrozenHeaders({
             width: Math.max(0, layout.gridWidth - SPREADSHEET_ROW_HEADER_WIDTH),
           }}
         >
-          {Array.from({ length: layout.columnCount }, (_, columnIndex) => {
+          {visibleColumnIndexes.map((columnIndex) => {
             const rect = spreadsheetFrozenColumnHeaderRect(layout, columnIndex, scrollLeft);
             return (
               <div
@@ -116,7 +134,7 @@ export function SpreadsheetFrozenHeaders({
             width: SPREADSHEET_ROW_HEADER_WIDTH,
           }}
         >
-          {Array.from({ length: layout.rowCount }, (_, rowOffset) => {
+          {visibleRowOffsets.map((rowOffset) => {
             const rect = spreadsheetFrozenRowHeaderRect(layout, rowOffset, scrollTop);
             return (
               <div
@@ -137,6 +155,19 @@ export function SpreadsheetFrozenHeaders({
       </div>
     </div>
   );
+}
+
+function visibleHeaderIndexes(start: number, end: number, frozenCount: number): number[] {
+  const indexes = new Set<number>();
+  for (let index = 0; index < frozenCount; index += 1) {
+    indexes.add(index);
+  }
+
+  for (let index = Math.max(0, start); index <= end; index += 1) {
+    indexes.add(index);
+  }
+
+  return [...indexes].sort((left, right) => left - right);
 }
 
 const spreadsheetFrozenHeaderBaseStyle: CSSProperties = {

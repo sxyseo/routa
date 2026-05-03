@@ -155,8 +155,8 @@ export function buildSpreadsheetLayout(sheet: RecordValue | undefined): Spreadsh
     }
   }
 
-  const rowCount = Math.min(maxRow, 80);
-  const columnCount = Math.min(Math.max(maxColumn + 1, 6), 32);
+  const rowCount = clampInteger(maxRow, 1, 1_048_576);
+  const columnCount = clampInteger(Math.max(maxColumn + 1, 6), 1, 16_384);
   const columnWidths = Array.from(
     { length: columnCount },
     (_, index) => columnWidthByIndex.get(index) ?? SPREADSHEET_DEFAULT_COLUMN_WIDTH,
@@ -254,9 +254,10 @@ export function spreadsheetVisibleCellRange(
   overscan = 2,
 ): SpreadsheetVisibleCellRange {
   if (layout.columnCount <= 0 || layout.rowCount <= 0 || viewport.width <= 0 || viewport.height <= 0) {
+    const padding = Math.max(0, Math.trunc(overscan));
     return {
-      endColumnIndex: Math.max(0, layout.columnCount - 1),
-      endRowOffset: Math.max(0, layout.rowCount - 1),
+      endColumnIndex: Math.min(Math.max(0, layout.columnCount - 1), 20 + padding),
+      endRowOffset: Math.min(Math.max(0, layout.rowCount - 1), 50 + padding),
       startColumnIndex: 0,
       startRowOffset: 0,
     };

@@ -42,6 +42,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 
 - `src/app/debug/office-wasm-poc/spreadsheet-layout.ts` already provides prefix sums, binary-search visible range lookup, frozen pane projection, floating hit regions, and drawing bounds.
 - `src/app/debug/office-wasm-poc/spreadsheet-preview.tsx` renders only visible cells and visible floating overlays in the scrollable grid.
+- `src/app/debug/office-wasm-poc/spreadsheet-frozen-headers.tsx` renders visible row/column headers from the same viewport range instead of mapping every worksheet row and column.
 - Scroll-driven viewport state is coalesced with `requestAnimationFrame`, matching Walnut's frame-scheduled update style instead of updating React state for every scroll event.
 
 ## Progress
@@ -51,6 +52,8 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Changed the frozen body overlay to reuse the visible viewport range and merge-start overscan logic instead of traversing every row/column in the current layout.
 - Added viewport/overscan culling for floating image, shape, and chart overlays so offscreen drawings do not mount canvases or DOM nodes during scroll.
 - Coalesced spreadsheet viewport scroll/size updates with `requestAnimationFrame`, keeping scroll handling closer to Walnut's frame-based viewport scheduling.
+- Removed the debug-only 80 row / 32 column layout cap. The layout adapter now preserves full Excel-scale row/column bounds while the body and headers render only the active viewport window.
+- Added a production-scale layout regression using Walnut-sized demo dimensions (`1500` rows, `182` columns) to lock full-layout + small-viewport behavior.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

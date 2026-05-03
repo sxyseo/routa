@@ -251,7 +251,12 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           styles={styles}
           viewportSize={viewportSize}
         />
-        <SpreadsheetFrozenHeaders layout={layout} scrollLeft={viewportScroll.left} scrollTop={viewportScroll.top} />
+        <SpreadsheetFrozenHeaders
+          layout={layout}
+          scrollLeft={viewportScroll.left}
+          scrollTop={viewportScroll.top}
+          viewportSize={viewportSize}
+        />
       </div>
       <div
         style={{

@@ -126,6 +126,41 @@ describe("spreadsheet frozen headers", () => {
     });
   });
 
+  it("keeps full production-scale layout while exposing only a viewport window", () => {
+    const layout = buildSpreadsheetLayout({
+      columns: Array.from({ length: 182 }, (_, index) => ({ max: index + 1, min: index + 1, width: 10 })),
+      rows: Array.from({ length: 1500 }, (_, index) => ({
+        cells: [{ address: `A${index + 1}` }],
+        index: index + 1,
+      })),
+    });
+
+    expect(layout.columnCount).toBe(182);
+    expect(layout.rowCount).toBe(1500);
+    expect(spreadsheetVisibleCellRange(
+      layout,
+      { height: 320, width: 640 },
+      { left: 10_000, top: 20_000 },
+      1,
+    )).toEqual({
+      endColumnIndex: 142,
+      endRowOffset: 1016,
+      startColumnIndex: 131,
+      startRowOffset: 998,
+    });
+    expect(spreadsheetVisibleCellRange(
+      layout,
+      { height: 0, width: 0 },
+      { left: 0, top: 0 },
+      1,
+    )).toEqual({
+      endColumnIndex: 21,
+      endRowOffset: 51,
+      startColumnIndex: 0,
+      startRowOffset: 0,
+    });
+  });
+
   it("culls floating overlays against the scroll viewport with overscan", () => {
     expect(spreadsheetViewportIntersectsRect(
       { height: 80, left: 520, top: 380, width: 120 },
