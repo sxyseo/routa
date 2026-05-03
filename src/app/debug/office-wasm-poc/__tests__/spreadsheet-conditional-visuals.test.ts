@@ -393,4 +393,43 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("3:2")).toBeUndefined();
     expect(visuals.get("4:2")?.background).toBe("#22C55E");
   });
+
+  it("uses data-bar direction, visibility, and length options", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A2"],
+          rules: [
+            {
+              dataBar: {
+                cfvos: [{ type: "min" }, { type: "max" }],
+                color: "3B82F6",
+                direction: "rightToLeft",
+                maxLength: 80,
+                minLength: 20,
+                showValue: false,
+              },
+              type: "dataBar",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: 0 }], index: 1 },
+        { cells: [{ address: "A2", value: 100 }], index: 2 },
+      ],
+    });
+
+    expect(visuals.get("1:0")?.dataBar).toMatchObject({
+      direction: "rightToLeft",
+      showValue: false,
+      startPercent: 80,
+      widthPercent: 20,
+    });
+    expect(visuals.get("2:0")?.dataBar).toMatchObject({
+      direction: "rightToLeft",
+      startPercent: 20,
+      widthPercent: 80,
+    });
+  });
 });

@@ -194,7 +194,9 @@ export function SpreadsheetCellContent({
         </>
       ) : null}
       {visual?.iconSet ? <SpreadsheetIconSet visual={visual.iconSet} /> : null}
-      {sparkline || visual?.iconSet?.showValue === false ? null : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
+      {sparkline || visual?.iconSet?.showValue === false || visual?.dataBar?.showValue === false
+        ? null
+        : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
       {validation ? <SpreadsheetValidationIndicator validation={validation} /> : null}
       {visual?.filter ? (
         <span

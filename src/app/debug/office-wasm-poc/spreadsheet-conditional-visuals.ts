@@ -18,7 +18,9 @@ export type SpreadsheetCellVisual = {
   dataBar?: {
     axisPercent?: number;
     color: string;
+    direction: "leftToRight" | "rightToLeft";
     gradient: boolean;
+    showValue: boolean;
     startPercent: number;
     widthPercent: number;
   };
@@ -926,17 +928,44 @@ function spreadsheetDataBarVisual(
 ): NonNullable<SpreadsheetCellVisual["dataBar"]> {
   const zeroPercent = dataBarAxisPercent(dataBar, minValue, maxValue, span);
   const valuePercent = Math.max(0, Math.min(100, (value - minValue) / span * 100));
-  const startPercent = Math.max(0, Math.min(100, Math.min(zeroPercent, valuePercent)));
-  const endPercent = Math.max(0, Math.min(100, Math.max(zeroPercent, valuePercent)));
-  const axisPercent = minValue < 0 && maxValue > 0 ? zeroPercent : undefined;
+  const rawStartPercent = Math.max(0, Math.min(100, Math.min(zeroPercent, valuePercent)));
+  const rawEndPercent = Math.max(0, Math.min(100, Math.max(zeroPercent, valuePercent)));
+  const widthPercent = dataBarWidthPercent(rawEndPercent - rawStartPercent, dataBar);
+  const startPercent = dataBarStartPercent(rawStartPercent, rawEndPercent, widthPercent);
+  const direction = asString(dataBar.direction) === "rightToLeft" ? "rightToLeft" : "leftToRight";
+  const axisPercent = minValue < 0 && maxValue > 0 ? displayDataBarPercent(zeroPercent, direction) : undefined;
 
   return {
     axisPercent,
     color: value < 0 ? negativeColor : color,
+    direction,
     gradient: dataBar.gradient !== false,
-    startPercent,
-    widthPercent: Math.max(0, endPercent - startPercent),
+    showValue: dataBar.showValue !== false,
+    startPercent: displayDataBarPercent(startPercent, direction, widthPercent),
+    widthPercent,
   };
+}
+
+function dataBarWidthPercent(widthPercent: number, dataBar: RecordValue): number {
+  const minLength = dataBarLengthPercent(dataBar.minLength, 0);
+  const maxLength = dataBarLengthPercent(dataBar.maxLength, 100);
+  return Math.max(minLength, Math.min(maxLength, Math.max(0, widthPercent)));
+}
+
+function dataBarStartPercent(startPercent: number, endPercent: number, widthPercent: number): number {
+  if (widthPercent <= endPercent - startPercent) return startPercent;
+  if (endPercent <= startPercent) return startPercent;
+  return Math.max(0, Math.min(100 - widthPercent, endPercent - widthPercent));
+}
+
+function dataBarLengthPercent(value: unknown, fallback: number): number {
+  const length = asNumber(value, fallback);
+  return Math.max(0, Math.min(100, length));
+}
+
+function displayDataBarPercent(percent: number, direction: "leftToRight" | "rightToLeft", widthPercent = 0): number {
+  if (direction === "leftToRight") return percent;
+  return Math.max(0, Math.min(100, 100 - percent - widthPercent));
 }
 
 function dataBarAxisPercent(dataBar: RecordValue, minValue: number, maxValue: number, span: number): number {

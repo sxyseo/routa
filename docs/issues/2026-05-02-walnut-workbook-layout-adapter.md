@@ -124,6 +124,8 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added duplicate/unique value conditional-format rendering by computing lightweight range text-frequency stats for only the affected rule ranges.
 - Added top/bottom and above/below-average conditional-format rendering using per-rule numeric range stats, including rank, percent, bottom, equal-average, and standard-deviation thresholds when those protocol fields are present.
 - Added a conservative formula-driven conditional-format evaluator for `expression` rules, including relative/absolute cell references, comparisons, `AND`/`OR`/`NOT`, `ISBLANK`/`ISNUMBER`/`ISTEXT`, `ROW`/`COLUMN`, `LEN`, and `MOD`.
+- Probed a temporary workbook with OpenXML frozen panes (`xSplit`/`ySplit`/`state=frozen`) and confirmed Walnut's decoded Workbook protocol still emits no freeze-pane fields. The preview can consume `freezePanes`, but reader extraction should remain disabled unless the target schema changes.
+- Tightened data-bar rendering to consume protocol `showValue`, `direction`, `minLength`, and `maxLength` options in addition to axis, negative color, and gradient settings.
 
 ## Remaining XLSX Work
 
@@ -135,7 +137,7 @@ This issue is still `in_progress`, but the core XLSX contract is no longer block
 - The committed render-contract suite is also green for the core workbook, image drawing, sparkline, multi-chart, and surface-chart fixtures.
 - Recent preview additions cover visible overlays for `sparklineGroups`, notes/threaded comment targets, data-validation dropdown/validation markers, sheet `tabColor`, and sheet-level slicer fallback shapes.
 - `src/app/debug/office-wasm-poc/spreadsheet-preview.tsx` was split so cell overlays live in `spreadsheet-cell-overlays.tsx`; the main preview file is back under the file-budget limit.
-- Conditional-format rendering now consumes color scales, data bars, icon sets, common text/cell rules, duplicate/unique rules, top/bottom rules, above/below-average rules, formula-driven expression rules, cfvo thresholds, negative data bars, data-bar axes, and `stopIfTrue` precedence for matched format rules.
+- Conditional-format rendering now consumes color scales, richer data bars, icon sets, common text/cell rules, duplicate/unique rules, top/bottom rules, above/below-average rules, formula-driven expression rules, cfvo thresholds, negative data bars, data-bar axes, and `stopIfTrue` precedence for matched format rules.
 
 Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or production renderer architecture:
 
@@ -157,7 +159,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 5. Freeze-pane extraction and interaction behavior
 
-   The layout adapter and preview can render frozen body/header regions when a sheet supplies `freezePanes`. Still missing reader extraction if Walnut exposes real workbook freeze panes in its Workbook protocol, plus pointer/edit/resize hit-region behavior around frozen panes.
+   The layout adapter and preview can render frozen body/header regions when a sheet supplies `freezePanes`, but a temporary OpenXML pane probe shows Walnut currently does not expose freeze panes in its decoded Workbook protocol. Reader extraction should stay disabled for protocol parity; remaining work is pointer/edit/resize hit-region behavior if a future schema exposes this field.
 
 6. Timeline, slicer, and pivot interactivity
 

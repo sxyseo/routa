@@ -80,6 +80,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Sheet-level slicer protocol objects now get a fallback worksheet overlay when no drawing shape already represents the slicer.
 - Conditional-format preview resolution now covers `stopIfTrue`, common text/cell comparisons, duplicate/unique rules, top/bottom rules, and above/below-average rules without returning to eager full-sheet visual materialization.
 - Formula-driven conditional-format rules now use a conservative evaluator for common expressions without adding eager full-sheet rendering.
+- Data-bar rendering now consumes `showValue`, `direction`, `minLength`, and `maxLength` from the existing lazy conditional-format lookup.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work
