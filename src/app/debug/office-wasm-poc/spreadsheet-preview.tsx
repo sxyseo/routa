@@ -63,6 +63,40 @@ type SpreadsheetFloatingSpec = {
   width: number;
 };
 
+const EXCEL_BUILT_IN_NUMBER_FORMATS = new Map<number, string>([
+  [1, "0"],
+  [2, "0.00"],
+  [3, "#,##0"],
+  [4, "#,##0.00"],
+  [5, "$#,##0;($#,##0)"],
+  [6, "$#,##0;[Red]($#,##0)"],
+  [7, "$#,##0.00;($#,##0.00)"],
+  [8, "$#,##0.00;[Red]($#,##0.00)"],
+  [9, "0%"],
+  [10, "0.00%"],
+  [11, "0.00E+00"],
+  [12, "# ?/?"],
+  [13, "# ??/??"],
+  [14, "m/d/yy"],
+  [15, "d-mmm-yy"],
+  [16, "d-mmm"],
+  [17, "mmm-yy"],
+  [18, "h:mm AM/PM"],
+  [19, "h:mm:ss AM/PM"],
+  [20, "h:mm"],
+  [21, "h:mm:ss"],
+  [22, "m/d/yy h:mm"],
+  [37, "#,##0;(#,##0)"],
+  [38, "#,##0;[Red](#,##0)"],
+  [39, "#,##0.00;(#,##0.00)"],
+  [40, "#,##0.00;[Red](#,##0.00)"],
+  [45, "mm:ss"],
+  [46, "[h]:mm:ss"],
+  [47, "mmss.0"],
+  [48, "##0.0E+0"],
+  [49, "@"],
+]);
+
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = useMemo(() => asRecord(proto), [proto]);
   const sheets = useMemo(
@@ -798,7 +832,7 @@ function shouldFormatAsMonthSerial(cell: RecordValue | null, sheetName?: string)
   return columnIndexFromAddress(address) === 0 && rowIndexFromAddress(address) >= 5;
 }
 
-function spreadsheetCellText(
+export function spreadsheetCellText(
   cell: RecordValue | null,
   styles: RecordValue | null,
   sheetName?: string,
@@ -816,13 +850,10 @@ function spreadsheetCellText(
   const columnIndex = columnIndexFromAddress(address);
   const cellFormat = styleAt(styles?.cellXfs, styleIndex ?? cell.styleIndex);
   const numberFormatId = asNumber(cellFormat?.numFmtId, -1);
-  const numberFormat = asArray(styles?.numberFormats)
-    .map(asRecord)
-    .find((format) => asNumber(format?.id, -2) === numberFormatId);
-  const formatCode = asString(numberFormat?.formatCode);
+  const formatCode = spreadsheetNumberFormatCode(styles, numberFormatId);
 
-  if (formatCode.includes("mmm") && formatCode.includes("yy")) return excelSerialMonthYearLabel(numberValue);
-  if (formatCode.includes("yyyy") && formatCode.includes("dd")) return excelSerialDateLabel(numberValue);
+  if (isExcelMonthYearFormat(formatCode)) return excelSerialMonthYearLabel(numberValue);
+  if (isExcelDateFormat(formatCode)) return excelSerialDateLabel(numberValue);
   if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
 
   if (sheetName === "03_TimeSeries") {
@@ -836,11 +867,39 @@ function spreadsheetCellText(
     if (columnIndex === 3) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
   }
 
-  if (formatCode.includes("%")) return `${(numberValue * 100).toFixed(formatCode.includes(".0") ? 1 : 0)}%`;
+  if (formatCode.includes("%")) return `${(numberValue * 100).toFixed(spreadsheetDecimalPlaces(formatCode))}%`;
   if (formatCode.includes("$")) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
+  if (formatCode.includes("#,##0.00")) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   if (formatCode.includes("#,##0")) return Math.round(numberValue).toLocaleString("en-US");
+  if (/^0\.0+$/.test(formatCode)) return numberValue.toFixed(formatCode.split(".")[1]?.length ?? 0);
   if (/\d+\.\d{4,}/.test(text)) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 1 });
   return text;
+}
+
+export function spreadsheetNumberFormatCode(styles: RecordValue | null, numberFormatId: number): string {
+  const numberFormat = asArray(styles?.numberFormats)
+    .map(asRecord)
+    .find((format) => asNumber(format?.id, -2) === numberFormatId);
+  const customFormat = asString(numberFormat?.formatCode);
+  return customFormat || EXCEL_BUILT_IN_NUMBER_FORMATS.get(numberFormatId) || "";
+}
+
+function isExcelMonthYearFormat(formatCode: string): boolean {
+  const normalized = formatCode.toLowerCase();
+  return normalized.includes("mmm") && normalized.includes("yy");
+}
+
+function isExcelDateFormat(formatCode: string): boolean {
+  const normalized = formatCode.toLowerCase();
+  if (!/[dmy]/.test(normalized)) return false;
+  if (normalized.includes("%")) return false;
+  return /(^|[^a-z])m{1,4}([^a-z]|$)/.test(normalized) ||
+    /(^|[^a-z])d{1,4}([^a-z]|$)/.test(normalized) ||
+    /(^|[^a-z])y{2,4}([^a-z]|$)/.test(normalized);
+}
+
+function spreadsheetDecimalPlaces(formatCode: string): number {
+  return formatCode.match(/\.([0#]+)/)?.[1]?.length ?? 0;
 }
 
 function rowsByIndexForSheet(sheet: RecordValue | undefined): Map<number, Map<number, RecordValue>> {
