@@ -1,8 +1,11 @@
 import {
   asArray,
+  asNumber,
+  asRecord,
   asString,
   cellText,
   columnIndexFromAddress,
+  parseCellRange,
   type RecordValue,
 } from "./office-preview-utils";
 
@@ -17,6 +20,7 @@ type ConditionalFormulaContext = {
   range: ConditionalFormulaRange;
   rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>;
   rowIndex: number;
+  tables?: unknown;
 };
 
 type CellReference = {
@@ -62,6 +66,9 @@ function evaluateFormulaValue(expression: string, context: ConditionalFormulaCon
 
   const cellReference = parseCellReference(trimmed);
   if (cellReference) return cellValueAtReference(cellReference, context);
+
+  const structuredReference = parseStructuredReference(trimmed);
+  if (structuredReference) return structuredReferenceValue(structuredReference, context);
 
   const call = parseFunctionCall(trimmed);
   if (call) return evaluateFormulaFunction(call.name, call.args, context);
@@ -159,6 +166,91 @@ function parseCellReference(value: string): CellReference | null {
     rowAbsolute: match[3] === "$",
     rowIndex: Math.max(1, Number.parseInt(match[4] ?? "1", 10)),
   };
+}
+
+function parseStructuredReference(value: string): { columnName: string; tableName: string } | null {
+  const currentRowMatch = value.match(/^(?:(.+))?\[@([^\]]+)\]$/);
+  if (currentRowMatch) {
+    return {
+      columnName: cleanStructuredReferenceName(currentRowMatch[2]),
+      tableName: cleanStructuredReferenceName(currentRowMatch[1]),
+    };
+  }
+
+  const thisRowMatch = value.match(/^(?:(.+))?\[\[#This Row\],\[([^\]]+)\]\]$/i);
+  if (thisRowMatch) {
+    return {
+      columnName: cleanStructuredReferenceName(thisRowMatch[2]),
+      tableName: cleanStructuredReferenceName(thisRowMatch[1]),
+    };
+  }
+
+  const columnMatch = value.match(/^(.+)\[([^\]#@][^\]]*)\]$/);
+  if (!columnMatch) return null;
+  return {
+    columnName: cleanStructuredReferenceName(columnMatch[2]),
+    tableName: cleanStructuredReferenceName(columnMatch[1]),
+  };
+}
+
+function structuredReferenceValue(
+  reference: { columnName: string; tableName: string },
+  context: ConditionalFormulaContext,
+): string {
+  const table = structuredReferenceTable(reference.tableName, context);
+  if (!table || !reference.columnName) return "";
+
+  const tableRange = parseCellRange(asString(table.reference) || asString(table.ref));
+  if (!tableRange) return "";
+
+  const headerRowCount = Math.max(0, asNumber(table.headerRowCount, 1));
+  const totalsRowCount = Math.max(0, asNumber(table.totalsRowCount, table.totalsRowShown === true ? 1 : 0));
+  const dataStartRow = tableRange.startRow + headerRowCount;
+  const dataEndRow = tableRange.startRow + tableRange.rowSpan - totalsRowCount - 1;
+  if (context.rowIndex < dataStartRow || context.rowIndex > dataEndRow) return "";
+
+  const columnIndex = structuredReferenceColumnIndex(table, tableRange, reference.columnName, context);
+  if (columnIndex == null) return "";
+  return cellText(context.rowsByIndex.get(context.rowIndex)?.get(columnIndex) ?? null);
+}
+
+function structuredReferenceTable(tableName: string, context: ConditionalFormulaContext): RecordValue | null {
+  const normalizedName = tableName.toLowerCase();
+  for (const candidate of asArray(context.tables).map(asRecord).filter((table): table is RecordValue => table != null)) {
+    const tableRange = parseCellRange(asString(candidate.reference) || asString(candidate.ref));
+    if (!tableRange) continue;
+    const candidateNames = [asString(candidate.name), asString(candidate.displayName)].map((name) => name.toLowerCase());
+    const nameMatches = normalizedName.length > 0 && candidateNames.includes(normalizedName);
+    const rowMatches = context.rowIndex >= tableRange.startRow && context.rowIndex < tableRange.startRow + tableRange.rowSpan;
+    const columnMatches = context.columnIndex >= tableRange.startColumn &&
+      context.columnIndex < tableRange.startColumn + tableRange.columnSpan;
+    if (nameMatches || (!normalizedName && rowMatches && columnMatches)) return candidate;
+  }
+  return null;
+}
+
+function structuredReferenceColumnIndex(
+  table: RecordValue,
+  tableRange: NonNullable<ReturnType<typeof parseCellRange>>,
+  columnName: string,
+  context: ConditionalFormulaContext,
+): number | null {
+  const normalizedName = columnName.toLowerCase();
+  const columnRecords = asArray(table.columns).map(asRecord).filter((column): column is RecordValue => column != null);
+  const recordIndex = columnRecords.findIndex((column) => asString(column.name).toLowerCase() === normalizedName);
+  if (recordIndex >= 0) return tableRange.startColumn + recordIndex;
+
+  const headerCells = context.rowsByIndex.get(tableRange.startRow);
+  for (let offset = 0; offset < tableRange.columnSpan; offset += 1) {
+    const columnIndex = tableRange.startColumn + offset;
+    if (cellText(headerCells?.get(columnIndex) ?? null).toLowerCase() === normalizedName) return columnIndex;
+  }
+
+  return null;
+}
+
+function cleanStructuredReferenceName(value: unknown): string {
+  return asString(value).trim().replace(/^'|'$/g, "");
 }
 
 function parseFunctionCall(value: string): { args: string[]; name: string } | null {

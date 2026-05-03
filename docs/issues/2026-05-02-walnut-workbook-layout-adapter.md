@@ -131,6 +131,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Slicer fallback overlays now consume root `slicerCaches` and render a compact item-state list when no drawing shape exists for the slicer, so protocol-visible cache items are no longer dropped by the preview layer.
 - Bar chart preview now renders clustered bars for every protocol series instead of dropping all but the first series; data labels use the same multi-series geometry.
 - Table style mapping now recognizes built-in `TableStyleLight1`-`TableStyleLight21` and `TableStyleDark1`-`TableStyleDark11` families in addition to Medium styles, deriving their stripe and total palettes from workbook theme accents.
+- Formula conditional-format preview now resolves table structured references for current-row table columns such as `[@Status]` and `Table1[Status]`, using decoded table ranges/columns and the current cell row.
 
 ## Remaining XLSX Work
 
@@ -160,7 +161,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 4. Formula-driven conditional formatting
 
-   Common expression rules are now rendered with a conservative evaluator for cell references, comparisons, logical functions, blank/type checks, row/column lookup, length, and modulo. Still missing broad Excel formula-language parity for arbitrary functions, cross-sheet references, named ranges, structured table references, and more unusual layered-rule precedence combinations.
+   Common expression rules are now rendered with a conservative evaluator for cell references, current-row table structured references, comparisons, logical functions, blank/type checks, row/column lookup, length, and modulo. Still missing broad Excel formula-language parity for arbitrary functions, cross-sheet references, named ranges, full table reference arrays/totals, and more unusual layered-rule precedence combinations.
 
 5. Freeze-pane extraction and interaction behavior
 

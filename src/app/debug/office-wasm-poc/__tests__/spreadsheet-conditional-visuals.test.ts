@@ -479,6 +479,41 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:2")?.background).toBe("#22C55E");
   });
 
+  it("resolves table structured references in formula conditional formats", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["C2:C4"],
+          rules: [
+            {
+              fillColor: "C6EFCE",
+              formulas: ["=[@Status]=\"Open\""],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      name: "StructuredRefs",
+      rows: [
+        { cells: [{ address: "A1", value: "Status" }, { address: "B1", value: "Owner" }, { address: "C1", value: "Score" }], index: 1 },
+        { cells: [{ address: "A2", value: "Open" }, { address: "B2", value: "Ava" }, { address: "C2", value: "12" }], index: 2 },
+        { cells: [{ address: "A3", value: "Closed" }, { address: "B3", value: "Ben" }, { address: "C3", value: "8" }], index: 3 },
+        { cells: [{ address: "A4", value: "Open" }, { address: "B4", value: "Cal" }, { address: "C4", value: "20" }], index: 4 },
+      ],
+      tables: [
+        {
+          columns: [{ name: "Status" }, { name: "Owner" }, { name: "Score" }],
+          name: "Tasks",
+          reference: "A1:C4",
+        },
+      ],
+    });
+
+    expect(visuals.get("2:2")?.background).toBe("#C6EFCE");
+    expect(visuals.get("3:2")).toBeUndefined();
+    expect(visuals.get("4:2")?.background).toBe("#C6EFCE");
+  });
+
   it("uses data-bar direction, visibility, and length options", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

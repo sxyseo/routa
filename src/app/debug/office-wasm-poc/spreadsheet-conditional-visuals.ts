@@ -88,6 +88,7 @@ type SpreadsheetConditionalVisualSpec =
     numericValues?: readonly number[];
     range: SpreadsheetCellRange;
     stopIfTrue: boolean;
+    tables?: unknown;
     textCounts?: ReadonlyMap<string, number>;
   }
   | {
@@ -167,6 +168,7 @@ export function buildSpreadsheetConditionalVisuals(
         numericValues: conditionalRuleNeedsNumericValues(format) ? values.map((item) => item.value) : undefined,
         range,
         stopIfTrue: format.stopIfTrue === true,
+        tables: sheet?.tables,
         textCounts: conditionalRuleNeedsTextCounts(format) ? textCountsInRange(rowsByIndex, reference) : undefined,
       });
     }
@@ -417,6 +419,7 @@ function spreadsheetConditionalCellVisual(
           rule.range,
           rowIndex,
           columnIndex,
+          rule.tables,
         )) break;
         visual = mergeSpreadsheetCellVisuals(visual, {
           background: protocolColorToCss(rule.format.fillColor),
@@ -703,6 +706,7 @@ function conditionalTextMatches(
   range?: SpreadsheetCellRange,
   rowIndex?: number,
   columnIndex?: number,
+  tables?: unknown,
 ): boolean {
   const type = asString(format.type);
   const matchText = asString(format.text);
@@ -754,6 +758,7 @@ function conditionalTextMatches(
       range,
       rowsByIndex,
       rowIndex,
+      tables,
     });
   }
 
