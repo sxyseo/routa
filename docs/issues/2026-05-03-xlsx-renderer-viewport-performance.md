@@ -65,6 +65,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Hidden rows and columns now stay in the prefix-sum layout as zero-size entries, matching Excel/Walnut viewport semantics without shifting later row/column indexes.
 - Row and column `styleIndex` values are now preserved in the layout adapter and participate in renderer style/number-format fallback when a cell has no direct style.
 - Built-in Excel number formats now participate in cell text rendering, covering common date, percent, decimal, thousands, and currency `numFmtId` values even when no custom `numberFormats[]` entry exists.
+- `showGridLines=false` now suppresses fallback worksheet gridline borders in the debug preview while preserving explicit cell border colors.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

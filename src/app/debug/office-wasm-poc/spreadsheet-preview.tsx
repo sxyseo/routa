@@ -358,6 +358,7 @@ function SpreadsheetFrozenBodyLayer({
   const frozenWidth = spreadsheetFrozenBodyWidth(layout);
   const frozenHeight = spreadsheetFrozenBodyHeight(layout);
   if (frozenWidth <= 0 && frozenHeight <= 0) return null;
+  const showGridLines = spreadsheetShowGridLines(activeSheet);
   const visibleRange = spreadsheetVisibleCellRange(layout, viewportSize, scroll);
   const visibleMergeStarts = visibleMergedCellStarts(layout, visibleRange);
   const visibleColumnIndexes = sortedVisibleIndexes(
@@ -400,7 +401,7 @@ function SpreadsheetFrozenBodyLayer({
               data-frozen-cell-address={asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`}
               key={`${rowIndex}:${columnIndex}:${segmentIndex}`}
               style={{
-                ...spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex),
+                ...spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex, showGridLines),
                 height: rect.height,
                 left: rect.left,
                 overflow: "hidden",
@@ -434,6 +435,7 @@ function SpreadsheetGrid({
   viewportSize: SpreadsheetViewportSize;
 }) {
   const sheetName = asString(activeSheet?.name);
+  const showGridLines = spreadsheetShowGridLines(activeSheet);
   const visibleRange = useMemo(
     () => spreadsheetVisibleCellRange(layout, viewportSize, scroll),
     [layout, scroll, viewportSize],
@@ -507,7 +509,7 @@ function SpreadsheetGrid({
                   key={columnIndex}
                   role="gridcell"
                   style={{
-                    ...spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex),
+                    ...spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex, showGridLines),
                     height: cellHeight,
                     left,
                     position: "absolute",
@@ -715,12 +717,13 @@ function SpreadsheetFormulaBar({
   );
 }
 
-function spreadsheetCellStyle(
+export function spreadsheetCellStyle(
   cell: RecordValue | null,
   styles: RecordValue | null,
   visual?: SpreadsheetCellVisual,
   sheetName?: string,
   styleIndex?: number | null,
+  showGridLines = true,
 ): CSSProperties {
   const cellFormat = styleAt(styles?.cellXfs, styleIndex ?? cell?.styleIndex);
   const font = styleAt(styles?.fonts, cellFormat?.fontId);
@@ -730,15 +733,17 @@ function spreadsheetCellStyle(
   const fontFill = resolveStyleRecord(font, ["fill", "color"]);
   const fillColor = spreadsheetFillToCss(fill);
   const fontColor = colorToCss(fontFill?.color ?? fontFill);
-  const borderColor = colorToCss(asRecord(asRecord(border?.bottom)?.color)) ?? "#e2e8f0";
+  const explicitBottomBorderColor = colorToCss(asRecord(asRecord(border?.bottom)?.color));
+  const explicitRightBorderColor = colorToCss(asRecord(asRecord(border?.right)?.color));
+  const gridLineColor = showGridLines ? "#e2e8f0" : "transparent";
   const fallbackStyle = knownSpreadsheetCellStyle(cell, sheetName);
 
   return {
     ...sheetCellStyle,
     ...fallbackStyle,
     background: visual?.background ?? fillColor ?? fallbackStyle.background,
-    borderBottomColor: borderColor,
-    borderRightColor: borderColor,
+    borderBottomColor: explicitBottomBorderColor ?? gridLineColor,
+    borderRightColor: explicitRightBorderColor ?? gridLineColor,
     color: visual?.color ?? fontColor ?? fallbackStyle.color ?? sheetCellStyle.color,
     fontFamily: spreadsheetFontFamily(asString(font?.typeface)),
     fontSize: font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize,
@@ -747,6 +752,12 @@ function spreadsheetCellStyle(
     textAlign: (asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment)) as CSSProperties["textAlign"] || fallbackStyle.textAlign,
     verticalAlign: asString(alignment?.vertical) as CSSProperties["verticalAlign"] || fallbackStyle.verticalAlign || sheetCellStyle.verticalAlign,
   };
+}
+
+function spreadsheetShowGridLines(sheet: RecordValue | undefined): boolean {
+  if (sheet?.showGridLines === false) return false;
+  const value = asString(sheet?.showGridLines).toLowerCase();
+  return value !== "false" && value !== "0";
 }
 
 function spreadsheetEffectiveStyleIndex(

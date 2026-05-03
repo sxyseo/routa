@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  spreadsheetCellStyle,
   spreadsheetCellText,
   spreadsheetNumberFormatCode,
 } from "../spreadsheet-preview";
@@ -31,5 +32,24 @@ describe("spreadsheet cell formatting", () => {
 
     expect(spreadsheetNumberFormatCode(styles, 165)).toBe("0.00%");
     expect(spreadsheetCellText({ address: "B1", styleIndex: 0, value: 0.125 }, styles)).toBe("12.50%");
+  });
+
+  it("suppresses fallback gridlines without hiding explicit borders", () => {
+    const explicitBorderStyles = {
+      borders: [
+        {
+          bottom: { color: { value: "FF00AA00" } },
+          right: { color: { value: "FFFF0000" } },
+        },
+      ],
+      cellXfs: [{ borderId: 0 }],
+    };
+
+    expect(spreadsheetCellStyle(null, null, undefined, undefined, null, false).borderBottomColor).toBe("transparent");
+    expect(spreadsheetCellStyle(null, null, undefined, undefined, null, true).borderBottomColor).toBe("#e2e8f0");
+    expect(spreadsheetCellStyle({ styleIndex: 0 }, explicitBorderStyles, undefined, undefined, 0, false)).toMatchObject({
+      borderBottomColor: "#00AA00",
+      borderRightColor: "#FF0000",
+    });
   });
 });
