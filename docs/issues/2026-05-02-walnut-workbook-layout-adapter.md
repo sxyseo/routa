@@ -126,24 +126,53 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 
 ## Remaining XLSX Work
 
-Current status after the latest pass:
+## Current Status Snapshot - 2026-05-03
+
+This issue is still `in_progress`, but the core XLSX contract is no longer blocked by decoded protocol drift:
 
 - Decoded Workbook protocol parity is green for every committed XLSX fixture and for the 21-file validation-only production corpus in `/Users/phodal/Downloads/excel`.
 - The committed render-contract suite is also green for the core workbook, image drawing, sparkline, multi-chart, and surface-chart fixtures.
 - Recent preview additions cover visible overlays for `sparklineGroups`, notes/threaded comment targets, data-validation dropdown/validation markers, sheet `tabColor`, and sheet-level slicer fallback shapes.
 - `src/app/debug/office-wasm-poc/spreadsheet-preview.tsx` was split so cell overlays live in `spreadsheet-cell-overlays.tsx`; the main preview file is back under the file-budget limit.
+- Conditional-format rendering now consumes color scales, data bars, icon sets, common text/cell rules, duplicate/unique rules, top/bottom rules, above/below-average rules, cfvo thresholds, negative data bars, data-bar axes, and `stopIfTrue` precedence for matched format rules.
 
-Remaining gaps are now narrower and mostly fall into deeper fidelity or production renderer architecture:
+Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or production renderer architecture:
 
-- Raw protobuf byte exactness: decoded protocol is equivalent, but serialized bytes are not guaranteed byte-identical. This only matters if a downstream consumer compares raw bytes instead of decoded fields.
-- Pixel-level chart fidelity: chart protocol and preview coverage now include line, bar, area, pie, doughnut, scatter, bubble, radar, and surface families; remaining work is Excel/Walnut internal layout parity for plot-area auto sizing, typography, data labels, trendlines/error bars, multi-axis/combo charts, and detailed chart style inheritance.
-- Exact built-in table styles: table headers, row/column stripes, first/last column emphasis, totals rows, and theme-derived palettes are projected. The remaining gap is full Excel built-in table style definitions and richer theme/table-style fixture coverage beyond the common medium styles.
-- Conditional formatting breadth: color scales, data bars, icon sets, common text/cell rules, duplicate/unique rules, top/bottom and above/below-average rules, negative data bars, explicit axes, cfvo thresholds, and `stopIfTrue` precedence for matched format rules are handled. Remaining work is wider precedence coverage across formula-driven custom rules and unusual rule layering combinations.
-- Freeze panes: the layout adapter and preview can render frozen body/header regions when a sheet supplies `freezePanes`. Remaining work is extracting freeze-pane state if/when the Walnut-like XLSX protocol exposes it for real workbooks, plus pointer/edit/resize hit-region behavior around frozen panes.
-- Timeline/slicer/pivot interactivity: slicer and timeline protocol fixtures pass, and slicers now get a visual fallback overlay. Remaining work is production interaction semantics such as filtering, active item states, pivot expand/collapse/drill behavior, and a real Excel-authored sheet-level timeline fixture.
-- Drawing edge cases: image/shape/chart anchors, workbook image payloads, Walnut image references, drawing order, and shadow effects are consumed. Image crop appears absent from Walnut's spreadsheet `Drawing` schema based on the crop probe; remaining drawing work is richer shape geometry/effects and any future schema additions rather than current decoded-protocol parity.
-- Renderer architecture: the current DOM viewport is virtualized and frame-coalesced, but it is still not Walnut's worker-backed canvas architecture. Production-grade parity would require a canvas/worker renderer, narrowed external-store snapshots, and richer selection/pointer/editor controller boundaries.
-- Coverage expansion: add safe synthetic fixtures for richer theme/table-style combinations, layered conditional-format precedence, real sheet-level timelines, and more chart styling variants. Production files under `/Users/phodal/Downloads/excel` remain validation-only and must not be committed.
+1. Raw protobuf byte exactness
+
+   Decoded protocol is equivalent, but serialized bytes are not guaranteed byte-identical. This only matters if a downstream consumer compares raw bytes instead of decoded fields.
+
+2. Pixel-level chart fidelity
+
+   Chart protocol and preview coverage now include line, bar, area, pie, doughnut, scatter, bubble, radar, and surface families. Still missing Excel/Walnut internal layout parity for plot-area auto sizing, typography, data labels, trendlines/error bars, multi-axis/combo charts, and detailed chart style inheritance.
+
+3. Full built-in table style definitions
+
+   Table headers, row/column stripes, first/last column emphasis, totals rows, and theme-derived palettes are projected. Still missing exact Excel built-in table-style definitions and broader fixtures for more table styles beyond the common medium styles.
+
+4. Formula-driven conditional formatting
+
+   The common rule families are now rendered, including ranked and duplicate/unique rules. Still missing formula-driven custom rules and more unusual layered-rule precedence combinations.
+
+5. Freeze-pane extraction and interaction behavior
+
+   The layout adapter and preview can render frozen body/header regions when a sheet supplies `freezePanes`. Still missing reader extraction if Walnut exposes real workbook freeze panes in its Workbook protocol, plus pointer/edit/resize hit-region behavior around frozen panes.
+
+6. Timeline, slicer, and pivot interactivity
+
+   Pivot, slicer, and timeline protocol fixtures pass, and slicers get a fallback visual overlay. Still missing production interaction semantics: filtering, active item states, pivot expand/collapse/drill behavior, and a real Excel-authored sheet-level timeline fixture.
+
+7. Drawing and effect edge cases
+
+   Image/shape/chart anchors, workbook image payloads, Walnut image references, drawing order, shadows, and common shape text/line defaults are consumed. Image crop appears absent from Walnut's spreadsheet `Drawing` schema based on the crop probe. Remaining work is richer shape geometry/effects and any future schema additions rather than current decoded-protocol parity.
+
+8. Production renderer architecture
+
+   The current DOM viewport is virtualized, memoized, and frame-coalesced, but it is still not Walnut's worker-backed canvas architecture. Production-grade parity would require a canvas/worker renderer, narrowed external-store snapshots, and richer selection/pointer/editor controller boundaries.
+
+9. Coverage expansion
+
+   Add safe synthetic fixtures for richer theme/table-style combinations, formula conditional formatting, real sheet-level timelines, pivot/slicer interaction state, and more chart styling variants. Production files under `/Users/phodal/Downloads/excel` remain validation-only and must not be committed.
 
 ## References
 

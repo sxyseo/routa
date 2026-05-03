@@ -44,6 +44,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - `src/app/debug/office-wasm-poc/spreadsheet-preview.tsx` renders only visible cells and visible floating overlays in the scrollable grid.
 - `src/app/debug/office-wasm-poc/spreadsheet-frozen-headers.tsx` renders visible row/column headers from the same viewport range instead of mapping every worksheet row and column.
 - Scroll-driven viewport state is coalesced with `requestAnimationFrame`, matching Walnut's frame-scheduled update style instead of updating React state for every scroll event.
+- Table, conditional-format, data-validation, sparkline, comment, image, shape, and chart overlays are now either memoized from workbook/sheet changes or resolved lazily for visible cells.
 
 ## Progress
 
@@ -77,14 +78,15 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - XLSX data-validation ranges now use a lazy bounded lookup and render list dropdown or validation indicators for visible cells, including full-column ranges without dense materialization.
 - Workbook sheet `tabColor` values now feed the bottom sheet-tab chrome instead of being ignored by the preview.
 - Sheet-level slicer protocol objects now get a fallback worksheet overlay when no drawing shape already represents the slicer.
+- Conditional-format preview resolution now covers `stopIfTrue`, common text/cell comparisons, duplicate/unique rules, top/bottom rules, and above/below-average rules without returning to eager full-sheet visual materialization.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work
 
 - Add synthetic stress fixtures and benchmark data for larger sheets without committing production files. The current validation corpus proves protocol parity, but it does not measure sustained scroll/resize/editor workload.
-- Decide whether the debug DOM viewport is sufficient for the intended product surface. It is virtualized, memoized, and frame-coalesced, but Walnut's production bundle still goes further with a worker-backed canvas renderer, narrowed external-store snapshots, and canvas-centric pointer/hover target handling.
+- Add explicit performance gates for large visible ranges, dense table/conditional-format/data-validation rules, sparkline groups, drawing overlays, frozen-pane segmentation, and repeated scroll updates. Current tests lock behavior, not runtime budgets.
+- Decide whether the debug DOM viewport is sufficient for the intended product surface. It is virtualized, memoized, lazy, and frame-coalesced, but Walnut's production bundle still goes further with a worker-backed canvas renderer, narrowed external-store snapshots, and canvas-centric pointer/hover target handling.
 - If XLSX preview becomes a production surface, the next architecture step is a canvas/worker renderer fed by the existing layout adapter rather than further expanding DOM cell rendering. The adapter should remain the contract boundary for column/row prefix sums, freeze panes, floating hit regions, and overlay geometry.
-- Add performance gates that exercise large visible ranges, dense conditional-format/table rules, sparkline groups, drawing overlays, and frozen-pane segmentation. Current tests lock behavior but not runtime budgets.
 - Keep `/Users/phodal/Downloads/excel` as validation-only input. Any future stress corpus should be generated synthetic data or small committed fixtures that avoid customer/production content.
 
 ## References
