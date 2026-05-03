@@ -15,6 +15,7 @@ internal static class PptxPresentationProtoReader
     private const int ElementTypeChartReference = 6;
     private const int ElementTypeImageReference = 7;
     private const int ElementTypeTable = 9;
+    private const int ShapeGeometryCustom = 188;
     private const int ChartTypeArea = 2;
     private const int ChartTypeBar = 4;
     private const int ChartTypeBubble = 5;
@@ -830,7 +831,7 @@ internal static class PptxPresentationProtoReader
         bool writeDefaultLine = false)
     {
         var geometry = properties?.GetFirstChild<A.PresetGeometry>();
-        var geometryCode = GeometryCode(geometry);
+        var geometryCode = properties?.GetFirstChild<A.CustomGeometry>() is not null ? ShapeGeometryCustom : GeometryCode(geometry);
         var adjustments = ExtractAdjustments(geometry).ToList();
         if (geometry is null && fill is null && line is null && properties?.GetFirstChild<A.NoFill>() is null && adjustments.Count == 0)
         {
