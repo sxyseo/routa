@@ -3,15 +3,31 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import { buildSpreadsheetCanvasCommands } from "./spreadsheet-canvas-commands";
+import { createSpreadsheetCanvasFrameScheduler } from "./spreadsheet-canvas-frame-scheduler";
 import {
   buildSpreadsheetCanvasRenderPlan,
   drawSpreadsheetCanvasRenderPlan,
+  type SpreadsheetCanvasRenderPlan,
 } from "./spreadsheet-canvas-renderer";
 import type {
   SpreadsheetLayout,
   SpreadsheetViewportScroll,
   SpreadsheetViewportSize,
 } from "./spreadsheet-layout";
+
+function drawSpreadsheetCanvasPlanToCanvas(
+  canvas: HTMLCanvasElement | null,
+  nextPlan: SpreadsheetCanvasRenderPlan,
+) {
+  if (!canvas) return;
+  if (canvas.width !== nextPlan.bitmap.pixelWidth) canvas.width = nextPlan.bitmap.pixelWidth;
+  if (canvas.height !== nextPlan.bitmap.pixelHeight) canvas.height = nextPlan.bitmap.pixelHeight;
+  canvas.style.width = `${nextPlan.bitmap.cssWidth}px`;
+  canvas.style.height = `${nextPlan.bitmap.cssHeight}px`;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  drawSpreadsheetCanvasRenderPlan(context, nextPlan);
+}
 
 export function SpreadsheetCanvasLayer({
   layout,
@@ -23,6 +39,7 @@ export function SpreadsheetCanvasLayer({
   viewportSize: SpreadsheetViewportSize;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const schedulerRef = useRef<ReturnType<typeof createSpreadsheetCanvasFrameScheduler> | null>(null);
   const plan = useMemo(() => buildSpreadsheetCanvasRenderPlan({
     commands: buildSpreadsheetCanvasCommands({ layout, scroll, viewportSize }),
     pixelRatio: typeof window === "undefined" ? 1 : window.devicePixelRatio,
@@ -31,16 +48,15 @@ export function SpreadsheetCanvasLayer({
   }), [layout, scroll, viewportSize]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (canvas.width !== plan.bitmap.pixelWidth) canvas.width = plan.bitmap.pixelWidth;
-    if (canvas.height !== plan.bitmap.pixelHeight) canvas.height = plan.bitmap.pixelHeight;
-    canvas.style.width = `${plan.bitmap.cssWidth}px`;
-    canvas.style.height = `${plan.bitmap.cssHeight}px`;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    drawSpreadsheetCanvasRenderPlan(context, plan);
+    if (!schedulerRef.current) {
+      schedulerRef.current = createSpreadsheetCanvasFrameScheduler({
+        draw: (nextPlan) => drawSpreadsheetCanvasPlanToCanvas(canvasRef.current, nextPlan),
+      });
+    }
+    schedulerRef.current.schedule(plan);
   }, [plan]);
+
+  useEffect(() => () => schedulerRef.current?.destroy(), []);
 
   if (viewportSize.width <= 0 || viewportSize.height <= 0) return null;
   return (
