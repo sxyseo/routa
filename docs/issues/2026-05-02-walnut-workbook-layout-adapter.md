@@ -135,6 +135,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Chart preview now consumes protocol axis titles and renders x/y title text on the canvas chart layer.
 - Formula conditional-format preview now receives root `definedNames` and can resolve simple named references to decoded workbook cells.
 - Formula conditional-format preview now evaluates common aggregate functions (`SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`) over cell ranges and simple named ranges.
+- Re-ran committed XLSX parity fixtures and the validation-only production corpus under `/Users/phodal/Downloads/excel` after the latest renderer work: all committed fixtures and all 21 production XLSX files still report decoded Workbook protocol equivalence against Walnut.
 
 ## Remaining XLSX Work
 
