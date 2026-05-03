@@ -54,6 +54,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Coalesced spreadsheet viewport scroll/size updates with `requestAnimationFrame`, keeping scroll handling closer to Walnut's frame-based viewport scheduling.
 - Removed the debug-only 80 row / 32 column layout cap. The layout adapter now preserves full Excel-scale row/column bounds while the body and headers render only the active viewport window.
 - Added a production-scale layout regression using Walnut-sized demo dimensions (`1500` rows, `182` columns) to lock full-layout + small-viewport behavior.
+- Reworked conditional-format visual calculation to build the sheet row/cell index once and reuse it across range scans, avoiding repeated full-sheet map construction for large conditional-format ranges.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

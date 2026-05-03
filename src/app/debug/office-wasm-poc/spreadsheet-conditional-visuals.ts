@@ -39,6 +39,7 @@ export function buildSpreadsheetConditionalVisuals(
   theme?: RecordValue | null,
 ): Map<string, SpreadsheetCellVisual> {
   const visuals = buildSpreadsheetTableVisuals(sheet, theme);
+  const rowsByIndex = rowsByIndexForSheet(sheet);
   const sheetName = asString(sheet?.name);
   const conditionalFormats = normalizedConditionalFormats(sheet);
   const conditionalReferences = conditionalFormats
@@ -52,7 +53,7 @@ export function buildSpreadsheetConditionalVisuals(
 
   for (const format of conditionalFormats) {
     for (const reference of asArray(format.ranges).map(asString).filter(Boolean)) {
-      const values = numericValuesInRange(sheet, reference);
+      const values = numericValuesInRange(rowsByIndex, reference);
       const minValue = values.length > 0 ? Math.min(...values.map((item) => item.value)) : 0;
       const maxValue = values.length > 0 ? Math.max(...values.map((item) => item.value)) : 0;
       const colorScale = asRecord(format.colorScale);
@@ -105,9 +106,9 @@ export function buildSpreadsheetConditionalVisuals(
       }
 
       forEachCellInRange(reference, (rowIndex, columnIndex) => {
-        const cell = cellAt(sheet, rowIndex, columnIndex);
+        const cell = cellAt(rowsByIndex, rowIndex, columnIndex);
         const text = cellText(cell);
-        const numericValue = cellNumberAt(sheet, rowIndex, columnIndex);
+        const numericValue = cellNumberAt(rowsByIndex, rowIndex, columnIndex);
         if (!conditionalTextMatches(format, text, numericValue)) return;
         mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, {
           background: protocolColorToCss(format.fillColor),
@@ -123,7 +124,7 @@ export function buildSpreadsheetConditionalVisuals(
   }
 
   for (const reference of conditionalReferences) {
-    const values = numericValuesInRange(sheet, reference);
+    const values = numericValuesInRange(rowsByIndex, reference);
     if (values.length === 0) continue;
 
     const minValue = Math.min(...values.map((item) => item.value));
@@ -176,12 +177,20 @@ function rowsByIndexForSheet(sheet: RecordValue | undefined): Map<number, Map<nu
   return rowMap;
 }
 
-function cellAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: number): RecordValue | null {
-  return rowsByIndexForSheet(sheet).get(rowIndex)?.get(columnIndex) ?? null;
+function cellAt(
+  rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
+  rowIndex: number,
+  columnIndex: number,
+): RecordValue | null {
+  return rowsByIndex.get(rowIndex)?.get(columnIndex) ?? null;
 }
 
-function cellNumberAt(sheet: RecordValue | undefined, rowIndex: number, columnIndex: number): number | null {
-  const value = Number(cellText(cellAt(sheet, rowIndex, columnIndex)));
+function cellNumberAt(
+  rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
+  rowIndex: number,
+  columnIndex: number,
+): number | null {
+  const value = Number(cellText(cellAt(rowsByIndex, rowIndex, columnIndex)));
   return Number.isFinite(value) ? value : null;
 }
 
@@ -398,12 +407,12 @@ function spreadsheetHeatColor(value: number, minValue: number, maxValue: number)
 }
 
 function numericValuesInRange(
-  sheet: RecordValue | undefined,
+  rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
   reference: string,
 ): Array<{ columnIndex: number; rowIndex: number; value: number }> {
   const values: Array<{ columnIndex: number; rowIndex: number; value: number }> = [];
   forEachCellInRange(reference, (rowIndex, columnIndex) => {
-    const value = cellNumberAt(sheet, rowIndex, columnIndex);
+    const value = cellNumberAt(rowsByIndex, rowIndex, columnIndex);
     if (value != null) values.push({ columnIndex, rowIndex, value });
   });
   return values;
