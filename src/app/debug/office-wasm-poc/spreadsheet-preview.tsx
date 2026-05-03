@@ -1,6 +1,17 @@
 "use client";
 
-import { type CSSProperties, type KeyboardEvent, type PointerEvent, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type Dispatch,
+  type KeyboardEvent,
+  type PointerEvent,
+  type SetStateAction,
+  type UIEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   asArray,
@@ -86,6 +97,13 @@ type SpreadsheetFloatingSpec = {
   width: number;
 };
 
+type SpreadsheetCellEditor = {
+  selection: SpreadsheetSelection;
+  value: string;
+};
+
+type SpreadsheetCellEdits = Record<string, string | undefined>;
+
 const EXCEL_BUILT_IN_NUMBER_FORMATS = new Map<number, string>([
   [1, "0"],
   [2, "0.00"],
@@ -146,6 +164,8 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const [sizeOverrides, setSizeOverrides] = useState<SpreadsheetLayoutOverrides>({});
   const [resizeCursor, setResizeCursor] = useState<string | undefined>();
   const [resizeDrag, setResizeDrag] = useState<SpreadsheetResizeDrag | null>(null);
+  const [cellEdits, setCellEdits] = useState<SpreadsheetCellEdits>({});
+  const [editor, setEditor] = useState<SpreadsheetCellEditor | null>(null);
   const [selection, setSelection] = useState<SpreadsheetSelection | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const { state: viewportState, store: viewportStore } = useSpreadsheetViewportStore();
@@ -228,6 +248,8 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     setSizeOverrides({});
     setResizeDrag(null);
     setResizeCursor(undefined);
+    setCellEdits({});
+    setEditor(null);
     setSelection(null);
     setActiveSheetIndex(index);
   };
@@ -240,12 +262,27 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     const resizeHit = spreadsheetResizeHitAtViewportPoint(layout, point, scroll);
     if (resizeHit) {
       event.preventDefault();
+      setEditor(null);
       viewport.setPointerCapture(event.pointerId);
       setResizeDrag(spreadsheetResizeDragFromHit(layout, resizeHit, point, scroll));
       return;
     }
 
+    if (editor) commitSpreadsheetEditor(editor, setCellEdits, setEditor);
     setSelection(spreadsheetSelectionFromViewportPoint(layout, point, scroll));
+  };
+
+  const handleViewportDoubleClick = (event: PointerEvent<HTMLDivElement>) => {
+    const viewport = event.currentTarget;
+    const selectionFromPoint = spreadsheetSelectionFromViewportPoint(
+      layout,
+      viewportPointFromPointer(event),
+      { left: viewport.scrollLeft, top: viewport.scrollTop },
+    );
+    if (!selectionFromPoint) return;
+    event.preventDefault();
+    setSelection(selectionFromPoint);
+    setEditor(spreadsheetEditorForSelection(activeSheet, styles, cellEdits, selectionFromPoint));
   };
 
   const handleViewportPointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -286,6 +323,14 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   };
 
   const handleViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "F2") {
+      event.preventDefault();
+      const targetSelection = selection ?? { columnIndex: 0, rowIndex: 1, rowOffset: 0 };
+      setSelection(targetSelection);
+      setEditor(spreadsheetEditorForSelection(activeSheet, styles, cellEdits, targetSelection));
+      return;
+    }
+
     const direction = spreadsheetSelectionDirectionFromKey(event.key, event.shiftKey);
     if (!direction) return;
     event.preventDefault();
@@ -318,9 +363,10 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       }}
     >
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
-      <SpreadsheetFormulaBar activeSheet={activeSheet} selection={selection} styles={styles} />
+      <SpreadsheetFormulaBar activeSheet={activeSheet} cellEdits={cellEdits} selection={selection} styles={styles} />
       <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
         <div
+          onDoubleClick={handleViewportDoubleClick}
           onKeyDown={handleViewportKeyDown}
           onPointerDown={handleViewportPointerDown}
           onPointerMove={handleViewportPointerMove}
@@ -334,6 +380,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           <div style={{ height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }}>
             <SpreadsheetGrid
               activeSheet={activeSheet}
+              cellEdits={cellEdits}
               cellVisuals={cellVisuals}
               commentVisuals={commentVisuals}
               layout={layout}
@@ -347,10 +394,18 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
             <SpreadsheetShapeLayer shapes={visibleShapeSpecs} />
             <SpreadsheetChartLayer charts={visibleChartSpecs} />
             <SpreadsheetSelectionLayer layout={layout} selection={selection} />
+            <SpreadsheetCellEditorLayer
+              editor={editor}
+              layout={layout}
+              onCancel={() => setEditor(null)}
+              onCommit={(nextEditor) => commitSpreadsheetEditor(nextEditor, setCellEdits, setEditor)}
+              onValueChange={(value) => setEditor((current) => current ? { ...current, value } : current)}
+            />
           </div>
         </div>
         <SpreadsheetFrozenBodyLayer
           activeSheet={activeSheet}
+          cellEdits={cellEdits}
           cellVisuals={cellVisuals}
           commentVisuals={commentVisuals}
           layout={layout}
@@ -422,6 +477,38 @@ function viewportPointFromPointer(event: PointerEvent<HTMLDivElement>) {
     x: event.clientX - bounds.left,
     y: event.clientY - bounds.top,
   };
+}
+
+function spreadsheetSelectionKey(selection: SpreadsheetSelection): string {
+  return spreadsheetCellKey(selection.rowIndex, selection.columnIndex);
+}
+
+function spreadsheetEditorForSelection(
+  activeSheet: RecordValue | undefined,
+  styles: RecordValue | null,
+  cellEdits: SpreadsheetCellEdits,
+  selection: SpreadsheetSelection,
+): SpreadsheetCellEditor {
+  const sheetName = asString(activeSheet?.name);
+  const cell = cellAt(activeSheet, selection.rowIndex, selection.columnIndex);
+  const key = spreadsheetSelectionKey(selection);
+  return {
+    selection,
+    value: cellEdits[key] ?? spreadsheetCellText(cell, styles, sheetName),
+  };
+}
+
+function commitSpreadsheetEditor(
+  editor: SpreadsheetCellEditor,
+  setCellEdits: Dispatch<SetStateAction<SpreadsheetCellEdits>>,
+  setEditor: Dispatch<SetStateAction<SpreadsheetCellEditor | null>>,
+) {
+  const key = spreadsheetSelectionKey(editor.selection);
+  setCellEdits((current) => ({
+    ...current,
+    [key]: editor.value,
+  }));
+  setEditor(null);
 }
 
 function spreadsheetSelectionDirectionFromKey(key: string, shiftKey = false): SpreadsheetSelectionDirection | null {
@@ -529,8 +616,73 @@ function SpreadsheetFrozenSelectionLayer({
   );
 }
 
+function SpreadsheetCellEditorLayer({
+  editor,
+  layout,
+  onCancel,
+  onCommit,
+  onValueChange,
+}: {
+  editor: SpreadsheetCellEditor | null;
+  layout: SpreadsheetLayout;
+  onCancel: () => void;
+  onCommit: (editor: SpreadsheetCellEditor) => void;
+  onValueChange: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [editor]);
+
+  if (!editor) return null;
+  const rect = spreadsheetSelectionWorldRect(layout, editor.selection);
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return (
+    <input
+      aria-label="Cell editor"
+      onChange={(event) => onValueChange(event.currentTarget.value)}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          onCommit(editor);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      ref={inputRef}
+      style={{
+        background: "#ffffff",
+        borderColor: "#0f9d58",
+        borderStyle: "solid",
+        borderWidth: 2,
+        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.18)",
+        boxSizing: "border-box",
+        color: "#0f172a",
+        fontFamily: SPREADSHEET_FONT_FAMILY,
+        fontSize: 13,
+        height: Math.max(24, rect.height),
+        left: rect.left,
+        outline: "none",
+        padding: "3px 7px",
+        position: "absolute",
+        top: rect.top,
+        width: Math.max(80, rect.width),
+        zIndex: 40_000,
+      }}
+      value={editor.value}
+    />
+  );
+}
+
 function SpreadsheetFrozenBodyLayer({
   activeSheet,
+  cellEdits,
   cellVisuals,
   commentVisuals,
   layout,
@@ -541,6 +693,7 @@ function SpreadsheetFrozenBodyLayer({
   viewportSize,
 }: {
   activeSheet: RecordValue | undefined;
+  cellEdits: SpreadsheetCellEdits;
   cellVisuals: SpreadsheetCellVisualLookup;
   commentVisuals: Set<string>;
   layout: SpreadsheetLayout;
@@ -589,7 +742,7 @@ function SpreadsheetFrozenBodyLayer({
           const sparkline = sparklineVisuals.get(cellKey);
           const validation = validationVisuals.get(cellKey);
           const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
-          const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
+          const text = cellEdits[cellKey] ?? spreadsheetCellText(cell, styles, sheetName, styleIndex);
           return rects.map((rect, segmentIndex) => (
             <div
               data-frozen-cell-address={asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`}
@@ -621,6 +774,7 @@ function SpreadsheetFrozenBodyLayer({
 
 function SpreadsheetGrid({
   activeSheet,
+  cellEdits,
   cellVisuals,
   commentVisuals,
   layout,
@@ -631,6 +785,7 @@ function SpreadsheetGrid({
   viewportSize,
 }: {
   activeSheet: RecordValue | undefined;
+  cellEdits: SpreadsheetCellEdits;
   cellVisuals: SpreadsheetCellVisualLookup;
   commentVisuals: Set<string>;
   layout: SpreadsheetLayout;
@@ -705,7 +860,7 @@ function SpreadsheetGrid({
               const sparkline = sparklineVisuals.get(cellKey);
               const validation = validationVisuals.get(cellKey);
               const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
-              const text = spreadsheetCellText(cell, styles, sheetName, styleIndex);
+              const text = cellEdits[cellKey] ?? spreadsheetCellText(cell, styles, sheetName, styleIndex);
               return (
                 <div
                   data-cell-address={asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`}
@@ -808,10 +963,12 @@ function SpreadsheetWorkbookBar({ title }: { title: string }) {
 
 function SpreadsheetFormulaBar({
   activeSheet,
+  cellEdits,
   selection,
   styles,
 }: {
   activeSheet: RecordValue | undefined;
+  cellEdits: SpreadsheetCellEdits;
   selection: SpreadsheetSelection | null;
   styles: RecordValue | null;
 }) {
@@ -819,7 +976,9 @@ function SpreadsheetFormulaBar({
   const activeColumn = selection?.columnIndex ?? 0;
   const activeCell = cellAt(activeSheet, activeRow, activeColumn);
   const sheetName = asString(activeSheet?.name);
-  const value = spreadsheetCellText(activeCell, styles, sheetName);
+  const value = selection
+    ? (cellEdits[spreadsheetSelectionKey(selection)] ?? spreadsheetCellText(activeCell, styles, sheetName))
+    : spreadsheetCellText(activeCell, styles, sheetName);
   const address = asString(activeCell?.address) || `${columnLabel(activeColumn)}${activeRow}`;
 
   return (
