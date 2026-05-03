@@ -54,6 +54,13 @@ export type SpreadsheetChartSeries = {
   values: number[];
 };
 
+export type SpreadsheetBarGeometry = {
+  barWidth: number;
+  centerX: number;
+  series: SpreadsheetChartSeries;
+  value: number;
+};
+
 export type SpreadsheetChartSpec = {
   categories: string[];
   height: number;
@@ -623,16 +630,10 @@ function drawBarChart(
   minValue: number,
   maxValue: number,
 ) {
-  const series = chart.series[0];
-  const values = series?.values ?? [];
-  const slotWidth = (plot.right - plot.left) / Math.max(1, values.length);
-  const barWidth = Math.min(32, slotWidth * 0.34);
-
   context.save();
-  values.forEach((value, index) => {
-    const centerX = plot.left + slotWidth * index + slotWidth / 2;
+  spreadsheetBarChartGeometry(chart, plot).forEach(({ barWidth, centerX, series, value }) => {
     const y = chartY(value, plot, minValue, maxValue);
-    context.fillStyle = series?.color ?? "#1f6f8b";
+    context.fillStyle = series.color;
     context.beginPath();
     context.roundRect(centerX - barWidth / 2, y, barWidth, plot.bottom - y, 3);
     context.fill();
@@ -642,11 +643,45 @@ function drawBarChart(
   context.font = "12px Arial, sans-serif";
   context.textAlign = "center";
   context.textBaseline = "alphabetic";
+  const slotWidth = (plot.right - plot.left) / barChartCategoryCount(chart);
   chart.categories.forEach((category, index) => {
     const centerX = plot.left + slotWidth * index + slotWidth / 2;
     context.fillText(category, centerX, plot.bottom + 20);
   });
   context.restore();
+}
+
+export function spreadsheetBarChartGeometry(
+  chart: SpreadsheetChartSpec,
+  plot: Pick<SpreadsheetChartPlotArea, "left" | "right">,
+): SpreadsheetBarGeometry[] {
+  const categoryCount = barChartCategoryCount(chart);
+  const visibleSeries = chart.series.filter((series) => series.values.length > 0);
+  const seriesCount = Math.max(1, visibleSeries.length);
+  const slotWidth = (plot.right - plot.left) / categoryCount;
+  const singleBarWidth = Math.min(32, slotWidth * 0.34);
+  const groupWidth = Math.min(slotWidth * 0.72, seriesCount * 30);
+  const barStep = groupWidth / seriesCount;
+  const barWidth = seriesCount === 1 ? singleBarWidth : Math.max(3, Math.min(28, barStep * 0.78));
+  const bars: SpreadsheetBarGeometry[] = [];
+
+  for (let categoryIndex = 0; categoryIndex < categoryCount; categoryIndex += 1) {
+    const categoryCenter = plot.left + slotWidth * categoryIndex + slotWidth / 2;
+    visibleSeries.forEach((series, seriesIndex) => {
+      const value = series.values[categoryIndex];
+      if (!Number.isFinite(value)) return;
+      const centerX = seriesCount === 1
+        ? categoryCenter
+        : categoryCenter - groupWidth / 2 + barStep * seriesIndex + barStep / 2;
+      bars.push({ barWidth, centerX, series, value });
+    });
+  }
+
+  return bars;
+}
+
+function barChartCategoryCount(chart: SpreadsheetChartSpec): number {
+  return Math.max(1, chart.categories.length, ...chart.series.map((series) => series.values.length));
 }
 
 function drawLineChart(
@@ -959,11 +994,7 @@ function drawBarDataLabels(
   minValue: number,
   maxValue: number,
 ) {
-  const series = chart.series[0];
-  const values = series?.values ?? [];
-  const slotWidth = (plot.right - plot.left) / Math.max(1, values.length);
-  values.forEach((value, index) => {
-    const centerX = plot.left + slotWidth * index + slotWidth / 2;
+  spreadsheetBarChartGeometry(chart, plot).forEach(({ centerX, value }) => {
     const y = chartY(value, plot, minValue, maxValue);
     context.fillText(formatChartTick(value, chart.yAxis?.numberFormat), centerX, Math.max(plot.top + 10, y - 12));
   });

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSpreadsheetCharts, formatChartTick, spreadsheetChartPlotArea, spreadsheetChartTickValues } from "../spreadsheet-charts";
+import {
+  buildSpreadsheetCharts,
+  formatChartTick,
+  spreadsheetBarChartGeometry,
+  spreadsheetChartPlotArea,
+  spreadsheetChartTickValues,
+} from "../spreadsheet-charts";
 import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetRowTop } from "../spreadsheet-layout";
 
 describe("spreadsheet charts", () => {
@@ -233,5 +239,32 @@ describe("spreadsheet charts", () => {
     });
 
     expect(charts[0]?.showDataLabels).toBe(true);
+  });
+
+  it("clusters bar geometry for every protocol series", () => {
+    const chart = {
+      categories: ["Q1", "Q2"],
+      height: 240,
+      left: 0,
+      legendOverlay: false,
+      legendPosition: "bottom" as const,
+      series: [
+        { color: "#1f6f8b", label: "Backlog", marker: null, values: [10, 20] },
+        { color: "#f9732a", label: "Done", marker: null, values: [5, 15] },
+      ],
+      showDataLabels: false,
+      title: "Multi-series bar",
+      top: 0,
+      type: "bar" as const,
+      width: 360,
+      zIndex: 0,
+    };
+    const bars = spreadsheetBarChartGeometry(chart, { left: 52, right: 338 });
+
+    expect(bars).toHaveLength(4);
+    expect(bars.map((bar) => bar.value)).toEqual([10, 5, 20, 15]);
+    expect(bars[0]!.centerX).toBeLessThan(bars[1]!.centerX);
+    expect(bars[1]!.centerX).toBeLessThan(bars[2]!.centerX);
+    expect(bars.every((bar) => bar.barWidth > 0)).toBe(true);
   });
 });
