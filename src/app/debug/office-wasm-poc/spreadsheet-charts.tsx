@@ -699,13 +699,37 @@ export function spreadsheetChartPlotArea(chart: SpreadsheetChartSpec): Spreadshe
   const legendHeight = hasBottomLegend ? 42 : 0;
   const top = (chart.title ? 58 : 24) + (hasTopLegend ? 28 : 0);
   const bottom = Math.max(top + 48, chart.height - categoryLabelHeight - legendHeight);
+  const leftBase = isLineAxisChart(chart.type) ? 64 : isCircularChart(chart.type) || chart.type === "radar" ? 28 : 52;
+  const rightBase = hasRightLegend ? 126 : 22;
+  const primaryValues = chart.series.filter((series) => series.axis !== "secondary").flatMap((series) => series.values);
+  const secondaryValues = chart.series.filter((series) => series.axis === "secondary").flatMap((series) => series.values);
+  const leftAxisGutter = isCircularChart(chart.type) || chart.type === "radar"
+    ? leftBase
+    : Math.max(leftBase, spreadsheetChartAxisGutter(chart, chart.yAxis, primaryValues));
+  const rightAxisGutter = hasSecondaryAxis
+    ? Math.max(42, spreadsheetChartAxisGutter(chart, chart.secondaryYAxis ?? chart.yAxis, secondaryValues, 10))
+    : 0;
 
   return {
     bottom,
-    left: (isLineAxisChart(chart.type) ? 64 : isCircularChart(chart.type) || chart.type === "radar" ? 28 : 52) + (hasLeftLegend ? 108 : 0),
-    right: chart.width - (hasRightLegend ? 126 : 22) - (hasSecondaryAxis ? 42 : 0),
+    left: leftAxisGutter + (hasLeftLegend ? 108 : 0),
+    right: chart.width - rightBase - rightAxisGutter,
     top,
   };
+}
+
+function spreadsheetChartAxisGutter(
+  chart: SpreadsheetChartSpec,
+  axis: SpreadsheetChartAxisSpec | undefined,
+  values: number[],
+  padding = 18,
+): number {
+  const ticks = spreadsheetChartTickValues({ ...chart, yAxis: axis }, values);
+  const maxLabelLength = Math.max(
+    1,
+    ...ticks.map((value) => formatChartTick(value, axis?.numberFormat).length),
+  );
+  return Math.ceil(maxLabelLength * 7 + padding);
 }
 
 function drawChartGrid(

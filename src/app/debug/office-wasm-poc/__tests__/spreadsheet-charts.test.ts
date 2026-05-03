@@ -132,6 +132,33 @@ describe("spreadsheet charts", () => {
     });
   });
 
+  it("widens chart axis gutters for long formatted tick labels", () => {
+    const chart = {
+      categories: ["Q1", "Q2"],
+      height: 260,
+      left: 0,
+      legendOverlay: false,
+      legendPosition: "bottom" as const,
+      series: [
+        { color: "#1f6f8b", label: "Revenue", marker: "square" as const, trendlines: [], values: [500_000, 1_250_000] },
+        { axis: "secondary" as const, color: "#f9732a", label: "Margin", marker: "diamond" as const, trendlines: [], values: [0.32, 0.42] },
+      ],
+      showDataLabels: false,
+      title: "Revenue and Margin",
+      top: 0,
+      type: "line" as const,
+      width: 520,
+      secondaryYAxis: { majorGridLines: false, minimum: 0, numberFormat: "0.00%", position: "right" },
+      yAxis: { majorGridLines: true, minimum: 0, numberFormat: "$#,##0.00", position: "left" },
+      zIndex: 0,
+    };
+
+    expect(spreadsheetChartPlotArea(chart)).toMatchObject({
+      left: 109,
+      right: 446,
+    });
+  });
+
   it("formats chart tick labels from axis number formats", () => {
     expect(formatChartTick(0.42, "0%")).toBe("42%");
     expect(formatChartTick(0.125, "0.00%")).toBe("12.50%");
