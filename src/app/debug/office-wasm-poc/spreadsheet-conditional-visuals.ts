@@ -83,6 +83,7 @@ type SpreadsheetConditionalVisualSpec =
     kind: "format";
     range: SpreadsheetCellRange;
     stopIfTrue: boolean;
+    textCounts?: ReadonlyMap<string, number>;
   }
   | {
     kind: "fallbackColorScale";
@@ -155,7 +156,13 @@ export function buildSpreadsheetConditionalVisuals(
         continue;
       }
 
-      conditionalVisuals.push({ format, kind: "format", range, stopIfTrue: format.stopIfTrue === true });
+      conditionalVisuals.push({
+        format,
+        kind: "format",
+        range,
+        stopIfTrue: format.stopIfTrue === true,
+        textCounts: conditionalRuleNeedsTextCounts(format) ? textCountsInRange(rowsByIndex, reference) : undefined,
+      });
     }
   }
 
@@ -394,7 +401,7 @@ function spreadsheetConditionalCellVisual(
       case "format": {
         const cell = cellAt(rowsByIndex, rowIndex, columnIndex);
         const text = cellText(cell);
-        if (!conditionalTextMatches(rule.format, text, value)) break;
+        if (!conditionalTextMatches(rule.format, text, value, rule.textCounts)) break;
         visual = mergeSpreadsheetCellVisuals(visual, {
           background: protocolColorToCss(rule.format.fillColor),
           color: protocolColorToCss(rule.format.fontColor),
@@ -615,6 +622,27 @@ function numericValuesInRange(
   return values;
 }
 
+function textCountsInRange(
+  rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
+  reference: string,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  const range = parseCellRange(reference);
+  if (!range) return counts;
+
+  for (const [rowIndex, cells] of rowsByIndex) {
+    if (rowIndex < range.startRow || rowIndex >= range.startRow + range.rowSpan) continue;
+    for (const [columnIndex, cell] of cells) {
+      if (columnIndex < range.startColumn || columnIndex >= range.startColumn + range.columnSpan) continue;
+      const text = cellText(cell).trim();
+      if (text.length === 0) continue;
+      counts.set(text, (counts.get(text) ?? 0) + 1);
+    }
+  }
+
+  return counts;
+}
+
 function isColorScaleRange(sheetName: string, reference: string): boolean {
   if (sheetName === "04_Heatmap" && reference === "B6:I15") return true;
   if (sheetName === "03_TimeSeries" && reference === "F5:F22") return true;
@@ -702,9 +730,15 @@ function rgbColorToCss(color: RgbColor): string {
   return `rgb(${color.red}, ${color.green}, ${color.blue})`;
 }
 
-function conditionalTextMatches(format: RecordValue, text: string, numericValue: number | null): boolean {
+function conditionalTextMatches(
+  format: RecordValue,
+  text: string,
+  numericValue: number | null,
+  textCounts?: ReadonlyMap<string, number>,
+): boolean {
   const type = asString(format.type);
   const matchText = asString(format.text);
+  const normalizedText = text.trim();
   if (type === "containsText") {
     return text.includes(matchText);
   }
@@ -726,7 +760,15 @@ function conditionalTextMatches(format: RecordValue, text: string, numericValue:
   }
 
   if (type === "notContainsBlanks") {
-    return text.trim().length > 0;
+    return normalizedText.length > 0;
+  }
+
+  if (type === "duplicateValues") {
+    return normalizedText.length > 0 && (textCounts?.get(normalizedText) ?? 0) > 1;
+  }
+
+  if (type === "uniqueValues") {
+    return normalizedText.length > 0 && (textCounts?.get(normalizedText) ?? 0) === 1;
   }
 
   if (type === "cellIs" && numericValue != null) {
@@ -750,6 +792,11 @@ function conditionalTextMatches(format: RecordValue, text: string, numericValue:
   }
 
   return false;
+}
+
+function conditionalRuleNeedsTextCounts(format: RecordValue): boolean {
+  const type = asString(format.type);
+  return type === "duplicateValues" || type === "uniqueValues";
 }
 
 function normalizedConditionalFormats(sheet: RecordValue | undefined): RecordValue[] {

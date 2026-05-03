@@ -261,4 +261,42 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:0")?.background).toBe("#0000CC");
     expect(visuals.get("5:0")?.background).toBe("#999999");
   });
+
+  it("applies duplicate and unique value conditional format rules", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A4"],
+          rules: [
+            {
+              fillColor: "F87171",
+              type: "duplicateValues",
+            },
+          ],
+        },
+        {
+          ranges: ["B1:B4"],
+          rules: [
+            {
+              fillColor: "60A5FA",
+              type: "uniqueValues",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: "alpha" }, { address: "B1", value: "alpha" }], index: 1 },
+        { cells: [{ address: "A2", value: "beta" }, { address: "B2", value: "beta" }], index: 2 },
+        { cells: [{ address: "A3", value: "alpha" }, { address: "B3", value: "beta" }], index: 3 },
+        { cells: [{ address: "A4", value: "gamma" }, { address: "B4", value: "gamma" }], index: 4 },
+      ],
+    });
+
+    expect(visuals.get("1:0")?.background).toBe("#F87171");
+    expect(visuals.get("2:0")).toBeUndefined();
+    expect(visuals.get("3:0")?.background).toBe("#F87171");
+    expect(visuals.get("1:1")?.background).toBe("#60A5FA");
+    expect(visuals.get("2:1")).toBeUndefined();
+    expect(visuals.get("4:1")?.background).toBe("#60A5FA");
+  });
 });
