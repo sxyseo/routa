@@ -54,6 +54,7 @@ export function buildSpreadsheetShapes({
 }): SpreadsheetShapeSpec[] {
   return [
     ...buildSheetDrawingShapes(activeSheet, layout),
+    ...buildSheetSlicerShapes(activeSheet, layout),
     ...buildRootSpreadsheetShapes(activeSheet, layout, shapes),
   ];
 }
@@ -83,6 +84,52 @@ function buildSheetDrawingShapes(
     .filter((drawing): drawing is RecordValue => drawing != null)
     .map((drawing, index) => shapeFromSheetDrawing(drawing, layout, index))
     .filter((shape): shape is SpreadsheetShapeSpec => shape != null);
+}
+
+function buildSheetSlicerShapes(
+  activeSheet: RecordValue | undefined,
+  layout: SpreadsheetLayout,
+): SpreadsheetShapeSpec[] {
+  const existingKeys = new Set(
+    asArray(activeSheet?.drawings)
+      .map(asRecord)
+      .map((drawing) => asRecord(drawing?.shape))
+      .filter((shape): shape is RecordValue => shape != null)
+      .flatMap((shape) => [asString(shape.id), asString(shape.name), asString(shape.text)])
+      .filter(Boolean),
+  );
+
+  return asArray(activeSheet?.slicers)
+    .map(asRecord)
+    .filter((slicer): slicer is RecordValue => slicer != null)
+    .filter((slicer) => {
+      const name = asString(slicer.name);
+      const caption = asString(slicer.caption);
+      return !existingKeys.has(name) && !existingKeys.has(caption);
+    })
+    .map((slicer, index) => slicerShapeFromRecord(slicer, layout, index));
+}
+
+function slicerShapeFromRecord(
+  slicer: RecordValue,
+  layout: SpreadsheetLayout,
+  index: number,
+): SpreadsheetShapeSpec {
+  const bounds = spreadsheetDrawingBounds(layout, slicer);
+  const caption = asString(slicer.caption) || asString(slicer.name) || "Slicer";
+  return {
+    fill: "#ffffff",
+    geometry: "roundRect",
+    height: bounds.height,
+    id: asString(slicer.name) || `slicer-${index}`,
+    left: bounds.left,
+    line: "#94a3b8",
+    lineWidth: 1,
+    text: caption,
+    top: bounds.top,
+    width: bounds.width,
+    zIndex: 5_000 + index,
+  };
 }
 
 function shapeFromSheetDrawing(

@@ -76,6 +76,7 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Cells targeted by XLSX notes or threaded comment threads now render a lightweight top-right comment indicator in the viewport.
 - XLSX data-validation ranges now build a bounded per-cell lookup and render list dropdown or validation indicators for visible cells.
 - Workbook sheet `tabColor` values now feed the bottom sheet-tab chrome instead of being ignored by the preview.
+- Sheet-level slicer protocol objects now get a fallback worksheet overlay when no drawing shape already represents the slicer.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work

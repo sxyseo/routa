@@ -203,4 +203,38 @@ describe("spreadsheet shapes", () => {
 
     expect(shapes[0]?.boxShadow).toBe("4px 0px 2px rgba(51, 65, 85, 0.5)");
   });
+
+  it("adds slicer fallback shapes when no drawing shape is present", () => {
+    const sheet = {
+      name: "Slicers",
+      rows: [{ cells: [{ address: "B2" }], index: 2 }],
+      slicers: [
+        {
+          caption: "Status",
+          fromAnchor: { colId: "1", rowId: "1" },
+          name: "StatusSlicer",
+          toAnchor: { colId: "3", rowId: "4" },
+        },
+      ],
+    };
+    const layout = buildSpreadsheetLayout(sheet);
+
+    const shapes = buildSpreadsheetShapes({ activeSheet: sheet, layout, shapes: [] });
+
+    expect(shapes).toEqual([
+      {
+        fill: "#ffffff",
+        geometry: "roundRect",
+        height: Math.max(24, spreadsheetRowTop(layout, 4) - spreadsheetRowTop(layout, 1)),
+        id: "StatusSlicer",
+        left: spreadsheetColumnLeft(layout, 1),
+        line: "#94a3b8",
+        lineWidth: 1,
+        text: "Status",
+        top: spreadsheetRowTop(layout, 1),
+        width: spreadsheetColumnLeft(layout, 3) - spreadsheetColumnLeft(layout, 1),
+        zIndex: 5000,
+      },
+    ]);
+  });
 });
