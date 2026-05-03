@@ -81,6 +81,7 @@ type SpreadsheetConditionalVisualSpec =
   | {
     format: RecordValue;
     kind: "format";
+    numericValues?: readonly number[];
     range: SpreadsheetCellRange;
     stopIfTrue: boolean;
     textCounts?: ReadonlyMap<string, number>;
@@ -159,6 +160,7 @@ export function buildSpreadsheetConditionalVisuals(
       conditionalVisuals.push({
         format,
         kind: "format",
+        numericValues: conditionalRuleNeedsNumericValues(format) ? values.map((item) => item.value) : undefined,
         range,
         stopIfTrue: format.stopIfTrue === true,
         textCounts: conditionalRuleNeedsTextCounts(format) ? textCountsInRange(rowsByIndex, reference) : undefined,
@@ -401,7 +403,7 @@ function spreadsheetConditionalCellVisual(
       case "format": {
         const cell = cellAt(rowsByIndex, rowIndex, columnIndex);
         const text = cellText(cell);
-        if (!conditionalTextMatches(rule.format, text, value, rule.textCounts)) break;
+        if (!conditionalTextMatches(rule.format, text, value, rule.textCounts, rule.numericValues)) break;
         visual = mergeSpreadsheetCellVisuals(visual, {
           background: protocolColorToCss(rule.format.fillColor),
           color: protocolColorToCss(rule.format.fontColor),
@@ -735,6 +737,7 @@ function conditionalTextMatches(
   text: string,
   numericValue: number | null,
   textCounts?: ReadonlyMap<string, number>,
+  numericValues?: readonly number[],
 ): boolean {
   const type = asString(format.type);
   const matchText = asString(format.text);
@@ -771,6 +774,14 @@ function conditionalTextMatches(
     return normalizedText.length > 0 && (textCounts?.get(normalizedText) ?? 0) === 1;
   }
 
+  if (type === "top10" && numericValue != null) {
+    return topBottomRuleMatches(format, numericValue, numericValues ?? []);
+  }
+
+  if (type === "aboveAverage" && numericValue != null) {
+    return averageRuleMatches(format, numericValue, numericValues ?? []);
+  }
+
   if (type === "cellIs" && numericValue != null) {
     const formulas = asArray(format.formulas).map(asString);
     const formula = Number(formulas[0] ?? "");
@@ -797,6 +808,43 @@ function conditionalTextMatches(
 function conditionalRuleNeedsTextCounts(format: RecordValue): boolean {
   const type = asString(format.type);
   return type === "duplicateValues" || type === "uniqueValues";
+}
+
+function conditionalRuleNeedsNumericValues(format: RecordValue): boolean {
+  const type = asString(format.type);
+  return type === "top10" || type === "aboveAverage";
+}
+
+function topBottomRuleMatches(format: RecordValue, value: number, rangeValues: readonly number[]): boolean {
+  const values = rangeValues.filter(Number.isFinite).sort((left, right) => left - right);
+  if (values.length === 0) return false;
+  const rank = Math.max(1, asNumber(format.rank, 10));
+  const count = format.percent === true
+    ? Math.max(1, Math.ceil(values.length * Math.min(100, rank) / 100))
+    : Math.min(values.length, Math.floor(rank));
+  const threshold = format.bottom === true ? values[count - 1] : values[values.length - count];
+  return format.bottom === true ? value <= threshold : value >= threshold;
+}
+
+function averageRuleMatches(format: RecordValue, value: number, rangeValues: readonly number[]): boolean {
+  const values = rangeValues.filter(Number.isFinite);
+  if (values.length === 0) return false;
+  const average = values.reduce((sum, item) => sum + item, 0) / values.length;
+  const aboveAverage = format.aboveAverage !== false;
+  const threshold = averageThreshold(format, values, average, aboveAverage);
+  if (format.equalAverage === true) {
+    return aboveAverage ? value >= threshold : value <= threshold;
+  }
+
+  return aboveAverage ? value > threshold : value < threshold;
+}
+
+function averageThreshold(format: RecordValue, values: readonly number[], average: number, aboveAverage: boolean): number {
+  const stdDev = asNumber(format.stdDev, 0);
+  if (stdDev <= 0) return average;
+  const variance = values.reduce((sum, item) => sum + (item - average) ** 2, 0) / values.length;
+  const offset = Math.sqrt(variance) * stdDev;
+  return aboveAverage ? average + offset : average - offset;
 }
 
 function normalizedConditionalFormats(sheet: RecordValue | undefined): RecordValue[] {

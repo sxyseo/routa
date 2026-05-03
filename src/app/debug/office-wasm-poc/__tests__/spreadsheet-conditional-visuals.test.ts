@@ -299,4 +299,59 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("2:1")).toBeUndefined();
     expect(visuals.get("4:1")?.background).toBe("#60A5FA");
   });
+
+  it("applies top-bottom and average conditional format rules", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A5"],
+          rules: [
+            {
+              fillColor: "F97316",
+              rank: 2,
+              type: "top10",
+            },
+          ],
+        },
+        {
+          ranges: ["B1:B5"],
+          rules: [
+            {
+              bottom: true,
+              fillColor: "A855F7",
+              rank: 40,
+              percent: true,
+              type: "top10",
+            },
+          ],
+        },
+        {
+          ranges: ["C1:C5"],
+          rules: [
+            {
+              aboveAverage: false,
+              equalAverage: true,
+              fillColor: "14B8A6",
+              type: "aboveAverage",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: 1 }, { address: "B1", value: 1 }, { address: "C1", value: 1 }], index: 1 },
+        { cells: [{ address: "A2", value: 2 }, { address: "B2", value: 2 }, { address: "C2", value: 2 }], index: 2 },
+        { cells: [{ address: "A3", value: 3 }, { address: "B3", value: 3 }, { address: "C3", value: 3 }], index: 3 },
+        { cells: [{ address: "A4", value: 4 }, { address: "B4", value: 4 }, { address: "C4", value: 4 }], index: 4 },
+        { cells: [{ address: "A5", value: 5 }, { address: "B5", value: 5 }, { address: "C5", value: 5 }], index: 5 },
+      ],
+    });
+
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#F97316");
+    expect(visuals.get("5:0")?.background).toBe("#F97316");
+    expect(visuals.get("1:1")?.background).toBe("#A855F7");
+    expect(visuals.get("2:1")?.background).toBe("#A855F7");
+    expect(visuals.get("3:2")?.background).toBe("#14B8A6");
+    expect(visuals.get("4:2")).toBeUndefined();
+  });
 });
