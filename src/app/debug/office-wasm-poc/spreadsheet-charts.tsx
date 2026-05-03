@@ -58,6 +58,7 @@ export type SpreadsheetChartSpec = {
   categories: string[];
   height: number;
   left: number;
+  legendOverlay: boolean;
   legendPosition: SpreadsheetChartLegendPosition;
   series: SpreadsheetChartSeries[];
   title: string;
@@ -106,6 +107,7 @@ export function buildSpreadsheetCharts({
       categories: statusCategories,
       height: 280,
       left: spreadsheetColumnLeft(layout, 5),
+      legendOverlay: false,
       legendPosition: "none",
       series: [spreadsheetChartSeries("Count", statusValues, 0)],
       title: "Tasks by Status",
@@ -136,6 +138,7 @@ export function buildSpreadsheetCharts({
       categories: monthLabels,
       height: 280,
       left: spreadsheetColumnLeft(layout, 0),
+      legendOverlay: false,
       legendPosition: "bottom",
       series: [
         spreadsheetChartSeries("Fitness Score", fitnessValues, 0),
@@ -234,6 +237,7 @@ function chartFromRecord(
     categories: categories.length > 0 ? categories : series[0].values.map((_, index) => String(index + 1)),
     height: bounds.height,
     left: bounds.left,
+    legendOverlay: spreadsheetLegendOverlay(chart.legend),
     legendPosition: spreadsheetLegendPosition(chart.legend),
     series,
     title: asString(chart.title),
@@ -283,6 +287,11 @@ function spreadsheetLegendPosition(value: unknown): SpreadsheetChartLegendPositi
     default:
       return "none";
   }
+}
+
+function spreadsheetLegendOverlay(value: unknown): boolean {
+  const legend = asRecord(value);
+  return legend?.overlay === true || asString(legend?.overlay).toLowerCase() === "true" || asString(legend?.overlay) === "1";
 }
 
 function spreadsheetChartType(chart: RecordValue): SpreadsheetChartType {
@@ -471,16 +480,20 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
 }
 
 export function spreadsheetChartPlotArea(chart: SpreadsheetChartSpec): SpreadsheetChartPlotArea {
-  const hasBottomLegend = chart.legendPosition === "bottom";
+  const reservesLegendSpace = chart.legendPosition !== "none" && !chart.legendOverlay;
+  const hasBottomLegend = reservesLegendSpace && chart.legendPosition === "bottom";
+  const hasTopLegend = reservesLegendSpace && chart.legendPosition === "top";
+  const hasLeftLegend = reservesLegendSpace && chart.legendPosition === "left";
+  const hasRightLegend = reservesLegendSpace && chart.legendPosition === "right";
   const categoryLabelHeight = isLineAxisChart(chart.type) ? 46 : isCircularChart(chart.type) || chart.type === "radar" ? 8 : 30;
   const legendHeight = hasBottomLegend ? 42 : 0;
-  const top = chart.title ? 58 : 24;
+  const top = (chart.title ? 58 : 24) + (hasTopLegend ? 28 : 0);
   const bottom = Math.max(top + 48, chart.height - categoryLabelHeight - legendHeight);
 
   return {
     bottom,
-    left: isLineAxisChart(chart.type) ? 64 : isCircularChart(chart.type) || chart.type === "radar" ? 28 : 52,
-    right: chart.width - (chart.legendPosition === "right" ? 126 : 22),
+    left: (isLineAxisChart(chart.type) ? 64 : isCircularChart(chart.type) || chart.type === "radar" ? 28 : 52) + (hasLeftLegend ? 108 : 0),
+    right: chart.width - (hasRightLegend ? 126 : 22),
     top,
   };
 }
@@ -893,6 +906,17 @@ function drawChartLegend(
   if (chart.legendPosition === "right") {
     let legendY = plot.top + 18;
     const legendX = plot.right + 18;
+    items.forEach((item) => {
+      drawLegendEntry(context, item, legendX, legendY);
+      legendY += 20;
+    });
+    context.restore();
+    return;
+  }
+
+  if (chart.legendPosition === "left") {
+    let legendY = plot.top + 18;
+    const legendX = 18;
     items.forEach((item) => {
       drawLegendEntry(context, item, legendX, legendY);
       legendY += 20;

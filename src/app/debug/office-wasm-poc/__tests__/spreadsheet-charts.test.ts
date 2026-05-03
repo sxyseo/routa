@@ -72,6 +72,7 @@ describe("spreadsheet charts", () => {
       categories: ["Jan 25", "Feb 25", "Mar 25"],
       height: 280,
       left: 0,
+      legendOverlay: false,
       legendPosition: "bottom" as const,
       series: [
         { color: "#1f6f8b", label: "Fitness Score", marker: "diamond" as const, values: [62.6, 78.1, 89.9] },
@@ -90,6 +91,35 @@ describe("spreadsheet charts", () => {
       left: 64,
       right: 618,
       top: 58,
+    });
+  });
+
+  it("reserves chart plot space for non-overlay left and top legends", () => {
+    const baseChart = {
+      categories: ["Jan", "Feb"],
+      height: 240,
+      left: 0,
+      series: [{ color: "#1f6f8b", label: "Series", marker: "square" as const, values: [10, 20] }],
+      title: "Legend Layout",
+      top: 0,
+      type: "line" as const,
+      width: 360,
+      yAxis: { majorGridLines: true, minimum: 0, numberFormat: "", position: "" },
+      zIndex: 0,
+    };
+
+    expect(spreadsheetChartPlotArea({ ...baseChart, legendOverlay: false, legendPosition: "left" })).toMatchObject({
+      left: 172,
+      right: 338,
+      top: 58,
+    });
+    expect(spreadsheetChartPlotArea({ ...baseChart, legendOverlay: true, legendPosition: "left" })).toMatchObject({
+      left: 64,
+      right: 338,
+      top: 58,
+    });
+    expect(spreadsheetChartPlotArea({ ...baseChart, legendOverlay: false, legendPosition: "top" })).toMatchObject({
+      top: 86,
     });
   });
 
