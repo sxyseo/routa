@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   asArray,
@@ -58,11 +58,7 @@ import {
   type SpreadsheetViewportScroll,
   type SpreadsheetViewportSize,
 } from "./spreadsheet-layout";
-
-type SpreadsheetViewportState = {
-  scroll: SpreadsheetViewportScroll;
-  size: SpreadsheetViewportSize;
-};
+import { useSpreadsheetViewportStore } from "./spreadsheet-viewport-store";
 
 type SpreadsheetFloatingSpec = {
   height: number;
@@ -128,11 +124,10 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const theme = useMemo(() => asRecord(root?.theme), [root]);
   const imageSources = useOfficeImageSources(root);
   const [activeSheetIndex, setActiveSheetIndex] = useState(() => defaultSpreadsheetSheetIndex(sheets));
-  const [viewportScroll, setViewportScroll] = useState({ left: 0, top: 0 });
-  const [viewportSize, setViewportSize] = useState({ height: 0, width: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
-  const pendingViewportStateRef = useRef<SpreadsheetViewportState | null>(null);
-  const viewportAnimationFrameRef = useRef<number | null>(null);
+  const { state: viewportState, store: viewportStore } = useSpreadsheetViewportStore();
+  const viewportScroll = viewportState.scroll;
+  const viewportSize = viewportState.size;
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
   const layout = useMemo(() => buildSpreadsheetLayout(activeSheet), [activeSheet]);
   const chartSpecs = useMemo(() => buildSpreadsheetCharts({
@@ -172,53 +167,15 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const commentVisuals = useMemo(() => buildSpreadsheetCommentVisuals(root, activeSheet), [activeSheet, root]);
   const validationVisuals = useMemo(() => buildSpreadsheetValidationVisuals(activeSheet), [activeSheet]);
 
-  const applyViewportState = useCallback((next: SpreadsheetViewportState) => {
-    setViewportScroll((current) => {
-      if (current.left === next.scroll.left && current.top === next.scroll.top) return current;
-      return next.scroll;
-    });
-    setViewportSize((current) => (
-      current.width === next.size.width && current.height === next.size.height
-        ? current
-        : next.size
-    ));
-  }, []);
-
-  const flushViewportState = useCallback(() => {
-    viewportAnimationFrameRef.current = null;
-    const next = pendingViewportStateRef.current;
-    pendingViewportStateRef.current = null;
-    if (next) applyViewportState(next);
-  }, [applyViewportState]);
-
-  const scheduleViewportState = useCallback((next: SpreadsheetViewportState) => {
-    pendingViewportStateRef.current = next;
-    if (typeof window === "undefined") {
-      flushViewportState();
-      return;
-    }
-
-    if (viewportAnimationFrameRef.current == null) {
-      viewportAnimationFrameRef.current = window.requestAnimationFrame(flushViewportState);
-    }
-  }, [flushViewportState]);
-
-  const cancelPendingViewportState = useCallback(() => {
-    pendingViewportStateRef.current = null;
-    if (viewportAnimationFrameRef.current != null && typeof window !== "undefined") {
-      window.cancelAnimationFrame(viewportAnimationFrameRef.current);
-      viewportAnimationFrameRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => cancelPendingViewportState, [cancelPendingViewportState]);
+  useEffect(() => () => viewportStore.destroy(), [viewportStore]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     viewport.scrollLeft = 0;
     viewport.scrollTop = 0;
-  }, [activeSheetIndex]);
+    viewportStore.reset();
+  }, [activeSheetIndex, viewportStore]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -226,7 +183,10 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     const updateViewportSize = () => {
       const width = viewport.clientWidth;
       const height = viewport.clientHeight;
-      setViewportSize((current) => current.width === width && current.height === height ? current : { height, width });
+      viewportStore.schedule({
+        scroll: { left: viewport.scrollLeft, top: viewport.scrollTop },
+        size: { height, width },
+      });
     };
 
     updateViewportSize();
@@ -238,17 +198,16 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     const observer = new ResizeObserver(updateViewportSize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [activeSheetIndex]);
+  }, [activeSheetIndex, viewportStore]);
 
   const handleSheetSelect = (index: number) => {
-    cancelPendingViewportState();
-    setViewportScroll({ left: 0, top: 0 });
+    viewportStore.reset();
     setActiveSheetIndex(index);
   };
 
   const handleViewportScroll = (event: UIEvent<HTMLDivElement>) => {
     const { clientHeight, clientWidth, scrollLeft, scrollTop } = event.currentTarget;
-    scheduleViewportState({
+    viewportStore.schedule({
       scroll: { left: scrollLeft, top: scrollTop },
       size: { height: clientHeight, width: clientWidth },
     });
