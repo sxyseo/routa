@@ -20,6 +20,7 @@ export type SpreadsheetCanvasBitmapSize = {
 };
 
 export type SpreadsheetCanvasDrawRect = SpreadsheetViewportRect & {
+  color?: string;
   fill?: string;
   stroke?: string;
   text?: string;
@@ -108,10 +109,12 @@ function spreadsheetCanvasCellRect(
   scroll: SpreadsheetViewportScroll,
 ): SpreadsheetCanvasDrawRect {
   return {
-    fill: "#ffffff",
+    fill: cell.fill ?? "#ffffff",
+    color: cell.color,
     height: cell.height,
     left: cell.left - scroll.left,
     stroke: "#e2e8f0",
+    text: cell.text,
     top: cell.top - scroll.top,
     width: cell.width,
   };
@@ -143,9 +146,14 @@ function drawSpreadsheetCanvasRect(
   context.lineWidth = 1;
   context.strokeRect(rect.left + 0.5, rect.top + 0.5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1));
   if (!rect.text) return;
-  context.fillStyle = "#3c4043";
+  context.fillStyle = rect.color ?? "#3c4043";
   context.font = "500 13px Arial, Helvetica, sans-serif";
-  context.textAlign = "center";
+  context.textAlign = "left";
   context.textBaseline = "middle";
-  context.fillText(rect.text, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  context.save();
+  context.beginPath();
+  context.rect(rect.left + 3, rect.top + 1, Math.max(0, rect.width - 6), Math.max(0, rect.height - 2));
+  context.clip();
+  context.fillText(rect.text, rect.left + 8, rect.top + rect.height / 2);
+  context.restore();
 }

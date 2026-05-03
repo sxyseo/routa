@@ -146,6 +146,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added a pure canvas render-plan adapter plus a mounted preview canvas layer. The layer syncs CSS/intrinsic bitmap size from viewport metrics and DPR, draws only visible worksheet cells/headers, and keeps the DOM grid as the current content layer while establishing the same draw-plan boundary needed for worker/offscreen rendering.
 - Added a canvas frame scheduler so repeated render-plan updates are coalesced into the next animation frame and unchanged plan signatures are skipped before drawing.
 - Added a worker/offscreen canvas protocol boundary with capability detection and serializable render messages. The mounted layer now attempts `transferControlToOffscreen` plus a module worker when supported, and falls back to the main-thread canvas path when worker creation or transfer is unavailable.
+- Extended canvas draw commands to carry visible cell text, fill, and font color into the render plan. The DOM grid remains the complete content layer, but the canvas/worker path now consumes real cell paint state rather than only grid geometry.
 - Added a pure XLSX selection controller and wired the preview to hit-test cells through the prefix-sum layout, including merged-cell normalization and frozen-pane selection overlay segments.
 - Added a pure row/column resize controller and preview-side size override layer. Header boundary hit testing, resize cursors, drag sizing, and rebuilt offsets now use the same worksheet-space layout math without mutating decoded protocol data.
 - Added keyboard selection navigation for arrow keys, Enter, Tab, and Shift+Tab, with formula-bar address/value updates and scroll-into-view behavior driven by the same selection rectangle projection.
@@ -195,7 +196,7 @@ Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or 
 
 8. Production renderer architecture
 
-   The current DOM viewport is virtualized, memoized, frame-coalesced, backed by a small external viewport store, uses pure render/selection/resize snapshots, has keyboard/edit-mode interaction boundaries, and now mounts a viewport canvas fed by frame-coalesced pure draw plans with worker/offscreen transport when supported. It still keeps the DOM grid as the primary rich content layer, so the remaining production-grade work is shifting more draw-state snapshots and rich cell rendering into the canvas/worker path.
+   The current DOM viewport is virtualized, memoized, frame-coalesced, backed by a small external viewport store, uses pure render/selection/resize snapshots, has keyboard/edit-mode interaction boundaries, and now mounts a viewport canvas fed by frame-coalesced pure draw plans with worker/offscreen transport when supported. The canvas path now receives basic cell text/fill/color, but the DOM grid remains the primary rich content layer; the remaining production-grade work is shifting richer formatting, overlays, and editing visuals into the canvas/worker path.
 
 9. Coverage expansion
 

@@ -44,6 +44,7 @@ import {
   type SpreadsheetSparklineVisual,
   type SpreadsheetValidationVisualLookup,
 } from "./spreadsheet-cell-overlays";
+import type { SpreadsheetCanvasCellPaint } from "./spreadsheet-canvas-commands";
 import { SpreadsheetCanvasLayer } from "./spreadsheet-canvas-layer";
 import { buildSpreadsheetCharts, SpreadsheetChartLayer } from "./spreadsheet-charts";
 import { SpreadsheetFrozenHeaders } from "./spreadsheet-frozen-headers";
@@ -210,6 +211,16 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const sparklineVisuals = useMemo(() => buildSpreadsheetSparklineVisuals(activeSheet), [activeSheet]);
   const commentVisuals = useMemo(() => buildSpreadsheetCommentVisuals(root, activeSheet), [activeSheet, root]);
   const validationVisuals = useMemo(() => buildSpreadsheetValidationVisuals(activeSheet), [activeSheet]);
+  const canvasCellPaints = useMemo(
+    () => buildSpreadsheetCanvasCellPaints({
+      activeSheet,
+      cellEdits,
+      cellVisuals,
+      layout,
+      styles,
+    }),
+    [activeSheet, cellEdits, cellVisuals, layout, styles],
+  );
 
   useEffect(() => () => viewportStore.destroy(), [viewportStore]);
 
@@ -366,7 +377,12 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
       <SpreadsheetFormulaBar activeSheet={activeSheet} cellEdits={cellEdits} selection={selection} styles={styles} />
       <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
-        <SpreadsheetCanvasLayer layout={layout} scroll={viewportScroll} viewportSize={viewportSize} />
+        <SpreadsheetCanvasLayer
+          cellPaints={canvasCellPaints}
+          layout={layout}
+          scroll={viewportScroll}
+          viewportSize={viewportSize}
+        />
         <div
           onDoubleClick={handleViewportDoubleClick}
           onKeyDown={handleViewportKeyDown}
@@ -900,6 +916,50 @@ function visibleFloatingSpecs<T extends SpreadsheetFloatingSpec>(
   viewportScroll: SpreadsheetViewportScroll,
 ): T[] {
   return specs.filter((spec) => spreadsheetViewportIntersectsRect(spec, viewportSize, viewportScroll));
+}
+
+function buildSpreadsheetCanvasCellPaints({
+  activeSheet,
+  cellEdits,
+  cellVisuals,
+  layout,
+  styles,
+}: {
+  activeSheet: RecordValue | undefined;
+  cellEdits: SpreadsheetCellEdits;
+  cellVisuals: SpreadsheetCellVisualLookup;
+  layout: SpreadsheetLayout;
+  styles: RecordValue | null;
+}): Map<string, SpreadsheetCanvasCellPaint> {
+  const sheetName = asString(activeSheet?.name);
+  const paints = new Map<string, SpreadsheetCanvasCellPaint>();
+
+  for (const row of layout.rows) {
+    const rowIndex = asNumber(row.index, 1);
+    const rowRecord = layout.rowRecordsByIndex.get(rowIndex);
+    for (const cellRecord of asArray(row.cells)) {
+      const cell = asRecord(cellRecord);
+      const address = asString(cell?.address);
+      const columnIndex = columnIndexFromAddress(address);
+      if (!cell || columnIndex < 0) continue;
+      const key = spreadsheetCellKey(rowIndex, columnIndex);
+      const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
+      const visual = cellVisuals.get(key);
+      const cellStyle = spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex);
+      paints.set(key, {
+        color: asString(cellStyle.color),
+        fill: asString(cellStyle.background),
+        text: cellEdits[key] ?? spreadsheetCellText(cell, styles, sheetName, styleIndex),
+      });
+    }
+  }
+
+  for (const [key, text] of Object.entries(cellEdits)) {
+    if (text == null || paints.has(key)) continue;
+    paints.set(key, { text });
+  }
+
+  return paints;
 }
 
 function SpreadsheetWorkbookBar({ title }: { title: string }) {

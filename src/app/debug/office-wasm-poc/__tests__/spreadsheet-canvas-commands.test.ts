@@ -20,6 +20,7 @@ describe("spreadsheet canvas commands", () => {
     });
 
     const commands = buildSpreadsheetCanvasCommands({
+      cellPaints: new Map([["2:1", { color: "#111111", fill: "#eeeeee", text: "Merged" }]]),
       layout,
       scroll: { left: 0, top: 0 },
       viewportSize: { height: 100, width: 220 },
@@ -32,8 +33,11 @@ describe("spreadsheet canvas commands", () => {
     ]);
     expect(commands.cells).toContainEqual({
       addressKey: "2:1",
+      color: "#111111",
+      fill: "#eeeeee",
       height: 40,
       left: 115,
+      text: "Merged",
       top: 40,
       width: 150,
     });

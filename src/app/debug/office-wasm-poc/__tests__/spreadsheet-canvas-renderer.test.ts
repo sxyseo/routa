@@ -70,4 +70,29 @@ describe("spreadsheet canvas renderer", () => {
       width: 75,
     });
   });
+
+  it("preserves cell text and paint commands for worker rendering", () => {
+    const layout = buildSpreadsheetLayout({
+      rows: [{ cells: [{ address: "A1" }], index: 1 }],
+    });
+    const commands = buildSpreadsheetCanvasCommands({
+      cellPaints: new Map([["1:0", { color: "#222222", fill: "#fafafa", text: "Hello" }]]),
+      layout,
+      scroll: { left: 0, top: 0 },
+      viewportSize: { height: 80, width: 180 },
+    });
+
+    const plan = buildSpreadsheetCanvasRenderPlan({
+      commands,
+      pixelRatio: 1,
+      scroll: { left: 0, top: 0 },
+      viewportSize: { height: 80, width: 180 },
+    });
+
+    expect(plan.cells[0]).toMatchObject({
+      color: "#222222",
+      fill: "#fafafa",
+      text: "Hello",
+    });
+  });
 });

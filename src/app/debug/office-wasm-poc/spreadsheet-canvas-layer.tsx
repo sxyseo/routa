@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 
-import { buildSpreadsheetCanvasCommands } from "./spreadsheet-canvas-commands";
+import { buildSpreadsheetCanvasCommands, type SpreadsheetCanvasCellPaint } from "./spreadsheet-canvas-commands";
 import { createSpreadsheetCanvasFrameScheduler } from "./spreadsheet-canvas-frame-scheduler";
 import {
   buildSpreadsheetCanvasRenderPlan,
@@ -38,7 +38,9 @@ export function SpreadsheetCanvasLayer({
   layout,
   scroll,
   viewportSize,
+  cellPaints,
 }: {
+  cellPaints?: Map<string, SpreadsheetCanvasCellPaint>;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
   viewportSize: SpreadsheetViewportSize;
@@ -48,11 +50,11 @@ export function SpreadsheetCanvasLayer({
   const workerRendererRef = useRef<SpreadsheetCanvasWorkerRenderer | null>(null);
   const renderer = useMemo(() => spreadsheetCanvasWorkerCapabilities().preferredRenderer, []);
   const plan = useMemo(() => buildSpreadsheetCanvasRenderPlan({
-    commands: buildSpreadsheetCanvasCommands({ layout, scroll, viewportSize }),
+    commands: buildSpreadsheetCanvasCommands({ cellPaints, layout, scroll, viewportSize }),
     pixelRatio: typeof window === "undefined" ? 1 : window.devicePixelRatio,
     scroll,
     viewportSize,
-  }), [layout, scroll, viewportSize]);
+  }), [cellPaints, layout, scroll, viewportSize]);
 
   useEffect(() => {
     if (!schedulerRef.current) {

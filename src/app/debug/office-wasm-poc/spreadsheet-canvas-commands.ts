@@ -16,8 +16,11 @@ import type { SpreadsheetViewportScroll, SpreadsheetViewportSize } from "./sprea
 
 export type SpreadsheetCanvasCellCommand = {
   addressKey: string;
+  color?: string;
+  fill?: string;
   height: number;
   left: number;
+  text?: string;
   top: number;
   width: number;
 };
@@ -37,11 +40,19 @@ export type SpreadsheetCanvasCommands = {
   snapshot: SpreadsheetRenderSnapshot;
 };
 
+export type SpreadsheetCanvasCellPaint = {
+  color?: string;
+  fill?: string;
+  text?: string;
+};
+
 export function buildSpreadsheetCanvasCommands({
   layout,
   scroll,
   viewportSize,
+  cellPaints,
 }: {
+  cellPaints?: Map<string, SpreadsheetCanvasCellPaint>;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
   viewportSize: SpreadsheetViewportSize;
@@ -58,10 +69,14 @@ export function buildSpreadsheetCanvasCommands({
       if (!visibleCellIntersectsRange(layout, rowOffset, columnIndex, snapshot.visibleRange)) continue;
       const merge = layout.mergeByStart.get(addressKey);
       const left = spreadsheetColumnLeft(layout, columnIndex);
+      const paint = cellPaints?.get(addressKey);
       cells.push({
         addressKey,
+        color: paint?.color,
+        fill: paint?.fill,
         height: spreadsheetRowTop(layout, rowOffset + (merge?.rowSpan ?? 1)) - top,
         left,
+        text: paint?.text,
         top,
         width: spreadsheetColumnLeft(layout, columnIndex + (merge?.columnSpan ?? 1)) - left,
       });
