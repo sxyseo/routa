@@ -853,7 +853,7 @@ internal static class PptxPresentationProtoReader
                 WriteMessageAlways(output, 5, Message(_ => { }));
             }
 
-            if (line is not null)
+            if (line is not null && customGeometry is null)
             {
                 WriteMessage(output, 6, WriteLine(line, suppressLineStyle, suppressLineDetails));
             }
