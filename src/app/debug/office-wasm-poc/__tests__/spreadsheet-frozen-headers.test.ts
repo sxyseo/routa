@@ -12,6 +12,7 @@ import {
   spreadsheetFrozenBodyWidth,
   spreadsheetHitCellAtViewportPoint,
   spreadsheetVisibleCellRange,
+  spreadsheetViewportIntersectsRect,
   spreadsheetViewportPointToWorld,
   spreadsheetViewportRectSegments,
 } from "../spreadsheet-layout";
@@ -123,6 +124,29 @@ describe("spreadsheet frozen headers", () => {
       startColumnIndex: 2,
       startRowOffset: 3,
     });
+  });
+
+  it("culls floating overlays against the scroll viewport with overscan", () => {
+    expect(spreadsheetViewportIntersectsRect(
+      { height: 80, left: 520, top: 380, width: 120 },
+      { height: 240, width: 360 },
+      { left: 120, top: 100 },
+      0,
+    )).toBe(false);
+
+    expect(spreadsheetViewportIntersectsRect(
+      { height: 80, left: 520, top: 380, width: 120 },
+      { height: 240, width: 360 },
+      { left: 120, top: 100 },
+      120,
+    )).toBe(true);
+
+    expect(spreadsheetViewportIntersectsRect(
+      { height: 80, left: 10_000, top: 10_000, width: 120 },
+      { height: 0, width: 0 },
+      { left: 120, top: 100 },
+      0,
+    )).toBe(true);
   });
 
   it("normalizes two-cell drawing anchors through the shared layout adapter", () => {

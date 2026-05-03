@@ -41,20 +41,22 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 ## Current Routa State
 
 - `src/app/debug/office-wasm-poc/spreadsheet-layout.ts` already provides prefix sums, binary-search visible range lookup, frozen pane projection, floating hit regions, and drawing bounds.
-- `src/app/debug/office-wasm-poc/spreadsheet-preview.tsx` renders only visible cells in the scrollable grid, but stable derived specs were previously rebuilt on scroll-triggered re-renders.
-- Frozen body rendering still needs to avoid full layout traversal before row/column caps are raised.
+- `src/app/debug/office-wasm-poc/spreadsheet-preview.tsx` renders only visible cells and visible floating overlays in the scrollable grid.
+- Scroll-driven viewport state is coalesced with `requestAnimationFrame`, matching Walnut's frame-scheduled update style instead of updating React state for every scroll event.
 
 ## Progress
 
 - Created this tracker after decoded XLSX protocol parity reached `0` field-level diffs against Walnut across all 21 validation-only production workbooks.
 - Memoized root workbook derivation, active sheet layout, chart specs, shape specs, image specs, and conditional-format visuals in the debug spreadsheet preview so scroll updates do not rebuild stable workbook-derived structures.
 - Changed the frozen body overlay to reuse the visible viewport range and merge-start overscan logic instead of traversing every row/column in the current layout.
+- Added viewport/overscan culling for floating image, shape, and chart overlays so offscreen drawings do not mount canvases or DOM nodes during scroll.
+- Coalesced spreadsheet viewport scroll/size updates with `requestAnimationFrame`, keeping scroll handling closer to Walnut's frame-based viewport scheduling.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
 ## Remaining Work
 
 - Add stress fixtures or synthetic benchmark data for larger sheets without committing production files.
-- Decide whether to keep a DOM viewport for debug-only usage or introduce a canvas/worker renderer for production workbook previews.
+- Decide whether to keep a DOM viewport for debug-only usage or introduce a canvas/worker renderer for production workbook previews. Walnut's production bundle still goes further with a controller/worker boundary, narrowed external-store snapshots, and canvas-centric pointer/hover target handling.
 
 ## References
 

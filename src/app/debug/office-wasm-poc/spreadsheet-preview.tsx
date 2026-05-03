@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   asArray,
@@ -42,12 +42,25 @@ import {
   spreadsheetFrozenBodyHeight,
   spreadsheetFrozenBodyWidth,
   spreadsheetVisibleCellRange,
+  spreadsheetViewportIntersectsRect,
   spreadsheetViewportRectSegments,
   type SpreadsheetLayout,
   spreadsheetRowTop,
   type SpreadsheetViewportScroll,
   type SpreadsheetViewportSize,
 } from "./spreadsheet-layout";
+
+type SpreadsheetViewportState = {
+  scroll: SpreadsheetViewportScroll;
+  size: SpreadsheetViewportSize;
+};
+
+type SpreadsheetFloatingSpec = {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+};
 
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = useMemo(() => asRecord(proto), [proto]);
@@ -70,6 +83,8 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const [viewportScroll, setViewportScroll] = useState({ left: 0, top: 0 });
   const [viewportSize, setViewportSize] = useState({ height: 0, width: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
+  const pendingViewportStateRef = useRef<SpreadsheetViewportState | null>(null);
+  const viewportAnimationFrameRef = useRef<number | null>(null);
   const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
   const layout = useMemo(() => buildSpreadsheetLayout(activeSheet), [activeSheet]);
   const chartSpecs = useMemo(() => buildSpreadsheetCharts({
@@ -88,7 +103,60 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     imageSources,
     layout,
   }), [activeSheet, imageSources, layout]);
+  const visibleChartSpecs = useMemo(
+    () => visibleFloatingSpecs(chartSpecs, viewportSize, viewportScroll),
+    [chartSpecs, viewportScroll, viewportSize],
+  );
+  const visibleShapeSpecs = useMemo(
+    () => visibleFloatingSpecs(shapeSpecs, viewportSize, viewportScroll),
+    [shapeSpecs, viewportScroll, viewportSize],
+  );
+  const visibleImageSpecs = useMemo(
+    () => visibleFloatingSpecs(imageSpecs, viewportSize, viewportScroll),
+    [imageSpecs, viewportScroll, viewportSize],
+  );
   const cellVisuals = useMemo(() => buildSpreadsheetConditionalVisuals(activeSheet, theme), [activeSheet, theme]);
+
+  const applyViewportState = useCallback((next: SpreadsheetViewportState) => {
+    setViewportScroll((current) => {
+      if (current.left === next.scroll.left && current.top === next.scroll.top) return current;
+      return next.scroll;
+    });
+    setViewportSize((current) => (
+      current.width === next.size.width && current.height === next.size.height
+        ? current
+        : next.size
+    ));
+  }, []);
+
+  const flushViewportState = useCallback(() => {
+    viewportAnimationFrameRef.current = null;
+    const next = pendingViewportStateRef.current;
+    pendingViewportStateRef.current = null;
+    if (next) applyViewportState(next);
+  }, [applyViewportState]);
+
+  const scheduleViewportState = useCallback((next: SpreadsheetViewportState) => {
+    pendingViewportStateRef.current = next;
+    if (typeof window === "undefined") {
+      flushViewportState();
+      return;
+    }
+
+    if (viewportAnimationFrameRef.current == null) {
+      viewportAnimationFrameRef.current = window.requestAnimationFrame(flushViewportState);
+    }
+  }, [flushViewportState]);
+
+  const cancelPendingViewportState = useCallback(() => {
+    pendingViewportStateRef.current = null;
+    if (viewportAnimationFrameRef.current != null && typeof window !== "undefined") {
+      window.cancelAnimationFrame(viewportAnimationFrameRef.current);
+      viewportAnimationFrameRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => cancelPendingViewportState, [cancelPendingViewportState]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -118,21 +186,17 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   }, [activeSheetIndex]);
 
   const handleSheetSelect = (index: number) => {
+    cancelPendingViewportState();
     setViewportScroll({ left: 0, top: 0 });
     setActiveSheetIndex(index);
   };
 
   const handleViewportScroll = (event: UIEvent<HTMLDivElement>) => {
     const { clientHeight, clientWidth, scrollLeft, scrollTop } = event.currentTarget;
-    setViewportScroll((current) => {
-      if (current.left === scrollLeft && current.top === scrollTop) return current;
-      return { left: scrollLeft, top: scrollTop };
+    scheduleViewportState({
+      scroll: { left: scrollLeft, top: scrollTop },
+      size: { height: clientHeight, width: clientWidth },
     });
-    setViewportSize((current) => (
-      current.width === clientWidth && current.height === clientHeight
-        ? current
-        : { height: clientHeight, width: clientWidth }
-    ));
   };
 
   if (sheets.length === 0) {
@@ -174,9 +238,9 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               styles={styles}
               viewportSize={viewportSize}
             />
-            <SpreadsheetImageLayer images={imageSpecs} />
-            <SpreadsheetShapeLayer shapes={shapeSpecs} />
-            <SpreadsheetChartLayer charts={chartSpecs} />
+            <SpreadsheetImageLayer images={visibleImageSpecs} />
+            <SpreadsheetShapeLayer shapes={visibleShapeSpecs} />
+            <SpreadsheetChartLayer charts={visibleChartSpecs} />
           </div>
         </div>
         <SpreadsheetFrozenBodyLayer
@@ -479,6 +543,14 @@ function visibleCellIntersectsRange(
     columnIndex <= range.endColumnIndex &&
     columnEnd >= range.startColumnIndex
   );
+}
+
+function visibleFloatingSpecs<T extends SpreadsheetFloatingSpec>(
+  specs: T[],
+  viewportSize: SpreadsheetViewportSize,
+  viewportScroll: SpreadsheetViewportScroll,
+): T[] {
+  return specs.filter((spec) => spreadsheetViewportIntersectsRect(spec, viewportSize, viewportScroll));
 }
 
 function SpreadsheetWorkbookBar({ title }: { title: string }) {

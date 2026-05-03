@@ -296,6 +296,28 @@ export function spreadsheetVisibleCellRange(
   };
 }
 
+export function spreadsheetViewportIntersectsRect(
+  rect: SpreadsheetViewportRect,
+  viewport: SpreadsheetViewportSize,
+  scroll: SpreadsheetViewportScroll,
+  overscanPx = 240,
+): boolean {
+  if (viewport.width <= 0 || viewport.height <= 0) return true;
+
+  const overscan = Math.max(0, overscanPx);
+  const viewportLeft = scroll.left - overscan;
+  const viewportTop = scroll.top - overscan;
+  const viewportRight = scroll.left + viewport.width + overscan;
+  const viewportBottom = scroll.top + viewport.height + overscan;
+  const rectRight = rect.left + rect.width;
+  const rectBottom = rect.top + rect.height;
+
+  return rectRight >= viewportLeft &&
+    rect.left <= viewportRight &&
+    rectBottom >= viewportTop &&
+    rect.top <= viewportBottom;
+}
+
 export function spreadsheetDrawingBounds(layout: SpreadsheetLayout, drawing: RecordValue): SpreadsheetViewportRect {
   const fromAnchor = asRecord(drawing.fromAnchor);
   const toAnchor = asRecord(drawing.toAnchor);
