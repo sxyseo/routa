@@ -678,7 +678,7 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 1, WriteBoundingBox(transform, groupTransform));
             }
 
-            var shape = WriteShape(properties, null, line);
+            var shape = WriteShape(properties, null, line, suppressLineDetails: true);
             if (shape is not null)
             {
                 WriteMessage(output, 4, shape);
@@ -828,7 +828,8 @@ internal static class PptxPresentationProtoReader
         byte[]? fill,
         A.Outline? line,
         bool suppressLineStyle = false,
-        bool writeDefaultLine = false)
+        bool writeDefaultLine = false,
+        bool suppressLineDetails = false)
     {
         var geometry = properties?.GetFirstChild<A.PresetGeometry>();
         var customGeometry = properties?.GetFirstChild<A.CustomGeometry>();
@@ -853,7 +854,7 @@ internal static class PptxPresentationProtoReader
 
             if (line is not null)
             {
-                WriteMessage(output, 6, WriteLine(line, suppressLineStyle));
+                WriteMessage(output, 6, WriteLine(line, suppressLineStyle, suppressLineDetails));
             }
             else if (writeDefaultLine)
             {
@@ -1348,11 +1349,12 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[] WriteLine(OpenXmlElement line, bool suppressStyle = false)
+    private static byte[] WriteLine(OpenXmlElement line, bool suppressStyle = false, bool suppressDetails = false)
     {
         return Message(output =>
         {
             var fill = line.GetFirstChild<A.SolidFill>();
+            var noFill = line.GetFirstChild<A.NoFill>() is not null;
             var lineStyle = LineStyle(line);
             if (lineStyle != 0 && !suppressStyle)
             {
@@ -1363,6 +1365,17 @@ internal static class PptxPresentationProtoReader
             if (fill is not null)
             {
                 WriteMessage(output, 3, WriteFill(fill));
+            }
+            else if (noFill)
+            {
+                WriteMessageAlways(output, 3, Message(_ => { }));
+            }
+
+            if (!suppressDetails)
+            {
+                WriteInt32(output, 4, LineCompound(AttributeValue(line, "cmpd")));
+                WriteInt32(output, 6, ConnectorLineCap(line is A.Outline outline ? outline.CapType?.Value.ToString() : null, AttributeValue(line, "cap") ?? ""));
+                WriteInt32(output, 7, ConnectorLineJoin(line));
             }
         });
     }
@@ -1383,6 +1396,19 @@ internal static class PptxPresentationProtoReader
             "lgDashDotDot" => 11,
             "sysDashDotDot" => 12,
             _ => line.GetFirstChild<A.SolidFill>() is not null ? 1 : 0,
+        };
+    }
+
+    private static int LineCompound(string? value)
+    {
+        return value?.ToLowerInvariant() switch
+        {
+            "sng" or "single" => 1,
+            "dbl" or "double" => 2,
+            "thickthin" => 3,
+            "thinthick" => 4,
+            "trid" or "triple" => 5,
+            _ => 0,
         };
     }
 
@@ -1969,7 +1995,7 @@ internal static class PptxPresentationProtoReader
         return element?.ChildElements.FirstOrDefault(child => string.Equals(child.LocalName, localName, StringComparison.Ordinal));
     }
 
-    private static int ConnectorLineJoin(A.Outline line)
+    private static int ConnectorLineJoin(OpenXmlElement line)
     {
         if (line.GetFirstChild<A.Round>() is not null) return ConnectorLineJoinRound;
         if (line.GetFirstChild<A.Bevel>() is not null) return ConnectorLineJoinBevel;
@@ -2184,12 +2210,12 @@ internal static class PptxPresentationProtoReader
     private static A.Outline? OutlineFromProperties(OpenXmlElement? properties)
     {
         var outline = properties?.GetFirstChild<A.Outline>();
-        if (outline is null || outline.GetFirstChild<A.NoFill>() is not null)
+        if (outline is null)
         {
             return null;
         }
 
-        return outline.GetFirstChild<A.SolidFill>() is not null || outline.Width is not null ? outline : null;
+        return outline.GetFirstChild<A.SolidFill>() is not null || outline.GetFirstChild<A.NoFill>() is not null || outline.Width is not null ? outline : null;
     }
 
     private static ColorValue? ColorFromSolidFill(A.SolidFill fill)
