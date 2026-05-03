@@ -246,7 +246,7 @@ describe("presentation renderer helpers", () => {
 
   it("uses PPT text frame paragraph spacing and conservative wrap width", () => {
     expect(presentationParagraphSpacingPx(undefined, 2, false)).toBe(0);
-    expect(presentationParagraphSpacingPx(undefined, 2, true)).toBe(18);
+    expect(presentationParagraphSpacingPx(undefined, 2, true)).toBe(36);
     expect(presentationParagraphSpacingPx(120, 2, true)).toBe(12);
     expect(presentationEffectiveTextMaxWidth(500, false)).toBe(500);
     expect(presentationEffectiveTextMaxWidth(500, true)).toBeCloseTo(470);

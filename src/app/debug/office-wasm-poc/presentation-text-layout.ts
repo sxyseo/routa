@@ -15,6 +15,7 @@ import {
 
 const PRESENTATION_POINT_TO_CSS_PIXEL = 1.333;
 const POWERPOINT_WRAP_WIDTH_FACTOR = 0.94;
+const POWERPOINT_DEFAULT_PARAGRAPH_SPACING = 18;
 
 export type PresentationTextOverflow = "clip" | "visible";
 
@@ -359,7 +360,9 @@ export function presentationParagraphSpacingPx(
   useDefaultParagraphSpacing = false,
 ): number {
   const raw = asNumber(value);
-  if (raw <= 0) return useDefaultParagraphSpacing ? 9 * Math.max(0.01, slideScale) : 0;
+  if (raw <= 0) {
+    return useDefaultParagraphSpacing ? POWERPOINT_DEFAULT_PARAGRAPH_SPACING * Math.max(0.01, slideScale) : 0;
+  }
   return Math.min(24, raw / 20) * Math.max(0.01, slideScale);
 }
 
