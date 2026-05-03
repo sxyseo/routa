@@ -34,11 +34,31 @@ export type SpreadsheetCellVisual = {
   fontWeight?: CSSProperties["fontWeight"];
 };
 
+export type SpreadsheetCellVisualLookup = {
+  get(key: string): SpreadsheetCellVisual | undefined;
+};
+
+type SpreadsheetTableVisualSpec = {
+  bodyEndRow: number;
+  bodyStartRow: number;
+  headerRowCount: number;
+  lastColumnIndex: number;
+  palette: { columnStripe: string; rowStripe: string; total: string };
+  range: NonNullable<ReturnType<typeof parseCellRange>>;
+  showColumnStripes: boolean;
+  showFilter: boolean;
+  showFirstColumn: boolean;
+  showLastColumn: boolean;
+  showRowStripes: boolean;
+  totalsStartRow: number;
+};
+
 export function buildSpreadsheetConditionalVisuals(
   sheet: RecordValue | undefined,
   theme?: RecordValue | null,
-): Map<string, SpreadsheetCellVisual> {
-  const visuals = buildSpreadsheetTableVisuals(sheet, theme);
+): SpreadsheetCellVisualLookup {
+  const tableVisuals = buildSpreadsheetTableVisuals(sheet, theme);
+  const visuals = new Map<string, SpreadsheetCellVisual>();
   const rowsByIndex = rowsByIndexForSheet(sheet);
   const sheetName = asString(sheet?.name);
   const conditionalFormats = normalizedConditionalFormats(sheet);
@@ -120,7 +140,7 @@ export function buildSpreadsheetConditionalVisuals(
   }
 
   if (conditionalFormats.length > 0) {
-    return visuals;
+    return spreadsheetVisualLookup(tableVisuals, visuals);
   }
 
   for (const reference of conditionalReferences) {
@@ -149,7 +169,7 @@ export function buildSpreadsheetConditionalVisuals(
     }
   }
 
-  return visuals;
+  return spreadsheetVisualLookup(tableVisuals, visuals);
 }
 
 export function protocolColorToCss(value: unknown): string | undefined {
@@ -225,8 +245,7 @@ function mergeSpreadsheetVisual(
 function buildSpreadsheetTableVisuals(
   sheet: RecordValue | undefined,
   theme?: RecordValue | null,
-): Map<string, SpreadsheetCellVisual> {
-  const visuals = new Map<string, SpreadsheetCellVisual>();
+): SpreadsheetTableVisualSpec[] {
   const sheetName = asString(sheet?.name);
   const tableSpecs = asArray(sheet?.tables)
     .map(asRecord)
@@ -262,6 +281,7 @@ function buildSpreadsheetTableVisuals(
     })));
   }
 
+  const visualSpecs: SpreadsheetTableVisualSpec[] = [];
   for (const table of tableSpecs) {
     const range = parseCellRange(table.reference);
     if (!range) continue;
@@ -271,41 +291,110 @@ function buildSpreadsheetTableVisuals(
     const bodyStartRow = range.startRow + headerRowCount;
     const bodyEndRow = Math.max(bodyStartRow, range.startRow + range.rowSpan - totalsRowCount);
     const lastColumnIndex = range.startColumn + range.columnSpan - 1;
+    visualSpecs.push({
+      bodyEndRow,
+      bodyStartRow,
+      headerRowCount,
+      lastColumnIndex,
+      palette: table.palette,
+      range,
+      showColumnStripes: table.showColumnStripes,
+      showFilter: table.showFilter,
+      showFirstColumn: table.showFirstColumn,
+      showLastColumn: table.showLastColumn,
+      showRowStripes: table.showRowStripes,
+      totalsStartRow: bodyEndRow,
+    });
+  }
 
-    for (let headerOffset = 0; headerOffset < headerRowCount; headerOffset += 1) {
-      const headerRow = range.startRow + headerOffset;
-      for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-        mergeSpreadsheetVisual(visuals, headerRow, columnIndex, {
-          filter: table.showFilter && headerOffset === headerRowCount - 1 ? true : undefined,
-          fontWeight: 700,
-        });
-      }
+  return visualSpecs;
+}
+
+function spreadsheetVisualLookup(
+  tableVisuals: SpreadsheetTableVisualSpec[],
+  conditionalVisuals: ReadonlyMap<string, SpreadsheetCellVisual>,
+): SpreadsheetCellVisualLookup {
+  return {
+    get(key: string) {
+      const [rowValue, columnValue] = key.split(":");
+      const rowIndex = Number(rowValue);
+      const columnIndex = Number(columnValue);
+      const tableVisual = Number.isFinite(rowIndex) && Number.isFinite(columnIndex)
+        ? spreadsheetTableCellVisual(tableVisuals, rowIndex, columnIndex)
+        : undefined;
+      return mergeSpreadsheetCellVisuals(tableVisual, conditionalVisuals.get(key));
+    },
+  };
+}
+
+function spreadsheetTableCellVisual(
+  tableVisuals: SpreadsheetTableVisualSpec[],
+  rowIndex: number,
+  columnIndex: number,
+): SpreadsheetCellVisual | undefined {
+  let visual: SpreadsheetCellVisual | undefined;
+  for (const table of tableVisuals) {
+    if (
+      rowIndex < table.range.startRow ||
+      rowIndex >= table.range.startRow + table.range.rowSpan ||
+      columnIndex < table.range.startColumn ||
+      columnIndex >= table.range.startColumn + table.range.columnSpan
+    ) {
+      continue;
     }
 
-    for (let rowIndex = bodyStartRow; rowIndex < bodyEndRow; rowIndex += 1) {
-      const rowStripe = table.showRowStripes && (rowIndex - bodyStartRow) % 2 === 0;
-      for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-        const columnStripe = table.showColumnStripes && (columnIndex - range.startColumn) % 2 === 0;
-        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, {
-          background: columnStripe ? table.palette.columnStripe : rowStripe ? table.palette.rowStripe : undefined,
-          fontWeight: (table.showFirstColumn && columnIndex === range.startColumn) || (table.showLastColumn && columnIndex === lastColumnIndex)
-            ? 700
-            : undefined,
-        });
-      }
+    if (rowIndex < table.range.startRow + table.headerRowCount) {
+      visual = mergeSpreadsheetCellVisuals(visual, {
+        filter: table.showFilter && rowIndex === table.range.startRow + table.headerRowCount - 1 ? true : undefined,
+        fontWeight: 700,
+      });
+      continue;
     }
 
-    for (let rowIndex = bodyEndRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
-      for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-        mergeSpreadsheetVisual(visuals, rowIndex, columnIndex, {
-          background: table.palette.total,
-          fontWeight: 700,
-        });
-      }
+    if (rowIndex >= table.totalsStartRow) {
+      visual = mergeSpreadsheetCellVisuals(visual, {
+        background: table.palette.total,
+        fontWeight: 700,
+      });
+      continue;
+    }
+
+    if (rowIndex >= table.bodyStartRow && rowIndex < table.bodyEndRow) {
+      const rowStripe = table.showRowStripes && (rowIndex - table.bodyStartRow) % 2 === 0;
+      const columnStripe = table.showColumnStripes && (columnIndex - table.range.startColumn) % 2 === 0;
+      visual = mergeSpreadsheetCellVisuals(visual, {
+        background: columnStripe ? table.palette.columnStripe : rowStripe ? table.palette.rowStripe : undefined,
+        fontWeight: (table.showFirstColumn && columnIndex === table.range.startColumn) || (table.showLastColumn && columnIndex === table.lastColumnIndex)
+          ? 700
+          : undefined,
+      });
     }
   }
 
-  return visuals;
+  return visual;
+}
+
+function mergeSpreadsheetCellVisuals(
+  base: SpreadsheetCellVisual | undefined,
+  override: SpreadsheetCellVisual | undefined,
+): SpreadsheetCellVisual | undefined {
+  if (!base) return override;
+  if (!override) return base;
+  return {
+    ...base,
+    ...definedSpreadsheetVisualFields(override),
+  };
+}
+
+function definedSpreadsheetVisualFields(visual: SpreadsheetCellVisual): SpreadsheetCellVisual {
+  const next: SpreadsheetCellVisual = {};
+  if (visual.background !== undefined) next.background = visual.background;
+  if (visual.color !== undefined) next.color = visual.color;
+  if (visual.dataBar !== undefined) next.dataBar = visual.dataBar;
+  if (visual.filter !== undefined) next.filter = visual.filter;
+  if (visual.fontWeight !== undefined) next.fontWeight = visual.fontWeight;
+  if (visual.iconSet !== undefined) next.iconSet = visual.iconSet;
+  return next;
 }
 
 function tableStylePalette(

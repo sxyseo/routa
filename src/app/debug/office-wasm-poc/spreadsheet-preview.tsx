@@ -23,6 +23,7 @@ import {
 import {
   buildSpreadsheetConditionalVisuals,
   type SpreadsheetCellVisual,
+  type SpreadsheetCellVisualLookup,
 } from "./spreadsheet-conditional-visuals";
 import { buildSpreadsheetCharts, SpreadsheetChartLayer } from "./spreadsheet-charts";
 import { SpreadsheetFrozenHeaders } from "./spreadsheet-frozen-headers";
@@ -309,7 +310,7 @@ function SpreadsheetFrozenBodyLayer({
   viewportSize,
 }: {
   activeSheet: RecordValue | undefined;
-  cellVisuals: Map<string, SpreadsheetCellVisual>;
+  cellVisuals: SpreadsheetCellVisualLookup;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
   styles: RecordValue | null;
@@ -390,7 +391,7 @@ function SpreadsheetGrid({
   viewportSize,
 }: {
   activeSheet: RecordValue | undefined;
-  cellVisuals: Map<string, SpreadsheetCellVisual>;
+  cellVisuals: SpreadsheetCellVisualLookup;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
   styles: RecordValue | null;
