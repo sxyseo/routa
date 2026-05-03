@@ -10,7 +10,7 @@ import {
   colorToCss,
   elementImageReferenceId,
   fillToCss,
-  type DocumentStyleMaps,
+  type OfficeTextStyleMaps,
   paragraphStyle,
   type ParagraphView,
   paragraphView,
@@ -20,7 +20,7 @@ import {
   useOfficeImageSources,
 } from "./office-preview-utils";
 
-export function DocumentPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
+export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
   const elements = asArray(root?.elements);
   const imageSources = useOfficeImageSources(root);
@@ -30,7 +30,7 @@ export function DocumentPreview({ labels, proto }: { labels: PreviewLabels; prot
     const id = asString(record?.id);
     if (record && id) textStyles.set(id, record);
   }
-  const styleMaps: DocumentStyleMaps = { textStyles, images: imageSources };
+  const styleMaps: OfficeTextStyleMaps = { textStyles, images: imageSources };
 
   const hasRenderableBlocks = elements.some((element) => {
     const record = asRecord(element);
@@ -78,7 +78,7 @@ export function DocumentPreview({ labels, proto }: { labels: PreviewLabels; prot
       }}
     >
       {elements.map((element, index) => (
-        <DocumentElement
+        <WordElement
           element={asRecord(element) ?? {}}
           key={`${asString(asRecord(element)?.id)}-${index}`}
           styleMaps={styleMaps}
@@ -88,15 +88,15 @@ export function DocumentPreview({ labels, proto }: { labels: PreviewLabels; prot
   );
 }
 
-function DocumentElement({
+function WordElement({
   element,
   styleMaps,
 }: {
   element: RecordValue;
-  styleMaps: DocumentStyleMaps;
+  styleMaps: OfficeTextStyleMaps;
 }) {
   const table = asRecord(element.table);
-  if (table) return <DocumentTable table={table} styleMaps={styleMaps} />;
+  if (table) return <WordTable table={table} styleMaps={styleMaps} />;
 
   const imageId = elementImageReferenceId(element);
   const imageSrc = imageId ? styleMaps.images.get(imageId) : undefined;
@@ -126,13 +126,13 @@ function DocumentElement({
   return (
     <>
       {paragraphs.map((paragraph, index) => (
-        <DocumentParagraph key={paragraph.id || index} paragraph={paragraph} />
+        <WordParagraph key={paragraph.id || index} paragraph={paragraph} />
       ))}
     </>
   );
 }
 
-function DocumentParagraph({
+function WordParagraph({
   fallbackColor,
   paragraph,
 }: {
@@ -155,11 +155,11 @@ function DocumentParagraph({
   );
 }
 
-function DocumentTable({
+function WordTable({
   styleMaps,
   table,
 }: {
-  styleMaps: DocumentStyleMaps;
+  styleMaps: OfficeTextStyleMaps;
   table: RecordValue;
 }) {
   const rows = asArray(table.rows).map(asRecord).filter((row): row is RecordValue => row != null);
@@ -174,7 +174,7 @@ function DocumentTable({
               {asArray(row.cells).map((cell, cellIndex) => {
                 const cellRecord = asRecord(cell) ?? {};
                 const paragraphs = asArray(cellRecord.paragraphs).map((paragraph) => paragraphView(paragraph, styleMaps));
-                const background = documentFillToCss(cellRecord.fill) ?? (rowIndex === 0 ? "#f8fafc" : "#ffffff");
+                const background = wordFillToCss(cellRecord.fill) ?? (rowIndex === 0 ? "#f8fafc" : "#ffffff");
                 const fallbackTextColor = readableTextColor(background);
                 return (
                   <td
@@ -191,7 +191,7 @@ function DocumentTable({
                   >
                     {paragraphs.length > 0 ? (
                       paragraphs.map((paragraph, index) => (
-                        <DocumentParagraph
+                        <WordParagraph
                           fallbackColor={fallbackTextColor}
                           key={paragraph.id || index}
                           paragraph={paragraph}
@@ -211,7 +211,7 @@ function DocumentTable({
   );
 }
 
-function documentFillToCss(fill: unknown): string | undefined {
+function wordFillToCss(fill: unknown): string | undefined {
   const fillRecord = asRecord(fill);
   return fillToCss(fillRecord) ?? colorToCss(fillRecord?.color);
 }

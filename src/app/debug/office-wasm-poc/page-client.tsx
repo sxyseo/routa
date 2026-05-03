@@ -17,10 +17,10 @@ import {
   OFFICE_WASM_DOTNET_RUNTIME_CONFIG,
   OFFICE_WASM_READER_MODULES,
 } from "./office-wasm-config";
-import { DocumentPreview } from "./document-preview";
 import { type PreviewLabels } from "./office-preview-utils";
 import { PRESENTATION_HEADER_ACTIONS_ID, PresentationPreview } from "./presentation-preview";
 import { SpreadsheetPreview } from "./spreadsheet-preview";
+import { WordPreview } from "./word-preview";
 
 type ArtifactKind = "csv" | "tsv" | "docx" | "pptx" | "xlsx";
 type ParseStage = "idle" | "initializing" | "parsing" | "ready" | "error";
@@ -373,7 +373,7 @@ function OfficePreview({
     return <PresentationPreview labels={labels} proto={artifact.proto} />;
   }
 
-  return <DocumentPreview labels={labels} proto={artifact.proto} />;
+  return <WordPreview labels={labels} proto={artifact.proto} />;
 }
 
 function statusLabel(t: ReturnType<typeof useTranslation>["t"], status: ParseStage): string {
