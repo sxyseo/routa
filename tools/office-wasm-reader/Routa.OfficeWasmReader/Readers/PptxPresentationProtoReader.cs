@@ -227,17 +227,17 @@ internal static class PptxPresentationProtoReader
             }
 
             var textStyles = slideMasterPart.SlideMaster.TextStyles;
-            foreach (var levelStyle in ExtractLevelStyles(textStyles?.BodyStyle))
+            foreach (var levelStyle in ExtractLevelStyles(textStyles?.BodyStyle, writeDefaults: true))
             {
                 WriteMessage(output, 12, levelStyle);
             }
 
-            foreach (var levelStyle in ExtractLevelStyles(textStyles?.TitleStyle))
+            foreach (var levelStyle in ExtractLevelStyles(textStyles?.TitleStyle, writeDefaults: true))
             {
                 WriteMessage(output, 13, levelStyle);
             }
 
-            foreach (var levelStyle in ExtractLevelStyles(textStyles?.OtherStyle))
+            foreach (var levelStyle in ExtractLevelStyles(textStyles?.OtherStyle, writeDefaults: true))
             {
                 WriteMessage(output, 14, levelStyle);
             }
@@ -432,7 +432,7 @@ internal static class PptxPresentationProtoReader
         var shapeProperties = shape.ShapeProperties;
         var bbox = shapeProperties?.Transform2D;
         var isLayoutPlaceholder = layoutLike && placeholder is not null;
-        var paragraphs = isLayoutPlaceholder ? new List<byte[]>() : ExtractParagraphs(shape.TextBody).ToList();
+        var paragraphs = layoutLike ? new List<byte[]>() : ExtractParagraphs(shape.TextBody).ToList();
         var hasText = paragraphs.Count > 0;
 
         return Message(output =>
@@ -444,7 +444,7 @@ internal static class PptxPresentationProtoReader
 
             var fill = SolidFillFromProperties(shapeProperties);
             var line = OutlineFromProperties(shapeProperties);
-            var shapeProto = WriteShape(shapeProperties, fill, line, IsTextNamedShape(nonVisual));
+            var shapeProto = WriteShape(shapeProperties, fill, line, IsTextNamedShape(nonVisual), layoutLike && !isLayoutPlaceholder);
             if (shapeProto is not null)
             {
                 WriteMessage(output, 4, shapeProto);
@@ -456,7 +456,7 @@ internal static class PptxPresentationProtoReader
             }
 
             WriteString(output, 10, nonVisual?.Name?.Value ?? $"Shape {zIndex}");
-            WriteInt32(output, 11, hasText && !isLayoutPlaceholder ? ElementTypeText : ElementTypeShape);
+            WriteInt32(output, 11, hasText && !layoutLike ? ElementTypeText : ElementTypeShape);
             if (isLayoutPlaceholder)
             {
                 WriteInt32Always(output, 12, ToInt32(placeholder?.Index) ?? 0);
@@ -473,7 +473,7 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 15, effect);
             }
 
-            var bodyTextStyle = WriteBodyTextStyle(shape.TextBody?.BodyProperties, isLayoutPlaceholder);
+            var bodyTextStyle = WriteBodyTextStyle(shape.TextBody?.BodyProperties, layoutLike);
             if (bodyTextStyle is not null)
             {
                 WriteMessage(output, 14, bodyTextStyle);
@@ -826,7 +826,8 @@ internal static class PptxPresentationProtoReader
         OpenXmlElement? properties,
         A.SolidFill? fill,
         A.Outline? line,
-        bool suppressLineStyle = false)
+        bool suppressLineStyle = false,
+        bool writeDefaultLine = false)
     {
         var geometry = properties?.GetFirstChild<A.PresetGeometry>();
         var geometryCode = GeometryCode(geometry);
@@ -852,6 +853,10 @@ internal static class PptxPresentationProtoReader
             {
                 WriteMessage(output, 6, WriteLine(line, suppressLineStyle));
             }
+            else if (writeDefaultLine)
+            {
+                WriteMessage(output, 6, WriteDefaultLine());
+            }
 
             foreach (var adjustment in adjustments)
             {
@@ -860,7 +865,15 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[]? WriteBodyTextStyle(A.BodyProperties? bodyProperties, bool writeDefaultVertical = false)
+    private static byte[] WriteDefaultLine()
+    {
+        return Message(output =>
+        {
+            WriteMessageAlways(output, 3, Message(_ => { }));
+        });
+    }
+
+    private static byte[]? WriteBodyTextStyle(A.BodyProperties? bodyProperties, bool writeLayoutDefaults = false)
     {
         if (bodyProperties is null)
         {
@@ -870,24 +883,26 @@ internal static class PptxPresentationProtoReader
         return Message(output =>
         {
             WriteInt32(output, 1, BodyAnchorCode(bodyProperties.Anchor));
-            if (writeDefaultVertical)
-            {
-                WriteInt32Always(output, 2, VerticalTextCode(bodyProperties.Vertical) ?? 1);
-            }
-            else
-            {
-                WriteInt32(output, 2, VerticalTextCode(bodyProperties.Vertical));
-            }
+            WriteInt32(output, 2, VerticalTextCode(bodyProperties.Vertical));
 
             WriteInt32Always(output, 10, bodyProperties.BottomInset?.Value ?? 0);
             WriteInt32Always(output, 11, bodyProperties.LeftInset?.Value ?? 0);
             WriteInt32Always(output, 12, bodyProperties.RightInset?.Value ?? 0);
             WriteInt32Always(output, 13, bodyProperties.TopInset?.Value ?? 0);
+            if (writeLayoutDefaults)
+            {
+                WriteBoolValue(output, 14, true);
+            }
+
             WriteInt32(output, 20, TextWrappingCode(bodyProperties.Wrap));
             var autoFit = WriteAutoFit(bodyProperties);
             if (autoFit is not null)
             {
                 WriteMessageAlways(output, 21, autoFit);
+            }
+            else if (writeLayoutDefaults)
+            {
+                WriteMessageAlways(output, 21, WriteNoAutoFit());
             }
         });
     }
@@ -957,10 +972,18 @@ internal static class PptxPresentationProtoReader
 
         if (bodyProperties.ChildElements.Any(element => string.Equals(element.LocalName, "noAutofit", StringComparison.Ordinal)))
         {
-            return Message(_ => { });
+            return WriteNoAutoFit();
         }
 
         return null;
+    }
+
+    private static byte[] WriteNoAutoFit()
+    {
+        return Message(output =>
+        {
+            WriteMessageAlways(output, 1, Message(_ => { }));
+        });
     }
 
     private static byte[]? WriteBackground(P.Background? background)
@@ -1048,7 +1071,7 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static IEnumerable<byte[]> ExtractLevelStyles(OpenXmlElement? styleContainer)
+    private static IEnumerable<byte[]> ExtractLevelStyles(OpenXmlElement? styleContainer, bool writeDefaults = false)
     {
         if (styleContainer is null)
         {
@@ -1066,7 +1089,7 @@ internal static class PptxPresentationProtoReader
             yield return Message(output =>
             {
                 WriteInt32(output, 2, level.Value);
-                var textStyle = WriteLevelTextStyle(child);
+                var textStyle = WriteLevelTextStyle(child, writeDefaults);
                 if (textStyle is not null)
                 {
                     WriteMessage(output, 3, textStyle);
@@ -1081,6 +1104,15 @@ internal static class PptxPresentationProtoReader
                 if (SpacingBefore(child) is { } spaceBefore)
                 {
                     WriteInt32Always(output, 5, spaceBefore);
+                }
+
+                if (SpacingAfter(child) is { } spaceAfter)
+                {
+                    WriteInt32Always(output, 6, spaceAfter);
+                }
+                else if (writeDefaults)
+                {
+                    WriteInt32Always(output, 6, 0);
                 }
             });
         }
@@ -1375,7 +1407,7 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[]? WriteLevelTextStyle(OpenXmlElement paragraphProperties)
+    private static byte[]? WriteLevelTextStyle(OpenXmlElement paragraphProperties, bool writeDefaults = false)
     {
         var defaultRunProperties = paragraphProperties.GetFirstChild<A.DefaultRunProperties>();
         if (defaultRunProperties is null && AttributeValue(paragraphProperties, "algn") is null)
@@ -1385,14 +1417,29 @@ internal static class PptxPresentationProtoReader
 
         return Message(output =>
         {
-            WriteTextStyleProperties(output, defaultRunProperties, paragraphProperties);
+            WriteTextStyleProperties(output, defaultRunProperties, paragraphProperties, writeDefaults);
         });
     }
 
-    private static void WriteTextStyleProperties(CodedOutputStream output, OpenXmlElement? textProperties, OpenXmlElement? paragraphProperties)
+    private static void WriteTextStyleProperties(
+        CodedOutputStream output,
+        OpenXmlElement? textProperties,
+        OpenXmlElement? paragraphProperties,
+        bool writeDefaults = false)
     {
-        WriteBool(output, 4, BoolAttribute(textProperties, "b"));
-        WriteBool(output, 5, BoolAttribute(textProperties, "i"));
+        var bold = BoolAttribute(textProperties, "b");
+        var italic = BoolAttribute(textProperties, "i");
+        if (writeDefaults)
+        {
+            WriteBoolValue(output, 4, bold ?? false);
+            WriteBoolValue(output, 5, italic ?? false);
+        }
+        else
+        {
+            WriteBool(output, 4, bold);
+            WriteBool(output, 5, italic);
+        }
+
         WriteInt32(output, 6, IntAttribute(textProperties, "sz"));
         var fill = textProperties?.GetFirstChild<A.SolidFill>();
         if (fill is not null)
@@ -1403,7 +1450,11 @@ internal static class PptxPresentationProtoReader
         WriteInt32(output, 8, AlignmentCode(AttributeValue(paragraphProperties, "algn")));
 
         var underline = AttributeValue(textProperties, "u");
-        if (!string.IsNullOrEmpty(underline) && underline != "none")
+        if (writeDefaults)
+        {
+            WriteStringAlways(output, 9, string.IsNullOrEmpty(underline) ? "none" : underline);
+        }
+        else if (!string.IsNullOrEmpty(underline) && underline != "none")
         {
             WriteString(output, 9, underline);
         }
@@ -2241,6 +2292,23 @@ internal static class PptxPresentationProtoReader
     private static int? SpacingBefore(OpenXmlElement element)
     {
         var spacing = element.ChildElements.FirstOrDefault(child => string.Equals(child.LocalName, "spcBef", StringComparison.Ordinal));
+        if (spacing is null)
+        {
+            return null;
+        }
+
+        var points = spacing.ChildElements.FirstOrDefault(child => string.Equals(child.LocalName, "spcPts", StringComparison.Ordinal));
+        if (IntAttribute(points, "val") is { } pointValue)
+        {
+            return pointValue;
+        }
+
+        return 0;
+    }
+
+    private static int? SpacingAfter(OpenXmlElement element)
+    {
+        var spacing = element.ChildElements.FirstOrDefault(child => string.Equals(child.LocalName, "spcAft", StringComparison.Ordinal));
         if (spacing is null)
         {
             return null;
