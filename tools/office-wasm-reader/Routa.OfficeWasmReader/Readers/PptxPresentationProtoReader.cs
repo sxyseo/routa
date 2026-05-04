@@ -937,6 +937,18 @@ internal static class PptxPresentationProtoReader
             return null;
         }
 
+        if (groupTransform is not null)
+        {
+            return new BoundingBox(
+                groupTransform.TransformCeilingX(minX.Value),
+                groupTransform.TransformCeilingY(minY.Value),
+                groupTransform.TransformFloorWidth(maxX.Value - minX.Value),
+                groupTransform.TransformFloorHeight(maxY.Value - minY.Value),
+                transform.Rotation?.Value,
+                transform.HorizontalFlip?.Value,
+                transform.VerticalFlip?.Value);
+        }
+
         return BoundingBox.FromRaw(
             RoundEmu(minX.Value),
             RoundEmu(minY.Value),
@@ -2924,6 +2936,14 @@ internal static class PptxPresentationProtoReader
 
         public long? TransformHeight(long? value) => value is null ? null : RoundEmu(value.Value * ScaleY);
 
+        public long TransformCeilingX(double value) => (long)Math.Ceiling(X + (value - ChildX) * ScaleX);
+
+        public long TransformCeilingY(double value) => (long)Math.Ceiling(Y + (value - ChildY) * ScaleY);
+
+        public long TransformFloorWidth(double value) => (long)Math.Floor(value * ScaleX);
+
+        public long TransformFloorHeight(double value) => (long)Math.Floor(value * ScaleY);
+
         private static long RoundEmu(double value)
         {
             return (long)Math.Round(value, MidpointRounding.AwayFromZero);
@@ -3281,6 +3301,18 @@ internal static class PptxPresentationProtoReader
             var rotation = ToInt32(RawAttributeValue(transform, "rot"));
             var horizontalFlip = ToBool(RawAttributeValue(transform, "flipH"));
             var verticalFlip = ToBool(RawAttributeValue(transform, "flipV"));
+
+            if (groupTransform is not null)
+            {
+                return new BoundingBox(
+                    x is null ? null : groupTransform.TransformCeilingX(x.Value),
+                    y is null ? null : groupTransform.TransformCeilingY(y.Value),
+                    width is null ? null : groupTransform.TransformFloorWidth(width.Value),
+                    height is null ? null : groupTransform.TransformFloorHeight(height.Value),
+                    rotation,
+                    horizontalFlip,
+                    verticalFlip);
+            }
 
             return BoundingBox.FromRaw(x, y, width, height, rotation, horizontalFlip, verticalFlip, groupTransform);
         }
