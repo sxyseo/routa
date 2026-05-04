@@ -2,6 +2,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using Google.Protobuf;
 using System.Globalization;
+using System.Xml.Linq;
 using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using P = DocumentFormat.OpenXml.Presentation;
@@ -66,6 +67,7 @@ internal static class PptxPresentationProtoReader
         var slideParts = ResolveSlideParts(presentationPart, slideIds).Take(OpenXmlReaderLimits.MaxSlides).ToList();
         var slideMasterParts = DistinctByUri(presentationPart?.SlideMasterParts ?? Enumerable.Empty<SlideMasterPart>()).ToList();
         var slideLayoutParts = DistinctByUri(slideMasterParts.SelectMany(part => part.SlideLayoutParts)).ToList();
+        var rawTransformsByPart = RawTransformIndex.FromPackage(bytes);
         var themePart = slideMasterParts.Select(part => part.ThemePart).FirstOrDefault(part => part is not null);
         var tableStylesPart = presentationPart?.TableStylesPart;
         var presentationParts = slideParts.Cast<OpenXmlPart>()
@@ -84,7 +86,7 @@ internal static class PptxPresentationProtoReader
             var slideIndex = 1;
             foreach (var slidePart in slideParts)
             {
-                WriteMessage(output, 1, WriteSlide(slidePart, slideIndex, widthEmu, heightEmu));
+                WriteMessage(output, 1, WriteSlide(slidePart, slideIndex, widthEmu, heightEmu, rawTransformsByPart));
                 slideIndex++;
             }
 
@@ -96,12 +98,12 @@ internal static class PptxPresentationProtoReader
 
             foreach (var slideMasterPart in slideMasterParts)
             {
-                WriteMessage(output, 3, WriteSlideMasterLayout(slideMasterPart));
+                WriteMessage(output, 3, WriteSlideMasterLayout(slideMasterPart, rawTransformsByPart));
             }
 
             foreach (var slideLayoutPart in slideLayoutParts)
             {
-                WriteMessage(output, 3, WriteSlideLayout(slideLayoutPart));
+                WriteMessage(output, 3, WriteSlideLayout(slideLayoutPart, rawTransformsByPart));
             }
 
             foreach (var imagePart in imageParts)
@@ -122,7 +124,12 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[] WriteSlide(SlidePart slidePart, int slideIndex, long widthEmu, long heightEmu)
+    private static byte[] WriteSlide(
+        SlidePart slidePart,
+        int slideIndex,
+        long widthEmu,
+        long heightEmu,
+        IReadOnlyDictionary<string, RawTransformIndex> rawTransformsByPart)
     {
         return Message(output =>
         {
@@ -130,7 +137,7 @@ internal static class PptxPresentationProtoReader
             var layoutId = slidePart.SlideLayoutPart?.Uri.OriginalString;
             WriteString(output, 2, layoutId);
 
-            foreach (var element in ExtractElements(slidePart.Slide.CommonSlideData?.ShapeTree, slidePart))
+            foreach (var element in ExtractElements(slidePart.Slide.CommonSlideData?.ShapeTree, slidePart, rawTransformsByPart))
             {
                 WriteMessage(output, 3, element);
             }
@@ -203,7 +210,9 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[] WriteSlideMasterLayout(SlideMasterPart slideMasterPart)
+    private static byte[] WriteSlideMasterLayout(
+        SlideMasterPart slideMasterPart,
+        IReadOnlyDictionary<string, RawTransformIndex> rawTransformsByPart)
     {
         return Message(output =>
         {
@@ -215,7 +224,7 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 10, background);
             }
 
-            foreach (var element in ExtractElements(slideMasterPart.SlideMaster.CommonSlideData?.ShapeTree, slideMasterPart, true))
+            foreach (var element in ExtractElements(slideMasterPart.SlideMaster.CommonSlideData?.ShapeTree, slideMasterPart, rawTransformsByPart, true))
             {
                 WriteMessage(output, 11, element);
             }
@@ -244,7 +253,9 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[] WriteSlideLayout(SlideLayoutPart slideLayoutPart)
+    private static byte[] WriteSlideLayout(
+        SlideLayoutPart slideLayoutPart,
+        IReadOnlyDictionary<string, RawTransformIndex> rawTransformsByPart)
     {
         return Message(output =>
         {
@@ -256,7 +267,7 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 10, background);
             }
 
-            foreach (var element in ExtractElements(slideLayoutPart.SlideLayout.CommonSlideData?.ShapeTree, slideLayoutPart, true))
+            foreach (var element in ExtractElements(slideLayoutPart.SlideLayout.CommonSlideData?.ShapeTree, slideLayoutPart, rawTransformsByPart, true))
             {
                 WriteMessage(output, 11, element);
             }
@@ -287,14 +298,19 @@ internal static class PptxPresentationProtoReader
         }
     }
 
-    private static IEnumerable<byte[]> ExtractElements(P.ShapeTree? shapeTree, OpenXmlPartContainer partContainer)
+    private static IEnumerable<byte[]> ExtractElements(
+        P.ShapeTree? shapeTree,
+        OpenXmlPartContainer partContainer,
+        IReadOnlyDictionary<string, RawTransformIndex>? rawTransformsByPart = null,
+        bool layoutLike = false)
     {
         if (shapeTree is null)
         {
             yield break;
         }
 
-        foreach (var element in ExtractElements(shapeTree.ChildElements, partContainer))
+        var rawTransforms = RawTransformsForPart(partContainer, rawTransformsByPart);
+        foreach (var element in ExtractElements(shapeTree.ChildElements, partContainer, layoutLike, rawTransforms: rawTransforms))
         {
             yield return element;
         }
@@ -320,11 +336,22 @@ internal static class PptxPresentationProtoReader
         }
     }
 
+    private static RawTransformIndex? RawTransformsForPart(
+        OpenXmlPartContainer partContainer,
+        IReadOnlyDictionary<string, RawTransformIndex>? rawTransformsByPart)
+    {
+        return partContainer is OpenXmlPart part &&
+            rawTransformsByPart?.TryGetValue(part.Uri.OriginalString, out var rawTransforms) == true
+            ? rawTransforms
+            : null;
+    }
+
     private static IEnumerable<byte[]> ExtractElements(
         IEnumerable<OpenXmlElement>? childElements,
         OpenXmlPartContainer partContainer,
         bool layoutLike = false,
-        GroupTransformContext? groupTransform = null)
+        GroupTransformContext? groupTransform = null,
+        RawTransformIndex? rawTransforms = null)
     {
         if (childElements is null)
         {
@@ -334,7 +361,7 @@ internal static class PptxPresentationProtoReader
         var zIndex = 0;
         foreach (var child in childElements)
         {
-            foreach (var element in ExtractElement(child, partContainer, zIndex, layoutLike, groupTransform))
+            foreach (var element in ExtractElement(child, partContainer, zIndex, layoutLike, groupTransform, rawTransforms))
             {
                 yield return element;
             }
@@ -348,12 +375,13 @@ internal static class PptxPresentationProtoReader
         OpenXmlPartContainer partContainer,
         int zIndex,
         bool layoutLike,
-        GroupTransformContext? groupTransform)
+        GroupTransformContext? groupTransform,
+        RawTransformIndex? rawTransforms)
     {
         switch (child)
         {
             case P.Shape shape:
-                if (WriteShapeElement(partContainer, shape, zIndex, layoutLike, groupTransform) is { } shapeElement)
+                if (WriteShapeElement(partContainer, shape, zIndex, layoutLike, groupTransform, rawTransforms) is { } shapeElement)
                 {
                     yield return shapeElement;
                 }
@@ -371,13 +399,13 @@ internal static class PptxPresentationProtoReader
                 }
                 break;
             case P.ConnectionShape connectionShape:
-                if (WriteConnectionShapeElement(connectionShape, zIndex, groupTransform) is { } connectorElement)
+                if (WriteConnectionShapeElement(connectionShape, zIndex, groupTransform, rawTransforms) is { } connectorElement)
                 {
                     yield return connectorElement;
                 }
                 break;
             case P.GroupShape groupShape:
-                foreach (var groupElement in ExtractGroupShapeElements(partContainer, groupShape, layoutLike, groupTransform))
+                foreach (var groupElement in ExtractGroupShapeElements(partContainer, groupShape, layoutLike, groupTransform, rawTransforms))
                 {
                     yield return groupElement;
                 }
@@ -426,7 +454,8 @@ internal static class PptxPresentationProtoReader
         P.Shape shape,
         int zIndex,
         bool layoutLike = false,
-        GroupTransformContext? groupTransform = null)
+        GroupTransformContext? groupTransform = null,
+        RawTransformIndex? rawTransforms = null)
     {
         var nonVisual = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
         var placeholder = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.GetFirstChild<P.PlaceholderShape>();
@@ -440,7 +469,7 @@ internal static class PptxPresentationProtoReader
         {
             if (bbox is not null)
             {
-                WriteMessage(output, 1, WriteShapeBoundingBox(shapeProperties, groupTransform));
+                WriteMessage(output, 1, WriteShapeBoundingBox(shapeProperties, groupTransform, nonVisual, rawTransforms));
             }
 
             var fill = FillFromShapeProperties(partContainer, shapeProperties);
@@ -664,7 +693,8 @@ internal static class PptxPresentationProtoReader
     private static byte[]? WriteConnectionShapeElement(
         P.ConnectionShape connectionShape,
         int zIndex,
-        GroupTransformContext? groupTransform = null)
+        GroupTransformContext? groupTransform = null,
+        RawTransformIndex? rawTransforms = null)
     {
         var nonVisual = connectionShape.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties;
         var properties = connectionShape.ShapeProperties;
@@ -675,7 +705,7 @@ internal static class PptxPresentationProtoReader
         {
             if (transform is not null)
             {
-                WriteMessage(output, 1, WriteShapeBoundingBox(properties, groupTransform));
+                WriteMessage(output, 1, WriteShapeBoundingBox(properties, groupTransform, nonVisual, rawTransforms));
             }
 
             var shape = WriteShape(properties, null, line, suppressLineDetails: true);
@@ -694,11 +724,12 @@ internal static class PptxPresentationProtoReader
         OpenXmlPartContainer partContainer,
         P.GroupShape groupShape,
         bool layoutLike,
-        GroupTransformContext? groupTransform)
+        GroupTransformContext? groupTransform,
+        RawTransformIndex? rawTransforms)
     {
         var transform = groupShape.GroupShapeProperties?.GetFirstChild<A.TransformGroup>();
         var childTransform = transform is null ? groupTransform : GroupTransformContext.From(transform, groupTransform);
-        foreach (var child in ExtractElements(groupShape.ChildElements, partContainer, layoutLike, childTransform))
+        foreach (var child in ExtractElements(groupShape.ChildElements, partContainer, layoutLike, childTransform, rawTransforms))
         {
             yield return child;
         }
@@ -802,7 +833,11 @@ internal static class PptxPresentationProtoReader
         return WriteBoundingBox(box);
     }
 
-    private static byte[] WriteShapeBoundingBox(P.ShapeProperties? properties, GroupTransformContext? groupTransform = null)
+    private static byte[] WriteShapeBoundingBox(
+        P.ShapeProperties? properties,
+        GroupTransformContext? groupTransform = null,
+        P.NonVisualDrawingProperties? nonVisual = null,
+        RawTransformIndex? rawTransforms = null)
     {
         var transform = properties?.Transform2D;
         if (properties is null || transform is null)
@@ -810,8 +845,17 @@ internal static class PptxPresentationProtoReader
             return [];
         }
 
-        var box = CustomGeometryBoundingBox(properties, transform, groupTransform) ?? BoundingBox.From(transform, groupTransform);
+        var box =
+            RawBoundingBox(nonVisual, rawTransforms) ??
+            CustomGeometryBoundingBox(properties, transform, groupTransform) ??
+            BoundingBox.From(transform, groupTransform);
         return WriteBoundingBox(box);
+    }
+
+    private static BoundingBox? RawBoundingBox(P.NonVisualDrawingProperties? nonVisual, RawTransformIndex? rawTransforms)
+    {
+        var id = nonVisual?.Id?.Value.ToString();
+        return id is not null && rawTransforms?.TryGet(id, out var box) == true ? box : null;
     }
 
     private static byte[] WriteBoundingBox(BoundingBox box)
@@ -2791,8 +2835,8 @@ internal static class PptxPresentationProtoReader
             var y = parent?.TransformY(rawY) ?? rawY;
             var width = parent?.TransformWidth(rawWidth) ?? rawWidth;
             var height = parent?.TransformHeight(rawHeight) ?? rawHeight;
-            var scaleX = childWidth == 0 ? parent?.ScaleX ?? 1 : width / childWidth;
-            var scaleY = childHeight == 0 ? parent?.ScaleY ?? 1 : height / childHeight;
+            var scaleX = childWidth == 0 ? parent?.ScaleX ?? 1 : (double)width / childWidth;
+            var scaleY = childHeight == 0 ? parent?.ScaleY ?? 1 : (double)height / childHeight;
 
             return new GroupTransformContext(x, y, childX, childY, scaleX, scaleY);
         }
@@ -2812,8 +2856,8 @@ internal static class PptxPresentationProtoReader
             var y = parent?.TransformY(rawY) ?? rawY;
             var width = parent?.TransformWidth(rawWidth) ?? rawWidth;
             var height = parent?.TransformHeight(rawHeight) ?? rawHeight;
-            var scaleX = childWidth == 0 ? parent?.ScaleX ?? 1 : width / childWidth;
-            var scaleY = childHeight == 0 ? parent?.ScaleY ?? 1 : height / childHeight;
+            var scaleX = childWidth == 0 ? parent?.ScaleX ?? 1 : (double)width / childWidth;
+            var scaleY = childHeight == 0 ? parent?.ScaleY ?? 1 : (double)height / childHeight;
             return new GroupTransformContext(x, y, childX, childY, scaleX, scaleY);
         }
 
@@ -3024,6 +3068,222 @@ internal static class PptxPresentationProtoReader
 
         output.WriteTag(fieldNumber, WireFormat.WireType.Fixed64);
         output.WriteDouble(value.Value);
+    }
+
+    private sealed class RawTransformIndex
+    {
+        private readonly Dictionary<string, BoundingBox> boxes;
+
+        private RawTransformIndex(Dictionary<string, BoundingBox> boxes)
+        {
+            this.boxes = boxes;
+        }
+
+        public bool TryGet(string id, out BoundingBox box) => boxes.TryGetValue(id, out box);
+
+        public static IReadOnlyDictionary<string, RawTransformIndex> FromPackage(byte[] packageBytes)
+        {
+            var indexes = new Dictionary<string, RawTransformIndex>(StringComparer.Ordinal);
+
+            try
+            {
+                using var stream = new MemoryStream(packageBytes, writable: false);
+                using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+                foreach (var entry in archive.Entries)
+                {
+                    if (!IsPresentationXmlPart(entry.FullName))
+                    {
+                        continue;
+                    }
+
+                    using var entryStream = entry.Open();
+                    using var reader = new StreamReader(entryStream);
+                    var index = FromXml(reader.ReadToEnd());
+                    if (index is not null)
+                    {
+                        indexes[$"/{entry.FullName}"] = index;
+                    }
+                }
+            }
+            catch
+            {
+                return indexes;
+            }
+
+            return indexes;
+        }
+
+        private static bool IsPresentationXmlPart(string name)
+        {
+            return name.StartsWith("ppt/slides/", StringComparison.Ordinal) ||
+                name.StartsWith("ppt/slideLayouts/", StringComparison.Ordinal) ||
+                name.StartsWith("ppt/slideMasters/", StringComparison.Ordinal);
+        }
+
+        private static RawTransformIndex? FromXml(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml))
+            {
+                return null;
+            }
+
+            var root = XElement.Parse(xml);
+            var shapeTree = root.Descendants().FirstOrDefault(element => LocalNameEquals(element, "spTree"));
+            if (shapeTree is null)
+            {
+                return null;
+            }
+
+            var boxes = new Dictionary<string, BoundingBox>(StringComparer.Ordinal);
+            foreach (var child in shapeTree.Elements())
+            {
+                VisitElement(child, null, boxes);
+            }
+
+            return boxes.Count == 0 ? null : new RawTransformIndex(boxes);
+        }
+
+        private static void VisitElement(XElement element, GroupTransformContext? groupTransform, Dictionary<string, BoundingBox> boxes)
+        {
+            if (LocalNameEquals(element, "grpSp"))
+            {
+                var transform = element.Elements().FirstOrDefault(child => LocalNameEquals(child, "grpSpPr"))
+                    ?.Elements()
+                    .FirstOrDefault(child => LocalNameEquals(child, "xfrm"));
+                var childTransform = transform is null ? groupTransform : RawGroupTransform(transform, groupTransform);
+                foreach (var child in element.Elements())
+                {
+                    if (!LocalNameEquals(child, "nvGrpSpPr") && !LocalNameEquals(child, "grpSpPr"))
+                    {
+                        VisitElement(child, childTransform, boxes);
+                    }
+                }
+
+                return;
+            }
+
+            if (!IsPositionedElement(element))
+            {
+                return;
+            }
+
+            var id = NonVisualPropertiesElement(element)?.Descendants()
+                .FirstOrDefault(descendant => LocalNameEquals(descendant, "cNvPr"))
+                ?.Attributes()
+                .FirstOrDefault(attribute => LocalNameEquals(attribute, "id"))
+                ?.Value;
+            var transformElement = DirectTransformElement(element);
+            if (string.IsNullOrEmpty(id) || transformElement is null)
+            {
+                return;
+            }
+
+            boxes[id] = RawElementBoundingBox(transformElement, groupTransform);
+        }
+
+        private static bool IsPositionedElement(XElement element)
+        {
+            return LocalNameEquals(element, "sp") ||
+                LocalNameEquals(element, "pic") ||
+                LocalNameEquals(element, "cxnSp") ||
+                LocalNameEquals(element, "graphicFrame");
+        }
+
+        private static XElement? DirectTransformElement(XElement element)
+        {
+            if (LocalNameEquals(element, "graphicFrame"))
+            {
+                return element.Elements().FirstOrDefault(child => LocalNameEquals(child, "xfrm"));
+            }
+
+            return ShapePropertiesElement(element)
+                ?.Elements()
+                .FirstOrDefault(child => LocalNameEquals(child, "xfrm"));
+        }
+
+        private static XElement? ShapePropertiesElement(XElement element)
+        {
+            return element.Elements().FirstOrDefault(child => LocalNameEquals(child, "spPr"));
+        }
+
+        private static XElement? NonVisualPropertiesElement(XElement element)
+        {
+            return element.Elements().FirstOrDefault(child =>
+                LocalNameEquals(child, "nvSpPr") ||
+                LocalNameEquals(child, "nvPicPr") ||
+                LocalNameEquals(child, "nvCxnSpPr") ||
+                LocalNameEquals(child, "nvGraphicFramePr"));
+        }
+
+        private static BoundingBox RawElementBoundingBox(
+            XElement transform,
+            GroupTransformContext? groupTransform)
+        {
+            var x = RawTransformValue(transform, "off", "x");
+            var y = RawTransformValue(transform, "off", "y");
+            var width = RawTransformValue(transform, "ext", "cx");
+            var height = RawTransformValue(transform, "ext", "cy");
+            var rotation = ToInt32(RawAttributeValue(transform, "rot"));
+            var horizontalFlip = ToBool(RawAttributeValue(transform, "flipH"));
+            var verticalFlip = ToBool(RawAttributeValue(transform, "flipV"));
+
+            return BoundingBox.FromRaw(x, y, width, height, rotation, horizontalFlip, verticalFlip, groupTransform);
+        }
+
+        private static GroupTransformContext RawGroupTransform(XElement transform, GroupTransformContext? parent)
+        {
+            var rawX = RawTransformValue(transform, "off", "x") ?? 0;
+            var rawY = RawTransformValue(transform, "off", "y") ?? 0;
+            var rawWidth = RawTransformValue(transform, "ext", "cx") ?? RawTransformValue(transform, "chExt", "cx") ?? 0;
+            var rawHeight = RawTransformValue(transform, "ext", "cy") ?? RawTransformValue(transform, "chExt", "cy") ?? 0;
+            var childX = RawTransformValue(transform, "chOff", "x") ?? 0;
+            var childY = RawTransformValue(transform, "chOff", "y") ?? 0;
+            var childWidth = RawTransformValue(transform, "chExt", "cx") ?? rawWidth;
+            var childHeight = RawTransformValue(transform, "chExt", "cy") ?? rawHeight;
+            return GroupTransformContext.FromRaw(rawX, rawY, rawWidth, rawHeight, childX, childY, childWidth, childHeight, parent);
+        }
+
+        private static long? RawTransformValue(XElement transform, string childName, string attributeName)
+        {
+            var value = transform.Elements()
+                .FirstOrDefault(child => LocalNameEquals(child, childName))
+                ?.Attributes()
+                .FirstOrDefault(attribute => LocalNameEquals(attribute, attributeName))
+                ?.Value;
+            return ToLong(value);
+        }
+
+        private static string? RawAttributeValue(XElement element, string attributeName)
+        {
+            return element.Attributes()
+                .FirstOrDefault(attribute => LocalNameEquals(attribute, attributeName))
+                ?.Value;
+        }
+
+        private static bool LocalNameEquals(XObject value, string localName)
+        {
+            return value switch
+            {
+                XElement element => string.Equals(element.Name.LocalName, localName, StringComparison.Ordinal),
+                XAttribute attribute => string.Equals(attribute.Name.LocalName, localName, StringComparison.Ordinal),
+                _ => false,
+            };
+        }
+
+        private static bool? ToBool(string? value)
+        {
+            return value switch
+            {
+                "1" or "true" => true,
+                "0" or "false" => false,
+                _ => null,
+            };
+        }
+
+        private static int? ToInt32(string? value)
+        {
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        }
     }
 
     private sealed record ColorValue(
