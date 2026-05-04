@@ -23,6 +23,7 @@ type ComparisonResult = {
   parity: ReturnType<typeof summarizeParity>;
   equivalence: ReturnType<typeof summarizeEquivalence>;
   protocolDiff?: ReturnType<typeof summarizeProtocolDiff>;
+  semanticDiffs?: ReturnType<typeof summarizeSemanticDiffs>;
 };
 
 const repoRoot = process.cwd();
@@ -74,6 +75,7 @@ async function compareFixture(fixturePath: string): Promise<ComparisonResult> {
     fixture: path.relative(repoRoot, fixturePath),
     parity: summarizeParity(equivalence),
     ...(diffMode ? { protocolDiff: summarizeProtocolDiff(walnutPresentation, routaPresentation, diffLimit) } : {}),
+    ...(diffMode ? { semanticDiffs: summarizeSemanticDiffs(walnutPresentation, routaPresentation, diffLimit) } : {}),
     routa: summarizePresentation(routaPresentation, routaProtoBytes),
     routaProtocol: "oaiproto.coworker.presentation.Presentation",
     targetProtocol: "oaiproto.coworker.presentation.Presentation",
@@ -287,6 +289,59 @@ function summarizeEquivalence(
       ),
     ),
   };
+}
+
+function summarizeSemanticDiffs(
+  walnutPresentation: Record<string, unknown>,
+  routaPresentation: Record<string, unknown>,
+  limit: number,
+) {
+  const walnutSlides = arrayOfRecords(walnutPresentation.slides);
+  const routaSlides = arrayOfRecords(routaPresentation.slides);
+  return {
+    bbox: summarizeSlideElementDiffs(walnutSlides, routaSlides, summarizeElementBbox, limit),
+    connectors: summarizeSlideElementDiffs(walnutSlides, routaSlides, summarizeElementConnectorIfPresent, limit),
+  };
+}
+
+function summarizeSlideElementDiffs(
+  walnutSlides: Record<string, unknown>[],
+  routaSlides: Record<string, unknown>[],
+  summarize: (element: Record<string, unknown>) => unknown,
+  limit: number,
+) {
+  const slideCount = Math.max(walnutSlides.length, routaSlides.length);
+  const slideDiffs: unknown[] = [];
+  for (let slideIndex = 0; slideIndex < slideCount; slideIndex += 1) {
+    const walnutElements = arrayOfRecords(walnutSlides[slideIndex]?.elements).map(summarize).filter(Boolean);
+    const routaElements = arrayOfRecords(routaSlides[slideIndex]?.elements).map(summarize).filter(Boolean);
+    const elementCount = Math.max(walnutElements.length, routaElements.length);
+    const elementDiffs: unknown[] = [];
+    for (let elementIndex = 0; elementIndex < elementCount; elementIndex += 1) {
+      const walnut = walnutElements[elementIndex] ?? null;
+      const routa = routaElements[elementIndex] ?? null;
+      if (stableJson(walnut) !== stableJson(routa)) {
+        elementDiffs.push({
+          elementIndex,
+          routa,
+          walnut,
+        });
+        if (elementDiffs.length >= limit) {
+          break;
+        }
+      }
+    }
+
+    if (elementDiffs.length > 0) {
+      slideDiffs.push({
+        diffCountShown: elementDiffs.length,
+        diffs: elementDiffs,
+        slideIndex: slideIndex + 1,
+      });
+    }
+  }
+
+  return slideDiffs;
 }
 
 function assertEquivalence(result: ComparisonResult): void {
@@ -619,6 +674,10 @@ function summarizeElementConnector(element: Record<string, unknown>) {
       },
     },
   };
+}
+
+function summarizeElementConnectorIfPresent(element: Record<string, unknown>) {
+  return isRecord(element.connector) ? summarizeElementConnector(element) : null;
 }
 
 function summarizeConnectorLineEnd(end: Record<string, unknown> | null) {
