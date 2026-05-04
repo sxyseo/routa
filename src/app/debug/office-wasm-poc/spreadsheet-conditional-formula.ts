@@ -114,8 +114,27 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
     const value = evaluateFormulaValue(args[0] ?? "", context);
     return asString(value).trim().length > 0 && !Number.isFinite(Number(value));
   }
+  if (normalizedName === "ISERROR") {
+    return spreadsheetFormulaErrorMatches(asString(evaluateFormulaValue(args[0] ?? "", context)));
+  }
+  if (normalizedName === "ISNA") {
+    return asString(evaluateFormulaValue(args[0] ?? "", context)).trim().toUpperCase() === "#N/A";
+  }
+  if (normalizedName === "IF") {
+    return valueToBoolean(evaluateFormulaExpression(args[0] ?? "", context))
+      ? evaluateFormulaExpression(args[1] ?? "", context)
+      : evaluateFormulaExpression(args[2] ?? "FALSE", context);
+  }
+  if (normalizedName === "IFERROR") {
+    const value = evaluateFormulaValue(args[0] ?? "", context);
+    return spreadsheetFormulaErrorMatches(asString(value)) ? evaluateFormulaValue(args[1] ?? "", context) : value;
+  }
   if (normalizedName === "LEN") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)).length;
+  }
+  if (normalizedName === "ABS") {
+    const value = Number(evaluateFormulaValue(args[0] ?? "", context));
+    return Number.isFinite(value) ? Math.abs(value) : Number.NaN;
   }
   if (normalizedName === "ROW") {
     return args.length > 0 ? resolvedCellReferenceValue(args[0], context, "row") : context.rowIndex;
@@ -317,6 +336,21 @@ function formulaCriteriaMatches(value: string, criterion: { operator: string; va
   if (criterion.operator === "<") return actual < expected;
   if (criterion.operator === "<=") return actual <= expected;
   return false;
+}
+
+function spreadsheetFormulaErrorMatches(value: string): boolean {
+  const normalized = value.trim().toUpperCase();
+  return normalized === "#DIV/0!" ||
+    normalized === "#N/A" ||
+    normalized === "#NAME?" ||
+    normalized === "#NULL!" ||
+    normalized === "#NUM!" ||
+    normalized === "#REF!" ||
+    normalized === "#VALUE!" ||
+    normalized === "#SPILL!" ||
+    normalized === "#CALC!" ||
+    normalized === "#FIELD!" ||
+    normalized === "#GETTING_DATA";
 }
 
 function escapeRegExp(value: string): string {

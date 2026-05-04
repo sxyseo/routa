@@ -125,6 +125,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX `cellIs` conditional-format comparisons now resolve formula thresholds from absolute/relative cell references, defined names, and common date helpers such as `DATE(...)` and `TODAY()` before applying comparison operators.
 - XLSX conditional-format preview now applies Excel error-value rules for `containsErrors` and `notContainsErrors`, covering common values such as `#DIV/0!`, `#N/A`, `#REF!`, and `#VALUE!`.
 - XLSX conditional formula evaluation now supports sparse-range `COUNTIF` and `COUNTIFS`, including full-column ranges such as `A:A` without dense 1,048,576-row materialization.
+- XLSX conditional formula evaluation now handles common helper functions used in production rules, including `ISERROR`, `ISNA`, `IF`, `IFERROR`, and `ABS`.
 
 ## Codex 技术方案逆向分析
 

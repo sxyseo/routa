@@ -690,6 +690,58 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("5:2")?.background).toBe("#BFDBFE");
   });
 
+  it("evaluates common error and branch formula helpers in conditional formats", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A2:A4"],
+          rules: [
+            {
+              fillColor: "FECACA",
+              formulas: ["=ISERROR(A2)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["B2:B4"],
+          rules: [
+            {
+              fillColor: "C7D2FE",
+              formulas: ["=IF($C2=\"Open\",ABS(B2)>10,FALSE)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["D2:D4"],
+          rules: [
+            {
+              fillColor: "BBF7D0",
+              formulas: ["=IFERROR(D2,0)=0"],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A2", value: "#VALUE!" }, { address: "B2", value: -12 }, { address: "C2", value: "Open" }, { address: "D2", value: "#DIV/0!" }], index: 2 },
+        { cells: [{ address: "A3", value: "#N/A" }, { address: "B3", value: 12 }, { address: "C3", value: "Closed" }, { address: "D3", value: 7 }], index: 3 },
+        { cells: [{ address: "A4", value: "ok" }, { address: "B4", value: 8 }, { address: "C4", value: "Open" }, { address: "D4", value: 0 }], index: 4 },
+      ],
+    });
+
+    expect(visuals.get("2:0")?.background).toBe("#FECACA");
+    expect(visuals.get("3:0")?.background).toBe("#FECACA");
+    expect(visuals.get("4:0")).toBeUndefined();
+    expect(visuals.get("2:1")?.background).toBe("#C7D2FE");
+    expect(visuals.get("3:1")).toBeUndefined();
+    expect(visuals.get("4:1")).toBeUndefined();
+    expect(visuals.get("2:3")?.background).toBe("#BBF7D0");
+    expect(visuals.get("3:3")).toBeUndefined();
+    expect(visuals.get("4:3")?.background).toBe("#BBF7D0");
+  });
+
   it("resolves table structured references in formula conditional formats", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
