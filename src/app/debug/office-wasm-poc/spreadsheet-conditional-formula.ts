@@ -14,7 +14,7 @@ type ConditionalFormulaRange = {
   startRow: number;
 };
 
-type ConditionalFormulaContext = {
+export type ConditionalFormulaContext = {
   columnIndex: number;
   definedNames?: unknown;
   formulas: unknown;
@@ -37,6 +37,12 @@ export function conditionalFormulaMatches(context: ConditionalFormulaContext): b
   const formula = asArray(context.formulas).map(asString).find(Boolean);
   if (!formula) return false;
   return valueToBoolean(evaluateFormulaExpression(stripFormulaPrefix(formula), context));
+}
+
+export function conditionalFormulaValue(formula: unknown, context: ConditionalFormulaContext): unknown {
+  const expression = asString(formula);
+  if (!expression) return "";
+  return evaluateFormulaValue(stripFormulaPrefix(expression), context);
 }
 
 function evaluateFormulaExpression(expression: string, context: ConditionalFormulaContext): unknown {
@@ -133,6 +139,18 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   }
   if (normalizedName === "COUNT") {
     return formulaNumericArgs(args, context).length;
+  }
+  if (normalizedName === "TODAY") {
+    return currentExcelSerialDay();
+  }
+  if (normalizedName === "DATE") {
+    const year = Number(evaluateFormulaValue(args[0] ?? "", context));
+    const month = Number(evaluateFormulaValue(args[1] ?? "", context));
+    const day = Number(evaluateFormulaValue(args[2] ?? "", context));
+    if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+      return excelSerialDay(year, month, day);
+    }
+    return Number.NaN;
   }
 
   return "";
@@ -335,6 +353,18 @@ function definedNameRecords(definedNames: unknown): RecordValue[] {
 
 function cleanStructuredReferenceName(value: unknown): string {
   return asString(value).trim().replace(/^'|'$/g, "");
+}
+
+const DAY_MS = 86_400_000;
+const EXCEL_SERIAL_EPOCH_UTC = Date.UTC(1899, 11, 30);
+
+function currentExcelSerialDay(): number {
+  const now = new Date();
+  return Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - EXCEL_SERIAL_EPOCH_UTC) / DAY_MS);
+}
+
+function excelSerialDay(year: number, month: number, day: number): number {
+  return Math.floor((Date.UTC(year, month - 1, day) - EXCEL_SERIAL_EPOCH_UTC) / DAY_MS);
 }
 
 function parseFunctionCall(value: string): { args: string[]; name: string } | null {

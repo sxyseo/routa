@@ -11,7 +11,7 @@ import {
   parseCellRange,
   type RecordValue,
 } from "./office-preview-utils";
-import { conditionalFormulaMatches } from "./spreadsheet-conditional-formula";
+import { conditionalFormulaMatches, conditionalFormulaValue } from "./spreadsheet-conditional-formula";
 import { tableStylePalette, type SpreadsheetTablePalette } from "./spreadsheet-table-styles";
 
 export type SpreadsheetCellVisual = {
@@ -837,9 +837,25 @@ function conditionalTextMatches(
   }
 
   if (type === "cellIs" && numericValue != null) {
-    const formulas = asArray(format.formulas).map(asString);
-    const formula = Number(formulas[0] ?? "");
-    const secondFormula = Number(formulas[1] ?? "");
+    const formulas = asArray(format.formulas);
+    const formula = conditionalCellFormulaNumber(
+      formulas[0],
+      definedNames,
+      rowsByIndex,
+      range,
+      rowIndex,
+      columnIndex,
+      tables,
+    );
+    const secondFormula = conditionalCellFormulaNumber(
+      formulas[1],
+      definedNames,
+      rowsByIndex,
+      range,
+      rowIndex,
+      columnIndex,
+      tables,
+    );
     const operator = asString(format.operator);
     if (!Number.isFinite(formula)) return false;
     if (operator === "lessThan") return numericValue < formula;
@@ -857,6 +873,31 @@ function conditionalTextMatches(
   }
 
   return false;
+}
+
+function conditionalCellFormulaNumber(
+  formula: unknown,
+  definedNames?: unknown,
+  rowsByIndex?: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
+  range?: SpreadsheetCellRange,
+  rowIndex?: number,
+  columnIndex?: number,
+  tables?: unknown,
+): number {
+  if (!rowsByIndex || !range || rowIndex == null || columnIndex == null) {
+    return Number(asString(formula));
+  }
+
+  const value = conditionalFormulaValue(formula, {
+    columnIndex,
+    definedNames,
+    formulas: [formula],
+    range,
+    rowsByIndex,
+    rowIndex,
+    tables,
+  });
+  return Number(value);
 }
 
 function conditionalRuleNeedsTextCounts(format: RecordValue): boolean {

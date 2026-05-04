@@ -383,6 +383,68 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("5:0")?.background).toBe("#999999");
   });
 
+  it("resolves cell, defined-name, and date formulas in cell-is rules", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-04T12:00:00Z"));
+    const visuals = buildSpreadsheetConditionalVisuals(
+      {
+        conditionalFormattings: [
+          {
+            ranges: ["A2:A4"],
+            rules: [
+              {
+                fillColor: "FDE68A",
+                formulas: ["=$B$1"],
+                operator: "greaterThan",
+                type: "cellIs",
+              },
+            ],
+          },
+          {
+            ranges: ["C2:C4"],
+            rules: [
+              {
+                fillColor: "BAE6FD",
+                formulas: ["Limit", "DATE(2026,5,4)"],
+                operator: "between",
+                type: "cellIs",
+              },
+            ],
+          },
+          {
+            ranges: ["D2:D4"],
+            rules: [
+              {
+                fillColor: "DCFCE7",
+                formulas: ["TODAY()"],
+                operator: "equal",
+                type: "cellIs",
+              },
+            ],
+          },
+        ],
+        rows: [
+          { cells: [{ address: "B1", value: 10 }], index: 1 },
+          { cells: [{ address: "A2", value: 12 }, { address: "C2", value: 46143 }, { address: "D2", value: 46146 }], index: 2 },
+          { cells: [{ address: "A3", value: 8 }, { address: "C3", value: 46146 }, { address: "D3", value: 46145 }], index: 3 },
+          { cells: [{ address: "A4", value: 15 }, { address: "C4", value: 46147 }, { address: "D4", value: 46147 }], index: 4 },
+        ],
+      },
+      null,
+      [{ name: "Limit", text: "46143" }],
+    );
+
+    expect(visuals.get("2:0")?.background).toBe("#FDE68A");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#FDE68A");
+    expect(visuals.get("2:2")?.background).toBe("#BAE6FD");
+    expect(visuals.get("3:2")?.background).toBe("#BAE6FD");
+    expect(visuals.get("4:2")).toBeUndefined();
+    expect(visuals.get("2:3")?.background).toBe("#DCFCE7");
+    expect(visuals.get("3:3")).toBeUndefined();
+    expect(visuals.get("4:3")).toBeUndefined();
+  });
+
   it("applies duplicate and unique value conditional format rules", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
