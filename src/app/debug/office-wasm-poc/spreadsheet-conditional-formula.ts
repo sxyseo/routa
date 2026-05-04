@@ -132,6 +132,40 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "LEN") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)).length;
   }
+  if (normalizedName === "LOWER") {
+    return asString(evaluateFormulaValue(args[0] ?? "", context)).toLowerCase();
+  }
+  if (normalizedName === "UPPER") {
+    return asString(evaluateFormulaValue(args[0] ?? "", context)).toUpperCase();
+  }
+  if (normalizedName === "TRIM") {
+    return asString(evaluateFormulaValue(args[0] ?? "", context)).trim().replace(/\s+/g, " ");
+  }
+  if (normalizedName === "LEFT") {
+    const value = asString(evaluateFormulaValue(args[0] ?? "", context));
+    const count = Math.max(0, Math.floor(Number(evaluateFormulaValue(args[1] ?? "1", context))));
+    return value.slice(0, Number.isFinite(count) ? count : 1);
+  }
+  if (normalizedName === "RIGHT") {
+    const value = asString(evaluateFormulaValue(args[0] ?? "", context));
+    const count = Math.max(0, Math.floor(Number(evaluateFormulaValue(args[1] ?? "1", context))));
+    return value.slice(value.length - (Number.isFinite(count) ? count : 1));
+  }
+  if (normalizedName === "MID") {
+    const value = asString(evaluateFormulaValue(args[0] ?? "", context));
+    const start = Math.max(1, Math.floor(Number(evaluateFormulaValue(args[1] ?? "1", context))));
+    const count = Math.max(0, Math.floor(Number(evaluateFormulaValue(args[2] ?? "0", context))));
+    return value.slice(start - 1, start - 1 + (Number.isFinite(count) ? count : 0));
+  }
+  if (normalizedName === "SEARCH" || normalizedName === "FIND") {
+    const needle = asString(evaluateFormulaValue(args[0] ?? "", context));
+    const haystack = asString(evaluateFormulaValue(args[1] ?? "", context));
+    const start = Math.max(1, Math.floor(Number(evaluateFormulaValue(args[2] ?? "1", context))));
+    const index = normalizedName === "SEARCH"
+      ? haystack.toLowerCase().indexOf(needle.toLowerCase(), start - 1)
+      : haystack.indexOf(needle, start - 1);
+    return index >= 0 ? index + 1 : "#VALUE!";
+  }
   if (normalizedName === "ABS") {
     const value = Number(evaluateFormulaValue(args[0] ?? "", context));
     return Number.isFinite(value) ? Math.abs(value) : Number.NaN;

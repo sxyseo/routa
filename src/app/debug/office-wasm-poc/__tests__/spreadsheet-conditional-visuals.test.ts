@@ -794,6 +794,72 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("5:5")?.background).toBe("#A7F3D0");
   });
 
+  it("evaluates common text helpers in conditional format formulas", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A2:A5"],
+          rules: [
+            {
+              fillColor: "FBCFE8",
+              formulas: ["=ISNUMBER(SEARCH(\"urgent\",A2))"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["B2:B5"],
+          rules: [
+            {
+              fillColor: "BFDBFE",
+              formulas: ["=LEFT(UPPER(TRIM(B2)),3)=\"RTA\""],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["C2:C5"],
+          rules: [
+            {
+              fillColor: "FDE68A",
+              formulas: ["=MID(C2,2,3)=\"123\""],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["D2:D5"],
+          rules: [
+            {
+              fillColor: "DDD6FE",
+              formulas: ["=RIGHT(D2,2)=\"OK\""],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A2", value: "Urgent follow-up" }, { address: "B2", value: " rta-1001 " }, { address: "C2", value: "X123Z" }, { address: "D2", value: "DONE-OK" }], index: 2 },
+        { cells: [{ address: "A3", value: "normal" }, { address: "B3", value: "task-1" }, { address: "C3", value: "X999Z" }, { address: "D3", value: "DONE-NO" }], index: 3 },
+        { cells: [{ address: "A4", value: "not urgent" }, { address: "B4", value: "RTA-1002" }, { address: "C4", value: "Y123Q" }, { address: "D4", value: "OK" }], index: 4 },
+        { cells: [{ address: "A5", value: "plain" }, { address: "B5", value: "rtb-1003" }, { address: "C5", value: "123" }, { address: "D5", value: "pending" }], index: 5 },
+      ],
+    });
+
+    expect(visuals.get("2:0")?.background).toBe("#FBCFE8");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#FBCFE8");
+    expect(visuals.get("2:1")?.background).toBe("#BFDBFE");
+    expect(visuals.get("3:1")).toBeUndefined();
+    expect(visuals.get("4:1")?.background).toBe("#BFDBFE");
+    expect(visuals.get("2:2")?.background).toBe("#FDE68A");
+    expect(visuals.get("3:2")).toBeUndefined();
+    expect(visuals.get("4:2")?.background).toBe("#FDE68A");
+    expect(visuals.get("2:3")?.background).toBe("#DDD6FE");
+    expect(visuals.get("3:3")).toBeUndefined();
+    expect(visuals.get("4:3")?.background).toBe("#DDD6FE");
+  });
+
   it("resolves table structured references in formula conditional formats", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
