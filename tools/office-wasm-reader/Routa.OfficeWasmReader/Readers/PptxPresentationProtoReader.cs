@@ -2287,7 +2287,7 @@ internal static class PptxPresentationProtoReader
         return value?.ToLowerInvariant() switch
         {
             "flat" => ConnectorLineCapFlat,
-            "round" => ConnectorLineCapRound,
+            "rnd" or "round" => ConnectorLineCapRound,
             "sq" or "square" => ConnectorLineCapSquare,
             _ => 0,
         };
@@ -2748,13 +2748,15 @@ internal static class PptxPresentationProtoReader
             "pentagon" => 10,
             "round2samerect" => 28,
             "round2diagrect" => 29,
-            "diamond" => 30,
+            "diamond" => 6,
             "parallelogram" => 7,
             "homeplate" => 37,
             "chevron" => 38,
+            "star5" => 17,
             "hexagon" => 11,
             "blockarc" => 41,
             "donut" => 42,
+            "mathplus" => 176,
             "rightarrow" => 44,
             "uparrow" => 46,
             "downarrow" => 47,
@@ -2772,9 +2774,11 @@ internal static class PptxPresentationProtoReader
             "bracketpair" => 112,
             "wedgerectcallout" => 117,
             "flowchartdecision" => 133,
+            "flowchartmultidocument" => 138,
             "flowchartmanualinput" => 141,
             "flowchartmanualoperation" => 142,
             "flowchartconnector" => 143,
+            "flowchartoffpageconnector" => 160,
             _ => 5,
         };
     }
