@@ -440,7 +440,7 @@ internal static class PptxPresentationProtoReader
         {
             if (bbox is not null)
             {
-                WriteMessage(output, 1, WriteBoundingBox(bbox, groupTransform));
+                WriteMessage(output, 1, WriteShapeBoundingBox(shapeProperties, groupTransform));
             }
 
             var fill = FillFromShapeProperties(partContainer, shapeProperties);
@@ -675,7 +675,7 @@ internal static class PptxPresentationProtoReader
         {
             if (transform is not null)
             {
-                WriteMessage(output, 1, WriteBoundingBox(transform, groupTransform));
+                WriteMessage(output, 1, WriteShapeBoundingBox(properties, groupTransform));
             }
 
             var shape = WriteShape(properties, null, line, suppressLineDetails: true);
@@ -799,6 +799,23 @@ internal static class PptxPresentationProtoReader
     private static byte[] WriteBoundingBox(A.Transform2D transform, GroupTransformContext? groupTransform = null)
     {
         var box = BoundingBox.From(transform, groupTransform);
+        return WriteBoundingBox(box);
+    }
+
+    private static byte[] WriteShapeBoundingBox(P.ShapeProperties? properties, GroupTransformContext? groupTransform = null)
+    {
+        var transform = properties?.Transform2D;
+        if (properties is null || transform is null)
+        {
+            return [];
+        }
+
+        var box = CustomGeometryBoundingBox(properties, transform, groupTransform) ?? BoundingBox.From(transform, groupTransform);
+        return WriteBoundingBox(box);
+    }
+
+    private static byte[] WriteBoundingBox(BoundingBox box)
+    {
         return Message(output =>
         {
             WriteInt64Always(output, 1, box.X);
@@ -809,6 +826,74 @@ internal static class PptxPresentationProtoReader
             WriteBool(output, 6, box.HorizontalFlip);
             WriteBool(output, 7, box.VerticalFlip);
         });
+    }
+
+    private static BoundingBox? CustomGeometryBoundingBox(
+        P.ShapeProperties properties,
+        A.Transform2D transform,
+        GroupTransformContext? groupTransform)
+    {
+        var geometry = properties.GetFirstChild<A.CustomGeometry>();
+        var transformX = ToLong(transform.Offset?.X);
+        var transformY = ToLong(transform.Offset?.Y);
+        var transformWidth = ToLong(transform.Extents?.Cx);
+        var transformHeight = ToLong(transform.Extents?.Cy);
+        if (geometry is null ||
+            transformX is null ||
+            transformY is null ||
+            transformWidth is null ||
+            transformHeight is null ||
+            transformWidth.Value == 0 ||
+            transformHeight.Value == 0)
+        {
+            return null;
+        }
+
+        double? minX = null;
+        double? minY = null;
+        double? maxX = null;
+        double? maxY = null;
+        foreach (var path in geometry.GetFirstChild<A.PathList>()?.Elements<A.Path>() ?? [])
+        {
+            var pathWidth = ToLong(path.Width);
+            var pathHeight = ToLong(path.Height);
+            if (pathWidth is null || pathHeight is null || pathWidth.Value == 0 || pathHeight.Value == 0)
+            {
+                continue;
+            }
+
+            foreach (var point in path.Descendants().Where(element => element.LocalName == "pt"))
+            {
+                var pointX = ToLong(AttributeValue(point, "x"));
+                var pointY = ToLong(AttributeValue(point, "y"));
+                if (pointX is null || pointY is null)
+                {
+                    continue;
+                }
+
+                var x = transformX.Value + transformWidth.Value * (pointX.Value / (double)pathWidth.Value);
+                var y = transformY.Value + transformHeight.Value * (pointY.Value / (double)pathHeight.Value);
+                minX = minX is null ? x : Math.Min(minX.Value, x);
+                minY = minY is null ? y : Math.Min(minY.Value, y);
+                maxX = maxX is null ? x : Math.Max(maxX.Value, x);
+                maxY = maxY is null ? y : Math.Max(maxY.Value, y);
+            }
+        }
+
+        if (minX is null || minY is null || maxX is null || maxY is null)
+        {
+            return null;
+        }
+
+        return BoundingBox.FromRaw(
+            RoundEmu(minX.Value),
+            RoundEmu(minY.Value),
+            RoundEmu(maxX.Value - minX.Value),
+            RoundEmu(maxY.Value - minY.Value),
+            transform.Rotation?.Value,
+            transform.HorizontalFlip?.Value,
+            transform.VerticalFlip?.Value,
+            groupTransform);
     }
 
     private static byte[] WriteBoundingBox(P.Transform transform, GroupTransformContext? groupTransform = null)
@@ -2638,6 +2723,19 @@ internal static class PptxPresentationProtoReader
                 groupTransform);
         }
 
+        public static BoundingBox FromRaw(
+            long? x,
+            long? y,
+            long? width,
+            long? height,
+            int? rotation,
+            bool? horizontalFlip,
+            bool? verticalFlip,
+            GroupTransformContext? groupTransform)
+        {
+            return From(x, y, width, height, rotation, horizontalFlip, verticalFlip, groupTransform);
+        }
+
         private static BoundingBox From(
             long? x,
             long? y,
@@ -2692,6 +2790,26 @@ internal static class PptxPresentationProtoReader
             return new GroupTransformContext(x, y, childX, childY, scaleX, scaleY);
         }
 
+        public static GroupTransformContext FromRaw(
+            long rawX,
+            long rawY,
+            long rawWidth,
+            long rawHeight,
+            long childX,
+            long childY,
+            long childWidth,
+            long childHeight,
+            GroupTransformContext? parent)
+        {
+            var x = parent?.TransformX(rawX) ?? rawX;
+            var y = parent?.TransformY(rawY) ?? rawY;
+            var width = parent?.TransformWidth(rawWidth) ?? rawWidth;
+            var height = parent?.TransformHeight(rawHeight) ?? rawHeight;
+            var scaleX = childWidth == 0 ? parent?.ScaleX ?? 1 : width / childWidth;
+            var scaleY = childHeight == 0 ? parent?.ScaleY ?? 1 : height / childHeight;
+            return new GroupTransformContext(x, y, childX, childY, scaleX, scaleY);
+        }
+
         public long? TransformX(long? value) => value is null ? null : RoundEmu(X + (value.Value - ChildX) * ScaleX);
 
         public long? TransformY(long? value) => value is null ? null : RoundEmu(Y + (value.Value - ChildY) * ScaleY);
@@ -2727,6 +2845,11 @@ internal static class PptxPresentationProtoReader
     private static long? ToLong(string? value)
     {
         return long.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    private static long RoundEmu(double value)
+    {
+        return (long)Math.Round(value, MidpointRounding.AwayFromZero);
     }
 
     private static int? ToInt32(Int64Value? value)
