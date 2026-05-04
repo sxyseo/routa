@@ -5,6 +5,7 @@ import type { PreviewLabels } from "../office-preview-utils";
 import {
   WordPreview,
   wordChartStyle,
+  wordDocumentPageStyle,
   wordImageStyle,
   wordBodyContentStyle,
   wordTableCellStyle,
@@ -303,7 +304,7 @@ describe("WordPreview", () => {
               paragraphs: [{ runs: [{ text: "Column text" }] }],
             },
           ],
-          sections: [{ columns: { count: 2, separator: true, space: 720 } }],
+          sections: [{ columns: { count: 2, hasSeparatorLine: true, space: 720 } }],
         }}
       />,
     );
@@ -314,10 +315,64 @@ describe("WordPreview", () => {
     expect(body?.style.columnRuleStyle).toBe("solid");
   });
 
+  it("maps decoded DOCX page setup into preview page dimensions", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [{ runs: [{ text: "Page setup text" }] }],
+            },
+          ],
+          sections: [
+            {
+              pageSetup: {
+                heightEmu: 15840,
+                pageMargin: { bottom: 720, left: 900, right: 900, top: 720 },
+                widthEmu: 10080,
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const preview = container.querySelector<HTMLElement>('[data-testid="document-preview"]');
+    expect(preview?.style.width).toBe("672px");
+    expect(preview?.style.minHeight).toBe("1056px");
+    expect(preview?.style.paddingLeft).toBe("60px");
+    expect(preview?.style.paddingTop).toBe("48px");
+  });
+
   it("uses decoded DOCX section columns for body style", () => {
-    expect(wordBodyContentStyle({ sections: [{ columns: { count: 3, space: 360 } }] })).toMatchObject({
+    expect(wordBodyContentStyle({ sections: [{ columns: { count: 3, hasSeparatorLine: true, space: 360 } }] })).toMatchObject({
       columnCount: 3,
       columnGap: 24,
+      columnRuleStyle: "solid",
+    });
+  });
+
+  it("uses decoded DOCX page setup for document page style", () => {
+    expect(
+      wordDocumentPageStyle({
+        sections: [
+          {
+            pageSetup: {
+              heightEmu: 15840,
+              pageMargin: { bottom: 720, left: 900, right: 900, top: 720 },
+              widthEmu: 10080,
+            },
+          },
+        ],
+      }),
+    ).toMatchObject({
+      minHeight: 1056,
+      paddingBottom: 48,
+      paddingLeft: 60,
+      paddingRight: 60,
+      paddingTop: 48,
+      width: 672,
     });
   });
 

@@ -78,20 +78,19 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
     <article
       data-testid="document-preview"
       style={{
+        ...wordDocumentPageStyle(root),
         background: "#ffffff",
         borderColor: "#d8e0ea",
         borderRadius: 8,
         borderStyle: "solid",
         borderWidth: 1,
+        boxSizing: "border-box",
         boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
         color: "#0f172a",
         display: "grid",
         gap: 6,
         margin: "0 auto",
-        maxWidth: 920,
-        minHeight: 680,
-        padding: "56px 64px",
-        width: "100%",
+        maxWidth: "100%",
       }}
     >
       <WordSectionContent
@@ -491,6 +490,22 @@ export function wordBodyContentStyle(root: RecordValue | null): CSSProperties {
   };
 }
 
+export function wordDocumentPageStyle(root: RecordValue | null): CSSProperties {
+  const page = wordPageSetup(root);
+  const widthPx = wordPageUnitToPx(page?.widthEmu ?? root?.widthEmu);
+  const heightPx = wordPageUnitToPx(page?.heightEmu ?? root?.heightEmu);
+  const margin = asRecord(page?.pageMargin);
+
+  return {
+    minHeight: heightPx > 0 ? Math.max(680, heightPx) : 680,
+    paddingBottom: wordPageMarginPx(margin?.bottom, 56),
+    paddingLeft: wordPageMarginPx(margin?.left, 64),
+    paddingRight: wordPageMarginPx(margin?.right, 64),
+    paddingTop: wordPageMarginPx(margin?.top, 56),
+    width: widthPx > 0 ? Math.max(480, Math.min(960, widthPx)) : "100%",
+  };
+}
+
 function wordSectionColumns(root: RecordValue | null): { count: number; gapPx?: number; separator: boolean } | null {
   for (const section of asArray(root?.sections).map(asRecord)) {
     const columns = asRecord(section?.columns);
@@ -500,9 +515,17 @@ function wordSectionColumns(root: RecordValue | null): { count: number; gapPx?: 
       return {
         count,
         gapPx: spaceTwips > 0 ? Math.max(8, Math.min(96, spaceTwips / 15)) : undefined,
-        separator: columns?.separator === true,
+        separator: columns?.separator === true || columns?.hasSeparatorLine === true,
       };
     }
+  }
+  return null;
+}
+
+function wordPageSetup(root: RecordValue | null): RecordValue | null {
+  for (const section of asArray(root?.sections).map(asRecord)) {
+    const pageSetup = asRecord(section?.pageSetup);
+    if (pageSetup) return pageSetup;
   }
   return null;
 }
@@ -898,6 +921,18 @@ function wordVerticalAlign(anchor: unknown): CSSProperties["verticalAlign"] {
 
 function emuToPx(value: unknown): number {
   return asNumber(value) / 9_525;
+}
+
+function wordPageUnitToPx(value: unknown): number {
+  const raw = asNumber(value);
+  if (raw <= 0) return 0;
+  return raw > 100_000 ? raw / 9_525 : raw / 15;
+}
+
+function wordPageMarginPx(value: unknown, fallback: number): number {
+  const px = wordPageUnitToPx(value);
+  if (px <= 0) return fallback;
+  return Math.max(24, Math.min(120, px));
 }
 
 const WORD_PREVIEW_CONTENT_WIDTH_PX = 720;
