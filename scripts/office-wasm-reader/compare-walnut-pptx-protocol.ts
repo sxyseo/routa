@@ -301,7 +301,36 @@ function summarizeSemanticDiffs(
   return {
     bbox: summarizeSlideElementDiffs(walnutSlides, routaSlides, summarizeElementBbox, limit),
     connectors: summarizeSlideElementDiffs(walnutSlides, routaSlides, summarizeElementConnectorIfPresent, limit),
+    shapeGeometryCounts: summarizeSlideValueDiffs(walnutSlides, routaSlides, summarizeShapeGeometryCounts, limit),
+    shapeStyles: summarizeSlideElementDiffs(walnutSlides, routaSlides, summarizeElementShapeStyle, limit),
+    tables: summarizeSlideElementDiffs(walnutSlides, routaSlides, summarizeElementTableIfPresent, limit),
   };
+}
+
+function summarizeSlideValueDiffs(
+  walnutSlides: Record<string, unknown>[],
+  routaSlides: Record<string, unknown>[],
+  summarize: (slide: Record<string, unknown>) => unknown,
+  limit: number,
+) {
+  const slideCount = Math.max(walnutSlides.length, routaSlides.length);
+  const slideDiffs: unknown[] = [];
+  for (let slideIndex = 0; slideIndex < slideCount; slideIndex += 1) {
+    const walnut = summarize(walnutSlides[slideIndex] ?? {});
+    const routa = summarize(routaSlides[slideIndex] ?? {});
+    if (stableJson(walnut) !== stableJson(routa)) {
+      slideDiffs.push({
+        routa,
+        slideIndex: slideIndex + 1,
+        walnut,
+      });
+      if (slideDiffs.length >= limit) {
+        break;
+      }
+    }
+  }
+
+  return slideDiffs;
 }
 
 function summarizeSlideElementDiffs(
@@ -709,6 +738,10 @@ function summarizeElementTable(element: Record<string, unknown>) {
     properties: summarizeTableProperties(asRecord(table.properties) ?? asRecord(table.tableProperties)),
     rows: arrayOfRecords(table.rows).map(summarizeTableRow),
   };
+}
+
+function summarizeElementTableIfPresent(element: Record<string, unknown>) {
+  return isRecord(element.table) ? summarizeElementTable(element) : null;
 }
 
 function summarizeTableColumns(value: unknown): number[] {

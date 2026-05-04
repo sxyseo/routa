@@ -2482,7 +2482,13 @@ internal static class PptxPresentationProtoReader
         }
 
         var solidFill = SolidFillFromProperties(properties);
-        return solidFill is null ? null : WriteFill(solidFill);
+        if (solidFill is not null)
+        {
+            return WriteFill(solidFill);
+        }
+
+        var gradientFill = properties?.GetFirstChild<A.GradientFill>();
+        return gradientFill is null ? null : WriteGradientFill(gradientFill);
     }
 
     private static A.Outline? OutlineFromProperties(OpenXmlElement? properties)
