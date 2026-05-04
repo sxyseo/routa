@@ -120,6 +120,14 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "ISNA") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)).trim().toUpperCase() === "#N/A";
   }
+  if (normalizedName === "ISODD") {
+    const value = Number(evaluateFormulaValue(args[0] ?? "", context));
+    return Number.isFinite(value) && Math.abs(Math.floor(value)) % 2 === 1;
+  }
+  if (normalizedName === "ISEVEN") {
+    const value = Number(evaluateFormulaValue(args[0] ?? "", context));
+    return Number.isFinite(value) && Math.abs(Math.floor(value)) % 2 === 0;
+  }
   if (normalizedName === "IF") {
     return valueToBoolean(evaluateFormulaExpression(args[0] ?? "", context))
       ? evaluateFormulaExpression(args[1] ?? "", context)
@@ -225,6 +233,9 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
       return excelSerialDay(year, month, day);
     }
     return Number.NaN;
+  }
+  if (normalizedName === "YEAR" || normalizedName === "MONTH" || normalizedName === "DAY" || normalizedName === "WEEKDAY") {
+    return excelSerialDatePart(Number(evaluateFormulaValue(args[0] ?? "", context)), normalizedName, Number(evaluateFormulaValue(args[1] ?? "1", context)));
   }
 
   return "";
@@ -616,6 +627,18 @@ function currentExcelSerialDay(): number {
 
 function excelSerialDay(year: number, month: number, day: number): number {
   return Math.floor((Date.UTC(year, month - 1, day) - EXCEL_SERIAL_EPOCH_UTC) / DAY_MS);
+}
+
+function excelSerialDatePart(value: number, part: string, weekdayReturnType: number): number {
+  if (!Number.isFinite(value)) return Number.NaN;
+  const date = new Date(EXCEL_SERIAL_EPOCH_UTC + Math.floor(value) * DAY_MS);
+  if (part === "YEAR") return date.getUTCFullYear();
+  if (part === "MONTH") return date.getUTCMonth() + 1;
+  if (part === "DAY") return date.getUTCDate();
+  const weekday = date.getUTCDay();
+  if (weekdayReturnType === 2) return weekday === 0 ? 7 : weekday;
+  if (weekdayReturnType === 3) return weekday === 0 ? 6 : weekday - 1;
+  return weekday + 1;
 }
 
 function parseFunctionCall(value: string): { args: string[]; name: string } | null {

@@ -860,6 +860,72 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:3")?.background).toBe("#DDD6FE");
   });
 
+  it("evaluates date-part and parity helpers in conditional format formulas", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A2:A5"],
+          rules: [
+            {
+              fillColor: "BAE6FD",
+              formulas: ["=AND(YEAR(A2)=2026,MONTH(A2)=5,DAY(A2)=4)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["B2:B5"],
+          rules: [
+            {
+              fillColor: "FDE68A",
+              formulas: ["=WEEKDAY(B2,2)>5"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["C2:C5"],
+          rules: [
+            {
+              fillColor: "DDD6FE",
+              formulas: ["=ISODD(ROW())"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["D2:D5"],
+          rules: [
+            {
+              fillColor: "BBF7D0",
+              formulas: ["=ISEVEN(D2)"],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A2", value: 46146 }, { address: "B2", value: 46144 }, { address: "C2", value: "row2" }, { address: "D2", value: 2 }], index: 2 },
+        { cells: [{ address: "A3", value: 46147 }, { address: "B3", value: 46145 }, { address: "C3", value: "row3" }, { address: "D3", value: 3 }], index: 3 },
+        { cells: [{ address: "A4", value: 46146 }, { address: "B4", value: 46146 }, { address: "C4", value: "row4" }, { address: "D4", value: 4 }], index: 4 },
+        { cells: [{ address: "A5", value: 45782 }, { address: "B5", value: 46150 }, { address: "C5", value: "row5" }, { address: "D5", value: 5 }], index: 5 },
+      ],
+    });
+
+    expect(visuals.get("2:0")?.background).toBe("#BAE6FD");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#BAE6FD");
+    expect(visuals.get("5:0")).toBeUndefined();
+    expect(visuals.get("2:1")?.background).toBe("#FDE68A");
+    expect(visuals.get("3:1")?.background).toBe("#FDE68A");
+    expect(visuals.get("4:1")).toBeUndefined();
+    expect(visuals.get("3:2")?.background).toBe("#DDD6FE");
+    expect(visuals.get("5:2")?.background).toBe("#DDD6FE");
+    expect(visuals.get("2:3")?.background).toBe("#BBF7D0");
+    expect(visuals.get("3:3")).toBeUndefined();
+    expect(visuals.get("4:3")?.background).toBe("#BBF7D0");
+  });
+
   it("resolves table structured references in formula conditional formats", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
