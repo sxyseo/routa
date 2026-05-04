@@ -89,6 +89,16 @@ function evaluateFormulaValue(expression: string, context: ConditionalFormulaCon
   const call = parseFunctionCall(trimmed);
   if (call) return evaluateFormulaFunction(call.name, call.args, context);
 
+  const arithmetic = splitTopLevelArithmetic(trimmed);
+  if (arithmetic) {
+    return evaluateArithmeticExpression(arithmetic, context);
+  }
+
+  if (trimmed.startsWith("-")) {
+    const value = Number(evaluateFormulaValue(trimmed.slice(1), context));
+    return Number.isFinite(value) ? -value : Number.NaN;
+  }
+
   return trimmed;
 }
 
@@ -178,6 +188,24 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
     const value = Number(evaluateFormulaValue(args[0] ?? "", context));
     return Number.isFinite(value) ? Math.abs(value) : Number.NaN;
   }
+  if (normalizedName === "ROUND" || normalizedName === "ROUNDUP" || normalizedName === "ROUNDDOWN") {
+    return roundFormulaNumber(
+      Number(evaluateFormulaValue(args[0] ?? "", context)),
+      Number(evaluateFormulaValue(args[1] ?? "0", context)),
+      normalizedName,
+    );
+  }
+  if (normalizedName === "INT") {
+    const value = Number(evaluateFormulaValue(args[0] ?? "", context));
+    return Number.isFinite(value) ? Math.floor(value) : Number.NaN;
+  }
+  if (normalizedName === "FLOOR" || normalizedName === "CEILING") {
+    return multipleFormulaNumber(
+      Number(evaluateFormulaValue(args[0] ?? "", context)),
+      Number(evaluateFormulaValue(args[1] ?? "1", context)),
+      normalizedName,
+    );
+  }
   if (normalizedName === "ROW") {
     return args.length > 0 ? resolvedCellReferenceValue(args[0], context, "row") : context.rowIndex;
   }
@@ -255,6 +283,37 @@ function compareFormulaValues(left: unknown, right: unknown, operator: string): 
   if (operator === "<") return leftValue < rightValue;
   if (operator === "<=") return leftValue <= rightValue;
   return false;
+}
+
+function evaluateArithmeticExpression(
+  expression: { left: string; operator: string; right: string },
+  context: ConditionalFormulaContext,
+): number {
+  const left = Number(evaluateFormulaValue(expression.left, context));
+  const right = Number(evaluateFormulaValue(expression.right, context));
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return Number.NaN;
+  if (expression.operator === "+") return left + right;
+  if (expression.operator === "-") return left - right;
+  if (expression.operator === "*") return left * right;
+  if (expression.operator === "/") return right !== 0 ? left / right : Number.NaN;
+  if (expression.operator === "^") return left ** right;
+  return Number.NaN;
+}
+
+function roundFormulaNumber(value: number, digits: number, mode: string): number {
+  if (!Number.isFinite(value) || !Number.isFinite(digits)) return Number.NaN;
+  const multiplier = 10 ** Math.trunc(digits);
+  if (!Number.isFinite(multiplier) || multiplier === 0) return Number.NaN;
+  const scaled = value * multiplier;
+  if (mode === "ROUNDUP") return Math.sign(scaled) * Math.ceil(Math.abs(scaled)) / multiplier;
+  if (mode === "ROUNDDOWN") return Math.sign(scaled) * Math.floor(Math.abs(scaled)) / multiplier;
+  return Math.round(scaled) / multiplier;
+}
+
+function multipleFormulaNumber(value: number, significance: number, mode: string): number {
+  if (!Number.isFinite(value) || !Number.isFinite(significance) || significance === 0) return Number.NaN;
+  const divisor = Math.abs(significance);
+  return mode === "CEILING" ? Math.ceil(value / divisor) * divisor : Math.floor(value / divisor) * divisor;
 }
 
 function cellValueAtReference(reference: CellReference, context: ConditionalFormulaContext): string {
@@ -662,6 +721,40 @@ function splitTopLevelComparison(value: string): { left: string; operator: strin
     };
   }
   return null;
+}
+
+function splitTopLevelArithmetic(value: string): { left: string; operator: string; right: string } | null {
+  return splitTopLevelArithmeticOperators(value, ["+", "-"]) ??
+    splitTopLevelArithmeticOperators(value, ["*", "/"]) ??
+    splitTopLevelArithmeticOperators(value, ["^"]);
+}
+
+function splitTopLevelArithmeticOperators(value: string, operators: string[]): { left: string; operator: string; right: string } | null {
+  let depth = 0;
+  let quoted = false;
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    const char = value[index];
+    if (char === "\"") {
+      quoted = !quoted;
+      continue;
+    }
+    if (quoted) continue;
+    if (char === ")") depth += 1;
+    if (char === "(") depth = Math.max(0, depth - 1);
+    if (depth !== 0 || !operators.includes(char)) continue;
+    const left = value.slice(0, index).trim();
+    const right = value.slice(index + 1).trim();
+    if (!left || !right || isUnaryArithmeticOperator(value, index)) continue;
+    return { left, operator: char, right };
+  }
+  return null;
+}
+
+function isUnaryArithmeticOperator(value: string, index: number): boolean {
+  const operator = value[index];
+  if (operator !== "+" && operator !== "-") return false;
+  const previous = value.slice(0, index).trimEnd().at(-1);
+  return previous == null || previous === "(" || previous === "," || previous === "+" || previous === "-" || previous === "*" || previous === "/" || previous === "^";
 }
 
 function findTopLevelOperator(value: string, operator: string): number {

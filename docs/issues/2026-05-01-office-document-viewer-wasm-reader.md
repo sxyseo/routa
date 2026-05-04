@@ -129,6 +129,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX conditional formula evaluation now supports sparse-range `SUMIF`, `SUMIFS`, and `AVERAGEIF` for aggregate threshold rules without dense range materialization.
 - XLSX conditional formula evaluation now handles common text helpers used in production rules, including `SEARCH`, `FIND`, `LEFT`, `RIGHT`, `MID`, `LOWER`, `UPPER`, and `TRIM`.
 - XLSX conditional formula evaluation now handles date-part and parity helpers used in production rules, including `YEAR`, `MONTH`, `DAY`, `WEEKDAY`, `ISODD`, and `ISEVEN`.
+- XLSX conditional formula evaluation now supports arithmetic expressions and numeric rounding helpers, including `+`, `-`, `*`, `/`, `^`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `INT`, `FLOOR`, and `CEILING`.
 
 ## Codex 技术方案逆向分析
 

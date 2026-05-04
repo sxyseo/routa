@@ -926,6 +926,115 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:3")?.background).toBe("#BBF7D0");
   });
 
+  it("evaluates arithmetic and rounding helpers in conditional format formulas", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A2:A5"],
+          rules: [
+            {
+              fillColor: "FDE68A",
+              formulas: ["=A2/B2>=0.8"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["C2:C5"],
+          rules: [
+            {
+              fillColor: "BFDBFE",
+              formulas: ["=ROUND(C2/D2,2)=0.75"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["E2:E5"],
+          rules: [
+            {
+              fillColor: "DDD6FE",
+              formulas: ["=INT(E2)+F2>10"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["G2:G5"],
+          rules: [
+            {
+              fillColor: "BBF7D0",
+              formulas: [
+                "=AND(CEILING(G2,5)=15,FLOOR(H2,5)=10,ROUNDDOWN(I2,1)=1.2,ROUNDUP(J2,1)=1.3)",
+              ],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        {
+          cells: [
+            { address: "A2", value: 8 },
+            { address: "B2", value: 10 },
+            { address: "C2", value: 3 },
+            { address: "D2", value: 4 },
+            { address: "E2", value: 9.8 },
+            { address: "F2", value: 2 },
+            { address: "G2", value: 11 },
+            { address: "H2", value: 14 },
+            { address: "I2", value: 1.29 },
+            { address: "J2", value: 1.21 },
+          ],
+          index: 2,
+        },
+        {
+          cells: [
+            { address: "A3", value: 7 },
+            { address: "B3", value: 10 },
+            { address: "C3", value: 2 },
+            { address: "D3", value: 3 },
+            { address: "E3", value: 8.9 },
+            { address: "F3", value: 1 },
+            { address: "G3", value: 10 },
+            { address: "H3", value: 9 },
+            { address: "I3", value: 1.21 },
+            { address: "J3", value: 1.2 },
+          ],
+          index: 3,
+        },
+        {
+          cells: [
+            { address: "A4", value: 9 },
+            { address: "B4", value: 10 },
+            { address: "C4", value: 6 },
+            { address: "D4", value: 8 },
+            { address: "E4", value: 10.1 },
+            { address: "F4", value: 0 },
+            { address: "G4", value: 13 },
+            { address: "H4", value: 12 },
+            { address: "I4", value: 1.25 },
+            { address: "J4", value: 1.2 },
+          ],
+          index: 4,
+        },
+      ],
+    });
+
+    expect(visuals.get("2:0")?.background).toBe("#FDE68A");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#FDE68A");
+    expect(visuals.get("2:2")?.background).toBe("#BFDBFE");
+    expect(visuals.get("3:2")).toBeUndefined();
+    expect(visuals.get("4:2")?.background).toBe("#BFDBFE");
+    expect(visuals.get("2:4")?.background).toBe("#DDD6FE");
+    expect(visuals.get("3:4")).toBeUndefined();
+    expect(visuals.get("4:4")).toBeUndefined();
+    expect(visuals.get("2:6")?.background).toBe("#BBF7D0");
+    expect(visuals.get("3:6")).toBeUndefined();
+    expect(visuals.get("4:6")).toBeUndefined();
+  });
+
   it("resolves table structured references in formula conditional formats", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
