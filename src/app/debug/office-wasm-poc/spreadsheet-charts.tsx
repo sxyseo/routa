@@ -11,6 +11,7 @@ import {
   columnIndexFromAddress,
   type RecordValue,
 } from "./office-preview-utils";
+import { drawSpreadsheetChartFrame } from "./spreadsheet-chart-frame";
 import { spreadsheetChartCanvasFont, spreadsheetChartTextWidth } from "./spreadsheet-chart-typography";
 import { protocolColorToCss } from "./spreadsheet-conditional-visuals";
 import {
@@ -70,7 +71,6 @@ type SpreadsheetChartDataLabels = {
   showSeriesName: boolean;
   showValue: boolean;
 };
-
 const CHART_PALETTE = ["#1f6f8b", "#f9732a", "#5b7f2a", "#9467bd", "#8c564b", "#2ca02c", "#d62728"];
 
 export type SpreadsheetChartPlotArea = {
@@ -606,6 +606,7 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
+  drawSpreadsheetChartFrame(context, chart, plot);
   context.fillStyle = "#111827";
   context.font = spreadsheetChartCanvasFont("title");
   context.textAlign = "center";

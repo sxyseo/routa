@@ -115,6 +115,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - Routa-only robustness scan: `/tmp/routa-all-realworld-docx-scan.jsonl` covers all 166 `.docx` files under `/Users/phodal/Downloads/realworld` and reports 166 parsed / 0 failed. `/tmp/routa-downloads-top-docx-scan.jsonl` covers the 4 top-level `/Users/phodal/Downloads/*.docx` files and reports 4 parsed / 0 failed.
 - Additional verification: `/Users/phodal/Downloads/Copy of CAG RFP - Schedule 8 - Operations and maintenance - Onshore.docx` parses through Routa (`2124842` proto bytes). Walnut still throws on that file's invalid decimal page-margin value (`1440.0000000000002`), so it is tracked as Routa robustness beyond Walnut parity rather than a Walnut-comparable sample.
 - XLSX pixel-level chart pass now starts with typography parity: the chart canvas no longer hardcodes mixed `Arial` sizes, and title, axis labels, axis titles, data labels, and legend metrics share an Excel-like `Calibri` typography adapter. Axis gutters and horizontal legend positions are now derived from those text metrics.
+- XLSX chart frame parity now draws Excel-like chart-area and plot-area borders from a shared frame geometry helper, so axis/grid/series layout can be compared against the same chart object and plot box contract.
 
 ## Codex 技术方案逆向分析
 

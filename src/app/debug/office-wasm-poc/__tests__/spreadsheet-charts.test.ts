@@ -8,6 +8,7 @@ import {
   spreadsheetChartPlotArea,
   spreadsheetChartTickValues,
 } from "../spreadsheet-charts";
+import { spreadsheetChartFrame } from "../spreadsheet-chart-frame";
 import { spreadsheetChartCanvasFont, spreadsheetChartTextWidth } from "../spreadsheet-chart-typography";
 import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetRowTop } from "../spreadsheet-layout";
 
@@ -176,6 +177,29 @@ describe("spreadsheet charts", () => {
     expect(spreadsheetChartCanvasFont("title")).toBe("400 24px Calibri, Arial, sans-serif");
     expect(spreadsheetChartCanvasFont("axisLabel")).toBe("400 13px Calibri, Arial, sans-serif");
     expect(spreadsheetChartTextWidth("Coverage %", "legend")).toBe(72);
+  });
+
+  it("projects Excel-like chart and plot area frame geometry", () => {
+    const chart = {
+      categories: ["Jan", "Feb"],
+      height: 280,
+      left: 0,
+      legendOverlay: false,
+      legendPosition: "bottom" as const,
+      series: [{ color: "#1f6f8b", label: "Series", marker: "square" as const, trendlines: [], values: [10, 20] }],
+      showDataLabels: false,
+      title: "Frame",
+      top: 0,
+      type: "line" as const,
+      width: 640,
+      yAxis: { majorGridLines: true, minimum: 0, numberFormat: "", position: "" },
+      zIndex: 0,
+    };
+
+    expect(spreadsheetChartFrame(chart, spreadsheetChartPlotArea(chart))).toEqual({
+      chartArea: { height: 279, left: 0.5, top: 0.5, width: 639 },
+      plotArea: { height: 134, left: 64.5, top: 58.5, width: 554 },
+    });
   });
 
   it("formats chart tick labels from axis number formats", () => {
