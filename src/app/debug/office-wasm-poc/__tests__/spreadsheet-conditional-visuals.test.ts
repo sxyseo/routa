@@ -742,6 +742,58 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:3")?.background).toBe("#BBF7D0");
   });
 
+  it("evaluates SUMIF, SUMIFS, and AVERAGEIF conditional format formulas", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["D2:D5"],
+          rules: [
+            {
+              fillColor: "FED7AA",
+              formulas: ["=SUMIF($B$2:$B$5,\"Open\",$D$2:$D$5)>25"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["E2:E5"],
+          rules: [
+            {
+              fillColor: "DDD6FE",
+              formulas: ["=SUMIFS($D$2:$D$5,$B$2:$B$5,\"Open\",$C$2:$C$5,C2)>10"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["F2:F5"],
+          rules: [
+            {
+              fillColor: "A7F3D0",
+              formulas: ["=F2>AVERAGEIF($B$2:$B$5,\"Open\",$F$2:$F$5)"],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "B2", value: "Open" }, { address: "C2", value: "UI" }, { address: "D2", value: 12 }, { address: "E2", value: "UI" }, { address: "F2", value: 5 }], index: 2 },
+        { cells: [{ address: "B3", value: "Closed" }, { address: "C3", value: "UI" }, { address: "D3", value: 40 }, { address: "E3", value: "UI" }, { address: "F3", value: 50 }], index: 3 },
+        { cells: [{ address: "B4", value: "Open" }, { address: "C4", value: "API" }, { address: "D4", value: 8 }, { address: "E4", value: "API" }, { address: "F4", value: 15 }], index: 4 },
+        { cells: [{ address: "B5", value: "Open" }, { address: "C5", value: "UI" }, { address: "D5", value: 9 }, { address: "E5", value: "UI" }, { address: "F5", value: 25 }], index: 5 },
+      ],
+    });
+
+    expect(visuals.get("2:3")?.background).toBe("#FED7AA");
+    expect(visuals.get("3:3")?.background).toBe("#FED7AA");
+    expect(visuals.get("2:4")?.background).toBe("#DDD6FE");
+    expect(visuals.get("4:4")).toBeUndefined();
+    expect(visuals.get("5:4")?.background).toBe("#DDD6FE");
+    expect(visuals.get("2:5")).toBeUndefined();
+    expect(visuals.get("4:5")).toBeUndefined();
+    expect(visuals.get("5:5")?.background).toBe("#A7F3D0");
+  });
+
   it("resolves table structured references in formula conditional formats", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

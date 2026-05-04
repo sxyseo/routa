@@ -171,6 +171,15 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "COUNTIFS") {
     return countIfs(args, context);
   }
+  if (normalizedName === "SUMIF") {
+    return aggregateIf(args, context, "sum");
+  }
+  if (normalizedName === "SUMIFS") {
+    return aggregateIfs(args, context, "sum");
+  }
+  if (normalizedName === "AVERAGEIF") {
+    return aggregateIf(args, context, "average");
+  }
   if (normalizedName === "TODAY") {
     return currentExcelSerialDay();
   }
@@ -264,37 +273,102 @@ function countIf(args: string[], context: ConditionalFormulaContext): number {
 
 function countIfs(args: string[], context: ConditionalFormulaContext): number {
   if (args.length < 2 || args.length % 2 !== 0) return 0;
-  const firstCells = formulaRangeCells(args[0] ?? "", context);
-  if (!firstCells) return 0;
+  const firstRange = formulaRange(args[0] ?? "", context);
+  const firstCells = firstRange ? formulaRangeCells(args[0] ?? "", context) : null;
+  if (!firstRange || !firstCells) return 0;
 
-  const criteria: Array<{
-    cellsByOffset: Map<string, string>;
-    criterion: { operator: string; value: unknown };
-    range: ReturnType<typeof parseCellRange>;
-  }> = [];
+  const criteria: FormulaCriteriaRange[] = [];
   for (let index = 0; index < args.length; index += 2) {
-    const range = parseCellRange(formulaRangeTarget(args[index] ?? "", context));
-    const cells = formulaRangeCells(args[index] ?? "", context);
-    if (!cells) return 0;
-    criteria.push({
-      cellsByOffset: range ? cellsByOffset(cells, range) : new Map<string, string>(),
-      criterion: formulaCriteria(args[index + 1] ?? "", context),
-      range,
-    });
+    const criteriaRange = formulaCriteriaRange(args[index] ?? "", args[index + 1] ?? "", context);
+    if (!criteriaRange) return 0;
+    criteria.push(criteriaRange);
   }
-
-  const firstRange = criteria[0]?.range;
-  if (!firstRange) return 0;
 
   return firstCells.filter((cell) => {
     const rowOffset = cell.rowIndex - firstRange.startRow;
     const columnOffset = cell.columnIndex - firstRange.startColumn;
-    return criteria.every((item) => {
-      if (!item.range) return false;
-      const value = item.cellsByOffset.get(`${rowOffset}:${columnOffset}`) ?? "";
-      return formulaCriteriaMatches(value, item.criterion);
-    });
+    return criteria.every((item) => formulaCriteriaRangeMatches(item, rowOffset, columnOffset));
   }).length;
+}
+
+type FormulaCriteriaRange = {
+  cellsByOffset: Map<string, string>;
+  criterion: { operator: string; value: unknown };
+  range: NonNullable<ReturnType<typeof parseCellRange>>;
+};
+
+function aggregateIf(args: string[], context: ConditionalFormulaContext, kind: "average" | "sum"): number {
+  const criteriaRange = formulaCriteriaRange(args[0] ?? "", args[1] ?? "", context);
+  if (!criteriaRange) return kind === "sum" ? 0 : Number.NaN;
+
+  const sumRange = formulaRange(args[2] ?? "", context) ?? criteriaRange.range;
+  const sumCells = formulaRangeCells(args[2] ?? args[0] ?? "", context);
+  if (!sumCells) return kind === "sum" ? 0 : Number.NaN;
+  const sumByOffset = cellsByOffset(sumCells, sumRange);
+  const values = numericValuesMatchingCriteria(criteriaRange, sumByOffset);
+  return aggregateNumericValues(values, kind);
+}
+
+function aggregateIfs(args: string[], context: ConditionalFormulaContext, kind: "sum"): number {
+  if (args.length < 3 || args.length % 2 !== 1) return 0;
+  const sumRange = formulaRange(args[0] ?? "", context);
+  const sumCells = formulaRangeCells(args[0] ?? "", context);
+  if (!sumRange || !sumCells) return 0;
+  const sumByOffset = cellsByOffset(sumCells, sumRange);
+
+  const criteria: FormulaCriteriaRange[] = [];
+  for (let index = 1; index < args.length; index += 2) {
+    const criteriaRange = formulaCriteriaRange(args[index] ?? "", args[index + 1] ?? "", context);
+    if (!criteriaRange) return 0;
+    criteria.push(criteriaRange);
+  }
+
+  const values: number[] = [];
+  for (const [key, rawValue] of sumByOffset) {
+    const [rowOffsetText, columnOffsetText] = key.split(":");
+    const rowOffset = Number(rowOffsetText);
+    const columnOffset = Number(columnOffsetText);
+    if (!Number.isFinite(rowOffset) || !Number.isFinite(columnOffset)) continue;
+    if (!criteria.every((item) => formulaCriteriaRangeMatches(item, rowOffset, columnOffset))) continue;
+    const value = Number(rawValue);
+    if (Number.isFinite(value)) values.push(value);
+  }
+  return aggregateNumericValues(values, kind);
+}
+
+function numericValuesMatchingCriteria(criteriaRange: FormulaCriteriaRange, valuesByOffset: ReadonlyMap<string, string>): number[] {
+  const values: number[] = [];
+  for (const [key, candidate] of criteriaRange.cellsByOffset) {
+    if (!formulaCriteriaMatches(candidate, criteriaRange.criterion)) continue;
+    const value = Number(valuesByOffset.get(key) ?? "");
+    if (Number.isFinite(value)) values.push(value);
+  }
+  return values;
+}
+
+function aggregateNumericValues(values: number[], kind: "average" | "sum"): number {
+  if (kind === "average") return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : Number.NaN;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function formulaCriteriaRange(rangeExpression: string, criterionExpression: string, context: ConditionalFormulaContext): FormulaCriteriaRange | null {
+  const range = formulaRange(rangeExpression, context);
+  const cells = formulaRangeCells(rangeExpression, context);
+  if (!range || !cells) return null;
+  return {
+    cellsByOffset: cellsByOffset(cells, range),
+    criterion: formulaCriteria(criterionExpression, context),
+    range,
+  };
+}
+
+function formulaCriteriaRangeMatches(criteriaRange: FormulaCriteriaRange, rowOffset: number, columnOffset: number): boolean {
+  const value = criteriaRange.cellsByOffset.get(`${rowOffset}:${columnOffset}`) ?? "";
+  return formulaCriteriaMatches(value, criteriaRange.criterion);
+}
+
+function formulaRange(expression: string, context: ConditionalFormulaContext): ReturnType<typeof parseCellRange> {
+  return parseCellRange(formulaRangeTarget(expression, context));
 }
 
 function cellsByOffset(cells: FormulaCellValue[], range: NonNullable<ReturnType<typeof parseCellRange>>): Map<string, string> {
