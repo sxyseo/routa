@@ -116,6 +116,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - Additional verification: `/Users/phodal/Downloads/Copy of CAG RFP - Schedule 8 - Operations and maintenance - Onshore.docx` parses through Routa (`2124842` proto bytes). Walnut still throws on that file's invalid decimal page-margin value (`1440.0000000000002`), so it is tracked as Routa robustness beyond Walnut parity rather than a Walnut-comparable sample.
 - XLSX pixel-level chart pass now starts with typography parity: the chart canvas no longer hardcodes mixed `Arial` sizes, and title, axis labels, axis titles, data labels, and legend metrics share an Excel-like `Calibri` typography adapter. Axis gutters and horizontal legend positions are now derived from those text metrics.
 - XLSX chart frame parity now draws Excel-like chart-area and plot-area borders from a shared frame geometry helper, so axis/grid/series layout can be compared against the same chart object and plot box contract.
+- XLSX chart scale parity now expands value axes below zero when series contain negative values, draws the primary axis on the zero baseline, and anchors bar/area fills plus data labels to that baseline instead of always using the plot bottom.
 
 ## Codex 技术方案逆向分析
 
@@ -623,6 +624,17 @@ Verification on 2026-05-03:
 - `npx eslint --max-warnings=0 scripts/office-wasm-reader/compare-walnut-docx-protocol.ts` and `git diff --check` passed.
 - DOCX protocol tooling now supports `--json-contract-only`, which compares canonical decoded Proto JSON and reports deep field paths beyond the existing semantic summary checks. The advanced/style-section/anchor/table fixtures now have zero normalized JSON diffs after writing section-scoped `sections[].elements`, omitting absent `w:cols` instead of emitting an empty columns message, normalizing Walnut's unstable IDs, emitting docDefaults run style summaries, and emitting table style IDs.
 
+Verification on 2026-05-04:
+
+- `npm run build:office-wasm-reader` passed.
+- `npm run test:office-wasm-reader:docx-json-contract` passed for all five DOCX fixtures.
+- `npx eslint scripts/office-wasm-reader/compare-walnut-docx-protocol.ts scripts/office-wasm-reader/scan-docx-protocol-corpus.ts` passed.
+- `dotnet build tools/office-wasm-reader/Routa.OfficeWasmReader/Routa.OfficeWasmReader.csproj` passed after cleaning stale `obj` output.
+- The DOCX reader now mirrors the remaining decoded JSON contract differences found in targeted real-world samples: empty paragraphs carrying `w:sectPr` write Walnut's section-break carrier flag, theme-only run fonts no longer create empty `textStyle` messages, and incomplete concrete style fonts fall back through Walnut-like default run fonts.
+- `scripts/office-wasm-reader/scan-docx-protocol-corpus.ts` now separates Walnut failures from Routa failures. When the Walnut comparator fails, the scanner runs a Routa-only smoke extraction and classifies the result as `walnut-error-routa-ok` or `routa-error`. The scanner also supports `--compact` for corpus triage and `--timeout-ms=N` for opt-in bounded Walnut comparisons.
+- Full local corpus scan on `/Users/phodal/Downloads/realworld` with decoded JSON contract coverage found `166/166` Routa-readable DOCX files. Among them, `89/89` Walnut-readable files reported `0` normalized decoded Proto JSON diffs; the remaining `77` files were Walnut failures but Routa-only successes. The final scan had `mismatchCount = 0`, `errorCount = 0`, `okCount = 89`, and `walnutErrorRoutaOkCount = 77`.
+- Representative real-world JSON exact checks still pass for `/Users/phodal/Downloads/realworld/ThoughtWorks_黄峰达.docx`, `/Users/phodal/Downloads/realworld/目录v3.docx`, and the committed DOCX contract fixtures. `/Users/phodal/Downloads/realworld/About Thoughtworks.docx` is now correctly classified as `walnut-error-routa-ok`: Walnut throws `Format_InvalidStringWithValue, 100.0`, while Routa emits a smoke-valid `oaiproto.coworker.docx.Document` with resolved image references.
+
 Verification on 2026-05-02:
 
 - `npm run build:office-wasm-reader` passed.
@@ -638,13 +650,13 @@ Verification on 2026-05-02:
 
 Remaining DOCX implementation gaps:
 
-- Core protocol status: Walnut-compatible DOCX protocol is now green for the committed contract suite and the targeted real-world Chinese samples. Headers/footers, comments, footnotes, basic track changes, hyperlinks, content-control text, bookmarks, equations-as-placeholders, paragraph numbering, section-scoped body elements, rendered page-break markers, package images, table cells/borders/spans/colors, floating/anchored image references, chart references, and Word-authored style quirks are modeled and covered by parity checks.
-- Robustness status: the local 166-file Routa-only scan parses 166/166 DOCX files, and the 89 Walnut-readable real-world files remain semantic-full matches. `/Users/phodal/Downloads/Copy of CAG RFP - Schedule 8 - Operations and maintenance - Onshore.docx` is Routa-readable even though Walnut rejects its invalid decimal page margin.
+- Core protocol status: Walnut-compatible DOCX protocol is now green for the committed contract suite and for the local real-world corpus where Walnut can decode the file. Headers/footers, comments, footnotes, basic track changes, hyperlinks, content-control text, bookmarks, equations-as-placeholders, paragraph numbering, section-scoped body elements, rendered page-break markers, package images, table cells/borders/spans/colors, floating/anchored image references, chart references, and Word-authored style quirks are modeled and covered by parity checks.
+- Robustness status: the local 166-file Routa-only scan parses 166/166 DOCX files, and all 89 Walnut-readable real-world files now have zero normalized decoded Proto JSON diffs. `/Users/phodal/Downloads/Copy of CAG RFP - Schedule 8 - Operations and maintenance - Onshore.docx` is Routa-readable even though Walnut rejects its invalid decimal page margin.
 - Remaining DOCX layout fidelity: richer floating/anchored positioning variants, text wrapping around floating objects, overlap/behind-doc flags, z-order, distance-from-text, crop/effect metadata, and pixel-level renderer behavior beyond the protocol POC.
 - Remaining DOCX chart fidelity: chart references and basic cached series are covered; richer axis/title/legend/plot-area styling, multi-axis cases, embedded workbook/cache details, and chart-renderer fidelity still need work.
 - Remaining DOCX section/header/footer fidelity: the known single-section, multi-section, generated TOC, table-internal break, revision-scoped break, and leading-vs-mid-paragraph rendered-break cases are covered. Broader column layouts, header/footer variant combinations, and non-Word producer edge cases still need corpus-backed fixtures.
 - Remaining DOCX style/table long tail: the reader covers docDefaults, paragraph-style `basedOn` spacing, default paragraph style IDs, direct run/paragraph properties, paragraph style summaries, renderer-side paragraph inheritance, list auto-number type/start metadata, alignment-only paragraph style default run fallback, explicit false bold/italic, `NoSpacing`/`MacroText`/`Revision*`, East Asian/complex-script fonts, highlight scheme metadata, decimal-size non-materialization for comparable non-Word producer files, table bbox, table style IDs, direct cell margins, and empty-border suppression. Latent style defaults not yet seen in fixtures, run-style materialization beyond direct properties, and richer table border/span/style regions remain.
-- Remaining validation work: promote more of `/Users/phodal/Downloads/realworld` from semantic parity into decoded JSON contract assertion where Walnut can read the files, and add fixtures for any long-tail cases above before treating DOCX as closed.
+- Remaining validation work: keep the five committed JSON contract fixtures as the lightweight CI guard, add new committed fixtures only when a future corpus or renderer pass exposes a concrete decoded-protocol or visual regression, and move the next broad validation focus from decoded protocol parity to the debug DOCX renderer.
 
 ## Verification - 2026-05-01
 

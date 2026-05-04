@@ -9,6 +9,7 @@ import {
   spreadsheetChartTickValues,
 } from "../spreadsheet-charts";
 import { spreadsheetChartFrame } from "../spreadsheet-chart-frame";
+import { spreadsheetChartZeroBaselineY } from "../spreadsheet-chart-scale";
 import { spreadsheetChartCanvasFont, spreadsheetChartTextWidth } from "../spreadsheet-chart-typography";
 import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetRowTop } from "../spreadsheet-layout";
 
@@ -103,6 +104,27 @@ describe("spreadsheet charts", () => {
       right: 618,
       top: 58,
     });
+  });
+
+  it("expands chart scales below zero and projects a zero baseline", () => {
+    const chart = {
+      categories: ["Q1", "Q2", "Q3"],
+      height: 260,
+      left: 0,
+      legendOverlay: false,
+      legendPosition: "bottom" as const,
+      series: [{ color: "#1f6f8b", label: "Delta", marker: null, trendlines: [], values: [-30, 0, 30] }],
+      showDataLabels: false,
+      title: "Variance",
+      top: 0,
+      type: "bar" as const,
+      width: 420,
+      zIndex: 0,
+    };
+    const ticks = spreadsheetChartTickValues(chart, chart.series[0].values);
+
+    expect(ticks).toEqual([-30, -15, 0, 15, 30]);
+    expect(spreadsheetChartZeroBaselineY({ bottom: 198, top: 58 }, ticks[0]!, ticks.at(-1)!)).toBe(128);
   });
 
   it("reserves chart plot space for non-overlay left and top legends", () => {

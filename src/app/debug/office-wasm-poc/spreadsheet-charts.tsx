@@ -12,6 +12,11 @@ import {
   type RecordValue,
 } from "./office-preview-utils";
 import { drawSpreadsheetChartFrame } from "./spreadsheet-chart-frame";
+import {
+  chartY,
+  spreadsheetChartTickValues,
+  spreadsheetChartZeroBaselineY,
+} from "./spreadsheet-chart-scale";
 import { spreadsheetChartCanvasFont, spreadsheetChartTextWidth } from "./spreadsheet-chart-typography";
 import { protocolColorToCss } from "./spreadsheet-conditional-visuals";
 import {
@@ -787,7 +792,9 @@ function drawChartGrid(
   context.beginPath();
   context.moveTo(plot.left, plot.top);
   context.lineTo(plot.left, plot.bottom);
-  context.lineTo(plot.right, plot.bottom);
+  const axisY = spreadsheetChartZeroBaselineY(plot, minValue, maxValue);
+  context.moveTo(plot.left, axisY);
+  context.lineTo(plot.right, axisY);
   context.stroke();
 
   drawSecondaryChartAxis(context, chart, plot, secondaryTicks);
@@ -853,56 +860,6 @@ function drawChartAxisTitles(
   context.restore();
 }
 
-export function spreadsheetChartTickValues(chart: SpreadsheetChartSpec, values: number[]): number[] {
-  const tickCount = isLineAxisChart(chart.type) || chart.type === "radar" ? 6 : 5;
-  const minValue = chart.yAxis?.minimum ?? 0;
-  const observedMax = Math.max(minValue, ...values.filter(Number.isFinite));
-  const majorUnit = chart.yAxis?.majorUnit;
-  let maxValue = chart.yAxis?.maximum ?? (
-    majorUnit && majorUnit > 0
-      ? Math.ceil(observedMax / majorUnit) * majorUnit
-      : niceChartMax(observedMax, tickCount)
-  );
-
-  if (!Number.isFinite(maxValue) || maxValue <= minValue) {
-    maxValue = minValue + 1;
-  }
-
-  if (majorUnit && majorUnit > 0) {
-    const ticks: number[] = [];
-    for (let value = minValue; value <= maxValue + majorUnit / 1000; value += majorUnit) {
-      ticks.push(roundChartNumber(value));
-    }
-    return ticks.length >= 2 ? ticks : [minValue, maxValue];
-  }
-
-  return Array.from({ length: tickCount }, (_, index) => {
-    const ratio = index / Math.max(1, tickCount - 1);
-    return roundChartNumber(minValue + ratio * (maxValue - minValue));
-  });
-}
-
-function niceChartMax(observedMax: number, tickCount: number): number {
-  if (!Number.isFinite(observedMax) || observedMax <= 0) return 1;
-  const intervalCount = Math.max(1, tickCount - 1);
-  const roughStep = observedMax / intervalCount;
-  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
-  const normalized = roughStep / magnitude;
-  const step = normalized <= 1 ? magnitude : normalized <= 2 ? 2 * magnitude : normalized <= 5 ? 5 * magnitude : 10 * magnitude;
-  return Math.max(step, Math.ceil(observedMax / step) * step);
-}
-
-function chartY(
-  value: number,
-  plot: Pick<SpreadsheetChartPlotArea, "bottom" | "top">,
-  minValue: number,
-  maxValue: number,
-): number {
-  if (maxValue <= minValue) return plot.bottom;
-  const ratio = (value - minValue) / (maxValue - minValue);
-  return plot.bottom - ratio * (plot.bottom - plot.top);
-}
-
 function drawBarChart(
   context: CanvasRenderingContext2D,
   chart: SpreadsheetChartSpec,
@@ -911,11 +868,14 @@ function drawBarChart(
   maxValue: number,
 ) {
   context.save();
+  const baselineY = spreadsheetChartZeroBaselineY(plot, minValue, maxValue);
   spreadsheetBarChartGeometry(chart, plot).forEach(({ barWidth, centerX, series, value }) => {
     const y = chartY(value, plot, minValue, maxValue);
+    const top = Math.min(y, baselineY);
+    const height = Math.max(1, Math.abs(baselineY - y));
     context.fillStyle = series.color;
     context.beginPath();
-    context.roundRect(centerX - barWidth / 2, y, barWidth, plot.bottom - y, 3);
+    context.roundRect(centerX - barWidth / 2, top, barWidth, height, 3);
     context.fill();
   });
 
@@ -1121,6 +1081,7 @@ function drawAreaChart(
   const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
 
   context.save();
+  const baselineY = spreadsheetChartZeroBaselineY(plot, minValue, maxValue);
   chart.series.forEach((series) => {
     context.beginPath();
     series.values.forEach((value, index) => {
@@ -1129,8 +1090,8 @@ function drawAreaChart(
       if (index === 0) context.moveTo(x, y);
       else context.lineTo(x, y);
     });
-    context.lineTo(xForIndex(Math.max(0, series.values.length - 1)), plot.bottom);
-    context.lineTo(xForIndex(0), plot.bottom);
+    context.lineTo(xForIndex(Math.max(0, series.values.length - 1)), baselineY);
+    context.lineTo(xForIndex(0), baselineY);
     context.closePath();
     context.globalAlpha = 0.22;
     context.fillStyle = series.color;
@@ -1365,14 +1326,17 @@ function drawBarDataLabels(
 ) {
   spreadsheetBarChartGeometry(chart, plot).forEach(({ categoryIndex, centerX, series, value }) => {
     const y = chartY(value, plot, minValue, maxValue);
+    const baselineY = spreadsheetChartZeroBaselineY(plot, minValue, maxValue);
     const label = chartDataLabelText(chart, series, value, categoryIndex);
     if (!label) return;
     const position = chart.dataLabels?.position ?? "outsideEnd";
+    const top = Math.min(y, baselineY);
+    const bottom = Math.max(y, baselineY);
     const labelY = position === "center"
-      ? y + (plot.bottom - y) / 2
+      ? top + (bottom - top) / 2
       : position === "insideEnd"
-        ? y + 12
-        : Math.max(plot.top + 10, y - 12);
+        ? value >= 0 ? top + 12 : bottom - 12
+        : value >= 0 ? Math.max(plot.top + 10, top - 12) : Math.min(plot.bottom - 10, bottom + 12);
     context.fillText(label, centerX, labelY);
   });
 }
@@ -1595,6 +1559,4 @@ function chartFormatDecimalPlaces(numberFormat: string): number {
   return numberFormat.match(/\.([0#]+)/)?.[1]?.length ?? 0;
 }
 
-function roundChartNumber(value: number): number {
-  return Math.round(value * 1000) / 1000;
-}
+export { spreadsheetChartTickValues } from "./spreadsheet-chart-scale";
