@@ -254,6 +254,30 @@ describe("WordPreview", () => {
     expect(paragraphs).toEqual(["3.First item", "4.Second item"]);
   });
 
+  it("renders decoded DOCX bullet markers when no numbering marker is present", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  paragraphStyle: { bulletCharacter: "•" },
+                  runs: [{ text: "Bullet item" }],
+                },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const marker = container.querySelector<HTMLElement>("p span");
+    expect(marker?.textContent).toBe("•");
+    expect(container.querySelector("p")?.textContent).toBe("•Bullet item");
+  });
+
   it("renders decoded DOCX hyperlinks and note reference markers", () => {
     const { container } = render(
       <WordPreview

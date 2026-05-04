@@ -328,7 +328,7 @@ function wordParagraphView(
   reviewMarkTypes: Map<string, number>,
 ): ParagraphView {
   const view = paragraphView(paragraph, styleMaps);
-  const marker = numberingMarkers.get(view.id);
+  const marker = numberingMarkers.get(view.id) || asString(view.style?.bulletCharacter);
   const runs = view.runs.map((run) => ({
     ...run,
     referenceMarkers: referenceMarkers.get(run.id) ?? [],
