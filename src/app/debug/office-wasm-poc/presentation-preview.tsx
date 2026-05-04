@@ -144,7 +144,6 @@ export function PresentationPreview({
         images={imageElements}
         labels={labels}
         layouts={layouts}
-        slideBitmap={slideBitmaps.get(slideRenderKey(selectedSlide, selectedSlideIndex))}
         slide={selectedSlide}
         slideIndex={selectedSlideIndex}
       />
@@ -166,7 +165,6 @@ export function PresentationPreview({
           layouts={layouts}
           onClose={closeSlideshow}
           setActiveSlideIndex={setActiveSlideIndex}
-          slideBitmaps={slideBitmaps}
           slides={slides}
         />
       ) : null}
@@ -179,7 +177,6 @@ function SlideStage({
   images,
   labels,
   layouts,
-  slideBitmap,
   slide,
   slideIndex,
 }: {
@@ -187,7 +184,6 @@ function SlideStage({
   images: ReadonlyMap<string, CanvasImageSource>;
   labels: PreviewLabels;
   layouts: RecordValue[];
-  slideBitmap?: SlideBitmapSurface;
   slide: RecordValue;
   slideIndex: number;
 }) {
@@ -222,15 +218,13 @@ function SlideStage({
             className={styles.slideSurface}
             style={{ height: canvasHeight, width: canvasWidth }}
           >
-            <SlideRasterFrame
-              alt={`${labels.slide} ${asNumber(slide.index, slideIndex + 1)}`}
-              bitmap={slideBitmap}
+            <SlideCanvasFrame
               className={styles.slideCanvas}
-              fallbackImages={images}
-              fallbackTextOverflow="visible"
               charts={charts}
+              images={images}
               layouts={layouts}
               slide={slide}
+              textOverflow="visible"
               width={canvasWidth}
             />
             <button
@@ -288,7 +282,6 @@ function SlideshowOverlay({
   layouts,
   onClose,
   setActiveSlideIndex,
-  slideBitmaps,
   slides,
 }: {
   activeSlideIndex: number;
@@ -298,7 +291,6 @@ function SlideshowOverlay({
   layouts: RecordValue[];
   onClose: () => void;
   setActiveSlideIndex: (index: number) => void;
-  slideBitmaps: ReadonlyMap<string, SlideBitmapSurface>;
   slides: RecordValue[];
 }) {
   const frameRef = useRef<HTMLButtonElement>(null);
@@ -398,15 +390,13 @@ function SlideshowOverlay({
         ref={frameRef}
         type="button"
       >
-        <SlideRasterFrame
-          alt={`${labels.slide} ${asNumber(slide.index, selectedIndex + 1)}`}
-          bitmap={slideBitmaps.get(slideRenderKey(slide, selectedIndex))}
+        <SlideCanvasFrame
           className={styles.slideshowCanvas}
-          fallbackImages={images}
-          fallbackTextOverflow="visible"
           charts={charts}
+          images={images}
           layouts={layouts}
           slide={slide}
+          textOverflow="visible"
           width={canvasWidth}
         />
       </button>

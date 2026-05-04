@@ -202,7 +202,7 @@ async function loadPresentation(page: Page, fixturePath: string, reader: ReaderM
   await page.waitForFunction(
     () => {
       const root = document.querySelector('[data-testid="presentation-preview"]');
-      return (root?.querySelectorAll("img").length ?? 0) >= 2 && (root?.querySelectorAll("canvas").length ?? 0) === 0;
+      return (root?.querySelectorAll("img").length ?? 0) >= 2 && (root?.querySelectorAll("canvas").length ?? 0) === 1;
     },
     null,
     { timeout: 60_000 },
@@ -297,8 +297,8 @@ function summarizeFailures(
     }
     failures.push(...previewStatsFailures(result.reader, "desktop", result.desktop));
     failures.push(...previewStatsFailures(result.reader, "narrow", result.narrow));
-    if (result.slideshow.imageCount !== 1 || result.slideshow.canvasCount !== 0) {
-      failures.push(`${result.reader}: slideshow did not use a single bitmap surface`);
+    if (result.slideshow.imageCount !== 0 || result.slideshow.canvasCount !== 1) {
+      failures.push(`${result.reader}: slideshow did not use a single canvas surface`);
     }
     if (!result.slideshow.fullscreen) {
       failures.push(`${result.reader}: slideshow did not enter fullscreen`);
@@ -323,8 +323,8 @@ function summarizeFailures(
 
 function previewStatsFailures(reader: ReaderMode, viewportName: string, stats: PreviewStats): string[] {
   const failures: string[] = [];
-  if (stats.imageCount < 2 || stats.canvasCount !== 0) {
-    failures.push(`${reader}: ${viewportName} preview did not use bitmap surfaces`);
+  if (stats.imageCount < 2 || stats.canvasCount !== 1) {
+    failures.push(`${reader}: ${viewportName} preview did not use one live canvas surface plus thumbnail bitmaps`);
   }
   if (stats.slideWidth <= 0 || stats.slideHeight <= 0) {
     failures.push(`${reader}: ${viewportName} slide has invalid dimensions`);
