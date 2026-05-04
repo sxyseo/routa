@@ -226,6 +226,10 @@ describe("WordPreview", () => {
                 {
                   runs: [
                     { text: "Underlined", textStyle: { underline: "single" } },
+                    { text: "Double", textStyle: { underline: "double" } },
+                    { text: "Dotted", textStyle: { underline: "dottedHeavy" } },
+                    { text: "Dashed", textStyle: { underline: "dash" } },
+                    { text: "Wavy", textStyle: { underline: "wave" } },
                     { text: "Not underlined", textStyle: { underline: "none" } },
                   ],
                 },
@@ -238,7 +242,12 @@ describe("WordPreview", () => {
 
     const runs = Array.from(container.querySelectorAll<HTMLElement>("p span"));
     expect(runs[0]?.style.textDecoration).toBe("underline");
-    expect(runs[1]?.style.textDecoration).toBe("none");
+    expect(runs[1]?.style.textDecoration).toBe("underline");
+    expect(runs[1]?.style.textDecorationStyle).toBe("double");
+    expect(runs[2]?.style.textDecorationStyle).toBe("dotted");
+    expect(runs[3]?.style.textDecorationStyle).toBe("dashed");
+    expect(runs[4]?.style.textDecorationStyle).toBe("wavy");
+    expect(runs[5]?.style.textDecoration).toBe("none");
   });
 
   it("renders decoded DOCX auto-number markers in document order", () => {

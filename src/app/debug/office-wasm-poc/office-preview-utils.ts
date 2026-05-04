@@ -350,19 +350,30 @@ export function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {
     fontSize: runFontSize == null ? undefined : Math.max(fontScale < 1 ? 2 : 8, Math.min(fontScale < 1 ? 12 : 72, runFontSize)),
     fontStyle: run.style?.italic === true ? "italic" : run.style?.italic === false ? "normal" : undefined,
     fontWeight: run.style?.bold === true ? 700 : run.style?.bold === false ? 400 : undefined,
-    textDecoration: docxTextDecoration(run.style?.underline),
+    ...docxTextDecoration(run.style?.underline),
     textTransform: scheme.textTransform,
   };
 }
 
-function docxTextDecoration(value: unknown): CSSProperties["textDecoration"] {
-  if (value === true) return "underline";
-  if (value === false) return "none";
+function docxTextDecoration(value: unknown): Pick<CSSProperties, "textDecoration" | "textDecorationStyle"> {
+  if (value === true) return { textDecoration: "underline" };
+  if (value === false) return { textDecoration: "none" };
 
   const underline = asString(value).toLowerCase();
-  if (!underline) return undefined;
-  if (underline === "none") return "none";
-  return "underline";
+  if (!underline) return {};
+  if (underline === "none") return { textDecoration: "none" };
+  return {
+    textDecoration: "underline",
+    textDecorationStyle: docxUnderlineStyle(underline),
+  };
+}
+
+function docxUnderlineStyle(underline: string): CSSProperties["textDecorationStyle"] {
+  if (underline.includes("double")) return "double";
+  if (underline.includes("dotted") || underline.includes("dot")) return "dotted";
+  if (underline.includes("dash")) return "dashed";
+  if (underline.includes("wave") || underline.includes("wavy")) return "wavy";
+  return undefined;
 }
 
 function docxSchemeStyle(scheme: unknown): Pick<CSSProperties, "backgroundColor" | "textTransform"> & {
