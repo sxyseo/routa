@@ -384,7 +384,15 @@ describe("WordPreview", () => {
       <WordPreview
         labels={labels}
         proto={{
-          comments: [{ id: "12", paragraphs: [{ runs: [{ text: "Comment body" }] }] }],
+          comments: [
+            {
+              author: "Reviewer",
+              createdAt: "2026-05-05T00:00:00.000Z",
+              id: "12",
+              initials: "RV",
+              paragraphs: [{ runs: [{ text: "Comment body" }] }],
+            },
+          ],
           elements: [
             {
               paragraphs: [{ runs: [{ id: "run-main", text: "Main text" }] }],
@@ -397,6 +405,7 @@ describe("WordPreview", () => {
 
     const paragraphs = Array.from(container.querySelectorAll("p")).map((paragraph) => paragraph.textContent);
     expect(paragraphs).toEqual(["Main text", "1Footnote body", "C1Comment body"]);
+    expect(container.textContent).toContain("Reviewer (RV) 2026-05-05T00:00:00.000Z");
   });
 
   it("renders decoded DOCX section header and footer content", () => {

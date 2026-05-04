@@ -428,6 +428,7 @@ function WordSupplementalNotes({
     <section style={wordSupplementalNotesStyle}>
       {items.map((item) => (
         <div key={item.id} style={wordSupplementalNoteStyle}>
+          {item.meta ? <div style={wordSupplementalNoteMetaStyle}>{item.meta}</div> : null}
           {item.paragraphs.map((paragraph, index) => (
             <WordParagraph key={paragraph.id || `${item.id}-${index}`} paragraph={paragraph} />
           ))}
@@ -539,8 +540,8 @@ function wordSupplementalNoteItems(
   numberingMarkers: Map<string, string>,
   referenceMarkers: Map<string, string[]>,
   reviewMarkTypes: Map<string, number>,
-): { id: string; paragraphs: ParagraphView[] }[] {
-  const items: { id: string; paragraphs: ParagraphView[] }[] = [];
+): { id: string; meta?: string; paragraphs: ParagraphView[] }[] {
+  const items: { id: string; meta?: string; paragraphs: ParagraphView[] }[] = [];
 
   for (const [index, footnote] of asArray(root?.footnotes).map(asRecord).entries()) {
     if (!footnote) continue;
@@ -568,11 +569,25 @@ function wordSupplementalNoteItems(
       reviewMarkTypes,
     );
     if (paragraphs.length > 0) {
-      items.push({ id: `comment-${asString(comment.id) || index}`, paragraphs });
+      items.push({
+        id: `comment-${asString(comment.id) || index}`,
+        meta: wordCommentMeta(comment),
+        paragraphs,
+      });
     }
   }
 
   return items;
+}
+
+function wordCommentMeta(comment: RecordValue): string | undefined {
+  const author = asString(comment.author);
+  const initials = asString(comment.initials);
+  const createdAt = asString(comment.createdAt || comment.date);
+  const parts = [author, initials ? `(${initials})` : "", createdAt]
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 function wordSectionContentElements(root: RecordValue | null, key: "footer" | "header"): unknown[] {
@@ -1018,6 +1033,13 @@ const wordSupplementalNotesStyle: CSSProperties = {
 const wordSupplementalNoteStyle: CSSProperties = {
   color: "#334155",
   fontSize: 12,
+};
+
+const wordSupplementalNoteMetaStyle: CSSProperties = {
+  color: "#64748b",
+  fontSize: 11,
+  fontWeight: 600,
+  marginBottom: 2,
 };
 
 function wordFillToCss(fill: unknown): string | undefined {
