@@ -150,7 +150,7 @@ export function PresentationPreview({
       />
       {headerActions
         ? createPortal(
-            <button className={styles.playButton} onClick={openSlideshow} type="button">
+            <button aria-label={labels.playSlideshow} className={styles.playButton} onClick={openSlideshow} type="button">
               <Play aria-hidden="true" size={15} strokeWidth={2} />
               <span>{labels.playSlideshow}</span>
             </button>,
@@ -191,16 +191,15 @@ function SlideStage({
   slide: RecordValue;
   slideIndex: number;
 }) {
-  const stageRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<{ elementId: string; slideKey: string } | null>(null);
-  const stageSize = useElementSize(stageRef);
+  const viewportSize = useElementSize(viewportRef);
   const footnote = useMemo(() => slideFootnoteText(slide), [slide]);
-  const footnoteHeight = footnoteReservePx(footnote);
   const frame = getSlideFrameSize(slide, layouts);
   const fit = computePresentationFit(
     {
-      height: stageSize.height,
-      width: stageSize.width,
+      height: viewportSize.height,
+      width: viewportSize.width,
     },
     frame,
     { padding: 24 },
@@ -217,8 +216,8 @@ function SlideStage({
 
   return (
     <main className={styles.mainPanel}>
-      <div className={styles.stage} ref={stageRef}>
-        <div className={styles.viewport}>
+      <div className={styles.stage}>
+        <div className={styles.viewport} ref={viewportRef}>
           <div
             className={styles.slideSurface}
             style={{ height: canvasHeight, width: canvasWidth }}
@@ -271,7 +270,7 @@ function SlideStage({
           <pre
             className={styles.footnote}
             data-testid="presentation-footnote"
-            style={{ maxHeight: footnoteHeight, top: canvasHeight + 32, width: canvasWidth }}
+            style={{ width: canvasWidth }}
           >
             {footnote}
           </pre>
@@ -721,10 +720,4 @@ function isNotesBodyPlaceholder(element: RecordValue): boolean {
   if (placeholderType === "body" || placeholderType === "notes") return true;
   if (name.includes("notes") || name.includes("body")) return true;
   return placeholderType === "" && asArray(element.paragraphs).length > 0;
-}
-
-function footnoteReservePx(footnote: string): number {
-  if (!footnote) return 0;
-  const lineCount = Math.max(1, footnote.split(/\n/u).length);
-  return Math.max(48, Math.min(96, lineCount * 18 + 24));
 }
