@@ -399,7 +399,7 @@ internal static class PptxPresentationProtoReader
                 }
                 break;
             case P.ConnectionShape connectionShape:
-                if (WriteConnectionShapeElement(connectionShape, zIndex, groupTransform, rawTransforms) is { } connectorElement)
+                if (WriteConnectionShapeElement(partContainer, connectionShape, zIndex, groupTransform, rawTransforms) is { } connectorElement)
                 {
                     yield return connectorElement;
                 }
@@ -691,6 +691,7 @@ internal static class PptxPresentationProtoReader
     }
 
     private static byte[]? WriteConnectionShapeElement(
+        OpenXmlPartContainer partContainer,
         P.ConnectionShape connectionShape,
         int zIndex,
         GroupTransformContext? groupTransform = null,
@@ -699,6 +700,7 @@ internal static class PptxPresentationProtoReader
         var nonVisual = connectionShape.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties;
         var properties = connectionShape.ShapeProperties;
         var transform = properties?.Transform2D;
+        var fill = FillFromShapeProperties(partContainer, properties);
         var line = OutlineFromProperties(properties);
 
         return Message(output =>
@@ -708,7 +710,7 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 1, WriteShapeBoundingBox(properties, groupTransform, nonVisual, rawTransforms));
             }
 
-            var shape = WriteShape(properties, null, line, suppressLineDetails: true);
+            var shape = WriteShape(properties, fill, line, suppressLineDetails: true);
             if (shape is not null)
             {
                 WriteMessage(output, 4, shape);
@@ -1582,10 +1584,10 @@ internal static class PptxPresentationProtoReader
     {
         return Message(output =>
         {
-            WriteUInt32Always(output, 1, ToUInt32(sourceRectangle?.Left) ?? 0);
-            WriteUInt32Always(output, 2, ToUInt32(sourceRectangle?.Top) ?? 0);
-            WriteUInt32Always(output, 3, ToUInt32(sourceRectangle?.Right) ?? 0);
-            WriteUInt32Always(output, 4, ToUInt32(sourceRectangle?.Bottom) ?? 0);
+            WriteInt32Always(output, 1, ToInt32(sourceRectangle?.Left) ?? 0);
+            WriteInt32Always(output, 2, ToInt32(sourceRectangle?.Top) ?? 0);
+            WriteInt32Always(output, 3, ToInt32(sourceRectangle?.Right) ?? 0);
+            WriteInt32Always(output, 4, ToInt32(sourceRectangle?.Bottom) ?? 0);
         });
     }
 
@@ -2726,8 +2728,8 @@ internal static class PptxPresentationProtoReader
             "downarrow" => 47,
             "stripedrightarrow" => 48,
             "leftrightarrow" => 51,
-            "quadarrowcallout" => 60,
-            "leftrightarrowcallout" => 62,
+            "leftrightarrowcallout" => 60,
+            "quadarrowcallout" => 62,
             "can" => 74,
             "heart" => 76,
             "moon" => 78,
