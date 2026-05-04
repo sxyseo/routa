@@ -4,6 +4,7 @@ import {
   buildSpreadsheetCharts,
   formatChartTick,
   spreadsheetBarChartGeometry,
+  spreadsheetChartHorizontalLegendLayout,
   spreadsheetChartPlotArea,
   spreadsheetChartTickValues,
 } from "../spreadsheet-charts";
@@ -157,6 +158,17 @@ describe("spreadsheet charts", () => {
       left: 109,
       right: 446,
     });
+  });
+
+  it("lays out horizontal chart legends from label widths", () => {
+    const layout = spreadsheetChartHorizontalLegendLayout(420, 220, [
+      { color: "#1f6f8b", label: "Backlog", marker: "square", showLine: true },
+      { color: "#f9732a", label: "Completed Coverage", marker: "diamond", showLine: true },
+      { color: "#5b7f2a", label: "QA", marker: null, showLine: false },
+    ]);
+
+    expect(layout.map((entry) => Math.round(entry.x))).toEqual([38, 139, 317]);
+    expect(layout.every((entry) => entry.y === 220)).toBe(true);
   });
 
   it("formats chart tick labels from axis number formats", () => {

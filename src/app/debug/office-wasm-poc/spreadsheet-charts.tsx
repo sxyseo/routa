@@ -40,6 +40,12 @@ type SpreadsheetChartLegendItem = {
   showLine: boolean;
 };
 
+export type SpreadsheetChartLegendEntryLayout = {
+  item: SpreadsheetChartLegendItem;
+  x: number;
+  y: number;
+};
+
 type SpreadsheetChartErrorBars = {
   amount: number;
   color: string;
@@ -1447,12 +1453,29 @@ function drawChartLegend(
   }
 
   const legendY = chart.legendPosition === "top" ? 48 : chart.height - 18;
-  let legendX = chart.width / 2 - items.length * 56;
-  items.forEach((item) => {
-    drawLegendEntry(context, item, legendX, legendY);
-    legendX += 112;
+  spreadsheetChartHorizontalLegendLayout(chart.width, legendY, items).forEach((entry) => {
+    drawLegendEntry(context, entry.item, entry.x, entry.y);
   });
   context.restore();
+}
+
+export function spreadsheetChartHorizontalLegendLayout(
+  chartWidth: number,
+  y: number,
+  items: SpreadsheetChartLegendItem[],
+): SpreadsheetChartLegendEntryLayout[] {
+  const widths = items.map(spreadsheetChartLegendItemWidth);
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+  let x = Math.max(12, chartWidth / 2 - totalWidth / 2);
+  return items.map((item, index) => {
+    const entry = { item, x, y };
+    x += widths[index] ?? 0;
+    return entry;
+  });
+}
+
+function spreadsheetChartLegendItemWidth(item: SpreadsheetChartLegendItem): number {
+  return Math.max(64, 34 + item.label.length * 7 + 18);
 }
 
 function chartLegendItems(chart: SpreadsheetChartSpec): SpreadsheetChartLegendItem[] {
