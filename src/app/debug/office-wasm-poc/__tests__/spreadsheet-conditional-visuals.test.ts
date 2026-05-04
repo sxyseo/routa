@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildSpreadsheetConditionalVisuals } from "../spreadsheet-conditional-visuals";
 
 describe("spreadsheet conditional visuals", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("uses cfvo thresholds for color scale interpolation", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
@@ -447,6 +451,41 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("2:1")?.background).toBe("#A855F7");
     expect(visuals.get("3:2")?.background).toBe("#14B8A6");
     expect(visuals.get("4:2")).toBeUndefined();
+  });
+
+  it("applies Excel time-period conditional format rules", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-04T12:00:00Z"));
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A4"],
+          rules: [
+            {
+              fillColor: "DBEAFE",
+              timePeriod: "last7Days",
+              type: "timePeriod",
+            },
+            {
+              fillColor: "DCFCE7",
+              timePeriod: "thisMonth",
+              type: "timePeriod",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: 46146 }], index: 1 },
+        { cells: [{ address: "A2", value: 46143 }], index: 2 },
+        { cells: [{ address: "A3", value: 46140 }], index: 3 },
+        { cells: [{ address: "A4", value: 46138 }], index: 4 },
+      ],
+    });
+
+    expect(visuals.get("1:0")?.background).toBe("#DCFCE7");
+    expect(visuals.get("2:0")?.background).toBe("#DCFCE7");
+    expect(visuals.get("3:0")?.background).toBe("#DBEAFE");
+    expect(visuals.get("4:0")).toBeUndefined();
   });
 
   it("applies formula-driven conditional format rules with relative cell references", () => {

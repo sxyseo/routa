@@ -926,11 +926,13 @@ internal static class XlsxWorkbookProtoReader
                 WriteBool(output, 6, stopIfTrue);
             }
 
+            WriteBoolValue(output, 7, BoolAttribute(rule, "aboveAverage"));
             if (rule.Percent?.Value is { } percent)
             {
                 WriteBool(output, 8, percent);
             }
 
+            WriteBoolValue(output, 9, BoolAttribute(rule, "bottom"));
             var colorScale = rule.Elements<S.ColorScale>().FirstOrDefault();
             if (colorScale is not null)
             {
@@ -950,6 +952,10 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteString(output, 13, rule.Text?.Value ?? "");
+            WriteString(output, 14, AttributeValue(rule, "timePeriod"));
+            WriteInt32Value(output, 15, Int32Attribute(rule, "rank"));
+            WriteInt32Value(output, 16, Int32Attribute(rule, "stdDev"));
+            WriteBoolValue(output, 17, BoolAttribute(rule, "equalAverage"));
             WriteString(output, 18, ConditionalRuleId(rule));
         });
     }

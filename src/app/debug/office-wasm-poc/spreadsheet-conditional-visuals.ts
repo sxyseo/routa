@@ -112,6 +112,8 @@ type SpreadsheetConditionalVisualSpec =
   };
 
 const MAX_CELL_VISUAL_CACHE_SIZE = 5_000;
+const DAY_MS = 86_400_000;
+const EXCEL_SERIAL_EPOCH_UTC = Date.UTC(1899, 11, 30);
 
 export function buildSpreadsheetConditionalVisuals(
   sheet: RecordValue | undefined,
@@ -769,6 +771,10 @@ function conditionalTextMatches(
     return averageRuleMatches(format, numericValue, numericValues ?? []);
   }
 
+  if (type === "timePeriod" && numericValue != null) {
+    return timePeriodRuleMatches(format, numericValue);
+  }
+
   if (type === "expression" && rowsByIndex && range && rowIndex != null && columnIndex != null) {
     return conditionalFormulaMatches({
       columnIndex,
@@ -811,7 +817,7 @@ function conditionalRuleNeedsTextCounts(format: RecordValue): boolean {
 
 function conditionalRuleNeedsNumericValues(format: RecordValue): boolean {
   const type = asString(format.type);
-  return type === "top10" || type === "aboveAverage";
+  return type === "top10" || type === "aboveAverage" || type === "timePeriod";
 }
 
 function topBottomRuleMatches(format: RecordValue, value: number, rangeValues: readonly number[]): boolean {
@@ -844,6 +850,52 @@ function averageThreshold(format: RecordValue, values: readonly number[], averag
   const variance = values.reduce((sum, item) => sum + (item - average) ** 2, 0) / values.length;
   const offset = Math.sqrt(variance) * stdDev;
   return aboveAverage ? average + offset : average - offset;
+}
+
+function timePeriodRuleMatches(format: RecordValue, value: number): boolean {
+  const day = Math.floor(value);
+  const today = currentExcelSerialDay();
+  const period = asString(format.timePeriod);
+  if (period === "today") return day === today;
+  if (period === "yesterday") return day === today - 1;
+  if (period === "tomorrow") return day === today + 1;
+  if (period === "last7Days") return day >= today - 6 && day <= today;
+
+  const current = excelSerialDayParts(today);
+  const target = excelSerialDayParts(day);
+  if (!current || !target) return false;
+
+  if (period === "thisMonth") return target.year === current.year && target.month === current.month;
+  if (period === "lastMonth") return monthOffset(target, current) === -1;
+  if (period === "nextMonth") return monthOffset(target, current) === 1;
+  if (period === "thisYear") return target.year === current.year;
+  if (period === "lastYear") return target.year === current.year - 1;
+  if (period === "nextYear") return target.year === current.year + 1;
+
+  const currentWeekStart = today - current.weekday;
+  if (period === "thisWeek") return day >= currentWeekStart && day < currentWeekStart + 7;
+  if (period === "lastWeek") return day >= currentWeekStart - 7 && day < currentWeekStart;
+  if (period === "nextWeek") return day >= currentWeekStart + 7 && day < currentWeekStart + 14;
+  return false;
+}
+
+function currentExcelSerialDay(): number {
+  const now = new Date();
+  return Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - EXCEL_SERIAL_EPOCH_UTC) / DAY_MS);
+}
+
+function excelSerialDayParts(day: number): { month: number; weekday: number; year: number } | null {
+  if (!Number.isFinite(day)) return null;
+  const date = new Date(EXCEL_SERIAL_EPOCH_UTC + day * DAY_MS);
+  return {
+    month: date.getUTCMonth(),
+    weekday: date.getUTCDay(),
+    year: date.getUTCFullYear(),
+  };
+}
+
+function monthOffset(target: { month: number; year: number }, current: { month: number; year: number }): number {
+  return (target.year - current.year) * 12 + target.month - current.month;
 }
 
 function normalizedConditionalFormats(sheet: RecordValue | undefined): RecordValue[] {

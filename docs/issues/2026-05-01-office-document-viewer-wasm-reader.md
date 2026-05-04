@@ -119,6 +119,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX chart scale parity now expands value axes below zero when series contain negative values, draws the primary axis on the zero baseline, and anchors bar/area fills plus data labels to that baseline instead of always using the plot bottom.
 - XLSX data-bar rendering now consumes richer protocol style hints for borders, axis colors, negative fill/border colors, same-as-positive flags, and right-to-left gradient direction, improving conditional-format parity for production sheets with mixed positive/negative values.
 - XLSX table visual parity now applies built-in table-style border colors plus dark-style header/total text colors to rendered cells instead of relying on default gridlines and inherited font color.
+- XLSX conditional-format protocol parity now emits Walnut `CfRule` fields for `aboveAverage`, `bottom`, `rank`, `stdDev`, `equalAverage`, and `timePeriod`; the debug preview also evaluates Excel serial-date time-period rules such as `last7Days` and `thisMonth`.
 
 ## Codex 技术方案逆向分析
 
