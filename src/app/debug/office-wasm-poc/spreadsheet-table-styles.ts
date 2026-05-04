@@ -1,15 +1,20 @@
 import { asArray, asRecord, asString, colorToCss, type RecordValue } from "./office-preview-utils";
 
 export type SpreadsheetTablePalette = {
+  border: string;
   columnStripe: string;
   header: string;
+  headerText: string;
   rowStripe: string;
   total: string;
+  totalText: string;
 };
 
 type BuiltInTableStyle = {
   accent: string;
+  borderRatio: number;
   columnStripeRatio: number;
+  darkText: boolean;
   exactFallback?: SpreadsheetTablePalette;
   fallback: string;
   rowStripeRatio: number;
@@ -47,14 +52,17 @@ export function tableStylePalette(
   const baseColor = themeColor ?? builtIn?.fallback;
   if (baseColor) {
     return {
+      border: mixCssColorWithWhite(baseColor, builtIn?.borderRatio ?? 0.18),
       columnStripe: mixCssColorWithWhite(baseColor, builtIn?.columnStripeRatio ?? 0.82),
       header: mixCssColorWithWhite(baseColor, builtIn?.totalRatio ?? 0.58),
+      headerText: builtIn?.darkText === false ? "#ffffff" : "#1f2937",
       rowStripe: mixCssColorWithWhite(baseColor, builtIn?.rowStripeRatio ?? 0.74),
       total: mixCssColorWithWhite(baseColor, builtIn?.totalRatio ?? 0.58),
+      totalText: builtIn?.darkText === false ? "#ffffff" : "#1f2937",
     };
   }
 
-  return { columnStripe: "#e0f2fe", header: "#bae6fd", rowStripe: "#f0f9ff", total: "#bae6fd" };
+  return tablePalette("#93c5fd", "#e0f2fe", "#bae6fd", "#f0f9ff", "#bae6fd");
 }
 
 function builtInTableStyle(styleName: string): BuiltInTableStyle | undefined {
@@ -74,7 +82,9 @@ function builtInLightStyle(styleIndex: number): BuiltInTableStyle {
   const accentIndex = lightAccentIndex(styleIndex);
   return {
     accent: `accent${accentIndex}`,
+    borderRatio: 0.52,
     columnStripeRatio: 0.92,
+    darkText: true,
     fallback: fallbackAccentColor(accentIndex),
     rowStripeRatio: styleIndex <= 7 ? 0.9 : 0.86,
     totalRatio: styleIndex <= 7 ? 0.78 : 0.7,
@@ -87,7 +97,9 @@ function builtInMediumStyle(styleIndex: number): BuiltInTableStyle {
   const intensity = mediumIntensity(familyIndex, styleIndex);
   return {
     accent: `accent${accentIndex}`,
+    borderRatio: familyIndex <= 1 ? 0.34 : 0.2,
     columnStripeRatio: intensity.columnStripeRatio,
+    darkText: familyIndex <= 2,
     ...(mediumExactFallback(styleIndex) ? { exactFallback: mediumExactFallback(styleIndex) } : {}),
     fallback: fallbackAccentColor(accentIndex),
     rowStripeRatio: intensity.rowStripeRatio,
@@ -99,7 +111,9 @@ function builtInDarkStyle(styleIndex: number): BuiltInTableStyle {
   const accentIndex = darkAccentIndex(styleIndex);
   return {
     accent: `accent${accentIndex}`,
+    borderRatio: 0,
     columnStripeRatio: styleIndex <= 5 ? 0.58 : 0.48,
+    darkText: false,
     fallback: fallbackAccentColor(accentIndex),
     rowStripeRatio: styleIndex <= 5 ? 0.46 : 0.36,
     totalRatio: styleIndex <= 5 ? 0.22 : 0.12,
@@ -139,10 +153,22 @@ function mediumIntensity(familyIndex: number, styleIndex: number): {
 }
 
 function mediumExactFallback(styleIndex: number): SpreadsheetTablePalette | undefined {
-  if (styleIndex === 2) return { columnStripe: "#d7f0f8", header: "#9ed8ea", rowStripe: "#c7eaf7", total: "#9ed8ea" };
-  if (styleIndex === 4) return { columnStripe: "#dbeafe", header: "#bfdbfe", rowStripe: "#eff6ff", total: "#bfdbfe" };
-  if (styleIndex === 9) return { columnStripe: "#d9ead3", header: "#b7dfae", rowStripe: "#eef7e8", total: "#b7dfae" };
+  if (styleIndex === 2) return tablePalette("#56b6d6", "#d7f0f8", "#9ed8ea", "#c7eaf7", "#9ed8ea");
+  if (styleIndex === 4) return tablePalette("#8ab4f8", "#dbeafe", "#bfdbfe", "#eff6ff", "#bfdbfe");
+  if (styleIndex === 9) return tablePalette("#7ab56c", "#d9ead3", "#b7dfae", "#eef7e8", "#b7dfae");
   return undefined;
+}
+
+function tablePalette(
+  border: string,
+  columnStripe: string,
+  header: string,
+  rowStripe: string,
+  total: string,
+  headerText = "#1f2937",
+  totalText = headerText,
+): SpreadsheetTablePalette {
+  return { border, columnStripe, header, headerText, rowStripe, total, totalText };
 }
 
 function fallbackAccentColor(accentIndex: number): string {

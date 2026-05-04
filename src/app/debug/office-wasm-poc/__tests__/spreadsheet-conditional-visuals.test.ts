@@ -60,6 +60,8 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("1:0")?.filter).toBe(true);
     expect(visuals.get("1:0")?.fontWeight).toBe(700);
     expect(visuals.get("1:0")?.background).toBe("#bfdbfe");
+    expect(visuals.get("1:0")?.borderColor).toBe("#8ab4f8");
+    expect(visuals.get("1:0")?.color).toBe("#1f2937");
     expect(visuals.get("2:0")?.background).toBe("#dbeafe");
     expect(visuals.get("2:0")?.fontWeight).toBe(700);
     expect(visuals.get("2:1")?.background).toBeUndefined();
@@ -131,7 +133,8 @@ describe("spreadsheet conditional visuals", () => {
     );
 
     expect(visuals.get("2:0")?.background).toBe("rgb(191, 207, 235)");
-    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("3:0")?.background).toBeUndefined();
+    expect(visuals.get("3:0")?.borderColor).toBe("rgb(105, 142, 208)");
   });
 
   it("projects built-in light and dark table styles from theme accents", () => {
@@ -181,9 +184,14 @@ describe("spreadsheet conditional visuals", () => {
     );
 
     expect(light.get("2:0")?.background).toBe("rgb(235, 244, 229)");
+    expect(light.get("2:0")?.borderColor).toBe("rgb(186, 216, 167)");
     expect(light.get("3:0")?.background).toBe("rgb(212, 230, 200)");
+    expect(dark.get("1:0")?.color).toBe("#ffffff");
     expect(dark.get("2:0")?.background).toBe("rgb(135, 165, 217)");
+    expect(dark.get("2:0")?.color).toBeUndefined();
+    expect(dark.get("2:0")?.borderColor).toBe("rgb(68, 114, 196)");
     expect(dark.get("3:0")?.background).toBe("rgb(90, 131, 203)");
+    expect(dark.get("3:0")?.color).toBe("#ffffff");
   });
 
 
@@ -511,7 +519,8 @@ describe("spreadsheet conditional visuals", () => {
     });
 
     expect(visuals.get("2:2")?.background).toBe("#C6EFCE");
-    expect(visuals.get("3:2")).toBeUndefined();
+    expect(visuals.get("3:2")?.background).toBeUndefined();
+    expect(visuals.get("3:2")?.borderColor).toBe("#93c5fd");
     expect(visuals.get("4:2")?.background).toBe("#C6EFCE");
   });
 

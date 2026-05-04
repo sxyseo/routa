@@ -118,6 +118,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX chart frame parity now draws Excel-like chart-area and plot-area borders from a shared frame geometry helper, so axis/grid/series layout can be compared against the same chart object and plot box contract.
 - XLSX chart scale parity now expands value axes below zero when series contain negative values, draws the primary axis on the zero baseline, and anchors bar/area fills plus data labels to that baseline instead of always using the plot bottom.
 - XLSX data-bar rendering now consumes richer protocol style hints for borders, axis colors, negative fill/border colors, same-as-positive flags, and right-to-left gradient direction, improving conditional-format parity for production sheets with mixed positive/negative values.
+- XLSX table visual parity now applies built-in table-style border colors plus dark-style header/total text colors to rendered cells instead of relying on default gridlines and inherited font color.
 
 ## Codex 技术方案逆向分析
 

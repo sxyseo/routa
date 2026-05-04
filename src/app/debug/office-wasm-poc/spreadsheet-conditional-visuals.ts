@@ -16,6 +16,7 @@ import { tableStylePalette, type SpreadsheetTablePalette } from "./spreadsheet-t
 
 export type SpreadsheetCellVisual = {
   background?: string;
+  borderColor?: string;
   dataBar?: {
     axisColor?: string;
     axisPercent?: number;
@@ -480,6 +481,8 @@ function spreadsheetTableCellVisual(
     if (rowIndex < table.range.startRow + table.headerRowCount) {
       visual = mergeSpreadsheetCellVisuals(visual, {
         background: table.palette.header,
+        borderColor: table.palette.border,
+        color: table.palette.headerText,
         filter: table.showFilter && rowIndex === table.range.startRow + table.headerRowCount - 1 ? true : undefined,
         fontWeight: 700,
       });
@@ -489,6 +492,8 @@ function spreadsheetTableCellVisual(
     if (rowIndex >= table.totalsStartRow) {
       visual = mergeSpreadsheetCellVisuals(visual, {
         background: table.palette.total,
+        borderColor: table.palette.border,
+        color: table.palette.totalText,
         fontWeight: 700,
       });
       continue;
@@ -499,6 +504,7 @@ function spreadsheetTableCellVisual(
       const columnStripe = table.showColumnStripes && (columnIndex - table.range.startColumn) % 2 === 0;
       visual = mergeSpreadsheetCellVisuals(visual, {
         background: columnStripe ? table.palette.columnStripe : rowStripe ? table.palette.rowStripe : undefined,
+        borderColor: table.palette.border,
         fontWeight: (table.showFirstColumn && columnIndex === table.range.startColumn) || (table.showLastColumn && columnIndex === table.lastColumnIndex)
           ? 700
           : undefined,
@@ -526,6 +532,7 @@ function mergeSpreadsheetCellVisuals(
 function definedSpreadsheetVisualFields(visual: SpreadsheetCellVisual): SpreadsheetCellVisual {
   const next: SpreadsheetCellVisual = {};
   if (visual.background !== undefined) next.background = visual.background;
+  if (visual.borderColor !== undefined) next.borderColor = visual.borderColor;
   if (visual.color !== undefined) next.color = visual.color;
   if (visual.dataBar !== undefined) next.dataBar = visual.dataBar;
   if (visual.filter !== undefined) next.filter = visual.filter;
