@@ -11,6 +11,7 @@ import {
   columnIndexFromAddress,
   type RecordValue,
 } from "./office-preview-utils";
+import { spreadsheetChartCanvasFont, spreadsheetChartTextWidth } from "./spreadsheet-chart-typography";
 import { protocolColorToCss } from "./spreadsheet-conditional-visuals";
 import {
   spreadsheetColumnLeft,
@@ -606,10 +607,10 @@ function drawSpreadsheetChart(context: CanvasRenderingContext2D, chart: Spreadsh
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
   context.fillStyle = "#111827";
-  context.font = "600 18px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("title");
   context.textAlign = "center";
   context.textBaseline = "alphabetic";
-  context.fillText(chart.title, width / 2, 30);
+  context.fillText(chart.title, width / 2, 34);
 
   if (isCartesianChart(chart.type)) {
     drawChartGrid(context, chart, plot, ticks, secondaryTicks);
@@ -735,7 +736,7 @@ function spreadsheetChartAxisGutter(
     1,
     ...ticks.map((value) => formatChartTick(value, axis?.numberFormat).length),
   );
-  return Math.ceil(maxLabelLength * 7 + padding);
+  return Math.ceil(maxLabelLength * spreadsheetChartTextWidth("0", "axisLabel") + padding);
 }
 
 function drawChartGrid(
@@ -750,7 +751,7 @@ function drawChartGrid(
   context.setLineDash([5, 5]);
   context.lineWidth = 1;
   context.fillStyle = "#737373";
-  context.font = "12px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("axisLabel");
   context.textAlign = "right";
   context.textBaseline = "middle";
 
@@ -811,7 +812,7 @@ function drawSecondaryChartAxis(
   context.stroke();
 
   context.fillStyle = "#737373";
-  context.font = "12px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("axisLabel");
   context.textAlign = "left";
   context.textBaseline = "middle";
   for (const value of ticks) {
@@ -831,7 +832,7 @@ function drawChartAxisTitles(
 ) {
   context.save();
   context.fillStyle = "#4b5563";
-  context.font = "12px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("axisTitle");
   context.textAlign = "center";
   context.textBaseline = "middle";
 
@@ -918,7 +919,7 @@ function drawBarChart(
   });
 
   context.fillStyle = "#737373";
-  context.font = "12px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("axisLabel");
   context.textAlign = "center";
   context.textBaseline = "alphabetic";
   const slotWidth = (plot.right - plot.left) / barChartCategoryCount(chart);
@@ -994,7 +995,7 @@ function drawLineChart(
   });
 
   context.fillStyle = "#737373";
-  context.font = "12px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("axisLabel");
   context.textAlign = "center";
   context.textBaseline = "alphabetic";
   chart.categories.forEach((category, index) => {
@@ -1255,7 +1256,7 @@ function drawRadarChart(
   }
 
   context.fillStyle = "#737373";
-  context.font = "12px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("axisLabel");
   context.textAlign = "center";
   context.textBaseline = "middle";
   for (let index = 0; index < axisCount; index += 1) {
@@ -1298,7 +1299,7 @@ function drawLineCategoryLabels(
   const xForIndex = (index: number) => plot.left + (index / pointCount) * (plot.right - plot.left);
 
   context.fillStyle = "#737373";
-  context.font = "12px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("axisLabel");
   context.textAlign = "center";
   context.textBaseline = "alphabetic";
   chart.categories.forEach((category, index) => {
@@ -1320,7 +1321,7 @@ function drawChartDataLabels(
 ) {
   context.save();
   context.fillStyle = "#374151";
-  context.font = "11px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("dataLabel");
   context.textAlign = "center";
   context.textBaseline = "middle";
 
@@ -1475,7 +1476,7 @@ export function spreadsheetChartHorizontalLegendLayout(
 }
 
 function spreadsheetChartLegendItemWidth(item: SpreadsheetChartLegendItem): number {
-  return Math.max(64, 34 + item.label.length * 7 + 18);
+  return Math.max(64, 34 + spreadsheetChartTextWidth(item.label, "legend") + 18);
 }
 
 function chartLegendItems(chart: SpreadsheetChartSpec): SpreadsheetChartLegendItem[] {
@@ -1518,7 +1519,7 @@ function drawLegendEntry(
   context.fillStyle = "#737373";
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
-  context.font = "12px Arial, sans-serif";
+  context.font = spreadsheetChartCanvasFont("legend");
   context.fillText(item.label, x + 26, y);
 }
 

@@ -8,6 +8,7 @@ import {
   spreadsheetChartPlotArea,
   spreadsheetChartTickValues,
 } from "../spreadsheet-charts";
+import { spreadsheetChartCanvasFont, spreadsheetChartTextWidth } from "../spreadsheet-chart-typography";
 import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetRowTop } from "../spreadsheet-layout";
 
 describe("spreadsheet charts", () => {
@@ -155,8 +156,8 @@ describe("spreadsheet charts", () => {
     };
 
     expect(spreadsheetChartPlotArea(chart)).toMatchObject({
-      left: 109,
-      right: 446,
+      left: 122,
+      right: 440,
     });
   });
 
@@ -167,8 +168,14 @@ describe("spreadsheet charts", () => {
       { color: "#5b7f2a", label: "QA", marker: null, showLine: false },
     ]);
 
-    expect(layout.map((entry) => Math.round(entry.x))).toEqual([38, 139, 317]);
+    expect(layout.map((entry) => Math.round(entry.x))).toEqual([35, 138, 319]);
     expect(layout.every((entry) => entry.y === 220)).toBe(true);
+  });
+
+  it("uses Excel-like chart typography for canvas text metrics", () => {
+    expect(spreadsheetChartCanvasFont("title")).toBe("400 24px Calibri, Arial, sans-serif");
+    expect(spreadsheetChartCanvasFont("axisLabel")).toBe("400 13px Calibri, Arial, sans-serif");
+    expect(spreadsheetChartTextWidth("Coverage %", "legend")).toBe(72);
   });
 
   it("formats chart tick labels from axis number formats", () => {
