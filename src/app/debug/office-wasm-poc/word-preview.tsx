@@ -18,6 +18,7 @@ import {
   paragraphView,
   type PreviewLabels,
   type RecordValue,
+  type TextRunView,
   textRunStyle,
   useOfficeImageSources,
 } from "./office-preview-utils";
@@ -40,6 +41,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
   }
   const styleMaps: OfficeTextStyleMaps = { textStyles, images: imageSources };
   const numberingMarkers = wordNumberingMarkers(elements, root, styleMaps);
+  const referenceMarkers = wordReferenceMarkers(root);
 
   const hasRenderableBlocks = elements.some((element) => {
     const record = asRecord(element);
@@ -95,6 +97,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
           element={asRecord(element) ?? {}}
           key={`${asString(asRecord(element)?.id)}-${index}`}
           numberingMarkers={numberingMarkers}
+          referenceMarkers={referenceMarkers}
           styleMaps={styleMaps}
         />
       ))}
@@ -106,11 +109,13 @@ function WordElement({
   charts,
   element,
   numberingMarkers,
+  referenceMarkers,
   styleMaps,
 }: {
   charts: RecordValue[];
   element: RecordValue;
   numberingMarkers: Map<string, string>;
+  referenceMarkers: Map<string, string[]>;
   styleMaps: OfficeTextStyleMaps;
 }) {
   const table = asRecord(element.table);
@@ -119,6 +124,7 @@ function WordElement({
       <WordTable
         element={element}
         numberingMarkers={numberingMarkers}
+        referenceMarkers={referenceMarkers}
         table={table}
         styleMaps={styleMaps}
       />
@@ -141,7 +147,7 @@ function WordElement({
   if (chart) return <WordChart chart={chart} element={element} />;
 
   const paragraphs = asArray(element.paragraphs).map((paragraph) =>
-    wordParagraphView(paragraph, styleMaps, numberingMarkers),
+    wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers),
   );
   if (paragraphs.length === 0) return null;
 
@@ -208,11 +214,40 @@ function WordParagraph({
         </span>
       ) : null}
       {paragraph.runs.map((run, index) => (
-        <span key={run.id || index} style={textRunStyle(run)}>
-          {run.text}
-        </span>
+        <WordRun key={run.id || index} run={run} />
       ))}
     </p>
+  );
+}
+
+function WordRun({ run }: { run: TextRunView }) {
+  const href = wordHyperlinkHref(run.hyperlink);
+  const style = href ? wordHyperlinkStyle(run) : textRunStyle(run);
+  const text = href ? (
+    <a
+      href={href}
+      rel={run.hyperlink?.isExternal === true ? "noreferrer" : undefined}
+      style={style}
+      target={run.hyperlink?.isExternal === true ? "_blank" : undefined}
+    >
+      {run.text}
+    </a>
+  ) : (
+    <span style={style}>{run.text}</span>
+  );
+
+  const markers = run.referenceMarkers ?? [];
+  if (markers.length === 0) return text;
+
+  return (
+    <>
+      {text}
+      {markers.map((marker) => (
+        <sup key={`${run.id}-${marker}`} style={wordReferenceMarkerStyle}>
+          {marker}
+        </sup>
+      ))}
+    </>
   );
 }
 
@@ -220,20 +255,27 @@ function wordParagraphView(
   paragraph: unknown,
   styleMaps: OfficeTextStyleMaps,
   numberingMarkers: Map<string, string>,
+  referenceMarkers: Map<string, string[]>,
 ): ParagraphView {
   const view = paragraphView(paragraph, styleMaps);
   const marker = numberingMarkers.get(view.id);
-  return marker ? { ...view, marker } : view;
+  const runs = view.runs.map((run) => ({
+    ...run,
+    referenceMarkers: referenceMarkers.get(run.id) ?? [],
+  }));
+  return marker ? { ...view, marker, runs } : { ...view, runs };
 }
 
 function WordTable({
   element,
   numberingMarkers,
+  referenceMarkers,
   styleMaps,
   table,
 }: {
   element: RecordValue;
   numberingMarkers: Map<string, string>;
+  referenceMarkers: Map<string, string[]>;
   styleMaps: OfficeTextStyleMaps;
   table: RecordValue;
 }) {
@@ -258,7 +300,7 @@ function WordTable({
               {asArray(row.cells).map((cell, cellIndex) => {
                 const cellRecord = asRecord(cell) ?? {};
                 const paragraphs = asArray(cellRecord.paragraphs).map((paragraph) =>
-                  wordParagraphView(paragraph, styleMaps, numberingMarkers),
+                  wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers),
                 );
                 const background = wordFillToCss(cellRecord.fill) ?? (rowIndex === 0 ? "#f8fafc" : "#ffffff");
                 const fallbackTextColor = readableTextColor(background);
@@ -332,6 +374,55 @@ export function wordTableContainerStyle(element: RecordValue): CSSProperties {
     overflowX: "auto",
     width: box.hasDecodedSize ? box.width : "100%",
   };
+}
+
+function wordHyperlinkHref(hyperlink: unknown): string {
+  const record = asRecord(hyperlink);
+  const uri = asString(record?.uri);
+  const action = asString(record?.action);
+  return uri || action;
+}
+
+function wordHyperlinkStyle(run: TextRunView): CSSProperties {
+  const style = textRunStyle(run);
+  return {
+    ...style,
+    color: style.color ?? "#2563eb",
+    textDecoration: style.textDecoration ?? "underline",
+  };
+}
+
+function wordReferenceMarkers(root: RecordValue | null): Map<string, string[]> {
+  const markers = new Map<string, string[]>();
+  for (const [index, footnote] of asArray(root?.footnotes).map(asRecord).entries()) {
+    if (!footnote) continue;
+    for (const runId of asArray(footnote.referenceRunIds).map(asString).filter(Boolean)) {
+      addReferenceMarker(markers, runId, String(index + 1));
+    }
+  }
+
+  const commentOrder = new Map<string, number>();
+  for (const [index, comment] of asArray(root?.comments).map(asRecord).entries()) {
+    const id = asString(comment?.id);
+    if (id) commentOrder.set(id, index + 1);
+  }
+
+  for (const reference of asArray(root?.commentReferences).map(asRecord)) {
+    const commentId = asString(reference?.commentId);
+    const markerIndex = commentOrder.get(commentId) ?? commentOrder.size + 1;
+    for (const runId of asArray(reference?.runIds).map(asString).filter(Boolean)) {
+      addReferenceMarker(markers, runId, `C${markerIndex}`);
+    }
+  }
+
+  return markers;
+}
+
+function addReferenceMarker(markers: Map<string, string[]>, runId: string, marker: string): void {
+  const existing = markers.get(runId) ?? [];
+  if (!existing.includes(marker)) {
+    markers.set(runId, [...existing, marker]);
+  }
 }
 
 function wordNumberingMarkers(
@@ -587,6 +678,12 @@ const wordParagraphMarkerStyle: CSSProperties = {
   minWidth: "2.25em",
   paddingRight: "0.35em",
   textAlign: "right",
+};
+
+const wordReferenceMarkerStyle: CSSProperties = {
+  color: "#475569",
+  fontSize: "0.72em",
+  marginLeft: 2,
 };
 
 function wordFillToCss(fill: unknown): string | undefined {

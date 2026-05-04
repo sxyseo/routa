@@ -183,6 +183,40 @@ describe("WordPreview", () => {
     expect(paragraphs).toEqual(["3.First item", "4.Second item"]);
   });
 
+  it("renders decoded DOCX hyperlinks and note reference markers", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          commentReferences: [{ commentId: "12", runIds: ["run-link"] }],
+          comments: [{ id: "12", paragraphs: [{ runs: [{ text: "Check this" }] }] }],
+          elements: [
+            {
+              paragraphs: [
+                {
+                  runs: [
+                    {
+                      hyperlink: { isExternal: true, uri: "https://example.test" },
+                      id: "run-link",
+                      text: "Linked text",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          footnotes: [{ id: "footnote-1", referenceRunIds: ["run-link"] }],
+        }}
+      />,
+    );
+
+    const link = container.querySelector("a");
+    const markers = Array.from(container.querySelectorAll("sup")).map((marker) => marker.textContent);
+    expect(link?.getAttribute("href")).toBe("https://example.test");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(markers).toEqual(["1", "C1"]);
+  });
+
   it("uses decoded DOCX image bbox for preview dimensions", () => {
     const style = wordImageStyle(
       {

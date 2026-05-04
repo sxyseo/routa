@@ -22,7 +22,9 @@ export type PreviewLabels = {
 };
 
 export type TextRunView = {
+  hyperlink?: RecordValue | null;
   id: string;
+  referenceMarkers?: string[];
   text: string;
   style: RecordValue | null;
 };
@@ -221,7 +223,9 @@ export function paragraphView(paragraph: unknown, styleMaps: OfficeTextStyleMaps
     .map(asRecord)
     .filter((run): run is RecordValue => run != null)
     .map((run, index) => ({
+      hyperlink: asRecord(run.hyperlink),
       id: asString(run.id) || `${asString(record?.id)}-${index}`,
+      referenceMarkers: [],
       text: asString(run.text),
       style: {
         ...style,
