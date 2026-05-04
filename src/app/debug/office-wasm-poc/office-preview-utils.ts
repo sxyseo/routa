@@ -341,14 +341,72 @@ function emuToCssPx(value: unknown): number {
 
 export function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {
   const runFontSize = run.style?.fontSize == null ? undefined : cssFontSize(run.style.fontSize, 14) * fontScale;
+  const scheme = docxSchemeStyle(run.style?.scheme);
   return {
+    backgroundColor: scheme.backgroundColor,
     color: colorToCss(asRecord(run.style?.fill)?.color) ?? undefined,
     fontFamily: officeFontFamily(asString(run.style?.typeface)),
     fontSize: runFontSize == null ? undefined : Math.max(fontScale < 1 ? 2 : 8, Math.min(fontScale < 1 ? 12 : 72, runFontSize)),
     fontStyle: run.style?.italic === true ? "italic" : undefined,
     fontWeight: run.style?.bold === true ? 700 : undefined,
     textDecoration: run.style?.underline === true ? "underline" : undefined,
+    textTransform: scheme.textTransform,
   };
+}
+
+function docxSchemeStyle(scheme: unknown): Pick<CSSProperties, "backgroundColor" | "textTransform"> {
+  const parts = asString(scheme).split(";").filter(Boolean);
+  const style: Pick<CSSProperties, "backgroundColor" | "textTransform"> = {};
+  for (const part of parts) {
+    if (part === "__docxCaps:true") {
+      style.textTransform = "uppercase";
+      continue;
+    }
+
+    if (part.startsWith("__docxHighlight:")) {
+      style.backgroundColor = docxHighlightToCss(part.slice("__docxHighlight:".length));
+    }
+  }
+  return style;
+}
+
+function docxHighlightToCss(value: string): string | undefined {
+  switch (value.toLowerCase()) {
+    case "black":
+      return "#000000";
+    case "blue":
+      return "#0000ff";
+    case "cyan":
+      return "#00ffff";
+    case "darkblue":
+      return "#000080";
+    case "darkcyan":
+      return "#008080";
+    case "darkgray":
+      return "#808080";
+    case "darkgreen":
+      return "#008000";
+    case "darkmagenta":
+      return "#800080";
+    case "darkred":
+      return "#800000";
+    case "darkyellow":
+      return "#808000";
+    case "green":
+      return "#00ff00";
+    case "lightgray":
+      return "#c0c0c0";
+    case "magenta":
+      return "#ff00ff";
+    case "red":
+      return "#ff0000";
+    case "white":
+      return "#ffffff";
+    case "yellow":
+      return "#ffff00";
+    default:
+      return undefined;
+  }
 }
 
 export const OFFICE_FONT_FALLBACK =

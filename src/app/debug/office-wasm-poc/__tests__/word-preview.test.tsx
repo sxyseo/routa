@@ -144,6 +144,34 @@ describe("WordPreview", () => {
     expect(paragraph?.style.textIndent).toBe("-5px");
   });
 
+  it("maps decoded DOCX scheme metadata into run CSS", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  runs: [
+                    {
+                      text: "highlighted caps",
+                      textStyle: { scheme: "__docxHighlight:yellow;__docxCaps:true" },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const run = container.querySelector<HTMLElement>("p span");
+    expect(run?.style.backgroundColor).toBe("rgb(255, 255, 0)");
+    expect(run?.style.textTransform).toBe("uppercase");
+  });
+
   it("renders decoded DOCX auto-number markers in document order", () => {
     const { container } = render(
       <WordPreview
