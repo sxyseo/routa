@@ -852,7 +852,8 @@ function wordTableStyle(hasColumnWidths: boolean): CSSProperties {
 
 export function wordTableCellStyle(cell: RecordValue, background: string, color: string): CSSProperties {
   return {
-    background,
+    backgroundColor: background,
+    backgroundImage: wordTableDiagonalBorders(cell.lines),
     color,
     ...wordTableCellBorders(cell.lines),
     paddingBottom: tableCellPaddingPx(cell.marginBottom, 8),
@@ -861,6 +862,27 @@ export function wordTableCellStyle(cell: RecordValue, background: string, color:
     paddingTop: tableCellPaddingPx(cell.marginTop, 8),
     verticalAlign: wordVerticalAlign(cell.anchor),
   };
+}
+
+function wordTableDiagonalBorders(lines: unknown): CSSProperties["backgroundImage"] {
+  const lineRecord = asRecord(lines);
+  if (lineRecord == null) return undefined;
+
+  const gradients = [
+    wordTableDiagonalBorder(lineRecord.diagonalDown ?? lineRecord.topLeftToBottomRight, "to bottom right"),
+    wordTableDiagonalBorder(lineRecord.diagonalUp ?? lineRecord.topRightToBottomLeft, "to top right"),
+  ].filter(Boolean);
+  return gradients.length > 0 ? gradients.join(", ") : undefined;
+}
+
+function wordTableDiagonalBorder(line: unknown, direction: "to bottom right" | "to top right"): string | undefined {
+  const lineRecord = asRecord(line);
+  if (lineRecord == null) return undefined;
+
+  const border = lineToCss(lineRecord);
+  const color = border.color ?? "#cbd5e1";
+  const halfWidth = Math.max(0.5, Math.min(3, border.width / 2));
+  return `linear-gradient(${direction}, transparent calc(50% - ${halfWidth}px), ${color} calc(50% - ${halfWidth}px), ${color} calc(50% + ${halfWidth}px), transparent calc(50% + ${halfWidth}px))`;
 }
 
 function wordTableCellBorders(lines: unknown): CSSProperties {

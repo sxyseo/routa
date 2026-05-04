@@ -103,6 +103,7 @@ describe("WordPreview", () => {
     );
 
     expect(style).toMatchObject({
+      backgroundColor: "#ffffff",
       borderBottomColor: "#CCCCCC",
       borderBottomStyle: "dotted",
       borderBottomWidth: 2.1166666666666667,
@@ -113,6 +114,33 @@ describe("WordPreview", () => {
       paddingTop: 2,
       verticalAlign: "middle",
     });
+  });
+
+  it("maps decoded DOCX diagonal table borders into cell backgrounds", () => {
+    const style = wordTableCellStyle(
+      {
+        lines: {
+          diagonalDown: {
+            style: 1,
+            widthEmu: 9_525,
+            fill: { color: { value: "FF0000" } },
+          },
+          diagonalUp: {
+            style: 1,
+            widthEmu: 9_525,
+            fill: { color: { value: "00AA00" } },
+          },
+        },
+      },
+      "#f8fafc",
+      "#0f172a",
+    );
+
+    expect(style.backgroundColor).toBe("#f8fafc");
+    expect(style.backgroundImage).toContain("linear-gradient(to bottom right");
+    expect(style.backgroundImage).toContain("#FF0000");
+    expect(style.backgroundImage).toContain("linear-gradient(to top right");
+    expect(style.backgroundImage).toContain("#00AA00");
   });
 
   it("maps decoded DOCX paragraph alignment, indentation, and line spacing into CSS", () => {
