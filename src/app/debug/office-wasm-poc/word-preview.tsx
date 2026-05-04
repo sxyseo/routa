@@ -31,6 +31,8 @@ import {
 export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
   const elements = asArray(root?.elements);
+  const headerElements = wordSectionContentElements(root, "header");
+  const footerElements = wordSectionContentElements(root, "footer");
   const charts = asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null);
   const imageSources = useOfficeImageSources(root);
   const textStyles = new Map<string, RecordValue>();
@@ -44,7 +46,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
   const referenceMarkers = wordReferenceMarkers(root);
   const reviewMarkTypes = wordReviewMarkTypes(root);
 
-  const hasRenderableBlocks = elements.some((element) => {
+  const hasRenderableBlocks = [...headerElements, ...elements, ...footerElements].some((element) => {
     const record = asRecord(element);
     return (
       record != null &&
@@ -92,6 +94,15 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
         width: "100%",
       }}
     >
+      <WordSectionContent
+        charts={charts}
+        elements={headerElements}
+        numberingMarkers={numberingMarkers}
+        referenceMarkers={referenceMarkers}
+        reviewMarkTypes={reviewMarkTypes}
+        styleMaps={styleMaps}
+        variant="header"
+      />
       {elements.map((element, index) => (
         <WordElement
           charts={charts}
@@ -110,7 +121,52 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
         root={root}
         styleMaps={styleMaps}
       />
+      <WordSectionContent
+        charts={charts}
+        elements={footerElements}
+        numberingMarkers={numberingMarkers}
+        referenceMarkers={referenceMarkers}
+        reviewMarkTypes={reviewMarkTypes}
+        styleMaps={styleMaps}
+        variant="footer"
+      />
     </article>
+  );
+}
+
+function WordSectionContent({
+  charts,
+  elements,
+  numberingMarkers,
+  referenceMarkers,
+  reviewMarkTypes,
+  styleMaps,
+  variant,
+}: {
+  charts: RecordValue[];
+  elements: unknown[];
+  numberingMarkers: Map<string, string>;
+  referenceMarkers: Map<string, string[]>;
+  reviewMarkTypes: Map<string, number>;
+  styleMaps: OfficeTextStyleMaps;
+  variant: "footer" | "header";
+}) {
+  if (elements.length === 0) return null;
+
+  return (
+    <section style={variant === "header" ? wordHeaderContentStyle : wordFooterContentStyle}>
+      {elements.map((element, index) => (
+        <WordElement
+          charts={charts}
+          element={asRecord(element) ?? {}}
+          key={`${variant}-${asString(asRecord(element)?.id)}-${index}`}
+          numberingMarkers={numberingMarkers}
+          referenceMarkers={referenceMarkers}
+          reviewMarkTypes={reviewMarkTypes}
+          styleMaps={styleMaps}
+        />
+      ))}
+    </section>
   );
 }
 
@@ -463,6 +519,15 @@ function wordSupplementalNoteItems(
   return items;
 }
 
+function wordSectionContentElements(root: RecordValue | null, key: "footer" | "header"): unknown[] {
+  for (const section of asArray(root?.sections).map(asRecord)) {
+    const content = asRecord(section?.[key]);
+    const elements = asArray(content?.elements);
+    if (elements.length > 0) return elements;
+  }
+  return [];
+}
+
 function wordSupplementalParagraphs(
   record: RecordValue,
   marker: string,
@@ -812,6 +877,26 @@ const wordParagraphMarkerStyle: CSSProperties = {
   minWidth: "2.25em",
   paddingRight: "0.35em",
   textAlign: "right",
+};
+
+const wordHeaderContentStyle: CSSProperties = {
+  borderBottomColor: "#e2e8f0",
+  borderBottomStyle: "solid",
+  borderBottomWidth: 1,
+  color: "#475569",
+  fontSize: 12,
+  marginBottom: 12,
+  paddingBottom: 8,
+};
+
+const wordFooterContentStyle: CSSProperties = {
+  borderTopColor: "#e2e8f0",
+  borderTopStyle: "solid",
+  borderTopWidth: 1,
+  color: "#475569",
+  fontSize: 12,
+  marginTop: 12,
+  paddingTop: 8,
 };
 
 const wordReferenceMarkerStyle: CSSProperties = {

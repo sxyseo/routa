@@ -237,6 +237,30 @@ describe("WordPreview", () => {
     expect(paragraphs).toEqual(["Main text", "1Footnote body", "C1Comment body"]);
   });
 
+  it("renders decoded DOCX section header and footer content", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [{ runs: [{ text: "Body text" }] }],
+            },
+          ],
+          sections: [
+            {
+              footer: { elements: [{ paragraphs: [{ runs: [{ text: "Footer text" }] }] }] },
+              header: { elements: [{ paragraphs: [{ runs: [{ text: "Header text" }] }] }] },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const paragraphs = Array.from(container.querySelectorAll("p")).map((paragraph) => paragraph.textContent);
+    expect(paragraphs).toEqual(["Header text", "Body text", "Footer text"]);
+  });
+
   it("renders decoded DOCX insertion review marks", () => {
     const { container } = render(
       <WordPreview
