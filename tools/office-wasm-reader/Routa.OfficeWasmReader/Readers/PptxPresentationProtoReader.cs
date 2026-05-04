@@ -834,10 +834,10 @@ internal static class PptxPresentationProtoReader
         GroupTransformContext? groupTransform)
     {
         var geometry = properties.GetFirstChild<A.CustomGeometry>();
-        var transformX = ToLong(transform.Offset?.X);
-        var transformY = ToLong(transform.Offset?.Y);
-        var transformWidth = ToLong(transform.Extents?.Cx);
-        var transformHeight = ToLong(transform.Extents?.Cy);
+        var transformX = TransformValue(transform, "off", "x");
+        var transformY = TransformValue(transform, "off", "y");
+        var transformWidth = TransformValue(transform, "ext", "cx");
+        var transformHeight = TransformValue(transform, "ext", "cy");
         if (geometry is null ||
             transformX is null ||
             transformY is null ||
@@ -2571,6 +2571,13 @@ internal static class PptxPresentationProtoReader
             .Value;
     }
 
+    private static long? TransformValue(OpenXmlElement? transform, string childLocalName, string attributeLocalName)
+    {
+        var value = transform?.ChildElements
+            .FirstOrDefault(child => string.Equals(child.LocalName, childLocalName, StringComparison.Ordinal));
+        return ToLong(AttributeValue(value, attributeLocalName));
+    }
+
     private static string? CreationId(OpenXmlElement? element)
     {
         return element?.Descendants()
@@ -2700,10 +2707,10 @@ internal static class PptxPresentationProtoReader
         public static BoundingBox From(A.Transform2D transform, GroupTransformContext? groupTransform)
         {
             return From(
-                ToLong(transform.Offset?.X),
-                ToLong(transform.Offset?.Y),
-                ToLong(transform.Extents?.Cx),
-                ToLong(transform.Extents?.Cy),
+                TransformValue(transform, "off", "x"),
+                TransformValue(transform, "off", "y"),
+                TransformValue(transform, "ext", "cx"),
+                TransformValue(transform, "ext", "cy"),
                 transform.Rotation?.Value,
                 transform.HorizontalFlip?.Value,
                 transform.VerticalFlip?.Value,
@@ -2713,10 +2720,10 @@ internal static class PptxPresentationProtoReader
         public static BoundingBox From(P.Transform transform, GroupTransformContext? groupTransform)
         {
             return From(
-                ToLong(transform.Offset?.X),
-                ToLong(transform.Offset?.Y),
-                ToLong(transform.Extents?.Cx),
-                ToLong(transform.Extents?.Cy),
+                TransformValue(transform, "off", "x"),
+                TransformValue(transform, "off", "y"),
+                TransformValue(transform, "ext", "cx"),
+                TransformValue(transform, "ext", "cy"),
                 null,
                 null,
                 null,
@@ -2772,14 +2779,14 @@ internal static class PptxPresentationProtoReader
     {
         public static GroupTransformContext From(A.TransformGroup transform, GroupTransformContext? parent)
         {
-            var rawX = ToLong(transform.Offset?.X) ?? 0;
-            var rawY = ToLong(transform.Offset?.Y) ?? 0;
-            var rawWidth = ToLong(transform.Extents?.Cx) ?? ToLong(transform.ChildExtents?.Cx) ?? 0;
-            var rawHeight = ToLong(transform.Extents?.Cy) ?? ToLong(transform.ChildExtents?.Cy) ?? 0;
-            var childX = ToLong(transform.ChildOffset?.X) ?? 0;
-            var childY = ToLong(transform.ChildOffset?.Y) ?? 0;
-            var childWidth = ToLong(transform.ChildExtents?.Cx) ?? rawWidth;
-            var childHeight = ToLong(transform.ChildExtents?.Cy) ?? rawHeight;
+            var rawX = TransformValue(transform, "off", "x") ?? 0;
+            var rawY = TransformValue(transform, "off", "y") ?? 0;
+            var rawWidth = TransformValue(transform, "ext", "cx") ?? TransformValue(transform, "chExt", "cx") ?? 0;
+            var rawHeight = TransformValue(transform, "ext", "cy") ?? TransformValue(transform, "chExt", "cy") ?? 0;
+            var childX = TransformValue(transform, "chOff", "x") ?? 0;
+            var childY = TransformValue(transform, "chOff", "y") ?? 0;
+            var childWidth = TransformValue(transform, "chExt", "cx") ?? rawWidth;
+            var childHeight = TransformValue(transform, "chExt", "cy") ?? rawHeight;
             var x = parent?.TransformX(rawX) ?? rawX;
             var y = parent?.TransformY(rawY) ?? rawY;
             var width = parent?.TransformWidth(rawWidth) ?? rawWidth;
