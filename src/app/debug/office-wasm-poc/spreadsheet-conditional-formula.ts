@@ -147,6 +147,19 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
     const value = evaluateFormulaValue(args[0] ?? "", context);
     return spreadsheetFormulaErrorMatches(asString(value)) ? evaluateFormulaValue(args[1] ?? "", context) : value;
   }
+  if (normalizedName === "IFNA") {
+    const value = evaluateFormulaValue(args[0] ?? "", context);
+    return asString(value).trim().toUpperCase() === "#N/A" ? evaluateFormulaValue(args[1] ?? "", context) : value;
+  }
+  if (normalizedName === "IFS") {
+    return ifsFormulaValue(args, context);
+  }
+  if (normalizedName === "SWITCH") {
+    return switchFormulaValue(args, context);
+  }
+  if (normalizedName === "CHOOSE") {
+    return chooseFormulaValue(args, context);
+  }
   if (normalizedName === "LEN") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)).length;
   }
@@ -366,6 +379,33 @@ function compareFormulaValues(left: unknown, right: unknown, operator: string): 
   if (operator === "<") return leftValue < rightValue;
   if (operator === "<=") return leftValue <= rightValue;
   return false;
+}
+
+function ifsFormulaValue(args: string[], context: ConditionalFormulaContext): unknown {
+  for (let index = 0; index < args.length - 1; index += 2) {
+    if (valueToBoolean(evaluateFormulaExpression(args[index] ?? "", context))) {
+      return evaluateFormulaExpression(args[index + 1] ?? "", context);
+    }
+  }
+  return "";
+}
+
+function switchFormulaValue(args: string[], context: ConditionalFormulaContext): unknown {
+  const target = evaluateFormulaValue(args[0] ?? "", context);
+  const hasDefault = args.length > 2 && (args.length - 1) % 2 === 1;
+  const pairEnd = hasDefault ? args.length - 1 : args.length;
+  for (let index = 1; index < pairEnd - 1; index += 2) {
+    if (formulaLookupValuesEqual(evaluateFormulaValue(args[index] ?? "", context), target)) {
+      return evaluateFormulaExpression(args[index + 1] ?? "", context);
+    }
+  }
+  return hasDefault ? evaluateFormulaExpression(args[args.length - 1] ?? "", context) : "";
+}
+
+function chooseFormulaValue(args: string[], context: ConditionalFormulaContext): unknown {
+  const index = Math.trunc(Number(evaluateFormulaValue(args[0] ?? "", context)));
+  if (!Number.isFinite(index) || index < 1 || index >= args.length) return "";
+  return evaluateFormulaExpression(args[index] ?? "", context);
 }
 
 function evaluateArithmeticExpression(

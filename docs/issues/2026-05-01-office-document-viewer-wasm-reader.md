@@ -134,6 +134,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX conditional formula evaluation now supports lookup helpers `INDEX`, `MATCH`, `VLOOKUP`, and `XLOOKUP` for threshold-table-driven formatting rules.
 - XLSX conditional formula evaluation now supports statistical/ranking helpers `COUNTA`, `COUNTBLANK`, `MEDIAN`, `LARGE`, `SMALL`, `RANK`, `RANK.EQ`, `PERCENTILE`, and `PERCENTILE.INC`.
 - XLSX conditional formula evaluation now supports date boundary and working-day helpers `EDATE`, `EOMONTH`, `NETWORKDAYS`, `WORKDAY`, and `DATEDIF`.
+- XLSX conditional formula evaluation now supports branch helpers `IFNA`, `IFS`, `SWITCH`, and `CHOOSE`.
 
 ## Codex 技术方案逆向分析
 
