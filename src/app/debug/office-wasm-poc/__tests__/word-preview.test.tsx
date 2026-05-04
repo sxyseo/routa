@@ -215,6 +215,32 @@ describe("WordPreview", () => {
     expect(run?.style.textDecoration).toBe("none");
   });
 
+  it("maps decoded DOCX underline string values into run decoration", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  runs: [
+                    { text: "Underlined", textStyle: { underline: "single" } },
+                    { text: "Not underlined", textStyle: { underline: "none" } },
+                  ],
+                },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const runs = Array.from(container.querySelectorAll<HTMLElement>("p span"));
+    expect(runs[0]?.style.textDecoration).toBe("underline");
+    expect(runs[1]?.style.textDecoration).toBe("none");
+  });
+
   it("renders decoded DOCX auto-number markers in document order", () => {
     const { container } = render(
       <WordPreview

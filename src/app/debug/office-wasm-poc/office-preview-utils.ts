@@ -350,9 +350,19 @@ export function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {
     fontSize: runFontSize == null ? undefined : Math.max(fontScale < 1 ? 2 : 8, Math.min(fontScale < 1 ? 12 : 72, runFontSize)),
     fontStyle: run.style?.italic === true ? "italic" : run.style?.italic === false ? "normal" : undefined,
     fontWeight: run.style?.bold === true ? 700 : run.style?.bold === false ? 400 : undefined,
-    textDecoration: run.style?.underline === true ? "underline" : run.style?.underline === false ? "none" : undefined,
+    textDecoration: docxTextDecoration(run.style?.underline),
     textTransform: scheme.textTransform,
   };
+}
+
+function docxTextDecoration(value: unknown): CSSProperties["textDecoration"] {
+  if (value === true) return "underline";
+  if (value === false) return "none";
+
+  const underline = asString(value).toLowerCase();
+  if (!underline) return undefined;
+  if (underline === "none") return "none";
+  return "underline";
 }
 
 function docxSchemeStyle(scheme: unknown): Pick<CSSProperties, "backgroundColor" | "textTransform"> & {
