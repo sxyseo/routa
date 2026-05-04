@@ -131,6 +131,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX conditional formula evaluation now handles date-part and parity helpers used in production rules, including `YEAR`, `MONTH`, `DAY`, `WEEKDAY`, `ISODD`, and `ISEVEN`.
 - XLSX conditional formula evaluation now supports arithmetic expressions and numeric rounding helpers, including `+`, `-`, `*`, `/`, `^`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `INT`, `FLOOR`, and `CEILING`.
 - XLSX conditional formula evaluation now supports multi-condition aggregate helpers `AVERAGEIFS`, `MINIFS`, and `MAXIFS` on sparse ranges.
+- XLSX conditional formula evaluation now supports lookup helpers `INDEX`, `MATCH`, `VLOOKUP`, and `XLOOKUP` for threshold-table-driven formatting rules.
 
 ## Codex 技术方案逆向分析
 

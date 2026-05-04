@@ -883,6 +883,118 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("5:8")).toBeUndefined();
   });
 
+  it("evaluates lookup helpers in conditional format formulas", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A2:A5"],
+          rules: [
+            {
+              fillColor: "FDE68A",
+              formulas: ["=INDEX($D$2:$D$5,MATCH(B2,$C$2:$C$5,0))>10"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["E2:E5"],
+          rules: [
+            {
+              fillColor: "BAE6FD",
+              formulas: ["=VLOOKUP(E2,$F$2:$G$5,2,FALSE)=\"High\""],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["H2:H5"],
+          rules: [
+            {
+              fillColor: "C4B5FD",
+              formulas: ["=XLOOKUP(H2,$I$2:$I$5,$J$2:$J$5,\"\")=\"Escalate\""],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        {
+          cells: [
+            { address: "A2", value: "row-a" },
+            { address: "B2", value: "Task A" },
+            { address: "C2", value: "Task A" },
+            { address: "D2", value: 12 },
+            { address: "E2", value: "A" },
+            { address: "F2", value: "A" },
+            { address: "G2", value: "High" },
+            { address: "H2", value: "North" },
+            { address: "I2", value: "North" },
+            { address: "J2", value: "Escalate" },
+          ],
+          index: 2,
+        },
+        {
+          cells: [
+            { address: "A3", value: "row-b" },
+            { address: "B3", value: "Task B" },
+            { address: "C3", value: "Task B" },
+            { address: "D3", value: 8 },
+            { address: "E3", value: "B" },
+            { address: "F3", value: "B" },
+            { address: "G3", value: "Low" },
+            { address: "H3", value: "South" },
+            { address: "I3", value: "South" },
+            { address: "J3", value: "Monitor" },
+          ],
+          index: 3,
+        },
+        {
+          cells: [
+            { address: "A4", value: "row-c" },
+            { address: "B4", value: "Task C" },
+            { address: "C4", value: "Task C" },
+            { address: "D4", value: 15 },
+            { address: "E4", value: "C" },
+            { address: "F4", value: "C" },
+            { address: "G4", value: "High" },
+            { address: "H4", value: "East" },
+            { address: "I4", value: "East" },
+            { address: "J4", value: "Escalate" },
+          ],
+          index: 4,
+        },
+        {
+          cells: [
+            { address: "A5", value: "row-d" },
+            { address: "B5", value: "Task D" },
+            { address: "C5", value: "Task D" },
+            { address: "D5", value: 10 },
+            { address: "E5", value: "D" },
+            { address: "F5", value: "D" },
+            { address: "G5", value: "Low" },
+            { address: "H5", value: "West" },
+            { address: "I5", value: "West" },
+            { address: "J5", value: "Monitor" },
+          ],
+          index: 5,
+        },
+      ],
+    });
+
+    expect(visuals.get("2:0")?.background).toBe("#FDE68A");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#FDE68A");
+    expect(visuals.get("5:0")).toBeUndefined();
+    expect(visuals.get("2:4")?.background).toBe("#BAE6FD");
+    expect(visuals.get("3:4")).toBeUndefined();
+    expect(visuals.get("4:4")?.background).toBe("#BAE6FD");
+    expect(visuals.get("5:4")).toBeUndefined();
+    expect(visuals.get("2:7")?.background).toBe("#C4B5FD");
+    expect(visuals.get("3:7")).toBeUndefined();
+    expect(visuals.get("4:7")?.background).toBe("#C4B5FD");
+    expect(visuals.get("5:7")).toBeUndefined();
+  });
+
   it("evaluates common text helpers in conditional format formulas", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

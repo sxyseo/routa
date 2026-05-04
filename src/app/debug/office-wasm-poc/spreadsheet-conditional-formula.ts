@@ -259,6 +259,18 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "MAXIFS") {
     return aggregateIfs(args, context, "max");
   }
+  if (normalizedName === "INDEX") {
+    return indexFormulaValue(args, context);
+  }
+  if (normalizedName === "MATCH") {
+    return matchFormulaValue(args, context);
+  }
+  if (normalizedName === "VLOOKUP") {
+    return vlookupFormulaValue(args, context);
+  }
+  if (normalizedName === "XLOOKUP") {
+    return xlookupFormulaValue(args, context);
+  }
   if (normalizedName === "TODAY") {
     return currentExcelSerialDay();
   }
@@ -488,6 +500,80 @@ function formulaCriteriaRangeMatches(criteriaRange: FormulaCriteriaRange, rowOff
 
 function formulaRange(expression: string, context: ConditionalFormulaContext): ReturnType<typeof parseCellRange> {
   return parseCellRange(formulaRangeTarget(expression, context));
+}
+
+function indexFormulaValue(args: string[], context: ConditionalFormulaContext): string {
+  const range = formulaRange(args[0] ?? "", context);
+  const cells = formulaRangeCells(args[0] ?? "", context);
+  if (!range || !cells) return "";
+  const rowOffset = Math.max(0, Math.trunc(Number(evaluateFormulaValue(args[1] ?? "1", context))) - 1);
+  const columnOffset = Math.max(0, Math.trunc(Number(evaluateFormulaValue(args[2] ?? "1", context))) - 1);
+  return cellsByOffset(cells, range).get(`${rowOffset}:${columnOffset}`) ?? "";
+}
+
+function matchFormulaValue(args: string[], context: ConditionalFormulaContext): number {
+  const cells = formulaRangeCells(args[1] ?? "", context);
+  if (!cells) return Number.NaN;
+  const lookupValue = evaluateFormulaValue(args[0] ?? "", context);
+  const matchType = Number(evaluateFormulaValue(args[2] ?? "1", context));
+  return matchLookupPosition(lookupValue, cells.map((cell) => cell.value), Number.isFinite(matchType) ? Math.trunc(matchType) : 1);
+}
+
+function vlookupFormulaValue(args: string[], context: ConditionalFormulaContext): string {
+  const range = formulaRange(args[1] ?? "", context);
+  const cells = formulaRangeCells(args[1] ?? "", context);
+  if (!range || !cells) return "";
+  const columnOffset = Math.trunc(Number(evaluateFormulaValue(args[2] ?? "1", context))) - 1;
+  if (!Number.isFinite(columnOffset) || columnOffset < 0 || columnOffset >= range.columnSpan) return "";
+  const lookupValue = evaluateFormulaValue(args[0] ?? "", context);
+  const exact = !valueToBoolean(evaluateFormulaValue(args[3] ?? "TRUE", context));
+  const byOffset = cellsByOffset(cells, range);
+  const firstColumn = cells
+    .filter((cell) => cell.columnIndex === range.startColumn)
+    .sort((left, right) => left.rowIndex - right.rowIndex);
+  const rowPosition = exact
+    ? firstColumn.findIndex((cell) => formulaLookupValuesEqual(cell.value, lookupValue))
+    : matchLookupPosition(lookupValue, firstColumn.map((cell) => cell.value), 1) - 1;
+  return rowPosition >= 0 ? byOffset.get(`${rowPosition}:${columnOffset}`) ?? "" : "";
+}
+
+function xlookupFormulaValue(args: string[], context: ConditionalFormulaContext): string {
+  const lookupCells = formulaRangeCells(args[1] ?? "", context);
+  const returnRange = formulaRange(args[2] ?? "", context);
+  const returnCells = formulaRangeCells(args[2] ?? "", context);
+  if (!lookupCells || !returnRange || !returnCells) return asString(evaluateFormulaValue(args[3] ?? "", context));
+  const lookupValue = evaluateFormulaValue(args[0] ?? "", context);
+  const matchIndex = lookupCells.findIndex((cell) => formulaLookupValuesEqual(cell.value, lookupValue));
+  if (matchIndex < 0) return asString(evaluateFormulaValue(args[3] ?? "", context));
+  return returnCells[matchIndex]?.value ?? cellsByOffset(returnCells, returnRange).get(`${matchIndex}:0`) ?? "";
+}
+
+function matchLookupPosition(lookupValue: unknown, values: string[], matchType: number): number {
+  if (matchType === 0) {
+    const index = values.findIndex((value) => formulaLookupValuesEqual(value, lookupValue));
+    return index >= 0 ? index + 1 : Number.NaN;
+  }
+
+  let matchedIndex = -1;
+  for (let index = 0; index < values.length; index += 1) {
+    const comparison = formulaLookupCompare(values[index], lookupValue);
+    if (matchType < 0 ? comparison >= 0 : comparison <= 0) matchedIndex = index;
+  }
+  return matchedIndex >= 0 ? matchedIndex + 1 : Number.NaN;
+}
+
+function formulaLookupValuesEqual(left: unknown, right: unknown): boolean {
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber === rightNumber;
+  return asString(left).trim().toLowerCase() === asString(right).trim().toLowerCase();
+}
+
+function formulaLookupCompare(left: unknown, right: unknown): number {
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+  return asString(left).trim().toLowerCase().localeCompare(asString(right).trim().toLowerCase());
 }
 
 function cellsByOffset(cells: FormulaCellValue[], range: NonNullable<ReturnType<typeof parseCellRange>>): Map<string, string> {
