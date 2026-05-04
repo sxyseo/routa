@@ -445,6 +445,43 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:3")).toBeUndefined();
   });
 
+  it("applies error-value conditional format rules", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A1:A3"],
+          rules: [
+            {
+              fillColor: "FCA5A5",
+              type: "containsErrors",
+            },
+          ],
+        },
+        {
+          ranges: ["B1:B3"],
+          rules: [
+            {
+              fillColor: "BBF7D0",
+              type: "notContainsErrors",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A1", value: "#DIV/0!" }, { address: "B1", value: "#REF!" }], index: 1 },
+        { cells: [{ address: "A2", value: "#N/A" }, { address: "B2", value: "ok" }], index: 2 },
+        { cells: [{ address: "A3", value: "ok" }, { address: "B3", value: 42 }], index: 3 },
+      ],
+    });
+
+    expect(visuals.get("1:0")?.background).toBe("#FCA5A5");
+    expect(visuals.get("2:0")?.background).toBe("#FCA5A5");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("1:1")).toBeUndefined();
+    expect(visuals.get("2:1")?.background).toBe("#BBF7D0");
+    expect(visuals.get("3:1")?.background).toBe("#BBF7D0");
+  });
+
   it("applies duplicate and unique value conditional format rules", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

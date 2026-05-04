@@ -123,6 +123,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX conditional-format protocol parity now emits Walnut `CfRule` fields for `aboveAverage`, `bottom`, `rank`, `stdDev`, `equalAverage`, and `timePeriod`; the debug preview also evaluates Excel serial-date time-period rules such as `last7Days` and `thisMonth`.
 - XLSX conditional-format precedence now sorts decoded rules by Excel/Walnut `priority` and applies `stopIfTrue` consistently across format, color-scale, data-bar, and icon-set visuals instead of relying on protocol array order.
 - XLSX `cellIs` conditional-format comparisons now resolve formula thresholds from absolute/relative cell references, defined names, and common date helpers such as `DATE(...)` and `TODAY()` before applying comparison operators.
+- XLSX conditional-format preview now applies Excel error-value rules for `containsErrors` and `notContainsErrors`, covering common values such as `#DIV/0!`, `#N/A`, `#REF!`, and `#VALUE!`.
 
 ## Codex 技术方案逆向分析
 

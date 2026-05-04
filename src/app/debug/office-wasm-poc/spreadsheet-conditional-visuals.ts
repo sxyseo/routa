@@ -804,6 +804,14 @@ function conditionalTextMatches(
     return normalizedText.length > 0;
   }
 
+  if (type === "containsErrors") {
+    return spreadsheetErrorValueMatches(normalizedText);
+  }
+
+  if (type === "notContainsErrors") {
+    return !spreadsheetErrorValueMatches(normalizedText);
+  }
+
   if (type === "duplicateValues") {
     return normalizedText.length > 0 && (textCounts?.get(normalizedText) ?? 0) > 1;
   }
@@ -873,6 +881,21 @@ function conditionalTextMatches(
   }
 
   return false;
+}
+
+function spreadsheetErrorValueMatches(text: string): boolean {
+  const normalized = text.toUpperCase();
+  return normalized === "#DIV/0!" ||
+    normalized === "#N/A" ||
+    normalized === "#NAME?" ||
+    normalized === "#NULL!" ||
+    normalized === "#NUM!" ||
+    normalized === "#REF!" ||
+    normalized === "#VALUE!" ||
+    normalized === "#SPILL!" ||
+    normalized === "#CALC!" ||
+    normalized === "#FIELD!" ||
+    normalized === "#GETTING_DATA";
 }
 
 function conditionalCellFormulaNumber(
