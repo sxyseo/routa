@@ -1252,6 +1252,84 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:3")?.background).toBe("#BBF7D0");
   });
 
+  it("evaluates date boundary and working-day helpers in conditional format formulas", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A2:A5"],
+          rules: [
+            {
+              fillColor: "BAE6FD",
+              formulas: ["=EOMONTH(A2,0)=DATE(2026,5,31)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["B2:B5"],
+          rules: [
+            {
+              fillColor: "FDE68A",
+              formulas: ["=AND(MONTH(EDATE(B2,1))=6,DAY(EDATE(B2,1))=4)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["C2:C5"],
+          rules: [
+            {
+              fillColor: "DDD6FE",
+              formulas: ["=NETWORKDAYS(C2,D2,$E$2:$E$2)<=4"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["F2:F5"],
+          rules: [
+            {
+              fillColor: "BBF7D0",
+              formulas: ["=WORKDAY(F2,5,$E$2:$E$2)=DATE(2026,5,12)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["G2:G5"],
+          rules: [
+            {
+              fillColor: "FECACA",
+              formulas: ["=DATEDIF(G2,H2,\"D\")>5"],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A2", value: 46146 }, { address: "B2", value: 46146 }, { address: "C2", value: 46146 }, { address: "D2", value: 46150 }, { address: "E2", value: 46148 }, { address: "F2", value: 46146 }, { address: "G2", value: 46146 }, { address: "H2", value: 46152 }], index: 2 },
+        { cells: [{ address: "A3", value: 46177 }, { address: "B3", value: 46177 }, { address: "C3", value: 46146 }, { address: "D3", value: 46153 }, { address: "F3", value: 46147 }, { address: "G3", value: 46146 }, { address: "H3", value: 46150 }], index: 3 },
+        { cells: [{ address: "A4", value: 45778 }, { address: "B4", value: 45778 }, { address: "C4", value: 46149 }, { address: "D4", value: 46150 }, { address: "F4", value: 46146 }, { address: "G4", value: 46146 }, { address: "H4", value: 46151 }], index: 4 },
+      ],
+    });
+
+    expect(visuals.get("2:0")?.background).toBe("#BAE6FD");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")).toBeUndefined();
+    expect(visuals.get("2:1")?.background).toBe("#FDE68A");
+    expect(visuals.get("3:1")).toBeUndefined();
+    expect(visuals.get("4:1")).toBeUndefined();
+    expect(visuals.get("2:2")?.background).toBe("#DDD6FE");
+    expect(visuals.get("3:2")).toBeUndefined();
+    expect(visuals.get("4:2")?.background).toBe("#DDD6FE");
+    expect(visuals.get("2:5")?.background).toBe("#BBF7D0");
+    expect(visuals.get("3:5")).toBeUndefined();
+    expect(visuals.get("4:5")?.background).toBe("#BBF7D0");
+    expect(visuals.get("2:6")?.background).toBe("#FECACA");
+    expect(visuals.get("3:6")).toBeUndefined();
+    expect(visuals.get("4:6")).toBeUndefined();
+  });
+
   it("evaluates arithmetic and rounding helpers in conditional format formulas", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

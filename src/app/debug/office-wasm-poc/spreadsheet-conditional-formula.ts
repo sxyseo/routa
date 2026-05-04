@@ -312,6 +312,39 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
     }
     return Number.NaN;
   }
+  if (normalizedName === "EDATE") {
+    return addExcelSerialMonths(
+      Number(evaluateFormulaValue(args[0] ?? "", context)),
+      Number(evaluateFormulaValue(args[1] ?? "0", context)),
+    );
+  }
+  if (normalizedName === "EOMONTH") {
+    return endOfExcelSerialMonth(
+      Number(evaluateFormulaValue(args[0] ?? "", context)),
+      Number(evaluateFormulaValue(args[1] ?? "0", context)),
+    );
+  }
+  if (normalizedName === "NETWORKDAYS") {
+    return networkDaysFormulaNumber(
+      Number(evaluateFormulaValue(args[0] ?? "", context)),
+      Number(evaluateFormulaValue(args[1] ?? "", context)),
+      formulaNumericArgs([args[2] ?? ""], context),
+    );
+  }
+  if (normalizedName === "WORKDAY") {
+    return workdayFormulaNumber(
+      Number(evaluateFormulaValue(args[0] ?? "", context)),
+      Number(evaluateFormulaValue(args[1] ?? "", context)),
+      formulaNumericArgs([args[2] ?? ""], context),
+    );
+  }
+  if (normalizedName === "DATEDIF") {
+    return datedifFormulaNumber(
+      Number(evaluateFormulaValue(args[0] ?? "", context)),
+      Number(evaluateFormulaValue(args[1] ?? "", context)),
+      asString(evaluateFormulaValue(args[2] ?? "\"D\"", context)),
+    );
+  }
   if (normalizedName === "YEAR" || normalizedName === "MONTH" || normalizedName === "DAY" || normalizedName === "WEEKDAY") {
     return excelSerialDatePart(Number(evaluateFormulaValue(args[0] ?? "", context)), normalizedName, Number(evaluateFormulaValue(args[1] ?? "1", context)));
   }
@@ -879,9 +912,14 @@ function excelSerialDay(year: number, month: number, day: number): number {
   return Math.floor((Date.UTC(year, month - 1, day) - EXCEL_SERIAL_EPOCH_UTC) / DAY_MS);
 }
 
+function excelSerialUtcDate(value: number): Date | null {
+  if (!Number.isFinite(value)) return null;
+  return new Date(EXCEL_SERIAL_EPOCH_UTC + Math.floor(value) * DAY_MS);
+}
+
 function excelSerialDatePart(value: number, part: string, weekdayReturnType: number): number {
-  if (!Number.isFinite(value)) return Number.NaN;
-  const date = new Date(EXCEL_SERIAL_EPOCH_UTC + Math.floor(value) * DAY_MS);
+  const date = excelSerialUtcDate(value);
+  if (!date) return Number.NaN;
   if (part === "YEAR") return date.getUTCFullYear();
   if (part === "MONTH") return date.getUTCMonth() + 1;
   if (part === "DAY") return date.getUTCDate();
@@ -889,6 +927,78 @@ function excelSerialDatePart(value: number, part: string, weekdayReturnType: num
   if (weekdayReturnType === 2) return weekday === 0 ? 7 : weekday;
   if (weekdayReturnType === 3) return weekday === 0 ? 6 : weekday - 1;
   return weekday + 1;
+}
+
+function addExcelSerialMonths(value: number, months: number): number {
+  const date = excelSerialUtcDate(value);
+  if (!date || !Number.isFinite(months)) return Number.NaN;
+  const targetMonthIndex = date.getUTCMonth() + Math.trunc(months);
+  const targetYear = date.getUTCFullYear() + Math.floor(targetMonthIndex / 12);
+  const targetMonth = modulo(targetMonthIndex, 12) + 1;
+  const targetDay = Math.min(date.getUTCDate(), daysInUtcMonth(targetYear, targetMonth));
+  return excelSerialDay(targetYear, targetMonth, targetDay);
+}
+
+function endOfExcelSerialMonth(value: number, months: number): number {
+  const date = excelSerialUtcDate(value);
+  if (!date || !Number.isFinite(months)) return Number.NaN;
+  const targetMonthIndex = date.getUTCMonth() + Math.trunc(months);
+  const targetYear = date.getUTCFullYear() + Math.floor(targetMonthIndex / 12);
+  const targetMonth = modulo(targetMonthIndex, 12) + 1;
+  return excelSerialDay(targetYear, targetMonth, daysInUtcMonth(targetYear, targetMonth));
+}
+
+function networkDaysFormulaNumber(startValue: number, endValue: number, holidays: number[]): number {
+  if (!Number.isFinite(startValue) || !Number.isFinite(endValue)) return Number.NaN;
+  const start = Math.floor(startValue);
+  const end = Math.floor(endValue);
+  const direction = start <= end ? 1 : -1;
+  const holidaySet = new Set(holidays.map(Math.floor));
+  let count = 0;
+  for (let serial = start; direction > 0 ? serial <= end : serial >= end; serial += direction) {
+    if (isExcelWorkingDay(serial, holidaySet)) count += direction;
+  }
+  return count;
+}
+
+function workdayFormulaNumber(startValue: number, daysValue: number, holidays: number[]): number {
+  if (!Number.isFinite(startValue) || !Number.isFinite(daysValue)) return Number.NaN;
+  const direction = daysValue < 0 ? -1 : 1;
+  let remaining = Math.abs(Math.trunc(daysValue));
+  let serial = Math.floor(startValue);
+  const holidaySet = new Set(holidays.map(Math.floor));
+  while (remaining > 0) {
+    serial += direction;
+    if (isExcelWorkingDay(serial, holidaySet)) remaining -= 1;
+  }
+  return serial;
+}
+
+function datedifFormulaNumber(startValue: number, endValue: number, unit: string): number {
+  const start = excelSerialUtcDate(startValue);
+  const end = excelSerialUtcDate(endValue);
+  if (!start || !end || endValue < startValue) return Number.NaN;
+  const normalizedUnit = unit.trim().toUpperCase();
+  if (normalizedUnit === "D") return Math.floor(endValue) - Math.floor(startValue);
+
+  const years = end.getUTCFullYear() - start.getUTCFullYear();
+  const monthDelta = years * 12 + end.getUTCMonth() - start.getUTCMonth() - (end.getUTCDate() < start.getUTCDate() ? 1 : 0);
+  if (normalizedUnit === "M") return Math.max(0, monthDelta);
+  if (normalizedUnit === "Y") return Math.max(0, Math.floor(monthDelta / 12));
+  return Number.NaN;
+}
+
+function isExcelWorkingDay(serial: number, holidays: ReadonlySet<number>): boolean {
+  const weekday = excelSerialDatePart(serial, "WEEKDAY", 2);
+  return weekday >= 1 && weekday <= 5 && !holidays.has(serial);
+}
+
+function daysInUtcMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function modulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
 }
 
 function parseFunctionCall(value: string): { args: string[]; name: string } | null {
