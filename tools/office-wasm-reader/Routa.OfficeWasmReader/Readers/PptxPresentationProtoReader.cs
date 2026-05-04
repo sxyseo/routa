@@ -618,6 +618,12 @@ internal static class PptxPresentationProtoReader
                 WriteMessage(output, 19, WritePictureFill(picture, relationshipId, imageId));
             }
 
+            var line = OutlineFromProperties(picture.ShapeProperties);
+            if (line is not null)
+            {
+                WriteMessage(output, 30, WriteLine(line));
+            }
+
             foreach (var effect in ExtractEffects(picture.ShapeProperties))
             {
                 WriteMessage(output, 15, effect);
@@ -1554,24 +1560,33 @@ internal static class PptxPresentationProtoReader
 
     private static byte[] WritePictureFill(P.Picture picture, string relationshipId, string imageId)
     {
-        return WriteImageFill(relationshipId, imageId, picture.BlipFill?.SourceRectangle);
+        return WriteImageFill(
+            relationshipId,
+            imageId,
+            picture.BlipFill?.SourceRectangle,
+            picture.BlipFill?.GetFirstChild<A.Stretch>()?.GetFirstChild<A.FillRectangle>());
     }
 
-    private static byte[] WriteImageFill(string relationshipId, string imageId, A.SourceRectangle? sourceRectangle)
+    private static byte[] WriteImageFill(
+        string relationshipId,
+        string imageId,
+        A.SourceRectangle? sourceRectangle,
+        OpenXmlElement? fillRectangle)
     {
-        var hasCrop =
-            sourceRectangle?.Left is not null ||
-            sourceRectangle?.Top is not null ||
-            sourceRectangle?.Right is not null ||
-            sourceRectangle?.Bottom is not null;
+        var hasSourceRectangle = HasExplicitRectangleAttributes(sourceRectangle);
+        var hasFillRectangle = HasExplicitRectangleAttributes(fillRectangle);
         return Message(output =>
         {
             WriteInt32(output, 1, FillTypePicture);
             WriteString(output, 4, relationshipId);
             WriteMessage(output, 11, WriteImageReference(imageId));
-            if (hasCrop)
+            if (hasSourceRectangle)
             {
-                WriteMessage(output, 14, WriteSourceRectangle(sourceRectangle));
+                WriteMessage(output, 14, WriteRectangleAttributes(sourceRectangle));
+            }
+            else if (hasFillRectangle)
+            {
+                WriteMessage(output, 14, WriteRectangleAttributes(fillRectangle));
             }
             else
             {
@@ -1580,14 +1595,22 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[] WriteSourceRectangle(A.SourceRectangle? sourceRectangle)
+    private static bool HasExplicitRectangleAttributes(OpenXmlElement? rectangle)
+    {
+        return AttributeValue(rectangle, "l") is not null ||
+            AttributeValue(rectangle, "t") is not null ||
+            AttributeValue(rectangle, "r") is not null ||
+            AttributeValue(rectangle, "b") is not null;
+    }
+
+    private static byte[] WriteRectangleAttributes(OpenXmlElement? rectangle)
     {
         return Message(output =>
         {
-            WriteInt32Always(output, 1, ToInt32(sourceRectangle?.Left) ?? 0);
-            WriteInt32Always(output, 2, ToInt32(sourceRectangle?.Top) ?? 0);
-            WriteInt32Always(output, 3, ToInt32(sourceRectangle?.Right) ?? 0);
-            WriteInt32Always(output, 4, ToInt32(sourceRectangle?.Bottom) ?? 0);
+            WriteInt32Always(output, 1, IntAttribute(rectangle, "l") ?? 0);
+            WriteInt32Always(output, 2, IntAttribute(rectangle, "t") ?? 0);
+            WriteInt32Always(output, 3, IntAttribute(rectangle, "r") ?? 0);
+            WriteInt32Always(output, 4, IntAttribute(rectangle, "b") ?? 0);
         });
     }
 
@@ -1906,10 +1929,10 @@ internal static class PptxPresentationProtoReader
                 WriteMessageAlways(cellOutput, 3, paragraph);
             }
 
-            var fill = SolidFillFromProperties(cell.TableCellProperties);
+            var fill = FillFromDirectProperties(cell.TableCellProperties);
             if (fill is not null)
             {
-                WriteMessage(cellOutput, 5, WriteFill(fill));
+                WriteMessage(cellOutput, 5, fill);
             }
 
             var borders = WriteTableCellLines(cell.TableCellProperties);
@@ -1941,12 +1964,12 @@ internal static class PptxPresentationProtoReader
             return null;
         }
 
-        var fill = SolidFillFromProperties(properties);
+        var fill = FillFromDirectProperties(properties);
         return Message(output =>
         {
             if (fill is not null)
             {
-                WriteMessage(output, 1, WriteFill(fill));
+                WriteMessage(output, 1, fill);
             }
 
             WriteBoolValue(output, 2, properties.RightToLeft?.Value);
@@ -2472,17 +2495,8 @@ internal static class PptxPresentationProtoReader
         return properties?.GetFirstChild<A.SolidFill>();
     }
 
-    private static byte[]? FillFromShapeProperties(OpenXmlPartContainer partContainer, OpenXmlElement? properties)
+    private static byte[]? FillFromDirectProperties(OpenXmlElement? properties)
     {
-        if (properties?.GetFirstChild<A.BlipFill>() is { } blipFill)
-        {
-            var relationshipId = blipFill.Blip?.Embed?.Value;
-            if (!string.IsNullOrEmpty(relationshipId) && partContainer.GetPartById(relationshipId) is ImagePart imagePart)
-            {
-                return WriteImageFill(relationshipId, imagePart.Uri.OriginalString, blipFill.SourceRectangle);
-            }
-        }
-
         var solidFill = SolidFillFromProperties(properties);
         if (solidFill is not null)
         {
@@ -2491,6 +2505,24 @@ internal static class PptxPresentationProtoReader
 
         var gradientFill = properties?.GetFirstChild<A.GradientFill>();
         return gradientFill is null ? null : WriteGradientFill(gradientFill);
+    }
+
+    private static byte[]? FillFromShapeProperties(OpenXmlPartContainer partContainer, OpenXmlElement? properties)
+    {
+        if (properties?.GetFirstChild<A.BlipFill>() is { } blipFill)
+        {
+            var relationshipId = blipFill.Blip?.Embed?.Value;
+            if (!string.IsNullOrEmpty(relationshipId) && partContainer.GetPartById(relationshipId) is ImagePart imagePart)
+            {
+                return WriteImageFill(
+                    relationshipId,
+                    imagePart.Uri.OriginalString,
+                    blipFill.SourceRectangle,
+                    blipFill.GetFirstChild<A.Stretch>()?.GetFirstChild<A.FillRectangle>());
+            }
+        }
+
+        return FillFromDirectProperties(properties);
     }
 
     private static A.Outline? OutlineFromProperties(OpenXmlElement? properties)
