@@ -342,10 +342,11 @@ function emuToCssPx(value: unknown): number {
 export function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {
   const runFontSize = run.style?.fontSize == null ? undefined : cssFontSize(run.style.fontSize, 14) * fontScale;
   const scheme = docxSchemeStyle(run.style?.scheme);
+  const typeface = asString(run.style?.typeface) || scheme.typeface;
   return {
     backgroundColor: scheme.backgroundColor,
     color: colorToCss(asRecord(run.style?.fill)?.color) ?? undefined,
-    fontFamily: officeFontFamily(asString(run.style?.typeface)),
+    fontFamily: officeFontFamily(typeface),
     fontSize: runFontSize == null ? undefined : Math.max(fontScale < 1 ? 2 : 8, Math.min(fontScale < 1 ? 12 : 72, runFontSize)),
     fontStyle: run.style?.italic === true ? "italic" : undefined,
     fontWeight: run.style?.bold === true ? 700 : undefined,
@@ -354,9 +355,11 @@ export function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {
   };
 }
 
-function docxSchemeStyle(scheme: unknown): Pick<CSSProperties, "backgroundColor" | "textTransform"> {
+function docxSchemeStyle(scheme: unknown): Pick<CSSProperties, "backgroundColor" | "textTransform"> & {
+  typeface: string;
+} {
   const parts = asString(scheme).split(";").filter(Boolean);
-  const style: Pick<CSSProperties, "backgroundColor" | "textTransform"> = {};
+  const style: Pick<CSSProperties, "backgroundColor" | "textTransform"> & { typeface: string } = { typeface: "" };
   for (const part of parts) {
     if (part === "__docxCaps:true") {
       style.textTransform = "uppercase";
@@ -365,6 +368,16 @@ function docxSchemeStyle(scheme: unknown): Pick<CSSProperties, "backgroundColor"
 
     if (part.startsWith("__docxHighlight:")) {
       style.backgroundColor = docxHighlightToCss(part.slice("__docxHighlight:".length));
+      continue;
+    }
+
+    if (part.startsWith("__docxEastAsiaTypeface:")) {
+      style.typeface ||= part.slice("__docxEastAsiaTypeface:".length);
+      continue;
+    }
+
+    if (part.startsWith("__docxComplexScriptTypeface:")) {
+      style.typeface ||= part.slice("__docxComplexScriptTypeface:".length);
     }
   }
   return style;

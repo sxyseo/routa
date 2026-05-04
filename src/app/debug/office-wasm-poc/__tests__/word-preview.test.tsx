@@ -157,7 +157,9 @@ describe("WordPreview", () => {
                   runs: [
                     {
                       text: "highlighted caps",
-                      textStyle: { scheme: "__docxHighlight:yellow;__docxCaps:true" },
+                      textStyle: {
+                        scheme: "__docxHighlight:yellow;__docxCaps:true;__docxEastAsiaTypeface:SimSun",
+                      },
                     },
                   ],
                 },
@@ -170,6 +172,7 @@ describe("WordPreview", () => {
 
     const run = container.querySelector<HTMLElement>("p span");
     expect(run?.style.backgroundColor).toBe("rgb(255, 255, 0)");
+    expect(run?.style.fontFamily).toContain("SimSun");
     expect(run?.style.textTransform).toBe("uppercase");
   });
 
