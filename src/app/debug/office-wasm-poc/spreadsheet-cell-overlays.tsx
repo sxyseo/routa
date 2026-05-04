@@ -166,8 +166,9 @@ export function SpreadsheetCellContent({
             aria-hidden="true"
             style={{
               background: visual.dataBar.gradient
-                ? `linear-gradient(90deg, ${visual.dataBar.color} 0%, ${visual.dataBar.color} 72%, rgba(255,255,255,0) 100%)`
+                ? `linear-gradient(${visual.dataBar.direction === "rightToLeft" ? 270 : 90}deg, ${visual.dataBar.color} 0%, ${visual.dataBar.color} 72%, rgba(255,255,255,0) 100%)`
                 : visual.dataBar.color,
+              border: visual.dataBar.border ? `1px solid ${visual.dataBar.borderColor ?? visual.dataBar.color}` : undefined,
               bottom: 1,
               left: `${visual.dataBar.startPercent}%`,
               opacity: 0.75,
@@ -181,7 +182,7 @@ export function SpreadsheetCellContent({
             <span
               aria-hidden="true"
               style={{
-                background: "rgba(31, 41, 55, 0.45)",
+                background: visual.dataBar.axisColor ?? "rgba(31, 41, 55, 0.45)",
                 bottom: 1,
                 left: `${visual.dataBar.axisPercent}%`,
                 position: "absolute",

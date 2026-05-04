@@ -583,11 +583,16 @@ describe("spreadsheet conditional visuals", () => {
           rules: [
             {
               dataBar: {
+                axisColor: "111827",
+                border: true,
+                borderColor: "1D4ED8",
                 cfvos: [{ type: "min" }, { type: "max" }],
                 color: "3B82F6",
                 direction: "rightToLeft",
                 maxLength: 80,
                 minLength: 20,
+                negativeBorderColor: "991B1B",
+                negativeFillColor: "EF4444",
                 showValue: false,
               },
               type: "dataBar",
@@ -596,21 +601,28 @@ describe("spreadsheet conditional visuals", () => {
         },
       ],
       rows: [
-        { cells: [{ address: "A1", value: 0 }], index: 1 },
+        { cells: [{ address: "A1", value: -100 }], index: 1 },
         { cells: [{ address: "A2", value: 100 }], index: 2 },
       ],
     });
 
     expect(visuals.get("1:0")?.dataBar).toMatchObject({
+      axisColor: "#111827",
+      axisPercent: 50,
+      border: true,
+      borderColor: "#991B1B",
+      color: "#EF4444",
       direction: "rightToLeft",
       showValue: false,
-      startPercent: 80,
-      widthPercent: 20,
+      startPercent: 50,
+      widthPercent: 50,
     });
     expect(visuals.get("2:0")?.dataBar).toMatchObject({
+      borderColor: "#1D4ED8",
+      color: "#3B82F6",
       direction: "rightToLeft",
-      startPercent: 20,
-      widthPercent: 80,
+      startPercent: 0,
+      widthPercent: 50,
     });
   });
 });

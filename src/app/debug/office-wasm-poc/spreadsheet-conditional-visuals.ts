@@ -17,7 +17,10 @@ import { tableStylePalette, type SpreadsheetTablePalette } from "./spreadsheet-t
 export type SpreadsheetCellVisual = {
   background?: string;
   dataBar?: {
+    axisColor?: string;
     axisPercent?: number;
+    border: boolean;
+    borderColor?: string;
     color: string;
     direction: "leftToRight" | "rightToLeft";
     gradient: boolean;
@@ -896,10 +899,18 @@ function spreadsheetDataBarVisual(
   const startPercent = dataBarStartPercent(rawStartPercent, rawEndPercent, widthPercent);
   const direction = asString(dataBar.direction) === "rightToLeft" ? "rightToLeft" : "leftToRight";
   const axisPercent = minValue < 0 && maxValue > 0 ? displayDataBarPercent(zeroPercent, direction) : undefined;
+  const positiveBorderColor = protocolColorToCss(dataBar.borderColor) ?? color;
+  const negativeBorderColor = dataBar.negativeBarBorderColorSameAsPositive === true
+    ? positiveBorderColor
+    : protocolColorToCss(dataBar.negativeBorderColor) ?? negativeColor;
+  const displayColor = value < 0 && dataBar.negativeBarColorSameAsPositive !== true ? negativeColor : color;
 
   return {
+    axisColor: protocolColorToCss(dataBar.axisColor),
     axisPercent,
-    color: value < 0 ? negativeColor : color,
+    border: dataBar.border === true,
+    borderColor: value < 0 ? negativeBorderColor : positiveBorderColor,
+    color: displayColor,
     direction,
     gradient: dataBar.gradient !== false,
     showValue: dataBar.showValue !== false,

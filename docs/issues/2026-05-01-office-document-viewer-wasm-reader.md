@@ -117,6 +117,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX pixel-level chart pass now starts with typography parity: the chart canvas no longer hardcodes mixed `Arial` sizes, and title, axis labels, axis titles, data labels, and legend metrics share an Excel-like `Calibri` typography adapter. Axis gutters and horizontal legend positions are now derived from those text metrics.
 - XLSX chart frame parity now draws Excel-like chart-area and plot-area borders from a shared frame geometry helper, so axis/grid/series layout can be compared against the same chart object and plot box contract.
 - XLSX chart scale parity now expands value axes below zero when series contain negative values, draws the primary axis on the zero baseline, and anchors bar/area fills plus data labels to that baseline instead of always using the plot bottom.
+- XLSX data-bar rendering now consumes richer protocol style hints for borders, axis colors, negative fill/border colors, same-as-positive flags, and right-to-left gradient direction, improving conditional-format parity for production sheets with mixed positive/negative values.
 
 ## Codex 技术方案逆向分析
 
