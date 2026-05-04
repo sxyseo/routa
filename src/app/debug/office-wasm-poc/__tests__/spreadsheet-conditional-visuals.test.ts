@@ -995,6 +995,131 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("5:7")).toBeUndefined();
   });
 
+  it("evaluates ranking and percentile helpers in conditional format formulas", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A2:A6"],
+          rules: [
+            {
+              fillColor: "FDE68A",
+              formulas: ["=RANK.EQ(A2,$A$2:$A$6)<=2"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["B2:B6"],
+          rules: [
+            {
+              fillColor: "BAE6FD",
+              formulas: ["=B2>=PERCENTILE.INC($B$2:$B$6,0.75)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["C2:C6"],
+          rules: [
+            {
+              fillColor: "C4B5FD",
+              formulas: ["=OR(C2=LARGE($C$2:$C$6,2),C2=SMALL($C$2:$C$6,1))"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["D2:D6"],
+          rules: [
+            {
+              fillColor: "BBF7D0",
+              formulas: ["=D2>=MEDIAN($D$2:$D$6)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["F2:F6"],
+          rules: [
+            {
+              fillColor: "FECACA",
+              formulas: ["=AND(COUNTA($F$2:$F$6)=3,COUNTBLANK($F$2:$F$6)=2)"],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        {
+          cells: [
+            { address: "A2", value: 95 },
+            { address: "B2", value: 95 },
+            { address: "C2", value: 10 },
+            { address: "D2", value: 1 },
+            { address: "F2", value: "Ready" },
+          ],
+          index: 2,
+        },
+        {
+          cells: [
+            { address: "A3", value: 80 },
+            { address: "B3", value: 80 },
+            { address: "C3", value: 30 },
+            { address: "D3", value: 3 },
+            { address: "F3", value: "" },
+          ],
+          index: 3,
+        },
+        {
+          cells: [
+            { address: "A4", value: 90 },
+            { address: "B4", value: 90 },
+            { address: "C4", value: 20 },
+            { address: "D4", value: 5 },
+            { address: "F4", value: "Blocked" },
+          ],
+          index: 4,
+        },
+        {
+          cells: [
+            { address: "A5", value: 70 },
+            { address: "B5", value: 70 },
+            { address: "C5", value: 5 },
+            { address: "D5", value: 7 },
+          ],
+          index: 5,
+        },
+        {
+          cells: [
+            { address: "A6", value: 60 },
+            { address: "B6", value: 60 },
+            { address: "C6", value: 40 },
+            { address: "D6", value: 9 },
+            { address: "F6", value: "Done" },
+          ],
+          index: 6,
+        },
+      ],
+    });
+
+    expect(visuals.get("2:0")?.background).toBe("#FDE68A");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#FDE68A");
+    expect(visuals.get("5:0")).toBeUndefined();
+    expect(visuals.get("2:1")?.background).toBe("#BAE6FD");
+    expect(visuals.get("3:1")).toBeUndefined();
+    expect(visuals.get("4:1")?.background).toBe("#BAE6FD");
+    expect(visuals.get("3:2")?.background).toBe("#C4B5FD");
+    expect(visuals.get("5:2")?.background).toBe("#C4B5FD");
+    expect(visuals.get("6:2")).toBeUndefined();
+    expect(visuals.get("2:3")).toBeUndefined();
+    expect(visuals.get("4:3")?.background).toBe("#BBF7D0");
+    expect(visuals.get("6:3")?.background).toBe("#BBF7D0");
+    expect(visuals.get("2:5")?.background).toBe("#FECACA");
+    expect(visuals.get("5:5")?.background).toBe("#FECACA");
+    expect(visuals.get("6:5")?.background).toBe("#FECACA");
+  });
+
   it("evaluates common text helpers in conditional format formulas", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [

@@ -235,6 +235,35 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "COUNT") {
     return formulaNumericArgs(args, context).length;
   }
+  if (normalizedName === "COUNTA") {
+    return formulaRawArgs(args, context).filter((value) => asString(value).trim().length > 0).length;
+  }
+  if (normalizedName === "COUNTBLANK") {
+    return countBlankFormulaValues(args, context);
+  }
+  if (normalizedName === "MEDIAN") {
+    return medianFormulaNumber(formulaNumericArgs(args, context));
+  }
+  if (normalizedName === "LARGE" || normalizedName === "SMALL") {
+    return rankedFormulaNumber(
+      formulaNumericArgs([args[0] ?? ""], context),
+      Number(evaluateFormulaValue(args[1] ?? "1", context)),
+      normalizedName,
+    );
+  }
+  if (normalizedName === "RANK" || normalizedName === "RANK.EQ") {
+    return rankFormulaNumber(
+      Number(evaluateFormulaValue(args[0] ?? "", context)),
+      formulaNumericArgs([args[1] ?? ""], context),
+      Number(evaluateFormulaValue(args[2] ?? "0", context)),
+    );
+  }
+  if (normalizedName === "PERCENTILE" || normalizedName === "PERCENTILE.INC") {
+    return percentileFormulaNumber(
+      formulaNumericArgs([args[0] ?? ""], context),
+      Number(evaluateFormulaValue(args[1] ?? "", context)),
+    );
+  }
   if (normalizedName === "COUNTIF") {
     return countIf(args, context);
   }
@@ -363,6 +392,20 @@ function formulaNumericArgs(args: string[], context: ConditionalFormulaContext):
   return values;
 }
 
+function formulaRawArgs(args: string[], context: ConditionalFormulaContext): unknown[] {
+  const values: unknown[] = [];
+  for (const arg of args) {
+    const rangeValues = formulaRangeValues(arg, context);
+    if (rangeValues) {
+      values.push(...rangeValues);
+      continue;
+    }
+
+    values.push(evaluateFormulaValue(arg, context));
+  }
+  return values;
+}
+
 function formulaRangeValues(expression: string, context: ConditionalFormulaContext): string[] | null {
   const cells = formulaRangeCells(expression, context);
   return cells ? cells.map((cell) => cell.value) : null;
@@ -414,6 +457,53 @@ function countIfs(args: string[], context: ConditionalFormulaContext): number {
     const columnOffset = cell.columnIndex - firstRange.startColumn;
     return criteria.every((item) => formulaCriteriaRangeMatches(item, rowOffset, columnOffset));
   }).length;
+}
+
+function countBlankFormulaValues(args: string[], context: ConditionalFormulaContext): number {
+  let count = 0;
+  for (const arg of args) {
+    const range = formulaRange(arg, context);
+    const cells = formulaRangeCells(arg, context);
+    if (range && cells) {
+      const area = range.rowSpan * range.columnSpan;
+      const explicitBlankCount = cells.filter((cell) => cell.value.trim().length === 0).length;
+      count += area <= 100_000 ? area - cells.filter((cell) => cell.value.trim().length > 0).length : explicitBlankCount;
+      continue;
+    }
+
+    if (asString(evaluateFormulaValue(arg, context)).trim().length === 0) count += 1;
+  }
+  return count;
+}
+
+function medianFormulaNumber(values: number[]): number {
+  if (values.length === 0) return Number.NaN;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function rankedFormulaNumber(values: number[], rank: number, mode: string): number {
+  const position = Math.trunc(rank) - 1;
+  if (values.length === 0 || !Number.isFinite(position) || position < 0 || position >= values.length) return Number.NaN;
+  const sorted = [...values].sort((left, right) => mode === "SMALL" ? left - right : right - left);
+  return sorted[position];
+}
+
+function rankFormulaNumber(value: number, values: number[], order: number): number {
+  if (!Number.isFinite(value) || values.length === 0) return Number.NaN;
+  const ascending = Number.isFinite(order) && order !== 0;
+  return 1 + values.filter((candidate) => ascending ? candidate < value : candidate > value).length;
+}
+
+function percentileFormulaNumber(values: number[], percentile: number): number {
+  if (values.length === 0 || !Number.isFinite(percentile) || percentile < 0 || percentile > 1) return Number.NaN;
+  const sorted = [...values].sort((left, right) => left - right);
+  const position = (sorted.length - 1) * percentile;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
 
 type FormulaCriteriaRange = {
