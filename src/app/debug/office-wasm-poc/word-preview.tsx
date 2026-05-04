@@ -103,17 +103,19 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
         styleMaps={styleMaps}
         variant="header"
       />
-      {elements.map((element, index) => (
-        <WordElement
-          charts={charts}
-          element={asRecord(element) ?? {}}
-          key={`${asString(asRecord(element)?.id)}-${index}`}
-          numberingMarkers={numberingMarkers}
-          referenceMarkers={referenceMarkers}
-          reviewMarkTypes={reviewMarkTypes}
-          styleMaps={styleMaps}
-        />
-      ))}
+      <section data-testid="word-body-content" style={wordBodyContentStyle(root)}>
+        {elements.map((element, index) => (
+          <WordElement
+            charts={charts}
+            element={asRecord(element) ?? {}}
+            key={`${asString(asRecord(element)?.id)}-${index}`}
+            numberingMarkers={numberingMarkers}
+            referenceMarkers={referenceMarkers}
+            reviewMarkTypes={reviewMarkTypes}
+            styleMaps={styleMaps}
+          />
+        ))}
+      </section>
       <WordSupplementalNotes
         numberingMarkers={numberingMarkers}
         referenceMarkers={referenceMarkers}
@@ -475,6 +477,34 @@ export function wordTableContainerStyle(element: RecordValue): CSSProperties {
     overflowX: "auto",
     width: box.hasDecodedSize ? box.width : "100%",
   };
+}
+
+export function wordBodyContentStyle(root: RecordValue | null): CSSProperties {
+  const columns = wordSectionColumns(root);
+  if (!columns) return {};
+  return {
+    columnCount: columns.count,
+    columnGap: columns.gapPx,
+    columnRuleColor: columns.separator ? "#cbd5e1" : undefined,
+    columnRuleStyle: columns.separator ? "solid" : undefined,
+    columnRuleWidth: columns.separator ? 1 : undefined,
+  };
+}
+
+function wordSectionColumns(root: RecordValue | null): { count: number; gapPx?: number; separator: boolean } | null {
+  for (const section of asArray(root?.sections).map(asRecord)) {
+    const columns = asRecord(section?.columns);
+    const count = Math.floor(asNumber(columns?.count));
+    if (count > 1) {
+      const spaceTwips = asNumber(columns?.space);
+      return {
+        count,
+        gapPx: spaceTwips > 0 ? Math.max(8, Math.min(96, spaceTwips / 15)) : undefined,
+        separator: columns?.separator === true,
+      };
+    }
+  }
+  return null;
 }
 
 function wordSupplementalNoteItems(

@@ -6,6 +6,7 @@ import {
   WordPreview,
   wordChartStyle,
   wordImageStyle,
+  wordBodyContentStyle,
   wordTableCellStyle,
   wordTableContainerStyle,
 } from "../word-preview";
@@ -287,6 +288,34 @@ describe("WordPreview", () => {
 
     const paragraphs = Array.from(container.querySelectorAll("p")).map((paragraph) => paragraph.textContent);
     expect(paragraphs).toEqual(["Header text", "Body text", "Footer text"]);
+  });
+
+  it("maps decoded DOCX section columns into body CSS columns", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [{ runs: [{ text: "Column text" }] }],
+            },
+          ],
+          sections: [{ columns: { count: 2, separator: true, space: 720 } }],
+        }}
+      />,
+    );
+
+    const body = container.querySelector<HTMLElement>('[data-testid="word-body-content"]');
+    expect(body?.style.columnCount).toBe("2");
+    expect(body?.style.columnGap).toBe("48px");
+    expect(body?.style.columnRuleStyle).toBe("solid");
+  });
+
+  it("uses decoded DOCX section columns for body style", () => {
+    expect(wordBodyContentStyle({ sections: [{ columns: { count: 3, space: 360 } }] })).toMatchObject({
+      columnCount: 3,
+      columnGap: 24,
+    });
   });
 
   it("renders decoded DOCX insertion review marks", () => {
