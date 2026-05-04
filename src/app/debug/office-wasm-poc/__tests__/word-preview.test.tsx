@@ -177,6 +177,44 @@ describe("WordPreview", () => {
     expect(run?.style.textTransform).toBe("uppercase");
   });
 
+  it("uses decoded DOCX explicit false run styles to override inherited emphasis", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  runs: [
+                    {
+                      text: "Plain override",
+                      textStyle: { bold: false, italic: false, underline: false },
+                    },
+                  ],
+                  styleId: "EmphasisStyle",
+                },
+              ],
+            },
+          ],
+          textStyles: [
+            {
+              id: "EmphasisStyle",
+              textStyle: { bold: true, italic: true, underline: true },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const paragraph = container.querySelector<HTMLElement>("p");
+    const run = container.querySelector<HTMLElement>("p span");
+    expect(paragraph?.style.fontWeight).toBe("700");
+    expect(run?.style.fontStyle).toBe("normal");
+    expect(run?.style.fontWeight).toBe("400");
+    expect(run?.style.textDecoration).toBe("none");
+  });
+
   it("renders decoded DOCX auto-number markers in document order", () => {
     const { container } = render(
       <WordPreview

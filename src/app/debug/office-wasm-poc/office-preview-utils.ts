@@ -348,9 +348,9 @@ export function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {
     color: colorToCss(asRecord(run.style?.fill)?.color) ?? undefined,
     fontFamily: officeFontFamily(typeface),
     fontSize: runFontSize == null ? undefined : Math.max(fontScale < 1 ? 2 : 8, Math.min(fontScale < 1 ? 12 : 72, runFontSize)),
-    fontStyle: run.style?.italic === true ? "italic" : undefined,
-    fontWeight: run.style?.bold === true ? 700 : undefined,
-    textDecoration: run.style?.underline === true ? "underline" : undefined,
+    fontStyle: run.style?.italic === true ? "italic" : run.style?.italic === false ? "normal" : undefined,
+    fontWeight: run.style?.bold === true ? 700 : run.style?.bold === false ? 400 : undefined,
+    textDecoration: run.style?.underline === true ? "underline" : run.style?.underline === false ? "none" : undefined,
     textTransform: scheme.textTransform,
   };
 }
