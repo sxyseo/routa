@@ -413,6 +413,7 @@ describe("WordPreview", () => {
           heightEmu: 457_200,
           widthEmu: 914_400,
           xEmu: 457_200,
+          yEmu: 228_600,
         },
       },
       "blob:test-image",
@@ -423,6 +424,7 @@ describe("WordPreview", () => {
       backgroundImage: 'url("blob:test-image")',
       height: undefined,
       marginLeft: 48,
+      marginTop: 24,
       width: 96,
     });
   });
@@ -432,11 +434,13 @@ describe("WordPreview", () => {
       bbox: {
         widthEmu: 2_857_500,
         xEmu: 95_250,
+        yEmu: 114_300,
       },
     });
 
     expect(style).toMatchObject({
       marginLeft: 10,
+      marginTop: 12,
       width: 300,
     });
   });
@@ -482,6 +486,7 @@ describe("WordPreview", () => {
                 heightEmu: 1_905_000,
                 widthEmu: 3_810_000,
                 xEmu: 95_250,
+                yEmu: 190_500,
               },
               chartReference: { id: "chart-1" },
             },
@@ -495,6 +500,7 @@ describe("WordPreview", () => {
     expect(canvas?.getAttribute("style")).toContain("width: 400px");
     expect(canvas?.getAttribute("style")).toContain("height: 200px");
     expect(canvas?.style.marginLeft).toBe("10px");
+    expect(canvas?.style.marginTop).toBe("20px");
     await waitFor(() => expect(getContext).toHaveBeenCalledWith("2d"));
     expect(context.setTransform).toHaveBeenCalled();
     expect(context.fillRect).toHaveBeenCalled();
@@ -506,12 +512,14 @@ describe("WordPreview", () => {
         heightEmu: 1_905_000,
         widthEmu: 3_810_000,
         xEmu: 95_250,
+        yEmu: 190_500,
       },
     });
 
     expect(style).toMatchObject({
       height: 200,
       marginLeft: 10,
+      marginTop: 20,
       width: 400,
     });
   });

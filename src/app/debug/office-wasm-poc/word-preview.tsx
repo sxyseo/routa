@@ -449,6 +449,7 @@ export function wordImageStyle(element: RecordValue, imageSrc: string): CSSPrope
     display: "block",
     height: box.hasDecodedSize ? undefined : box.height,
     marginLeft: box.marginLeft,
+    marginTop: box.marginTop,
     maxHeight: box.hasDecodedSize ? undefined : 360,
     maxWidth: "100%",
     width: box.hasDecodedSize ? box.width : "100%",
@@ -462,6 +463,7 @@ export function wordChartStyle(element: RecordValue): CSSProperties {
     height: box.height,
     margin: "12px 0 18px",
     marginLeft: box.marginLeft,
+    marginTop: box.marginTop,
     maxWidth: "100%",
     width: box.width,
   };
@@ -472,6 +474,7 @@ export function wordTableContainerStyle(element: RecordValue): CSSProperties {
   return {
     margin: "12px 0 18px",
     marginLeft: box.marginLeft,
+    marginTop: box.marginTop,
     maxWidth: "100%",
     overflowX: "auto",
     width: box.hasDecodedSize ? box.width : "100%",
@@ -810,6 +813,7 @@ type WordElementBox = {
   hasDecodedSize: boolean;
   height: number;
   marginLeft?: number;
+  marginTop?: number;
   rawHeight: number;
   rawWidth: number;
   width: number;
@@ -820,6 +824,7 @@ function wordElementBox(element: RecordValue, fallbackWidth: number, fallbackHei
   const rawWidth = emuToPx(box?.widthEmu);
   const rawHeight = emuToPx(box?.heightEmu);
   const xPx = emuToPx(box?.xEmu);
+  const yPx = emuToPx(box?.yEmu);
   const hasDecodedSize = rawWidth > 0 && (rawHeight > 0 || fallbackHeight <= 0);
   const width = hasDecodedSize ? Math.max(24, Math.min(WORD_PREVIEW_CONTENT_WIDTH_PX, rawWidth)) : fallbackWidth;
   const height = hasDecodedSize && rawHeight > 0 ? Math.max(18, rawHeight * (width / rawWidth)) : fallbackHeight;
@@ -829,6 +834,7 @@ function wordElementBox(element: RecordValue, fallbackWidth: number, fallbackHei
     hasDecodedSize,
     height,
     marginLeft: xPx > 0 ? Math.min(maxOffset, xPx) : undefined,
+    marginTop: yPx > 0 ? Math.min(240, yPx) : undefined,
     rawHeight,
     rawWidth,
     width,
