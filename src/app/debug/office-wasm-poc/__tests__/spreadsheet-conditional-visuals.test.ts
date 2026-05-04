@@ -742,7 +742,7 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:3")?.background).toBe("#BBF7D0");
   });
 
-  it("evaluates SUMIF, SUMIFS, and AVERAGEIF conditional format formulas", () => {
+  it("evaluates SUMIF, SUMIFS, AVERAGEIF, and multi-condition aggregate formulas", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
         {
@@ -775,12 +775,90 @@ describe("spreadsheet conditional visuals", () => {
             },
           ],
         },
+        {
+          ranges: ["G2:G5"],
+          rules: [
+            {
+              fillColor: "C4B5FD",
+              formulas: ["=G2>AVERAGEIFS($D$2:$D$5,$B$2:$B$5,\"Open\",$C$2:$C$5,C2)"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["H2:H5"],
+          rules: [
+            {
+              fillColor: "BAE6FD",
+              formulas: ["=H2=MAXIFS($D$2:$D$5,$B$2:$B$5,\"Open\")"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["I2:I5"],
+          rules: [
+            {
+              fillColor: "FECACA",
+              formulas: ["=I2=MINIFS($D$2:$D$5,$B$2:$B$5,\"Open\")"],
+              type: "expression",
+            },
+          ],
+        },
       ],
       rows: [
-        { cells: [{ address: "B2", value: "Open" }, { address: "C2", value: "UI" }, { address: "D2", value: 12 }, { address: "E2", value: "UI" }, { address: "F2", value: 5 }], index: 2 },
-        { cells: [{ address: "B3", value: "Closed" }, { address: "C3", value: "UI" }, { address: "D3", value: 40 }, { address: "E3", value: "UI" }, { address: "F3", value: 50 }], index: 3 },
-        { cells: [{ address: "B4", value: "Open" }, { address: "C4", value: "API" }, { address: "D4", value: 8 }, { address: "E4", value: "API" }, { address: "F4", value: 15 }], index: 4 },
-        { cells: [{ address: "B5", value: "Open" }, { address: "C5", value: "UI" }, { address: "D5", value: 9 }, { address: "E5", value: "UI" }, { address: "F5", value: 25 }], index: 5 },
+        {
+          cells: [
+            { address: "B2", value: "Open" },
+            { address: "C2", value: "UI" },
+            { address: "D2", value: 12 },
+            { address: "E2", value: "UI" },
+            { address: "F2", value: 5 },
+            { address: "G2", value: 11 },
+            { address: "H2", value: 12 },
+            { address: "I2", value: 12 },
+          ],
+          index: 2,
+        },
+        {
+          cells: [
+            { address: "B3", value: "Closed" },
+            { address: "C3", value: "UI" },
+            { address: "D3", value: 40 },
+            { address: "E3", value: "UI" },
+            { address: "F3", value: 50 },
+            { address: "G3", value: 10 },
+            { address: "H3", value: 40 },
+            { address: "I3", value: 40 },
+          ],
+          index: 3,
+        },
+        {
+          cells: [
+            { address: "B4", value: "Open" },
+            { address: "C4", value: "API" },
+            { address: "D4", value: 8 },
+            { address: "E4", value: "API" },
+            { address: "F4", value: 15 },
+            { address: "G4", value: 8 },
+            { address: "H4", value: 8 },
+            { address: "I4", value: 8 },
+          ],
+          index: 4,
+        },
+        {
+          cells: [
+            { address: "B5", value: "Open" },
+            { address: "C5", value: "UI" },
+            { address: "D5", value: 9 },
+            { address: "E5", value: "UI" },
+            { address: "F5", value: 25 },
+            { address: "G5", value: 11 },
+            { address: "H5", value: 12 },
+            { address: "I5", value: 9 },
+          ],
+          index: 5,
+        },
       ],
     });
 
@@ -792,6 +870,17 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("2:5")).toBeUndefined();
     expect(visuals.get("4:5")).toBeUndefined();
     expect(visuals.get("5:5")?.background).toBe("#A7F3D0");
+    expect(visuals.get("2:6")?.background).toBe("#C4B5FD");
+    expect(visuals.get("3:6")).toBeUndefined();
+    expect(visuals.get("4:6")).toBeUndefined();
+    expect(visuals.get("5:6")?.background).toBe("#C4B5FD");
+    expect(visuals.get("2:7")?.background).toBe("#BAE6FD");
+    expect(visuals.get("3:7")).toBeUndefined();
+    expect(visuals.get("4:7")).toBeUndefined();
+    expect(visuals.get("5:7")?.background).toBe("#BAE6FD");
+    expect(visuals.get("2:8")).toBeUndefined();
+    expect(visuals.get("4:8")?.background).toBe("#FECACA");
+    expect(visuals.get("5:8")).toBeUndefined();
   });
 
   it("evaluates common text helpers in conditional format formulas", () => {

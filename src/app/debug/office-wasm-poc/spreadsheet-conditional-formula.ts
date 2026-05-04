@@ -250,6 +250,15 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "AVERAGEIF") {
     return aggregateIf(args, context, "average");
   }
+  if (normalizedName === "AVERAGEIFS") {
+    return aggregateIfs(args, context, "average");
+  }
+  if (normalizedName === "MINIFS") {
+    return aggregateIfs(args, context, "min");
+  }
+  if (normalizedName === "MAXIFS") {
+    return aggregateIfs(args, context, "max");
+  }
   if (normalizedName === "TODAY") {
     return currentExcelSerialDay();
   }
@@ -413,17 +422,17 @@ function aggregateIf(args: string[], context: ConditionalFormulaContext, kind: "
   return aggregateNumericValues(values, kind);
 }
 
-function aggregateIfs(args: string[], context: ConditionalFormulaContext, kind: "sum"): number {
-  if (args.length < 3 || args.length % 2 !== 1) return 0;
+function aggregateIfs(args: string[], context: ConditionalFormulaContext, kind: "average" | "max" | "min" | "sum"): number {
+  if (args.length < 3 || args.length % 2 !== 1) return aggregateEmptyResult(kind);
   const sumRange = formulaRange(args[0] ?? "", context);
   const sumCells = formulaRangeCells(args[0] ?? "", context);
-  if (!sumRange || !sumCells) return 0;
+  if (!sumRange || !sumCells) return aggregateEmptyResult(kind);
   const sumByOffset = cellsByOffset(sumCells, sumRange);
 
   const criteria: FormulaCriteriaRange[] = [];
   for (let index = 1; index < args.length; index += 2) {
     const criteriaRange = formulaCriteriaRange(args[index] ?? "", args[index + 1] ?? "", context);
-    if (!criteriaRange) return 0;
+    if (!criteriaRange) return aggregateEmptyResult(kind);
     criteria.push(criteriaRange);
   }
 
@@ -450,9 +459,15 @@ function numericValuesMatchingCriteria(criteriaRange: FormulaCriteriaRange, valu
   return values;
 }
 
-function aggregateNumericValues(values: number[], kind: "average" | "sum"): number {
+function aggregateNumericValues(values: number[], kind: "average" | "max" | "min" | "sum"): number {
+  if (kind === "max") return values.length > 0 ? Math.max(...values) : Number.NaN;
+  if (kind === "min") return values.length > 0 ? Math.min(...values) : Number.NaN;
   if (kind === "average") return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : Number.NaN;
   return values.reduce((sum, value) => sum + value, 0);
+}
+
+function aggregateEmptyResult(kind: "average" | "max" | "min" | "sum"): number {
+  return kind === "sum" ? 0 : Number.NaN;
 }
 
 function formulaCriteriaRange(rangeExpression: string, criterionExpression: string, context: ConditionalFormulaContext): FormulaCriteriaRange | null {
