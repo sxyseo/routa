@@ -715,6 +715,10 @@ internal static class PptxPresentationProtoReader
         foreach (var paragraph in textBody.Elements<A.Paragraph>())
         {
             var runs = ExtractRuns(paragraph).ToList();
+            if (runs.Count == 0 && paragraph.Elements<A.Run>().Any())
+            {
+                runs = ExtractRuns(paragraph, includeEmptyText: true).Take(1).ToList();
+            }
             var paragraphProperties = paragraph.ParagraphProperties;
             yield return Message(output =>
             {
@@ -776,7 +780,14 @@ internal static class PptxPresentationProtoReader
             };
             yield return Message(output =>
             {
-                WriteString(output, 1, text);
+                if (includeEmptyText)
+                {
+                    WriteStringAlways(output, 1, text);
+                }
+                else
+                {
+                    WriteString(output, 1, text);
+                }
                 if (runProperties is not null)
                 {
                     WriteMessage(output, 2, WriteTextStyle(runProperties));
@@ -1039,6 +1050,11 @@ internal static class PptxPresentationProtoReader
         return Message(output =>
         {
             var alignment = AlignmentCode(AttributeValue(paragraphProperties, "algn"));
+            if (alignment == 4)
+            {
+                alignment = null;
+            }
+
             WriteInt32(output, 8, alignment);
         });
     }
