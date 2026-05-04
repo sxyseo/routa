@@ -34,7 +34,7 @@ export type ParagraphView = {
   style: RecordValue | null;
 };
 
-export type DocumentStyleMaps = {
+export type OfficeTextStyleMaps = {
   textStyles: Map<string, RecordValue>;
   images: Map<string, string>;
 };
@@ -49,7 +49,7 @@ export type CellMerge = {
 export const EXCEL_MAX_COLUMN_COUNT = 16_384;
 export const EXCEL_MAX_ROW_COUNT = 1_048_576;
 
-export const EMPTY_DOCUMENT_STYLE_MAPS: DocumentStyleMaps = {
+export const EMPTY_OFFICE_TEXT_STYLE_MAPS: OfficeTextStyleMaps = {
   textStyles: new Map(),
   images: new Map(),
 };
@@ -206,7 +206,7 @@ export function paragraphText(paragraph: unknown): string {
   return runs.map((run) => asString(asRecord(run)?.text)).join("");
 }
 
-export function paragraphView(paragraph: unknown, styleMaps: DocumentStyleMaps): ParagraphView {
+export function paragraphView(paragraph: unknown, styleMaps: OfficeTextStyleMaps): ParagraphView {
   const record = asRecord(paragraph);
   const styleId = asString(record?.styleId);
   const style = {
@@ -236,7 +236,7 @@ export function paragraphView(paragraph: unknown, styleMaps: DocumentStyleMaps):
   };
 }
 
-function resolvedTextStyle(styleId: string, styleMaps: DocumentStyleMaps, visited = new Set<string>()): RecordValue {
+function resolvedTextStyle(styleId: string, styleMaps: OfficeTextStyleMaps, visited = new Set<string>()): RecordValue {
   if (!styleId || visited.has(styleId)) return {};
 
   const styleRecord = styleMaps.textStyles.get(styleId);

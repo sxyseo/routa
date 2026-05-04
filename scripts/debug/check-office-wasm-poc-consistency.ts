@@ -19,7 +19,7 @@ const rendererPaths = [
   "src/app/debug/office-wasm-poc/page-client.tsx",
   "src/app/debug/office-wasm-poc/spreadsheet-preview.tsx",
   "src/app/debug/office-wasm-poc/presentation-preview.tsx",
-  "src/app/debug/office-wasm-poc/document-preview.tsx",
+  "src/app/debug/office-wasm-poc/word-preview.tsx",
 ].map((filePath) => path.resolve(repoRoot, filePath));
 
 const failures: string[] = [];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { EMPTY_DOCUMENT_STYLE_MAPS, officeFontFamily, paragraphView } from "../office-preview-utils";
+import { EMPTY_OFFICE_TEXT_STYLE_MAPS, officeFontFamily, paragraphView } from "../office-preview-utils";
 import {
   applyPresentationLayoutInheritance,
   computePresentationFit,
@@ -234,7 +234,7 @@ describe("presentation renderer helpers", () => {
         spaceAfter: 120,
         textStyle: { alignment: 1 },
       },
-      EMPTY_DOCUMENT_STYLE_MAPS,
+      EMPTY_OFFICE_TEXT_STYLE_MAPS,
     );
 
     expect(paragraph.style?.bulletCharacter).toBe("*");

@@ -5,7 +5,7 @@ import {
   asString,
   colorToCss,
   cssFontSize,
-  EMPTY_DOCUMENT_STYLE_MAPS,
+  EMPTY_OFFICE_TEXT_STYLE_MAPS,
   officeFontFamily,
   paragraphView,
   type ParagraphView,
@@ -82,7 +82,7 @@ export function drawPresentationTextBox({
   slideScale: number;
   textOverflow: PresentationTextOverflow;
 }): void {
-  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_DOCUMENT_STYLE_MAPS));
+  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_OFFICE_TEXT_STYLE_MAPS));
   if (paragraphs.length === 0) return;
 
   const textStyle = asRecord(element.textStyle);
