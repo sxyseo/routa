@@ -121,6 +121,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX data-bar rendering now consumes richer protocol style hints for borders, axis colors, negative fill/border colors, same-as-positive flags, and right-to-left gradient direction, improving conditional-format parity for production sheets with mixed positive/negative values.
 - XLSX table visual parity now applies built-in table-style border colors plus dark-style header/total text colors to rendered cells instead of relying on default gridlines and inherited font color.
 - XLSX conditional-format protocol parity now emits Walnut `CfRule` fields for `aboveAverage`, `bottom`, `rank`, `stdDev`, `equalAverage`, and `timePeriod`; the debug preview also evaluates Excel serial-date time-period rules such as `last7Days` and `thisMonth`.
+- XLSX conditional-format precedence now sorts decoded rules by Excel/Walnut `priority` and applies `stopIfTrue` consistently across format, color-scale, data-bar, and icon-set visuals instead of relying on protocol array order.
 
 ## Codex 技术方案逆向分析
 

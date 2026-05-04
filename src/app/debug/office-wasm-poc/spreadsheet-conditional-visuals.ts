@@ -65,8 +65,10 @@ type SpreadsheetCellRange = NonNullable<ReturnType<typeof parseCellRange>>;
 type SpreadsheetConditionalVisualSpec =
   | {
     kind: "colorScale";
+    priority: number;
     range: SpreadsheetCellRange;
     stops: ColorScaleStop[];
+    stopIfTrue: boolean;
   }
   | {
     barMax: number;
@@ -75,22 +77,27 @@ type SpreadsheetConditionalVisualSpec =
     dataBar: RecordValue;
     kind: "dataBar";
     negativeColor: string;
+    priority: number;
     range: SpreadsheetCellRange;
     span: number;
+    stopIfTrue: boolean;
   }
   | {
     iconSet: RecordValue;
     kind: "iconSet";
     maxValue: number;
     minValue: number;
+    priority: number;
     range: SpreadsheetCellRange;
     rangeValues: number[];
+    stopIfTrue: boolean;
   }
   | {
     definedNames?: unknown;
     format: RecordValue;
     kind: "format";
     numericValues?: readonly number[];
+    priority: number;
     range: SpreadsheetCellRange;
     stopIfTrue: boolean;
     tables?: unknown;
@@ -149,7 +156,7 @@ export function buildSpreadsheetConditionalVisuals(
         const colors = asArray(colorScale.colors).map(protocolColorToCss).filter((color): color is string => Boolean(color));
         const rangeValues = values.map((item) => item.value);
         const stops = colorScaleStops(colorScale, rangeValues, minValue, maxValue, colors);
-        conditionalVisuals.push({ kind: "colorScale", range, stops });
+        conditionalVisuals.push({ kind: "colorScale", priority: conditionalRulePriority(format), range, stops, stopIfTrue: format.stopIfTrue === true });
         continue;
       }
 
@@ -160,13 +167,33 @@ export function buildSpreadsheetConditionalVisuals(
         const span = Math.max(1, barMax - barMin);
         const color = protocolColorToCss(dataBar.color) ?? "#38bdf8";
         const negativeColor = protocolColorToCss(dataBar.negativeFillColor) ?? color;
-        conditionalVisuals.push({ barMax, barMin, color, dataBar, kind: "dataBar", negativeColor, range, span });
+        conditionalVisuals.push({
+          barMax,
+          barMin,
+          color,
+          dataBar,
+          kind: "dataBar",
+          negativeColor,
+          priority: conditionalRulePriority(format),
+          range,
+          span,
+          stopIfTrue: format.stopIfTrue === true,
+        });
         continue;
       }
 
       if (iconSet) {
         const rangeValues = values.map((item) => item.value);
-        conditionalVisuals.push({ iconSet, kind: "iconSet", maxValue, minValue, range, rangeValues });
+        conditionalVisuals.push({
+          iconSet,
+          kind: "iconSet",
+          maxValue,
+          minValue,
+          priority: conditionalRulePriority(format),
+          range,
+          rangeValues,
+          stopIfTrue: format.stopIfTrue === true,
+        });
         continue;
       }
 
@@ -175,6 +202,7 @@ export function buildSpreadsheetConditionalVisuals(
         format,
         kind: "format",
         numericValues: conditionalRuleNeedsNumericValues(format) ? values.map((item) => item.value) : undefined,
+        priority: conditionalRulePriority(format),
         range,
         stopIfTrue: format.stopIfTrue === true,
         tables: sheet?.tables,
@@ -184,7 +212,7 @@ export function buildSpreadsheetConditionalVisuals(
   }
 
   if (conditionalFormats.length > 0) {
-    return spreadsheetVisualLookup(tableVisuals, conditionalVisuals, rowsByIndex);
+    return spreadsheetVisualLookup(tableVisuals, prioritizedConditionalVisuals(conditionalVisuals), rowsByIndex);
   }
 
   for (const reference of conditionalReferences) {
@@ -215,6 +243,24 @@ export function buildSpreadsheetConditionalVisuals(
   }
 
   return spreadsheetVisualLookup(tableVisuals, conditionalVisuals, rowsByIndex);
+}
+
+function conditionalRulePriority(format: RecordValue): number {
+  const priority = asNumber(format.priority, Number.MAX_SAFE_INTEGER);
+  return priority > 0 ? priority : Number.MAX_SAFE_INTEGER;
+}
+
+function prioritizedConditionalVisuals(
+  conditionalVisuals: SpreadsheetConditionalVisualSpec[],
+): SpreadsheetConditionalVisualSpec[] {
+  return conditionalVisuals
+    .map((visual, index) => ({ index, visual }))
+    .sort((left, right) => conditionalVisualPriority(left.visual) - conditionalVisualPriority(right.visual) || left.index - right.index)
+    .map((item) => item.visual);
+}
+
+function conditionalVisualPriority(visual: SpreadsheetConditionalVisualSpec): number {
+  return "priority" in visual ? visual.priority : Number.MAX_SAFE_INTEGER;
 }
 
 export function protocolColorToCss(value: unknown): string | undefined {
@@ -386,6 +432,7 @@ function spreadsheetConditionalCellVisual(
       case "colorScale":
         if (value == null) break;
         visual = mergeSpreadsheetCellVisuals(visual, { background: colorScaleColor(value, rule.stops) });
+        if (rule.stopIfTrue) return visual;
         break;
       case "dataBar":
         if (value == null) break;
@@ -400,6 +447,7 @@ function spreadsheetConditionalCellVisual(
             rule.dataBar,
           ),
         });
+        if (rule.stopIfTrue) return visual;
         break;
       case "iconSet":
         if (value == null) break;
@@ -414,6 +462,7 @@ function spreadsheetConditionalCellVisual(
             rule.iconSet,
           ),
         });
+        if (rule.stopIfTrue) return visual;
         break;
       case "format": {
         const cell = cellAt(rowsByIndex, rowIndex, columnIndex);

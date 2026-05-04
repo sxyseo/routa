@@ -265,24 +265,45 @@ describe("spreadsheet conditional visuals", () => {
           ranges: ["A1:A2"],
           rules: [
             {
+              fillColor: "00FF00",
+              formulas: ["0"],
+              operator: "greaterThan",
+              priority: 2,
+              type: "cellIs",
+            },
+            {
               bold: true,
               fillColor: "FF0000",
               formulas: ["10"],
               operator: "greaterThan",
+              priority: 1,
               stopIfTrue: true,
               type: "cellIs",
             },
+          ],
+        },
+        {
+          ranges: ["B1:B1"],
+          rules: [
             {
-              fillColor: "00FF00",
+              dataBar: {
+                color: "63C384",
+              },
+              priority: 1,
+              stopIfTrue: true,
+            },
+            {
+              fillColor: "FFCC00",
               formulas: ["0"],
               operator: "greaterThan",
+              priority: 2,
               type: "cellIs",
             },
           ],
         },
       ],
       rows: [
-        { cells: [{ address: "A1", value: 12 }], index: 1 },
+        { cells: [{ address: "A1", value: 12 }, { address: "B1", value: 12 }], index: 1 },
         { cells: [{ address: "A2", value: 5 }], index: 2 },
       ],
     });
@@ -292,6 +313,8 @@ describe("spreadsheet conditional visuals", () => {
       fontWeight: 700,
     });
     expect(visuals.get("2:0")?.background).toBe("#00FF00");
+    expect(visuals.get("1:1")?.dataBar?.color).toBe("#63C384");
+    expect(visuals.get("1:1")?.background).toBeUndefined();
   });
 
   it("applies common text and range conditional format rules", () => {
