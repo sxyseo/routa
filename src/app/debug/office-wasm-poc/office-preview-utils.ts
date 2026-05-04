@@ -29,6 +29,7 @@ export type TextRunView = {
 
 export type ParagraphView = {
   id: string;
+  marker?: string;
   runs: TextRunView[];
   styleId: string;
   style: RecordValue | null;
@@ -283,18 +284,52 @@ export function paragraphStyle(paragraph: ParagraphView): CSSProperties {
   const isHeading = /^Heading/i.test(paragraph.styleId);
   const spaceBefore = asNumber(paragraph.style?.spaceBefore);
   const spaceAfter = asNumber(paragraph.style?.spaceAfter);
+  const marginLeft = emuToCssPx(paragraph.style?.marginLeft);
+  const textIndent = emuToCssPx(paragraph.style?.indent);
 
   return {
     color: colorToCss(asRecord(paragraph.style?.fill)?.color) ?? "#0f172a",
     fontFamily: officeFontFamily(asString(paragraph.style?.typeface)),
     fontSize: cssFontSize(paragraph.style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14),
     fontWeight: paragraph.style?.bold === true || isTitle || isHeading ? 700 : 400,
-    lineHeight: 1.55,
+    lineHeight: paragraphLineHeight(paragraph),
     margin: 0,
     marginBottom: spaceAfter ? Math.min(28, spaceAfter / 20) : isTitle || isHeading ? 10 : 8,
+    marginLeft: marginLeft || undefined,
     marginTop: spaceBefore ? Math.min(32, spaceBefore / 20) : isHeading ? 12 : 0,
+    textAlign: paragraphTextAlign(paragraph.style?.alignment),
+    textIndent: textIndent || undefined,
     whiteSpace: "pre-wrap",
   };
+}
+
+function paragraphLineHeight(paragraph: ParagraphView): CSSProperties["lineHeight"] {
+  const exactPoints = asNumber(paragraph.style?.lineSpacing);
+  if (exactPoints > 0) return `${Math.max(8, Math.min(96, exactPoints / 100))}pt`;
+
+  const percent = asNumber(paragraph.style?.lineSpacingPercent);
+  if (percent > 0) return Math.max(0.8, Math.min(3, percent / 100_000));
+
+  return 1.55;
+}
+
+function paragraphTextAlign(alignment: unknown): CSSProperties["textAlign"] {
+  switch (asNumber(alignment)) {
+    case 2:
+      return "center";
+    case 3:
+      return "right";
+    case 4:
+      return "justify";
+    default:
+      return undefined;
+  }
+}
+
+function emuToCssPx(value: unknown): number {
+  const emu = asNumber(value);
+  if (emu === 0) return 0;
+  return emu / 9_525;
 }
 
 export function textRunStyle(run: TextRunView, fontScale = 1): CSSProperties {

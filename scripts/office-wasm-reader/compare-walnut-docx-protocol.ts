@@ -35,6 +35,7 @@ type ComparisonResult = {
 const repoRoot = process.cwd();
 const assetDir = path.resolve(repoRoot, officeWasmConfig.OFFICE_WASM_TMP_ASSET_DIR);
 const assertMode = process.argv.includes("--assert");
+const routaOnlyMode = process.argv.includes("--routa-only");
 const jsonContractOnlyMode = process.argv.includes("--json-contract-only");
 const jsonContractMode =
   process.argv.includes("--json-contract") ||
@@ -56,6 +57,17 @@ async function main(): Promise<void> {
   assertFile(generatedBundleEntry, "generated Routa office WASM bundle");
 
   const results: ComparisonResult[] = [];
+  if (routaOnlyMode) {
+    const routaOnlyResults = [];
+    for (const fixturePath of fixturePaths) {
+      assertFile(fixturePath, "DOCX fixture");
+      routaOnlyResults.push(await summarizeRoutaOnlyFixture(fixturePath));
+    }
+
+    console.log(JSON.stringify(routaOnlyResults.length === 1 ? routaOnlyResults[0] : routaOnlyResults, null, 2));
+    return;
+  }
+
   for (const fixturePath of fixturePaths) {
     assertFile(fixturePath, "DOCX fixture");
     results.push(await compareFixture(fixturePath));
@@ -74,6 +86,19 @@ async function main(): Promise<void> {
 
   const output = jsonContractOnlyMode ? results.map(summarizeJsonContractOutput) : results;
   console.log(JSON.stringify(output.length === 1 ? output[0] : output, null, 2));
+}
+
+async function summarizeRoutaOnlyFixture(fixturePath: string) {
+  const sourceBytes = readFileSync(fixturePath);
+  const routaProtoBytes = await extractRoutaDocumentProto(sourceBytes);
+  const routaDocument = await decodeWalnutDocument(routaProtoBytes);
+
+  return {
+    fixture: path.relative(repoRoot, fixturePath),
+    routa: summarizeRoutaSmoke(routaDocument, routaProtoBytes),
+    routaProtocol: "oaiproto.coworker.docx.Document",
+    status: "routa-ok",
+  };
 }
 
 async function compareFixture(fixturePath: string): Promise<ComparisonResult> {
@@ -218,6 +243,32 @@ function summarizeDocument(document: Record<string, unknown>, protoBytes: Uint8A
     tableBboxSignatures: elements.filter((element) => isRecord(element.table)).map(summarizeTableBbox),
     tableColorSignatures: elements.filter((element) => isRecord(element.table)).map(summarizeTableColors),
     firstElements: elements.slice(0, 12).map(summarizeElement),
+  };
+}
+
+function summarizeRoutaSmoke(document: Record<string, unknown>, protoBytes: Uint8Array) {
+  const summary = summarizeDocument(document, protoBytes);
+
+  return {
+    protoByteLength: summary.protoByteLength,
+    protoSha256: summary.protoSha256,
+    widthEmu: summary.widthEmu,
+    heightEmu: summary.heightEmu,
+    elementCount: summary.elementCount,
+    elementTypes: summary.elementTypes,
+    paragraphCount: summary.paragraphCount,
+    tableCount: summary.tableCount,
+    imageCount: summary.imageCount,
+    chartCount: summary.chartCount,
+    textRunCount: summary.textRunCount,
+    textStyleCount: summary.textStyleCount,
+    sectionCount: summary.sectionCount,
+    footnoteCount: summary.footnoteCount,
+    commentCount: summary.commentCount,
+    reviewMarkCount: summary.reviewMarkCount,
+    numberingDefinitionCount: summary.numberingDefinitionCount,
+    paragraphNumberingCount: summary.paragraphNumberingCount,
+    missingImageReferenceIds: summary.missingImageReferenceIds,
   };
 }
 

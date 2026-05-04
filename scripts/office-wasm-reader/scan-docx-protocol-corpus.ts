@@ -9,21 +9,25 @@ type ScanResult = {
   jsonDiffCount?: number;
   jsonDiffPaths?: string[];
   ok: boolean;
-  status: "match" | "mismatch" | "error";
+  routa?: Record<string, unknown>;
+  status: "match" | "mismatch" | "routa-error" | "walnut-error-routa-ok";
   stderr?: string;
+  walnutStderr?: string;
 };
 
 const repoRoot = process.cwd();
 const roots = positionalArgs().map((arg) => path.resolve(repoRoot, arg));
 const limit = numberArg("--limit");
 const skip = numberArg("--skip") ?? 0;
+const timeoutMs = numberArg("--timeout-ms");
 const assertMode = process.argv.includes("--assert");
 const jsonContractMode = process.argv.includes("--json-contract");
+const compactMode = process.argv.includes("--compact");
 const compareScript = path.resolve(repoRoot, "scripts/office-wasm-reader/compare-walnut-docx-protocol.ts");
 
 if (roots.length === 0) {
   console.error(
-    "Usage: npm run scan:office-wasm-reader:docx -- <docx-file-or-directory> [--skip=N] [--limit=N] [--json-contract] [--assert]",
+    "Usage: npm run scan:office-wasm-reader:docx -- <docx-file-or-directory> [--skip=N] [--limit=N] [--timeout-ms=N] [--json-contract] [--assert] [--compact]",
   );
   process.exit(1);
 }
@@ -44,17 +48,19 @@ for (const result of results) {
 }
 
 const mismatchCount = results.filter((result) => result.status === "mismatch").length;
-const errorCount = results.filter((result) => result.status === "error").length;
+const errorCount = results.filter((result) => result.status === "routa-error").length;
+const walnutErrorRoutaOkCount = results.filter((result) => result.status === "walnut-error-routa-ok").length;
 const summary = {
   durationMs: Date.now() - startedAt,
   errorCount,
   failedCheckCounts: sortedCounts(failedCheckCounts),
-  files: results,
+  files: compactMode ? results.map(compactResult) : results,
   jsonContract: jsonContractMode,
   jsonDiffPathCounts: sortedCounts(jsonDiffPathCounts),
   mismatchCount,
   okCount: results.filter((result) => result.status === "match").length,
   total: results.length,
+  walnutErrorRoutaOkCount,
 };
 
 console.log(JSON.stringify(summary, null, 2));
@@ -64,6 +70,7 @@ if (assertMode && (mismatchCount > 0 || errorCount > 0)) {
 
 function scanFile(file: string): ScanResult {
   const startedAt = Date.now();
+  const elapsedMs = () => Date.now() - startedAt;
   const args = ["--import", "tsx", compareScript];
   if (jsonContractMode) {
     args.push("--json-contract-only", "--json-diff-limit", "20");
@@ -74,28 +81,42 @@ function scanFile(file: string): ScanResult {
     cwd: repoRoot,
     encoding: "utf8",
     maxBuffer: 1024 * 1024 * 64,
+    timeout: timeoutMs ?? undefined,
   });
-  const durationMs = Date.now() - startedAt;
   const output = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
   if (child.status !== 0) {
+    const routaOnly = scanRoutaOnly(file);
+    if (routaOnly.ok) {
+      return {
+        durationMs: elapsedMs(),
+        failedChecks: [],
+        file: path.relative(repoRoot, file),
+        ok: true,
+        routa: routaOnly.routa,
+        status: "walnut-error-routa-ok",
+        walnutStderr: trimOutput(output),
+      };
+    }
+
     return {
-      durationMs,
+      durationMs: elapsedMs(),
       failedChecks: [],
       file: path.relative(repoRoot, file),
       ok: false,
-      status: "error",
-      stderr: trimOutput(output),
+      status: "routa-error",
+      stderr: routaOnly.stderr,
+      walnutStderr: trimOutput(output),
     };
   }
 
   const decoded = parseComparatorJson(output);
   if (!decoded) {
     return {
-      durationMs,
+      durationMs: elapsedMs(),
       failedChecks: [],
       file: path.relative(repoRoot, file),
       ok: false,
-      status: "error",
+      status: "routa-error",
       stderr: trimOutput(output),
     };
   }
@@ -110,7 +131,7 @@ function scanFile(file: string): ScanResult {
   const hasJsonMismatch = jsonContractMode && (jsonDiffCount == null || jsonDiffCount > 0);
   const ok = failedChecks.length === 0 && !hasJsonMismatch;
   return {
-    durationMs,
+    durationMs: elapsedMs(),
     failedChecks,
     file: path.relative(repoRoot, file),
     jsonDiffCount: jsonContractMode ? jsonDiffCount : undefined,
@@ -120,15 +141,55 @@ function scanFile(file: string): ScanResult {
   };
 }
 
+function scanRoutaOnly(file: string): { ok: boolean; routa?: Record<string, unknown>; stderr?: string } {
+  const child = spawnSync(process.execPath, ["--import", "tsx", compareScript, "--routa-only", file], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024 * 64,
+    timeout: timeoutMs ?? undefined,
+  });
+  const output = `${child.stdout ?? ""}\n${child.stderr ?? ""}`;
+  if (child.status !== 0) {
+    return { ok: false, stderr: trimOutput(output) };
+  }
+
+  const decoded = parseRoutaOnlyJson(output);
+  if (!decoded) {
+    return { ok: false, stderr: trimOutput(output) };
+  }
+
+  return { ok: true, routa: asRecord(decoded.routa) ?? undefined };
+}
+
 function parseComparatorJson(output: string): Record<string, unknown> | null {
-  const marker = "\n{\n  \"byteComparison\"";
-  const start = output.indexOf(marker);
+  const start = jsonObjectStart(output, "byteComparison");
   if (start < 0) return null;
   try {
-    return JSON.parse(output.slice(start + 1)) as Record<string, unknown>;
+    return JSON.parse(output.slice(start)) as Record<string, unknown>;
   } catch {
     return null;
   }
+}
+
+function parseRoutaOnlyJson(output: string): Record<string, unknown> | null {
+  const start = jsonObjectStart(output, "fixture");
+  if (start < 0) return null;
+  try {
+    return JSON.parse(output.slice(start)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function jsonObjectStart(output: string, firstKey: string): number {
+  const startMarker = `{\n  "${firstKey}"`;
+  if (output.startsWith(startMarker)) {
+    return 0;
+  }
+
+  const nestedMarker = `\n${startMarker}`;
+  const nestedStart = output.indexOf(nestedMarker);
+  return nestedStart < 0 ? -1 : nestedStart + 1;
 }
 
 function collectDocxFiles(root: string): string[] {
@@ -187,6 +248,19 @@ function numberValue(value: unknown): number | undefined {
 
 function sortedCounts(counts: Map<string, number>): Record<string, number> {
   return Object.fromEntries([...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));
+}
+
+function compactResult(result: ScanResult): Record<string, unknown> {
+  return {
+    durationMs: result.durationMs,
+    failedChecks: result.failedChecks.length > 0 ? result.failedChecks : undefined,
+    file: result.file,
+    jsonDiffCount: result.jsonDiffCount,
+    jsonDiffPaths: result.jsonDiffPaths && result.jsonDiffPaths.length > 0 ? result.jsonDiffPaths : undefined,
+    ok: result.ok,
+    routa: result.status === "walnut-error-routa-ok" ? result.routa : undefined,
+    status: result.status,
+  };
 }
 
 function trimOutput(value: string): string {

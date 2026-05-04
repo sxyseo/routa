@@ -312,6 +312,10 @@ internal static class DocxDocumentProtoReader
                 WriteMessage(output, 10, richParagraphStyle);
             }
 
+            if (runs.Count == 0 && paragraph.ParagraphProperties?.GetFirstChild<W.SectionProperties>() is not null)
+            {
+                WriteBool(output, 11, true);
+            }
         });
     }
 
@@ -1073,11 +1077,14 @@ internal static class DocxDocumentProtoReader
                     (styleAlignment is not null && string.IsNullOrEmpty(basedOnStyleId)) ||
                     string.Equals(styleId, "NoSpacing", StringComparison.OrdinalIgnoreCase) ||
                     styleId.StartsWith("Revision", StringComparison.OrdinalIgnoreCase);
-                var usesDefaultRunFonts = isDefaultParagraphStyle ||
+                var directStyleRunFonts = style.StyleRunProperties?.GetFirstChild<W.RunFonts>();
+                var usesDefaultRunFontBaseline = isDefaultParagraphStyle ||
                     (styleAlignment is not null && string.IsNullOrEmpty(basedOnStyleId)) ||
                     styleId.StartsWith("Revision", StringComparison.OrdinalIgnoreCase);
-                var hasDirectRunFonts = style.StyleRunProperties?.GetFirstChild<W.RunFonts>() is not null;
-                var usesDefaultComplexScriptFontSize = usesDefaultRunFonts ||
+                var usesDefaultRunFonts = usesDefaultRunFontBaseline ||
+                    NeedsDefaultRunFontFallback(directStyleRunFonts);
+                var hasDirectRunFonts = directStyleRunFonts is not null;
+                var usesDefaultComplexScriptFontSize = usesDefaultRunFontBaseline ||
                     (usesDefaultRunTextStyle && (!hasDirectRunFonts ||
                         string.Equals(styleId, "NoSpacing", StringComparison.OrdinalIgnoreCase)));
                 var textStyle = WriteRunTextStyle(
@@ -2161,7 +2168,7 @@ internal static class DocxDocumentProtoReader
             caps is not null ||
             UnderlineValue(underlineElement) is not null ||
             complexScriptFontSize?.Val?.Value is not null ||
-            runFonts is not null ||
+            HasConcreteRunFont(runFonts) ||
             fallbackAlignment is not null;
         if (!hasStyle)
         {
@@ -2211,6 +2218,16 @@ internal static class DocxDocumentProtoReader
             !string.IsNullOrEmpty(runFonts?.HighAnsi?.Value) ||
             !string.IsNullOrEmpty(runFonts?.ComplexScript?.Value) ||
             !string.IsNullOrEmpty(runFonts?.EastAsia?.Value);
+    }
+
+    private static bool NeedsDefaultRunFontFallback(W.RunFonts? runFonts)
+    {
+        return runFonts is not null &&
+            HasConcreteRunFont(runFonts) &&
+            (string.IsNullOrEmpty(runFonts.Ascii?.Value) ||
+                string.IsNullOrEmpty(runFonts.HighAnsi?.Value) ||
+                string.IsNullOrEmpty(runFonts.ComplexScript?.Value) ||
+                string.IsNullOrEmpty(runFonts.EastAsia?.Value));
     }
 
     private static string? RunTypeface(W.RunFonts? directRunFonts, W.RunFonts? fallbackRunFonts = null)
