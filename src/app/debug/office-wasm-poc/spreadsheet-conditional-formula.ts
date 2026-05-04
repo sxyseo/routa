@@ -31,6 +31,12 @@ type CellReference = {
   rowIndex: number;
 };
 
+type FormulaCellValue = {
+  columnIndex: number;
+  rowIndex: number;
+  value: string;
+};
+
 const CELL_REFERENCE_PATTERN = /^(?:'[^']+'|[A-Za-z0-9_ ]+!)?(\$?)([A-Z]{1,3})(\$?)(\d+)$/i;
 
 export function conditionalFormulaMatches(context: ConditionalFormulaContext): boolean {
@@ -140,6 +146,12 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "COUNT") {
     return formulaNumericArgs(args, context).length;
   }
+  if (normalizedName === "COUNTIF") {
+    return countIf(args, context);
+  }
+  if (normalizedName === "COUNTIFS") {
+    return countIfs(args, context);
+  }
   if (normalizedName === "TODAY") {
     return currentExcelSerialDay();
   }
@@ -199,19 +211,116 @@ function formulaNumericArgs(args: string[], context: ConditionalFormulaContext):
 }
 
 function formulaRangeValues(expression: string, context: ConditionalFormulaContext): string[] | null {
-  const target = definedNameTarget(stripFormulaPrefix(expression), context) ?? stripFormulaPrefix(expression);
+  const cells = formulaRangeCells(expression, context);
+  return cells ? cells.map((cell) => cell.value) : null;
+}
+
+function formulaRangeCells(expression: string, context: ConditionalFormulaContext): FormulaCellValue[] | null {
+  const target = formulaRangeTarget(expression, context);
   if (!/[A-Z]+\$?\d/i.test(target) && !target.includes(":")) return null;
   const range = parseCellRange(target);
   if (!range) return null;
 
-  const values: string[] = [];
-  for (let rowIndex = range.startRow; rowIndex < range.startRow + range.rowSpan; rowIndex += 1) {
-    const row = context.rowsByIndex.get(rowIndex);
-    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan; columnIndex += 1) {
-      values.push(cellText(row?.get(columnIndex) ?? null));
+  const cells: FormulaCellValue[] = [];
+  for (const [rowIndex, row] of context.rowsByIndex) {
+    if (rowIndex < range.startRow || rowIndex >= range.startRow + range.rowSpan) continue;
+    for (const [columnIndex, cell] of row) {
+      if (columnIndex < range.startColumn || columnIndex >= range.startColumn + range.columnSpan) continue;
+      cells.push({ columnIndex, rowIndex, value: cellText(cell) });
     }
   }
-  return values;
+  return cells;
+}
+
+function formulaRangeTarget(expression: string, context: ConditionalFormulaContext): string {
+  return definedNameTarget(stripFormulaPrefix(expression), context) ?? stripFormulaPrefix(expression);
+}
+
+function countIf(args: string[], context: ConditionalFormulaContext): number {
+  const cells = formulaRangeCells(args[0] ?? "", context);
+  if (!cells) return 0;
+  const criterion = formulaCriteria(args[1] ?? "", context);
+  return cells.filter((cell) => formulaCriteriaMatches(cell.value, criterion)).length;
+}
+
+function countIfs(args: string[], context: ConditionalFormulaContext): number {
+  if (args.length < 2 || args.length % 2 !== 0) return 0;
+  const firstCells = formulaRangeCells(args[0] ?? "", context);
+  if (!firstCells) return 0;
+
+  const criteria: Array<{
+    cellsByOffset: Map<string, string>;
+    criterion: { operator: string; value: unknown };
+    range: ReturnType<typeof parseCellRange>;
+  }> = [];
+  for (let index = 0; index < args.length; index += 2) {
+    const range = parseCellRange(formulaRangeTarget(args[index] ?? "", context));
+    const cells = formulaRangeCells(args[index] ?? "", context);
+    if (!cells) return 0;
+    criteria.push({
+      cellsByOffset: range ? cellsByOffset(cells, range) : new Map<string, string>(),
+      criterion: formulaCriteria(args[index + 1] ?? "", context),
+      range,
+    });
+  }
+
+  const firstRange = criteria[0]?.range;
+  if (!firstRange) return 0;
+
+  return firstCells.filter((cell) => {
+    const rowOffset = cell.rowIndex - firstRange.startRow;
+    const columnOffset = cell.columnIndex - firstRange.startColumn;
+    return criteria.every((item) => {
+      if (!item.range) return false;
+      const value = item.cellsByOffset.get(`${rowOffset}:${columnOffset}`) ?? "";
+      return formulaCriteriaMatches(value, item.criterion);
+    });
+  }).length;
+}
+
+function cellsByOffset(cells: FormulaCellValue[], range: NonNullable<ReturnType<typeof parseCellRange>>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const cell of cells) {
+    map.set(`${cell.rowIndex - range.startRow}:${cell.columnIndex - range.startColumn}`, cell.value);
+  }
+  return map;
+}
+
+function formulaCriteria(expression: string, context: ConditionalFormulaContext): { operator: string; value: unknown } {
+  const value = evaluateFormulaValue(expression, context);
+  const text = asString(value);
+  const match = text.match(/^(>=|<=|<>|=|>|<)(.*)$/);
+  if (!match) return { operator: "=", value };
+  return {
+    operator: match[1],
+    value: match[2],
+  };
+}
+
+function formulaCriteriaMatches(value: string, criterion: { operator: string; value: unknown }): boolean {
+  const rawExpected = asString(criterion.value);
+  const actualNumber = Number(value);
+  const expectedNumber = Number(rawExpected);
+  const numeric = Number.isFinite(actualNumber) && Number.isFinite(expectedNumber) && rawExpected.trim().length > 0;
+  const actual = numeric ? actualNumber : value.toLowerCase();
+  const expected = numeric ? expectedNumber : rawExpected.toLowerCase();
+
+  if (!numeric && /[*?]/.test(rawExpected)) {
+    const wildcard = new RegExp(`^${escapeRegExp(rawExpected).replaceAll("\\*", ".*").replaceAll("\\?", ".")}$`, "i");
+    return criterion.operator === "<>" ? !wildcard.test(value) : wildcard.test(value);
+  }
+
+  if (criterion.operator === "=") return actual === expected;
+  if (criterion.operator === "<>") return actual !== expected;
+  if (criterion.operator === ">") return actual > expected;
+  if (criterion.operator === ">=") return actual >= expected;
+  if (criterion.operator === "<") return actual < expected;
+  if (criterion.operator === "<=") return actual <= expected;
+  return false;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function resolvedCellReferenceValue(

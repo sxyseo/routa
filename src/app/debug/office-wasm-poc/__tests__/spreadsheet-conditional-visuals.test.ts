@@ -649,6 +649,47 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("4:2")?.background).toBe("#22C55E");
   });
 
+  it("evaluates COUNTIF and COUNTIFS conditional format formulas over sparse ranges", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      conditionalFormattings: [
+        {
+          ranges: ["A2:A5"],
+          rules: [
+            {
+              fillColor: "FCA5A5",
+              formulas: ["=COUNTIF($A:$A,A2)>1"],
+              type: "expression",
+            },
+          ],
+        },
+        {
+          ranges: ["C2:C5"],
+          rules: [
+            {
+              fillColor: "BFDBFE",
+              formulas: ["=COUNTIFS($B$2:$B$5,\"Open\",$C$2:$C$5,C2)>1"],
+              type: "expression",
+            },
+          ],
+        },
+      ],
+      rows: [
+        { cells: [{ address: "A2", value: "alpha" }, { address: "B2", value: "Open" }, { address: "C2", value: "UI" }], index: 2 },
+        { cells: [{ address: "A3", value: "beta" }, { address: "B3", value: "Closed" }, { address: "C3", value: "Design" }], index: 3 },
+        { cells: [{ address: "A4", value: "alpha" }, { address: "B4", value: "Open" }, { address: "C4", value: "API" }], index: 4 },
+        { cells: [{ address: "A5", value: "gamma" }, { address: "B5", value: "Open" }, { address: "C5", value: "UI" }], index: 5 },
+      ],
+    });
+
+    expect(visuals.get("2:0")?.background).toBe("#FCA5A5");
+    expect(visuals.get("3:0")).toBeUndefined();
+    expect(visuals.get("4:0")?.background).toBe("#FCA5A5");
+    expect(visuals.get("2:2")?.background).toBe("#BFDBFE");
+    expect(visuals.get("3:2")).toBeUndefined();
+    expect(visuals.get("4:2")).toBeUndefined();
+    expect(visuals.get("5:2")?.background).toBe("#BFDBFE");
+  });
+
   it("resolves table structured references in formula conditional formats", () => {
     const visuals = buildSpreadsheetConditionalVisuals({
       conditionalFormattings: [
