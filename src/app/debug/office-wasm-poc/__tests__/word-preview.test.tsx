@@ -217,6 +217,36 @@ describe("WordPreview", () => {
     expect(markers).toEqual(["1", "C1"]);
   });
 
+  it("renders decoded DOCX insertion review marks", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  runs: [
+                    {
+                      id: "run-inserted",
+                      reviewMarkIds: ["review-9"],
+                      text: "Inserted text",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          reviewMarks: [{ id: "review-9", type: 1 }],
+        }}
+      />,
+    );
+
+    const run = container.querySelector<HTMLElement>("p span");
+    expect(run?.style.backgroundColor).toBe("rgb(220, 252, 231)");
+    expect(run?.style.textDecoration).toContain("underline");
+  });
+
   it("uses decoded DOCX image bbox for preview dimensions", () => {
     const style = wordImageStyle(
       {

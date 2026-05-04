@@ -42,6 +42,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
   const styleMaps: OfficeTextStyleMaps = { textStyles, images: imageSources };
   const numberingMarkers = wordNumberingMarkers(elements, root, styleMaps);
   const referenceMarkers = wordReferenceMarkers(root);
+  const reviewMarkTypes = wordReviewMarkTypes(root);
 
   const hasRenderableBlocks = elements.some((element) => {
     const record = asRecord(element);
@@ -98,6 +99,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
           key={`${asString(asRecord(element)?.id)}-${index}`}
           numberingMarkers={numberingMarkers}
           referenceMarkers={referenceMarkers}
+          reviewMarkTypes={reviewMarkTypes}
           styleMaps={styleMaps}
         />
       ))}
@@ -110,12 +112,14 @@ function WordElement({
   element,
   numberingMarkers,
   referenceMarkers,
+  reviewMarkTypes,
   styleMaps,
 }: {
   charts: RecordValue[];
   element: RecordValue;
   numberingMarkers: Map<string, string>;
   referenceMarkers: Map<string, string[]>;
+  reviewMarkTypes: Map<string, number>;
   styleMaps: OfficeTextStyleMaps;
 }) {
   const table = asRecord(element.table);
@@ -125,6 +129,7 @@ function WordElement({
         element={element}
         numberingMarkers={numberingMarkers}
         referenceMarkers={referenceMarkers}
+        reviewMarkTypes={reviewMarkTypes}
         table={table}
         styleMaps={styleMaps}
       />
@@ -147,7 +152,7 @@ function WordElement({
   if (chart) return <WordChart chart={chart} element={element} />;
 
   const paragraphs = asArray(element.paragraphs).map((paragraph) =>
-    wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers),
+    wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes),
   );
   if (paragraphs.length === 0) return null;
 
@@ -222,7 +227,7 @@ function WordParagraph({
 
 function WordRun({ run }: { run: TextRunView }) {
   const href = wordHyperlinkHref(run.hyperlink);
-  const style = href ? wordHyperlinkStyle(run) : textRunStyle(run);
+  const style = wordRunStyle(run, href !== "");
   const text = href ? (
     <a
       href={href}
@@ -256,12 +261,14 @@ function wordParagraphView(
   styleMaps: OfficeTextStyleMaps,
   numberingMarkers: Map<string, string>,
   referenceMarkers: Map<string, string[]>,
+  reviewMarkTypes: Map<string, number>,
 ): ParagraphView {
   const view = paragraphView(paragraph, styleMaps);
   const marker = numberingMarkers.get(view.id);
   const runs = view.runs.map((run) => ({
     ...run,
     referenceMarkers: referenceMarkers.get(run.id) ?? [],
+    reviewMarkTypes: (run.reviewMarkIds ?? []).map((id) => reviewMarkTypes.get(id) ?? 0).filter((type) => type > 0),
   }));
   return marker ? { ...view, marker, runs } : { ...view, runs };
 }
@@ -270,12 +277,14 @@ function WordTable({
   element,
   numberingMarkers,
   referenceMarkers,
+  reviewMarkTypes,
   styleMaps,
   table,
 }: {
   element: RecordValue;
   numberingMarkers: Map<string, string>;
   referenceMarkers: Map<string, string[]>;
+  reviewMarkTypes: Map<string, number>;
   styleMaps: OfficeTextStyleMaps;
   table: RecordValue;
 }) {
@@ -300,7 +309,7 @@ function WordTable({
               {asArray(row.cells).map((cell, cellIndex) => {
                 const cellRecord = asRecord(cell) ?? {};
                 const paragraphs = asArray(cellRecord.paragraphs).map((paragraph) =>
-                  wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers),
+                  wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes),
                 );
                 const background = wordFillToCss(cellRecord.fill) ?? (rowIndex === 0 ? "#f8fafc" : "#ffffff");
                 const fallbackTextColor = readableTextColor(background);
@@ -383,13 +392,46 @@ function wordHyperlinkHref(hyperlink: unknown): string {
   return uri || action;
 }
 
-function wordHyperlinkStyle(run: TextRunView): CSSProperties {
-  const style = textRunStyle(run);
+function wordRunStyle(run: TextRunView, hyperlink: boolean): CSSProperties {
+  const style: CSSProperties = {
+    ...textRunStyle(run),
+    ...wordReviewMarkStyle(run.reviewMarkTypes ?? []),
+  };
+  if (!hyperlink) return style;
   return {
     ...style,
     color: style.color ?? "#2563eb",
     textDecoration: style.textDecoration ?? "underline",
   };
+}
+
+function wordReviewMarkStyle(types: number[]): CSSProperties {
+  if (types.includes(2)) {
+    return {
+      color: "#b91c1c",
+      textDecoration: "line-through",
+    };
+  }
+
+  if (types.includes(1)) {
+    return {
+      backgroundColor: "#dcfce7",
+      textDecoration: "underline",
+      textDecorationColor: "#16a34a",
+    };
+  }
+
+  return {};
+}
+
+function wordReviewMarkTypes(root: RecordValue | null): Map<string, number> {
+  const reviewMarkTypes = new Map<string, number>();
+  for (const reviewMark of asArray(root?.reviewMarks).map(asRecord)) {
+    const id = asString(reviewMark?.id);
+    const type = asNumber(reviewMark?.type);
+    if (id && type > 0) reviewMarkTypes.set(id, type);
+  }
+  return reviewMarkTypes;
 }
 
 function wordReferenceMarkers(root: RecordValue | null): Map<string, string[]> {
@@ -636,7 +678,7 @@ function wordTableBorderSide(side: "Top" | "Right" | "Bottom" | "Left", line: un
   return css as CSSProperties;
 }
 
-function wordTableBorderStyle(style: unknown): CSSProperties["borderStyle"] {
+function wordTableBorderStyle(style: unknown): string {
   switch (asNumber(style)) {
     case 2:
       return "dashed";

@@ -25,6 +25,8 @@ export type TextRunView = {
   hyperlink?: RecordValue | null;
   id: string;
   referenceMarkers?: string[];
+  reviewMarkIds?: string[];
+  reviewMarkTypes?: number[];
   text: string;
   style: RecordValue | null;
 };
@@ -226,6 +228,7 @@ export function paragraphView(paragraph: unknown, styleMaps: OfficeTextStyleMaps
       hyperlink: asRecord(run.hyperlink),
       id: asString(run.id) || `${asString(record?.id)}-${index}`,
       referenceMarkers: [],
+      reviewMarkIds: asArray(run.reviewMarkIds).map(asString).filter(Boolean),
       text: asString(run.text),
       style: {
         ...style,
