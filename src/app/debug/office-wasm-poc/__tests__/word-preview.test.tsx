@@ -10,6 +10,7 @@ import {
   wordBodyContentStyle,
   wordTableCellStyle,
   wordTableContainerStyle,
+  wordTableRowStyle,
 } from "../word-preview";
 
 const labels: PreviewLabels = {
@@ -49,6 +50,7 @@ describe("WordPreview", () => {
                 columnWidths: [1000, 3000, 2000],
                 rows: [
                   {
+                    heightEmu: 285_750,
                     cells: [
                       {
                         id: "cell-1",
@@ -70,9 +72,11 @@ describe("WordPreview", () => {
     );
 
     const firstCell = container.querySelector("td");
+    const firstRow = container.querySelector("tr");
     const tableWrapper = container.querySelector("table")?.parentElement;
     const columns = Array.from(container.querySelectorAll("col"));
     expect(firstCell?.getAttribute("colspan")).toBe("2");
+    expect(firstRow?.style.height).toBe("30px");
     expect(tableWrapper?.style.width).toBe("300px");
     expect(tableWrapper?.style.marginLeft).toBe("10px");
     expect(columns.map((column) => column.getAttribute("style"))).toEqual([
@@ -567,6 +571,12 @@ describe("WordPreview", () => {
       marginLeft: 10,
       marginTop: 12,
       width: 300,
+    });
+  });
+
+  it("uses decoded DOCX table row height for preview rows", () => {
+    expect(wordTableRowStyle({ heightEmu: 285_750 })).toMatchObject({
+      height: 30,
     });
   });
 

@@ -369,7 +369,7 @@ function WordTable({
         ) : null}
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={asString(row.id) || rowIndex}>
+            <tr key={asString(row.id) || rowIndex} style={wordTableRowStyle(row)}>
               {asArray(row.cells).map((cell, cellIndex) => {
                 const cellRecord = asRecord(cell) ?? {};
                 const paragraphs = asArray(cellRecord.paragraphs).map((paragraph) =>
@@ -838,6 +838,13 @@ function wordElementBox(element: RecordValue, fallbackWidth: number, fallbackHei
     rawHeight,
     rawWidth,
     width,
+  };
+}
+
+export function wordTableRowStyle(row: RecordValue): CSSProperties {
+  const height = emuToPx(row.heightEmu ?? row.height);
+  return {
+    height: height > 0 ? Math.max(12, Math.min(240, height)) : undefined,
   };
 }
 
