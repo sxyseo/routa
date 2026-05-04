@@ -103,6 +103,13 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
           styleMaps={styleMaps}
         />
       ))}
+      <WordSupplementalNotes
+        numberingMarkers={numberingMarkers}
+        referenceMarkers={referenceMarkers}
+        reviewMarkTypes={reviewMarkTypes}
+        root={root}
+        styleMaps={styleMaps}
+      />
     </article>
   );
 }
@@ -344,6 +351,35 @@ function WordTable({
   );
 }
 
+function WordSupplementalNotes({
+  numberingMarkers,
+  referenceMarkers,
+  reviewMarkTypes,
+  root,
+  styleMaps,
+}: {
+  numberingMarkers: Map<string, string>;
+  referenceMarkers: Map<string, string[]>;
+  reviewMarkTypes: Map<string, number>;
+  root: RecordValue | null;
+  styleMaps: OfficeTextStyleMaps;
+}) {
+  const items = wordSupplementalNoteItems(root, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes);
+  if (items.length === 0) return null;
+
+  return (
+    <section style={wordSupplementalNotesStyle}>
+      {items.map((item) => (
+        <div key={item.id} style={wordSupplementalNoteStyle}>
+          {item.paragraphs.map((paragraph, index) => (
+            <WordParagraph key={paragraph.id || `${item.id}-${index}`} paragraph={paragraph} />
+          ))}
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export function wordImageStyle(element: RecordValue, imageSrc: string): CSSProperties {
   const box = wordElementBox(element, WORD_PREVIEW_CONTENT_WIDTH_PX, 280);
 
@@ -383,6 +419,62 @@ export function wordTableContainerStyle(element: RecordValue): CSSProperties {
     overflowX: "auto",
     width: box.hasDecodedSize ? box.width : "100%",
   };
+}
+
+function wordSupplementalNoteItems(
+  root: RecordValue | null,
+  styleMaps: OfficeTextStyleMaps,
+  numberingMarkers: Map<string, string>,
+  referenceMarkers: Map<string, string[]>,
+  reviewMarkTypes: Map<string, number>,
+): { id: string; paragraphs: ParagraphView[] }[] {
+  const items: { id: string; paragraphs: ParagraphView[] }[] = [];
+
+  for (const [index, footnote] of asArray(root?.footnotes).map(asRecord).entries()) {
+    if (!footnote) continue;
+    const paragraphs = wordSupplementalParagraphs(
+      footnote,
+      String(index + 1),
+      styleMaps,
+      numberingMarkers,
+      referenceMarkers,
+      reviewMarkTypes,
+    );
+    if (paragraphs.length > 0) {
+      items.push({ id: `footnote-${asString(footnote.id) || index}`, paragraphs });
+    }
+  }
+
+  for (const [index, comment] of asArray(root?.comments).map(asRecord).entries()) {
+    if (!comment) continue;
+    const paragraphs = wordSupplementalParagraphs(
+      comment,
+      `C${index + 1}`,
+      styleMaps,
+      numberingMarkers,
+      referenceMarkers,
+      reviewMarkTypes,
+    );
+    if (paragraphs.length > 0) {
+      items.push({ id: `comment-${asString(comment.id) || index}`, paragraphs });
+    }
+  }
+
+  return items;
+}
+
+function wordSupplementalParagraphs(
+  record: RecordValue,
+  marker: string,
+  styleMaps: OfficeTextStyleMaps,
+  numberingMarkers: Map<string, string>,
+  referenceMarkers: Map<string, string[]>,
+  reviewMarkTypes: Map<string, number>,
+): ParagraphView[] {
+  return asArray(record.paragraphs).map((paragraph, index) => {
+    const view = wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes);
+    return index === 0 ? { ...view, marker } : view;
+  });
 }
 
 function wordHyperlinkHref(hyperlink: unknown): string {
@@ -726,6 +818,21 @@ const wordReferenceMarkerStyle: CSSProperties = {
   color: "#475569",
   fontSize: "0.72em",
   marginLeft: 2,
+};
+
+const wordSupplementalNotesStyle: CSSProperties = {
+  borderTopColor: "#cbd5e1",
+  borderTopStyle: "solid",
+  borderTopWidth: 1,
+  display: "grid",
+  gap: 4,
+  marginTop: 18,
+  paddingTop: 10,
+};
+
+const wordSupplementalNoteStyle: CSSProperties = {
+  color: "#334155",
+  fontSize: 12,
 };
 
 function wordFillToCss(fill: unknown): string | undefined {

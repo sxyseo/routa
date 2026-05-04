@@ -217,6 +217,26 @@ describe("WordPreview", () => {
     expect(markers).toEqual(["1", "C1"]);
   });
 
+  it("renders decoded DOCX footnote and comment bodies", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          comments: [{ id: "12", paragraphs: [{ runs: [{ text: "Comment body" }] }] }],
+          elements: [
+            {
+              paragraphs: [{ runs: [{ id: "run-main", text: "Main text" }] }],
+            },
+          ],
+          footnotes: [{ id: "footnote-1", paragraphs: [{ runs: [{ text: "Footnote body" }] }] }],
+        }}
+      />,
+    );
+
+    const paragraphs = Array.from(container.querySelectorAll("p")).map((paragraph) => paragraph.textContent);
+    expect(paragraphs).toEqual(["Main text", "1Footnote body", "C1Comment body"]);
+  });
+
   it("renders decoded DOCX insertion review marks", () => {
     const { container } = render(
       <WordPreview
