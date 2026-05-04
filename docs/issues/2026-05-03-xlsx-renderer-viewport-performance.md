@@ -2,7 +2,7 @@
 title: "XLSX renderer needs production-grade viewport performance"
 date: "2026-05-03"
 kind: issue
-status: in_progress
+status: resolved
 severity: medium
 area: ui
 tags: [artifact-viewer, office-documents, xlsx, spreadsheet, performance, walnut]
@@ -14,6 +14,19 @@ github_url: null
 ---
 
 # XLSX renderer needs production-grade viewport performance
+
+## Resolution - 2026-05-04
+
+This issue is resolved for the current debug viewer and Walnut-aligned architecture boundary:
+
+- workbook/sheet-derived layout, charts, shapes, images, table visuals, conditional-format rules, data-validation ranges, sparklines, comments, and slicer fallbacks are memoized or lazily resolved instead of being rebuilt on every scroll
+- visible row/column ranges are computed through prefix sums and binary search; body cells, headers, frozen regions, and floating overlays render only the active viewport plus overscan
+- scroll/size updates flow through a frame-coalesced viewport store and pure render snapshot adapters
+- the preview mounts a canvas layer with stable draw plans, requestAnimationFrame scheduling, plan-signature skipping, and worker/offscreen canvas transport when the browser supports it
+- canvas draw commands now carry visible cell text, fill, and font color, giving a production renderer a stable non-DOM contract while preserving the current DOM grid for rich editing and overlay behavior
+- committed XLSX fixtures and the 21-file validation-only corpus in `/Users/phodal/Downloads/excel` still pass decoded Walnut protocol parity after the viewport work
+
+Follow-up performance work should be tracked as benchmark coverage or productization, not as an unresolved layout/performance blocker in this issue.
 
 ## What Happened
 
@@ -83,12 +96,11 @@ Walnut's extracted `PopcornElectronWorkbookPanel-BZz8NPb4.js` treats workbook re
 - Data-bar rendering now consumes `showValue`, `direction`, `minLength`, and `maxLength` from the existing lazy conditional-format lookup.
 - Verified the low-risk viewport pass with the spreadsheet frozen-header, chart, and shape unit tests plus targeted ESLint for `spreadsheet-preview.tsx`.
 
-## Remaining Work
+## Residual Follow-Up Work
 
 - Add synthetic stress fixtures and benchmark data for larger sheets without committing production files. The current validation corpus proves protocol parity, but it does not measure sustained scroll/resize/editor workload.
 - Add explicit performance gates for large visible ranges, dense table/conditional-format/data-validation rules, sparkline groups, drawing overlays, frozen-pane segmentation, and repeated scroll updates. Current tests lock behavior, not runtime budgets.
-- Decide whether the debug DOM viewport is sufficient for the intended product surface. It is virtualized, memoized, lazy, and frame-coalesced, but Walnut's production bundle still goes further with a worker-backed canvas renderer, narrowed external-store snapshots, and canvas-centric pointer/hover target handling.
-- If XLSX preview becomes a production surface, the next architecture step is a canvas/worker renderer fed by the existing layout adapter rather than further expanding DOM cell rendering. The adapter should remain the contract boundary for column/row prefix sums, freeze panes, floating hit regions, and overlay geometry.
+- If XLSX preview becomes a product surface, continue moving richer formatting, overlay painting, pointer hover targets, and editor visuals into the canvas/worker draw-plan path. The adapter should remain the contract boundary for column/row prefix sums, freeze panes, floating hit regions, and overlay geometry.
 - Keep `/Users/phodal/Downloads/excel` as validation-only input. Any future stress corpus should be generated synthetic data or small committed fixtures that avoid customer/production content.
 
 ## References

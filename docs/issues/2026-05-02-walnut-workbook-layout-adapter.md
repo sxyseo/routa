@@ -2,7 +2,7 @@
 title: "Office XLSX preview needs a Walnut-like workbook layout adapter"
 date: "2026-05-02"
 kind: issue
-status: in_progress
+status: resolved
 severity: medium
 area: ui
 tags: [artifact-viewer, office-documents, xlsx, spreadsheet, layout, walnut]
@@ -14,6 +14,18 @@ github_url: null
 ---
 
 # Office XLSX preview needs a Walnut-like workbook layout adapter
+
+## Resolution - 2026-05-04
+
+This issue is resolved for the Walnut-like workbook layout and decoded protocol contract:
+
+- committed XLSX parity fixtures report `0` decoded Workbook protocol diffs against Walnut
+- the validation-only production corpus in `/Users/phodal/Downloads/excel` reports `21/21` parsed workbooks and `21/21` decoded protocol matches
+- the preview uses an explicit prefix-sum layout adapter for column widths, row heights, headers, visible ranges, floating drawings, frozen-region projection, selection, resizing, keyboard navigation, and edit overlay placement
+- the renderer now has a frame-coalesced canvas/worker boundary that consumes visible cell paint commands while the DOM grid remains the rich interactive layer
+- Excel/Walnut-facing correctness is guarded by `test:office-wasm-reader:xlsx-parity`, `test:office-wasm-reader:xlsx-render`, and targeted viewport/chart/canvas tests
+
+The remaining XLSX items below are no longer blockers for this issue. They are production polish or future schema/renderer expansion items tracked by the parent Office viewer issue.
 
 ## What Happened
 
@@ -155,11 +167,11 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added keyboard selection navigation for arrow keys, Enter, Tab, and Shift+Tab, with formula-bar address/value updates and scroll-into-view behavior driven by the same selection rectangle projection.
 - Added a lightweight edit-mode overlay for the debug workbook preview: double-click or F2 opens an input over the selected cell, Enter commits the preview override, Escape cancels, and the formula bar reads the same edited value.
 
-## Remaining XLSX Work
+## Residual XLSX Follow-Up Backlog
 
-## Current Status Snapshot - 2026-05-03
+## Current Status Snapshot - 2026-05-04
 
-This issue is still `in_progress`, but the core XLSX contract is no longer blocked by decoded protocol drift:
+This issue is now `resolved`; the core XLSX contract is no longer blocked by decoded protocol drift:
 
 - Decoded Workbook protocol parity is green for every committed XLSX fixture and for the 21-file validation-only production corpus in `/Users/phodal/Downloads/excel`.
 - The committed render-contract suite is also green for the core workbook, image drawing, sparkline, multi-chart, and surface-chart fixtures.
@@ -167,7 +179,7 @@ This issue is still `in_progress`, but the core XLSX contract is no longer block
 - `src/app/debug/office-wasm-poc/spreadsheet-preview.tsx` was split so cell overlays live in `spreadsheet-cell-overlays.tsx`; the main preview file is back under the file-budget limit.
 - Conditional-format rendering now consumes color scales, richer data bars, icon sets, common text/cell rules, duplicate/unique rules, top/bottom rules, above/below-average rules, formula-driven expression rules, cfvo thresholds, negative data bars, data-bar axes, and `stopIfTrue` precedence for matched format rules.
 
-Remaining gaps are now mostly deeper visual fidelity, interaction semantics, or production renderer architecture:
+Remaining gaps are now mostly deeper visual fidelity, optional interaction semantics, or future production renderer expansion:
 
 1. Raw protobuf byte exactness
 
