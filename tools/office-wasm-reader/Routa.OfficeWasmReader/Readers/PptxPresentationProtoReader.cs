@@ -940,8 +940,8 @@ internal static class PptxPresentationProtoReader
         if (groupTransform is not null)
         {
             return new BoundingBox(
-                groupTransform.TransformFloorX(minX.Value),
-                groupTransform.TransformFloorY(minY.Value),
+                groupTransform.TransformRoundX(minX.Value),
+                groupTransform.TransformRoundY(minY.Value),
                 groupTransform.TransformFloorWidth(maxX.Value - minX.Value),
                 groupTransform.TransformFloorHeight(maxY.Value - minY.Value),
                 transform.Rotation?.Value,
@@ -2940,6 +2940,10 @@ internal static class PptxPresentationProtoReader
 
         public long TransformCeilingY(double value) => (long)Math.Ceiling(Y + (value - ChildY) * ScaleY);
 
+        public long TransformRoundX(double value) => RoundEmu(X + (value - ChildX) * ScaleX);
+
+        public long TransformRoundY(double value) => RoundEmu(Y + (value - ChildY) * ScaleY);
+
         public long TransformFloorX(double value) => (long)Math.Floor(X + (value - ChildX) * ScaleX);
 
         public long TransformFloorY(double value) => (long)Math.Floor(Y + (value - ChildY) * ScaleY);
@@ -3309,8 +3313,8 @@ internal static class PptxPresentationProtoReader
             if (groupTransform is not null)
             {
                 return new BoundingBox(
-                    x is null ? null : groupTransform.TransformFloorX(x.Value),
-                    y is null ? null : groupTransform.TransformFloorY(y.Value),
+                    x is null ? null : groupTransform.TransformRoundX(x.Value),
+                    y is null ? null : groupTransform.TransformRoundY(y.Value),
                     width is null ? null : groupTransform.TransformFloorWidth(width.Value),
                     height is null ? null : groupTransform.TransformFloorHeight(height.Value),
                     rotation,
