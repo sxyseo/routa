@@ -5,12 +5,12 @@ import {
   buildSpreadsheetSparklineVisuals,
   buildSpreadsheetValidationVisuals,
 } from "../spreadsheet-cell-overlays";
+import { spreadsheetCellStyle } from "../spreadsheet-cell-styles";
+import { spreadsheetSheetTabColor } from "../spreadsheet-data-access";
 import {
-  spreadsheetCellStyle,
   spreadsheetCellText,
   spreadsheetNumberFormatCode,
-  spreadsheetSheetTabColor,
-} from "../spreadsheet-preview";
+} from "../spreadsheet-number-format";
 
 describe("spreadsheet cell formatting", () => {
   it("uses Excel built-in number formats when no custom number format is present", () => {
