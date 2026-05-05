@@ -538,6 +538,28 @@ describe("WordPreview", () => {
     expect(container.querySelectorAll('[role="img"]')).toHaveLength(1);
   });
 
+  it("renders decoded DOCX figure captions after adjacent images", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            { paragraphs: [{ runs: [{ text: "\nFigure- Diagram caption" }] }] },
+            {
+              bbox: { heightEmu: 914_400, widthEmu: 1_828_800, xEmu: 0, yEmu: 0 },
+              imageReference: { id: "diagram" },
+            },
+          ],
+          images: [{ contentType: "image/png", data: Array.from({ length: 256 }, () => 1), id: "diagram" }],
+        }}
+      />,
+    );
+
+    const bodyChildren = Array.from(container.querySelector<HTMLElement>('[data-testid="word-body-content"]')?.children ?? []);
+    expect(bodyChildren[0]?.getAttribute("role")).toBe("img");
+    expect(bodyChildren[1]?.textContent?.trim()).toBe("Figure- Diagram caption");
+  });
+
   it("uses section boundaries without dropping trailing root DOCX elements", () => {
     const { container } = render(
       <WordPreview

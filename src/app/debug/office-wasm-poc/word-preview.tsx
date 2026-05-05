@@ -345,27 +345,60 @@ function wordPreviewPageChunk(page: WordPreviewPage, index: number, elements: un
 
 function wordCollapseTinyDuplicateImages(elements: unknown[], root: RecordValue | null): unknown[] {
   const tinyImageIds = wordTinyImageIds(root);
-  if (tinyImageIds.size === 0) return elements;
 
+  const collapsedElements: unknown[] = [];
   let previousImageBoxKey = "";
-  return elements.filter((element) => {
+  for (const element of elements) {
     const record = asRecord(element);
     if (!record) {
       previousImageBoxKey = "";
-      return true;
+      collapsedElements.push(element);
+      continue;
     }
 
     const imageId = elementImageReferenceId(record);
     if (!imageId) {
       previousImageBoxKey = "";
-      return true;
+      collapsedElements.push(element);
+      continue;
     }
 
     const boxKey = wordImageBoxKey(record);
     const isTinyDuplicate = tinyImageIds.has(imageId) && boxKey !== "" && boxKey === previousImageBoxKey;
     previousImageBoxKey = boxKey;
-    return !isTinyDuplicate;
-  });
+    if (!isTinyDuplicate) collapsedElements.push(element);
+  }
+
+  return wordOrderFigureCaptionImages(collapsedElements);
+}
+
+function wordOrderFigureCaptionImages(elements: unknown[]): unknown[] {
+  const orderedElements: unknown[] = [];
+  for (let index = 0; index < elements.length; index++) {
+    const element = elements[index];
+    const nextElement = elements[index + 1];
+    const record = asRecord(element);
+    const nextRecord = asRecord(nextElement);
+    if (record != null && nextRecord != null && wordIsFigureCaptionElement(record) && elementImageReferenceId(nextRecord)) {
+      orderedElements.push(nextElement, element);
+      index++;
+      continue;
+    }
+
+    orderedElements.push(element);
+  }
+  return orderedElements;
+}
+
+function wordIsFigureCaptionElement(element: RecordValue): boolean {
+  const text = asArray(element.paragraphs)
+    .map((paragraph) => {
+      const record = asRecord(paragraph);
+      return asArray(record?.runs).map((run) => asString(asRecord(run)?.text)).join("");
+    })
+    .join("")
+    .trim();
+  return /^Figure[-\s]/i.test(text);
 }
 
 function wordTinyImageIds(root: RecordValue | null): Set<string> {
