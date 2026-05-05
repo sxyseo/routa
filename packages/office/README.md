@@ -14,6 +14,8 @@ npx @autodev/office ./deck.pptx --output ./canvases
 npx @autodev/office canvas ./deck.pptx --output ./deck.canvas.tsx
 npx @autodev/office canvas ./document.docx --output ./document.canvas.tsx
 npx @autodev/office canvas ./workbook.xlsx --output ./workbook.canvas.tsx
+npx @autodev/office ./workbook.xlsx --output-format proto --output ./workbook.proto
+npx @autodev/office ./workbook.xlsx --output-format json --output ./workbook-payload.json
 npx @autodev/office ./deck.proto --input-format proto --kind pptx --output ./deck.canvas.tsx
 npx @autodev/office ./deck-payload.json --input-format json --kind pptx --output ./deck.canvas.tsx
 ```
@@ -49,6 +51,8 @@ Requirements:
 
 ```bash
 autodev-office <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
+autodev-office <file.pptx|file.docx|file.xlsx> --output-format proto --output file.proto
+autodev-office <file.pptx|file.docx|file.xlsx> --output-format json --output payload.json
 autodev-office <payload.json> --input-format json --kind <pptx|docx|xlsx> --output file.canvas.tsx
 autodev-office <proto.bin> --input-format proto --kind <pptx|docx|xlsx> --output file.canvas.tsx
 autodev-office canvas <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
@@ -67,6 +71,9 @@ Options:
   inferred from the extension: `.json` is payload JSON, `.proto`/`.pb`/`.bin`
   are protobuf bytes, and `.pptx`/`.docx`/`.xlsx` are source Office files.
 - `--kind <pptx|docx|xlsx>` selects the renderer for proto or JSON input.
+- `--output-format <canvas|proto|json>` selects the output format. `canvas`
+  writes self-contained Cursor Canvas TSX, `proto` writes protobuf bytes from
+  the WASM reader, and `json` writes the intermediate Canvas payload JSON.
 - `--media-quality <1-100>` controls JPEG quality for embedded media.
 - `--media-width <px>` caps embedded media width.
 - `--max-columns <n>` caps rendered XLSX columns.
@@ -76,7 +83,7 @@ Options:
 When writing into a Cursor project, the CLI also writes a matching
 `.canvas.status.json` sidecar so Cursor can discover the generated canvas.
 
-JSON input means the intermediate Canvas payload produced by the
+JSON input/output means the intermediate Canvas payload produced by the
 `build*CanvasPayload` APIs, not arbitrary decoded protobuf JSON.
 
 ## API Usage

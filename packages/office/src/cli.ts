@@ -11,10 +11,13 @@ import {
   getReaderVersion,
 } from "./index.js";
 import {
+  buildPptxCursorCanvasPayload,
   renderPptxCursorCanvasSource,
   renderPptxCursorCanvasSourceFromPayload,
 } from "./cursor-canvas.js";
 import {
+  buildDocxCursorCanvasPayload,
+  buildXlsxCursorCanvasPayload,
   renderDocxCursorCanvasSource,
   renderDocxCursorCanvasSourceFromPayload,
   renderXlsxCursorCanvasSource,
@@ -23,9 +26,19 @@ import {
 
 type InputFormat = "json" | "office" | "proto";
 type OfficeKind = "docx" | "pptx" | "xlsx";
+type OutputFormat = "canvas" | "json" | "proto";
 type PptxPayload = Parameters<typeof renderPptxCursorCanvasSourceFromPayload>[0];
 type DocxPayload = Parameters<typeof renderDocxCursorCanvasSourceFromPayload>[0];
 type XlsxPayload = Parameters<typeof renderXlsxCursorCanvasSourceFromPayload>[0];
+type OfficeRenderOptions = {
+  maxColumns?: number;
+  maxRows?: number;
+  mediaQuality?: number;
+  mediaWidth?: number;
+  readerVersion: string;
+  sourceLabel: string;
+  title: string;
+};
 
 type CliOptions = {
   command: string;
@@ -39,6 +52,7 @@ type CliOptions = {
   mediaQuality?: number;
   mediaWidth?: number;
   name?: string;
+  outputFormat?: OutputFormat;
   outputPath?: string;
 };
 
@@ -57,11 +71,12 @@ async function main(): Promise<void> {
     throw new Error(`Input file not found: ${inputPath}`);
   }
   const extension = path.extname(inputPath).toLowerCase();
-  const outputPath = resolveOutputPath(inputPath, options);
   const inputFormat = resolveInputFormat(extension, options);
   const kind = resolveKind(extension, options, inputFormat);
+  const outputFormat = options.outputFormat ?? "canvas";
+  const outputPath = resolveOutputPath(inputPath, options, outputFormat);
   const sourceLabel = path.basename(inputPath);
-  const source = await renderCanvasSource(inputPath, inputFormat, kind, {
+  const output = await renderOutput(inputPath, inputFormat, outputFormat, kind, {
     maxColumns: options.maxColumns,
     maxRows: options.maxRows,
     mediaQuality: options.mediaQuality,
@@ -69,15 +84,15 @@ async function main(): Promise<void> {
     sourceLabel,
   });
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, source, "utf8");
-  if (shouldWriteCursorStatus(outputPath, options)) {
+  await writeFile(outputPath, output.content);
+  if (outputFormat === "canvas" && shouldWriteCursorStatus(outputPath, options)) {
     await writeFile(
       cursorStatusPath(outputPath),
       JSON.stringify({ status: "rendered" }),
       "utf8",
     );
   }
-  console.log(JSON.stringify({ inputPath, outputPath, type: "cursor-canvas" }, null, 2));
+  console.log(JSON.stringify({ inputPath, outputPath, type: output.type }, null, 2));
 }
 
 function parseArgs(args: string[]): CliOptions {
@@ -109,6 +124,8 @@ function parseArgs(args: string[]): CliOptions {
       options.maxRows = numberValue(requiredValue(args, ++index, arg), arg);
     } else if (arg === "--output" || arg === "-o") {
       options.outputPath = requiredValue(args, ++index, arg);
+    } else if (arg === "--output-format") {
+      options.outputFormat = outputFormatValue(requiredValue(args, ++index, arg), arg);
     } else if (arg === "--help" || arg === "-h") {
       options.command = "help";
     } else if (!arg.startsWith("-") && !options.inputPath) {
@@ -137,6 +154,39 @@ function normalizeCommand(firstArg: string | undefined): {
   return { name: firstArg, nextIndex: 1 };
 }
 
+async function renderOutput(
+  inputPath: string,
+  inputFormat: InputFormat,
+  outputFormat: OutputFormat,
+  kind: OfficeKind,
+  options: {
+    maxColumns?: number;
+    maxRows?: number;
+    mediaQuality?: number;
+    mediaWidth?: number;
+    sourceLabel: string;
+  },
+): Promise<{ content: string | Uint8Array; type: string }> {
+  if (outputFormat === "proto") {
+    return {
+      content: await readProtoInput(inputPath, inputFormat, kind),
+      type: "office-proto",
+    };
+  }
+
+  if (outputFormat === "json") {
+    return {
+      content: `${JSON.stringify(await readCanvasPayload(inputPath, inputFormat, kind, options), null, 2)}\n`,
+      type: "office-json",
+    };
+  }
+
+  return {
+    content: await renderCanvasSource(inputPath, inputFormat, kind, options),
+    type: "cursor-canvas",
+  };
+}
+
 async function renderCanvasSource(
   inputPath: string,
   inputFormat: InputFormat,
@@ -153,22 +203,8 @@ async function renderCanvasSource(
     return renderCanvasSourceFromPayloadJson(inputPath, kind);
   }
 
-  const inputBytes = new Uint8Array(await readFile(inputPath));
-  const readerVersion = await getReaderVersion();
-  const protoBytes =
-    inputFormat === "proto"
-      ? inputBytes
-      : await extractOfficeProto(inputBytes, kind);
-
-  const renderOptions = {
-    maxColumns: options.maxColumns,
-    maxRows: options.maxRows,
-    mediaQuality: options.mediaQuality,
-    mediaWidth: options.mediaWidth,
-    readerVersion,
-    sourceLabel: options.sourceLabel,
-    title: options.sourceLabel,
-  };
+  const protoBytes = await readProtoInput(inputPath, inputFormat, kind);
+  const renderOptions = await buildRenderOptions(options);
 
   if (kind === "pptx") {
     return renderPptxCursorCanvasSource(protoBytes, renderOptions);
@@ -177,6 +213,67 @@ async function renderCanvasSource(
     return renderDocxCursorCanvasSource(protoBytes, renderOptions);
   }
   return renderXlsxCursorCanvasSource(protoBytes, renderOptions);
+}
+
+async function readCanvasPayload(
+  inputPath: string,
+  inputFormat: InputFormat,
+  kind: OfficeKind,
+  options: {
+    maxColumns?: number;
+    maxRows?: number;
+    mediaQuality?: number;
+    mediaWidth?: number;
+    sourceLabel: string;
+  },
+): Promise<unknown> {
+  if (inputFormat === "json") {
+    return JSON.parse(await readFile(inputPath, "utf8")) as unknown;
+  }
+
+  const protoBytes = await readProtoInput(inputPath, inputFormat, kind);
+  const renderOptions = await buildRenderOptions(options);
+  if (kind === "pptx") {
+    return buildPptxCursorCanvasPayload(protoBytes, renderOptions);
+  }
+  if (kind === "docx") {
+    return buildDocxCursorCanvasPayload(protoBytes, renderOptions);
+  }
+  return buildXlsxCursorCanvasPayload(protoBytes, renderOptions);
+}
+
+async function readProtoInput(
+  inputPath: string,
+  inputFormat: InputFormat,
+  kind: OfficeKind,
+): Promise<Uint8Array> {
+  if (inputFormat === "json") {
+    throw new Error("--output-format proto cannot be used with JSON input.");
+  }
+  const inputBytes = new Uint8Array(await readFile(inputPath));
+  return inputFormat === "proto"
+    ? inputBytes
+    : extractOfficeProto(inputBytes, kind);
+}
+
+async function buildRenderOptions(
+  options: {
+    maxColumns?: number;
+    maxRows?: number;
+    mediaQuality?: number;
+    mediaWidth?: number;
+    sourceLabel: string;
+  },
+): Promise<OfficeRenderOptions> {
+  return {
+    maxColumns: options.maxColumns,
+    maxRows: options.maxRows,
+    mediaQuality: options.mediaQuality,
+    mediaWidth: options.mediaWidth,
+    readerVersion: await getReaderVersion(),
+    sourceLabel: options.sourceLabel,
+    title: options.sourceLabel,
+  };
 }
 
 async function extractOfficeProto(bytes: Uint8Array, kind: OfficeKind): Promise<Uint8Array> {
@@ -228,6 +325,11 @@ function officeKindValue(value: string, option: string): OfficeKind {
   throw new Error(`Invalid value for ${option}: ${value}. Expected pptx, docx, or xlsx.`);
 }
 
+function outputFormatValue(value: string, option: string): OutputFormat {
+  if (value === "canvas" || value === "proto" || value === "json") return value;
+  throw new Error(`Invalid value for ${option}: ${value}. Expected canvas, proto, or json.`);
+}
+
 function numberValue(value: string, option: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -244,8 +346,18 @@ function requiredValue(args: string[], index: number, option: string): string {
   return value;
 }
 
-function resolveOutputPath(inputPath: string, options: CliOptions): string {
-  const basename = `${slugify(options.name ?? path.basename(inputPath, path.extname(inputPath)))}.canvas.tsx`;
+function resolveOutputPath(
+  inputPath: string,
+  options: CliOptions,
+  outputFormat: OutputFormat,
+): string {
+  const extension =
+    outputFormat === "canvas"
+      ? ".canvas.tsx"
+      : outputFormat === "proto"
+        ? ".proto"
+        : ".json";
+  const basename = `${slugify(options.name ?? path.basename(inputPath, path.extname(inputPath)))}${extension}`;
   if (options.outputPath) {
     const resolvedOutputPath = path.resolve(options.outputPath);
     if (isExistingDirectory(resolvedOutputPath)) {
@@ -297,6 +409,8 @@ function printHelp(): void {
 
 Usage:
   autodev-office <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
+  autodev-office <file.pptx|file.docx|file.xlsx> --output-format proto --output file.proto
+  autodev-office <file.pptx|file.docx|file.xlsx> --output-format json --output payload.json
   autodev-office <payload.json> --input-format json --kind <pptx|docx|xlsx> --output file.canvas.tsx
   autodev-office <proto.bin> --input-format proto --kind <pptx|docx|xlsx> --output file.canvas.tsx
   autodev-office canvas <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
@@ -309,6 +423,7 @@ Options:
       --cursor-project <dir>  Write into <dir>/canvases.
       --input-format <format> Input format: office, proto, or json. Default: infer from extension.
       --kind <kind>           Required for proto/json input: pptx, docx, or xlsx.
+      --output-format <format> Output format: canvas, proto, or json. Default: canvas.
       --media-quality <1-100> JPEG quality for embedded media. Default: 70.
       --media-width <px>      Max embedded media width. Default: 1280.
       --max-columns <n>       Max XLSX columns to render. Default: 24.
