@@ -1090,7 +1090,8 @@ export function spreadsheetCellStyle(
   const shrinkToFit = spreadsheetBool(alignment?.shrinkToFit ?? cellFormat?.shrinkToFit, false);
   const indent = Math.max(0, asNumber(alignment?.indent ?? cellFormat?.indent, 0));
   const fontSize = font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize;
-  const fallbackTextAlign = visual?.iconSet?.showValue === false ? "left" : (fallbackStyle.textAlign ?? spreadsheetDefaultTextAlign(cell));
+  const textDirection = !horizontalAlignment && /[\u0590-\u08ff]/u.test(cellText(cell)) ? "rtl" : undefined;
+  const fallbackTextAlign = visual?.iconSet?.showValue === false ? "left" : (fallbackStyle.textAlign ?? (textDirection === "rtl" ? "right" : spreadsheetDefaultTextAlign(cell)));
   const justifyContent = horizontalAlignment ? spreadsheetHorizontalJustifyContent(horizontalAlignment) : spreadsheetJustifyContentForTextAlign(fallbackTextAlign);
 
   return {
@@ -1106,6 +1107,7 @@ export function spreadsheetCellStyle(
     borderRightWidth: rightBorder.width,
     color: visual?.color ?? fontColor ?? (hyperlinkFormula ? "#0563c1" : fallbackStyle.color) ?? sheetCellStyle.color,
     cursor: hyperlinkFormula ? "pointer" : undefined,
+    direction: textDirection,
     display: "flex",
     fontFamily: spreadsheetFontFamily(asString(font?.typeface)),
     fontSize: shrinkToFit && typeof fontSize === "number" ? Math.max(8, fontSize * 0.88) : fontSize,
@@ -1159,11 +1161,7 @@ function spreadsheetBorderColor(value: unknown): string | null {
 }
 
 function spreadsheetBorderLine(border: RecordValue | null, side: "bottom" | "right"): RecordValue | null {
-  return (
-    asRecord(border?.[side]) ??
-    asRecord(border?.[`${side}Border`]) ??
-    asRecord(border?.[`${side}_border`])
-  );
+  return asRecord(border?.[side]) ?? asRecord(border?.[`${side}Border`]) ?? asRecord(border?.[`${side}_border`]);
 }
 
 function spreadsheetBorderStyle(value: string): CSSProperties["borderBottomStyle"] {

@@ -136,6 +136,14 @@ describe("spreadsheet cell formatting", () => {
     });
   });
 
+  it("right-aligns RTL text by default like Excel", () => {
+    expect(spreadsheetCellStyle({ address: "K7", value: "مرحبا بالعالم" }, null)).toMatchObject({
+      direction: "rtl",
+      justifyContent: "flex-end",
+      textAlign: "right",
+    });
+  });
+
   it("uses an Excel-like default spreadsheet font stack", () => {
     expect(spreadsheetCellStyle({ address: "A1", value: "Task" }, null).fontFamily).toBe("Aptos, Calibri, Arial, Helvetica, sans-serif");
   });
