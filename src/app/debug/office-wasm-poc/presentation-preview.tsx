@@ -114,6 +114,8 @@ export function PresentationPreview({
               aria-label={`${labels.slide} ${asNumber(slide.index, index + 1)}`}
               className={styles.thumbnailButton}
               data-active={index === selectedSlideIndex}
+              data-slide-index={index + 1}
+              data-testid="presentation-thumbnail"
               key={`${asString(slide.id)}-${index}`}
               onClick={() => {
                 setActiveSlideIndex(index);
@@ -224,6 +226,7 @@ function SlideStage({
               images={images}
               layouts={layouts}
               slide={slide}
+              testId="presentation-slide-canvas"
               textOverflow="visible"
               width={canvasWidth}
             />
@@ -461,6 +464,7 @@ function SlideCanvasFrame({
   images,
   layouts,
   slide,
+  testId,
   textOverflow,
   width,
 }: {
@@ -469,6 +473,7 @@ function SlideCanvasFrame({
   images: ReadonlyMap<string, CanvasImageSource>;
   layouts: RecordValue[];
   slide: RecordValue;
+  testId?: string;
   textOverflow: PresentationTextOverflow;
   width: number;
 }) {
@@ -497,6 +502,7 @@ function SlideCanvasFrame({
     <canvas
       aria-hidden="true"
       className={className}
+      data-testid={testId}
       height={Math.round(height)}
       ref={canvasRef}
       width={Math.round(width)}

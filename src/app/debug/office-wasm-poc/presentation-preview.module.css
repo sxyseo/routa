@@ -122,14 +122,11 @@
 }
 
 .stage {
-  align-items: stretch;
   background: #f8fafc;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  display: block;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: auto;
   padding: 16px 24px 20px;
   position: relative;
   scrollbar-color: #cbd5e1 transparent;
@@ -138,8 +135,7 @@
 .viewport {
   align-items: center;
   display: flex;
-  flex: 1 1 auto;
-  height: auto;
+  height: 100%;
   justify-content: center;
   min-height: 0;
   min-width: 0;
@@ -237,7 +233,7 @@
   font: 12px/1.6 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
   margin: 14px 0 0;
   max-height: 96px;
-  max-width: calc(100% - 48px);
+  max-width: 100%;
   overflow: auto;
   padding: 12px 14px;
   position: static;

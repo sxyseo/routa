@@ -32,6 +32,7 @@ import {
 import {
   wordEmptyParagraphEstimatedHeight,
   wordEmptyParagraphStyle,
+  wordElementsHaveRenderableContent,
   wordParagraphHasVisibleContent,
 } from "./word-preview-paragraph-utils";
 import { wordSplitOversizedTableElements, wordTableElementEstimatedHeight } from "./word-preview-table-pagination";
@@ -443,17 +444,6 @@ function wordPageBodyCapacity(layout: WordPageLayout, page: WordPreviewPage): nu
   const headerReserve = wordElementsHaveRenderableContent(page.headerElements) ? 16 : 0;
   const footerReserve = wordElementsHaveRenderableContent(page.footerElements) ? 12 : 0;
   return Math.max(180, layout.heightPx - layout.paddingTop - layout.paddingBottom - headerReserve - footerReserve);
-}
-
-function wordElementsHaveRenderableContent(elements: unknown[]): boolean {
-  return elements.some((element) => {
-    const record = asRecord(element);
-    if (!record) return false;
-    if (elementImageReferenceId(record) || asRecord(record.table) || asRecord(record.chartReference)) return true;
-    return asArray(record.paragraphs).some((paragraph) =>
-      wordParagraphHasVisibleContent(paragraphView(paragraph, { textStyles: new Map(), images: new Map() })),
-    );
-  });
 }
 
 function wordElementEstimatedHeight(

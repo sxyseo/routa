@@ -1,11 +1,30 @@
 import { type CSSProperties } from "react";
 
-import { asNumber, type ParagraphView, type RecordValue } from "./office-preview-utils";
+import {
+  asArray,
+  asNumber,
+  asRecord,
+  elementImageReferenceId,
+  type ParagraphView,
+  paragraphView,
+  type RecordValue,
+} from "./office-preview-utils";
 
 export function wordParagraphHasVisibleContent(paragraph: ParagraphView): boolean {
   return Boolean(paragraph.marker) || paragraph.runs.some((run) => (
     run.text.trim() !== "" || (run.referenceMarkers?.length ?? 0) > 0
   ));
+}
+
+export function wordElementsHaveRenderableContent(elements: unknown[]): boolean {
+  return elements.some((element) => {
+    const record = asRecord(element);
+    if (!record) return false;
+    if (elementImageReferenceId(record) || asRecord(record.table) || asRecord(record.chartReference)) return true;
+    return asArray(record.paragraphs).some((paragraph) =>
+      wordParagraphHasVisibleContent(paragraphView(paragraph, { images: new Map(), textStyles: new Map() })),
+    );
+  });
 }
 
 export function wordEmptyParagraphEstimatedHeight(style: RecordValue | null): number {
