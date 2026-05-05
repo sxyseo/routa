@@ -505,7 +505,7 @@ function wordTableEstimatedHeight(rowCount: number): number {
 }
 
 function wordEstimatedTableRowHeight(): number {
-  return 34;
+  return 24;
 }
 
 function wordEstimatedBoxHeight(element: RecordValue, pageLayout: WordPageLayout, fallbackHeight: number): number {
@@ -1368,10 +1368,10 @@ export function wordTableCellStyle(cell: RecordValue, background: string, color:
     backgroundImage: wordTableDiagonalBorders(cell.lines),
     color,
     ...wordTableCellBorders(cell.lines),
-    paddingBottom: tableCellPaddingPx(cell.marginBottom, 8),
-    paddingLeft: tableCellPaddingPx(cell.marginLeft, 10),
-    paddingRight: tableCellPaddingPx(cell.marginRight, 10),
-    paddingTop: tableCellPaddingPx(cell.marginTop, 8),
+    paddingBottom: tableCellPaddingPx(cell.marginBottom, 4),
+    paddingLeft: tableCellPaddingPx(cell.marginLeft, 6),
+    paddingRight: tableCellPaddingPx(cell.marginRight, 6),
+    paddingTop: tableCellPaddingPx(cell.marginTop, 4),
     verticalAlign: wordVerticalAlign(cell.anchor),
   };
 }
@@ -1504,6 +1504,15 @@ function wordParagraphCssLineHeight(paragraph: ParagraphView, fontSize: number):
   return 1.35;
 }
 
+function wordTableParagraphStyle(paragraph: ParagraphView): CSSProperties {
+  const style = wordParagraphStyle(paragraph);
+  style.fontSize = Math.min(asNumber(style.fontSize, 12), 12);
+  style.lineHeight = 1.25;
+  style.marginBottom = 2;
+  style.marginTop = 0;
+  return style;
+}
+
 const wordHeading2RuleStyle: CSSProperties = {
   borderBottom: "1px solid #3c9faa",
   borderTop: "1px solid #3c9faa",
@@ -1542,11 +1551,7 @@ const wordFooterContentStyle: CSSProperties = {
   paddingTop: 8,
 };
 
-const wordReferenceMarkerStyle: CSSProperties = {
-  color: "#475569",
-  fontSize: "0.72em",
-  marginLeft: 2,
-};
+const wordReferenceMarkerStyle: CSSProperties = { color: "#475569", fontSize: "0.72em", marginLeft: 2 };
 
 const wordSupplementalNotesStyle: CSSProperties = {
   borderTop: "1px solid #cbd5e1",
@@ -1556,17 +1561,9 @@ const wordSupplementalNotesStyle: CSSProperties = {
   paddingTop: 10,
 };
 
-const wordSupplementalNoteStyle: CSSProperties = {
-  color: "#334155",
-  fontSize: 12,
-};
+const wordSupplementalNoteStyle: CSSProperties = { color: "#334155", fontSize: 12 };
 
-const wordSupplementalNoteMetaStyle: CSSProperties = {
-  color: "#64748b",
-  fontSize: 11,
-  fontWeight: 600,
-  marginBottom: 2,
-};
+const wordSupplementalNoteMetaStyle: CSSProperties = { color: "#64748b", fontSize: 11, fontWeight: 600, marginBottom: 2 };
 
 function wordFillToCss(fill: unknown): string | undefined {
   const fillRecord = asRecord(fill);
