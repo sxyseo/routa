@@ -89,9 +89,24 @@ internal sealed class ClosedXmlFormulaValueProvider : IDisposable
 
         if (value.IsError)
         {
-            return value.GetError().ToString();
+            return FormulaErrorToProtocolText(value.GetError());
         }
 
         return value.GetText();
+    }
+
+    private static string FormulaErrorToProtocolText(XLError error)
+    {
+        return error switch
+        {
+            XLError.NullValue => "#NULL!",
+            XLError.DivisionByZero => "#DIV/0!",
+            XLError.IncompatibleValue => "#VALUE!",
+            XLError.CellReference => "#REF!",
+            XLError.NameNotRecognized => "#NAME?",
+            XLError.NumberInvalid => "#NUM!",
+            XLError.NoValueAvailable => "#N/A",
+            _ => error.ToString(),
+        };
     }
 }

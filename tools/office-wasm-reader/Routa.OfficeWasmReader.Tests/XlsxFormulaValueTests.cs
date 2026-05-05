@@ -20,6 +20,13 @@ public sealed class XlsxFormulaValueTests
         Assert.Equal("ok", values["Calc!B2"]);
         Assert.Equal("20", values["Calc!B3"]);
         Assert.Equal("TRUE", values["Calc!B4"]);
+        Assert.Equal("#DIV/0!", values["Calc!B5"]);
+        Assert.Equal("46143", values["Calc!B6"]);
+        Assert.Equal("open", values["Calc!B7"]);
+        Assert.Equal("fallback", values["Calc!B8"]);
+        Assert.Equal("2", values["Calc!B10"]);
+        Assert.Equal("4", values["Calc!B11"]);
+        Assert.Equal("6", values["Calc!B12"]);
     }
 
     private static byte[] CreateFormulaWorkbookWithoutCachedValues()
@@ -32,6 +39,16 @@ public sealed class XlsxFormulaValueTests
         sheet.Cell("B2").FormulaA1 = "IF(B1>10,\"ok\",\"bad\")";
         sheet.Cell("B3").FormulaA1 = "VLOOKUP(\"b\",Lookup!A1:B1,2,FALSE)";
         sheet.Cell("B4").FormulaA1 = "B1=15";
+        sheet.Cell("B5").FormulaA1 = "1/0";
+        sheet.Cell("B6").FormulaA1 = "DATE(2026,5,1)";
+        sheet.Cell("B7").FormulaA1 = "HYPERLINK(\"https://example.com\",\"open\")";
+        sheet.Cell("B8").FormulaA1 = "IFERROR(B5,\"fallback\")";
+        sheet.Cell("A10").Value = 1;
+        sheet.Cell("A11").Value = 2;
+        sheet.Cell("A12").Value = 3;
+        sheet.Cell("B10").FormulaA1 = "A10*2";
+        sheet.Cell("B11").FormulaA1 = "A11*2";
+        sheet.Cell("B12").FormulaA1 = "A12*2";
 
         var lookup = workbook.Worksheets.Add("Lookup");
         lookup.Cell("A1").Value = "b";
@@ -41,7 +58,9 @@ public sealed class XlsxFormulaValueTests
         workbook.SaveAs(saved);
         saved.Position = 0;
 
-        using var stripped = new MemoryStream(saved.ToArray());
+        using var stripped = new MemoryStream();
+        stripped.Write(saved.ToArray());
+        stripped.Position = 0;
         using (var document = SpreadsheetDocument.Open(stripped, true))
         {
             var worksheetParts = document.WorkbookPart?.WorksheetParts ?? [];
@@ -56,9 +75,32 @@ public sealed class XlsxFormulaValueTests
                 cell.CellValue?.Remove();
                 cell.DataType = null;
             }
+
+            var calcSheet = document.WorkbookPart?.WorksheetParts
+                .FirstOrDefault(part => part.Worksheet.Descendants<S.SheetData>()
+                    .SelectMany(sheetData => sheetData.Elements<S.Row>())
+                    .SelectMany(row => row.Elements<S.Cell>())
+                    .Any(cell => cell.CellReference?.Value == "B10"));
+            if (calcSheet is not null)
+            {
+                MakeSharedFormula(calcSheet, "B10", "B10:B12", 0, "A10*2");
+                MakeSharedFormula(calcSheet, "B11", "B10:B12", 0, "");
+                MakeSharedFormula(calcSheet, "B12", "B10:B12", 0, "");
+            }
         }
 
         return stripped.ToArray();
+    }
+
+    private static void MakeSharedFormula(WorksheetPart worksheetPart, string address, string reference, uint sharedIndex, string formulaText)
+    {
+        var cell = worksheetPart.Worksheet.Descendants<S.Cell>().First(cell => cell.CellReference?.Value == address);
+        cell.CellFormula = new S.CellFormula(formulaText)
+        {
+            FormulaType = S.CellFormulaValues.Shared,
+            SharedIndex = sharedIndex,
+            Reference = formulaText.Length > 0 ? reference : null,
+        };
     }
 
     private static Dictionary<string, string> DecodeCellValues(byte[] protoBytes)
