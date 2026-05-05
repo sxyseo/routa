@@ -1,6 +1,6 @@
 export type SpreadsheetChartTextRole = "axisLabel" | "axisTitle" | "dataLabel" | "legend" | "title";
 
-const SPREADSHEET_CHART_FONT_FAMILY = "Calibri, Arial, sans-serif";
+const SPREADSHEET_CHART_FONT_FAMILY = "Aptos, Calibri, Arial, sans-serif";
 
 const SPREADSHEET_CHART_TEXT = {
   axisLabel: { size: 13, weight: 400 },

@@ -250,8 +250,8 @@ describe("spreadsheet charts", () => {
   });
 
   it("uses Excel-like chart typography for canvas text metrics", () => {
-    expect(spreadsheetChartCanvasFont("title")).toBe("400 24px Calibri, Arial, sans-serif");
-    expect(spreadsheetChartCanvasFont("axisLabel")).toBe("400 13px Calibri, Arial, sans-serif");
+    expect(spreadsheetChartCanvasFont("title")).toBe("400 24px Aptos, Calibri, Arial, sans-serif");
+    expect(spreadsheetChartCanvasFont("axisLabel")).toBe("400 13px Aptos, Calibri, Arial, sans-serif");
     expect(spreadsheetChartTextWidth("Coverage %", "legend")).toBe(72);
   });
 
