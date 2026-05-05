@@ -48,6 +48,7 @@ import { buildSpreadsheetCanvasCellPaints } from "./spreadsheet-canvas-paints";
 import { SpreadsheetCanvasLayer } from "./spreadsheet-canvas-layer";
 import { buildSpreadsheetCharts, SpreadsheetChartLayer } from "./spreadsheet-charts";
 import { SpreadsheetFrozenHeaders } from "./spreadsheet-frozen-headers";
+import { spreadsheetSheetWithVolatileFormulaValues } from "./spreadsheet-formula-values";
 import {
   buildSpreadsheetImages,
   buildSpreadsheetShapes,
@@ -173,7 +174,11 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const { state: viewportState, store: viewportStore } = useSpreadsheetViewportStore();
   const viewportScroll = viewportState.scroll;
   const viewportSize = viewportState.size;
-  const activeSheet = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
+  const activeSheetSource = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
+  const activeSheet = useMemo(
+    () => spreadsheetSheetWithVolatileFormulaValues(activeSheetSource, sheets),
+    [activeSheetSource, sheets],
+  );
   const layout = useMemo(() => buildSpreadsheetLayout(activeSheet, sizeOverrides), [activeSheet, sizeOverrides]);
   const chartSpecs = useMemo(() => buildSpreadsheetCharts({
     activeSheet,
