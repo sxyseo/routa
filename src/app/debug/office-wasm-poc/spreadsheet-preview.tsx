@@ -93,6 +93,7 @@ import {
 } from "./spreadsheet-selection";
 import {
   buildSpreadsheetTableFilterTargets,
+  mergeSpreadsheetLayoutOverrides,
   spreadsheetTableFilterActiveKeys,
   spreadsheetTableFilterRowHeightOverrides,
   spreadsheetTableFilterSelectionForToggle,
@@ -102,7 +103,15 @@ import {
   type SpreadsheetTableFilterTarget,
   type SpreadsheetTableFilterValue,
 } from "./spreadsheet-table-filters";
+import {
+  SpreadsheetTableFilterMenu,
+  type SpreadsheetTableFilterMenuAnchor,
+} from "./spreadsheet-table-filter-menu";
 import { useSpreadsheetViewportStore } from "./spreadsheet-viewport-store";
+import {
+  SpreadsheetFormulaBar,
+  SpreadsheetWorkbookBar,
+} from "./spreadsheet-workbook-chrome";
 
 type SpreadsheetFloatingSpec = { height: number; left: number; top: number; width: number };
 
@@ -113,7 +122,7 @@ type SpreadsheetCellEditor = {
 
 type SpreadsheetCellEdits = Record<string, string | undefined>;
 type SpreadsheetFilterMenuState = {
-  anchor: SpreadsheetFloatingSpec;
+  anchor: SpreadsheetTableFilterMenuAnchor;
   target: SpreadsheetTableFilterTarget;
 };
 
@@ -445,6 +454,15 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     return <p style={{ color: "#64748b" }}>{labels.noSheets}</p>;
   }
 
+  const formulaRow = selection?.rowIndex ?? 1;
+  const formulaColumn = selection?.columnIndex ?? 0;
+  const formulaCell = cellAt(activeSheet, formulaRow, formulaColumn);
+  const formulaSheetName = asString(activeSheet?.name);
+  const formulaValue = selection
+    ? (cellEdits[spreadsheetSelectionKey(selection)] ?? spreadsheetCellText(formulaCell, styles, formulaSheetName))
+    : spreadsheetCellText(formulaCell, styles, formulaSheetName);
+  const formulaAddress = asString(formulaCell?.address) || `${columnLabel(formulaColumn)}${formulaRow}`;
+
   return (
     <div
       data-testid="spreadsheet-preview"
@@ -464,7 +482,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       }}
     >
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
-      <SpreadsheetFormulaBar activeSheet={activeSheet} cellEdits={cellEdits} selection={selection} styles={styles} />
+      <SpreadsheetFormulaBar address={formulaAddress} value={formulaValue} />
       <div ref={viewportShellRef} style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
         <SpreadsheetCanvasLayer
           cellPaints={canvasCellPaints}
@@ -683,130 +701,6 @@ function applySpreadsheetInteractiveSizeOverride(
       [index]: size,
     },
   };
-}
-
-function mergeSpreadsheetLayoutOverrides(
-  base: SpreadsheetLayoutOverrides,
-  next: SpreadsheetLayoutOverrides,
-): SpreadsheetLayoutOverrides {
-  return {
-    columnWidths: {
-      ...base.columnWidths,
-      ...next.columnWidths,
-    },
-    rowHeights: {
-      ...base.rowHeights,
-      ...next.rowHeights,
-    },
-  };
-}
-
-function SpreadsheetTableFilterMenu({
-  anchor,
-  onClear,
-  onClose,
-  onToggle,
-  selectedValues,
-  target,
-  values,
-}: {
-  anchor: SpreadsheetFloatingSpec;
-  onClear: () => void;
-  onClose: () => void;
-  onToggle: (value: string, values: SpreadsheetTableFilterValue[]) => void;
-  selectedValues?: string[];
-  target: SpreadsheetTableFilterTarget;
-  values: SpreadsheetTableFilterValue[];
-}) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handlePointerDown = (event: globalThis.PointerEvent) => {
-      const node = event.target;
-      if (node instanceof Node && menuRef.current?.contains(node)) return;
-      onClose();
-    };
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("pointerdown", handlePointerDown, true);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown, true);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
-
-  const selected = new Set(selectedValues ?? values.map((item) => item.value));
-  return (
-    <div
-      data-testid="spreadsheet-filter-menu"
-      onPointerDown={(event) => event.stopPropagation()}
-      ref={menuRef}
-      style={{
-        background: "#ffffff",
-        borderColor: "#d7dde5",
-        borderRadius: 8,
-        borderStyle: "solid",
-        borderWidth: 1,
-        boxShadow: "0 18px 38px rgba(15, 23, 42, 0.18)",
-        color: "#0f172a",
-        fontFamily: SPREADSHEET_FONT_FAMILY,
-        fontSize: 12,
-        left: Math.max(8, anchor.left - 206),
-        minWidth: 220,
-        overflow: "hidden",
-        position: "absolute",
-        top: anchor.top + anchor.height + 4,
-        zIndex: 50_000,
-      }}
-    >
-      <div style={{ borderBottom: "1px solid #e2e8f0", fontWeight: 700, padding: "8px 10px" }}>
-        {target.columnName}
-      </div>
-      <button
-        onClick={onClear}
-        style={{
-          background: "transparent",
-          border: 0,
-          borderBottom: "1px solid #e2e8f0",
-          color: "#2563eb",
-          cursor: "pointer",
-          display: "block",
-          font: "inherit",
-          padding: "7px 10px",
-          textAlign: "left",
-          width: "100%",
-        }}
-        type="button"
-      >
-        Clear filter
-      </button>
-      <div style={{ maxHeight: 260, overflow: "auto", padding: "6px 0" }}>
-        {values.map((item) => (
-          <label
-            key={item.value}
-            style={{
-              alignItems: "center",
-              cursor: "pointer",
-              display: "flex",
-              gap: 8,
-              padding: "5px 10px",
-            }}
-          >
-            <input
-              checked={selected.has(item.value)}
-              onChange={() => onToggle(item.value, values)}
-              type="checkbox"
-            />
-            <span style={{ flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {item.label}
-            </span>
-            <span style={{ color: "#64748b", fontVariantNumeric: "tabular-nums" }}>{item.count}</span>
-          </label>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function SpreadsheetSelectionLayer({
@@ -1160,133 +1054,6 @@ function visibleFloatingSpecs<T extends SpreadsheetFloatingSpec>(
   viewportScroll: SpreadsheetViewportScroll,
 ): T[] {
   return specs.filter((spec) => spreadsheetViewportIntersectsRect(spec, viewportSize, viewportScroll));
-}
-
-function SpreadsheetWorkbookBar({ title }: { title: string }) {
-  return (
-    <div
-      style={{
-        alignItems: "center",
-        background: "#ffffff",
-        borderBottomColor: "#dadce0",
-        borderBottomStyle: "solid",
-        borderBottomWidth: 1,
-        display: "flex",
-        gap: 12,
-        minHeight: 54,
-        padding: "0 18px",
-      }}
-    >
-      <div
-        aria-hidden="true"
-        style={{
-          alignItems: "center",
-          background: "#12b76a",
-          borderRadius: 8,
-          color: "#ffffff",
-          display: "grid",
-          flex: "0 0 auto",
-          height: 32,
-          justifyContent: "center",
-          width: 32,
-        }}
-      >
-        <span
-          style={{
-            backgroundImage: "linear-gradient(#ffffff 0 0), linear-gradient(#ffffff 0 0)",
-            backgroundPosition: "center, center",
-            backgroundRepeat: "no-repeat",
-            backgroundSize: "1px 18px, 18px 1px",
-            borderColor: "#ffffff",
-            borderRadius: 3,
-            borderStyle: "solid",
-            borderWidth: 1.5,
-            height: 18,
-            width: 18,
-          }}
-        />
-      </div>
-      <div
-        style={{
-          color: "#202124",
-          fontSize: 17,
-          fontWeight: 600,
-          minWidth: 0,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {title}
-      </div>
-    </div>
-  );
-}
-
-function SpreadsheetFormulaBar({
-  activeSheet,
-  cellEdits,
-  selection,
-  styles,
-}: {
-  activeSheet: RecordValue | undefined;
-  cellEdits: SpreadsheetCellEdits;
-  selection: SpreadsheetSelection | null;
-  styles: RecordValue | null;
-}) {
-  const activeRow = selection?.rowIndex ?? 1;
-  const activeColumn = selection?.columnIndex ?? 0;
-  const activeCell = cellAt(activeSheet, activeRow, activeColumn);
-  const sheetName = asString(activeSheet?.name);
-  const value = selection
-    ? (cellEdits[spreadsheetSelectionKey(selection)] ?? spreadsheetCellText(activeCell, styles, sheetName))
-    : spreadsheetCellText(activeCell, styles, sheetName);
-  const address = asString(activeCell?.address) || `${columnLabel(activeColumn)}${activeRow}`;
-
-  return (
-    <div
-      style={{
-        alignItems: "center",
-        background: "#f8f9fa",
-        borderBottomColor: "#dadce0",
-        borderBottomStyle: "solid",
-        borderBottomWidth: 1,
-        display: "grid",
-        gap: 8,
-        gridTemplateColumns: "72px minmax(160px, 1fr)",
-        minHeight: 42,
-        padding: "6px 12px",
-      }}
-    >
-      <div
-        style={{
-          color: "#5f6368",
-          fontSize: 13,
-          paddingLeft: 2,
-        }}
-      >
-        {address}
-      </div>
-      <div
-        style={{
-          background: "#ffffff",
-          borderColor: "#dadce0",
-          borderRadius: 4,
-          borderStyle: "solid",
-          borderWidth: 1,
-          color: "#5f6368",
-          fontSize: 13,
-          minHeight: 28,
-          overflow: "hidden",
-          padding: "5px 9px",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
 }
 
 export function spreadsheetCellStyle(

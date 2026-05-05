@@ -33,6 +33,11 @@ export type SpreadsheetTableFilterTextProvider = (
   columnIndex: number,
 ) => string;
 
+export type SpreadsheetTableFilterSizeOverrides = {
+  columnWidths?: Record<number, number | undefined>;
+  rowHeights?: Record<number, number | undefined>;
+};
+
 export function buildSpreadsheetTableFilterTargets(sheet: RecordValue | undefined): SpreadsheetTableFilterTarget[] {
   const targets: SpreadsheetTableFilterTarget[] = [];
   const tables = asArray(sheet?.tables).map(asRecord).filter((table): table is RecordValue => table != null);
@@ -149,6 +154,22 @@ export function spreadsheetTableFilterSelectionForToggle(
   else selected.add(toggledValue);
   const next = allValues.filter((value) => selected.has(value));
   return next.length === allValues.length ? undefined : next;
+}
+
+export function mergeSpreadsheetLayoutOverrides(
+  base: SpreadsheetTableFilterSizeOverrides,
+  next: SpreadsheetTableFilterSizeOverrides,
+): SpreadsheetTableFilterSizeOverrides {
+  return {
+    columnWidths: {
+      ...base.columnWidths,
+      ...next.columnWidths,
+    },
+    rowHeights: {
+      ...base.rowHeights,
+      ...next.rowHeights,
+    },
+  };
 }
 
 function spreadsheetTableHasFilter(table: RecordValue): boolean {
