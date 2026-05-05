@@ -415,6 +415,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               commentVisuals={commentVisuals}
               layout={layout}
               scroll={viewportScroll}
+              selection={selection}
               sparklineVisuals={sparklineVisuals}
               styles={styles}
               validationVisuals={validationVisuals}
@@ -440,6 +441,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           commentVisuals={commentVisuals}
           layout={layout}
           scroll={viewportScroll}
+          selection={selection}
           sparklineVisuals={sparklineVisuals}
           styles={styles}
           validationVisuals={validationVisuals}
@@ -717,6 +719,7 @@ function SpreadsheetFrozenBodyLayer({
   commentVisuals,
   layout,
   scroll,
+  selection,
   sparklineVisuals,
   styles,
   validationVisuals,
@@ -728,6 +731,7 @@ function SpreadsheetFrozenBodyLayer({
   commentVisuals: Set<string>;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
+  selection: SpreadsheetSelection | null;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
   validationVisuals: SpreadsheetValidationVisualLookup;
@@ -738,6 +742,7 @@ function SpreadsheetFrozenBodyLayer({
   }
 
   const sheetName = asString(activeSheet?.name);
+  const selectedCellKey = selection ? spreadsheetSelectionKey(selection) : "";
   const frozenWidth = spreadsheetFrozenBodyWidth(layout);
   const frozenHeight = spreadsheetFrozenBodyHeight(layout);
   if (frozenWidth <= 0 && frozenHeight <= 0) return null;
@@ -770,7 +775,7 @@ function SpreadsheetFrozenBodyLayer({
           const visual = cellVisuals.get(cellKey);
           const hasComment = commentVisuals.has(cellKey);
           const sparkline = sparklineVisuals.get(cellKey);
-          const validation = validationVisuals.get(cellKey);
+          const validation = cellKey === selectedCellKey ? validationVisuals.get(cellKey) : undefined;
           const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
           const text = cellEdits[cellKey] ?? spreadsheetCellText(cell, styles, sheetName, styleIndex);
           return rects.map((rect, segmentIndex) => (
@@ -809,6 +814,7 @@ function SpreadsheetGrid({
   commentVisuals,
   layout,
   scroll,
+  selection,
   sparklineVisuals,
   styles,
   validationVisuals,
@@ -820,12 +826,14 @@ function SpreadsheetGrid({
   commentVisuals: Set<string>;
   layout: SpreadsheetLayout;
   scroll: SpreadsheetViewportScroll;
+  selection: SpreadsheetSelection | null;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
   validationVisuals: SpreadsheetValidationVisualLookup;
   viewportSize: SpreadsheetViewportSize;
 }) {
   const sheetName = asString(activeSheet?.name);
+  const selectedCellKey = selection ? spreadsheetSelectionKey(selection) : "";
   const showGridLines = spreadsheetShowGridLines(activeSheet);
   const renderSnapshot = useMemo(
     () => buildSpreadsheetRenderSnapshot({ layout, scroll, viewportSize }),
@@ -888,7 +896,7 @@ function SpreadsheetGrid({
               const visual = cellVisuals.get(cellKey);
               const hasComment = commentVisuals.has(cellKey);
               const sparkline = sparklineVisuals.get(cellKey);
-              const validation = validationVisuals.get(cellKey);
+              const validation = cellKey === selectedCellKey ? validationVisuals.get(cellKey) : undefined;
               const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
               const text = cellEdits[cellKey] ?? spreadsheetCellText(cell, styles, sheetName, styleIndex);
               return (
@@ -1083,6 +1091,10 @@ export function spreadsheetCellStyle(
   const shrinkToFit = spreadsheetBool(alignment?.shrinkToFit ?? cellFormat?.shrinkToFit, false);
   const indent = Math.max(0, asNumber(alignment?.indent ?? cellFormat?.indent, 0));
   const fontSize = font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize;
+  const fallbackTextAlign = visual?.iconSet?.showValue === false ? "left" : (fallbackStyle.textAlign ?? spreadsheetDefaultTextAlign(cell));
+  const justifyContent = horizontalAlignment
+    ? spreadsheetHorizontalJustifyContent(horizontalAlignment)
+    : spreadsheetJustifyContentForTextAlign(fallbackTextAlign);
 
   return {
     ...sheetCellStyle,
@@ -1101,9 +1113,9 @@ export function spreadsheetCellStyle(
     fontSize: shrinkToFit && typeof fontSize === "number" ? Math.max(8, fontSize * 0.88) : fontSize,
     fontStyle: font?.italic === true ? "italic" : fallbackStyle.fontStyle,
     fontWeight: visual?.fontWeight ?? (font?.bold === true ? 700 : fallbackStyle.fontWeight),
-    justifyContent: spreadsheetHorizontalJustifyContent(horizontalAlignment),
+    justifyContent,
     paddingLeft: indent > 0 ? 9 + indent * 12 : sheetCellStyle.paddingLeft,
-    textAlign: spreadsheetHorizontalTextAlign(horizontalAlignment, fallbackStyle.textAlign),
+    textAlign: horizontalAlignment ? spreadsheetHorizontalTextAlign(horizontalAlignment, fallbackTextAlign) : fallbackTextAlign,
     textOverflow: wrapText ? undefined : "ellipsis",
     verticalAlign: spreadsheetVerticalAlign(verticalAlignment) ?? fallbackStyle.verticalAlign ?? sheetCellStyle.verticalAlign,
     whiteSpace: wrapText ? sheetCellStyle.whiteSpace : "nowrap",
@@ -1201,6 +1213,15 @@ function spreadsheetHorizontalJustifyContent(value: string): CSSProperties["just
   return "flex-start";
 }
 
+function spreadsheetJustifyContentForTextAlign(value: CSSProperties["textAlign"]): CSSProperties["justifyContent"] {
+  return value === "center" ? "center" : value === "right" ? "flex-end" : "flex-start";
+}
+
+function spreadsheetDefaultTextAlign(cell: RecordValue | null): CSSProperties["textAlign"] {
+  const value = Number(cellText(cell).trim());
+  return Number.isFinite(value) ? "right" : undefined;
+}
+
 function spreadsheetVerticalAlign(value: string): CSSProperties["verticalAlign"] | undefined {
   const normalized = value.toLowerCase();
   if (normalized === "center") return "middle";
@@ -1288,8 +1309,11 @@ function excelSerialMonthYearLabel(value: number): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC", year: "numeric" }).format(date);
 }
 
-function excelSerialDateLabel(value: number): string {
+function excelSerialDateLabel(value: number, formatCode = ""): string {
   const date = new Date(Date.UTC(1899, 11, 30) + value * 86_400_000);
+  if (isExcelIsoDateFormat(formatCode)) {
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+  }
   return new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "short", timeZone: "UTC", year: "numeric" }).format(date);
 }
 
@@ -1323,7 +1347,7 @@ export function spreadsheetCellText(
 
   if (isExcelMonthYearFormat(formatCode)) return excelSerialMonthYearLabel(numberValue);
   if (isExcelTimeFormat(formatCode)) return excelSerialTimeLabel(numberValue, formatCode);
-  if (isExcelDateFormat(formatCode)) return excelSerialDateLabel(numberValue);
+  if (isExcelDateFormat(formatCode)) return excelSerialDateLabel(numberValue, formatCode);
   if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
 
   if (sheetName === "03_TimeSeries") {
@@ -1358,7 +1382,11 @@ export function spreadsheetNumberFormatCode(styles: RecordValue | null, numberFo
 
 function isExcelMonthYearFormat(formatCode: string): boolean {
   const normalized = formatCode.toLowerCase();
-  return normalized.includes("mmm") && normalized.includes("yy");
+  return normalized.includes("mmm") && normalized.includes("yy") && !/(^|[^a-z])d{1,4}([^a-z]|$)/.test(normalized);
+}
+
+function isExcelIsoDateFormat(formatCode: string): boolean {
+  return /y{2,4}[-/]m{1,2}[-/]d{1,2}/i.test(formatCode);
 }
 
 function isExcelDateFormat(formatCode: string): boolean {

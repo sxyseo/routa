@@ -459,7 +459,11 @@ function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVis
 function spreadsheetIconSetGlyph(visual: NonNullable<SpreadsheetCellVisual["iconSet"]>): string {
   const iconSet = visual.iconSet.toLowerCase();
   const zeroBasedLevel = Math.max(0, Math.min(visual.levelCount - 1, visual.level - 1));
-  if (iconSet.includes("rating") || iconSet.includes("quarter")) {
+  if (iconSet.includes("rating")) {
+    return "";
+  }
+
+  if (iconSet.includes("quarter")) {
     return ["☆", "◔", "◑", "◕", "★"][zeroBasedLevel] ?? "★";
   }
 

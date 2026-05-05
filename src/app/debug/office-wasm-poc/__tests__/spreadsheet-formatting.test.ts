@@ -48,6 +48,15 @@ describe("spreadsheet cell formatting", () => {
     expect(spreadsheetCellText({ address: "B1", styleIndex: 0, value: 0.125 }, styles)).toBe("12.50%");
   });
 
+  it("renders ISO date custom formats like Excel", () => {
+    const styles = {
+      cellXfs: [{ numFmtId: 201 }],
+      numberFormats: [{ formatCode: "yyyy-mm-dd", id: 201 }],
+    };
+
+    expect(spreadsheetCellText({ address: "G5", styleIndex: 0, value: 46115 }, styles)).toBe("2026-04-03");
+  });
+
   it("uses negative sections for built-in numeric and currency formats", () => {
     const styles = {
       cellXfs: [
@@ -114,6 +123,27 @@ describe("spreadsheet cell formatting", () => {
       textOverflow: "ellipsis",
       verticalAlign: "bottom",
       whiteSpace: "nowrap",
+    });
+  });
+
+  it("right-aligns numeric cells by default like Excel", () => {
+    expect(spreadsheetCellStyle({ address: "A1", value: 42 }, null)).toMatchObject({
+      justifyContent: "flex-end",
+      textAlign: "right",
+    });
+    expect(spreadsheetCellStyle({ address: "A2", value: "text" }, null)).toMatchObject({
+      justifyContent: "flex-start",
+    });
+  });
+
+  it("keeps icon-only conditional formats left aligned", () => {
+    expect(spreadsheetCellStyle(
+      { address: "N5", value: 3 },
+      null,
+      { iconSet: { color: "#16638a", iconSet: "5Rating", level: 4, levelCount: 5, showValue: false } },
+    )).toMatchObject({
+      justifyContent: "flex-start",
+      textAlign: "left",
     });
   });
 
