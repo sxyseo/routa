@@ -126,7 +126,7 @@ function lightAccentIndex(styleIndex: number): number {
 }
 
 function mediumAccentIndex(styleIndex: number): number {
-  if (styleIndex === 2) return 4;
+  if (styleIndex === 2) return 1;
   if (styleIndex === 4) return 1;
   if (styleIndex === 9) return 6;
   return ((styleIndex - 1) % 6) + 1;

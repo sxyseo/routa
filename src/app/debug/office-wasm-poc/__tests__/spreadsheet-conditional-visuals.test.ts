@@ -107,17 +107,17 @@ describe("spreadsheet conditional visuals", () => {
         colorScheme: {
           colors: [
             {
-              color: { type: 1, value: "0F9ED5" },
-              name: "accent4",
+              color: { type: 1, value: "156082" },
+              name: "accent1",
             },
           ],
         },
       },
     );
 
-    expect(visuals.get("2:0")?.background).toBe("rgb(193, 230, 244)");
+    expect(visuals.get("2:0")?.background).toBe("rgb(194, 214, 223)");
     expect(visuals.get("3:0")?.background).toBeUndefined();
-    expect(visuals.get("4:0")?.background).toBe("rgb(154, 214, 237)");
+    expect(visuals.get("4:0")?.background).toBe("rgb(157, 188, 203)");
   });
 
   it("projects broader built-in medium table styles from theme accents", () => {
