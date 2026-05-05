@@ -256,7 +256,7 @@ function wordPreviewPages(
       root: section,
     };
   })
-    .filter((page) => page.elements.length > 0 || page.headerElements.length > 0 || page.footerElements.length > 0);
+    .filter((page) => page.elements.length > 0);
 
   if (sectionPages.some((page) => page.elements.length > 0)) {
     return wordPreviewSectionPages(root, rootElements, sectionPages, styleMaps);
@@ -303,7 +303,7 @@ function wordPreviewSectionPages(
     const elements = index === sectionPages.length - 1 ? rootElements.slice(offset) : rootElements.slice(offset, nextOffset);
     offset = nextOffset;
     return { ...page, elements };
-  });
+  }).filter((page) => page.elements.length > 0);
 
   return wordPaginatePreviewPages(
     pages.map((page) => ({ ...page, elements: wordCollapseTinyDuplicateImages(page.elements, root) })),

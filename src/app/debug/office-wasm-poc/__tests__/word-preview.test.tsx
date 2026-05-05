@@ -539,6 +539,58 @@ describe("WordPreview", () => {
     ]);
   });
 
+  it("does not render empty DOCX sections as footer-only pages", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          sections: [
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Body section" }] }] }],
+              footer: { elements: [{ paragraphs: [{ runs: [{ text: "Shared footer" }] }] }] },
+              id: "section-body",
+            },
+            {
+              id: "section-empty",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages).toHaveLength(1);
+    expect(pages[0]?.textContent).toBe("Body sectionShared footer");
+  });
+
+  it("does not render root element redistribution leftovers as footer-only pages", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            { paragraphs: [{ runs: [{ text: "Root body" }] }] },
+          ],
+          sections: [
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Section body" }] }] }],
+              footer: { elements: [{ paragraphs: [{ runs: [{ text: "Shared footer" }] }] }] },
+              id: "section-body",
+            },
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "No matching root body" }] }] }],
+              id: "section-leftover",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages).toHaveLength(1);
+    expect(pages[0]?.textContent).toBe("Root bodyShared footer");
+  });
+
   it("does not give adjacent tiny duplicate image placeholders their own layout height", () => {
     const bbox = {
       heightEmu: 2_794_000,
