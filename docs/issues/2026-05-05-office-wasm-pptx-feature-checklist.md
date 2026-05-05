@@ -1,8 +1,8 @@
 ---
 title: "PPTX Reader Feature Completeness Checklist"
 date: "2026-05-05"
-kind: issue
-status: open
+kind: analysis
+status: resolved
 severity: medium
 area: ui
 tags: [artifact-viewer, office-documents, pptx, presentation, feature-checklist, completeness]
