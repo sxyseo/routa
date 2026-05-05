@@ -350,6 +350,10 @@ function compareProtocolValue(
     const keys = new Set([...Object.keys(walnut), ...Object.keys(routa)]);
     for (const key of [...keys].sort()) {
       const childPath = `${pathName}.${key}`;
+      if (key === "value" && isFormulaValueBackfillDifference(walnut, routa)) {
+        continue;
+      }
+
       const walnutHasKey = Object.prototype.hasOwnProperty.call(walnut, key);
       const routaHasKey = Object.prototype.hasOwnProperty.call(routa, key);
       if (!walnutHasKey) {
@@ -383,6 +387,11 @@ function compareProtocolValue(
     routa,
     walnut,
   });
+}
+
+function isFormulaValueBackfillDifference(walnut: Record<string, unknown>, routa: Record<string, unknown>): boolean {
+  const hasFormula = stringValue(walnut.formula).length > 0 || stringValue(routa.formula).length > 0;
+  return hasFormula && stringValue(walnut.value).length === 0 && stringValue(routa.value).length > 0;
 }
 
 function pushProtocolDiff(

@@ -17,12 +17,17 @@ Office bytes
 The dependency versions are pinned to the versions observed in the extracted Codex/Walnut bundle:
 
 - `.NET browser-wasm runtime`: `9.0.14`
-- `DocumentFormat.OpenXml`: `3.3.0`
-- `DocumentFormat.OpenXml.Framework`: `3.3.0`
+- `ClosedXML`: `0.105.0`
+- `ClosedXML.Parser`: `2.0.0`
+- `DocumentFormat.OpenXml`: `3.4.1`
+- `DocumentFormat.OpenXml.Framework`: `3.4.1`
+- `ExcelNumberFormat`: `1.1.0`
 - `Google.Protobuf`: `3.31.0`
+- `RBush.Signed`: `4.0.0`
+- `SixLabors.Fonts`: `1.0.0`
 - `System.IO.Packaging`: `8.0.1`
 
-Keep these versions pinned while validating compatibility. Do not swap the reader onto unrelated JS ZIP/XML parsers; the point of this POC is to exercise the same OpenXML SDK and protobuf runtime family as the extracted bundle.
+Keep these versions pinned while validating compatibility. Do not swap the reader onto unrelated JS ZIP/XML parsers; the point of this POC is to exercise the same OpenXML SDK and protobuf runtime family as the extracted bundle. ClosedXML is loaded lazily only when XLSX formula cells are missing cached values, so the OpenXML reader remains the canonical protocol extractor.
 
 Versions are centralized in `Directory.Packages.props`, and the project enables NuGet lock-file restore. The `System.*` assemblies observed in the extracted bundle are runtime/BCL assemblies from the pinned `Microsoft.NETCore.App.Runtime.Mono.browser-wasm/9.0.14` pack, not separate NuGet package references.
 

@@ -9,15 +9,31 @@ const extractedAssets = path.join(repoRoot, "tmp/codex-app-analysis/extracted/we
 const generatedAssets = path.join(repoRoot, "public/office-wasm-reader/_framework");
 
 const expectedVersions = {
-  "DocumentFormat.OpenXml": "3.3.0",
-  "DocumentFormat.OpenXml.Framework": "3.3.0",
+  "ClosedXML": "0.105.0",
+  "ClosedXML.Parser": "2.0.0",
+  "DocumentFormat.OpenXml": "3.4.1",
+  "DocumentFormat.OpenXml.Framework": "3.4.1",
+  "ExcelNumberFormat": "1.1.0",
   "Google.Protobuf": "3.31.0",
   "Microsoft.NET.Runtime.WebAssembly.Sdk": "9.0.14",
+  "RBush.Signed": "4.0.0",
+  "SixLabors.Fonts": "1.0.0",
   "System.IO.Packaging": "8.0.1",
 };
 
 const expectedExtractedOnlyAssemblies = ["Walnut"];
-const expectedGeneratedOnlyAssemblies = ["Routa.OfficeWasmReader"];
+const expectedGeneratedOnlyAssemblies = [
+  "ClosedXML",
+  "ClosedXML.Parser",
+  "ExcelNumberFormat",
+  "RBush",
+  "Routa.OfficeWasmReader",
+  "SixLabors.Fonts",
+  "System.Drawing",
+  "System.Drawing.Primitives",
+  "System.IO.Compression.Brotli",
+  "System.Linq.Parallel",
+];
 const requiredSharedAssemblies = [
   "DocumentFormat.OpenXml",
   "DocumentFormat.OpenXml.Framework",
@@ -134,5 +150,5 @@ if (existsSync(path.join(generatedAssets, "dotnet.native.wasm"))) {
     "Generated-only assembly surface",
   );
 
-  console.log("Generated Office WASM reader assembly surface matches extracted bundle with expected main-assembly rename.");
+  console.log("Generated Office WASM reader assembly surface matches extracted bundle with expected Routa and ClosedXML additions.");
 }
