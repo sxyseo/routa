@@ -206,6 +206,9 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "TEXTJOIN") {
     return textJoinFormulaText(args, context);
   }
+  if (normalizedName === "TEXT") {
+    return textFormulaValue(args, context);
+  }
   if (normalizedName === "SEARCH" || normalizedName === "FIND") {
     const needle = asString(evaluateFormulaValue(args[0] ?? "", context));
     const haystack = asString(evaluateFormulaValue(args[1] ?? "", context));
@@ -333,6 +336,19 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   }
   if (normalizedName === "TODAY") {
     return currentExcelSerialDay();
+  }
+  if (normalizedName === "DATEVALUE") {
+    return dateValueFormulaNumber(asString(evaluateFormulaValue(args[0] ?? "", context)));
+  }
+  if (normalizedName === "TIME") {
+    return timeFormulaNumber(
+      Number(evaluateFormulaValue(args[0] ?? "0", context)),
+      Number(evaluateFormulaValue(args[1] ?? "0", context)),
+      Number(evaluateFormulaValue(args[2] ?? "0", context)),
+    );
+  }
+  if (normalizedName === "TIMEVALUE") {
+    return timeValueFormulaNumber(asString(evaluateFormulaValue(args[0] ?? "", context)));
   }
   if (normalizedName === "DATE") {
     const year = Number(evaluateFormulaValue(args[0] ?? "", context));
@@ -463,6 +479,17 @@ function textJoinFormulaText(args: string[], context: ConditionalFormulaContext)
   const ignoreEmpty = valueToBoolean(evaluateFormulaValue(args[1] ?? "FALSE", context));
   const values = formulaRawArgs(args.slice(2), context).map(asString);
   return (ignoreEmpty ? values.filter((value) => value.length > 0) : values).join(delimiter);
+}
+
+function textFormulaValue(args: string[], context: ConditionalFormulaContext): string {
+  const value = Number(evaluateFormulaValue(args[0] ?? "", context));
+  const format = asString(evaluateFormulaValue(args[1] ?? "\"General\"", context));
+  if (!Number.isFinite(value)) return "";
+  const normalizedFormat = format.toLowerCase();
+  if (/[yd]/.test(normalizedFormat)) return formatExcelSerialDate(value, format);
+  if (/[hs]/.test(normalizedFormat)) return formatExcelSerialTime(value, format);
+  if (format.includes("%")) return `${formatNumberWithDecimals(value * 100, format)}%`;
+  return formatNumberWithDecimals(value, format);
 }
 
 function evaluateArithmeticExpression(
@@ -1028,6 +1055,60 @@ function excelSerialDatePart(value: number, part: string, weekdayReturnType: num
   if (weekdayReturnType === 2) return weekday === 0 ? 7 : weekday;
   if (weekdayReturnType === 3) return weekday === 0 ? 6 : weekday - 1;
   return weekday + 1;
+}
+
+function dateValueFormulaNumber(value: string): number {
+  const match = value.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (!match) return Number.NaN;
+  return excelSerialDay(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+
+function timeFormulaNumber(hours: number, minutes: number, seconds: number): number {
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) return Number.NaN;
+  return (Math.trunc(hours) * 3600 + Math.trunc(minutes) * 60 + Math.trunc(seconds)) / 86_400;
+}
+
+function timeValueFormulaNumber(value: string): number {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return Number.NaN;
+  return timeFormulaNumber(Number(match[1]), Number(match[2]), Number(match[3] ?? "0"));
+}
+
+function formatExcelSerialDate(value: number, format: string): string {
+  const date = excelSerialUtcDate(value);
+  if (!date) return "";
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const longMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  return format.replace(/yyyy|yy|mmmm|mmm|mm|m|dd|d/gi, (token) => {
+    if (/^yyyy$/i.test(token)) return String(date.getUTCFullYear()).padStart(4, "0");
+    if (/^yy$/i.test(token)) return String(date.getUTCFullYear()).slice(-2);
+    if (/^mmmm$/i.test(token)) return longMonths[date.getUTCMonth()] ?? "";
+    if (/^mmm$/i.test(token)) return months[date.getUTCMonth()] ?? "";
+    if (/^mm$/i.test(token)) return String(date.getUTCMonth() + 1).padStart(2, "0");
+    if (/^m$/i.test(token)) return String(date.getUTCMonth() + 1);
+    if (/^dd$/i.test(token)) return String(date.getUTCDate()).padStart(2, "0");
+    return String(date.getUTCDate());
+  });
+}
+
+function formatExcelSerialTime(value: number, format: string): string {
+  const secondsInDay = modulo(Math.round((value - Math.floor(value)) * 86_400), 86_400);
+  const hours = Math.floor(secondsInDay / 3600);
+  const minutes = Math.floor((secondsInDay % 3600) / 60);
+  const seconds = secondsInDay % 60;
+  return format.replace(/hh|h|mm|m|ss|s/gi, (token) => {
+    if (/^hh$/i.test(token)) return String(hours).padStart(2, "0");
+    if (/^h$/i.test(token)) return String(hours);
+    if (/^mm$/i.test(token)) return String(minutes).padStart(2, "0");
+    if (/^m$/i.test(token)) return String(minutes);
+    if (/^ss$/i.test(token)) return String(seconds).padStart(2, "0");
+    return String(seconds);
+  });
+}
+
+function formatNumberWithDecimals(value: number, format: string): string {
+  const decimals = format.match(/\.([0#]+)/)?.[1].length ?? 0;
+  return decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
 }
 
 function addExcelSerialMonths(value: number, months: number): number {
