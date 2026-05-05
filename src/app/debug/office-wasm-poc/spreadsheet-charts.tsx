@@ -70,6 +70,9 @@ type SpreadsheetChartScale = {
   minValue: number;
 };
 
+export const SPREADSHEET_CHART_LINE_WIDTH = 2;
+export const SPREADSHEET_CHART_MARKER_RADIUS = 4;
+
 type SpreadsheetChartDataLabels = {
   position: SpreadsheetChartDataLabelPosition;
   showCategoryName: boolean;
@@ -944,7 +947,7 @@ function drawLineChart(
   chart.series.forEach((series) => {
     const scale = scaleForSeries(series);
     context.strokeStyle = series.color;
-    context.lineWidth = 3;
+    context.lineWidth = SPREADSHEET_CHART_LINE_WIDTH;
     context.setLineDash([]);
     context.beginPath();
     series.values.forEach((value, index) => {
@@ -980,12 +983,12 @@ function drawLineChart(
       const y = chartY(value, plot, scale.minValue, scale.maxValue);
       context.beginPath();
       if (series.marker === "diamond") {
-        context.moveTo(x, y - 5);
-        context.lineTo(x + 5, y);
-        context.lineTo(x, y + 5);
-        context.lineTo(x - 5, y);
+        context.moveTo(x, y - SPREADSHEET_CHART_MARKER_RADIUS);
+        context.lineTo(x + SPREADSHEET_CHART_MARKER_RADIUS, y);
+        context.lineTo(x, y + SPREADSHEET_CHART_MARKER_RADIUS);
+        context.lineTo(x - SPREADSHEET_CHART_MARKER_RADIUS, y);
       } else {
-        context.rect(x - 5, y - 5, 10, 10);
+        context.rect(x - SPREADSHEET_CHART_MARKER_RADIUS, y - SPREADSHEET_CHART_MARKER_RADIUS, SPREADSHEET_CHART_MARKER_RADIUS * 2, SPREADSHEET_CHART_MARKER_RADIUS * 2);
       }
       context.closePath();
       context.fill();
@@ -1473,14 +1476,14 @@ function drawLegendEntry(
   y: number,
 ) {
   context.strokeStyle = item.color;
-  context.lineWidth = 3;
+  context.lineWidth = SPREADSHEET_CHART_LINE_WIDTH;
   context.fillStyle = item.color;
   if (item.showLine) {
     context.beginPath();
     context.moveTo(x, y - 4);
     context.lineTo(x + 18, y - 4);
     context.stroke();
-    if (item.marker) drawChartMarker(context, item.marker, x + 9, y - 4, 4);
+    if (item.marker) drawChartMarker(context, item.marker, x + 9, y - 4, SPREADSHEET_CHART_MARKER_RADIUS);
   } else {
     context.fillRect(x, y - 10, 12, 12);
   }

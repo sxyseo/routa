@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildSpreadsheetCharts,
   formatChartTick,
+  SPREADSHEET_CHART_LINE_WIDTH,
+  SPREADSHEET_CHART_MARKER_RADIUS,
   spreadsheetBarChartGeometry,
   spreadsheetChartHorizontalLegendLayout,
   spreadsheetChartPlotArea,
@@ -14,6 +16,11 @@ import { spreadsheetChartCanvasFont, spreadsheetChartTextWidth } from "../spread
 import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetEmuToPx, spreadsheetRowTop } from "../spreadsheet-layout";
 
 describe("spreadsheet charts", () => {
+  it("uses Excel-like line chart stroke and marker sizing", () => {
+    expect(SPREADSHEET_CHART_LINE_WIDTH).toBe(2);
+    expect(SPREADSHEET_CHART_MARKER_RADIUS).toBe(4);
+  });
+
   it("builds chart specs from sheet drawing anchors", () => {
     const sheet = {
       drawings: [
