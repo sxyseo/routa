@@ -1,8 +1,8 @@
-// src/word-preview.tsx
+// src/word/word-preview.tsx
 import { measureRichInlineStats, prepareRichInline } from "@chenglou/pretext/rich-inline";
 import { useEffect, useRef } from "react";
 
-// src/office-preview-utils.ts
+// src/shared/office-preview-utils.ts
 import { useMemo } from "react";
 var EXCEL_MAX_COLUMN_COUNT = 16384;
 var EXCEL_MAX_ROW_COUNT = 1048576;
@@ -597,7 +597,7 @@ function collectElementImagePayloads(root) {
   return payloads;
 }
 
-// src/presentation-chart-renderer.ts
+// src/shared/office-chart-renderer.ts
 var PRESENTATION_CHART_COLORS = ["#156082", "#E97132", "#196B24", "#0F9ED5", "#A02B93", "#4EA72E"];
 function presentationChartById(charts, id) {
   if (!id) return null;
@@ -900,7 +900,7 @@ function formatChartTick(value) {
   return value.toFixed(1).replace(/\.0$/u, "");
 }
 
-// src/word-preview-layout.ts
+// src/word/word-preview-layout.ts
 var WORD_PREVIEW_CONTENT_WIDTH_PX = 720;
 function wordImageStyle(element, imageSrc, pageLayout) {
   const contentWidth = pageLayout ? wordPageContentWidthPx(pageLayout) : WORD_PREVIEW_CONTENT_WIDTH_PX;
@@ -1378,7 +1378,7 @@ function hexCssToRgb(value) {
   return [Number.parseInt(hex.slice(0, 2), 16), Number.parseInt(hex.slice(2, 4), 16), Number.parseInt(hex.slice(4, 6), 16)];
 }
 
-// src/word-preview-crop-marks.tsx
+// src/word/word-preview-crop-marks.tsx
 import { Fragment, jsx } from "react/jsx-runtime";
 function WordPageCropMarks({ pageLayout }) {
   return /* @__PURE__ */ jsx(Fragment, { children: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => /* @__PURE__ */ jsx(
@@ -1413,7 +1413,7 @@ function wordPageCropMarkStyle(corner, pageLayout) {
   return style;
 }
 
-// src/word-preview-numbering.ts
+// src/word/word-preview-numbering.ts
 function wordBulletMarker(levelText) {
   return {
     "\uF0A7": "\u25AA",
@@ -1423,7 +1423,7 @@ function wordBulletMarker(levelText) {
   }[levelText] ?? (levelText || "\u2022");
 }
 
-// src/word-preview-paragraph-utils.ts
+// src/word/word-preview-paragraph-utils.ts
 function wordParagraphHasVisibleContent(paragraph) {
   return Boolean(paragraph.marker) || paragraph.runs.some((run) => run.text.trim() !== "" || (run.referenceMarkers?.length ?? 0) > 0);
 }
@@ -1453,7 +1453,7 @@ function wordEmptyParagraphStyle(style) {
   };
 }
 
-// src/word-preview-table-pagination.ts
+// src/word/word-preview-table-pagination.ts
 function wordSplitOversizedTableElements(elements, capacity, context) {
   return elements.flatMap((element) => wordSplitOversizedTableElement(element, capacity, context));
 }
@@ -1516,7 +1516,7 @@ function emuToPx2(value) {
 }
 var WORD_ESTIMATED_TABLE_ROW_HEIGHT = 20;
 
-// src/word-preview-text-box.tsx
+// src/word/word-preview-text-box.tsx
 import { jsx as jsx2 } from "react/jsx-runtime";
 function WordPositionedTextBox({
   children,
@@ -1530,7 +1530,7 @@ function wordIsPositionedTextBoxElement(element) {
   return asNumber(bbox?.widthEmu) > 0 && asNumber(bbox?.heightEmu) > 0 && asArray(element.paragraphs).length > 0 && !elementImageReferenceId(element) && asRecord(element.chartReference) == null && asRecord(element.table) == null;
 }
 
-// src/word-preview.tsx
+// src/word/word-preview.tsx
 import { Fragment as Fragment2, jsx as jsx3, jsxs } from "react/jsx-runtime";
 function WordPreview({ labels, proto }) {
   const root = asRecord(proto);
@@ -2707,7 +2707,7 @@ var documentFallbackBlockStyle = {
   whiteSpace: "pre-wrap"
 };
 
-// src/spreadsheet-preview.tsx
+// src/spreadsheet/spreadsheet-preview.tsx
 import {
   useEffect as useEffect5,
   useMemo as useMemo4,
@@ -2715,7 +2715,7 @@ import {
   useState
 } from "react";
 
-// src/spreadsheet-conditional-formula.ts
+// src/spreadsheet/spreadsheet-conditional-formula.ts
 var CELL_REFERENCE_PATTERN = /^(?:'[^']+'|[A-Za-z0-9_ ]+!)?(\$?)([A-Z]{1,3})(\$?)(\d+)$/i;
 function conditionalFormulaMatches(context) {
   const formula = asArray(context.formulas).map(asString).find(Boolean);
@@ -3910,7 +3910,7 @@ function valueToBoolean(value) {
   return Number.isFinite(numericValue) ? numericValue !== 0 : /^TRUE$/i.test(text);
 }
 
-// src/spreadsheet-table-styles.ts
+// src/spreadsheet/spreadsheet-table-styles.ts
 var BUILT_IN_MEDIUM_STYLES = new Map(
   Array.from({ length: 28 }, (_, offset) => {
     const styleIndex = offset + 1;
@@ -4065,7 +4065,7 @@ function hexColorToRgb(value) {
   };
 }
 
-// src/spreadsheet-conditional-visuals.ts
+// src/spreadsheet/spreadsheet-conditional-visuals.ts
 var MAX_CELL_VISUAL_CACHE_SIZE = 5e3;
 var DAY_MS2 = 864e5;
 var EXCEL_SERIAL_EPOCH_UTC2 = Date.UTC(1899, 11, 30);
@@ -4887,7 +4887,7 @@ function iconSetLevelCount(iconSet, cfvoCount) {
   return Math.max(3, Math.min(5, count));
 }
 
-// src/spreadsheet-layout.ts
+// src/spreadsheet/spreadsheet-layout.ts
 var SPREADSHEET_ROW_HEADER_WIDTH = 40;
 var SPREADSHEET_COLUMN_HEADER_HEIGHT = 20;
 var SPREADSHEET_DEFAULT_COLUMN_WIDTH = 88;
@@ -5287,7 +5287,7 @@ function knownSpreadsheetColumnWidths(sheetName) {
   return widths;
 }
 
-// src/spreadsheet-cell-overlays.tsx
+// src/spreadsheet/spreadsheet-cell-overlays.tsx
 import { Fragment as Fragment3, jsx as jsx4, jsxs as jsxs2 } from "react/jsx-runtime";
 var MAX_VALIDATION_VISUAL_CACHE_SIZE = 5e3;
 function buildSpreadsheetSparklineVisuals(sheet) {
@@ -5753,7 +5753,7 @@ function spreadsheetIconSetQuarterPath(visual) {
   return "M9 2.5 A6.5 6.5 0 1 1 9 15.5 A6.5 6.5 0 1 1 9 2.5 Z";
 }
 
-// src/spreadsheet-render-snapshot.ts
+// src/spreadsheet/spreadsheet-render-snapshot.ts
 function buildSpreadsheetRenderSnapshot({
   layout,
   scroll,
@@ -5816,7 +5816,7 @@ function rangeIndexes(start, end) {
   return indexes;
 }
 
-// src/spreadsheet-canvas-paints.ts
+// src/spreadsheet/spreadsheet-canvas-paints.ts
 function buildSpreadsheetCanvasCellPaints({
   cellEdits,
   layout,
@@ -5911,10 +5911,10 @@ function spreadsheetCanvasVerticalAlign(value) {
   return normalized === "top" ? "top" : void 0;
 }
 
-// src/spreadsheet-canvas-layer.tsx
+// src/spreadsheet/spreadsheet-canvas-layer.tsx
 import { useEffect as useEffect2, useMemo as useMemo2, useRef as useRef2 } from "react";
 
-// src/spreadsheet-canvas-commands.ts
+// src/spreadsheet/spreadsheet-canvas-commands.ts
 function buildSpreadsheetCanvasCommands({
   layout,
   scroll,
@@ -5978,7 +5978,7 @@ function buildSpreadsheetCanvasCommands({
   };
 }
 
-// src/spreadsheet-canvas-frame-scheduler.ts
+// src/spreadsheet/spreadsheet-canvas-frame-scheduler.ts
 function createSpreadsheetCanvasFrameScheduler({
   cancelFrame = defaultCancelFrame,
   draw,
@@ -6056,7 +6056,7 @@ function defaultCancelFrame(handle) {
   window.cancelAnimationFrame(handle);
 }
 
-// src/spreadsheet-canvas-renderer.ts
+// src/spreadsheet/spreadsheet-canvas-renderer.ts
 function spreadsheetCanvasBitmapSize(viewportSize, pixelRatio) {
   const ratio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
   const cssWidth = Math.max(0, Math.round(viewportSize.width));
@@ -6216,7 +6216,7 @@ function spreadsheetCanvasTextY(rect) {
   return rect.top + rect.height / 2;
 }
 
-// src/spreadsheet-canvas-worker-protocol.ts
+// src/spreadsheet/spreadsheet-canvas-worker-protocol.ts
 function spreadsheetCanvasWorkerCapabilities(env = globalThis) {
   const canUseWorker = typeof env.Worker === "function";
   const canUseOffscreenCanvas = typeof env.OffscreenCanvas === "function" && typeof env.HTMLCanvasElement?.prototype?.transferControlToOffscreen === "function";
@@ -6233,7 +6233,7 @@ function spreadsheetCanvasRenderMessage(plan) {
   };
 }
 
-// src/spreadsheet-canvas-worker-client.ts
+// src/spreadsheet/spreadsheet-canvas-worker-client.ts
 function createSpreadsheetCanvasWorkerRenderer(canvas, createWorker = defaultSpreadsheetCanvasWorkerFactory) {
   if (spreadsheetCanvasWorkerCapabilities().preferredRenderer !== "worker-offscreen-canvas") return null;
   if (typeof canvas.transferControlToOffscreen !== "function") return null;
@@ -6260,7 +6260,7 @@ function defaultSpreadsheetCanvasWorkerFactory() {
   return new Worker(new URL("./spreadsheet-canvas.worker.js", import.meta.url), { type: "module" });
 }
 
-// src/spreadsheet-canvas-layer.tsx
+// src/spreadsheet/spreadsheet-canvas-layer.tsx
 import { jsx as jsx5 } from "react/jsx-runtime";
 function drawSpreadsheetCanvasPlanToCanvas(canvas, nextPlan) {
   if (!canvas) return;
@@ -6330,10 +6330,10 @@ function SpreadsheetCanvasLayer({
   );
 }
 
-// src/spreadsheet-charts.tsx
+// src/spreadsheet/spreadsheet-charts.tsx
 import { useEffect as useEffect3, useRef as useRef3 } from "react";
 
-// src/spreadsheet-chart-frame.ts
+// src/spreadsheet/spreadsheet-chart-frame.ts
 function spreadsheetChartFrame(chart, plot) {
   return {
     chartArea: {
@@ -6362,7 +6362,7 @@ function drawSpreadsheetChartFrame(context, chart, plot) {
   context.restore();
 }
 
-// src/spreadsheet-chart-options.ts
+// src/spreadsheet/spreadsheet-chart-options.ts
 function spreadsheetChartRendererOptions(chart) {
   const barOptions = chartOptionsRecord(chart, "bar");
   const pieOptions = chartOptionsRecord(chart, "pie");
@@ -6397,7 +6397,7 @@ function chartOptionBoolean(record, key) {
   return value === true || asString(value).toLowerCase() === "true" || asString(value) === "1";
 }
 
-// src/spreadsheet-chart-scale.ts
+// src/spreadsheet/spreadsheet-chart-scale.ts
 function spreadsheetChartTickValues(chart, values) {
   const tickCount = isLineAxisChartType(chart.type) || chart.type === "radar" ? 6 : 5;
   const finiteValues = values.filter(Number.isFinite);
@@ -6456,7 +6456,7 @@ function isLineAxisChartType(type) {
   return type === "area" || type === "bubble" || type === "line" || type === "scatter" || type === "surface";
 }
 
-// src/spreadsheet-chart-typography.ts
+// src/spreadsheet/spreadsheet-chart-typography.ts
 var SPREADSHEET_CHART_FONT_FAMILY = "Aptos, Calibri, Arial, sans-serif";
 var SPREADSHEET_CHART_TEXT = {
   axisLabel: { size: 13, weight: 400 },
@@ -6474,7 +6474,7 @@ function spreadsheetChartTextWidth(text, role) {
   return Math.ceil(text.length * style.size * 0.55);
 }
 
-// src/spreadsheet-charts.tsx
+// src/spreadsheet/spreadsheet-charts.tsx
 import { jsx as jsx6 } from "react/jsx-runtime";
 var SPREADSHEET_CHART_LINE_WIDTH = 2;
 var SPREADSHEET_CHART_MARKER_RADIUS = 4;
@@ -7600,7 +7600,7 @@ function chartFormatDecimalPlaces(numberFormat) {
   return numberFormat.match(/\.([0#]+)/)?.[1]?.length ?? 0;
 }
 
-// src/spreadsheet-frozen-headers.tsx
+// src/spreadsheet/spreadsheet-frozen-headers.tsx
 import { jsx as jsx7, jsxs as jsxs3 } from "react/jsx-runtime";
 function spreadsheetFrozenColumnHeaderRect(layout, columnIndex, scrollLeft) {
   const frozen = columnIndex < layout.freezePanes.columnCount;
@@ -7770,7 +7770,7 @@ var spreadsheetFrozenCornerStyle = {
   zIndex: 2
 };
 
-// src/spreadsheet-formula-values.ts
+// src/spreadsheet/spreadsheet-formula-values.ts
 var DAY_MS3 = 864e5;
 var EXCEL_SERIAL_EPOCH_UTC3 = Date.UTC(1899, 11, 30);
 function spreadsheetSheetWithVolatileFormulaValues(sheet, sheets, today = /* @__PURE__ */ new Date(), sourceName = "") {
@@ -8017,7 +8017,7 @@ function formatFormulaNumber(value) {
   return Number(value.toPrecision(15)).toString();
 }
 
-// src/spreadsheet-shapes.tsx
+// src/spreadsheet/spreadsheet-shapes.tsx
 import { jsx as jsx8, jsxs as jsxs4 } from "react/jsx-runtime";
 function buildSpreadsheetShapes({
   activeSheet,
@@ -8327,7 +8327,7 @@ function SpreadsheetImageLayer({ images }) {
   )) });
 }
 
-// src/spreadsheet-resize.ts
+// src/spreadsheet/spreadsheet-resize.ts
 var RESIZE_HIT_SLOP_PX = 5;
 var MIN_COLUMN_WIDTH_PX = 24;
 var MAX_COLUMN_WIDTH_PX = 560;
@@ -8405,7 +8405,7 @@ function lowerBound(values, value) {
   return left;
 }
 
-// src/spreadsheet-selection.ts
+// src/spreadsheet/spreadsheet-selection.ts
 function spreadsheetSelectionFromViewportPoint(layout, point, scroll) {
   const hit = spreadsheetHitCellAtViewportPoint(layout, point, scroll);
   if (!hit) return null;
@@ -8502,7 +8502,7 @@ function clampIndex(value, max, min = 0) {
   return Math.max(min, Math.min(max, Math.trunc(value)));
 }
 
-// src/spreadsheet-table-filters.ts
+// src/spreadsheet/spreadsheet-table-filters.ts
 function buildSpreadsheetTableFilterTargets(sheet) {
   const targets = [];
   const tables = asArray(sheet?.tables).map(asRecord).filter((table) => table != null);
@@ -8638,7 +8638,7 @@ function columnIndexFromLetters(letters) {
   return Math.max(0, value - 1);
 }
 
-// src/spreadsheet-table-filter-menu.tsx
+// src/spreadsheet/spreadsheet-table-filter-menu.tsx
 import { useEffect as useEffect4, useRef as useRef4 } from "react";
 import { jsx as jsx9, jsxs as jsxs5 } from "react/jsx-runtime";
 function SpreadsheetTableFilterMenu({
@@ -8743,7 +8743,7 @@ function SpreadsheetTableFilterMenu({
   );
 }
 
-// src/spreadsheet-viewport-store.ts
+// src/spreadsheet/spreadsheet-viewport-store.ts
 import { useMemo as useMemo3, useSyncExternalStore } from "react";
 var EMPTY_VIEWPORT_STATE = {
   scroll: { left: 0, top: 0 },
@@ -8813,7 +8813,7 @@ function spreadsheetViewportStateEquals(left, right) {
   return left.scroll.left === right.scroll.left && left.scroll.top === right.scroll.top && left.size.height === right.size.height && left.size.width === right.size.width;
 }
 
-// src/spreadsheet-workbook-chrome.tsx
+// src/spreadsheet/spreadsheet-workbook-chrome.tsx
 import { jsx as jsx10, jsxs as jsxs6 } from "react/jsx-runtime";
 function SpreadsheetWorkbookBar({ title }) {
   return /* @__PURE__ */ jsxs6(
@@ -8940,7 +8940,7 @@ function SpreadsheetFormulaBar({
   );
 }
 
-// src/spreadsheet-preview.tsx
+// src/spreadsheet/spreadsheet-preview.tsx
 import { jsx as jsx11, jsxs as jsxs7 } from "react/jsx-runtime";
 var EXCEL_BUILT_IN_NUMBER_FORMATS = /* @__PURE__ */ new Map([
   [1, "0"],
@@ -10220,7 +10220,7 @@ var sheetCellStyle = {
   whiteSpace: "pre-wrap"
 };
 
-// src/presentation-preview.tsx
+// src/presentation/presentation-preview.tsx
 import { Play, X } from "lucide-react";
 import { useCallback, useEffect as useEffect6, useMemo as useMemo5, useRef as useRef6, useState as useState2 } from "react";
 import { createPortal } from "react-dom";
@@ -10247,10 +10247,10 @@ function styleInject(css, { insertAt } = {}) {
   }
 }
 
-// src/presentation-preview.module.css
+// src/presentation/presentation-preview.module.css
 styleInject('.shell {\n  background: #ffffff;\n  color: #0f172a;\n  container: presentation-editor / inline-size;\n  display: grid;\n  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);\n  grid-template-columns: clamp(156px, 13vw, 252px) minmax(0, 1fr);\n  height: 100%;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n}\n.rail {\n  background: color-mix(in srgb, #ffffff 86%, transparent);\n  backdrop-filter: blur(40px);\n  border-right: 1px solid #cbd5e1;\n  display: flex;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n  z-index: 20;\n}\n.stackButton {\n  display: none;\n}\n.thumbnailPanel {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 12px;\n  min-height: 0;\n  overflow: hidden auto;\n  padding: 12px 14px 48px 8px;\n  scrollbar-color: #cbd5e1 transparent;\n}\n.thumbnailButton {\n  align-items: flex-start;\n  -webkit-appearance: none;\n  -moz-appearance: none;\n  appearance: none;\n  background: transparent;\n  border: 0;\n  border-radius: 7px;\n  color: inherit;\n  cursor: pointer;\n  display: flex;\n  gap: 8px;\n  padding: 6px 8px 6px 0;\n  text-align: left;\n  touch-action: manipulation;\n}\n.thumbnailButton:hover {\n  background: #f8fafc;\n}\n.thumbnailButton:focus-visible {\n  outline: none;\n}\n.thumbnailButton:focus-visible .thumbnailCanvas {\n  box-shadow:\n    0 8px 22px rgba(15, 23, 42, 0.12),\n    0 0 0 2px #60a5fa,\n    0 0 0 5px rgba(96, 165, 250, 0.16);\n}\n.thumbnailButton[data-active=true]:hover {\n  background: transparent;\n}\n.thumbnailButton[data-active=true]:focus-visible {\n  outline: none;\n}\n.thumbnailLabel {\n  color: #334155;\n  flex: 0 0 22px;\n  font-size: 13px;\n  font-variant-numeric: tabular-nums;\n  font-weight: 500;\n  line-height: 1;\n  padding-top: 4px;\n  text-align: right;\n}\n.thumbnailCanvas,\n.slideCanvas {\n  background: #ffffff;\n  display: block;\n  -o-object-fit: fill;\n  object-fit: fill;\n  -webkit-user-select: none;\n  -moz-user-select: none;\n  user-select: none;\n}\n.thumbnailCanvas {\n  border: 0;\n  border-radius: 4px;\n  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);\n  flex: 0 0 auto;\n  height: auto;\n  outline: 0 solid transparent;\n  outline-offset: 0;\n  overflow: hidden;\n}\n.thumbnailButton[data-active=true] {\n  background: transparent;\n  box-shadow: none;\n}\n.thumbnailButton[data-active=true] .thumbnailCanvas {\n  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12), 0 0 0 2px #60a5fa;\n  outline: 1px solid rgba(255, 255, 255, 0.92);\n}\n.mainPanel {\n  display: grid;\n  grid-template-rows: minmax(0, 1fr);\n  min-height: 0;\n  min-width: 0;\n  overflow: hidden;\n}\n.meta {\n  align-items: center;\n  color: #475569;\n  display: none;\n  flex-wrap: wrap;\n  gap: 12px;\n  min-width: 0;\n  padding: 18px 20px 0;\n}\n.metaStrong {\n  color: #334155;\n  font-size: 14px;\n  font-weight: 700;\n}\n.metaText {\n  font-size: 14px;\n}\n.stage {\n  background: #f8fafc;\n  display: block;\n  min-height: 0;\n  min-width: 0;\n  overflow: auto;\n  padding: 16px 24px 20px;\n  position: relative;\n  scrollbar-color: #cbd5e1 transparent;\n}\n.viewport {\n  align-items: center;\n  display: flex;\n  height: 100%;\n  justify-content: center;\n  min-height: 0;\n  min-width: 0;\n  overflow: auto;\n  position: relative;\n  width: 100%;\n}\n.playButton {\n  align-items: center;\n  background: #0f172a;\n  border: 1px solid #0f172a;\n  border-radius: 6px;\n  color: #ffffff;\n  cursor: pointer;\n  display: inline-flex;\n  flex: 0 0 auto;\n  font: 600 12px/1 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);\n  gap: 6px;\n  min-height: 30px;\n  padding: 0 10px;\n}\n.playButton:hover {\n  background: #1e293b;\n  border-color: #1e293b;\n}\n.slideSurface {\n  flex: 0 0 auto;\n  position: relative;\n}\n.slideCanvas {\n  border: 1px solid #cbd5e1;\n  border-radius: 7px;\n  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);\n}\n.interactionLayer {\n  background: transparent;\n  border: 0;\n  cursor: default;\n  inset: 0;\n  padding: 0;\n  position: absolute;\n}\n.interactionLayer:focus-visible {\n  outline: none;\n}\n.selectionBox {\n  border: 1.5px solid #0285ff;\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.72), 0 0 0 3px rgba(2, 133, 255, 0.2);\n  display: block;\n  left: 0;\n  pointer-events: none;\n  position: absolute;\n  top: 0;\n}\n.selectionHandle {\n  background: #ffffff;\n  border: 1.5px solid #0285ff;\n  border-radius: 50%;\n  box-sizing: border-box;\n  height: 8px;\n  position: absolute;\n  width: 8px;\n}\n.selectionHandle[data-position=top-left] {\n  left: -5px;\n  top: -5px;\n}\n.selectionHandle[data-position=top-right] {\n  right: -5px;\n  top: -5px;\n}\n.selectionHandle[data-position=bottom-left] {\n  bottom: -5px;\n  left: -5px;\n}\n.selectionHandle[data-position=bottom-right] {\n  bottom: -5px;\n  right: -5px;\n}\n.footnote {\n  background: #ffffff;\n  border: 1px solid #eef2f7;\n  border-radius: 8px;\n  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);\n  box-sizing: border-box;\n  color: #64748b;\n  font: 12px/1.6 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);\n  left: 50%;\n  margin: 0;\n  max-height: 96px;\n  max-width: 100%;\n  overflow: auto;\n  padding: 12px 14px;\n  position: absolute;\n  transform: translateX(-50%);\n  white-space: pre-wrap;\n  z-index: 1;\n}\n.slideshowOverlay {\n  align-items: center;\n  background: #000000;\n  color: #f8fafc;\n  display: flex;\n  inset: 0;\n  justify-content: center;\n  min-height: 0;\n  padding: 0;\n  position: fixed;\n  z-index: 1000;\n}\n.slideshowChrome {\n  align-items: center;\n  background: rgba(15, 23, 42, 0.84);\n  border: 1px solid rgba(148, 163, 184, 0.22);\n  border-radius: 9999px;\n  display: flex;\n  gap: 10px;\n  opacity: 0;\n  padding: 4px 5px 4px 12px;\n  position: absolute;\n  right: 20px;\n  top: 18px;\n  transition: opacity 0.16s ease-out;\n  z-index: 2;\n}\n.slideshowOverlay:hover .slideshowChrome,\n.slideshowChrome:focus-within {\n  opacity: 1;\n}\n.slideshowCounter {\n  color: #cbd5e1;\n  font-size: 13px;\n  font-variant-numeric: tabular-nums;\n  font-weight: 600;\n}\n.slideshowIconButton {\n  align-items: center;\n  border-radius: 6px;\n  cursor: pointer;\n  display: inline-flex;\n  font: 600 13px/1 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);\n  justify-content: center;\n}\n.slideshowIconButton {\n  background: rgba(15, 23, 42, 0.86);\n  border: 1px solid rgba(148, 163, 184, 0.34);\n  color: #f8fafc;\n  height: 34px;\n  width: 34px;\n}\n.slideshowIconButton:hover {\n  background: rgba(30, 41, 59, 0.94);\n  border-color: rgba(203, 213, 225, 0.52);\n}\n.slideshowFrame {\n  align-items: center;\n  background: transparent;\n  border: 0;\n  cursor: pointer;\n  display: flex;\n  justify-content: center;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;\n  overflow: hidden;\n  padding: 0;\n  width: 100%;\n}\n.slideshowCanvas {\n  background: #ffffff;\n  border-radius: 0;\n  box-shadow: none;\n  display: block;\n  -o-object-fit: fill;\n  object-fit: fill;\n  -webkit-user-select: none;\n  -moz-user-select: none;\n  user-select: none;\n}\n@container presentation-editor (width <= 748px) {\n  .rail {\n    background: transparent;\n    backdrop-filter: none;\n    border-right: 0;\n    bottom: 24px;\n    left: 16px;\n    min-height: 0;\n    pointer-events: none;\n    position: absolute;\n    top: 12px;\n    width: 136px;\n  }\n  .stackButton {\n    background: transparent;\n    border: 0;\n    cursor: pointer;\n    display: flex;\n    flex-direction: column;\n    gap: 6px;\n    left: 0;\n    max-height: calc(100% - 36px);\n    overflow: hidden;\n    padding: 0;\n    pointer-events: auto;\n    position: absolute;\n    top: 50%;\n    transform: translateY(-50%);\n    transition: opacity 0.2s ease-out;\n    width: 20px;\n  }\n  .stackBar {\n    background: #94a3b8;\n    border-radius: 9999px;\n    display: block;\n    height: 2px;\n    width: 20px;\n  }\n  .thumbnailPanel {\n    background: color-mix(in srgb, #ffffff 82%, transparent);\n    backdrop-filter: blur(28px);\n    border-radius: 16px;\n    gap: 8px;\n    box-shadow: 0 5px 32px rgba(0, 0, 0, 0.07);\n    max-height: 100%;\n    opacity: 0;\n    padding: 8px;\n    pointer-events: none;\n    position: absolute;\n    top: 50%;\n    transform: translateY(-50%) translateX(-8px);\n    transition: opacity 0.2s ease-out, transform 0.2s ease-out;\n    visibility: hidden;\n    width: 136px;\n  }\n  .thumbnailButton {\n    display: grid;\n    gap: 5px;\n    padding: 0;\n  }\n  .thumbnailLabel {\n    flex: none;\n    font-size: 10px;\n    padding-top: 0;\n    text-align: left;\n  }\n  .thumbnailCanvas {\n    max-width: 120px;\n  }\n  .rail[data-open=true] .stackButton {\n    opacity: 0;\n  }\n  .rail[data-open=true] .thumbnailPanel {\n    opacity: 1;\n    pointer-events: auto;\n    transform: translateY(-50%) translateX(0);\n    visibility: visible;\n  }\n  .stage {\n    padding: 18px;\n  }\n  .playButton span {\n    display: none;\n  }\n}\n@media (width <= 748px) {\n  .shell {\n    grid-template-columns: minmax(0, 1fr);\n    min-height: 520px;\n  }\n  .slideshowOverlay {\n    padding: 10px;\n  }\n}\n');
 
-// src/presentation-text-layout.ts
+// src/presentation/presentation-text-layout.ts
 var PRESENTATION_POINT_TO_CSS_PIXEL = 1.333;
 var POWERPOINT_WRAP_WIDTH_FACTOR = 1;
 function presentationScaledFontSize(fontSize, slideScale, fallbackPx = 14) {
@@ -10560,7 +10560,7 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-// src/presentation-table-renderer.ts
+// src/presentation/presentation-table-renderer.ts
 var EMU_PER_CSS_PIXEL = 9525;
 function presentationTableGrid(table, rect) {
   const rows = asArray(table.rows).map(asRecord).filter((row) => row != null);
@@ -10754,7 +10754,7 @@ function sumLengths(lengths, start, count) {
   return total;
 }
 
-// src/presentation-renderer.ts
+// src/presentation/presentation-renderer.ts
 var DEFAULT_SLIDE_BOUNDS = { width: 12192e3, height: 6858e3 };
 var EMU_PER_CSS_PIXEL2 = 9525;
 var FIT_PADDING = 48;
@@ -11761,7 +11761,7 @@ function clamp2(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-// src/presentation-preview.tsx
+// src/presentation/presentation-preview.tsx
 import { jsx as jsx12, jsxs as jsxs8 } from "react/jsx-runtime";
 var MAX_THUMBNAIL_WIDTH = 192;
 var MIN_THUMBNAIL_WIDTH = 96;

@@ -1,10 +1,10 @@
-// src/office-preview-utils.ts
+// src/shared/office-preview-utils.ts
 import { useMemo } from "react";
 
-// src/spreadsheet-layout.ts
+// src/spreadsheet/spreadsheet-layout.ts
 var EXCEL_POINTS_TO_PX = 96 / 72;
 
-// src/spreadsheet-canvas-renderer.ts
+// src/spreadsheet/spreadsheet-canvas-renderer.ts
 function drawSpreadsheetCanvasRenderPlan(context, plan) {
   const { bitmap } = plan;
   context.setTransform(bitmap.pixelRatio, 0, 0, bitmap.pixelRatio, 0, 0);
@@ -98,7 +98,7 @@ function spreadsheetCanvasTextY(rect) {
   return rect.top + rect.height / 2;
 }
 
-// src/spreadsheet-canvas.worker.ts
+// src/spreadsheet/spreadsheet-canvas.worker.ts
 var canvas = null;
 self.onmessage = (event) => {
   const message = event.data;

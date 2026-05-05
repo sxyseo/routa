@@ -186,7 +186,7 @@ async function buildPayload(presentation: RecordValue): Promise<DirectCanvasPayl
 }
 
 async function loadPresentationRendererHelpers(): Promise<PresentationRendererHelpers> {
-  const imported = await import("../../packages/office-render/src/presentation-renderer");
+  const imported = await import("../../packages/office-render/src/presentation/presentation-renderer");
   const namespace = moduleNamespace(imported) as Partial<PresentationRendererHelpers>;
   if (
     typeof namespace.applyPresentationLayoutInheritance !== "function" ||
@@ -200,7 +200,7 @@ async function loadPresentationRendererHelpers(): Promise<PresentationRendererHe
 }
 
 async function loadOfficePreviewHelpers(): Promise<OfficePreviewHelpers> {
-  const imported = await import("../../packages/office-render/src/office-preview-utils");
+  const imported = await import("../../packages/office-render/src/shared/office-preview-utils");
   const namespace = moduleNamespace(imported) as Partial<OfficePreviewHelpers>;
   if (
     typeof namespace.colorToCss !== "function" ||

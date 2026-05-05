@@ -1,4 +1,4 @@
-export { WordPreview } from "./word-preview";
-export { SpreadsheetPreview } from "./spreadsheet-preview";
-export { PresentationPreview, PRESENTATION_HEADER_ACTIONS_ID } from "./presentation-preview";
-export type { PreviewLabels, RecordValue } from "./office-preview-utils";
+export { WordPreview } from "./word";
+export { SpreadsheetPreview } from "./spreadsheet";
+export { PresentationPreview, PRESENTATION_HEADER_ACTIONS_ID } from "./presentation";
+export type { PreviewLabels, RecordValue } from "./shared";

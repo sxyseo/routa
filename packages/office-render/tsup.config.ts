@@ -25,7 +25,7 @@ export default defineConfig([
   },
   // Web worker — built as a separate module so `new Worker(new URL(...))` resolves correctly
   {
-    entry: { "spreadsheet-canvas.worker": "src/spreadsheet-canvas.worker.ts" },
+    entry: { "spreadsheet-canvas.worker": "src/spreadsheet/spreadsheet-canvas.worker.ts" },
     format: ["esm"],
     dts: false,
     clean: false,
