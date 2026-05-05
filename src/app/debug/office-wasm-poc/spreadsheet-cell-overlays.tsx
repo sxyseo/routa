@@ -400,33 +400,80 @@ function SpreadsheetSparkline({ visual }: { visual: SpreadsheetSparklineVisual }
 }
 
 function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVisual["iconSet"]> }) {
-  const glyph = spreadsheetIconSetGlyph(visual);
-  if (glyph) {
+  const shape = spreadsheetIconSetShape(visual);
+  if (shape === "arrow") {
+    const rotation = spreadsheetIconSetArrowRotation(visual);
     return (
-      <span
+      <svg
         aria-hidden="true"
+        data-testid="spreadsheet-icon-set"
+        viewBox="0 0 18 18"
         style={{
-          color: visual.color,
           display: "inline-block",
-          fontSize: 15,
-          fontWeight: 700,
-          lineHeight: "14px",
+          height: 16,
           marginRight: visual.showValue ? 5 : 0,
           position: "relative",
-          textAlign: "center",
           top: 1,
           width: 18,
           zIndex: 1,
         }}
       >
-        {glyph}
-      </span>
+        <path
+          d="M9 2 L15 8 H11 V16 H7 V8 H3 Z"
+          fill={visual.color}
+          transform={`rotate(${rotation} 9 9)`}
+        />
+      </svg>
+    );
+  }
+
+  if (shape === "quarter") {
+    return (
+      <svg
+        aria-hidden="true"
+        data-testid="spreadsheet-icon-set"
+        viewBox="0 0 18 18"
+        style={{
+          display: "inline-block",
+          height: 16,
+          marginRight: visual.showValue ? 5 : 0,
+          position: "relative",
+          top: 1,
+          width: 18,
+          zIndex: 1,
+        }}
+      >
+        <circle cx="9" cy="9" fill="#f8fafc" r="6.5" stroke="#94a3b8" strokeWidth="1.5" />
+        <path d={spreadsheetIconSetQuarterPath(visual)} fill={visual.color} />
+      </svg>
+    );
+  }
+
+  if (shape === "traffic") {
+    return (
+      <svg
+        aria-hidden="true"
+        data-testid="spreadsheet-icon-set"
+        viewBox="0 0 18 18"
+        style={{
+          display: "inline-block",
+          height: 16,
+          marginRight: visual.showValue ? 5 : 0,
+          position: "relative",
+          top: 1,
+          width: 18,
+          zIndex: 1,
+        }}
+      >
+        <circle cx="9" cy="9" fill={visual.color} r="6.5" stroke="rgba(15, 23, 42, 0.28)" strokeWidth="1" />
+      </svg>
     );
   }
 
   return (
     <span
       aria-hidden="true"
+      data-testid="spreadsheet-icon-set"
       style={{
         alignItems: "end",
         display: "inline-flex",
@@ -456,25 +503,38 @@ function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVis
   );
 }
 
-function spreadsheetIconSetGlyph(visual: NonNullable<SpreadsheetCellVisual["iconSet"]>): string {
+export function spreadsheetIconSetShape(visual: NonNullable<SpreadsheetCellVisual["iconSet"]>): "arrow" | "quarter" | "rating" | "traffic" {
   const iconSet = visual.iconSet.toLowerCase();
-  const zeroBasedLevel = Math.max(0, Math.min(visual.levelCount - 1, visual.level - 1));
   if (iconSet.includes("rating")) {
-    return "";
+    return "rating";
   }
 
   if (iconSet.includes("quarter")) {
-    return ["☆", "◔", "◑", "◕", "★"][zeroBasedLevel] ?? "★";
+    return "quarter";
   }
 
   if (iconSet.includes("arrow")) {
-    const arrows = visual.levelCount >= 5 ? ["▼", "↘", "→", "↗", "▲"] : ["▼", "→", "▲"];
-    return arrows[Math.min(arrows.length - 1, zeroBasedLevel)] ?? "→";
+    return "arrow";
   }
 
   if (iconSet.includes("traffic") || iconSet.includes("symbol") || iconSet.includes("sign")) {
-    return "●";
+    return "traffic";
   }
 
-  return "";
+  return "rating";
+}
+
+function spreadsheetIconSetArrowRotation(visual: NonNullable<SpreadsheetCellVisual["iconSet"]>): number {
+  const zeroBasedLevel = Math.max(0, Math.min(visual.levelCount - 1, visual.level - 1));
+  const rotations = visual.levelCount >= 5 ? [180, 135, 90, 45, 0] : [180, 90, 0];
+  return rotations[Math.min(rotations.length - 1, zeroBasedLevel)] ?? 90;
+}
+
+function spreadsheetIconSetQuarterPath(visual: NonNullable<SpreadsheetCellVisual["iconSet"]>): string {
+  const zeroBasedLevel = Math.max(0, Math.min(4, visual.level - 1));
+  if (zeroBasedLevel <= 0) return "";
+  if (zeroBasedLevel === 1) return "M9 9 L9 2.5 A6.5 6.5 0 0 1 15.5 9 Z";
+  if (zeroBasedLevel === 2) return "M9 9 L9 2.5 A6.5 6.5 0 0 1 9 15.5 Z";
+  if (zeroBasedLevel === 3) return "M9 9 L9 2.5 A6.5 6.5 0 1 1 2.5 9 Z";
+  return "M9 2.5 A6.5 6.5 0 1 1 9 15.5 A6.5 6.5 0 1 1 9 2.5 Z";
 }
