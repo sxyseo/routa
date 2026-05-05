@@ -166,6 +166,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added a pure row/column resize controller and preview-side size override layer. Header boundary hit testing, resize cursors, drag sizing, and rebuilt offsets now use the same worksheet-space layout math without mutating decoded protocol data.
 - Added keyboard selection navigation for arrow keys, Enter, Tab, and Shift+Tab, with formula-bar address/value updates and scroll-into-view behavior driven by the same selection rectangle projection.
 - Added a lightweight edit-mode overlay for the debug workbook preview: double-click or F2 opens an input over the selected cell, Enter commits the preview override, Escape cancels, and the formula bar reads the same edited value.
+- Re-ran the committed XLSX decoded protocol suite plus the validation-only `/Users/phodal/Downloads/excel` production corpus on 2026-05-05; all 12 committed fixtures and all 21 production workbooks still report Walnut-equivalent decoded Workbook protocol.
 
 ## Residual XLSX Follow-Up Backlog
 
