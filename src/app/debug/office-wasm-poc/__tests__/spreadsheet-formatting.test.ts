@@ -140,6 +140,17 @@ describe("spreadsheet cell formatting", () => {
     expect(spreadsheetCellStyle({ address: "A1", value: "Task" }, null).fontFamily).toBe("Aptos, Calibri, Arial, Helvetica, sans-serif");
   });
 
+  it("styles HYPERLINK formulas like Excel hyperlink cells", () => {
+    expect(spreadsheetCellStyle(
+      { address: "B13", formula: 'HYPERLINK("https://example.com","open external")' },
+      null,
+    )).toMatchObject({
+      color: "#0563c1",
+      cursor: "pointer",
+      textDecorationLine: "underline",
+    });
+  });
+
   it("keeps icon-only conditional formats left aligned", () => {
     expect(spreadsheetCellStyle(
       { address: "N5", value: 3 },

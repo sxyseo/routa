@@ -1079,6 +1079,7 @@ export function spreadsheetCellStyle(
   const fontFill = resolveStyleRecord(font, ["fill", "color"]);
   const fillColor = spreadsheetFillToCss(fill);
   const fontColor = colorToCss(fontFill?.color ?? fontFill);
+  const hyperlinkFormula = /^=?\s*HYPERLINK\s*\(/i.test(asString(cell?.formula));
   const gridLineColor = showGridLines ? "#e2e8f0" : "transparent";
   const bottomBorder = spreadsheetBorderCss(border, "bottom", gridLineColor);
   const rightBorder = spreadsheetBorderCss(border, "right", gridLineColor);
@@ -1090,9 +1091,7 @@ export function spreadsheetCellStyle(
   const indent = Math.max(0, asNumber(alignment?.indent ?? cellFormat?.indent, 0));
   const fontSize = font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize;
   const fallbackTextAlign = visual?.iconSet?.showValue === false ? "left" : (fallbackStyle.textAlign ?? spreadsheetDefaultTextAlign(cell));
-  const justifyContent = horizontalAlignment
-    ? spreadsheetHorizontalJustifyContent(horizontalAlignment)
-    : spreadsheetJustifyContentForTextAlign(fallbackTextAlign);
+  const justifyContent = horizontalAlignment ? spreadsheetHorizontalJustifyContent(horizontalAlignment) : spreadsheetJustifyContentForTextAlign(fallbackTextAlign);
 
   return {
     ...sheetCellStyle,
@@ -1105,7 +1104,8 @@ export function spreadsheetCellStyle(
     borderRightColor: visual?.borderColor ?? rightBorder.color,
     borderRightStyle: rightBorder.style,
     borderRightWidth: rightBorder.width,
-    color: visual?.color ?? fontColor ?? fallbackStyle.color ?? sheetCellStyle.color,
+    color: visual?.color ?? fontColor ?? (hyperlinkFormula ? "#0563c1" : fallbackStyle.color) ?? sheetCellStyle.color,
+    cursor: hyperlinkFormula ? "pointer" : undefined,
     display: "flex",
     fontFamily: spreadsheetFontFamily(asString(font?.typeface)),
     fontSize: shrinkToFit && typeof fontSize === "number" ? Math.max(8, fontSize * 0.88) : fontSize,
@@ -1114,6 +1114,7 @@ export function spreadsheetCellStyle(
     justifyContent,
     paddingLeft: indent > 0 ? 9 + indent * 12 : sheetCellStyle.paddingLeft,
     textAlign: horizontalAlignment ? spreadsheetHorizontalTextAlign(horizontalAlignment, fallbackTextAlign) : fallbackTextAlign,
+    textDecorationLine: hyperlinkFormula ? "underline" : undefined,
     textOverflow: wrapText ? undefined : "ellipsis",
     verticalAlign: spreadsheetVerticalAlign(verticalAlignment) ?? fallbackStyle.verticalAlign ?? sheetCellStyle.verticalAlign,
     whiteSpace: wrapText ? sheetCellStyle.whiteSpace : "nowrap",
