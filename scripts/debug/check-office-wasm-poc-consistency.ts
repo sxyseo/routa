@@ -17,9 +17,9 @@ const assetDir = path.resolve(repoRoot, OFFICE_WASM_TMP_ASSET_DIR);
 const artifactBundlePath = path.join(assetDir, OFFICE_WASM_ARTIFACT_TAB_BUNDLE);
 const rendererPaths = [
   "src/app/debug/office-wasm-poc/page-client.tsx",
-  "packages/office-preview/src/spreadsheet-preview.tsx",
-  "packages/office-preview/src/presentation-preview.tsx",
-  "packages/office-preview/src/word-preview.tsx",
+  "packages/office-render/src/spreadsheet-preview.tsx",
+  "packages/office-render/src/presentation-preview.tsx",
+  "packages/office-render/src/word-preview.tsx",
 ].map((filePath) => path.resolve(repoRoot, filePath));
 
 const failures: string[] = [];

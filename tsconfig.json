@@ -26,8 +26,8 @@
       "@/*": [
         "./src/*"
       ],
-      "@routa/office-preview": [
-        "./packages/office-preview/src/index.ts"
+      "@autodev/office-render": [
+        "./packages/office-render/src/index.ts"
       ]
     },
     "baseUrl": "."

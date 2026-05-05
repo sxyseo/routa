@@ -24,7 +24,7 @@ import {
   type PreviewLabels,
   SpreadsheetPreview,
   WordPreview,
-} from "@routa/office-preview";
+} from "@autodev/office-render";
 
 type ArtifactKind = "csv" | "tsv" | "docx" | "pptx" | "xlsx";
 type ParseStage = "idle" | "initializing" | "parsing" | "ready" | "error";
