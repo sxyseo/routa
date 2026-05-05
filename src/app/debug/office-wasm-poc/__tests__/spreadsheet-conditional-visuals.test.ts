@@ -115,9 +115,10 @@ describe("spreadsheet conditional visuals", () => {
       },
     );
 
+    expect(visuals.get("1:0")?.background).toBe("rgb(213, 226, 233)");
     expect(visuals.get("2:0")?.background).toBe("rgb(194, 214, 223)");
     expect(visuals.get("3:0")?.background).toBeUndefined();
-    expect(visuals.get("4:0")?.background).toBe("rgb(157, 188, 203)");
+    expect(visuals.get("4:0")?.background).toBe("rgb(213, 226, 233)");
   });
 
   it("projects broader built-in medium table styles from theme accents", () => {

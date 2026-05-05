@@ -142,7 +142,10 @@ function mediumIntensity(familyIndex: number, styleIndex: number): {
   rowStripeRatio: number;
   totalRatio: number;
 } {
-  if (styleIndex === 2 || styleIndex === 4 || styleIndex === 9) {
+  if (styleIndex === 2) {
+    return { columnStripeRatio: 0.82, rowStripeRatio: 0.74, totalRatio: 0.82 };
+  }
+  if (styleIndex === 4 || styleIndex === 9) {
     return { columnStripeRatio: 0.82, rowStripeRatio: 0.74, totalRatio: 0.58 };
   }
   if (familyIndex <= 0) return { columnStripeRatio: 0.86, rowStripeRatio: 0.78, totalRatio: 0.62 };
