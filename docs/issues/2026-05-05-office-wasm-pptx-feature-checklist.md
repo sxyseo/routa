@@ -19,14 +19,17 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 
 ## Overview
 
-**Completeness**: ~40% (basic structure in place; inheritance/effects/interaction major next frontier)
+**Completeness**: ~50% (per-run text + master inheritance shipped; theme colors and tables next)
 
 **Key Status**:
 - ✅ Core slide structure and basic shape rendering
 - ✅ Text, tables, grouped shapes, connectors (basic)
 - ✅ Charts and basic chart types
 - ✅ Thumbnail generation and slideshow mode
-- ⏳ Theme/layout/master placeholder inheritance (needs deepening)
+- ✅ Per-run text rendering (DirectTextParagraph[]/DirectTextRun[] — mixed colors/sizes/weights per element)
+- ✅ Master slide inheritance with 3-tier placeholder dedup (master→layout→slide)
+- ⏳ Theme color resolution (scheme/accent colors not yet resolved in render layer)
+- ⏳ Tables in slides (reader 90% complete; render layer not yet consuming)
 - ⏳ SmartArt/diagrams and complex nested shapes
 - ⏳ Advanced effects, cropping, and masks
 - ⏳ Presentation interaction (navigation, timing, transitions)
@@ -60,7 +63,7 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 
 ### 2. Theme, Layout & Master Inheritance
 
-**Status**: 60% complete (foundation in place; depth needed)
+**Status**: 75% complete (3-tier inheritance shipped; theme color resolution remaining)
 
 - [x] Theme colors (accent, accent1-6, dark1, dark2, light1, light2, hyperlink, followed-hyperlink)
 - [x] Theme fonts (Latin and East Asian typefaces)
@@ -71,17 +74,19 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 - [x] Placeholder text style defaults
 - [x] Layout inheritance from master
 - [x] Basic placeholder fill fallback
+- [x] Master slides decoded separately from layouts (field 3 + kind="master")
+- [x] 3-tier placeholder dedup: slide > layout > master (non-placeholder shapes always pass through)
+- [x] Master background fallback in render layer
 - [ ] Complete text-body style inheritance (font, size, color, spacing)
 - [ ] List-level defaults from master/layout
 - [ ] Placeholder shape line/border inheritance
 - [ ] Nested layout/master resolution chains
 
 **Remaining** (blocking production fidelity):
-- [ ] Master slide fill propagation to all placeholders
-- [ ] Master placeholder text style cascading (run font, size, color)
+- [ ] Theme color scheme resolution in render layer (scheme/accent refs → RGB via theme palette)
+- [ ] Master placeholder text style cascading (run font, size, color) — proto available, render not consuming
 - [ ] Layout-specific placeholder overrides
 - [ ] Multiple master slides and fallback resolution
-- [ ] Theme color scheme depth across all fill/line contexts
 - [ ] Placeholder numbering and bullet formatting
 
 ---
@@ -404,12 +409,13 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 4. ✅ Charts (basic types and series)
 5. ✅ Thumbnail and slideshow UI
 
-### Phase 2: Theme & Master Inheritance (High Priority)
-1. Deepen master placeholder inheritance for text styles (font, size, color, spacing)
-2. Complete layout-specific placeholder overrides
-3. Add theme color scheme resolution across all fill/line contexts
-4. Implement list-level defaults from master/layout
+### Phase 2: Theme & Master Inheritance (In Progress)
+1. ✅ Master slide decoding + 3-tier placeholder dedup (slide > layout > master)
+2. ✅ Per-run text rendering (DirectTextParagraph[]/DirectTextRun[]) in both SVG thumbnails and HTML canvas
+3. Theme color scheme resolution: map scheme color refs (accent1-6, dk1/dk2, lt1/lt2) → RGB via decoded theme palette
+4. Complete layout-specific placeholder overrides (text style cascading from master/layout runs)
 5. Add multiple master slide support and fallback resolution
+6. Implement list-level defaults from master/layout
 
 ### Phase 3: Visual Fidelity (Medium Priority)
 1. SmartArt and diagram support
