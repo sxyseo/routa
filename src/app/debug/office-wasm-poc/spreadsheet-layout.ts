@@ -16,7 +16,7 @@ export const SPREADSHEET_COLUMN_HEADER_HEIGHT = 20;
 export const SPREADSHEET_DEFAULT_COLUMN_WIDTH = 88;
 export const SPREADSHEET_DEFAULT_ROW_HEIGHT = 20;
 export const SPREADSHEET_EMU_PER_PIXEL = 9525;
-export const SPREADSHEET_FONT_FAMILY = "Arial, Helvetica, sans-serif";
+export const SPREADSHEET_FONT_FAMILY = "Aptos, Calibri, Arial, Helvetica, sans-serif";
 
 const EXCEL_POINTS_TO_PX = 96 / 72;
 

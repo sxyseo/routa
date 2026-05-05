@@ -4,6 +4,7 @@ import { buildSpreadsheetCanvasCommands } from "../spreadsheet-canvas-commands";
 import {
   buildSpreadsheetCanvasRenderPlan,
   spreadsheetCanvasBitmapSize,
+  spreadsheetCanvasFont,
 } from "../spreadsheet-canvas-renderer";
 import { buildSpreadsheetLayout } from "../spreadsheet-layout";
 
@@ -119,5 +120,10 @@ describe("spreadsheet canvas renderer", () => {
       textAlign: "right",
       verticalAlign: "bottom",
     });
+  });
+
+  it("falls back to the Excel-like spreadsheet font stack for canvas cells", () => {
+    expect(spreadsheetCanvasFont({ height: 20, left: 0, text: "Hello", top: 0, width: 80 }))
+      .toBe("500 13px Aptos, Calibri, Arial, Helvetica, sans-serif");
   });
 });

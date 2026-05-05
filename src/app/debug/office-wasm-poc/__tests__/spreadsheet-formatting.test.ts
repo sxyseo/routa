@@ -136,6 +136,10 @@ describe("spreadsheet cell formatting", () => {
     });
   });
 
+  it("uses an Excel-like default spreadsheet font stack", () => {
+    expect(spreadsheetCellStyle({ address: "A1", value: "Task" }, null).fontFamily).toBe("Aptos, Calibri, Arial, Helvetica, sans-serif");
+  });
+
   it("keeps icon-only conditional formats left aligned", () => {
     expect(spreadsheetCellStyle(
       { address: "N5", value: 3 },

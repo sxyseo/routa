@@ -236,11 +236,11 @@ function drawSpreadsheetCanvasLine(
   context.stroke();
 }
 
-function spreadsheetCanvasFont(rect: SpreadsheetCanvasDrawRect): string {
+export function spreadsheetCanvasFont(rect: SpreadsheetCanvasDrawRect): string {
   const weight = rect.fontWeight ?? 500;
   const style = rect.fontStyle === "italic" ? "italic " : "";
   const size = Math.max(8, Math.min(32, rect.fontSize ?? 13));
-  return `${style}${weight} ${size}px ${rect.fontFamily || "Arial, Helvetica, sans-serif"}`;
+  return `${style}${weight} ${size}px ${rect.fontFamily || "Aptos, Calibri, Arial, Helvetica, sans-serif"}`;
 }
 
 function spreadsheetCanvasTextX(
