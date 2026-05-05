@@ -47,6 +47,7 @@ import {
   wordTableRowStyle,
   wordTableStyle,
 } from "./word-preview-layout";
+import { WordPageCropMarks } from "./word-preview-crop-marks";
 import {
   wordEmptyParagraphEstimatedHeight,
   wordEmptyParagraphStyle,
@@ -172,6 +173,7 @@ function WordDocumentPage({
         position: "relative",
       }}
     >
+      <WordPageCropMarks pageLayout={pageLayout} />
       <WordSectionContent
         charts={charts}
         elements={headerElements}

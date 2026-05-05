@@ -607,6 +607,34 @@ describe("WordPreview", () => {
     expect(paragraphs).toEqual(["Header text", "Body text", "Footer text"]);
   });
 
+  it("renders Word-like page crop marks at decoded page margins", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [{ paragraphs: [{ runs: [{ text: "Body text" }] }] }],
+          sections: [
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Body text" }] }] }],
+              pageSetup: {
+                heightEmu: 10_691_470,
+                pageMargin: { bottom: 1_143_000, left: 914_400, right: 914_400, top: 914_400 },
+                widthEmu: 7_560_000,
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const cropMarks = Array.from(container.querySelectorAll<HTMLElement>('[data-testid="word-page-crop-mark"]'));
+    expect(cropMarks).toHaveLength(4);
+    expect(cropMarks[0]?.style.left).toBe("66px");
+    expect(cropMarks[0]?.style.top).toBe("66px");
+    expect(cropMarks[0]?.style.borderRightWidth).toBe("2px");
+    expect(cropMarks[0]?.style.borderBottomWidth).toBe("2px");
+  });
+
   it("renders decoded DOCX section elements as separate pages", () => {
     const { container } = render(
       <WordPreview
