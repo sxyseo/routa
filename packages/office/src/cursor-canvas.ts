@@ -39,6 +39,15 @@ type DirectCanvasElement =
       y: number;
       width: number;
       height: number;
+    }
+  | {
+      columnWidths: number[];
+      kind: "table";
+      rows: DirectTableRow[];
+      x: number;
+      y: number;
+      width: number;
+      height: number;
     };
 
 type DirectTextParagraph = {
@@ -54,6 +63,23 @@ type DirectTextRun = {
   text: string;
   typeface: string;
   underline: boolean;
+};
+
+type DirectTableRow = {
+  cells: DirectTableCell[];
+  height: number;
+};
+
+type DirectTableCell = {
+  borderBottom: string;
+  borderLeft: string;
+  borderRight: string;
+  borderTop: string;
+  colSpan: number;
+  fill: string;
+  paragraphs: DirectTextParagraph[];
+  rowSpan: number;
+  verticalAlign: "bottom" | "middle" | "top";
 };
 
 type DirectCanvasMedia = {
@@ -129,9 +155,38 @@ type PresentationElement = {
     geometry?: number;
     line?: PresentationLine;
   };
+  table?: PresentationTable;
   textStyle?: PresentationTextStyle;
   type?: number;
   zIndex?: number;
+};
+
+type PresentationTable = {
+  columnWidths: number[];
+  rows: PresentationTableRow[];
+};
+
+type PresentationTableRow = {
+  cells: PresentationTableCell[];
+  height: number;
+};
+
+type PresentationTableCell = {
+  borders?: PresentationTableCellBorders;
+  fill?: PresentationFill;
+  gridSpan?: number;
+  horizontalMerge?: boolean;
+  paragraphs: PresentationParagraph[];
+  rowSpan?: number;
+  verticalAlign?: string;
+  verticalMerge?: boolean;
+};
+
+type PresentationTableCellBorders = {
+  bottom?: PresentationLine;
+  left?: PresentationLine;
+  right?: PresentationLine;
+  top?: PresentationLine;
 };
 
 type PresentationFill = {
@@ -344,6 +399,8 @@ function decodeElement(bytes: Uint8Array): PresentationElement {
       element.textStyle = decodeTextStyle(reader.bytesField());
     } else if (tag.fieldNumber === 19 && tag.wireType === 2) {
       element.fill = decodeFill(reader.bytesField());
+    } else if (tag.fieldNumber === 21 && tag.wireType === 2) {
+      element.table = decodeTable(reader.bytesField());
     } else if (tag.fieldNumber === 30 && tag.wireType === 2) {
       element.shape = {
         ...element.shape,
@@ -408,6 +465,74 @@ function decodeColorTransform(bytes: Uint8Array): { alpha?: number } {
     else reader.skip(tag.wireType);
   }
   return transform;
+}
+
+function decodeTable(bytes: Uint8Array): PresentationTable {
+  const reader = new ProtoReader(bytes);
+  const table: PresentationTable = { columnWidths: [], rows: [] };
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1 && tag.wireType === 2) {
+      table.rows.push(decodeTableRow(reader.bytesField()));
+    } else if (tag.fieldNumber === 2) {
+      table.columnWidths.push(reader.int32());
+    } else reader.skip(tag.wireType);
+  }
+  return table;
+}
+
+function decodeTableRow(bytes: Uint8Array): PresentationTableRow {
+  const reader = new ProtoReader(bytes);
+  const row: PresentationTableRow = { cells: [], height: 0 };
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1 && tag.wireType === 2) {
+      row.cells.push(decodeTableCell(reader.bytesField()));
+    } else if (tag.fieldNumber === 2) {
+      row.height = reader.int32();
+    } else reader.skip(tag.wireType);
+  }
+  return row;
+}
+
+function decodeTableCell(bytes: Uint8Array): PresentationTableCell {
+  const reader = new ProtoReader(bytes);
+  const cell: PresentationTableCell = { paragraphs: [] };
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 3 && tag.wireType === 2) {
+      cell.paragraphs.push(decodeParagraph(reader.bytesField()));
+    } else if (tag.fieldNumber === 5 && tag.wireType === 2) {
+      cell.fill = decodeFill(reader.bytesField());
+    } else if (tag.fieldNumber === 6 && tag.wireType === 2) {
+      cell.borders = decodeTableCellBorders(reader.bytesField());
+    } else if (tag.fieldNumber === 8) {
+      cell.gridSpan = reader.int32();
+    } else if (tag.fieldNumber === 9) {
+      cell.rowSpan = reader.int32();
+    } else if (tag.fieldNumber === 10) {
+      cell.horizontalMerge = reader.bool();
+    } else if (tag.fieldNumber === 11) {
+      cell.verticalMerge = reader.bool();
+    } else if (tag.fieldNumber === 12) {
+      cell.verticalAlign = reader.string();
+    } else reader.skip(tag.wireType);
+  }
+  return cell;
+}
+
+function decodeTableCellBorders(bytes: Uint8Array): PresentationTableCellBorders {
+  const reader = new ProtoReader(bytes);
+  const borders: PresentationTableCellBorders = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1 && tag.wireType === 2) borders.top = decodeLine(reader.bytesField());
+    else if (tag.fieldNumber === 2 && tag.wireType === 2) borders.right = decodeLine(reader.bytesField());
+    else if (tag.fieldNumber === 3 && tag.wireType === 2) borders.bottom = decodeLine(reader.bytesField());
+    else if (tag.fieldNumber === 4 && tag.wireType === 2) borders.left = decodeLine(reader.bytesField());
+    else reader.skip(tag.wireType);
+  }
+  return borders;
 }
 
 function decodeTheme(bytes: Uint8Array): PresentationTheme {
@@ -774,6 +899,11 @@ function directElements(
   };
   if (rect.width <= 0 && rect.height <= 0) return [];
 
+  if (element.table) {
+    const tableEl = buildDirectTable(element.table, rect, theme);
+    return tableEl ? [tableEl] : [];
+  }
+
   const imageId = element.imageReference?.id ?? element.fill?.imageReference?.id;
   const mediaId = imageId ? mediaIndex.byImageId.get(imageId) : null;
   const elements: DirectCanvasElement[] = [];
@@ -851,6 +981,60 @@ function buildTextRun(run: PresentationRun, theme?: PresentationTheme): DirectTe
     typeface: style.typeface ?? "",
     underline: style.underline === "sng" || style.underline === "single",
   };
+}
+
+function buildDirectTable(
+  table: PresentationTable,
+  rect: { height: number; width: number; x: number; y: number },
+  theme?: PresentationTheme,
+): DirectCanvasElement | null {
+  const rows: DirectTableRow[] = table.rows.map((row) => ({
+    height: row.height,
+    cells: row.cells.map((cell) => ({
+      borderBottom: borderLineCss(cell.borders?.bottom, theme),
+      borderLeft: borderLineCss(cell.borders?.left, theme),
+      borderRight: borderLineCss(cell.borders?.right, theme),
+      borderTop: borderLineCss(cell.borders?.top, theme),
+      colSpan: cell.gridSpan ?? 1,
+      fill: fillToCss(cell.fill, theme) ?? "transparent",
+      paragraphs: buildCellParagraphs(cell.paragraphs, theme),
+      rowSpan: cell.rowSpan ?? 1,
+      verticalAlign: cellVerticalAlign(cell.verticalAlign),
+    })),
+  }));
+  return { columnWidths: table.columnWidths, kind: "table", rows, ...rect };
+}
+
+function buildCellParagraphs(
+  paragraphs: PresentationParagraph[],
+  theme?: PresentationTheme,
+): DirectTextParagraph[] {
+  const result: DirectTextParagraph[] = [];
+  for (const paragraph of paragraphs) {
+    const runs: DirectTextRun[] = [];
+    for (const run of paragraph.runs) {
+      if (!run.text) continue;
+      runs.push(buildTextRun(run, theme));
+    }
+    if (runs.length === 0) continue;
+    result.push({ align: paragraphAlign(paragraph.textStyle?.alignment), runs });
+  }
+  return result;
+}
+
+function borderLineCss(line?: PresentationLine, theme?: PresentationTheme): string {
+  if (!line) return "none";
+  const color = fillToCss(line.fill, theme) ?? "#94a3b8";
+  const widthPx = Math.max(1, Math.round((line.widthEmu ?? 9_525) / 9_525));
+  return `${widthPx}px solid ${color}`;
+}
+
+function cellVerticalAlign(value?: string): "bottom" | "middle" | "top" {
+  if (!value) return "top";
+  const v = value.toLowerCase();
+  if (v === "b" || v === "bottom") return "bottom";
+  if (v === "ctr" || v === "center" || v === "middle") return "middle";
+  return "top";
 }
 
 function paragraphAlign(alignment?: number): "center" | "left" | "right" {
@@ -1016,6 +1200,9 @@ function renderSlideThumbnailElement(
     }
     return `<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="${element.radius}" ry="${element.radius}" ${shapeProps}/>`;
   }
+  if (element.kind === "table") {
+    return renderSlideThumbnailTable(element);
+  }
   return renderSlideThumbnailText(element);
 }
 
@@ -1054,16 +1241,49 @@ function renderSlideThumbnailText(
   return `<text font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" y="${element.y + baseFontSize}">${body}</text>`;
 }
 
+function renderSlideThumbnailTable(
+  element: Extract<DirectCanvasElement, { kind: "table" }>,
+): string {
+  let out = `<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" fill="white" stroke="#cbd5e1" stroke-width="4750"/>`;
+  let rowY = element.y;
+  for (const row of element.rows) {
+    let colX = element.x;
+    const rowHeight = row.height || (element.height / element.rows.length);
+    for (let ci = 0; ci < row.cells.length; ci++) {
+      const cell = row.cells[ci];
+      const colWidth = element.columnWidths[ci] ?? (element.width / (row.cells.length || 1));
+      if (cell.fill !== "transparent") {
+        out += `<rect x="${colX}" y="${rowY}" width="${colWidth}" height="${rowHeight}" fill="${escapeXml(cell.fill)}" stroke="#cbd5e1" stroke-width="2375"/>`;
+      } else {
+        out += `<rect x="${colX}" y="${rowY}" width="${colWidth}" height="${rowHeight}" fill="none" stroke="#cbd5e1" stroke-width="2375"/>`;
+      }
+      if (cell.paragraphs.length > 0) {
+        const run = cell.paragraphs[0]?.runs[0];
+        if (run) {
+          const fs = run.fontSize * 0.7;
+          out += `<text x="${colX + 9_525}" y="${rowY + fs}" font-size="${fs}" fill="${escapeXml(run.color)}" font-family="-apple-system, sans-serif">${escapeXml(run.text.slice(0, 30))}</text>`;
+        }
+      }
+      colX += colWidth;
+    }
+    rowY += rowHeight;
+  }
+  return out;
+}
+
 function renderPresentationCanvasSource(payload: DirectCanvasPayload): string {
   return `import { Button, Pill, Row, Stack, Text, useCanvasState, useHostTheme } from "cursor/canvas";
 
 type DirectTextRun = { bold: boolean; color: string; fontSize: number; italic: boolean; text: string; typeface: string; underline: boolean };
 type DirectTextParagraph = { align: "center" | "left" | "right"; runs: DirectTextRun[] };
+type DirectTableCell = { borderBottom: string; borderLeft: string; borderRight: string; borderTop: string; colSpan: number; fill: string; paragraphs: DirectTextParagraph[]; rowSpan: number; verticalAlign: "bottom" | "middle" | "top" };
+type DirectTableRow = { cells: DirectTableCell[]; height: number };
 
 type DirectCanvasElement =
   | { crop: DirectImageCrop | null; kind: "image"; mediaId: string; x: number; y: number; width: number; height: number }
   | { kind: "text"; paragraphs: DirectTextParagraph[]; insetBottom: number; insetLeft: number; insetRight: number; insetTop: number; verticalAlign: "bottom" | "middle" | "top"; x: number; y: number; width: number; height: number }
-  | { fill: string; kind: "shape"; radius: number; shapeKind: DirectShapeKind; stroke: string; strokeWidth: number; x: number; y: number; width: number; height: number };
+  | { fill: string; kind: "shape"; radius: number; shapeKind: DirectShapeKind; stroke: string; strokeWidth: number; x: number; y: number; width: number; height: number }
+  | { columnWidths: number[]; kind: "table"; rows: DirectTableRow[]; x: number; y: number; width: number; height: number };
 
 type DirectCanvasMedia = { height: number; src: string; width: number };
 type DirectImageCrop = { height: number; width: number; x: number; y: number };
@@ -1252,6 +1472,8 @@ function SlideSurface({ active = false, mode = "stage", slide }: { active?: bool
       </svg>
       {slide.elements.map((element, index) => element.kind === "text" ? (
         <SlideTextElement element={element} key={index} slide={slide} />
+      ) : element.kind === "table" ? (
+        <SlideTableElement element={element} key={index} slide={slide} />
       ) : (
         <svg
           aria-hidden="true"
@@ -1348,6 +1570,64 @@ function SlideTextElement({ element, slide }: { element: Extract<DirectCanvasEle
   );
 }
 
+function SlideTableElement({ element, slide }: { element: Extract<DirectCanvasElement, { kind: "table" }>; slide: DirectCanvasSlide }) {
+  return (
+    <div
+      style={{
+        boxSizing: "border-box",
+        height: \`\${(element.height / slide.height) * 100}%\`,
+        left: \`\${(element.x / slide.width) * 100}%\`,
+        overflow: "hidden",
+        position: "absolute",
+        top: \`\${(element.y / slide.height) * 100}%\`,
+        width: \`\${(element.width / slide.width) * 100}%\`,
+      }}
+    >
+      <table style={{ borderCollapse: "collapse", height: "100%", tableLayout: "fixed", width: "100%" }}>
+        <colgroup>
+          {element.columnWidths.map((w, ci) => (
+            <col key={ci} style={{ width: \`\${(w / element.width) * 100}%\` }} />
+          ))}
+        </colgroup>
+        <tbody>
+          {element.rows.map((row, ri) => (
+            <tr key={ri} style={{ height: \`\${(row.height / element.height) * 100}%\` }}>
+              {row.cells.map((cell, ci) => (
+                <td
+                  key={ci}
+                  colSpan={cell.colSpan}
+                  rowSpan={cell.rowSpan}
+                  style={{
+                    background: cell.fill,
+                    borderBottom: cell.borderBottom,
+                    borderLeft: cell.borderLeft,
+                    borderRight: cell.borderRight,
+                    borderTop: cell.borderTop,
+                    boxSizing: "border-box",
+                    overflow: "hidden",
+                    padding: \`\${(91_440 / slide.height) * 100}%\`,
+                    verticalAlign: cell.verticalAlign,
+                  }}
+                >
+                  {cell.paragraphs.map((paragraph, pi) => (
+                    <p key={pi} style={{ lineHeight: 1.18, margin: 0, textAlign: paragraph.align, whiteSpace: "pre-wrap" }}>
+                      {paragraph.runs.map((run, ri2) => (
+                        <span key={ri2} style={{ color: run.color, fontFamily: fontStack(run.typeface), fontSize: \`\${(run.fontSize / slide.width) * 100}cqw\`, fontStyle: run.italic ? "italic" : "normal", fontWeight: run.bold ? 700 : 500, textDecoration: run.underline ? "underline" : "none" }}>
+                          {run.text}
+                        </span>
+                      ))}
+                    </p>
+                  ))}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function fontStack(typeface: string) {
   const fallback = "-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif";
   return typeface ? \`\${JSON.stringify(typeface)}, \${fallback}\` : fallback;
@@ -1383,10 +1663,20 @@ const navButtonStyle = {
 
 function firstText(elements: DirectCanvasElement[]): string {
   for (const element of elements) {
-    if (element.kind !== "text") continue;
-    for (const paragraph of element.paragraphs) {
-      const text = paragraph.runs.map((run) => run.text).join("").trim();
-      if (text) return text;
+    if (element.kind === "text") {
+      for (const paragraph of element.paragraphs) {
+        const text = paragraph.runs.map((run) => run.text).join("").trim();
+        if (text) return text;
+      }
+    } else if (element.kind === "table") {
+      for (const row of element.rows) {
+        for (const cell of row.cells) {
+          for (const paragraph of cell.paragraphs) {
+            const text = paragraph.runs.map((run) => run.text).join("").trim();
+            if (text) return text;
+          }
+        }
+      }
     }
   }
   return "";
