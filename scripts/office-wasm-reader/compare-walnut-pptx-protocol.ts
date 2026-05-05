@@ -582,11 +582,11 @@ function summarizeElementBbox(element: Record<string, unknown>) {
     name: stringValue(element.name),
     type: element.type,
     bbox: {
-      heightEmu: numberValue(bbox.heightEmu),
+      heightEmu: semanticBboxEmu(bbox.heightEmu),
       rotation: numberValue(bbox.rotation),
-      widthEmu: numberValue(bbox.widthEmu),
-      xEmu: numberValue(bbox.xEmu),
-      yEmu: numberValue(bbox.yEmu),
+      widthEmu: semanticBboxEmu(bbox.widthEmu),
+      xEmu: semanticBboxEmu(bbox.xEmu),
+      yEmu: semanticBboxEmu(bbox.yEmu),
     },
   };
 }
@@ -846,11 +846,11 @@ function summarizeFill(fill: Record<string, unknown> | null) {
 
 function summarizeBbox(bbox: Record<string, unknown> | null) {
   return {
-    heightEmu: numberValue(bbox?.heightEmu),
+    heightEmu: semanticBboxEmu(bbox?.heightEmu),
     rotation: numberValue(bbox?.rotation),
-    widthEmu: numberValue(bbox?.widthEmu),
-    xEmu: numberValue(bbox?.xEmu),
-    yEmu: numberValue(bbox?.yEmu),
+    widthEmu: semanticBboxEmu(bbox?.widthEmu),
+    xEmu: semanticBboxEmu(bbox?.xEmu),
+    yEmu: semanticBboxEmu(bbox?.yEmu),
   };
 }
 
@@ -987,6 +987,11 @@ function sortForJson(value: unknown): unknown {
 
 function numberValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function semanticBboxEmu(value: unknown): number {
+  const number = numberValue(value);
+  return Math.round(number / 10) * 10;
 }
 
 function stringValue(value: unknown): string {
