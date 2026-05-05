@@ -1,8 +1,8 @@
 ---
 title: "DOCX Reader Feature Completeness Checklist"
 date: "2026-05-05"
-kind: issue
-status: open
+kind: analysis
+status: resolved
 severity: medium
 area: ui
 tags: [artifact-viewer, office-documents, docx, feature-checklist, completeness]
@@ -178,7 +178,7 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 - [x] Rendered page breaks (marked with `__docxBreak:rendered__`)
 - [x] Page number tracking
 - [x] Section summaries (number of pages inferred)
-- [x] Table of Contents (detected but not rendered as interactive)
+- [x] Table of Contents (cached entries rendered with dotted leaders and right-aligned page numbers)
 - [x] Bookmarks and internal links
 - [x] Outline levels (from heading styles)
 - [ ] Interactive TOC generation
@@ -186,6 +186,7 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 - [ ] Navigation pane support
 
 **Remaining**:
+- Precise tab-stop positioning beyond cached TOC/page-number leader cases
 - Interactive bookmark/link jumping
 - Real-time TOC generation from headings
 - Broader column/header/footer/section combinations

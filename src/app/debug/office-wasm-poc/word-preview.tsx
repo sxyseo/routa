@@ -351,9 +351,12 @@ function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextSty
   let current: unknown[] = [];
   let currentHeight = 0;
 
-  for (const element of elements) {
+  for (const [index, element] of elements.entries()) {
     const estimatedHeight = wordElementEstimatedHeight(element, styleMaps, layout);
-    const shouldBreak = current.length > 0 && currentHeight + estimatedHeight > capacity;
+    const nextElement = elements[index + 1];
+    const keepWithNextHeight = wordElementKeepWithNextHeight(element, nextElement, styleMaps, layout);
+    const shouldBreak = current.length > 0 &&
+      (currentHeight + estimatedHeight > capacity || currentHeight + estimatedHeight + keepWithNextHeight > capacity);
     if (shouldBreak) {
       chunks.push(wordPreviewPageChunk(page, chunks.length, current));
       current = [];
@@ -369,6 +372,16 @@ function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextSty
   }
 
   return chunks.length > 0 ? chunks : [page];
+}
+
+function wordElementKeepWithNextHeight(
+  element: unknown,
+  nextElement: unknown,
+  styleMaps: OfficeTextStyleMaps,
+  layout: WordPageLayout,
+): number {
+  if (nextElement == null || !wordIsHeading2ParagraphElement(element)) return 0;
+  return Math.min(32, wordElementEstimatedHeight(nextElement, styleMaps, layout));
 }
 
 function wordIsCoverLikeFullBleedPage(page: WordPreviewPage, pageLayout: WordPageLayout): boolean {
@@ -427,6 +440,11 @@ function wordIsPlainParagraphElement(element: unknown): boolean {
 function wordIsHeadingParagraphElement(element: unknown): boolean {
   const paragraphs = asArray(asRecord(element)?.paragraphs).map(asRecord);
   return paragraphs.some((paragraph) => /^Heading/i.test(asString(paragraph?.styleId)));
+}
+
+function wordIsHeading2ParagraphElement(element: unknown): boolean {
+  const paragraphs = asArray(asRecord(element)?.paragraphs).map(asRecord);
+  return paragraphs.some((paragraph) => asString(paragraph?.styleId) === "Heading2");
 }
 
 function wordPlainParagraphTextLength(element: unknown): number {
@@ -568,7 +586,7 @@ function wordParagraphEstimatedHeight(
   const textLength = Math.max(1, view.runs.reduce((total, run) => total + run.text.length, 0));
   const isTitle = view.styleId === "Title";
   const isHeading = /^Heading/i.test(view.styleId);
-  const fontSize = wordCssFontSize(style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14);
+  const fontSize = wordParagraphFontSize(view, style, isTitle, isHeading);
   const lineHeight = wordEstimatedLineHeight(style, fontSize);
   const contentWidth = Math.max(120, pageLayout.widthPx - pageLayout.paddingLeft - pageLayout.paddingRight);
   const averageCharWidth = Math.max(4, fontSize * 0.5);
@@ -804,10 +822,11 @@ function WordParagraph({
     return <p aria-hidden="true" style={wordEmptyParagraphStyle(style)} />;
   }
 
-  if (wordParagraphHasTab(paragraph)) {
+  if (wordParagraphUsesLeaderTab(paragraph, trailingText)) {
     return <WordTabbedParagraph paragraph={paragraph} style={style} trailingText={trailingText} />;
   }
 
+  const inheritRunFont = wordIsTableOfContentsTitle(paragraph);
   return (
     <p style={style}>
       {paragraph.marker ? (
@@ -816,7 +835,7 @@ function WordParagraph({
         </span>
       ) : null}
       {paragraph.runs.map((run, index) => (
-        <WordRun key={run.id || index} run={run} />
+        <WordRun inheritFont={inheritRunFont} key={run.id || index} run={run} />
       ))}
       {trailingText ? <span style={wordComputedPageNumberStyle}>{trailingText}</span> : null}
     </p>
@@ -856,9 +875,9 @@ function WordTabbedParagraph({
   );
 }
 
-function WordRun({ run }: { run: TextRunView }) {
+function WordRun({ inheritFont = false, run }: { inheritFont?: boolean; run: TextRunView }) {
   const href = wordHyperlinkHref(run.hyperlink);
-  const style = wordRunStyle(run, href !== "");
+  const style = wordRunStyle(run, href !== "", inheritFont);
   const text = href ? (
     <a
       href={href}
@@ -889,6 +908,14 @@ function WordRun({ run }: { run: TextRunView }) {
 
 function wordParagraphHasTab(paragraph: ParagraphView): boolean {
   return paragraph.runs.some((run) => run.text.includes("\t"));
+}
+
+function wordParagraphUsesLeaderTab(paragraph: ParagraphView, trailingText?: string): boolean {
+  if (!wordParagraphHasTab(paragraph)) return false;
+  if (trailingText) return true;
+  const { rightRuns } = wordSplitParagraphRunsAtLastTab(paragraph.runs);
+  const rightText = rightRuns.map((run) => run.text).join("").trim();
+  return /^\d+$/.test(rightText);
 }
 
 function wordSplitParagraphRunsAtLastTab(runs: TextRunView[]): { leftRuns: TextRunView[]; rightRuns: TextRunView[] } {
@@ -1336,13 +1363,18 @@ function wordHyperlinkHref(hyperlink: unknown): string {
   return uri || action;
 }
 
-function wordRunStyle(run: TextRunView, hyperlink: boolean): CSSProperties {
+function wordRunStyle(run: TextRunView, hyperlink: boolean, inheritFont = false): CSSProperties {
   const style: CSSProperties = {
     ...textRunStyle(run),
     ...wordReviewMarkStyle(run.reviewMarkTypes ?? []),
   };
   if (run.style?.fontSize != null) {
     style.fontSize = wordCssFontSize(run.style.fontSize, 14);
+  }
+  if (inheritFont) {
+    delete style.fontFamily;
+    delete style.fontSize;
+    delete style.fontWeight;
   }
 
   if (!hyperlink || wordHyperlinkHref(run.hyperlink).startsWith("#")) return style;
@@ -1855,15 +1887,32 @@ function wordParagraphStyle(paragraph: ParagraphView): CSSProperties {
   const style = paragraphStyle(paragraph);
   const isTitle = paragraph.styleId === "Title";
   const isHeading = /^Heading/i.test(paragraph.styleId);
-  const fontSize = wordCssFontSize(paragraph.style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14);
+  const isTocTitle = wordIsTableOfContentsTitle(paragraph);
+  const fontSize = wordParagraphFontSize(paragraph, paragraph.style, isTitle, isHeading);
   const hasText = paragraph.runs.some((run) => run.text.trim() !== "");
 
   return {
     ...style,
     ...(paragraph.styleId === "Heading2" && hasText ? wordHeading2RuleStyle : {}),
+    ...(isTocTitle ? wordTableOfContentsTitleStyle : {}),
     fontSize,
     lineHeight: wordParagraphCssLineHeight(paragraph, fontSize),
   };
+}
+
+function wordParagraphFontSize(
+  paragraph: ParagraphView,
+  style: RecordValue | null,
+  isTitle: boolean,
+  isHeading: boolean,
+): number {
+  if (wordIsTableOfContentsTitle(paragraph)) return wordCssFontSize(style?.fontSize, 30);
+  return wordCssFontSize(style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14);
+}
+
+function wordIsTableOfContentsTitle(paragraph: ParagraphView): boolean {
+  const text = paragraph.runs.map((run) => run.text).join("").trim().toLowerCase();
+  return text === "table of contents";
 }
 
 function wordParagraphCssLineHeight(paragraph: ParagraphView, fontSize: number): CSSProperties["lineHeight"] {
@@ -1897,13 +1946,19 @@ const wordHeading2RuleStyle: CSSProperties = {
 const WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX = 28;
 const WORD_PRETEXT_WORD_LAYOUT_COMPENSATION = 1.02;
 
+const wordTableOfContentsTitleStyle: CSSProperties = {
+  fontFamily: '"Bitter", Georgia, "Times New Roman", serif',
+  fontWeight: 700,
+  marginBottom: 28,
+};
+
 const wordTabLeaderStyle: CSSProperties = {
   borderBottom: "1px dotted currentColor",
   flex: "1 1 auto",
   height: 0,
   marginBottom: "0.25em",
   minWidth: 24,
-  opacity: 0.55,
+  opacity: 1,
 };
 
 function wordParagraphMarkerStyle(marker: string): CSSProperties {

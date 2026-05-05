@@ -503,10 +503,54 @@ describe("WordPreview", () => {
     expect(spans[0]?.textContent).toBe("Thoughtworks approach to operations and maintenance");
     expect(spans[1]?.style.borderBottom).toBe("1px dotted");
     expect(spans[1]?.style.flex).toBe("1 1 auto");
+    expect(spans[1]?.style.opacity).toBe("1");
     expect(spans[2]?.textContent).toBe("3");
     expect(links.map((link) => link.getAttribute("href"))).toEqual(["#_Toc1", "#_Toc1"]);
     expect(links[0]?.style.color).toBe("");
     expect(links[0]?.style.textDecoration).toBe("");
+  });
+
+  it("does not render ordinary DOCX tabs as TOC dotted leaders", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [{ runs: [{ text: "Label\tValue" }] }],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const paragraph = container.querySelector("p");
+    expect(paragraph?.textContent).toBe("Label\tValue");
+    expect(paragraph?.style.display).toBe("");
+    expect(container.querySelector('[style*="dotted"]')).toBeNull();
+  });
+
+  it("renders the generated DOCX TOC title with Word-like serif styling", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [{ runs: [{ text: "Table of contents" }] }],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const paragraph = container.querySelector<HTMLElement>("p");
+    const run = paragraph?.querySelector<HTMLElement>("span");
+    expect(paragraph?.style.fontFamily).toContain("Bitter");
+    expect(paragraph?.style.fontSize).toBe("30px");
+    expect(paragraph?.style.marginBottom).toBe("28px");
+    expect(run?.style.fontFamily).toBe("");
+    expect(run?.style.fontSize).toBe("");
   });
 
   it("renders decoded DOCX footnote and comment bodies", () => {
@@ -636,7 +680,7 @@ describe("WordPreview", () => {
     const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
     expect(pages.map((page) => page.textContent)).toEqual([
       "Cover©2023 Thoughtworks |  ",
-      "Body©2023 Thoughtworks |  1",
+      "Body©2023 Thoughtworks |  2",
     ]);
   });
 
@@ -1081,7 +1125,7 @@ describe("WordPreview", () => {
 
     expect(style).toMatchObject({
       marginLeft: "calc(-1 * var(--word-page-padding-left, 0px))",
-      marginTop: "calc(-1 * var(--word-page-padding-top, 0px))",
+      marginTop: "calc(-1 * var(--word-page-padding-top, 0px) - 16px)",
       maxWidth: "none",
       width: 793.73,
     });
@@ -1109,6 +1153,59 @@ describe("WordPreview", () => {
 
     expect(style.marginLeft).toBeCloseTo(481.73, 2);
     expect(style.width).toBe(120);
+  });
+
+  it("does not double-apply page padding for top margin-aligned DOCX images", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 331_916,
+          widthEmu: 2_052_638,
+          xEmu: 914_400,
+          yEmu: 0,
+        },
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.position).toBeUndefined();
+    expect(style.marginLeft).toBe(0);
+    expect(style.width).toBeCloseTo(216, 0);
+  });
+
+  it("renders top margin-aligned square portrait DOCX images as circular crops", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 1_235_000,
+          widthEmu: 1_235_000,
+          xEmu: 914_400,
+          yEmu: 0,
+        },
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.backgroundSize).toBe("cover");
+    expect(style.borderRadius).toBe("50%");
+    expect(style.boxShadow).toContain("rgba");
+    expect(style.marginLeft).toBe(0);
   });
 
   it("positions page-footer anchored DOCX images against the page box", () => {
@@ -1161,8 +1258,36 @@ describe("WordPreview", () => {
     );
 
     expect(style.position).toBe("absolute");
-    expect(style.left).toBeCloseTo(433, 0);
+    expect(style.left).toBeCloseTo(337, 0);
     expect(style.top).toBeCloseTo(126.3, 1);
+    expect(style.marginLeft).toBeUndefined();
+    expect(style.marginTop).toBeUndefined();
+  });
+
+  it("snaps near-top page-width DOCX anchors to the page top", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 5_345_735,
+          widthEmu: 7_560_000,
+          xEmu: -380,
+          yEmu: 500_000,
+        },
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.position).toBe("absolute");
+    expect(style.left).toBe(0);
+    expect(style.top).toBe(0);
     expect(style.marginLeft).toBeUndefined();
     expect(style.marginTop).toBeUndefined();
   });
