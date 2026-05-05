@@ -945,8 +945,8 @@ internal static class PptxPresentationProtoReader
                 groupTransform.TransformFloorWidth(maxX.Value - minX.Value),
                 groupTransform.TransformFloorHeight(maxY.Value - minY.Value),
                 transform.Rotation?.Value,
-                transform.HorizontalFlip?.Value,
-                transform.VerticalFlip?.Value);
+                CombineFlip(groupTransform.EffectiveHorizontalFlip, transform.HorizontalFlip?.Value),
+                CombineFlip(groupTransform.EffectiveVerticalFlip, transform.VerticalFlip?.Value));
         }
 
         return BoundingBox.FromRaw(
@@ -2796,11 +2796,32 @@ internal static class PptxPresentationProtoReader
             "cloudcallout" => 120,
             "flowchartprocess" => 132,
             "flowchartdecision" => 133,
+            "flowchartinputoutput" => 134,
+            "flowchartpredefinedprocess" => 135,
+            "flowchartinternalstorage" => 136,
+            "flowchartdocument" => 137,
             "flowchartmultidocument" => 138,
+            "flowchartterminator" => 139,
+            "flowchartpreparation" => 140,
             "flowchartmanualinput" => 141,
             "flowchartmanualoperation" => 142,
             "flowchartconnector" => 143,
+            "flowchartpunchedcard" => 144,
+            "flowchartpunchedtape" => 145,
+            "flowchartsummingjunction" => 146,
+            "flowchartor" => 147,
+            "flowchartcollate" => 148,
+            "flowchartsort" => 149,
+            "flowchartextract" => 150,
+            "flowchartmerge" => 151,
+            "flowchartofflinestorage" => 152,
+            "flowchartonlinestorage" => 153,
+            "flowchartmagnetictape" => 154,
             "flowchartmagneticdisk" => 155,
+            "flowchartmagneticdrum" => 156,
+            "flowchartdisplay" => 157,
+            "flowchartdelay" => 158,
+            "flowchartalternateprocess" => 159,
             "flowchartoffpageconnector" => 160,
             _ => 5,
         };
@@ -2875,8 +2896,8 @@ internal static class PptxPresentationProtoReader
                 groupTransform.TransformWidth(width),
                 groupTransform.TransformHeight(height),
                 rotation,
-                horizontalFlip,
-                verticalFlip);
+                CombineFlip(groupTransform.EffectiveHorizontalFlip, horizontalFlip),
+                CombineFlip(groupTransform.EffectiveVerticalFlip, verticalFlip));
         }
     }
 
@@ -2886,7 +2907,11 @@ internal static class PptxPresentationProtoReader
         double ChildX,
         double ChildY,
         double ScaleX,
-        double ScaleY)
+        double ScaleY,
+        bool? HorizontalFlip,
+        bool? VerticalFlip,
+        bool? EffectiveHorizontalFlip,
+        bool? EffectiveVerticalFlip)
     {
         public static GroupTransformContext From(A.TransformGroup transform, GroupTransformContext? parent)
         {
@@ -2904,8 +2929,22 @@ internal static class PptxPresentationProtoReader
             var height = parent?.TransformHeight(rawHeight) ?? rawHeight;
             var scaleX = childWidth == 0 ? parent?.ScaleX ?? 1 : (double)width / childWidth;
             var scaleY = childHeight == 0 ? parent?.ScaleY ?? 1 : (double)height / childHeight;
+            var horizontalFlip = transform.HorizontalFlip?.Value;
+            var verticalFlip = transform.VerticalFlip?.Value;
+            var effectiveHorizontalFlip = CombineFlip(parent?.EffectiveHorizontalFlip, horizontalFlip);
+            var effectiveVerticalFlip = CombineFlip(parent?.EffectiveVerticalFlip, verticalFlip);
 
-            return new GroupTransformContext(x, y, childX, childY, scaleX, scaleY);
+            return new GroupTransformContext(
+                x,
+                y,
+                childX,
+                childY,
+                scaleX,
+                scaleY,
+                horizontalFlip,
+                verticalFlip,
+                effectiveHorizontalFlip,
+                effectiveVerticalFlip);
         }
 
         public static GroupTransformContext FromRaw(
@@ -2917,6 +2956,8 @@ internal static class PptxPresentationProtoReader
             long childY,
             long childWidth,
             long childHeight,
+            bool horizontalFlip,
+            bool verticalFlip,
             GroupTransformContext? parent)
         {
             var x = parent?.TransformX(rawX) ?? rawX;
@@ -2925,32 +2966,70 @@ internal static class PptxPresentationProtoReader
             var height = parent?.TransformHeight(rawHeight) ?? rawHeight;
             var scaleX = childWidth == 0 ? parent?.ScaleX ?? 1 : (double)width / childWidth;
             var scaleY = childHeight == 0 ? parent?.ScaleY ?? 1 : (double)height / childHeight;
-            return new GroupTransformContext(x, y, childX, childY, scaleX, scaleY);
+            return new GroupTransformContext(
+                x,
+                y,
+                childX,
+                childY,
+                scaleX,
+                scaleY,
+                horizontalFlip,
+                verticalFlip,
+                CombineFlip(parent?.EffectiveHorizontalFlip, horizontalFlip),
+                CombineFlip(parent?.EffectiveVerticalFlip, verticalFlip));
         }
 
-        public long? TransformX(long? value) => value is null ? null : RoundEmu(X + (value.Value - ChildX) * ScaleX);
+        public long? TransformX(long? value) => value is null ? null : RoundEmu(TransformXCoordinate(value.Value));
 
-        public long? TransformY(long? value) => value is null ? null : RoundEmu(Y + (value.Value - ChildY) * ScaleY);
+        public long? TransformY(long? value) => value is null ? null : RoundEmu(TransformYCoordinate(value.Value));
 
         public long? TransformWidth(long? value) => value is null ? null : RoundEmu(value.Value * ScaleX);
 
         public long? TransformHeight(long? value) => value is null ? null : RoundEmu(value.Value * ScaleY);
 
-        public long TransformCeilingX(double value) => (long)Math.Ceiling(X + (value - ChildX) * ScaleX);
+        public long TransformCeilingX(double value) => (long)Math.Ceiling(TransformXCoordinate(value));
 
-        public long TransformCeilingY(double value) => (long)Math.Ceiling(Y + (value - ChildY) * ScaleY);
+        public long TransformCeilingY(double value) => (long)Math.Ceiling(TransformYCoordinate(value));
 
-        public long TransformRoundX(double value) => RoundEmu(X + (value - ChildX) * ScaleX);
+        public long TransformRoundX(double value) => RoundEmu(TransformXCoordinate(value));
 
-        public long TransformRoundY(double value) => RoundEmu(Y + (value - ChildY) * ScaleY);
+        public long TransformRoundY(double value) => RoundEmu(TransformYCoordinate(value));
 
-        public long TransformFloorX(double value) => (long)Math.Floor(X + (value - ChildX) * ScaleX);
+        public long TransformFloorX(double value) => (long)Math.Floor(TransformXCoordinate(value));
 
-        public long TransformFloorY(double value) => (long)Math.Floor(Y + (value - ChildY) * ScaleY);
+        public long TransformFloorY(double value) => (long)Math.Floor(TransformYCoordinate(value));
 
         public long TransformFloorWidth(double value) => (long)Math.Floor(value * ScaleX);
 
         public long TransformFloorHeight(double value) => (long)Math.Floor(value * ScaleY);
+
+        private double TransformXCoordinate(double value)
+        {
+            if (HorizontalFlip == true)
+            {
+                return EffectiveHorizontalFlip == true
+                    ? X - (value + ChildX) * ScaleX
+                    : X + (value + ChildX) * ScaleX;
+            }
+
+            return EffectiveHorizontalFlip == true
+                ? X - (value - ChildX) * ScaleX
+                : X + (value - ChildX) * ScaleX;
+        }
+
+        private double TransformYCoordinate(double value)
+        {
+            if (VerticalFlip == true)
+            {
+                return EffectiveVerticalFlip == true
+                    ? Y - (value + ChildY) * ScaleY
+                    : Y + (value + ChildY) * ScaleY;
+            }
+
+            return EffectiveVerticalFlip == true
+                ? Y - (value - ChildY) * ScaleY
+                : Y + (value - ChildY) * ScaleY;
+        }
 
         private static long RoundEmu(double value)
         {
@@ -2964,6 +3043,16 @@ internal static class PptxPresentationProtoReader
         return string.IsNullOrWhiteSpace(preset?.InnerText)
             ? preset?.Value.ToString()
             : preset.InnerText;
+    }
+
+    private static bool? CombineFlip(bool? parentFlip, bool? elementFlip)
+    {
+        if (parentFlip is null || parentFlip == false)
+        {
+            return elementFlip;
+        }
+
+        return !(elementFlip ?? false);
     }
 
     private static long? ToLong(Int64Value? value)
@@ -3318,8 +3407,8 @@ internal static class PptxPresentationProtoReader
                     width is null ? null : groupTransform.TransformFloorWidth(width.Value),
                     height is null ? null : groupTransform.TransformFloorHeight(height.Value),
                     rotation,
-                    horizontalFlip,
-                    verticalFlip);
+                    CombineFlip(groupTransform.EffectiveHorizontalFlip, horizontalFlip),
+                    CombineFlip(groupTransform.EffectiveVerticalFlip, verticalFlip));
             }
 
             return BoundingBox.FromRaw(x, y, width, height, rotation, horizontalFlip, verticalFlip, groupTransform);
@@ -3335,7 +3424,18 @@ internal static class PptxPresentationProtoReader
             var childY = RawTransformValue(transform, "chOff", "y") ?? 0;
             var childWidth = RawTransformValue(transform, "chExt", "cx") ?? rawWidth;
             var childHeight = RawTransformValue(transform, "chExt", "cy") ?? rawHeight;
-            return GroupTransformContext.FromRaw(rawX, rawY, rawWidth, rawHeight, childX, childY, childWidth, childHeight, parent);
+            return GroupTransformContext.FromRaw(
+                rawX,
+                rawY,
+                rawWidth,
+                rawHeight,
+                childX,
+                childY,
+                childWidth,
+                childHeight,
+                ToBool(RawAttributeValue(transform, "flipH")) == true,
+                ToBool(RawAttributeValue(transform, "flipV")) == true,
+                parent);
         }
 
         private static long? RawTransformValue(XElement transform, string childName, string attributeName)

@@ -40,7 +40,9 @@
 .thumbnailButton {
   align-items: flex-start;
   background: transparent;
-  border: 1px solid transparent;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 0;
   border-radius: 7px;
   color: inherit;
   cursor: pointer;
@@ -93,13 +95,19 @@
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
   flex: 0 0 auto;
   height: auto;
+  outline: 0 solid transparent;
+  outline-offset: 0;
   overflow: hidden;
 }
 
 .thumbnailButton[data-active="true"] {
   background: transparent;
-  border-color: #60a5fa;
   box-shadow: none;
+}
+
+.thumbnailButton[data-active="true"] .thumbnailCanvas {
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12), 0 0 0 2px #60a5fa;
+  outline: 1px solid rgba(255, 255, 255, 0.92);
 }
 
 .mainPanel {

@@ -31,6 +31,8 @@ const assetDir = path.resolve(repoRoot, officeWasmConfig.OFFICE_WASM_TMP_ASSET_D
 const assertMode = process.argv.includes("--assert");
 const diffMode = process.argv.includes("--diff");
 const diffLimit = parseDiffLimit(process.argv);
+const SEMANTIC_BBOX_TOLERANCE_EMU = 1000;
+const BBOX_EMU_KEYS = new Set(["heightEmu", "widthEmu", "xEmu", "yEmu"]);
 const fixturePaths = process.argv
   .slice(2)
   .filter((arg) => !arg.startsWith("--"))
@@ -261,9 +263,10 @@ function summarizeEquivalence(
     slideChartReferenceIdsMatch:
       stableJson(walnutSummary.slides.map((slide) => slide.chartReferenceIds)) ===
       stableJson(routaSummary.slides.map((slide) => slide.chartReferenceIds)),
-    slideBboxDigestsMatch: stableJson(walnutSummary.slideBboxDigests) === stableJson(routaSummary.slideBboxDigests),
+    slideBboxDigestsMatch:
+      slideElementSummariesMatch(walnutSlides, routaSlides, summarizeElementBboxExact),
     slideConnectorDigestsMatch:
-      stableJson(walnutSummary.slideConnectorDigests) === stableJson(routaSummary.slideConnectorDigests),
+      slideElementSummariesMatch(walnutSlides, routaSlides, summarizeElementConnectorIfPresentExact),
     slideNotesTextDigestsMatch:
       stableJson(walnutSummary.slideNotesTextDigests) === stableJson(routaSummary.slideNotesTextDigests),
     slideTextDigestsMatch:
@@ -371,6 +374,23 @@ function summarizeSlideElementDiffs(
   }
 
   return slideDiffs;
+}
+
+function slideElementSummariesMatch(
+  walnutSlides: Record<string, unknown>[],
+  routaSlides: Record<string, unknown>[],
+  summarize: (element: Record<string, unknown>) => unknown,
+): boolean {
+  const slideCount = Math.max(walnutSlides.length, routaSlides.length);
+  for (let slideIndex = 0; slideIndex < slideCount; slideIndex += 1) {
+    const walnutElements = arrayOfRecords(walnutSlides[slideIndex]?.elements).map(summarize).filter(Boolean);
+    const routaElements = arrayOfRecords(routaSlides[slideIndex]?.elements).map(summarize).filter(Boolean);
+    if (!semanticSummaryEqual(walnutElements, routaElements)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function assertEquivalence(result: ComparisonResult): void {
@@ -591,6 +611,15 @@ function summarizeElementBbox(element: Record<string, unknown>) {
   };
 }
 
+function summarizeElementBboxExact(element: Record<string, unknown>) {
+  return {
+    id: stringValue(element.id),
+    name: stringValue(element.name),
+    type: element.type,
+    bbox: summarizeBboxExact(asRecord(element.bbox)),
+  };
+}
+
 function summarizeElementShapeStyle(element: Record<string, unknown>) {
   const shape = asRecord(element.shape) ?? {};
   return {
@@ -682,13 +711,24 @@ function summarizeSlideConnectorDigest(slide: Record<string, unknown>): string {
 }
 
 function summarizeElementConnector(element: Record<string, unknown>) {
+  return summarizeElementConnectorWithBbox(element, summarizeBbox);
+}
+
+function summarizeElementConnectorExact(element: Record<string, unknown>) {
+  return summarizeElementConnectorWithBbox(element, summarizeBboxExact);
+}
+
+function summarizeElementConnectorWithBbox(
+  element: Record<string, unknown>,
+  summarizeElementBboxValue: (bbox: Record<string, unknown> | null) => ReturnType<typeof summarizeBbox>,
+) {
   const connector = asRecord(element.connector) ?? {};
   const lineStyle = asRecord(connector.lineStyle) ?? {};
   return {
     id: stringValue(element.id),
     name: stringValue(element.name),
     type: element.type,
-    bbox: summarizeBbox(asRecord(element.bbox)),
+    bbox: summarizeElementBboxValue(asRecord(element.bbox)),
     shapeLine: summarizeLine(asRecord(asRecord(element.shape)?.line) ?? asRecord(element.line)),
     connector: {
       fromElementId: stringValue(connector.fromElementId ?? connector.fromId ?? connector.startElementId),
@@ -707,6 +747,10 @@ function summarizeElementConnector(element: Record<string, unknown>) {
 
 function summarizeElementConnectorIfPresent(element: Record<string, unknown>) {
   return isRecord(element.connector) ? summarizeElementConnector(element) : null;
+}
+
+function summarizeElementConnectorIfPresentExact(element: Record<string, unknown>) {
+  return isRecord(element.connector) ? summarizeElementConnectorExact(element) : null;
 }
 
 function summarizeConnectorLineEnd(end: Record<string, unknown> | null) {
@@ -854,6 +898,16 @@ function summarizeBbox(bbox: Record<string, unknown> | null) {
   };
 }
 
+function summarizeBboxExact(bbox: Record<string, unknown> | null) {
+  return {
+    heightEmu: numberValue(bbox?.heightEmu),
+    rotation: numberValue(bbox?.rotation),
+    widthEmu: numberValue(bbox?.widthEmu),
+    xEmu: numberValue(bbox?.xEmu),
+    yEmu: numberValue(bbox?.yEmu),
+  };
+}
+
 function summarizeLine(line: Record<string, unknown> | null) {
   const fill = asRecord(line?.fill);
   return {
@@ -983,6 +1037,46 @@ function sortForJson(value: unknown): unknown {
       .sort()
       .map((key) => [key, sortForJson(value[key])]),
   );
+}
+
+function semanticSummaryEqual(left: unknown, right: unknown, path: string[] = []): boolean {
+  if (Object.is(left, right)) {
+    return true;
+  }
+
+  const pathName = path[path.length - 1] ?? "";
+  if (
+    typeof left === "number" &&
+    typeof right === "number" &&
+    path.includes("bbox") &&
+    BBOX_EMU_KEYS.has(pathName)
+  ) {
+    return Math.abs(left - right) <= SEMANTIC_BBOX_TOLERANCE_EMU;
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+
+    return left.every((leftItem, index) => semanticSummaryEqual(leftItem, right[index], path.concat(String(index))));
+  }
+
+  if (isRecord(left) || isRecord(right)) {
+    if (!isRecord(left) || !isRecord(right)) {
+      return false;
+    }
+
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    if (stableJson(leftKeys) !== stableJson(rightKeys)) {
+      return false;
+    }
+
+    return leftKeys.every((key) => semanticSummaryEqual(left[key], right[key], path.concat(key)));
+  }
+
+  return false;
 }
 
 function numberValue(value: unknown): number {

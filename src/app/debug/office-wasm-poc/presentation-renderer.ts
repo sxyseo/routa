@@ -85,13 +85,21 @@ type SlideElementEntry = {
 type PresentationShapeKind =
   | "bracePair"
   | "bracketPair"
+  | "chevron"
   | "diamond"
+  | "document"
+  | "donut"
   | "ellipse"
+  | "extract"
+  | "frame"
   | "hexagon"
   | "line"
   | "parallelogram"
+  | "pentagon"
   | "rect"
   | "roundRect"
+  | "rtTriangle"
+  | "star5"
   | "trapezoid"
   | "triangle";
 
@@ -174,16 +182,26 @@ export function emuRectToCanvasRect(bbox: RecordValue | null, bounds: Presentati
 
 export function presentationShapeKind(shape: RecordValue | null, rect: PresentationRect): PresentationShapeKind {
   const geometry = asNumber(shape?.geometry);
-  if (geometry === 1 || geometry === 96) return "line";
-  if (geometry === 23) return "triangle";
+  if (geometry === 1 || geometry === 96 || geometry === 97 || geometry === 98 || geometry === 101 || geometry === 102 || geometry === 103) {
+    return "line";
+  }
+  if (geometry === 3 || geometry === 23) return "triangle";
+  if (geometry === 4) return "rtTriangle";
   if (geometry === 26) return "roundRect";
-  if (geometry === 30) return "diamond";
-  if (geometry === 31) return "parallelogram";
-  if (geometry === 32) return "trapezoid";
-  if (geometry === 35 || geometry === 89 || isTransparentOutlineEllipse(shape, rect)) return "ellipse";
-  if (geometry === 39) return "hexagon";
+  if (geometry === 6 || geometry === 30 || geometry === 133) return "diamond";
+  if (geometry === 7 || geometry === 31 || geometry === 134 || geometry === 141) return "parallelogram";
+  if (geometry === 8 || geometry === 32 || geometry === 144) return "trapezoid";
+  if (geometry === 10 || geometry === 37 || geometry === 160) return "pentagon";
+  if (geometry === 11 || geometry === 39 || geometry === 140) return "hexagon";
+  if (geometry === 17) return "star5";
+  if (geometry === 35 || geometry === 89 || geometry === 139 || geometry === 143 || isTransparentOutlineEllipse(shape, rect)) return "ellipse";
+  if (geometry === 38) return "chevron";
+  if (geometry === 42) return "donut";
+  if (geometry === 84) return "frame";
   if (geometry === 111) return "bracePair";
   if (geometry === 112) return "bracketPair";
+  if (geometry === 137 || geometry === 138) return "document";
+  if (geometry === 150 || geometry === 151) return "extract";
   return "rect";
 }
 
@@ -504,10 +522,13 @@ function drawElement(
   const line = presentationElementLineStyle(element, slideScale);
   const isLine = rect.height === 0 && line.color != null;
   const rotation = asNumber(bbox?.rotation) / 60_000;
+  const horizontalFlip = bbox?.horizontalFlip === true;
+  const verticalFlip = bbox?.verticalFlip === true;
 
   context.save();
   context.translate(rect.left + rect.width / 2, rect.top + rect.height / 2);
   if (rotation !== 0) context.rotate((rotation * Math.PI) / 180);
+  if (horizontalFlip || verticalFlip) context.scale(horizontalFlip ? -1 : 1, verticalFlip ? -1 : 1);
   context.translate(-rect.width / 2, -rect.height / 2);
   applyElementShadow(context, element, slideScale);
 
@@ -605,12 +626,90 @@ function elementPath(kind: PresentationShapeKind, rect: PresentationRect): Path2
     return path;
   }
 
+  if (kind === "rtTriangle") {
+    polygon(path, [
+      [0, 0],
+      [rect.width, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
   if (kind === "diamond") {
     polygon(path, [
       [rect.width / 2, 0],
       [rect.width, rect.height / 2],
       [rect.width / 2, rect.height],
       [0, rect.height / 2],
+    ]);
+    return path;
+  }
+
+  if (kind === "pentagon") {
+    polygon(path, [
+      [0, 0],
+      [rect.width, 0],
+      [rect.width, rect.height * 0.72],
+      [rect.width / 2, rect.height],
+      [0, rect.height * 0.72],
+    ]);
+    return path;
+  }
+
+  if (kind === "chevron") {
+    const inset = Math.min(rect.width * 0.38, rect.height * 0.5);
+    polygon(path, [
+      [0, 0],
+      [rect.width - inset, 0],
+      [rect.width, rect.height / 2],
+      [rect.width - inset, rect.height],
+      [0, rect.height],
+      [inset, rect.height / 2],
+    ]);
+    return path;
+  }
+
+  if (kind === "star5") {
+    starPath(path, rect.width / 2, rect.height / 2, Math.min(rect.width, rect.height) / 2, Math.min(rect.width, rect.height) * 0.2, 5);
+    return path;
+  }
+
+  if (kind === "donut") {
+    const radius = Math.min(rect.width, rect.height) / 2;
+    const innerRadius = radius * 0.45;
+    path.ellipse(rect.width / 2, rect.height / 2, radius, radius, 0, 0, Math.PI * 2);
+    path.ellipse(rect.width / 2, rect.height / 2, innerRadius, innerRadius, 0, 0, Math.PI * 2, true);
+    return path;
+  }
+
+  if (kind === "frame") {
+    const inset = Math.min(rect.width, rect.height) * 0.16;
+    path.rect(0, 0, rect.width, rect.height);
+    const innerWidth = Math.max(0, rect.width - inset * 2);
+    const innerHeight = Math.max(0, rect.height - inset * 2);
+    path.moveTo(inset, inset);
+    path.lineTo(inset, inset + innerHeight);
+    path.lineTo(inset + innerWidth, inset + innerHeight);
+    path.lineTo(inset + innerWidth, inset);
+    path.closePath();
+    return path;
+  }
+
+  if (kind === "document") {
+    const wave = Math.min(rect.height * 0.18, rect.width * 0.08);
+    path.moveTo(0, 0);
+    path.lineTo(rect.width, 0);
+    path.lineTo(rect.width, rect.height - wave);
+    path.bezierCurveTo(rect.width * 0.66, rect.height + wave, rect.width * 0.34, rect.height - wave * 2, 0, rect.height);
+    path.closePath();
+    return path;
+  }
+
+  if (kind === "extract") {
+    polygon(path, [
+      [0, 0],
+      [rect.width, 0],
+      [rect.width / 2, rect.height],
     ]);
     return path;
   }
@@ -719,6 +818,29 @@ function polygon(path: Path2D, points: Array<[number, number]>): void {
   path.moveTo(first[0], first[1]);
   for (const [x, y] of rest) {
     path.lineTo(x, y);
+  }
+  path.closePath();
+}
+
+function starPath(
+  path: Path2D,
+  centerX: number,
+  centerY: number,
+  outerRadius: number,
+  innerRadius: number,
+  points: number,
+): void {
+  const steps = points * 2;
+  for (let index = 0; index < steps; index += 1) {
+    const radius = index % 2 === 0 ? outerRadius : innerRadius;
+    const angle = -Math.PI / 2 + (index / steps) * Math.PI * 2;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    if (index === 0) {
+      path.moveTo(x, y);
+    } else {
+      path.lineTo(x, y);
+    }
   }
   path.closePath();
 }

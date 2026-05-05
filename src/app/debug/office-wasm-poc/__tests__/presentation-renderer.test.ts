@@ -29,6 +29,8 @@ describe("presentation renderer helpers", () => {
     expect(officeFontFamily("")).toContain("Carlito");
     expect(officeFontFamily("")).toContain('"Microsoft YaHei"');
     expect(officeFontFamily("Noto Serif CJK SC")).toContain('"Songti SC"');
+    expect(officeFontFamily("Arial;Helvetica;sans-serif")).toContain('"Arial", "Helvetica", sans-serif');
+    expect(officeFontFamily("Arial;Helvetica;sans-serif")).not.toContain('"Songti SC"');
   });
 
   it("fits a slide into the viewport with Codex-like padding and zoom clamping", () => {
@@ -85,9 +87,14 @@ describe("presentation renderer helpers", () => {
     const rect = { height: 100, left: 0, top: 0, width: 100 };
     expect(presentationShapeKind({ geometry: 35 }, rect)).toBe("ellipse");
     expect(presentationShapeKind({ geometry: 96 }, rect)).toBe("line");
+    expect(presentationShapeKind({ geometry: 3 }, rect)).toBe("triangle");
     expect(presentationShapeKind({ geometry: 23 }, rect)).toBe("triangle");
+    expect(presentationShapeKind({ geometry: 6 }, rect)).toBe("diamond");
     expect(presentationShapeKind({ geometry: 30 }, rect)).toBe("diamond");
+    expect(presentationShapeKind({ geometry: 11 }, rect)).toBe("hexagon");
     expect(presentationShapeKind({ geometry: 39 }, rect)).toBe("hexagon");
+    expect(presentationShapeKind({ geometry: 137 }, rect)).toBe("document");
+    expect(presentationShapeKind({ geometry: 150 }, rect)).toBe("extract");
   });
 
   it("maps PPT source rectangles to image crop coordinates", () => {

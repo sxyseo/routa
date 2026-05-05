@@ -91,6 +91,23 @@ export function PresentationPreview({
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (isSlideshowOpen || isEditableKeyboardTarget(event.target)) return;
+      if (!isSlideNavigationKey(event.key)) return;
+
+      event.preventDefault();
+      setActiveSlideIndex((currentIndex) => nextSlideIndexFromKey(event.key, currentIndex, slides.length));
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSlideshowOpen, slides.length]);
+
+  useEffect(() => {
+    scrollThumbnailIntoView(railRef, selectedSlideIndex);
+  }, [selectedSlideIndex]);
+
   if (slides.length === 0) {
     return <p style={{ color: "#64748b" }}>{labels.noSlides}</p>;
   }
@@ -125,15 +142,10 @@ export function PresentationPreview({
               onKeyDown={(event) => {
                 if (!isSlideNavigationKey(event.key)) return;
                 event.preventDefault();
+                event.stopPropagation();
                 const nextIndex = nextSlideIndexFromKey(event.key, index, slides.length);
                 setActiveSlideIndex(nextIndex);
-                window.requestAnimationFrame(() => {
-                  const button = railRef.current?.querySelector<HTMLButtonElement>(
-                    `[data-testid="presentation-thumbnail"][data-slide-index="${nextIndex + 1}"]`,
-                  );
-                  button?.focus();
-                  button?.scrollIntoView({ block: "nearest" });
-                });
+                focusThumbnail(railRef, nextIndex);
               }}
               type="button"
             >
@@ -292,16 +304,51 @@ function SlideStage({
 }
 
 function isSlideNavigationKey(key: string): boolean {
-  return key === "ArrowDown" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowLeft" || key === "Home" || key === "End";
+  return (
+    key === "ArrowDown" ||
+    key === "ArrowRight" ||
+    key === "ArrowUp" ||
+    key === "ArrowLeft" ||
+    key === "PageDown" ||
+    key === "PageUp" ||
+    key === "Home" ||
+    key === "End"
+  );
 }
 
 function nextSlideIndexFromKey(key: string, currentIndex: number, slideCount: number): number {
   if (slideCount <= 0) return 0;
   if (key === "Home") return 0;
   if (key === "End") return slideCount - 1;
-  if (key === "ArrowDown" || key === "ArrowRight") return Math.min(slideCount - 1, currentIndex + 1);
-  if (key === "ArrowUp" || key === "ArrowLeft") return Math.max(0, currentIndex - 1);
+  if (key === "ArrowDown" || key === "ArrowRight" || key === "PageDown") return Math.min(slideCount - 1, currentIndex + 1);
+  if (key === "ArrowUp" || key === "ArrowLeft" || key === "PageUp") return Math.max(0, currentIndex - 1);
   return currentIndex;
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : null;
+  if (!element) return false;
+  return element.closest("input, textarea, select, [contenteditable='true']") != null;
+}
+
+function focusThumbnail(railRef: RefObject<HTMLElement | null>, index: number): void {
+  window.requestAnimationFrame(() => {
+    const button = thumbnailButtonAt(railRef, index);
+    button?.focus();
+    button?.scrollIntoView({ block: "nearest" });
+  });
+}
+
+function scrollThumbnailIntoView(railRef: RefObject<HTMLElement | null>, index: number): void {
+  window.requestAnimationFrame(() => {
+    thumbnailButtonAt(railRef, index)?.scrollIntoView({ block: "nearest" });
+  });
+}
+
+function thumbnailButtonAt(railRef: RefObject<HTMLElement | null>, index: number): HTMLButtonElement | null {
+  return railRef.current?.querySelector<HTMLButtonElement>(
+    `[data-testid="presentation-thumbnail"][data-slide-index="${index + 1}"]`,
+  ) ?? null;
 }
 
 function SlideshowOverlay({
