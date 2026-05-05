@@ -104,6 +104,11 @@ type Presentation = {
   layouts: PresentationLayout[];
   masters: PresentationLayout[];
   slides: PresentationSlide[];
+  theme?: PresentationTheme;
+};
+
+type PresentationTheme = {
+  colors: Record<string, string>;
 };
 
 type PresentationColor = {
@@ -257,6 +262,8 @@ function decodePresentation(bytes: Uint8Array): Presentation {
     const tag = reader.tag();
     if (tag.fieldNumber === 1 && tag.wireType === 2) {
       presentation.slides.push(decodeSlide(reader.bytesField()));
+    } else if (tag.fieldNumber === 2 && tag.wireType === 2) {
+      presentation.theme = decodeTheme(reader.bytesField());
     } else if (tag.fieldNumber === 3 && tag.wireType === 2) {
       const layout = decodeLayout(reader.bytesField());
       if (layout.kind === "master") {
@@ -401,6 +408,43 @@ function decodeColorTransform(bytes: Uint8Array): { alpha?: number } {
     else reader.skip(tag.wireType);
   }
   return transform;
+}
+
+function decodeTheme(bytes: Uint8Array): PresentationTheme {
+  const reader = new ProtoReader(bytes);
+  const theme: PresentationTheme = { colors: {} };
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1 && tag.wireType === 2) {
+      decodeColorSchemeInto(reader.bytesField(), theme.colors);
+    } else reader.skip(tag.wireType);
+  }
+  return theme;
+}
+
+function decodeColorSchemeInto(bytes: Uint8Array, colors: Record<string, string>): void {
+  const reader = new ProtoReader(bytes);
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 2 && tag.wireType === 2) {
+      const entry = decodeThemeColorEntry(reader.bytesField());
+      if (entry.name && entry.hex) colors[entry.name] = entry.hex;
+    } else reader.skip(tag.wireType);
+  }
+}
+
+function decodeThemeColorEntry(bytes: Uint8Array): { hex?: string; name?: string } {
+  const reader = new ProtoReader(bytes);
+  const entry: { hex?: string; name?: string } = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) entry.name = reader.string();
+    else if (tag.fieldNumber === 2 && tag.wireType === 2) {
+      const color = decodeColor(reader.bytesField());
+      if (color.type === 1 && color.value) entry.hex = color.value;
+    } else reader.skip(tag.wireType);
+  }
+  return entry;
 }
 
 function decodeFill(bytes: Uint8Array): PresentationFill {
@@ -571,7 +615,7 @@ async function buildPresentationPayload(
   const sharp = await loadSharp();
   const mediaIndex = await buildMediaIndex(presentation.images, sharp, options);
   const slides = presentation.slides.map((slide, index) =>
-    buildSlide(slide, index, presentation.layouts, presentation.masters, mediaIndex),
+    buildSlide(slide, index, presentation.layouts, presentation.masters, mediaIndex, presentation.theme),
   );
   return {
     artifact: {
@@ -646,16 +690,17 @@ function buildSlide(
   layouts: PresentationLayout[],
   masters: PresentationLayout[],
   mediaIndex: MediaIndex,
+  theme?: PresentationTheme,
 ): DirectCanvasSlide {
   const layout = layouts.find((item) => item.id === slide.useLayoutId);
   const master = layout?.masterId
     ? masters.find((item) => item.id === layout.masterId)
     : undefined;
   const elements = slideElements(slide, layout, master)
-    .flatMap((element) => directElements(element, mediaIndex))
+    .flatMap((element) => directElements(element, mediaIndex, theme))
     .filter((element): element is DirectCanvasElement => element != null);
   return {
-    background: slideBackgroundToCss(slide, layout, master),
+    background: slideBackgroundToCss(slide, layout, master, theme),
     elements,
     height: slide.heightEmu,
     index: slide.index || index + 1,
@@ -717,6 +762,7 @@ function normalizedPlaceholderType(element: PresentationElement): string {
 function directElements(
   element: PresentationElement,
   mediaIndex: MediaIndex,
+  theme?: PresentationTheme,
 ): DirectCanvasElement[] {
   const bbox = element.bbox;
   if (!bbox) return [];
@@ -742,8 +788,8 @@ function directElements(
   }
 
   const shapeKind = normalizeShapeKind(element.shape?.geometry);
-  const fill = fillToCss(element.shape?.fill ?? element.fill) ?? "transparent";
-  const line = lineToCss(element.shape?.line);
+  const fill = fillToCss(element.shape?.fill ?? element.fill, theme) ?? "transparent";
+  const line = lineToCss(element.shape?.line, theme);
   if (!mediaId && (fill !== "transparent" || line.color || shapeKind === "line")) {
     elements.push({
       fill,
@@ -756,7 +802,7 @@ function directElements(
     });
   }
 
-  const paragraphs = buildTextParagraphs(element);
+  const paragraphs = buildTextParagraphs(element, theme);
   if (paragraphs.length > 0 && rect.width > 0 && rect.height > 0) {
     const textStyle = element.textStyle ?? {};
     elements.push({
@@ -776,13 +822,14 @@ function directElements(
 
 function buildTextParagraphs(
   element: PresentationElement,
+  theme?: PresentationTheme,
 ): DirectTextParagraph[] {
   const paragraphs: DirectTextParagraph[] = [];
   for (const paragraph of element.paragraphs) {
     const runs: DirectTextRun[] = [];
     for (const run of paragraph.runs) {
       if (!run.text) continue;
-      runs.push(buildTextRun(run));
+      runs.push(buildTextRun(run, theme));
     }
     if (runs.length === 0) continue;
     paragraphs.push({
@@ -793,11 +840,11 @@ function buildTextParagraphs(
   return paragraphs;
 }
 
-function buildTextRun(run: PresentationRun): DirectTextRun {
+function buildTextRun(run: PresentationRun, theme?: PresentationTheme): DirectTextRun {
   const style = run.textStyle ?? {};
   return {
     bold: style.bold === true,
-    color: fillToCss(style.fill) ?? "#0f172a",
+    color: fillToCss(style.fill, theme) ?? "#0f172a",
     fontSize: fontSizeFromStyle(style),
     italic: style.italic === true,
     text: run.text,
@@ -825,19 +872,49 @@ function fontSizeFromStyle(style: PresentationRunStyle): number {
   return Math.max(8, Math.min(96, pointSize)) * 12_700;
 }
 
-function fillToCss(fill?: PresentationFill): string | undefined {
+function fillToCss(fill?: PresentationFill, theme?: PresentationTheme): string | undefined {
   const color = fill?.color;
   if (!color?.value) return undefined;
   if (color.alpha === 0) return "transparent";
   if (color.type === 1 || /^[0-9a-f]{6}$/iu.test(color.value)) {
     return `#${color.value}`;
   }
+  if (color.type === 2 && theme) {
+    const hex = resolveSchemeColor(color.value, theme);
+    if (hex) return hex;
+  }
   return undefined;
 }
 
-function lineToCss(line?: PresentationLine): { color?: string; width: number } {
+function resolveSchemeColor(name: string, theme: PresentationTheme): string | undefined {
+  const normalized = name.toLowerCase();
+  const direct = theme.colors[normalized];
+  if (direct) return `#${direct}`;
+  // PowerPoint canonical aliases used in scheme color references
+  const aliases: Record<string, string> = {
+    bg1: "lt1",
+    bg2: "lt2",
+    dk1: "dk1",
+    dk2: "dk2",
+    folhlink: "folHlink",
+    hlink: "hlink",
+    lt1: "lt1",
+    lt2: "lt2",
+    phclr: "lt1",
+    tx1: "dk1",
+    tx2: "dk2",
+  };
+  const canonical = aliases[normalized];
+  if (canonical) {
+    const aliased = theme.colors[canonical] ?? theme.colors[canonical.toLowerCase()];
+    if (aliased) return `#${aliased}`;
+  }
+  return undefined;
+}
+
+function lineToCss(line?: PresentationLine, theme?: PresentationTheme): { color?: string; width: number } {
   return {
-    color: fillToCss(line?.fill),
+    color: fillToCss(line?.fill, theme),
     width: Math.max(1, line?.widthEmu ?? 9_525),
   };
 }
@@ -846,11 +923,12 @@ function slideBackgroundToCss(
   slide: PresentationSlide,
   layout?: PresentationLayout,
   master?: PresentationLayout,
+  theme?: PresentationTheme,
 ): string {
   return (
-    fillToCss(slide.background?.fill) ??
-    fillToCss(layout?.background?.fill) ??
-    fillToCss(master?.background?.fill) ??
+    fillToCss(slide.background?.fill, theme) ??
+    fillToCss(layout?.background?.fill, theme) ??
+    fillToCss(master?.background?.fill, theme) ??
     "#ffffff"
   );
 }
