@@ -166,11 +166,6 @@ internal static class DocxDocumentProtoReader
             }
             else if (child is W.SdtBlock sdtBlock)
             {
-                if (IsTableOfContentsSdt(sdtBlock))
-                {
-                    continue;
-                }
-
                 foreach (var element in ExtractBlockElements(sdtBlock.SdtContentBlock?.ChildElements ?? [], context, partContainer))
                 {
                     yield return element;
@@ -223,11 +218,6 @@ internal static class DocxDocumentProtoReader
             }
             else if (child is W.SdtBlock sdtBlock)
             {
-                if (IsTableOfContentsSdt(sdtBlock))
-                {
-                    continue;
-                }
-
                 var leadingPageBreaks = LeadingPageBreakCount(sdtBlock);
                 var leadingRenderedPageBreaks = LeadingRenderedPageBreakCount(sdtBlock);
                 if (leadingPageBreaks > 0 && (leadingRenderedPageBreaks == 0 || hasRetainedElement))
@@ -653,11 +643,6 @@ internal static class DocxDocumentProtoReader
         var (originEmu, availableEmu) = VerticalAnchorFrame(relativeFrom, page);
         if (AnchorPositionOffset(position?.PositionOffset) is { } offset)
         {
-            if (string.Equals(relativeFrom, "page", StringComparison.OrdinalIgnoreCase))
-            {
-                return originEmu;
-            }
-
             return originEmu + offset;
         }
 
@@ -1415,6 +1400,10 @@ internal static class DocxDocumentProtoReader
                     ? Math.Max(1, pageBreakSections.EstimatedCount - 1)
                     : pageBreakSections.EstimatedCount)
             : sectionProperties.Count + pageBreakSections.RenderedBreaks;
+        if (documentElements.Count > 0)
+        {
+            targetSectionCount = Math.Max(targetSectionCount, documentElements.Max(element => element.SectionIndex) + 1);
+        }
         for (var sectionIndex = 0; sectionIndex < targetSectionCount; sectionIndex++)
         {
             var section = sectionProperties[Math.Min(sectionIndex, sectionProperties.Count - 1)];

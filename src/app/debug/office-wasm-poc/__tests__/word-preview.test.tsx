@@ -435,6 +435,44 @@ describe("WordPreview", () => {
     expect(markers).toEqual(["1", "C1"]);
   });
 
+  it("renders generated DOCX TOC tabs as right-aligned page-number leaders", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  runs: [
+                    {
+                      hyperlink: { action: "#_Toc1" },
+                      id: "toc-run",
+                      text: "Thoughtworks approach to operations and maintenance\t3",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const paragraph = container.querySelector<HTMLElement>("p");
+    const spans = Array.from(paragraph?.querySelectorAll<HTMLElement>("span") ?? []);
+    const links = Array.from(paragraph?.querySelectorAll<HTMLAnchorElement>("a") ?? []);
+    expect(paragraph?.style.display).toBe("flex");
+    expect(paragraph?.style.whiteSpace).toBe("nowrap");
+    expect(spans[0]?.textContent).toBe("Thoughtworks approach to operations and maintenance");
+    expect(spans[1]?.style.borderBottom).toBe("1px dotted");
+    expect(spans[1]?.style.flex).toBe("1 1 auto");
+    expect(spans[2]?.textContent).toBe("3");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["#_Toc1", "#_Toc1"]);
+    expect(links[0]?.style.color).toBe("");
+    expect(links[0]?.style.textDecoration).toBe("");
+  });
+
   it("renders decoded DOCX footnote and comment bodies", () => {
     const { container } = render(
       <WordPreview
@@ -810,6 +848,37 @@ describe("WordPreview", () => {
     expect(preview?.style.paddingTop).toBe("48px");
   });
 
+  it("keeps DOCX page grid content constrained to the page content box", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [{ runs: [{ text: "Cover page text" }] }],
+            },
+          ],
+          sections: [
+            {
+              pageSetup: {
+                pageMargin: { left: 1440, right: 1440 },
+                widthEmu: 11906 * 9525,
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const preview = container.querySelector<HTMLElement>('[data-testid="document-preview"]');
+    const body = container.querySelector<HTMLElement>('[data-testid="word-body-content"]');
+    expect(preview?.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
+    expect(body?.style.width).toBe("100%");
+    expect(body?.style.maxWidth).toBe("100%");
+    expect(body?.style.minWidth).toBe("0px");
+    expect(body?.style.gridRow).toBe("2");
+  });
+
   it("uses decoded DOCX section columns for body style", () => {
     expect(wordBodyContentStyle({ sections: [{ columns: { count: 3, hasSeparatorLine: true, space: 360 } }] })).toMatchObject({
       columnCount: 3,
@@ -921,6 +990,115 @@ describe("WordPreview", () => {
       maxWidth: "none",
       width: 793.73,
     });
+  });
+
+  it("clamps DOCX image offsets to the decoded page content width", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 304_800,
+          widthEmu: 1_143_000,
+          xEmu: 5_715_000,
+        },
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.marginLeft).toBeCloseTo(481.73, 2);
+    expect(style.width).toBe(120);
+  });
+
+  it("positions page-footer anchored DOCX images against the page box", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 331_916,
+          widthEmu: 2_052_638,
+          xEmu: 3_457_575,
+          yEmu: 9_549_686,
+        },
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.position).toBe("absolute");
+    expect(style.left).toBeCloseTo(363, 0);
+    expect(style.top).toBeCloseTo(1002.6, 1);
+    expect(style.marginLeft).toBeUndefined();
+    expect(style.width).toBeCloseTo(216, 0);
+  });
+
+  it("positions top page-anchored DOCX logo images as overlays", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 340_102,
+          widthEmu: 1_253_962,
+          xEmu: 3_210_088,
+          yEmu: 1_203_325,
+        },
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.position).toBe("absolute");
+    expect(style.left).toBeCloseTo(433, 0);
+    expect(style.top).toBeCloseTo(126.3, 1);
+    expect(style.marginLeft).toBeUndefined();
+    expect(style.marginTop).toBeUndefined();
+  });
+
+  it("positions non-top page-width DOCX anchors without consuming body flow", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 5_345_735,
+          widthEmu: 7_560_000,
+          xEmu: -1_424,
+          yEmu: 5_372_100,
+        },
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.position).toBe("absolute");
+    expect(style.left).toBe(0);
+    expect(style.top).toBe(564);
+    expect(style.marginLeft).toBeUndefined();
+    expect(style.marginTop).toBeUndefined();
+    expect(style.width).toBeCloseTo(793.73, 2);
   });
 
   it("uses decoded DOCX table bbox for preview dimensions", () => {

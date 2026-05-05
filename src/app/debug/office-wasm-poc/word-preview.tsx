@@ -143,8 +143,12 @@ function WordDocumentPage({
         color: "#0f172a",
         display: "grid",
         gap: 6,
+        gridTemplateColumns: "minmax(0, 1fr)",
+        gridTemplateRows: "auto minmax(0, 1fr) auto auto",
         margin: "0 auto",
         maxWidth: "100%",
+        minWidth: 0,
+        position: "relative",
       }}
     >
       <WordSectionContent
@@ -455,6 +459,7 @@ function wordElementEstimatedHeight(
   if (!record) return 0;
 
   if (elementImageReferenceId(record)) {
+    if (wordIsPageOverlayAnchoredElement(record, pageLayout)) return 0;
     return wordEstimatedBoxHeight(record, pageLayout, 280);
   }
 
@@ -476,7 +481,8 @@ function wordElementEstimatedHeight(
 }
 
 function wordEstimatedBoxHeight(element: RecordValue, pageLayout: WordPageLayout, fallbackHeight: number): number {
-  const box = wordElementBox(element, WORD_PREVIEW_CONTENT_WIDTH_PX, fallbackHeight);
+  const contentWidth = wordPageContentWidthPx(pageLayout);
+  const box = wordElementBox(element, contentWidth, fallbackHeight, contentWidth);
   const fullBleed = wordIsFullBleedElement(element, pageLayout);
   const height = fullBleed && box.rawWidth > 0 ? box.rawHeight * (pageLayout.widthPx / box.rawWidth) : box.height;
   return Math.max(18, Math.min(900, height + (box.marginTop ?? 0) + 16));
@@ -575,6 +581,7 @@ function WordElement({
       <WordTable
         element={element}
         numberingMarkers={numberingMarkers}
+        pageLayout={pageLayout}
         referenceMarkers={referenceMarkers}
         reviewMarkTypes={reviewMarkTypes}
         table={table}
@@ -596,7 +603,7 @@ function WordElement({
   }
 
   const chart = presentationChartById(charts, presentationChartReferenceId(element.chartReference));
-  if (chart) return <WordChart chart={chart} element={element} />;
+  if (chart) return <WordChart chart={chart} element={element} pageLayout={pageLayout} />;
 
   const paragraphs = asArray(element.paragraphs).map((paragraph) =>
     wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes),
@@ -612,9 +619,10 @@ function WordElement({
   );
 }
 
-function WordChart({ chart, element }: { chart: RecordValue; element: RecordValue }) {
+function WordChart({ chart, element, pageLayout }: { chart: RecordValue; element: RecordValue; pageLayout: WordPageLayout }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const box = wordElementBox(element, 560, 300);
+  const contentWidth = wordPageContentWidthPx(pageLayout, 560);
+  const box = wordElementBox(element, Math.min(560, contentWidth), 300, contentWidth);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -641,7 +649,7 @@ function WordChart({ chart, element }: { chart: RecordValue; element: RecordValu
       aria-label={asString(chart.title) || "Chart"}
       ref={canvasRef}
       role="img"
-      style={wordChartStyle(element)}
+      style={wordChartStyle(element, pageLayout)}
     />
   );
 }
@@ -663,6 +671,10 @@ function WordParagraph({
     return <p aria-hidden="true" style={wordEmptyParagraphStyle(style)} />;
   }
 
+  if (wordParagraphHasTab(paragraph)) {
+    return <WordTabbedParagraph paragraph={paragraph} style={style} />;
+  }
+
   return (
     <p style={style}>
       {paragraph.marker ? (
@@ -673,6 +685,30 @@ function WordParagraph({
       {paragraph.runs.map((run, index) => (
         <WordRun key={run.id || index} run={run} />
       ))}
+    </p>
+  );
+}
+
+function WordTabbedParagraph({ paragraph, style }: { paragraph: ParagraphView; style: CSSProperties }) {
+  const { leftRuns, rightRuns } = wordSplitParagraphRunsAtLastTab(paragraph.runs);
+  return (
+    <p style={{ ...style, alignItems: "baseline", display: "flex", gap: 8, whiteSpace: "nowrap" }}>
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "clip" }}>
+        {paragraph.marker ? (
+          <span aria-hidden="true" style={wordParagraphMarkerStyle(paragraph.marker)}>
+            {paragraph.marker}
+          </span>
+        ) : null}
+        {leftRuns.map((run, index) => (
+          <WordRun key={`${run.id || index}-left-${index}`} run={run} />
+        ))}
+      </span>
+      <span aria-hidden="true" style={wordTabLeaderStyle} />
+      <span style={{ flex: "0 0 auto", textAlign: "right" }}>
+        {rightRuns.map((run, index) => (
+          <WordRun key={`${run.id || index}-right-${index}`} run={run} />
+        ))}
+      </span>
     </p>
   );
 }
@@ -708,6 +744,37 @@ function WordRun({ run }: { run: TextRunView }) {
   );
 }
 
+function wordParagraphHasTab(paragraph: ParagraphView): boolean {
+  return paragraph.runs.some((run) => run.text.includes("\t"));
+}
+
+function wordSplitParagraphRunsAtLastTab(runs: TextRunView[]): { leftRuns: TextRunView[]; rightRuns: TextRunView[] } {
+  const leftRuns: TextRunView[] = [];
+  const rightRuns: TextRunView[] = [];
+  let foundTab = false;
+
+  for (let index = runs.length - 1; index >= 0; index--) {
+    const run = runs[index];
+    const tabIndex = run.text.lastIndexOf("\t");
+    if (!foundTab && tabIndex >= 0) {
+      const before = run.text.slice(0, tabIndex);
+      const after = run.text.slice(tabIndex + 1);
+      if (after) rightRuns.unshift({ ...run, id: `${run.id}-tab-right`, text: after });
+      if (before) leftRuns.unshift({ ...run, id: `${run.id}-tab-left`, text: before });
+      foundTab = true;
+      continue;
+    }
+
+    if (foundTab) {
+      leftRuns.unshift(run);
+    } else {
+      rightRuns.unshift(run);
+    }
+  }
+
+  return { leftRuns, rightRuns };
+}
+
 function wordParagraphView(
   paragraph: unknown,
   styleMaps: OfficeTextStyleMaps,
@@ -728,6 +795,7 @@ function wordParagraphView(
 function WordTable({
   element,
   numberingMarkers,
+  pageLayout,
   referenceMarkers,
   reviewMarkTypes,
   styleMaps,
@@ -735,6 +803,7 @@ function WordTable({
 }: {
   element: RecordValue;
   numberingMarkers: Map<string, string>;
+  pageLayout: WordPageLayout;
   referenceMarkers: Map<string, string[]>;
   reviewMarkTypes: Map<string, number>;
   styleMaps: OfficeTextStyleMaps;
@@ -746,7 +815,7 @@ function WordTable({
   const columnWidthTotal = columnWidths.reduce((total, width) => total + width, 0);
 
   return (
-    <div style={wordTableContainerStyle(element)}>
+    <div style={wordTableContainerStyle(element, pageLayout)}>
       <table style={wordTableStyle(columnWidths.length > 0)}>
         {columnWidths.length > 0 ? (
           <colgroup>
@@ -832,8 +901,10 @@ export function wordImageStyle(
   imageSrc: string,
   pageLayout?: WordPageLayout,
 ): CSSProperties {
-  const box = wordElementBox(element, WORD_PREVIEW_CONTENT_WIDTH_PX, 280);
+  const contentWidth = pageLayout ? wordPageContentWidthPx(pageLayout) : WORD_PREVIEW_CONTENT_WIDTH_PX;
+  const box = wordElementBox(element, contentWidth, 280, contentWidth);
   const fullBleed = pageLayout ? wordIsFullBleedElement(element, pageLayout) : false;
+  const pageOverlay = pageLayout ? wordIsPageOverlayAnchoredElement(element, pageLayout) : false;
   const topBleed = fullBleed && wordElementY(element) <= 2;
 
   return {
@@ -844,20 +915,25 @@ export function wordImageStyle(
     backgroundSize: "contain",
     display: "block",
     height: box.hasDecodedSize ? undefined : box.height,
-    marginLeft: fullBleed ? "calc(-1 * var(--word-page-padding-left, 0px))" : box.marginLeft,
-    marginTop: topBleed ? "calc(-1 * var(--word-page-padding-top, 0px))" : box.marginTop,
+    left: pageOverlay && pageLayout ? wordPageAnchoredLeft(element, pageLayout, fullBleed ? pageLayout.widthPx : box.width) : undefined,
+    marginLeft: pageOverlay ? undefined : fullBleed ? "calc(-1 * var(--word-page-padding-left, 0px))" : box.marginLeft,
+    marginTop: pageOverlay ? undefined : topBleed ? "calc(-1 * var(--word-page-padding-top, 0px))" : box.marginTop,
     maxHeight: box.hasDecodedSize ? undefined : 360,
     maxWidth: fullBleed ? "none" : "100%",
+    position: pageOverlay ? "absolute" : undefined,
+    top: pageOverlay && pageLayout ? wordPageAnchoredTop(element, pageLayout, box.height) : undefined,
     width: fullBleed && pageLayout
       ? pageLayout.widthPx
       : box.hasDecodedSize
         ? box.width
         : "100%",
+    zIndex: pageOverlay ? 2 : undefined,
   };
 }
 
-export function wordChartStyle(element: RecordValue): CSSProperties {
-  const box = wordElementBox(element, 560, 300);
+export function wordChartStyle(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties {
+  const contentWidth = pageLayout ? wordPageContentWidthPx(pageLayout, 560) : WORD_PREVIEW_CONTENT_WIDTH_PX;
+  const box = wordElementBox(element, Math.min(560, contentWidth), 300, contentWidth);
   return {
     display: "block",
     height: box.height,
@@ -869,8 +945,9 @@ export function wordChartStyle(element: RecordValue): CSSProperties {
   };
 }
 
-export function wordTableContainerStyle(element: RecordValue): CSSProperties {
-  const box = wordElementBox(element, WORD_PREVIEW_CONTENT_WIDTH_PX, 0);
+export function wordTableContainerStyle(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties {
+  const contentWidth = pageLayout ? wordPageContentWidthPx(pageLayout) : WORD_PREVIEW_CONTENT_WIDTH_PX;
+  const box = wordElementBox(element, contentWidth, 0, contentWidth);
   return {
     margin: "12px 0 18px",
     marginLeft: box.marginLeft,
@@ -883,8 +960,17 @@ export function wordTableContainerStyle(element: RecordValue): CSSProperties {
 
 export function wordBodyContentStyle(root: RecordValue | null): CSSProperties {
   const columns = wordSectionColumns(root);
-  if (!columns) return {};
+  const style: CSSProperties = {
+    boxSizing: "border-box",
+    gridRow: 2,
+    maxWidth: "100%",
+    minHeight: 0,
+    minWidth: 0,
+    width: "100%",
+  };
+  if (!columns) return style;
   return {
+    ...style,
     columnCount: columns.count,
     columnGap: columns.gapPx,
     columnRuleColor: columns.separator ? "#cbd5e1" : undefined,
@@ -1068,7 +1154,7 @@ function wordRunStyle(run: TextRunView, hyperlink: boolean): CSSProperties {
     style.fontSize = wordCssFontSize(run.style.fontSize, 14);
   }
 
-  if (!hyperlink) return style;
+  if (!hyperlink || wordHyperlinkHref(run.hyperlink).startsWith("#")) return style;
   return {
     ...style,
     color: style.color ?? "#2563eb",
@@ -1314,16 +1400,21 @@ type WordElementBox = {
   width: number;
 };
 
-function wordElementBox(element: RecordValue, fallbackWidth: number, fallbackHeight: number): WordElementBox {
+function wordElementBox(
+  element: RecordValue,
+  fallbackWidth: number,
+  fallbackHeight: number,
+  containerWidth = WORD_PREVIEW_CONTENT_WIDTH_PX,
+): WordElementBox {
   const box = asRecord(element.bbox);
   const rawWidth = emuToPx(box?.widthEmu);
   const rawHeight = emuToPx(box?.heightEmu);
   const xPx = emuToPx(box?.xEmu);
   const yPx = emuToPx(box?.yEmu);
   const hasDecodedSize = rawWidth > 0 && (rawHeight > 0 || fallbackHeight <= 0);
-  const width = hasDecodedSize ? Math.max(24, Math.min(WORD_PREVIEW_CONTENT_WIDTH_PX, rawWidth)) : fallbackWidth;
+  const width = hasDecodedSize ? Math.max(24, Math.min(containerWidth, rawWidth)) : fallbackWidth;
   const height = hasDecodedSize && rawHeight > 0 ? Math.max(18, rawHeight * (width / rawWidth)) : fallbackHeight;
-  const maxOffset = Math.max(0, WORD_PREVIEW_CONTENT_WIDTH_PX - width);
+  const maxOffset = Math.max(0, containerWidth - width);
 
   return {
     hasDecodedSize,
@@ -1342,6 +1433,59 @@ function wordIsFullBleedElement(element: RecordValue, pageLayout: WordPageLayout
   const rawWidth = emuToPx(box?.widthEmu);
   const xPx = emuToPx(box?.xEmu);
   return rawWidth >= pageLayout.widthPx - 2 && Math.abs(xPx) <= 2;
+}
+
+function wordIsPageFooterAnchoredElement(element: RecordValue, pageLayout: WordPageLayout): boolean {
+  if (pageLayout.heightPx <= 0 || pageLayout.widthPx <= 0 || wordIsFullBleedElement(element, pageLayout)) {
+    return false;
+  }
+
+  const box = asRecord(element.bbox);
+  const rawWidth = emuToPx(box?.widthEmu);
+  const rawHeight = emuToPx(box?.heightEmu);
+  const yPx = emuToPx(box?.yEmu);
+  const footerBandTop = Math.max(pageLayout.heightPx * 0.72, pageLayout.heightPx - pageLayout.paddingBottom - 180);
+  return rawWidth > 0 && rawHeight > 0 && yPx >= footerBandTop && yPx + rawHeight <= pageLayout.heightPx + 4;
+}
+
+function wordIsPageOverlayAnchoredElement(element: RecordValue, pageLayout: WordPageLayout): boolean {
+  if (wordIsPageFooterAnchoredElement(element, pageLayout)) return true;
+  if (wordIsTopPageAnchoredSmallImage(element, pageLayout)) return true;
+  if (!wordIsFullBleedElement(element, pageLayout)) return false;
+  const yPx = wordElementY(element);
+  return yPx > 2 && yPx < pageLayout.heightPx;
+}
+
+function wordIsTopPageAnchoredSmallImage(element: RecordValue, pageLayout: WordPageLayout): boolean {
+  if (wordIsFullBleedElement(element, pageLayout)) return false;
+  const box = asRecord(element.bbox);
+  const rawWidth = emuToPx(box?.widthEmu);
+  const rawHeight = emuToPx(box?.heightEmu);
+  const xPx = emuToPx(box?.xEmu);
+  const yPx = emuToPx(box?.yEmu);
+  return rawWidth > 0 &&
+    rawHeight > 0 &&
+    rawWidth <= pageLayout.widthPx * 0.28 &&
+    rawHeight <= pageLayout.heightPx * 0.12 &&
+    xPx >= pageLayout.paddingLeft * 2 &&
+    yPx >= pageLayout.paddingTop * 0.8 &&
+    yPx <= pageLayout.heightPx * 0.2;
+}
+
+function wordPageAnchoredLeft(element: RecordValue, pageLayout: WordPageLayout, width: number): number {
+  const xPx = emuToPx(asRecord(element.bbox)?.xEmu);
+  if (wordIsFullBleedElement(element, pageLayout)) return 0;
+  if (wordIsTopPageAnchoredSmallImage(element, pageLayout)) {
+    return Math.max(0, Math.min(pageLayout.widthPx - width, xPx + pageLayout.paddingLeft));
+  }
+  const maxLeft = pageLayout.widthPx - width;
+  return Math.max(0, Math.min(maxLeft, xPx));
+}
+
+function wordPageAnchoredTop(element: RecordValue, pageLayout: WordPageLayout, height: number): number {
+  const yPx = emuToPx(asRecord(element.bbox)?.yEmu);
+  const maxTop = pageLayout.heightPx - height;
+  return Math.max(0, Math.min(maxTop, yPx));
 }
 
 function wordElementY(element: RecordValue): number {
@@ -1479,6 +1623,11 @@ function wordPageMarginPx(value: unknown, fallback: number): number {
 
 const WORD_PREVIEW_CONTENT_WIDTH_PX = 720;
 
+function wordPageContentWidthPx(pageLayout: WordPageLayout, fallback = WORD_PREVIEW_CONTENT_WIDTH_PX): number {
+  const contentWidth = pageLayout.widthPx - pageLayout.paddingLeft - pageLayout.paddingRight;
+  return contentWidth > 0 ? Math.max(120, contentWidth) : fallback;
+}
+
 const wordDocumentStackStyle: CSSProperties = { display: "grid", gap: 20 };
 
 function wordParagraphStyle(paragraph: ParagraphView): CSSProperties {
@@ -1524,6 +1673,15 @@ const wordHeading2RuleStyle: CSSProperties = {
   paddingTop: 6,
 };
 
+const wordTabLeaderStyle: CSSProperties = {
+  borderBottom: "1px dotted currentColor",
+  flex: "1 1 auto",
+  height: 0,
+  marginBottom: "0.25em",
+  minWidth: 24,
+  opacity: 0.55,
+};
+
 function wordParagraphMarkerStyle(marker: string): CSSProperties {
   const isBullet = /^[•●○▪■o]$/u.test(marker);
   return {
@@ -1539,18 +1697,28 @@ function wordParagraphMarkerStyle(marker: string): CSSProperties {
 
 const wordHeaderContentStyle: CSSProperties = {
   borderBottom: "1px solid #e2e8f0",
+  boxSizing: "border-box",
   color: "#475569",
   fontSize: 12,
+  gridRow: 1,
   marginBottom: 12,
+  maxWidth: "100%",
+  minWidth: 0,
   paddingBottom: 8,
+  width: "100%",
 };
 
 const wordFooterContentStyle: CSSProperties = {
   borderTop: "1px solid #e2e8f0",
+  boxSizing: "border-box",
   color: "#475569",
   fontSize: 12,
+  gridRow: 4,
   marginTop: 12,
+  maxWidth: "100%",
+  minWidth: 0,
   paddingTop: 8,
+  width: "100%",
 };
 
 const wordReferenceMarkerStyle: CSSProperties = { color: "#475569", fontSize: "0.72em", marginLeft: 2 };
@@ -1559,6 +1727,7 @@ const wordSupplementalNotesStyle: CSSProperties = {
   borderTop: "1px solid #cbd5e1",
   display: "grid",
   gap: 4,
+  gridRow: 3,
   marginTop: 18,
   paddingTop: 10,
 };
