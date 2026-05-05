@@ -14,6 +14,8 @@ npx @autodev/office ./deck.pptx --output ./canvases
 npx @autodev/office canvas ./deck.pptx --output ./deck.canvas.tsx
 npx @autodev/office canvas ./document.docx --output ./document.canvas.tsx
 npx @autodev/office canvas ./workbook.xlsx --output ./workbook.canvas.tsx
+npx @autodev/office ./deck.proto --input-format proto --kind pptx --output ./deck.canvas.tsx
+npx @autodev/office ./deck-payload.json --input-format json --kind pptx --output ./deck.canvas.tsx
 ```
 
 Write directly into Cursor's canvas directory for the current working directory:
@@ -47,6 +49,8 @@ Requirements:
 
 ```bash
 autodev-office <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
+autodev-office <payload.json> --input-format json --kind <pptx|docx|xlsx> --output file.canvas.tsx
+autodev-office <proto.bin> --input-format proto --kind <pptx|docx|xlsx> --output file.canvas.tsx
 autodev-office canvas <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
 autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor
 autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor-project ~/.cursor/projects/<project>
@@ -59,6 +63,10 @@ Options:
   inside that directory.
 - `--cursor` writes into the Cursor project for the current working directory.
 - `--cursor-project <dir>` writes into `<dir>/canvases`.
+- `--input-format <office|proto|json>` sets the input format. The default is
+  inferred from the extension: `.json` is payload JSON, `.proto`/`.pb`/`.bin`
+  are protobuf bytes, and `.pptx`/`.docx`/`.xlsx` are source Office files.
+- `--kind <pptx|docx|xlsx>` selects the renderer for proto or JSON input.
 - `--media-quality <1-100>` controls JPEG quality for embedded media.
 - `--media-width <px>` caps embedded media width.
 - `--max-columns <n>` caps rendered XLSX columns.
@@ -67,6 +75,9 @@ Options:
 
 When writing into a Cursor project, the CLI also writes a matching
 `.canvas.status.json` sidecar so Cursor can discover the generated canvas.
+
+JSON input means the intermediate Canvas payload produced by the
+`build*CanvasPayload` APIs, not arbitrary decoded protobuf JSON.
 
 ## API Usage
 
