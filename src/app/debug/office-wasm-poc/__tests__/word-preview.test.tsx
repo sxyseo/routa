@@ -488,6 +488,36 @@ describe("WordPreview", () => {
     ]);
   });
 
+  it("paginates long decoded DOCX section content by page height", () => {
+    const paragraphText =
+      "Long section paragraph that should consume enough estimated height to continue on another visual page. ";
+    const elements = Array.from({ length: 8 }, (_, index) => ({
+      paragraphs: [{ runs: [{ text: `${index + 1}. ${paragraphText.repeat(3)}` }] }],
+    }));
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements,
+          sections: [
+            {
+              elements,
+              id: "section-long",
+              pageSetup: {
+                heightEmu: 3_048_000,
+                pageMargin: { bottom: 360, left: 720, right: 720, top: 360 },
+                widthEmu: 4_572_000,
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages.length).toBeGreaterThan(1);
+  });
+
   it("maps decoded DOCX section columns into body CSS columns", () => {
     const { container } = render(
       <WordPreview

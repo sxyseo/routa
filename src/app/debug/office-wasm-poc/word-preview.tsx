@@ -9,6 +9,7 @@ import {
   asString,
   collectTextBlocks,
   colorToCss,
+  cssFontSize,
   elementImageReferenceId,
   fillToCss,
   lineToCss,
@@ -31,7 +32,6 @@ import {
 export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
   const elements = asArray(root?.elements);
-  const pages = wordPreviewPages(root, elements);
   const charts = asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null);
   const imageSources = useOfficeImageSources(root);
   const textStyles = new Map<string, RecordValue>();
@@ -41,6 +41,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
     if (record && id) textStyles.set(id, record);
   }
   const styleMaps: OfficeTextStyleMaps = { textStyles, images: imageSources };
+  const pages = wordPreviewPages(root, elements, styleMaps);
   const numberingMarkers = wordNumberingMarkers(elements, root, styleMaps);
   const referenceMarkers = wordReferenceMarkers(root);
   const reviewMarkTypes = wordReviewMarkTypes(root);
@@ -230,7 +231,11 @@ type WordPreviewPage = {
   root: RecordValue | null;
 };
 
-function wordPreviewPages(root: RecordValue | null, rootElements: unknown[]): WordPreviewPage[] {
+function wordPreviewPages(
+  root: RecordValue | null,
+  rootElements: unknown[],
+  styleMaps: OfficeTextStyleMaps,
+): WordPreviewPage[] {
   const sectionPages = asArray(root?.sections)
     .map(asRecord)
     .filter((section): section is RecordValue => section != null)
@@ -244,10 +249,10 @@ function wordPreviewPages(root: RecordValue | null, rootElements: unknown[]): Wo
     .filter((page) => page.elements.length > 0 || page.headerElements.length > 0 || page.footerElements.length > 0);
 
   if (sectionPages.some((page) => page.elements.length > 0)) {
-    return wordPreviewSectionPages(rootElements, sectionPages);
+    return wordPreviewSectionPages(rootElements, sectionPages, styleMaps);
   }
 
-  return [
+  return wordPaginatePreviewPages([
     {
       elements: rootElements,
       footerElements: wordSectionContentElements(root, "footer"),
@@ -255,19 +260,151 @@ function wordPreviewPages(root: RecordValue | null, rootElements: unknown[]): Wo
       id: "document",
       root,
     },
-  ];
+  ], styleMaps);
 }
 
-function wordPreviewSectionPages(rootElements: unknown[], sectionPages: WordPreviewPage[]): WordPreviewPage[] {
-  if (rootElements.length === 0) return sectionPages;
+function wordPreviewSectionPages(
+  rootElements: unknown[],
+  sectionPages: WordPreviewPage[],
+  styleMaps: OfficeTextStyleMaps,
+): WordPreviewPage[] {
+  if (rootElements.length === 0) return wordPaginatePreviewPages(sectionPages, styleMaps);
 
   let offset = 0;
-  return sectionPages.map((page, index) => {
+  const pages = sectionPages.map((page, index) => {
     const nextOffset = offset + page.elements.length;
     const elements = index === sectionPages.length - 1 ? rootElements.slice(offset) : rootElements.slice(offset, nextOffset);
     offset = nextOffset;
     return { ...page, elements };
   });
+
+  return wordPaginatePreviewPages(pages, styleMaps);
+}
+
+function wordPaginatePreviewPages(
+  pages: WordPreviewPage[],
+  styleMaps: OfficeTextStyleMaps,
+): WordPreviewPage[] {
+  return pages.flatMap((page) => wordPaginatePreviewPage(page, styleMaps));
+}
+
+function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextStyleMaps): WordPreviewPage[] {
+  const layout = wordPageLayout(page.root);
+  const capacity = wordPageBodyCapacity(layout, page);
+  if (capacity <= 0 || page.elements.length <= 1) return [page];
+
+  const chunks: WordPreviewPage[] = [];
+  let current: unknown[] = [];
+  let currentHeight = 0;
+
+  for (const element of page.elements) {
+    const estimatedHeight = wordElementEstimatedHeight(element, styleMaps, layout);
+    const shouldBreak = current.length > 0 && currentHeight + estimatedHeight > capacity;
+    if (shouldBreak) {
+      chunks.push(wordPreviewPageChunk(page, chunks.length, current));
+      current = [];
+      currentHeight = 0;
+    }
+
+    current.push(element);
+    currentHeight += estimatedHeight;
+  }
+
+  if (current.length > 0) {
+    chunks.push(wordPreviewPageChunk(page, chunks.length, current));
+  }
+
+  return chunks.length > 0 ? chunks : [page];
+}
+
+function wordPreviewPageChunk(page: WordPreviewPage, index: number, elements: unknown[]): WordPreviewPage {
+  return {
+    ...page,
+    elements,
+    id: `${page.id}-page-${index + 1}`,
+  };
+}
+
+function wordPageBodyCapacity(layout: WordPageLayout, page: WordPreviewPage): number {
+  if (layout.heightPx <= 0) return 0;
+  const headerReserve = page.headerElements.length > 0 ? 34 : 0;
+  const footerReserve = page.footerElements.length > 0 ? 34 : 0;
+  return Math.max(180, layout.heightPx - layout.paddingTop - layout.paddingBottom - headerReserve - footerReserve);
+}
+
+function wordElementEstimatedHeight(
+  element: unknown,
+  styleMaps: OfficeTextStyleMaps,
+  pageLayout: WordPageLayout,
+): number {
+  const record = asRecord(element);
+  if (!record) return 0;
+
+  if (elementImageReferenceId(record)) {
+    return wordEstimatedBoxHeight(record, pageLayout, 280);
+  }
+
+  if (asRecord(record.chartReference)) {
+    return wordEstimatedBoxHeight(record, pageLayout, 300) + 18;
+  }
+
+  const table = asRecord(record.table);
+  if (table) {
+    const rows = asArray(table.rows).map(asRecord).filter(Boolean);
+    return Math.max(36, Math.min(760, rows.length * 34 + 24));
+  }
+
+  const paragraphs = asArray(record.paragraphs);
+  if (paragraphs.length === 0) return 0;
+  return paragraphs.reduce<number>(
+    (total, paragraph) => total + wordParagraphEstimatedHeight(paragraph, styleMaps, pageLayout),
+    0,
+  );
+}
+
+function wordEstimatedBoxHeight(element: RecordValue, pageLayout: WordPageLayout, fallbackHeight: number): number {
+  const box = wordElementBox(element, WORD_PREVIEW_CONTENT_WIDTH_PX, fallbackHeight);
+  const fullBleed = wordIsFullBleedElement(element, pageLayout);
+  const height = fullBleed && box.rawWidth > 0 ? box.rawHeight * (pageLayout.widthPx / box.rawWidth) : box.height;
+  return Math.max(18, Math.min(900, height + (box.marginTop ?? 0) + 16));
+}
+
+function wordParagraphEstimatedHeight(
+  paragraph: unknown,
+  styleMaps: OfficeTextStyleMaps,
+  pageLayout: WordPageLayout,
+): number {
+  const view = paragraphView(paragraph, styleMaps);
+  const style = view.style;
+  const textLength = Math.max(1, view.runs.reduce((total, run) => total + run.text.length, 0));
+  const isTitle = view.styleId === "Title";
+  const isHeading = /^Heading/i.test(view.styleId);
+  const fontSize = wordCssFontSize(style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14);
+  const lineHeight = wordEstimatedLineHeight(style, fontSize);
+  const contentWidth = Math.max(120, pageLayout.widthPx - pageLayout.paddingLeft - pageLayout.paddingRight);
+  const averageCharWidth = Math.max(4, fontSize * 0.52);
+  const charsPerLine = Math.max(8, Math.floor(contentWidth / averageCharWidth));
+  const explicitLines = view.runs.reduce((count, run) => count + run.text.split("\n").length - 1, 0);
+  const lines = Math.max(1, Math.ceil(textLength / charsPerLine) + explicitLines);
+  const before = Math.min(32, asNumber(style?.spaceBefore) / 20);
+  const after = Math.min(28, asNumber(style?.spaceAfter) / 20);
+  return Math.max(8, before + lines * lineHeight + after);
+}
+
+function wordEstimatedLineHeight(style: RecordValue | null, fontSize: number): number {
+  const exactPoints = asNumber(style?.lineSpacing);
+  if (exactPoints > 0) return Math.max(10, Math.min(128, (exactPoints / 100) * (4 / 3)));
+
+  const percent = asNumber(style?.lineSpacingPercent);
+  if (percent > 0) return fontSize * Math.max(0.8, Math.min(3, percent / 100_000));
+
+  return fontSize * 1.35;
+}
+
+function wordCssFontSize(value: unknown, fallbackPx: number): number {
+  const raw = asNumber(value);
+  if (raw > 200) return Math.max(8, Math.min(72, (raw / 100) * (4 / 3)));
+  return cssFontSize(value, fallbackPx);
 }
 
 function WordElement({
