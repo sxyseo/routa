@@ -542,6 +542,36 @@ describe("spreadsheet charts", () => {
     expect(charts[0]?.series.map((series) => series.type)).toEqual(["bar", "line"]);
   });
 
+  it("preserves chart family options for renderer layout", () => {
+    const sheet = {
+      drawings: [
+        {
+          chart: {
+            barOptions: { gapWidth: 50, overlap: 25, varyColors: true },
+            series: [{ categories: ["Q1", "Q2"], name: "Revenue", values: [10, 20] }],
+            title: "Revenue",
+            type: 1,
+          },
+        },
+        {
+          chart: {
+            doughnutOptions: { firstSliceAngle: 45, holeSize: 70 },
+            series: [{ categories: ["A", "B"], name: "Share", values: [40, 60] }],
+            title: "Share",
+            type: 5,
+          },
+        },
+      ],
+      name: "01_Dashboard",
+      rows: [{ cells: [{ address: "A1", value: "AI Coding Delivery Dashboard" }], index: 1 }],
+    };
+    const layout = buildSpreadsheetLayout(sheet);
+    const charts = buildSpreadsheetCharts({ activeSheet: sheet, charts: [], layout, sheets: [sheet] });
+
+    expect(charts[0]?.options).toMatchObject({ barGapWidth: 50, barOverlap: 25, varyColors: true });
+    expect(charts[1]?.options).toMatchObject({ firstSliceAngle: 45, holeSize: 70 });
+  });
+
   it("clusters bar geometry for every protocol series", () => {
     const chart = {
       categories: ["Q1", "Q2"],
@@ -567,5 +597,35 @@ describe("spreadsheet charts", () => {
     expect(bars[0]!.centerX).toBeLessThan(bars[1]!.centerX);
     expect(bars[1]!.centerX).toBeLessThan(bars[2]!.centerX);
     expect(bars.every((bar) => bar.barWidth > 0)).toBe(true);
+  });
+
+  it("uses protocol bar gap width when clustering bars", () => {
+    const baseChart = {
+      categories: ["Q1"],
+      height: 240,
+      left: 0,
+      legendOverlay: false,
+      legendPosition: "bottom" as const,
+      series: [
+        { color: "#1f6f8b", label: "Backlog", marker: null, trendlines: [], values: [10] },
+        { color: "#f9732a", label: "Done", marker: null, trendlines: [], values: [5] },
+      ],
+      showDataLabels: false,
+      title: "Gap width",
+      top: 0,
+      type: "bar" as const,
+      width: 360,
+      zIndex: 0,
+    };
+    const wideGap = spreadsheetBarChartGeometry(
+      { ...baseChart, options: { barGapWidth: 300, barOverlap: 0, firstSliceAngle: 0, holeSize: 55, varyColors: false } },
+      { left: 52, right: 338 },
+    );
+    const narrowGap = spreadsheetBarChartGeometry(
+      { ...baseChart, options: { barGapWidth: 50, barOverlap: 0, firstSliceAngle: 0, holeSize: 55, varyColors: false } },
+      { left: 52, right: 338 },
+    );
+
+    expect(narrowGap[0]!.barWidth).toBeGreaterThan(wideGap[0]!.barWidth);
   });
 });

@@ -12,6 +12,7 @@ import {
   type RecordValue,
 } from "./office-preview-utils";
 import { drawSpreadsheetChartFrame } from "./spreadsheet-chart-frame";
+import { spreadsheetChartRendererOptions, type SpreadsheetChartRendererOptions } from "./spreadsheet-chart-options";
 import {
   chartY,
   spreadsheetChartTickValues,
@@ -111,6 +112,7 @@ export type SpreadsheetChartSpec = {
   legendOverlay: boolean;
   legendPosition: SpreadsheetChartLegendPosition;
   dataLabels?: SpreadsheetChartDataLabels;
+  options?: SpreadsheetChartRendererOptions;
   series: SpreadsheetChartSeries[];
   showDataLabels: boolean;
   title: string;
@@ -298,6 +300,7 @@ function chartFromRecord(
     legendOverlay: spreadsheetLegendOverlay(chart.legend),
     legendPosition: spreadsheetLegendPosition(chart.legend),
     dataLabels,
+    options: spreadsheetChartRendererOptions(chart),
     series,
     showDataLabels: dataLabels != null,
     title: asString(chart.title),
@@ -869,11 +872,13 @@ function drawBarChart(
 ) {
   context.save();
   const baselineY = spreadsheetChartZeroBaselineY(plot, minValue, maxValue);
-  spreadsheetBarChartGeometry(chart, plot).forEach(({ barWidth, centerX, series, value }) => {
+  spreadsheetBarChartGeometry(chart, plot).forEach(({ barWidth, categoryIndex, centerX, series, value }) => {
     const y = chartY(value, plot, minValue, maxValue);
     const top = Math.min(y, baselineY);
     const height = Math.max(1, Math.abs(baselineY - y));
-    context.fillStyle = series.color;
+    context.fillStyle = chart.options?.varyColors && chart.series.length === 1
+      ? chartPalette(categoryIndex)
+      : series.color;
     context.beginPath();
     context.roundRect(centerX - barWidth / 2, top, barWidth, height, 3);
     context.fill();
@@ -899,10 +904,12 @@ export function spreadsheetBarChartGeometry(
   const visibleSeries = chart.series.filter((series) => series.values.length > 0);
   const seriesCount = Math.max(1, visibleSeries.length);
   const slotWidth = (plot.right - plot.left) / categoryCount;
-  const singleBarWidth = Math.min(32, slotWidth * 0.34);
-  const groupWidth = Math.min(slotWidth * 0.72, seriesCount * 30);
-  const barStep = groupWidth / seriesCount;
-  const barWidth = seriesCount === 1 ? singleBarWidth : Math.max(3, Math.min(28, barStep * 0.78));
+  const gapWidth = Math.max(0, Math.min(500, chart.options?.barGapWidth ?? 150));
+  const overlap = Math.max(-100, Math.min(100, chart.options?.barOverlap ?? 0)) / 100;
+  const groupWidth = Math.min(slotWidth * 0.92, slotWidth / (1 + gapWidth / 100));
+  const rawBarWidth = groupWidth / (seriesCount - overlap * Math.max(0, seriesCount - 1));
+  const barStep = rawBarWidth * (1 - overlap);
+  const barWidth = Math.max(3, Math.min(48, rawBarWidth));
   const bars: SpreadsheetBarGeometry[] = [];
 
   for (let categoryIndex = 0; categoryIndex < categoryCount; categoryIndex += 1) {
@@ -910,9 +917,7 @@ export function spreadsheetBarChartGeometry(
     visibleSeries.forEach((series, seriesIndex) => {
       const value = series.values[categoryIndex];
       if (!Number.isFinite(value)) return;
-      const centerX = seriesCount === 1
-        ? categoryCenter
-        : categoryCenter - groupWidth / 2 + barStep * seriesIndex + barStep / 2;
+      const centerX = categoryCenter + (seriesIndex - (seriesCount - 1) / 2) * barStep;
       bars.push({ barWidth, categoryIndex, centerX, series, value });
     });
   }
@@ -1118,7 +1123,7 @@ function drawPieChart(
   const centerX = (plot.left + plot.right) / 2;
   const centerY = (plot.top + plot.bottom) / 2;
   const radius = Math.max(12, Math.min(plot.right - plot.left, plot.bottom - plot.top) * 0.42);
-  let startAngle = -Math.PI / 2;
+  let startAngle = ((chart.options?.firstSliceAngle ?? 0) - 90) * Math.PI / 180;
 
   context.save();
   values.forEach((value, index) => {
@@ -1136,8 +1141,9 @@ function drawPieChart(
   });
 
   if (isDoughnut) {
+    const holeSize = Math.max(10, Math.min(90, chart.options?.holeSize ?? 55));
     context.beginPath();
-    context.arc(centerX, centerY, radius * 0.55, 0, Math.PI * 2);
+    context.arc(centerX, centerY, radius * (holeSize / 100), 0, Math.PI * 2);
     context.fillStyle = "#ffffff";
     context.fill();
   }
