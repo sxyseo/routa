@@ -1990,6 +1990,9 @@ internal static class DocxDocumentProtoReader
             .Where(item => item.Length > 0)
             .Distinct(StringComparer.Ordinal)
             .ToList();
+        var xAxis = WriteChartAxis(ChartCategoryAxis(chartSpace));
+        var yAxis = WriteChartAxis(chartSpace?.Descendants<C.ValueAxis>().FirstOrDefault());
+        var dataLabels = WriteChartDataLabels(chartSpace);
 
         return Message(output =>
         {
@@ -2006,8 +2009,22 @@ internal static class DocxDocumentProtoReader
 
             WriteInt32(output, 5, ChartType(chartSpace));
             WriteString(output, 7, chartPart.Uri.OriginalString);
+            if (xAxis is not null)
+            {
+                WriteMessage(output, 8, xAxis);
+            }
+
+            if (yAxis is not null)
+            {
+                WriteMessage(output, 9, yAxis);
+            }
+
             WriteInt32(output, 10, BarDirection(chartSpace));
             WriteBool(output, 11, chartSpace?.Descendants<C.Legend>().Any() ?? false);
+            if (dataLabels is not null)
+            {
+                WriteMessage(output, 14, dataLabels);
+            }
         });
     }
 
@@ -2024,6 +2041,11 @@ internal static class DocxDocumentProtoReader
             foreach (var category in series.Categories)
             {
                 WriteString(output, 5, category);
+            }
+
+            if (ChartSeriesRgbFill(series.Element) is { } fill)
+            {
+                WriteMessage(output, 7, WriteColorFill(fill, writeSolidType: true));
             }
 
             WriteString(output, 8, series.Id);
@@ -2118,6 +2140,67 @@ internal static class DocxDocumentProtoReader
         return string.Equals(direction, "bar", StringComparison.OrdinalIgnoreCase) ? BarDirectionBar :
             string.Equals(direction, "column", StringComparison.OrdinalIgnoreCase) ? BarDirectionColumn :
             0;
+    }
+
+    private static OpenXmlElement? ChartCategoryAxis(C.ChartSpace? chartSpace)
+    {
+        return chartSpace?.Descendants<C.CategoryAxis>().FirstOrDefault() ??
+            (OpenXmlElement?)chartSpace?.Descendants<C.DateAxis>().FirstOrDefault();
+    }
+
+    private static byte[]? WriteChartAxis(OpenXmlElement? axis)
+    {
+        if (axis is null)
+        {
+            return null;
+        }
+
+        var title = ChartAxisTitle(axis);
+        var hasMajorGridlines = axis.Descendants<C.MajorGridlines>().Any();
+        if (string.IsNullOrEmpty(title) && !hasMajorGridlines)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            if (hasMajorGridlines)
+            {
+                WriteMessageAllowEmpty(output, 5, Message(_ => { }));
+            }
+
+            WriteString(output, 19, title);
+        });
+    }
+
+    private static string ChartAxisTitle(OpenXmlElement axis)
+    {
+        return TextNormalization.Clean(string.Concat(
+            axis.Descendants<C.Title>().FirstOrDefault()?.Descendants<A.Text>().Select(item => item.Text) ??
+            Enumerable.Empty<string>()));
+    }
+
+    private static byte[]? WriteChartDataLabels(C.ChartSpace? chartSpace)
+    {
+        var showValue = chartSpace?.Descendants<C.DataLabels>()
+            .Select(labels => labels.GetFirstChild<C.ShowValue>()?.Val?.Value ?? false)
+            .FirstOrDefault(value => value);
+        if (showValue != true)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteBool(output, 1, true);
+        });
+    }
+
+    private static string? ChartSeriesRgbFill(OpenXmlElement series)
+    {
+        return series.Descendants<A.SolidFill>()
+            .Select(fill => fill.GetFirstChild<A.RgbColorModelHex>()?.Val?.Value)
+            .FirstOrDefault(value => !string.IsNullOrEmpty(value));
     }
 
     private static byte[]? WriteRunTextStyle(

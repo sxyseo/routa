@@ -24,6 +24,13 @@ type ChartPlot = {
   width: number;
 };
 
+type ChartRenderOptions = {
+  showDataLabels: boolean;
+  showMajorGridlines: boolean;
+  xAxisTitle: string;
+  yAxisTitle: string;
+};
+
 export function presentationChartById(charts: RecordValue[], id: string): RecordValue | null {
   if (!id) return null;
   return charts.find((chart) => presentationChartId(chart) === id) ?? null;
@@ -83,26 +90,42 @@ export function drawPresentationChart(
     return;
   }
 
+  const options = presentationChartOptions(chart);
+  const leftReserve = Math.max(22, 38 * slideScale) + (options.yAxisTitle ? Math.max(12, 18 * slideScale) : 0);
+  const bottomReserve = Math.max(26, 44 * slideScale) + (options.xAxisTitle ? Math.max(12, 18 * slideScale) : 0);
   const plot = {
-    height: Math.max(1, rect.height - titleHeight - 44 * slideScale),
-    left: Math.max(22, 38 * slideScale),
+    height: Math.max(1, rect.height - titleHeight - bottomReserve),
+    left: leftReserve,
     top: titleHeight + Math.max(10, 18 * slideScale),
-    width: Math.max(1, rect.width - Math.max(38, 58 * slideScale)),
+    width: Math.max(1, rect.width - leftReserve - Math.max(16, 20 * slideScale)),
   };
 
   const type = asNumber(chart.type);
   if (type === 16 || type === 8) {
-    drawPieChart(context, series[0], plot, type === 8, slideScale);
+    drawPieChart(context, series[0], plot, type === 8, slideScale, options);
   } else if (type === 13 || type === 2 || type === 18) {
-    drawLineChart(context, series, plot, slideScale);
+    drawLineChart(context, series, plot, slideScale, options);
   } else {
-    drawBarChart(context, series, plot, asNumber(chart.barDirection) === 2, slideScale);
+    drawBarChart(context, series, plot, asNumber(chart.barDirection) === 2, slideScale, options);
   }
 
+  drawChartAxisTitles(context, options, plot, rect, slideScale);
   if (chart.hasLegend === true || asNumber(chart.hasLegend) > 0) {
     drawChartLegend(context, series, rect, slideScale);
   }
   context.restore();
+}
+
+function presentationChartOptions(chart: RecordValue): ChartRenderOptions {
+  const dataLabels = asRecord(chart.dataLabels);
+  const xAxis = asRecord(chart.xAxis);
+  const yAxis = asRecord(chart.yAxis);
+  return {
+    showDataLabels: dataLabels?.showValue === true || asNumber(dataLabels?.showValue) > 0,
+    showMajorGridlines: yAxis == null || asRecord(yAxis.majorGridlines) != null || asRecord(yAxis.majorGridLines) != null,
+    xAxisTitle: asString(xAxis?.title),
+    yAxisTitle: asString(yAxis?.title),
+  };
 }
 
 function presentationChartSeries(chart: RecordValue): ChartSeries[] {
@@ -131,10 +154,11 @@ function drawBarChart(
   plot: ChartPlot,
   horizontal: boolean,
   slideScale: number,
+  options: ChartRenderOptions,
 ): void {
   const values = series.flatMap((item) => item.values);
   const max = Math.max(1, ...values);
-  drawChartGrid(context, plot, 0, max, slideScale);
+  drawChartGrid(context, plot, 0, max, slideScale, options.showMajorGridlines);
   const categoryCount = Math.max(...series.map((item) => item.values.length));
   if (categoryCount <= 0) return;
 
@@ -148,6 +172,9 @@ function drawBarChart(
         const x = plot.left;
         const y = plot.top + index * rowHeight + rowHeight * 0.14 + seriesIndex * barHeight;
         context.fillRect(x, y, width, Math.max(1, barHeight * 0.82));
+        if (options.showDataLabels) {
+          drawChartDataLabel(context, value, x + width + 3 * slideScale, y + barHeight * 0.41, slideScale, "left", "middle");
+        }
       }
     }
     drawChartCategoryLabels(context, series[0]?.categories ?? [], plot, true, slideScale);
@@ -163,15 +190,24 @@ function drawBarChart(
       const x = plot.left + index * columnWidth + columnWidth * 0.14 + seriesIndex * barWidth;
       const y = plot.top + plot.height - height;
       context.fillRect(x, y, Math.max(1, barWidth * 0.82), height);
+      if (options.showDataLabels) {
+        drawChartDataLabel(context, value, x + barWidth * 0.41, y - 2 * slideScale, slideScale, "center", "bottom");
+      }
     }
   }
   drawChartCategoryLabels(context, series[0]?.categories ?? [], plot, false, slideScale);
 }
 
-function drawLineChart(context: CanvasRenderingContext2D, series: ChartSeries[], plot: ChartPlot, slideScale: number): void {
+function drawLineChart(
+  context: CanvasRenderingContext2D,
+  series: ChartSeries[],
+  plot: ChartPlot,
+  slideScale: number,
+  options: ChartRenderOptions,
+): void {
   const values = series.flatMap((item) => item.values);
   const range = chartAxisRange(values, false);
-  drawChartGrid(context, plot, range.min, range.max, slideScale);
+  drawChartGrid(context, plot, range.min, range.max, slideScale, options.showMajorGridlines);
   const maxPoints = Math.max(...series.map((item) => item.values.length));
   const xStep = maxPoints <= 1 ? plot.width : plot.width / (maxPoints - 1);
 
@@ -184,6 +220,9 @@ function drawLineChart(context: CanvasRenderingContext2D, series: ChartSeries[],
       const y = plot.top + plot.height - ((value - range.min) / Math.max(1, range.max - range.min)) * plot.height;
       if (index === 0) context.moveTo(x, y);
       else context.lineTo(x, y);
+      if (options.showDataLabels) {
+        drawChartDataLabel(context, value, x, y - 4 * slideScale, slideScale, "center", "bottom");
+      }
     });
     context.stroke();
   }
@@ -196,6 +235,7 @@ function drawPieChart(
   plot: ChartPlot,
   doughnut: boolean,
   slideScale: number,
+  options: ChartRenderOptions,
 ): void {
   const total = series.values.reduce((sum, value) => sum + Math.max(0, value), 0);
   if (total <= 0) return;
@@ -211,6 +251,18 @@ function drawPieChart(
     context.arc(cx, cy, radius, angle, nextAngle);
     context.closePath();
     context.fill();
+    if (options.showDataLabels) {
+      const midAngle = angle + (nextAngle - angle) / 2;
+      drawChartDataLabel(
+        context,
+        value,
+        cx + Math.cos(midAngle) * radius * 0.68,
+        cy + Math.sin(midAngle) * radius * 0.68,
+        slideScale,
+        "center",
+        "middle",
+      );
+    }
     angle = nextAngle;
   }
 
@@ -234,18 +286,21 @@ function drawChartGrid(
   min: number,
   max: number,
   slideScale: number,
+  showMajorGridlines: boolean,
 ): void {
-  context.strokeStyle = "rgba(148, 163, 184, 0.42)";
   context.lineWidth = Math.max(0.5, slideScale);
-  context.setLineDash([Math.max(2, slideScale * 3), Math.max(2, slideScale * 2)]);
-  for (let index = 0; index <= 4; index++) {
-    const y = plot.top + (plot.height / 4) * index;
-    context.beginPath();
-    context.moveTo(plot.left, y);
-    context.lineTo(plot.left + plot.width, y);
-    context.stroke();
+  if (showMajorGridlines) {
+    context.strokeStyle = "rgba(148, 163, 184, 0.42)";
+    context.setLineDash([Math.max(2, slideScale * 3), Math.max(2, slideScale * 2)]);
+    for (let index = 0; index <= 4; index++) {
+      const y = plot.top + (plot.height / 4) * index;
+      context.beginPath();
+      context.moveTo(plot.left, y);
+      context.lineTo(plot.left + plot.width, y);
+      context.stroke();
+    }
+    context.setLineDash([]);
   }
-  context.setLineDash([]);
   context.strokeStyle = "rgba(100, 116, 139, 0.65)";
   context.beginPath();
   context.moveTo(plot.left, plot.top);
@@ -262,6 +317,49 @@ function drawChartGrid(
     const y = plot.top + (plot.height / 4) * index;
     context.fillText(formatChartTick(value), plot.left - Math.max(4, 6 * slideScale), y);
   }
+}
+
+function drawChartAxisTitles(
+  context: CanvasRenderingContext2D,
+  options: ChartRenderOptions,
+  plot: ChartPlot,
+  rect: PresentationRect,
+  slideScale: number,
+): void {
+  context.fillStyle = "#475569";
+  context.font = `600 ${Math.max(8, 10 * slideScale)}px Arial, sans-serif`;
+
+  if (options.xAxisTitle) {
+    context.textAlign = "center";
+    context.textBaseline = "bottom";
+    context.fillText(options.xAxisTitle, plot.left + plot.width / 2, rect.height - Math.max(4, 7 * slideScale), plot.width);
+  }
+
+  if (options.yAxisTitle) {
+    context.save();
+    context.translate(Math.max(6, 10 * slideScale), plot.top + plot.height / 2);
+    context.rotate(-Math.PI / 2);
+    context.textAlign = "center";
+    context.textBaseline = "top";
+    context.fillText(options.yAxisTitle, 0, 0, plot.height);
+    context.restore();
+  }
+}
+
+function drawChartDataLabel(
+  context: CanvasRenderingContext2D,
+  value: number,
+  x: number,
+  y: number,
+  slideScale: number,
+  align: CanvasTextAlign,
+  baseline: CanvasTextBaseline,
+): void {
+  context.fillStyle = "#334155";
+  context.font = `600 ${Math.max(7, 9 * slideScale)}px Arial, sans-serif`;
+  context.textAlign = align;
+  context.textBaseline = baseline;
+  context.fillText(formatChartTick(value), x, y, Math.max(24, 48 * slideScale));
 }
 
 function drawChartCategoryLabels(

@@ -19,12 +19,12 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 
 ## Overview
 
-**Completeness**: ~85% (protocol nearly feature-complete; rendering/visual fidelity is the next frontier)
+**Completeness**: ~88% (protocol nearly feature-complete; rendering/visual fidelity is the next frontier)
 
 **Key Status**:
 - ✅ Protocol equivalence locked against Walnut for all committed fixtures + real-world Chinese samples
 - ✅ Core rendering (text/styles/tables/images/headers/footers/sections) production-ready
-- ⏳ Visual layout depth (floating/wrapping/effects) and chart payload depth next
+- ⏳ Visual layout depth (floating/wrapping/effects) and chart payload long-tail next
 - ⏳ Long-tail edge cases (rare style/table/header combinations)
 
 ## Feature Domains
@@ -153,18 +153,18 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 
 ### 6. Chart References
 
-**Status**: 70% complete
+**Status**: 80% complete
 
 - [x] Chart reference identification (chart part ID)
 - [x] Chart anchors and sizing
 - [x] Basic chart payload extraction from ChartPart cached series
 - [x] Basic chart rendering for common chart types, series, title, and legend presence
-- [ ] Axis titles and gridlines
-- [ ] Data labels
+- [x] Axis titles and gridlines
+- [x] Data labels
 - [ ] Trendlines and error bars
 
 **Remaining**:
-- Richer Word-specific axis/title/legend/plot-area styling and gridlines
+- Richer Word-specific axis/title/legend/plot-area styling
 - Multi-axis charts
 - Embedded chart workbook/cache edge cases
 

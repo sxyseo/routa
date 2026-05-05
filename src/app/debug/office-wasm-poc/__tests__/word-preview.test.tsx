@@ -1430,11 +1430,13 @@ describe("WordPreview", () => {
       moveTo: vi.fn(),
       rect: vi.fn(),
       restore: vi.fn(),
+      rotate: vi.fn(),
       save: vi.fn(),
       setLineDash: vi.fn(),
       setTransform: vi.fn(),
       stroke: vi.fn(),
       strokeRect: vi.fn(),
+      translate: vi.fn(),
     };
     const getContext = vi
       .spyOn(HTMLCanvasElement.prototype, "getContext")
@@ -1447,8 +1449,16 @@ describe("WordPreview", () => {
           charts: [
             {
               id: "chart-1",
-              series: [{ values: [2, 4, 3] }],
+              dataLabels: { showValue: true },
+              series: [
+                {
+                  fill: { color: { type: 1, value: "FF0000" }, type: 1 },
+                  values: [2, 4, 3],
+                },
+              ],
               title: "Delivery Trend",
+              xAxis: { title: "Month" },
+              yAxis: { majorGridlines: {}, title: "Velocity" },
             },
           ],
           elements: [
@@ -1475,6 +1485,9 @@ describe("WordPreview", () => {
     await waitFor(() => expect(getContext).toHaveBeenCalledWith("2d"));
     expect(context.setTransform).toHaveBeenCalled();
     expect(context.fillRect).toHaveBeenCalled();
+    expect(context.fillText).toHaveBeenCalledWith("Month", expect.any(Number), expect.any(Number), expect.any(Number));
+    expect(context.fillText).toHaveBeenCalledWith("Velocity", 0, 0, expect.any(Number));
+    expect(context.fillText).toHaveBeenCalledWith("4", expect.any(Number), expect.any(Number), expect.any(Number));
   });
 
   it("uses decoded DOCX chart bbox for preview dimensions", () => {
