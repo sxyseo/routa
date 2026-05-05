@@ -1,5 +1,6 @@
 "use client";
 
+import { measureRichInlineStats, prepareRichInline, type RichInlineItem } from "@chenglou/pretext/rich-inline";
 import { useEffect, useRef, type CSSProperties } from "react";
 
 import {
@@ -14,6 +15,7 @@ import {
   elementImageReferenceId,
   fillToCss,
   lineToCss,
+  officeFontFamily,
   type OfficeTextStyleMaps,
   paragraphStyle,
   type ParagraphView,
@@ -225,7 +227,7 @@ function WordSectionContent({
   if (!wordElementsHaveRenderableContent(elements)) return null;
   const computedPageNumber =
     variant === "footer" && pageNumber > 1 && wordFooterNeedsComputedPageNumber(elements)
-      ? String(pageNumber - 1)
+      ? String(pageNumber)
       : undefined;
 
   return (
@@ -430,7 +432,7 @@ function wordIsHeadingParagraphElement(element: unknown): boolean {
 function wordPlainParagraphTextLength(element: unknown): number {
   return asArray(asRecord(element)?.paragraphs).reduce<number>((total, paragraph) => {
     const runs = asArray(asRecord(paragraph)?.runs);
-    return total + runs.reduce((runTotal, run) => runTotal + asString(asRecord(run)?.text).trim().length, 0);
+    return total + runs.reduce<number>((runTotal, run) => runTotal + asString(asRecord(run)?.text).trim().length, 0);
   }, 0);
 }
 
@@ -576,7 +578,8 @@ function wordParagraphEstimatedHeight(
   const before = Math.min(32, asNumber(style?.spaceBefore) / 20);
   const after = Math.min(28, asNumber(style?.spaceAfter) / 20);
   const headingRuleReserve = view.styleId === "Heading2" ? WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX : 0;
-  return Math.max(8, before + lines * lineHeight + after + headingRuleReserve);
+  const measuredTextHeight = wordMeasuredParagraphTextHeight(view, contentWidth, lineHeight);
+  return Math.max(8, before + (measuredTextHeight ?? lines * lineHeight) + after + headingRuleReserve);
 }
 
 function wordTableHeightContext(styleMaps: OfficeTextStyleMaps, pageLayout: WordPageLayout) {
@@ -604,7 +607,64 @@ function wordTableParagraphEstimatedHeight(
   const charsPerLine = Math.max(8, Math.floor(contentWidth / averageCharWidth));
   const explicitLines = view.runs.reduce((count, run) => count + run.text.split("\n").length - 1, 0);
   const lines = Math.max(1, Math.ceil(textLength / charsPerLine) + explicitLines);
-  return Math.max(20, lines * lineHeight + 1);
+  const measuredTextHeight = wordMeasuredParagraphTextHeight(view, contentWidth, lineHeight, fontSize);
+  return Math.max(20, (measuredTextHeight ?? lines * lineHeight) + 1);
+}
+
+function wordMeasuredParagraphTextHeight(
+  paragraph: ParagraphView,
+  contentWidth: number,
+  lineHeight: number,
+  fallbackFontSize?: number,
+): number | null {
+  if (contentWidth <= 0 || lineHeight <= 0) return null;
+  if (!wordCanUsePretextMeasurement()) return null;
+  if (paragraph.runs.some((run) => run.text.includes("\n"))) return null;
+
+  const items = wordParagraphMeasurementItems(paragraph, fallbackFontSize);
+  if (items.length === 0) return null;
+
+  try {
+    const prepared = prepareRichInline(items);
+    const { lineCount } = measureRichInlineStats(prepared, contentWidth);
+    return Math.max(1, lineCount) * lineHeight * WORD_PRETEXT_WORD_LAYOUT_COMPENSATION;
+  } catch {
+    return null;
+  }
+}
+
+function wordCanUsePretextMeasurement(): boolean {
+  return typeof OffscreenCanvas === "function";
+}
+
+function wordParagraphMeasurementItems(paragraph: ParagraphView, fallbackFontSize?: number): RichInlineItem[] {
+  const items: RichInlineItem[] = [];
+  for (const run of paragraph.runs) {
+    if (run.text.length === 0) continue;
+    items.push({
+      font: wordRunMeasurementFont(run, paragraph, fallbackFontSize),
+      text: run.text,
+    });
+  }
+  return items;
+}
+
+function wordRunMeasurementFont(run: TextRunView, paragraph: ParagraphView, fallbackFontSize?: number): string {
+  const paragraphIsTitle = paragraph.styleId === "Title";
+  const paragraphIsHeading = /^Heading/i.test(paragraph.styleId);
+  const fontSize = run.style?.fontSize != null
+    ? wordCssFontSize(run.style.fontSize, fallbackFontSize ?? 14)
+    : fallbackFontSize ?? wordCssFontSize(paragraph.style?.fontSize, paragraphIsTitle ? 26 : paragraphIsHeading ? 18 : 14);
+  const fontStyle = run.style?.italic === true
+    ? "italic"
+    : paragraph.style?.italic === true
+      ? "italic"
+      : "normal";
+  const fontWeight = run.style?.bold === true || paragraph.style?.bold === true || paragraphIsTitle || paragraphIsHeading
+    ? 700
+    : 400;
+  const typeface = asString(run.style?.typeface) || asString(paragraph.style?.typeface);
+  return `${fontStyle} ${fontWeight} ${fontSize}px ${officeFontFamily(typeface)}`;
 }
 
 function wordEstimatedLineHeight(style: RecordValue | null, fontSize: number): number {
@@ -995,12 +1055,18 @@ export function wordImageStyle(
     backgroundImage: `url("${imageSrc}")`,
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
-    backgroundSize: "contain",
+    backgroundSize: wordImageBackgroundSize(element, box, pageLayout),
+    borderRadius: wordImageBorderRadius(element, pageLayout),
+    boxShadow: wordImageBoxShadow(element, pageLayout),
     display: "block",
     height: box.hasDecodedSize ? undefined : box.height,
     left: pageOverlay && pageLayout ? wordPageAnchoredLeft(element, pageLayout, fullBleed ? pageLayout.widthPx : box.width) : undefined,
-    marginLeft: pageOverlay ? undefined : fullBleed ? "calc(-1 * var(--word-page-padding-left, 0px))" : box.marginLeft,
-    marginTop: pageOverlay ? undefined : topBleed ? "calc(-1 * var(--word-page-padding-top, 0px))" : box.marginTop,
+    marginLeft: pageOverlay
+      ? undefined
+      : fullBleed
+        ? "calc(-1 * var(--word-page-padding-left, 0px))"
+        : wordImageFlowMarginLeft(element, box, pageLayout),
+    marginTop: pageOverlay ? undefined : topBleed ? "calc(-1 * var(--word-page-padding-top, 0px) - 16px)" : box.marginTop,
     maxHeight: box.hasDecodedSize ? undefined : 360,
     maxWidth: fullBleed ? "none" : "100%",
     position: pageOverlay ? "absolute" : undefined,
@@ -1012,6 +1078,35 @@ export function wordImageStyle(
         : "100%",
     zIndex: pageOverlay ? 2 : undefined,
   };
+}
+
+function wordImageBackgroundSize(
+  element: RecordValue,
+  box: WordElementBox,
+  pageLayout?: WordPageLayout,
+): CSSProperties["backgroundSize"] {
+  if (pageLayout && wordIsTopCircularPortraitImage(element, pageLayout, box)) return "cover";
+  return "contain";
+}
+
+function wordImageBorderRadius(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties["borderRadius"] {
+  if (!pageLayout) return undefined;
+  return wordIsTopCircularPortraitImage(element, pageLayout) ? "50%" : undefined;
+}
+
+function wordImageBoxShadow(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties["boxShadow"] {
+  if (!pageLayout || !wordIsTopCircularPortraitImage(element, pageLayout)) return undefined;
+  return "inset 0 0 0 3px #ffffff, 0 0 0 2px rgba(71, 85, 105, 0.75)";
+}
+
+function wordImageFlowMarginLeft(
+  element: RecordValue,
+  box: WordElementBox,
+  pageLayout?: WordPageLayout,
+): number | undefined {
+  if (!pageLayout || box.marginLeft == null) return box.marginLeft;
+  if (!wordIsPageMarginAlignedTopImage(element, pageLayout)) return box.marginLeft;
+  return Math.max(0, box.marginLeft - pageLayout.paddingLeft);
 }
 
 export function wordChartStyle(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties {
@@ -1563,23 +1658,53 @@ function wordIsTopPageAnchoredSmallImage(element: RecordValue, pageLayout: WordP
     rawHeight > 0 &&
     rawWidth <= pageLayout.widthPx * 0.28 &&
     rawHeight <= pageLayout.heightPx * 0.12 &&
-    xPx >= pageLayout.paddingLeft * 2 &&
+    xPx >= pageLayout.paddingLeft * 0.75 &&
     yPx >= pageLayout.paddingTop * 0.8 &&
     yPx <= pageLayout.heightPx * 0.2;
+}
+
+function wordIsPageMarginAlignedTopImage(element: RecordValue, pageLayout: WordPageLayout): boolean {
+  if (wordIsFullBleedElement(element, pageLayout)) return false;
+  const box = asRecord(element.bbox);
+  const rawWidth = emuToPx(box?.widthEmu);
+  const rawHeight = emuToPx(box?.heightEmu);
+  const xPx = emuToPx(box?.xEmu);
+  const yPx = emuToPx(box?.yEmu);
+  return rawWidth > 0 &&
+    rawHeight > 0 &&
+    rawWidth <= pageLayout.widthPx * 0.35 &&
+    rawHeight <= pageLayout.heightPx * 0.16 &&
+    xPx >= pageLayout.paddingLeft * 0.75 &&
+    xPx <= pageLayout.paddingLeft * 1.3 &&
+    yPx <= pageLayout.heightPx * 0.32;
+}
+
+function wordIsTopCircularPortraitImage(
+  element: RecordValue,
+  pageLayout: WordPageLayout,
+  elementBox?: WordElementBox,
+): boolean {
+  if (!wordIsPageMarginAlignedTopImage(element, pageLayout)) return false;
+  const box = elementBox ?? wordElementBox(element, wordPageContentWidthPx(pageLayout), 280, wordPageContentWidthPx(pageLayout));
+  const aspectRatio = box.rawWidth > 0 && box.rawHeight > 0 ? box.rawWidth / box.rawHeight : box.width / box.height;
+  return box.width >= 72 &&
+    box.width <= 180 &&
+    box.height >= 72 &&
+    box.height <= 180 &&
+    aspectRatio >= 0.85 &&
+    aspectRatio <= 1.15;
 }
 
 function wordPageAnchoredLeft(element: RecordValue, pageLayout: WordPageLayout, width: number): number {
   const xPx = emuToPx(asRecord(element.bbox)?.xEmu);
   if (wordIsFullBleedElement(element, pageLayout)) return 0;
-  if (wordIsTopPageAnchoredSmallImage(element, pageLayout)) {
-    return Math.max(0, Math.min(pageLayout.widthPx - width, xPx + pageLayout.paddingLeft));
-  }
   const maxLeft = pageLayout.widthPx - width;
   return Math.max(0, Math.min(maxLeft, xPx));
 }
 
 function wordPageAnchoredTop(element: RecordValue, pageLayout: WordPageLayout, height: number): number {
   const yPx = emuToPx(asRecord(element.bbox)?.yEmu);
+  if (wordIsFullBleedElement(element, pageLayout) && yPx <= pageLayout.paddingTop) return 0;
   const maxTop = pageLayout.heightPx - height;
   return Math.max(0, Math.min(maxTop, yPx));
 }
@@ -1770,6 +1895,7 @@ const wordHeading2RuleStyle: CSSProperties = {
 };
 
 const WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX = 28;
+const WORD_PRETEXT_WORD_LAYOUT_COMPENSATION = 1.02;
 
 const wordTabLeaderStyle: CSSProperties = {
   borderBottom: "1px dotted currentColor",
