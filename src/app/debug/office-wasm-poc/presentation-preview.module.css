@@ -60,6 +60,14 @@
   outline-offset: 2px;
 }
 
+.thumbnailButton[data-active="true"]:hover {
+  background: transparent;
+}
+
+.thumbnailButton[data-active="true"]:focus-visible {
+  outline: none;
+}
+
 .thumbnailLabel {
   color: #334155;
   flex: 0 0 22px;
@@ -91,7 +99,7 @@
 .thumbnailButton[data-active="true"] {
   background: transparent;
   border-color: #60a5fa;
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.28);
+  box-shadow: none;
 }
 
 .mainPanel {

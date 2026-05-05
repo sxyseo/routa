@@ -487,7 +487,9 @@ export function OfficeWasmPocPageClient() {
   );
 
   const preview =
-    artifact == null ? "" : truncateJson(JSON.stringify(artifact.rawProto ?? artifact.proto, null, 2));
+    artifact == null || artifact.kind === "presentation"
+      ? ""
+      : truncateJson(JSON.stringify(artifact.rawProto ?? artifact.proto, null, 2));
   const labels: PreviewLabels = {
     closeSlideshow: t.debug.officeWasmPocCloseSlideshow,
     nextSlide: t.debug.officeWasmPocNextSlide,
