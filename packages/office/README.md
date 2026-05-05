@@ -26,6 +26,32 @@ const protoBytes = await extractDocxProto(docxBytes);
 console.log(await getReaderVersion()); // "routa-office-wasm-reader/0.1.0"
 ```
 
+## CLI
+
+Generate a Cursor Canvas from a PPTX:
+
+```bash
+npx @autodev/office canvas ./deck.pptx --output ./deck.canvas.tsx
+```
+
+Write directly into the Cursor project for the current working directory:
+
+```bash
+npx @autodev/office canvas ./deck.pptx --cursor
+```
+
+Or target a specific Cursor project:
+
+```bash
+npx @autodev/office canvas ./deck.pptx \
+  --cursor-project ~/.cursor/projects/Users-phodal-ai-routa-js
+```
+
+The CLI uses the package's embedded WASM reader and emits a self-contained
+`.canvas.tsx` file with slide navigation and slideshow mode.
+When `sharp` is available, the CLI compresses embedded slide media and renders
+small JPEG thumbnails to keep the generated Canvas size manageable.
+
 ## API
 
 ### `extractDocxProto(bytes, ignoreErrors?): Promise<Uint8Array>`
@@ -52,10 +78,16 @@ Clear the cached reader instance. Useful in tests.
 
 Return the version string embedded in the WASM assembly.
 
+### `renderPptxCursorCanvasSource(protoBytes, options): Promise<string>`
+
+Available from `@autodev/office/cursor-canvas`. Convert PPTX protobuf bytes
+from `extractPptxProto` into Cursor Canvas TSX source.
+
 ## Notes
 
 - The WASM runtime initialises once per Node.js process (Node module cache).
 - Package size is ~10 MB owing to the embedded .wasm assemblies.
+- Cursor Canvas generation currently supports PPTX.
 - `MONO_WASM: Error loading symbol file` is a harmless diagnostic message from the Mono runtime.
 
 ## Building from source

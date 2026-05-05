@@ -19,14 +19,24 @@
     "docx",
     "pptx",
     "xlsx",
+    "cursor",
+    "canvas",
     "wasm",
     "dotnet",
     "protobuf"
   ],
+  "bin": {
+    "autodev-office": "./dist/cli.js",
+    "office-canvas": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./cursor-canvas": {
+      "import": "./dist/cursor-canvas.js",
+      "types": "./dist/cursor-canvas.d.ts"
     }
   },
   "files": [
@@ -35,8 +45,11 @@
     "README.md"
   ],
   "scripts": {
-    "build:ts": "tsc -p tsconfig.json",
+    "build:ts": "tsc -p tsconfig.json && chmod +x dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "typescript": "5.9.3"

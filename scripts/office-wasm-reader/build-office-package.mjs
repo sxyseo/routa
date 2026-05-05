@@ -14,7 +14,7 @@
  *   DOTNET   Override the dotnet executable path.
  */
 
-import { cpSync, existsSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -130,6 +130,7 @@ const tscBin = path.join(
   "node_modules/.bin/tsc",
 );
 run(tscBin, ["-p", tsconfigPath]);
+chmodSync(path.join(repoRoot, "packages/office/dist/cli.js"), 0o755);
 
 console.log("\n✓ @autodev/office package built successfully.");
 console.log(`  WASM bundle : ${path.relative(repoRoot, packageWasmDir)}`);
