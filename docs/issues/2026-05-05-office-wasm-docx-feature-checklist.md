@@ -70,11 +70,12 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 - [x] Run emphasis marks (Word-specific)
 - [x] Hyperlink rendering with underline/color
 - [x] Paragraph mark styling (affects text appearance)
+- [x] Ordinary tab characters with Word-like tab width
 
 **Remaining**:
 - [ ] Shading/fill (paragraph background color)
 - [ ] Borders (paragraph top/bottom/left/right)
-- [ ] Tabs and tab stops
+- [ ] Decoded tab stops (right/center/decimal alignment and custom positions)
 - [ ] Outlines/outline levels (for TOC)
 
 ---
@@ -152,19 +153,18 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 
 ### 6. Chart References
 
-**Status**: 50% complete
+**Status**: 70% complete
 
 - [x] Chart reference identification (chart part ID)
 - [x] Chart anchors and sizing
-- [ ] Chart payload extraction from ChartPart
-- [ ] Chart rendering (types, series, legend)
+- [x] Basic chart payload extraction from ChartPart cached series
+- [x] Basic chart rendering for common chart types, series, title, and legend presence
 - [ ] Axis titles and gridlines
-- [ ] Chart title
 - [ ] Data labels
 - [ ] Trendlines and error bars
 
 **Remaining**:
-- Richer Word-specific axis/title/legend/plot-area styling
+- Richer Word-specific axis/title/legend/plot-area styling and gridlines
 - Multi-axis charts
 - Embedded chart workbook/cache edge cases
 

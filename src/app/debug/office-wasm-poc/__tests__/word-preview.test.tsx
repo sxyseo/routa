@@ -527,6 +527,7 @@ describe("WordPreview", () => {
     const paragraph = container.querySelector("p");
     expect(paragraph?.textContent).toBe("Label\tValue");
     expect(paragraph?.style.display).toBe("");
+    expect(paragraph?.style.tabSize).toBe("4");
     expect(container.querySelector('[style*="dotted"]')).toBeNull();
   });
 

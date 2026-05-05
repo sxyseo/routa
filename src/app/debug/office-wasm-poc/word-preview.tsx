@@ -1897,6 +1897,7 @@ function wordParagraphStyle(paragraph: ParagraphView): CSSProperties {
     ...(isTocTitle ? wordTableOfContentsTitleStyle : {}),
     fontSize,
     lineHeight: wordParagraphCssLineHeight(paragraph, fontSize),
+    ...(wordParagraphHasTab(paragraph) ? wordParagraphTabStopStyle : {}),
   };
 }
 
@@ -1945,11 +1946,16 @@ const wordHeading2RuleStyle: CSSProperties = {
 
 const WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX = 28;
 const WORD_PRETEXT_WORD_LAYOUT_COMPENSATION = 1.02;
+const WORD_PARAGRAPH_TAB_SIZE = 4;
 
 const wordTableOfContentsTitleStyle: CSSProperties = {
   fontFamily: '"Bitter", Georgia, "Times New Roman", serif',
   fontWeight: 700,
   marginBottom: 28,
+};
+
+const wordParagraphTabStopStyle: CSSProperties = {
+  tabSize: WORD_PARAGRAPH_TAB_SIZE,
 };
 
 const wordTabLeaderStyle: CSSProperties = {
