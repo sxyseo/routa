@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+import React from "react";
 import { describe, expect, it } from "vitest";
 import { compileCanvasTsx } from "../compiler";
 
@@ -177,6 +178,44 @@ export default function Canvas(): JSX.Element {
 }
 `;
     const result = compileCanvasTsx(source);
+    expect(result.ok).toBe(true);
+  });
+
+  it("can compile trusted first-party canvases with host-provided modules", () => {
+    const source = `
+import { Stack } from "routa/canvas";
+import { OfficePreview } from "routa/office-preview";
+
+export default function Canvas() {
+  return <Stack><OfficePreview title="Demo" /></Stack>;
+}
+`;
+    const result = compileCanvasTsx(source, {
+      modules: {
+        "routa/office-preview": {
+          OfficePreview({ title }: { title: string }) {
+            return React.createElement("div", null, title);
+          },
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not normalize explicit host modules to the Canvas SDK", () => {
+    const source = `
+import { Widget } from "@/client/canvas-sdk/custom-office-preview";
+export default function Canvas() { return <Widget />; }
+`;
+    const result = compileCanvasTsx(source, {
+      modules: {
+        "@/client/canvas-sdk/custom-office-preview": {
+          Widget() {
+            return React.createElement("div", null, "Office");
+          },
+        },
+      },
+    });
     expect(result.ok).toBe(true);
   });
 });

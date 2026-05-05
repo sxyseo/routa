@@ -9,4 +9,5 @@ export {
   type CompileResult,
   type CompileError,
   type CompileOutcome,
+  type CompileCanvasTsxOptions,
 } from "./compiler";

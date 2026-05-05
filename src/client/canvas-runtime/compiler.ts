@@ -34,6 +34,17 @@ export interface CompileError {
 
 export type CompileOutcome = CompileResult | CompileError;
 
+export type CompileCanvasTsxOptions = {
+  /**
+   * Additional host-provided modules for trusted first-party preview surfaces.
+   *
+   * This is intentionally opt-in. Agent/Cursor canvas artifacts should continue
+   * to use the default whitelist only; debug views may pass first-party renderer
+   * modules such as an Office preview facade.
+   */
+  modules?: Record<string, unknown>;
+};
+
 // ---------------------------------------------------------------------------
 // Allowed module whitelist
 // ---------------------------------------------------------------------------
@@ -49,7 +60,14 @@ const MODULE_WHITELIST: Record<string, unknown> = {
   "@canvas-sdk": CanvasSDK,
 };
 
-function normalizeCanvasModuleSpecifier(specifier: string): string {
+function normalizeCanvasModuleSpecifier(
+  specifier: string,
+  extraModules?: Record<string, unknown>,
+): string {
+  if (extraModules && specifier in extraModules) {
+    return specifier;
+  }
+
   if (specifier.startsWith("routa/canvas/")) {
     return "routa/canvas";
   }
@@ -98,7 +116,10 @@ function normalizeCanvasModuleSpecifier(specifier: string): string {
  * }
  * ```
  */
-export function compileCanvasTsx(source: string): CompileOutcome {
+export function compileCanvasTsx(
+  source: string,
+  options: CompileCanvasTsxOptions = {},
+): CompileOutcome {
   // Step 1: Transpile TSX → JS (CJS-style with require/exports)
   let jsCode: string;
   try {
@@ -119,13 +140,20 @@ export function compileCanvasTsx(source: string): CompileOutcome {
   try {
     const moduleExports: Record<string, unknown> = {};
     const fakeModule = { exports: moduleExports };
+    const moduleWhitelist = {
+      ...MODULE_WHITELIST,
+      ...(options.modules ?? {}),
+    };
 
     const constrainedRequire = (specifier: string): unknown => {
-      const normalizedSpecifier = normalizeCanvasModuleSpecifier(specifier);
-      const resolved = MODULE_WHITELIST[normalizedSpecifier];
+      const normalizedSpecifier = normalizeCanvasModuleSpecifier(
+        specifier,
+        options.modules,
+      );
+      const resolved = moduleWhitelist[normalizedSpecifier];
       if (resolved === undefined) {
         throw new Error(
-          `Import "${specifier}" is not allowed. Canvas code may only import from: ${Object.keys(MODULE_WHITELIST).join(", ")}`,
+          `Import "${specifier}" is not allowed. Canvas code may only import from: ${Object.keys(moduleWhitelist).join(", ")}`,
         );
       }
       return resolved;

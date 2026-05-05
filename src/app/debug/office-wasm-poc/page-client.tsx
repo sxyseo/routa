@@ -1,8 +1,9 @@
 "use client";
 
 import { FileText } from "lucide-react";
-import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { compileCanvasTsx } from "@/client/canvas-runtime";
 import { resolveApiPath } from "@/client/config/backend";
 import type { OfficeWasmArtifactKind } from "@/client/office-document-viewer/protocol/office-artifact-types";
 import {
@@ -366,7 +367,7 @@ function truncateJson(rawJson: string): string {
   return `${rawJson.slice(0, maxLength)}\n... (truncated)`;
 }
 
-function OfficePreview({
+function OfficeDirectPreview({
   artifact,
   labels,
 }: {
@@ -382,6 +383,39 @@ function OfficePreview({
   }
 
   return <WordPreview labels={labels} proto={artifact.proto} />;
+}
+
+const OFFICE_PREVIEW_CANVAS_SOURCE = `
+import { OfficePreview as RenderOfficePreview } from "routa/office-preview";
+
+export default function OfficeCanvasPreview() {
+  return <RenderOfficePreview />;
+}
+`;
+
+function OfficePreview({
+  artifact,
+  labels,
+}: {
+  artifact: ParsedArtifact;
+  labels: PreviewLabels;
+}) {
+  const compiled = useMemo(() => compileCanvasTsx(OFFICE_PREVIEW_CANVAS_SOURCE, {
+    modules: {
+      "routa/office-preview": {
+        OfficePreview() {
+          return <OfficeDirectPreview artifact={artifact} labels={labels} />;
+        },
+      },
+    },
+  }), [artifact, labels]);
+
+  if (compiled.ok) {
+    const CompiledOfficePreview = compiled.Component;
+    return <CompiledOfficePreview />;
+  }
+
+  return <OfficeDirectPreview artifact={artifact} labels={labels} />;
 }
 
 function statusLabel(t: ReturnType<typeof useTranslation>["t"], status: ParseStage): string {
@@ -498,7 +532,7 @@ export function OfficeWasmPocPageClient() {
     artifact == null || artifact.kind === "presentation"
       ? ""
       : truncateJson(JSON.stringify(artifact.rawProto ?? artifact.proto, null, 2));
-  const labels: PreviewLabels = {
+  const labels: PreviewLabels = useMemo(() => ({
     closeSlideshow: t.debug.officeWasmPocCloseSlideshow,
     nextSlide: t.debug.officeWasmPocNextSlide,
     playSlideshow: t.debug.officeWasmPocPlaySlideshow,
@@ -513,7 +547,7 @@ export function OfficeWasmPocPageClient() {
     showingFirstRows: t.debug.officeWasmPocShowingFirstRows,
     shapes: t.debug.officeWasmPocShapes,
     textRuns: t.debug.officeWasmPocTextRuns,
-  };
+  }), [t.debug]);
   const showDebugDetails = artifact?.kind !== "presentation";
   const isPresentationArtifact = artifact?.kind === "presentation";
 
