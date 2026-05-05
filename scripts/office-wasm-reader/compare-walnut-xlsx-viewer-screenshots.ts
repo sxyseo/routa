@@ -8,16 +8,33 @@ import sharp from "sharp";
 
 type ReaderMode = "routa" | "walnut";
 
+type ViewportSampleSpec = {
+  leftRatio: number;
+  name: string;
+  topRatio: number;
+};
+
+type ViewportSamplePosition = {
+  left: number;
+  name: string;
+  top: number;
+};
+
 type SheetScreenshot = {
   file: string;
   index: number;
   name: string;
+  sample: string;
+  scrollLeft: number;
+  scrollTop: number;
   stats: {
     canvasCount: number;
     previewHeight: number;
     previewWidth: number;
     viewportHeight: number;
+    viewportScrollLeft: number;
     viewportScrollHeight: number;
+    viewportScrollTop: number;
     viewportScrollWidth: number;
     viewportWidth: number;
   };
@@ -57,6 +74,8 @@ const baseUrl = stringArg("--base-url") ?? `http://127.0.0.1:${port}/debug/offic
 let activeBaseUrl = baseUrl;
 const outputDir = path.resolve(stringArg("--output-dir") ?? "/tmp/routa-office-wasm-xlsx-viewer-screenshots");
 const thresholdPercent = numberArg("--threshold-percent") ?? 0.5;
+const scrollSampleCount = Math.max(1, Math.floor(numberArg("--scroll-samples") ?? 3));
+const scrollSamples = viewerScrollSampleSpecs(scrollSampleCount);
 const fixturePaths = positionalArgs().map((arg) => path.resolve(repoRoot, arg));
 
 if (fixturePaths.length === 0) {
@@ -102,15 +121,16 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Xl
     captureReaderSheets(browser, fixturePath, fixtureLabel, "walnut"),
   ]);
   const sheets: SheetComparison[] = [];
+  const walnutBySheetSample = new Map(walnut.map((sheet) => [sheetSampleKey(sheet), sheet]));
 
   for (const routaSheet of routa) {
-    const walnutSheet = walnut.find((sheet) => sheet.name === routaSheet.name);
+    const walnutSheet = walnutBySheetSample.get(sheetSampleKey(routaSheet));
     if (!walnutSheet) {
-      throw new Error(`Walnut viewer did not render sheet ${routaSheet.name} for ${fixturePath}`);
+      throw new Error(`Walnut viewer did not render sheet ${routaSheet.name}@${routaSheet.sample} for ${fixturePath}`);
     }
     sheets.push({
       comparison: await compareScreenshots(routaSheet.file, walnutSheet.file),
-      name: routaSheet.name,
+      name: sheetSampleLabel(routaSheet),
       routa: routaSheet,
       walnut: walnutSheet,
     });
@@ -145,19 +165,27 @@ async function captureReaderSheets(
       await page.locator('[data-testid="spreadsheet-preview"] button').nth(tab.index).click();
       await page.waitForTimeout(300);
       const preview = page.getByTestId("spreadsheet-preview");
-      const file = path.join(
-        outputDir,
-        fixtureLabel,
-        `${reader}-${String(tab.index + 1).padStart(2, "0")}-${safeFileLabel(tab.name)}.png`,
-      );
-      mkdirSync(path.dirname(file), { recursive: true });
-      await preview.screenshot({ path: file });
-      screenshots.push({
-        file,
-        index: tab.index,
-        name: tab.name,
-        stats: await spreadsheetPreviewStats(page),
-      });
+      const samplePositions = await spreadsheetViewportSamplePositions(page);
+
+      for (const sample of samplePositions) {
+        await scrollSpreadsheetViewport(page, sample);
+        const file = path.join(
+          outputDir,
+          fixtureLabel,
+          `${reader}-${String(tab.index + 1).padStart(2, "0")}-${safeFileLabel(tab.name)}-${sample.name}.png`,
+        );
+        mkdirSync(path.dirname(file), { recursive: true });
+        await preview.screenshot({ path: file });
+        screenshots.push({
+          file,
+          index: tab.index,
+          name: tab.name,
+          sample: sample.name,
+          scrollLeft: sample.left,
+          scrollTop: sample.top,
+          stats: await spreadsheetPreviewStats(page),
+        });
+      }
     }
 
     return screenshots;
@@ -189,11 +217,36 @@ async function spreadsheetPreviewStats(page: Page): Promise<SheetScreenshot["sta
       previewHeight: Math.round(previewRect?.height ?? 0),
       previewWidth: Math.round(previewRect?.width ?? 0),
       viewportHeight: viewport?.clientHeight ?? 0,
+      viewportScrollLeft: viewport?.scrollLeft ?? 0,
       viewportScrollHeight: viewport?.scrollHeight ?? 0,
+      viewportScrollTop: viewport?.scrollTop ?? 0,
       viewportScrollWidth: viewport?.scrollWidth ?? 0,
       viewportWidth: viewport?.clientWidth ?? 0,
     };
   });
+}
+
+async function spreadsheetViewportSamplePositions(page: Page): Promise<ViewportSamplePosition[]> {
+  const stats = await spreadsheetPreviewStats(page);
+  const maxLeft = Math.max(0, stats.viewportScrollWidth - stats.viewportWidth);
+  const maxTop = Math.max(0, stats.viewportScrollHeight - stats.viewportHeight);
+  return scrollSamples.map((sample) => ({
+    left: Math.round(maxLeft * sample.leftRatio),
+    name: sample.name,
+    top: Math.round(maxTop * sample.topRatio),
+  }));
+}
+
+async function scrollSpreadsheetViewport(page: Page, sample: ViewportSamplePosition): Promise<void> {
+  await page.evaluate(({ left, top }) => {
+    const preview = document.querySelector('[data-testid="spreadsheet-preview"]');
+    const viewport = preview?.querySelector<HTMLElement>('div[tabindex="0"]');
+    if (!viewport) return;
+    viewport.scrollLeft = left;
+    viewport.scrollTop = top;
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+  }, sample);
+  await page.waitForTimeout(350);
 }
 
 async function compareScreenshots(actualPath: string, expectedPath: string): Promise<ScreenshotComparison> {
@@ -317,7 +370,7 @@ function stringArg(name: string): string | null {
 
 function positionalArgs(): string[] {
   const positional: string[] = [];
-  const valueOptions = new Set(["--base-url", "--output-dir", "--port", "--threshold-percent"]);
+  const valueOptions = new Set(["--base-url", "--output-dir", "--port", "--scroll-samples", "--threshold-percent"]);
   for (let index = 2; index < process.argv.length; index += 1) {
     const arg = process.argv[index];
     if (valueOptions.has(arg)) {
@@ -332,6 +385,25 @@ function positionalArgs(): string[] {
 
 function roundPercent(ratio: number): number {
   return Math.round(ratio * 100_000) / 1_000;
+}
+
+function viewerScrollSampleSpecs(count: number): ViewportSampleSpec[] {
+  const samples: ViewportSampleSpec[] = [
+    { leftRatio: 0, name: "top-left", topRatio: 0 },
+    { leftRatio: 0.5, name: "middle", topRatio: 0.5 },
+    { leftRatio: 1, name: "bottom-right", topRatio: 1 },
+    { leftRatio: 1, name: "top-right", topRatio: 0 },
+    { leftRatio: 0, name: "bottom-left", topRatio: 1 },
+  ];
+  return samples.slice(0, Math.min(count, samples.length));
+}
+
+function sheetSampleKey(sheet: Pick<SheetScreenshot, "name" | "sample">): string {
+  return `${sheet.name}\0${sheet.sample}`;
+}
+
+function sheetSampleLabel(sheet: Pick<SheetScreenshot, "name" | "sample">): string {
+  return `${sheet.name}@${sheet.sample}`;
 }
 
 main().catch((error: unknown) => {

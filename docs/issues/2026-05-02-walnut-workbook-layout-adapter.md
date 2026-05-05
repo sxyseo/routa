@@ -168,6 +168,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
 - Added a lightweight edit-mode overlay for the debug workbook preview: double-click or F2 opens an input over the selected cell, Enter commits the preview override, Escape cancels, and the formula bar reads the same edited value.
 - Re-ran the committed XLSX decoded protocol suite plus the validation-only `/Users/phodal/Downloads/excel` production corpus on 2026-05-05; all 12 committed fixtures and all 21 production workbooks still report Walnut-equivalent decoded Workbook protocol.
 - Added `compare:office-wasm-reader:xlsx-viewer`, a Playwright screenshot comparer that opens each worksheet in Routa and Walnut reader modes, captures per-sheet preview screenshots, and checks image diff against a small threshold. On `/Users/phodal/Downloads/complex_excel_renderer_test.xlsx`, all 9 worksheets are under `0.11%` screenshot diff at `2048x1152`; evidence is written under `/tmp/routa-xlsx-viewer-download`.
+- Expanded the XLSX viewer screenshot comparer to sample `top-left`, `middle`, and `bottom-right` viewport scroll positions for every worksheet, so frozen panes, virtualization, resize offsets, and large-sheet regions are covered by the visual contract instead of only the first viewport. On `/Users/phodal/Downloads/complex_excel_renderer_test.xlsx`, all 27 sheet samples pass under the `0.5%` threshold; worst sample is `06_Validation_Form@top-left` at `0.109%`, with evidence under `/tmp/routa-xlsx-viewer-scroll-download`.
 
 ## Residual XLSX Follow-Up Backlog
 
