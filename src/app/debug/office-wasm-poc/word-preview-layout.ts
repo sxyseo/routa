@@ -306,8 +306,11 @@ function wordImageBorderRadius(element: RecordValue, pageLayout?: WordPageLayout
 }
 
 function wordImageBoxShadow(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties["boxShadow"] {
-  if (!pageLayout || !wordIsTopCircularPortraitImage(element, pageLayout)) return undefined;
-  return "inset 0 0 0 3px #ffffff, 0 0 0 2px rgba(71, 85, 105, 0.75)";
+  const protocolShadow = wordImageProtocolShadow(element);
+  const portraitShadow = pageLayout && wordIsTopCircularPortraitImage(element, pageLayout)
+    ? "inset 0 0 0 3px #ffffff, 0 0 0 2px rgba(71, 85, 105, 0.75)"
+    : undefined;
+  return [portraitShadow, protocolShadow].filter(Boolean).join(", ") || undefined;
 }
 
 function wordImageLineStyle(element: RecordValue): Pick<CSSProperties, "borderColor" | "borderStyle" | "borderWidth"> {
@@ -321,6 +324,20 @@ function wordImageLineStyle(element: RecordValue): Pick<CSSProperties, "borderCo
     borderStyle: "solid",
     borderWidth: border.width,
   };
+}
+
+function wordImageProtocolShadow(element: RecordValue): string | undefined {
+  for (const effect of asArray(element.effects)) {
+    const shadow = asRecord(asRecord(effect)?.shadow);
+    const color = colorToCss(shadow?.color);
+    if (!shadow || !color) continue;
+
+    const distance = emuToPx(shadow.distance);
+    const direction = (asNumber(shadow.direction) / 60_000 / 180) * Math.PI;
+    return `${formatCssPx(Math.cos(direction) * distance)} ${formatCssPx(Math.sin(direction) * distance)} ${formatCssPx(emuToPx(shadow.blurRadius))} ${color}`;
+  }
+
+  return undefined;
 }
 
 function wordImageZIndex(element: RecordValue, pageOverlay: boolean): CSSProperties["zIndex"] {
@@ -554,6 +571,11 @@ function wordPageMarginPx(value: unknown, fallback: number): number {
 
 function emuToPx(value: unknown): number {
   return asNumber(value) / 9_525;
+}
+
+function formatCssPx(value: number): string {
+  const rounded = Math.abs(value) < 0.01 ? 0 : Math.round(value * 100) / 100;
+  return `${rounded}px`;
 }
 
 function hexCssToRgb(value: string): [number, number, number] | null {

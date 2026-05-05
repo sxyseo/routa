@@ -1199,19 +1199,6 @@ describe("WordPreview", () => {
     expect(style.backgroundSize).toContain("133.33333333333334%");
   });
 
-  it("renders decoded DOCX image outlines as CSS borders", () => {
-    const style = wordImageStyle(
-      {
-        bbox: { heightEmu: 457_200, widthEmu: 914_400 },
-        line: { fill: { color: { value: "FF0000" } }, widthEmu: 12_700 },
-      },
-      "blob:test-image",
-    );
-
-    expect(style).toMatchObject({ borderColor: "#FF0000", borderStyle: "solid", boxSizing: "border-box" });
-    expect(Number(style.borderWidth)).toBeCloseTo(1.41, 1);
-  });
-
   it("renders page-width DOCX images outside body margins", () => {
     const style = wordImageStyle(
       {

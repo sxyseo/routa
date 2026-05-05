@@ -30,6 +30,7 @@ internal static class DocxDocumentProtoReader
     private const int ColorTypeRgb = 1;
     private const int FillTypeSolid = 1;
     private const int FillTypePicture = 4;
+    private const int EffectTypeShadow = 1;
     private const int LineStyleSolid = 1;
     private const int LineStyleDashed = 2;
     private const int LineStyleDotted = 3;
@@ -538,10 +539,44 @@ internal static class DocxDocumentProtoReader
                     WriteMessage(output, 30, imageLine);
                 }
 
+                foreach (var effect in ExtractDrawingEffects(drawing))
+                {
+                    WriteMessage(output, 15, effect);
+                }
+
                 WriteInt32(output, 11, ElementTypeImageReference);
                 WriteString(output, 27, $"element-{image.Id["image-".Length..]}");
             });
         }
+    }
+
+    private static IEnumerable<byte[]> ExtractDrawingEffects(W.Drawing drawing)
+    {
+        foreach (var shadow in drawing.Descendants<A.OuterShadow>())
+        {
+            yield return WriteShadowEffect(shadow);
+        }
+    }
+
+    private static byte[] WriteShadowEffect(A.OuterShadow shadow)
+    {
+        return Message(output =>
+        {
+            WriteInt32(output, 1, EffectTypeShadow);
+            WriteMessage(output, 2, Message(shadowOutput =>
+            {
+                if (DrawingRgbColor(shadow) is { } color)
+                {
+                    WriteMessage(shadowOutput, 2, WriteColor(color.Value, color.Alpha));
+                }
+
+                WriteInt32(shadowOutput, 3, ToInt32(shadow.BlurRadius));
+                WriteInt32(shadowOutput, 4, ToInt32(shadow.Distance));
+                WriteInt32(shadowOutput, 5, shadow.Direction?.Value);
+                WriteString(shadowOutput, 6, shadow.Alignment?.Value.ToString());
+                WriteBoolValue(shadowOutput, 7, shadow.RotateWithShape?.Value);
+            }));
+        });
     }
 
     private static byte[]? WriteImageLine(W.Drawing drawing)
@@ -553,7 +588,7 @@ internal static class DocxDocumentProtoReader
         }
 
         var fill = line.GetFirstChild<A.SolidFill>();
-        var color = fill is null ? null : DrawingRgbColor(fill);
+        var color = fill is null ? null : DrawingRgbColor(fill)?.Value;
         var width = StrictIntFromString(RawAttributeValue(line, "w", namespaceUri: null));
         if (color is null && width is null)
         {
@@ -583,11 +618,16 @@ internal static class DocxDocumentProtoReader
         };
     }
 
-    private static string? DrawingRgbColor(OpenXmlElement element)
+    private static (string Value, int? Alpha)? DrawingRgbColor(OpenXmlElement element)
     {
-        return element.Descendants<A.RgbColorModelHex>()
-            .Select(color => color.Val?.Value)
-            .FirstOrDefault(IsProtocolColor);
+        var color = element.Descendants<A.RgbColorModelHex>()
+            .FirstOrDefault(color => IsProtocolColor(color.Val?.Value));
+        if (color?.Val?.Value is null)
+        {
+            return null;
+        }
+
+        return (color.Val.Value, color.GetFirstChild<A.Alpha>()?.Val?.Value);
     }
 
     private static byte[]? WriteImageCropFill(W.Drawing drawing, string imageId)
@@ -2793,13 +2833,20 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static byte[] WriteColor(string color)
+    private static byte[] WriteColor(string color, int? alpha = null)
     {
         var normalizedColor = color.ToUpperInvariant();
         return Message(output =>
         {
             WriteInt32(output, 1, ColorTypeRgb);
             WriteString(output, 2, normalizedColor);
+            if (alpha is not null)
+            {
+                WriteMessage(output, 3, Message(transformOutput =>
+                {
+                    WriteInt32Always(transformOutput, 6, alpha.Value);
+                }));
+            }
         });
     }
 
@@ -3002,6 +3049,26 @@ internal static class DocxDocumentProtoReader
     private static int ToInt32(int? value, int fallback)
     {
         return value ?? fallback;
+    }
+
+    private static int? ToInt32(Int64Value? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        return (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, value.Value));
+    }
+
+    private static int? ToInt32(UInt32Value? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        return value.Value > int.MaxValue ? int.MaxValue : (int)value.Value;
     }
 
     private static long? ParseLong(string? value)

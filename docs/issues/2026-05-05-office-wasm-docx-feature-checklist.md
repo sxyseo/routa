@@ -136,8 +136,9 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 - [x] Floating wrap mode (text wrapping, behind text, in-front)
 - [x] Image crop
 - [x] Image borders/outlines
+- [x] Image shadows
 - [x] Behind-doc layer ordering
-- [ ] Image effects (shadows, rotations, reflections)
+- [ ] Image effects (rotations, reflections)
 - [ ] Group objects and nested drawings
 - [ ] Text boxes and callouts
 - [ ] Shapes (rectangles, circles, arrows, callouts)
@@ -150,8 +151,9 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 - [ ] Full overlap and z-order precedence between multiple foreground objects
 - [x] Crop coordinates and aspect-ratio preservation
 - [x] Picture outline metadata
+- [x] Picture shadow metadata
 - [x] Behind-doc layer ordering
-- [ ] Shape effect metadata (shadows, soft edges, glows)
+- [ ] Shape effect metadata (soft edges, glows)
 
 ---
 

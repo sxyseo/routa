@@ -90,6 +90,21 @@ public class DocxProtoReaderBehaviorTests
         });
     }
 
+    private static byte[] ShadowedImageDocx()
+    {
+        return BuildDocx((mainPart, body) =>
+        {
+            var imagePart = mainPart.AddImagePart(ImagePartType.Png, "rIdImage1");
+            using var imageStream = new MemoryStream(TinyPng);
+            imagePart.FeedData(imageStream);
+            body.AppendChild(new Paragraph(new Run(new Drawing(AnchoredImageDrawingXml(
+                0,
+                shapePropertiesExtra: """
+<a:effectLst><a:outerShdw blurRad="19050" dist="9525" dir="5400000"><a:srgbClr val="000000"><a:alpha val="50000"/></a:srgbClr></a:outerShdw></a:effectLst>
+""")))));
+        });
+    }
+
     private static string AnchoredImageDrawingXml(
         long verticalOffsetEmu,
         string sourceRectangle = "",
@@ -267,6 +282,15 @@ public class DocxProtoReaderBehaviorTests
         var outlined = DocxDocumentProtoReader.Read(OutlinedImageDocx());
 
         Assert.True(outlined.Length > plain.Length);
+    }
+
+    [Fact]
+    public void Read_ImageShadow_AffectsImageProto()
+    {
+        var plain = DocxDocumentProtoReader.Read(AnchoredImageDocx(0));
+        var shadowed = DocxDocumentProtoReader.Read(ShadowedImageDocx());
+
+        Assert.True(shadowed.Length > plain.Length);
     }
 
     [Fact]
