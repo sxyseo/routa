@@ -36,6 +36,14 @@ describe("presentation renderer helpers", () => {
     expect(fit.width).toBeCloseTo(1109.33, 1);
     expect(fit.height).toBeCloseTo(624, 1);
 
+    const fullscreen = computePresentationFit(
+      { height: 720, width: 1280 },
+      { height: 720, width: 1280 },
+      { padding: 0 },
+    );
+    expect(fullscreen.width).toBeCloseTo(1280, 1);
+    expect(fullscreen.height).toBeCloseTo(720, 1);
+
     const zoomed = computePresentationFit(
       { height: 720, width: 1280 },
       { height: 720, width: 1280 },
@@ -244,12 +252,12 @@ describe("presentation renderer helpers", () => {
     expect(paragraph.runs[0]?.style?.marginLeft).toBe(180_000);
   });
 
-  it("uses PPT text frame paragraph spacing and conservative wrap width", () => {
+  it("uses PPT text frame paragraph spacing and full text frame width", () => {
     expect(presentationParagraphSpacingPx(undefined, 2, false)).toBe(0);
-    expect(presentationParagraphSpacingPx(undefined, 2, true)).toBe(36);
+    expect(presentationParagraphSpacingPx(undefined, 2, true)).toBe(0);
     expect(presentationParagraphSpacingPx(120, 2, true)).toBe(12);
     expect(presentationEffectiveTextMaxWidth(500, false)).toBe(500);
-    expect(presentationEffectiveTextMaxWidth(500, true)).toBeCloseTo(470);
+    expect(presentationEffectiveTextMaxWidth(500, true)).toBe(500);
   });
 
   it("inherits PPT placeholder geometry and text styles from layouts and masters", () => {

@@ -18,7 +18,6 @@ import styles from "./presentation-preview.module.css";
 import {
   collectPresentationTypefaces,
   computePresentationFit,
-  getPresentationElementTargets,
   getSlideFrameSize,
   renderPresentationSlide,
   type PresentationSize,
@@ -112,6 +111,7 @@ export function PresentationPreview({
           {slides.map((slide, index) => (
             <button
               aria-label={`${labels.slide} ${asNumber(slide.index, index + 1)}`}
+              aria-current={index === selectedSlideIndex ? "true" : undefined}
               className={styles.thumbnailButton}
               data-active={index === selectedSlideIndex}
               data-slide-index={index + 1}
@@ -120,6 +120,19 @@ export function PresentationPreview({
               onClick={() => {
                 setActiveSlideIndex(index);
                 setThumbnailRailOpen(false);
+              }}
+              onKeyDown={(event) => {
+                if (!isSlideNavigationKey(event.key)) return;
+                event.preventDefault();
+                const nextIndex = nextSlideIndexFromKey(event.key, index, slides.length);
+                setActiveSlideIndex(nextIndex);
+                window.requestAnimationFrame(() => {
+                  const button = railRef.current?.querySelector<HTMLButtonElement>(
+                    `[data-testid="presentation-thumbnail"][data-slide-index="${nextIndex + 1}"]`,
+                  );
+                  button?.focus();
+                  button?.scrollIntoView({ block: "nearest" });
+                });
               }}
               type="button"
             >
@@ -144,10 +157,8 @@ export function PresentationPreview({
       <SlideStage
         charts={charts}
         images={imageElements}
-        labels={labels}
         layouts={layouts}
         slide={selectedSlide}
-        slideIndex={selectedSlideIndex}
       />
       {headerActions
         ? createPortal(
@@ -177,20 +188,15 @@ export function PresentationPreview({
 function SlideStage({
   charts,
   images,
-  labels,
   layouts,
   slide,
-  slideIndex,
 }: {
   charts: RecordValue[];
   images: ReadonlyMap<string, CanvasImageSource>;
-  labels: PreviewLabels;
   layouts: RecordValue[];
   slide: RecordValue;
-  slideIndex: number;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [selection, setSelection] = useState<{ elementId: string; slideKey: string } | null>(null);
   const viewportSize = useElementSize(viewportRef);
   const footnote = useMemo(() => slideFootnoteText(slide), [slide]);
   const frame = getSlideFrameSize(slide, layouts);
@@ -204,13 +210,6 @@ function SlideStage({
   );
   const canvasWidth = Math.max(1, fit.width);
   const canvasHeight = Math.max(1, fit.height);
-  const slideKey = `${asString(slide.id)}-${slideIndex}`;
-  const elementTargets = useMemo(
-    () => getPresentationElementTargets(slide, { height: canvasHeight, width: canvasWidth }, layouts),
-    [canvasHeight, canvasWidth, layouts, slide],
-  );
-  const selectedTarget =
-    selection?.slideKey === slideKey ? (elementTargets.find((target) => target.id === selection.elementId) ?? null) : null;
 
   return (
     <main className={styles.mainPanel}>
@@ -230,37 +229,6 @@ function SlideStage({
               textOverflow="visible"
               width={canvasWidth}
             />
-            <button
-              aria-label={selectedTarget?.name ?? labels.slide}
-              className={styles.interactionLayer}
-              onClick={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                const point = {
-                  x: event.clientX - rect.left,
-                  y: event.clientY - rect.top,
-                };
-                const target = hitTestElementTarget(elementTargets, point);
-                setSelection(target ? { elementId: target.id, slideKey } : null);
-              }}
-              type="button"
-            >
-              {selectedTarget ? (
-                <span
-                  aria-hidden="true"
-                  className={styles.selectionBox}
-                  style={{
-                    height: selectedTarget.rect.height,
-                    transform: `translate(${selectedTarget.rect.left}px, ${selectedTarget.rect.top}px)`,
-                    width: selectedTarget.rect.width,
-                  }}
-                >
-                  <span className={styles.selectionHandle} data-position="top-left" />
-                  <span className={styles.selectionHandle} data-position="top-right" />
-                  <span className={styles.selectionHandle} data-position="bottom-left" />
-                  <span className={styles.selectionHandle} data-position="bottom-right" />
-                </span>
-              ) : null}
-            </button>
           </div>
         </div>
         {footnote ? (
@@ -275,6 +243,19 @@ function SlideStage({
       </div>
     </main>
   );
+}
+
+function isSlideNavigationKey(key: string): boolean {
+  return key === "ArrowDown" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowLeft" || key === "Home" || key === "End";
+}
+
+function nextSlideIndexFromKey(key: string, currentIndex: number, slideCount: number): number {
+  if (slideCount <= 0) return 0;
+  if (key === "Home") return 0;
+  if (key === "End") return slideCount - 1;
+  if (key === "ArrowDown" || key === "ArrowRight") return Math.min(slideCount - 1, currentIndex + 1);
+  if (key === "ArrowUp" || key === "ArrowLeft") return Math.max(0, currentIndex - 1);
+  return currentIndex;
 }
 
 function SlideshowOverlay({
@@ -302,7 +283,7 @@ function SlideshowOverlay({
   const selectedIndex = Math.min(activeSlideIndex, Math.max(0, slides.length - 1));
   const slide = slides[selectedIndex] ?? {};
   const frame = getSlideFrameSize(slide, layouts);
-  const fit = computePresentationFit(frameSize, frame, { padding: 20 });
+  const fit = computePresentationFit(frameSize, frame, { padding: 0 });
   const canvasWidth = Math.max(1, fit.width);
 
   const goPrevious = useCallback(() => {
@@ -657,27 +638,6 @@ function useElementSize<T extends HTMLElement>(ref: RefObject<T | null>): Presen
   }, [ref]);
 
   return size;
-}
-
-function hitTestElementTarget(
-  targets: ReturnType<typeof getPresentationElementTargets>,
-  point: { x: number; y: number },
-) {
-  for (let index = targets.length - 1; index >= 0; index--) {
-    const target = targets[index];
-    if (!target) {
-      continue;
-    }
-    if (
-      point.x >= target.rect.left &&
-      point.x <= target.rect.left + target.rect.width &&
-      point.y >= target.rect.top &&
-      point.y <= target.rect.top + target.rect.height
-    ) {
-      return target;
-    }
-  }
-  return null;
 }
 
 function slideFootnoteText(slide: RecordValue): string {

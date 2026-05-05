@@ -41,18 +41,23 @@
   align-items: flex-start;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 7px;
   color: inherit;
   cursor: pointer;
   display: flex;
   gap: 8px;
-  padding: 7px 8px 7px 0;
+  padding: 6px 8px 6px 0;
   text-align: left;
   touch-action: manipulation;
 }
 
 .thumbnailButton:hover {
   background: #f8fafc;
+}
+
+.thumbnailButton:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
 }
 
 .thumbnailLabel {
@@ -83,14 +88,10 @@
   overflow: hidden;
 }
 
-.thumbnailButton[data-active="true"] .thumbnailCanvas {
-  box-shadow: 0 0 0 2px #60a5fa;
-}
-
 .thumbnailButton[data-active="true"] {
   background: transparent;
-  border-color: transparent;
-  box-shadow: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.28);
 }
 
 .mainPanel {
@@ -174,54 +175,6 @@
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
 }
 
-.interactionLayer {
-  background: transparent;
-  border: 0;
-  cursor: default;
-  inset: 0;
-  padding: 0;
-  position: absolute;
-}
-
-.selectionBox {
-  border: 1.5px solid #0285ff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 0 3px rgba(2, 133, 255, 0.18);
-  display: block;
-  left: 0;
-  pointer-events: none;
-  position: absolute;
-  top: 0;
-}
-
-.selectionHandle {
-  background: #ffffff;
-  border: 1.5px solid #0285ff;
-  border-radius: 50%;
-  height: 8px;
-  position: absolute;
-  width: 8px;
-}
-
-.selectionHandle[data-position="top-left"] {
-  left: -5px;
-  top: -5px;
-}
-
-.selectionHandle[data-position="top-right"] {
-  right: -5px;
-  top: -5px;
-}
-
-.selectionHandle[data-position="bottom-left"] {
-  bottom: -5px;
-  left: -5px;
-}
-
-.selectionHandle[data-position="bottom-right"] {
-  bottom: -5px;
-  right: -5px;
-}
-
 .footnote {
   align-self: center;
   background: #ffffff;
@@ -250,7 +203,7 @@
   inset: 0;
   justify-content: center;
   min-height: 0;
-  padding: 20px;
+  padding: 0;
   position: fixed;
   z-index: 1000;
 }
