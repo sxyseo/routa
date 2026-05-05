@@ -643,6 +643,12 @@ Verification on 2026-05-03:
 - `npx eslint --max-warnings=0 scripts/office-wasm-reader/compare-walnut-docx-protocol.ts` and `git diff --check` passed.
 - DOCX protocol tooling now supports `--json-contract-only`, which compares canonical decoded Proto JSON and reports deep field paths beyond the existing semantic summary checks. The advanced/style-section/anchor/table fixtures now have zero normalized JSON diffs after writing section-scoped `sections[].elements`, omitting absent `w:cols` instead of emitting an empty columns message, normalizing Walnut's unstable IDs, emitting docDefaults run style summaries, and emitting table style IDs.
 
+Verification on 2026-05-05:
+
+- `npx vitest run src/app/debug/office-wasm-poc/__tests__/word-preview.test.tsx`, targeted `eslint`, `npm run test:office-wasm-reader:docx-json-contract`, `git diff --check`, and `curl -I --max-time 10 'http://localhost:3000/debug/office-wasm-poc?reader=routa'` passed after rendering decoded DOCX comment author/initial/date metadata in supplemental notes.
+- Full local corpus scan on `/Users/phodal/Downloads/realworld` with decoded JSON contract coverage still found `166/166` Routa-readable DOCX files. Among them, `89/89` Walnut-readable files reported `0` normalized decoded Proto JSON diffs; the remaining `77` files were Walnut failures but Routa-only successes. The final scan had `mismatchCount = 0`, `errorCount = 0`, `okCount = 89`, `walnutErrorRoutaOkCount = 77`, and empty `jsonDiffPathCounts`.
+- Scan output: `/tmp/routa-docx-realworld-scan-2026-05-05.json`.
+
 Verification on 2026-05-04:
 
 - `npm run build:office-wasm-reader` passed.
