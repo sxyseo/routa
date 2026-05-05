@@ -2,17 +2,22 @@
 
 import {
   asArray,
+  asNumber,
   asRecord,
   asString,
+  columnIndexFromAddress,
   columnLabel,
   parseCellRange,
+  rowIndexFromAddress,
   type RecordValue,
 } from "./office-preview-utils";
+import { conditionalFormulaValue } from "./spreadsheet-conditional-formula";
 
 const DAY_MS = 86_400_000;
 const EXCEL_SERIAL_EPOCH_UTC = Date.UTC(1899, 11, 30);
 
 type WorkbookCellIndex = Map<string, Map<string, RecordValue>>;
+type WorkbookRowsBySheet = Map<string, Map<number, Map<number, RecordValue>>>;
 
 export function spreadsheetSheetWithVolatileFormulaValues(
   sheet: RecordValue | undefined,
@@ -21,7 +26,9 @@ export function spreadsheetSheetWithVolatileFormulaValues(
 ): RecordValue | undefined {
   if (!sheet) return sheet;
   const workbookIndex = workbookCellsBySheet(sheets);
+  const rowsBySheet = workbookRowsBySheet(sheets);
   const sheetName = asString(sheet.name);
+  const rowsByIndex = rowsBySheet.get(sheetName) ?? new Map();
   let changed = false;
   const rows = asArray(sheet.rows).map((rowValue) => {
     const row = asRecord(rowValue);
@@ -31,8 +38,9 @@ export function spreadsheetSheetWithVolatileFormulaValues(
       const cell = asRecord(cellValue);
       if (!cell) return cellValue;
       const formula = asString(cell.formula);
-      if (!formulaNeedsVolatileEvaluation(formula)) return cellValue;
-      const value = evaluateVolatileFormula(formula, sheetName, workbookIndex, today);
+      if (!formulaShouldRefreshDisplayValue(cell, formula)) return cellValue;
+      const value = evaluateVolatileFormula(formula, sheetName, workbookIndex, today) ??
+        evaluatePreviewFormula(formula, sheetName, rowsByIndex, rowsBySheet, cell);
       if (value == null) return cellValue;
       rowChanged = true;
       changed = true;
@@ -82,6 +90,28 @@ export function evaluateVolatileFormula(
   return null;
 }
 
+function evaluatePreviewFormula(
+  formula: string,
+  sheetName: string,
+  rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>,
+  rowsBySheet: ReadonlyMap<string, ReadonlyMap<number, ReadonlyMap<number, RecordValue>>>,
+  cell: RecordValue,
+): string | null {
+  const address = asString(cell.address);
+  const rowIndex = rowIndexFromAddress(address);
+  const columnIndex = columnIndexFromAddress(address);
+  const value = conditionalFormulaValue(formula, {
+    columnIndex,
+    formulas: [formula],
+    range: { startColumn: columnIndex, startRow: rowIndex },
+    rowsByIndex,
+    rowsBySheet,
+    rowIndex,
+    sheetName,
+  });
+  return formulaDisplayValue(value, formula);
+}
+
 function workbookCellsBySheet(sheets: readonly RecordValue[]): WorkbookCellIndex {
   const workbook = new Map<string, Map<string, RecordValue>>();
   for (const sheet of sheets) {
@@ -99,8 +129,42 @@ function workbookCellsBySheet(sheets: readonly RecordValue[]): WorkbookCellIndex
   return workbook;
 }
 
+function workbookRowsBySheet(sheets: readonly RecordValue[]): WorkbookRowsBySheet {
+  const workbook = new Map<string, Map<number, Map<number, RecordValue>>>();
+  for (const sheet of sheets) {
+    const rowsByIndex = new Map<number, Map<number, RecordValue>>();
+    for (const row of asArray(sheet.rows)) {
+      const rowRecord = asRecord(row);
+      if (!rowRecord) continue;
+      const rowIndex = asNumber(rowRecord.index, 1);
+      const cells = new Map<number, RecordValue>();
+      for (const cell of asArray(rowRecord.cells)) {
+        const cellRecord = asRecord(cell);
+        if (!cellRecord) continue;
+        cells.set(columnIndexFromAddress(asString(cellRecord.address)), cellRecord);
+      }
+      rowsByIndex.set(rowIndex, cells);
+    }
+    workbook.set(asString(sheet.name), rowsByIndex);
+  }
+  return workbook;
+}
+
 function formulaNeedsVolatileEvaluation(formula: string): boolean {
   return /\bTODAY\(\)/i.test(formula);
+}
+
+function formulaShouldRefreshDisplayValue(cell: RecordValue, formula: string): boolean {
+  if (!formula) return false;
+  return formulaNeedsVolatileEvaluation(formula) || asString(cell.value).trim().length === 0;
+}
+
+function formulaDisplayValue(value: unknown, formula: string): string | null {
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (typeof value === "number") return Number.isFinite(value) ? formatFormulaNumber(value) : null;
+  const text = asString(value);
+  if (text.length === 0 && !formulaNeedsVolatileEvaluation(formula)) return null;
+  return text;
 }
 
 function workbookCellNumber(workbookIndex: WorkbookCellIndex, sheetName: string, address: string): number | null {

@@ -134,11 +134,12 @@ A structured inventory of XLSX reader and renderer capabilities, organized by fe
 - [x] Cfvo type/value handling (min, max, num, percent, percentile)
 - [x] Negative data-bar colors and gradient fills
 - [x] Viewer-side volatile `TODAY()` display refresh for date deltas and `COUNTIFS(...,"<"&TODAY())`
+- [x] Shared preview formula adapter for empty cached formula values, including cross-sheet range references
 
 **Remaining**:
 - [ ] Arbitrary Excel formula-language parity (complex nested functions, array formulas)
 - [ ] Full volatile formula parity (`NOW`, `RAND`, broader `TODAY` formulas, recalculation dependency graph)
-- [ ] Cross-sheet formula references in conditional rules
+- [ ] Cross-sheet formula references in conditional rules beyond direct workbook sheet ranges
 - [ ] Complex structured references in formulas
 
 ---
@@ -335,6 +336,8 @@ A structured inventory of XLSX reader and renderer capabilities, organized by fe
 ---
 
 ## Recommended Next Steps
+
+Formula engine decision: do not embed HyperFormula by default because the current npm package is `GPL-3.0-only`; `@formulajs/formulajs` is MIT but is a function library rather than a workbook parser/dependency engine. The preview reuses the in-repo Excel-like formula evaluator as the safe adapter path and expands it incrementally where real fixtures need parity.
 
 ### High-Priority (production-ready surface)
 1. **Chart visual fidelity** — Axis label formatting, more trendline types, advanced data labels, 3D options

@@ -70,4 +70,23 @@ describe("spreadsheet volatile formula values", () => {
       new Date(2026, 4, 5),
     )).toBe("1");
   });
+
+  it("fills empty cached formula values through the shared formula evaluator", () => {
+    const summary = workbookSheet("01_Dashboard", {
+      A1: { formula: "COUNTA('02_Tasks_Table'!A5:A6)", value: "" },
+      B1: { formula: "COUNTIF('02_Tasks_Table'!E5:E6,\"Done\")", value: "" },
+    });
+    const tasks = workbookSheet("02_Tasks_Table", {
+      A5: { value: "RTA-1001" },
+      A6: { value: "RTA-1002" },
+      E5: { value: "Done" },
+      E6: { value: "Review" },
+    });
+
+    const next = spreadsheetSheetWithVolatileFormulaValues(summary, [summary, tasks], new Date(2026, 4, 5));
+    const cells = ((next?.rows as RecordValue[])[0].cells as RecordValue[]);
+
+    expect(cells.find((cell) => cell.address === "A1")?.value).toBe("2");
+    expect(cells.find((cell) => cell.address === "B1")?.value).toBe("1");
+  });
 });

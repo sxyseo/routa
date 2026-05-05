@@ -19,8 +19,10 @@ export type ConditionalFormulaContext = {
   definedNames?: unknown;
   formulas: unknown;
   range: ConditionalFormulaRange;
+  rowsBySheet?: ReadonlyMap<string, ReadonlyMap<number, ReadonlyMap<number, RecordValue>>>;
   rowsByIndex: ReadonlyMap<number, ReadonlyMap<number, RecordValue>>;
   rowIndex: number;
+  sheetName?: string;
   tables?: unknown;
 };
 
@@ -29,6 +31,7 @@ type CellReference = {
   columnIndex: number;
   rowAbsolute: boolean;
   rowIndex: number;
+  sheetName?: string;
 };
 
 type FormulaCellValue = {
@@ -530,7 +533,7 @@ function cellValueAtReference(reference: CellReference, context: ConditionalForm
   const columnIndex = reference.columnAbsolute
     ? reference.columnIndex
     : context.columnIndex + reference.columnIndex - context.range.startColumn;
-  const cell = context.rowsByIndex.get(rowIndex)?.get(columnIndex) ?? null;
+  const cell = rowsBySheetName(context, reference.sheetName).get(rowIndex)?.get(columnIndex) ?? null;
   return cellText(cell);
 }
 
@@ -575,11 +578,12 @@ function formulaRangeValues(expression: string, context: ConditionalFormulaConte
 function formulaRangeCells(expression: string, context: ConditionalFormulaContext): FormulaCellValue[] | null {
   const target = formulaRangeTarget(expression, context);
   if (!/[A-Z]+\$?\d/i.test(target) && !target.includes(":")) return null;
-  const range = parseCellRange(target);
+  const { reference, sheetName } = splitFormulaSheetReference(target);
+  const range = parseCellRange(reference);
   if (!range) return null;
 
   const cells: FormulaCellValue[] = [];
-  for (const [rowIndex, row] of context.rowsByIndex) {
+  for (const [rowIndex, row] of rowsBySheetName(context, sheetName)) {
     if (rowIndex < range.startRow || rowIndex >= range.startRow + range.rowSpan) continue;
     for (const [columnIndex, cell] of row) {
       if (columnIndex < range.startColumn || columnIndex >= range.startColumn + range.columnSpan) continue;
@@ -901,14 +905,38 @@ function resolvedCellReferenceValue(
 }
 
 function parseCellReference(value: string): CellReference | null {
-  const normalized = value.replace(/^.*!/, "");
-  const match = normalized.match(CELL_REFERENCE_PATTERN);
+  const { reference, sheetName } = splitFormulaSheetReference(value);
+  const match = reference.match(CELL_REFERENCE_PATTERN);
   if (!match) return null;
   return {
     columnAbsolute: match[1] === "$",
     columnIndex: columnIndexFromAddress(match[2]),
     rowAbsolute: match[3] === "$",
     rowIndex: Math.max(1, Number.parseInt(match[4] ?? "1", 10)),
+    ...(sheetName ? { sheetName } : {}),
+  };
+}
+
+function rowsBySheetName(
+  context: ConditionalFormulaContext,
+  sheetName: string | undefined,
+): ReadonlyMap<number, ReadonlyMap<number, RecordValue>> {
+  const normalizedName = asString(sheetName || context.sheetName).toLowerCase();
+  if (normalizedName && context.rowsBySheet) {
+    for (const [candidateName, rows] of context.rowsBySheet) {
+      if (candidateName.toLowerCase() === normalizedName) return rows;
+    }
+  }
+  return context.rowsByIndex;
+}
+
+function splitFormulaSheetReference(value: string): { reference: string; sheetName?: string } {
+  const trimmed = stripFormulaPrefix(value).trim();
+  const separator = trimmed.lastIndexOf("!");
+  if (separator < 0) return { reference: trimmed };
+  return {
+    reference: trimmed.slice(separator + 1).trim(),
+    sheetName: trimmed.slice(0, separator).replace(/^'|'$/g, "").trim(),
   };
 }
 
