@@ -407,7 +407,21 @@ function isClosingPunctuation(char: string): boolean {
 function applyRunFont(context: CanvasRenderingContext2D, run: TextRunView, fontSize: number): void {
   const fontStyle = run.style?.italic === true ? "italic" : "normal";
   const fontWeight = run.style?.bold === true ? "700" : "400";
+  configureCanvasTextQuality(context);
   context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${officeFontFamily(asString(run.style?.typeface))}`;
+}
+
+function configureCanvasTextQuality(context: CanvasRenderingContext2D): void {
+  const qualityContext = context as CanvasRenderingContext2D & {
+    fontKerning?: CanvasFontKerning;
+    letterSpacing?: string;
+    textRendering?: "auto" | "geometricPrecision" | "optimizeLegibility" | "optimizeSpeed";
+    wordSpacing?: string;
+  };
+  qualityContext.fontKerning = "normal";
+  qualityContext.letterSpacing = "0px";
+  qualityContext.textRendering = "optimizeLegibility";
+  qualityContext.wordSpacing = "0px";
 }
 
 function runFontSize(run: TextRunView, slideScale: number, fontScale = 1): number {

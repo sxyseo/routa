@@ -254,6 +254,8 @@ export function renderPresentationSlide({
     .sort((left, right) => asNumber(left.element.zIndex, left.index) - asNumber(right.element.zIndex, right.index));
 
   context.save();
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
   context.clearRect(0, 0, width, height);
   context.fillStyle = slideBackgroundToCss(effectiveSlide);
   context.fillRect(0, 0, width, height);
