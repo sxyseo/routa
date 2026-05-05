@@ -57,6 +57,7 @@ describe("spreadsheet conditional visuals", () => {
             showRowStripes: false,
           },
           totalsRowCount: 1,
+          autoFilter: {},
         },
       ],
     });
@@ -72,6 +73,17 @@ describe("spreadsheet conditional visuals", () => {
     expect(visuals.get("2:2")?.fontWeight).toBe(700);
     expect(visuals.get("4:1")?.background).toBe("#bfdbfe");
     expect(visuals.get("4:1")?.fontWeight).toBe(700);
+  });
+
+  it("does not draw table filter buttons when the workbook table has no autoFilter", () => {
+    const visuals = buildSpreadsheetConditionalVisuals({
+      name: "Tables",
+      rows: [],
+      tables: [{ headerRowCount: 1, reference: "A1:B3", style: { name: "TableStyleMedium2", showRowStripes: true } }],
+    });
+
+    expect(visuals.get("1:0")?.filter).toBeUndefined();
+    expect(visuals.get("1:1")?.filter).toBeUndefined();
   });
 
   it("derives table stripe colors from workbook theme colors", () => {

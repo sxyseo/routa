@@ -324,7 +324,7 @@ function buildSpreadsheetTableVisuals(
         headerRowCount: asNumber(table.headerRowCount, 1),
         palette: tableStylePalette(styleName, theme),
         reference: asString(table.reference) || asString(table.ref),
-        showFilter: table.autoFilter !== false && table.showFilterButton !== false,
+        showFilter: table.showFilterButton === true || asRecord(table.autoFilter) != null,
         showColumnStripes: style?.showColumnStripes === true,
         showFirstColumn: style?.showFirstColumn === true,
         showLastColumn: style?.showLastColumn === true,
