@@ -6,6 +6,7 @@ using Google.Protobuf;
 using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using Pic = DocumentFormat.OpenXml.Drawing.Pictures;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Routa.OfficeWasmReader;
@@ -491,6 +492,11 @@ internal static class DocxDocumentProtoReader
     {
         foreach (var drawing in paragraph.Descendants<W.Drawing>())
         {
+            if (IsAlternateContentFallbackDrawing(drawing))
+            {
+                continue;
+            }
+
             var chartReference = drawing.Descendants<C.ChartReference>().FirstOrDefault();
             if (chartReference is not null)
             {
@@ -510,40 +516,43 @@ internal static class DocxDocumentProtoReader
                 continue;
             }
 
-            var blip = drawing.Descendants<A.Blip>().FirstOrDefault();
-            var relationshipId = blip?.Embed?.Value ?? blip?.Link?.Value;
-            if (string.IsNullOrEmpty(relationshipId))
-            {
-                continue;
-            }
-
-            if (partContainer.GetPartById(relationshipId) is not ImagePart imagePart)
-            {
-                continue;
-            }
-
-            var image = context.AddImage(imagePart, partContainer, relationshipId);
-            var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
-            var widthEmu = ToLong(extent?.Cx) ?? 0;
-            var heightEmu = ToLong(extent?.Cy) ?? 0;
-            var (xEmu, yEmu) = DrawingPosition(
+            var geometry = ResolveDrawingImageGeometry(
                 drawing,
                 context.Page,
-                paragraph.ParagraphProperties?.Justification?.Val?.ToString(),
-                widthEmu,
-                heightEmu);
+                paragraph.ParagraphProperties?.Justification?.Val?.ToString());
+            if (geometry is null)
+            {
+                continue;
+            }
+
+            if (partContainer.GetPartById(geometry.RelationshipId) is not ImagePart imagePart)
+            {
+                continue;
+            }
+
+            if (geometry.Frame is { } frame)
+            {
+                yield return WriteGroupedPictureFrameElement(frame, context);
+            }
+
+            var image = context.AddImage(imagePart, partContainer, geometry.RelationshipId);
 
             yield return Message(output =>
             {
-                WriteMessage(output, 1, WriteBoundingBox(xEmu, yEmu, widthEmu, heightEmu, writeZeroY: true));
+                WriteMessage(output, 1, WriteBoundingBox(
+                    geometry.XEmu,
+                    geometry.YEmu,
+                    geometry.WidthEmu,
+                    geometry.HeightEmu,
+                    writeZeroY: true));
                 WriteInt32(output, 2, DrawingZIndex(drawing));
                 WriteMessage(output, 3, WriteImageReference(image.Id));
-                if (WriteImageCropFill(drawing, image.Id) is { } cropFill)
+                if (WriteImageCropFill(geometry.SourceRectangle, image.Id) is { } cropFill)
                 {
                     WriteMessage(output, 19, cropFill);
                 }
 
-                if (WriteImageLine(drawing) is { } imageLine)
+                if (WriteImageLine(geometry.Outline) is { } imageLine)
                 {
                     WriteMessage(output, 30, imageLine);
                 }
@@ -557,6 +566,217 @@ internal static class DocxDocumentProtoReader
                 WriteString(output, 27, $"element-{image.Id["image-".Length..]}");
             });
         }
+    }
+
+    private static bool IsAlternateContentFallbackDrawing(W.Drawing drawing)
+    {
+        return drawing.Ancestors().Any(ancestor =>
+            string.Equals(ancestor.LocalName, "Fallback", StringComparison.Ordinal) &&
+            string.Equals(
+                ancestor.NamespaceUri,
+                "http://schemas.openxmlformats.org/markup-compatibility/2006",
+                StringComparison.Ordinal));
+    }
+
+    private static DrawingImageGeometry? ResolveDrawingImageGeometry(
+        W.Drawing drawing,
+        PageMetrics page,
+        string? paragraphAlignment)
+    {
+        var blip = drawing.Descendants<A.Blip>()
+            .FirstOrDefault(candidate => !string.IsNullOrEmpty(candidate.Embed?.Value ?? candidate.Link?.Value));
+        var relationshipId = blip?.Embed?.Value ?? blip?.Link?.Value;
+        if (string.IsNullOrEmpty(relationshipId))
+        {
+            return null;
+        }
+
+        var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
+        var outerWidthEmu = ToLong(extent?.Cx) ?? 0;
+        var outerHeightEmu = ToLong(extent?.Cy) ?? 0;
+        var (outerXEmu, outerYEmu) = DrawingPosition(
+            drawing,
+            page,
+            paragraphAlignment,
+            outerWidthEmu,
+            outerHeightEmu);
+        var picture = blip!.Ancestors<Pic.Picture>().FirstOrDefault();
+        var sourceRectangle =
+            picture?.Descendants<A.SourceRectangle>().FirstOrDefault() ??
+            drawing.Descendants<A.SourceRectangle>().FirstOrDefault();
+        var outline =
+            picture?.ShapeProperties?.GetFirstChild<A.Outline>() ??
+            drawing.Descendants<A.Outline>().FirstOrDefault();
+        var frame = ResolveGroupedPictureFrame(drawing, outerXEmu, outerYEmu, outerWidthEmu, outerHeightEmu);
+
+        if (TryResolveGroupedPictureBox(
+                drawing,
+                picture,
+                outerXEmu,
+                outerYEmu,
+                outerWidthEmu,
+                outerHeightEmu,
+                out var groupedBox))
+        {
+            return new DrawingImageGeometry(
+                relationshipId,
+                groupedBox.XEmu,
+                groupedBox.YEmu,
+                groupedBox.WidthEmu,
+                groupedBox.HeightEmu,
+                sourceRectangle,
+                picture?.ShapeProperties?.GetFirstChild<A.Outline>(),
+                frame);
+        }
+
+        return new DrawingImageGeometry(
+            relationshipId,
+            outerXEmu,
+            outerYEmu,
+            outerWidthEmu,
+            outerHeightEmu,
+            sourceRectangle,
+            outline,
+            null);
+    }
+
+    private static byte[] WriteGroupedPictureFrameElement(DrawingGroupFrame frame, DocxReadContext context)
+    {
+        return Message(output =>
+        {
+            WriteMessage(output, 1, WriteBoundingBox(
+                frame.Box.XEmu,
+                frame.Box.YEmu,
+                frame.Box.WidthEmu,
+                frame.Box.HeightEmu,
+                writeZeroY: true));
+            if (WriteShapeFill(frame.Fill) is { } fill)
+            {
+                WriteMessage(output, 19, fill);
+            }
+
+            if (WriteImageLine(frame.Outline) is { } line)
+            {
+                WriteMessage(output, 30, line);
+            }
+
+            WriteInt32(output, 11, ElementTypeText);
+            WriteString(output, 27, $"element-group-frame-{context.NextTextBoxElementIndex():x8}");
+        });
+    }
+
+    private static byte[]? WriteShapeFill(A.SolidFill? fill)
+    {
+        var color = fill is null ? null : DrawingRgbColor(fill)?.Value;
+        return color is null ? null : WriteColorFill(color, writeSolidType: true);
+    }
+
+    private static DrawingGroupFrame? ResolveGroupedPictureFrame(
+        W.Drawing drawing,
+        long outerXEmu,
+        long outerYEmu,
+        long outerWidthEmu,
+        long outerHeightEmu)
+    {
+        if (outerWidthEmu <= 0 || outerHeightEmu <= 0)
+        {
+            return null;
+        }
+
+        var shapeProperties = drawing.Descendants()
+            .FirstOrDefault(element =>
+                string.Equals(element.LocalName, "wsp", StringComparison.Ordinal) &&
+                string.Equals(
+                    element.NamespaceUri,
+                    "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+                    StringComparison.Ordinal))
+            ?.Descendants()
+            .FirstOrDefault(element => string.Equals(element.LocalName, "spPr", StringComparison.Ordinal));
+        var fill = shapeProperties?.Descendants<A.SolidFill>().FirstOrDefault();
+        var outline = shapeProperties?.Descendants<A.Outline>().FirstOrDefault();
+        if (fill is null && outline is null)
+        {
+            return null;
+        }
+
+        return new DrawingGroupFrame(
+            new DrawingBox(outerXEmu, outerYEmu, outerWidthEmu, outerHeightEmu),
+            fill,
+            outline);
+    }
+
+    private static bool TryResolveGroupedPictureBox(
+        W.Drawing drawing,
+        Pic.Picture? picture,
+        long outerXEmu,
+        long outerYEmu,
+        long outerWidthEmu,
+        long outerHeightEmu,
+        out DrawingBox box)
+    {
+        box = default;
+        if (picture is null || outerWidthEmu <= 0 || outerHeightEmu <= 0)
+        {
+            return false;
+        }
+
+        var groupTransform = drawing.Descendants<A.TransformGroup>().FirstOrDefault();
+        var pictureTransform = picture.ShapeProperties?.Transform2D;
+        if (groupTransform is null || pictureTransform is null)
+        {
+            return false;
+        }
+
+        var childWidthEmu =
+            DrawingTransformValue(groupTransform, "chExt", "cx") ??
+            DrawingTransformValue(groupTransform, "ext", "cx") ??
+            outerWidthEmu;
+        var childHeightEmu =
+            DrawingTransformValue(groupTransform, "chExt", "cy") ??
+            DrawingTransformValue(groupTransform, "ext", "cy") ??
+            outerHeightEmu;
+        if (childWidthEmu <= 0 || childHeightEmu <= 0)
+        {
+            return false;
+        }
+
+        var childXEmu =
+            DrawingTransformValue(groupTransform, "chOff", "x") ??
+            DrawingTransformValue(groupTransform, "off", "x") ??
+            0;
+        var childYEmu =
+            DrawingTransformValue(groupTransform, "chOff", "y") ??
+            DrawingTransformValue(groupTransform, "off", "y") ??
+            0;
+        var pictureXEmu = DrawingTransformValue(pictureTransform, "off", "x") ?? 0;
+        var pictureYEmu = DrawingTransformValue(pictureTransform, "off", "y") ?? 0;
+        var pictureWidthEmu = DrawingTransformValue(pictureTransform, "ext", "cx") ?? outerWidthEmu;
+        var pictureHeightEmu = DrawingTransformValue(pictureTransform, "ext", "cy") ?? outerHeightEmu;
+        var scaleX = (double)outerWidthEmu / childWidthEmu;
+        var scaleY = (double)outerHeightEmu / childHeightEmu;
+        var xEmu = outerXEmu + RoundEmu((pictureXEmu - childXEmu) * scaleX);
+        var yEmu = outerYEmu + RoundEmu((pictureYEmu - childYEmu) * scaleY);
+        var widthEmu = RoundEmu(pictureWidthEmu * scaleX);
+        var heightEmu = RoundEmu(pictureHeightEmu * scaleY);
+        if (widthEmu <= 0 || heightEmu <= 0)
+        {
+            return false;
+        }
+
+        box = new DrawingBox(xEmu, yEmu, widthEmu, heightEmu);
+        return true;
+    }
+
+    private static long RoundEmu(double value)
+    {
+        return (long)Math.Round(value, MidpointRounding.AwayFromZero);
+    }
+
+    private static long? DrawingTransformValue(OpenXmlElement? transform, string childLocalName, string attributeLocalName)
+    {
+        var value = transform?.ChildElements
+            .FirstOrDefault(child => string.Equals(child.LocalName, childLocalName, StringComparison.Ordinal));
+        return LongFromString(RawAttributeValue(value, attributeLocalName, namespaceUri: null));
     }
 
     private static byte[]? WriteTextBoxElement(
@@ -642,9 +862,8 @@ internal static class DocxDocumentProtoReader
         });
     }
 
-    private static byte[]? WriteImageLine(W.Drawing drawing)
+    private static byte[]? WriteImageLine(A.Outline? line)
     {
-        var line = drawing.Descendants<A.Outline>().FirstOrDefault();
         if (line is null || line.GetFirstChild<A.NoFill>() is not null)
         {
             return null;
@@ -693,9 +912,8 @@ internal static class DocxDocumentProtoReader
         return (color.Val.Value, color.GetFirstChild<A.Alpha>()?.Val?.Value);
     }
 
-    private static byte[]? WriteImageCropFill(W.Drawing drawing, string imageId)
+    private static byte[]? WriteImageCropFill(A.SourceRectangle? sourceRect, string imageId)
     {
-        var sourceRect = drawing.Descendants<A.SourceRectangle>().FirstOrDefault();
         if (sourceRect is null)
         {
             return null;
@@ -3103,6 +3321,20 @@ internal static class DocxDocumentProtoReader
     {
         return value?.Value;
     }
+
+    private readonly record struct DrawingBox(long XEmu, long YEmu, long WidthEmu, long HeightEmu);
+
+    private sealed record DrawingGroupFrame(DrawingBox Box, A.SolidFill? Fill, A.Outline? Outline);
+
+    private sealed record DrawingImageGeometry(
+        string RelationshipId,
+        long XEmu,
+        long YEmu,
+        long WidthEmu,
+        long HeightEmu,
+        A.SourceRectangle? SourceRectangle,
+        A.Outline? Outline,
+        DrawingGroupFrame? Frame);
 
     private static int ToInt32(uint? value, int fallback)
     {

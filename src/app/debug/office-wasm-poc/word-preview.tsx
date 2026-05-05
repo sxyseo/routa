@@ -41,6 +41,7 @@ import {
   wordIsPageOverlayAnchoredElement,
   wordPageContentWidthPx,
   wordPageLayout,
+  wordPositionedShapeStyle,
   type WordPageLayout,
   wordTableCellStyle,
   wordTableContainerStyle,
@@ -504,8 +505,23 @@ function wordOrderFigureCaptionImages(elements: unknown[]): unknown[] {
   for (let index = 0; index < elements.length; index++) {
     const element = elements[index];
     const nextElement = elements[index + 1];
+    const followingElement = elements[index + 2];
     const record = asRecord(element);
     const nextRecord = asRecord(nextElement);
+    const followingRecord = asRecord(followingElement);
+    if (
+      record != null &&
+      nextRecord != null &&
+      followingRecord != null &&
+      wordIsFigureCaptionElement(record) &&
+      wordIsPositionedShapeElement(nextRecord) &&
+      elementImageReferenceId(followingRecord)
+    ) {
+      orderedElements.push(nextElement, followingElement, element);
+      index += 2;
+      continue;
+    }
+
     if (record != null && nextRecord != null && wordIsFigureCaptionElement(record) && elementImageReferenceId(nextRecord)) {
       orderedElements.push(nextElement, element);
       index++;
@@ -576,6 +592,10 @@ function wordElementEstimatedHeight(
   const table = asRecord(record.table);
   if (table) {
     return wordTableElementEstimatedHeight(table, wordTableHeightContext(styleMaps, pageLayout));
+  }
+
+  if (wordIsPositionedShapeElement(record)) {
+    return wordEstimatedBoxHeight(record, pageLayout, 80);
   }
 
   const paragraphs = asArray(record.paragraphs);
@@ -773,6 +793,10 @@ function WordElement({
   const chart = presentationChartById(charts, presentationChartReferenceId(element.chartReference));
   if (chart) return <WordChart chart={chart} element={element} pageLayout={pageLayout} />;
 
+  if (wordIsPositionedShapeElement(element)) {
+    return <span aria-hidden="true" data-testid="word-positioned-shape" style={wordPositionedShapeStyle(element, pageLayout)} />;
+  }
+
   const paragraphs = asArray(element.paragraphs).map((paragraph) =>
     wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes),
   );
@@ -795,6 +819,17 @@ function WordElement({
   }
 
   return paragraphElements;
+}
+
+function wordIsPositionedShapeElement(element: RecordValue): boolean {
+  const bbox = asRecord(element.bbox);
+  return asNumber(bbox?.widthEmu) > 0 &&
+    asNumber(bbox?.heightEmu) > 0 &&
+    asArray(element.paragraphs).length === 0 &&
+    !elementImageReferenceId(element) &&
+    asRecord(element.chartReference) == null &&
+    asRecord(element.table) == null &&
+    (asRecord(element.fill) != null || asRecord(element.line) != null);
 }
 
 function WordChart({ chart, element, pageLayout }: { chart: RecordValue; element: RecordValue; pageLayout: WordPageLayout }) {

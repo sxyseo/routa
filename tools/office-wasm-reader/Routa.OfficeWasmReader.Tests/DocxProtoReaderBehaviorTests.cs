@@ -105,6 +105,39 @@ public class DocxProtoReaderBehaviorTests
         });
     }
 
+    private static byte[] GroupedImageDocx()
+    {
+        return BuildDocx((mainPart, body) =>
+        {
+            var imagePart = mainPart.AddImagePart(ImagePartType.Png, "rIdImage1");
+            using var imageStream = new MemoryStream(TinyPng);
+            imagePart.FeedData(imageStream);
+            body.AppendChild(new Paragraph(new Run(new Drawing(GroupedImageDrawingXml()))));
+        });
+    }
+
+    private static byte[] AlternateContentImageDocx()
+    {
+        return BuildDocx((mainPart, body) =>
+        {
+            var imagePart = mainPart.AddImagePart(ImagePartType.Png, "rIdImage1");
+            using var imageStream = new MemoryStream(TinyPng);
+            imagePart.FeedData(imageStream);
+            var run = new Run();
+            run.InnerXml = $"""
+<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <mc:Choice Requires="wps">
+    {AnchoredImageDrawingXml(0)}
+  </mc:Choice>
+  <mc:Fallback>
+    {AnchoredImageDrawingXml(914400)}
+  </mc:Fallback>
+</mc:AlternateContent>
+""";
+            body.AppendChild(new Paragraph(run));
+        });
+    }
+
     private static byte[] TextBoxDocx()
     {
         return BuildDocx((_, body) =>
@@ -169,6 +202,63 @@ public class DocxProtoReaderBehaviorTests
           <pic:blipFill><a:blip r:embed="rIdImage1"/>{sourceRectangle}<a:stretch><a:fillRect/></a:stretch></pic:blipFill>
           <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"/>{shapePropertiesExtra}</pic:spPr>
         </pic:pic>
+      </a:graphicData>
+    </a:graphic>
+  </wp:anchor>
+</w:drawing>
+""";
+    }
+
+    private static string GroupedImageDrawingXml()
+    {
+        return """
+<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+  <wp:anchor allowOverlap="1" behindDoc="0" distB="0" distT="0" distL="0" distR="0" layoutInCell="1" relativeHeight="0" simplePos="0">
+    <wp:simplePos x="0" y="0"/>
+    <wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>
+    <wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV>
+    <wp:extent cx="5731200" cy="2794000"/>
+    <wp:effectExtent b="0" l="0" r="0" t="0"/>
+    <wp:wrapNone/>
+    <wp:docPr id="1" name="Group 1"/>
+    <a:graphic>
+      <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">
+        <wpg:wgp>
+          <wpg:grpSpPr>
+            <a:xfrm>
+              <a:off x="634500" y="198525"/>
+              <a:ext cx="5731200" cy="2794000"/>
+              <a:chOff x="634500" y="198525"/>
+              <a:chExt cx="6735750" cy="3288450"/>
+            </a:xfrm>
+          </wpg:grpSpPr>
+          <wps:wsp>
+            <wps:spPr>
+              <a:xfrm>
+                <a:off x="634500" y="198525"/>
+                <a:ext cx="5731200" cy="2794000"/>
+              </a:xfrm>
+              <a:prstGeom prst="rect"/>
+              <a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>
+              <a:ln><a:solidFill><a:srgbClr val="EDF1F3"/></a:solidFill></a:ln>
+            </wps:spPr>
+          </wps:wsp>
+          <pic:pic>
+            <pic:nvPicPr><pic:cNvPr id="2" name="diagram.png"/><pic:cNvPicPr/></pic:nvPicPr>
+            <pic:blipFill>
+              <a:blip r:embed="rIdImage1"/>
+              <a:srcRect b="0" l="14917" r="11488" t="6681"/>
+              <a:stretch><a:fillRect/></a:stretch>
+            </pic:blipFill>
+            <pic:spPr>
+              <a:xfrm>
+                <a:off x="2604800" y="287300"/>
+                <a:ext cx="2795150" cy="3110900"/>
+              </a:xfrm>
+              <a:prstGeom prst="rect"/>
+            </pic:spPr>
+          </pic:pic>
+        </wpg:wgp>
       </a:graphicData>
     </a:graphic>
   </wp:anchor>
@@ -332,6 +422,37 @@ public class DocxProtoReaderBehaviorTests
     }
 
     [Fact]
+    public void Read_GroupedImage_UsesPictureTransformInsteadOfGroupFrame()
+    {
+        var result = DocxDocumentProtoReader.Read(GroupedImageDocx());
+        var imageBox = DecodeFirstImageBox(result);
+        var shapeBoxes = DecodeShapeBoxes(result);
+
+        Assert.NotNull(imageBox);
+        Assert.Single(shapeBoxes);
+        Assert.Equal(0, shapeBoxes[0].XEmu);
+        Assert.Equal(0, shapeBoxes[0].YEmu);
+        Assert.Equal(5731200, shapeBoxes[0].WidthEmu);
+        Assert.Equal(2794000, shapeBoxes[0].HeightEmu);
+        Assert.Equal(ScaledEmu(2604800 - 634500, 5731200, 6735750), imageBox.Value.XEmu);
+        Assert.Equal(ScaledEmu(287300 - 198525, 2794000, 3288450), imageBox.Value.YEmu);
+        Assert.Equal(ScaledEmu(2795150, 5731200, 6735750), imageBox.Value.WidthEmu);
+        Assert.Equal(ScaledEmu(3110900, 2794000, 3288450), imageBox.Value.HeightEmu);
+        Assert.NotEqual(5731200, imageBox.Value.WidthEmu);
+        Assert.NotEqual(2794000, imageBox.Value.HeightEmu);
+    }
+
+    [Fact]
+    public void Read_AlternateContentImage_SkipsFallbackDuplicate()
+    {
+        var result = DocxDocumentProtoReader.Read(AlternateContentImageDocx());
+        var imageBoxes = DecodeImageBoxes(result);
+
+        Assert.Single(imageBoxes);
+        Assert.Equal(0, imageBoxes[0].YEmu);
+    }
+
+    [Fact]
     public void Read_TextBox_PreservesPositionedText()
     {
         var result = DocxDocumentProtoReader.Read(TextBoxDocx());
@@ -420,4 +541,153 @@ public class DocxProtoReaderBehaviorTests
         Assert.Contains("section-4", protoText);
         Assert.Contains("Final contact section", protoText);
     }
+
+    private static ImageBox? DecodeFirstImageBox(byte[] protoBytes)
+    {
+        var boxes = DecodeImageBoxes(protoBytes);
+        return boxes.Count == 0 ? null : boxes[0];
+    }
+
+    private static List<ImageBox> DecodeImageBoxes(byte[] protoBytes)
+    {
+        var input = new CodedInputStream(protoBytes);
+        var imageBoxes = new List<ImageBox>();
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            if (WireFormat.GetTagFieldNumber(tag) == 5)
+            {
+                var imageBox = DecodeImageElementBox(input.ReadBytes().ToByteArray());
+                if (imageBox is not null)
+                {
+                    imageBoxes.Add(imageBox.Value);
+                }
+            }
+            else
+            {
+                input.SkipLastField();
+            }
+        }
+
+        return imageBoxes;
+    }
+
+    private static List<ImageBox> DecodeShapeBoxes(byte[] protoBytes)
+    {
+        var input = new CodedInputStream(protoBytes);
+        var shapeBoxes = new List<ImageBox>();
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            if (WireFormat.GetTagFieldNumber(tag) == 5)
+            {
+                var shapeBox = DecodeShapeElementBox(input.ReadBytes().ToByteArray());
+                if (shapeBox is not null)
+                {
+                    shapeBoxes.Add(shapeBox.Value);
+                }
+            }
+            else
+            {
+                input.SkipLastField();
+            }
+        }
+
+        return shapeBoxes;
+    }
+
+    private static ImageBox? DecodeImageElementBox(byte[] elementBytes)
+    {
+        var input = new CodedInputStream(elementBytes);
+        ImageBox? box = null;
+        var elementType = 0;
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            switch (WireFormat.GetTagFieldNumber(tag))
+            {
+                case 1:
+                    box = DecodeImageBox(input.ReadBytes().ToByteArray());
+                    break;
+                case 11:
+                    elementType = input.ReadInt32();
+                    break;
+                default:
+                    input.SkipLastField();
+                    break;
+            }
+        }
+
+        return elementType == 7 ? box : null;
+    }
+
+    private static ImageBox? DecodeShapeElementBox(byte[] elementBytes)
+    {
+        var input = new CodedInputStream(elementBytes);
+        ImageBox? box = null;
+        var elementType = 0;
+        var hasFill = false;
+        var hasLine = false;
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            switch (WireFormat.GetTagFieldNumber(tag))
+            {
+                case 1:
+                    box = DecodeImageBox(input.ReadBytes().ToByteArray());
+                    break;
+                case 11:
+                    elementType = input.ReadInt32();
+                    break;
+                case 19:
+                    hasFill = true;
+                    input.SkipLastField();
+                    break;
+                case 30:
+                    hasLine = true;
+                    input.SkipLastField();
+                    break;
+                default:
+                    input.SkipLastField();
+                    break;
+            }
+        }
+
+        return elementType == 1 && (hasFill || hasLine) ? box : null;
+    }
+
+    private static ImageBox DecodeImageBox(byte[] boxBytes)
+    {
+        var input = new CodedInputStream(boxBytes);
+        long x = 0;
+        long y = 0;
+        long width = 0;
+        long height = 0;
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            switch (WireFormat.GetTagFieldNumber(tag))
+            {
+                case 1:
+                    x = input.ReadInt64();
+                    break;
+                case 2:
+                    y = input.ReadInt64();
+                    break;
+                case 3:
+                    width = input.ReadInt64();
+                    break;
+                case 4:
+                    height = input.ReadInt64();
+                    break;
+                default:
+                    input.SkipLastField();
+                    break;
+            }
+        }
+
+        return new ImageBox(x, y, width, height);
+    }
+
+    private static long ScaledEmu(long value, long outer, long child)
+    {
+        return (long)Math.Round(value * ((double)outer / child), MidpointRounding.AwayFromZero);
+    }
+
+    private readonly record struct ImageBox(long XEmu, long YEmu, long WidthEmu, long HeightEmu);
 }

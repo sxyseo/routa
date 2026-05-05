@@ -118,6 +118,25 @@ export function wordTextBoxStyle(element: RecordValue, pageLayout: WordPageLayou
   };
 }
 
+export function wordPositionedShapeStyle(element: RecordValue, pageLayout: WordPageLayout): CSSProperties {
+  const contentWidth = wordPageContentWidthPx(pageLayout);
+  const box = wordElementBox(element, contentWidth, 80, contentWidth);
+  const line = lineToCss(element.line);
+  const background = wordFillToCss(element.fill);
+  return {
+    backgroundColor: background,
+    borderColor: line.color,
+    borderStyle: line.color || asNumber(asRecord(element.line)?.widthEmu) > 0 ? "solid" : undefined,
+    borderWidth: line.color || asNumber(asRecord(element.line)?.widthEmu) > 0 ? line.width : undefined,
+    boxSizing: "border-box",
+    display: "block",
+    height: box.hasDecodedSize ? box.height : undefined,
+    marginLeft: box.marginLeft,
+    marginTop: box.marginTop,
+    width: box.width,
+  };
+}
+
 export function wordBodyContentStyle(root: RecordValue | null): CSSProperties {
   const columns = wordSectionColumns(root);
   const style: CSSProperties = {
@@ -391,6 +410,7 @@ function wordIsPageFooterAnchoredElement(element: RecordValue, pageLayout: WordP
 export function wordIsPageOverlayAnchoredElement(element: RecordValue, pageLayout: WordPageLayout): boolean {
   if (wordIsPageFooterAnchoredElement(element, pageLayout)) return true;
   if (wordIsTopPageAnchoredSmallImage(element, pageLayout)) return true;
+  if (wordIsTopGroupedPictureChildElement(element, pageLayout)) return true;
   if (!wordIsFullBleedElement(element, pageLayout)) return false;
   const yPx = wordElementY(element);
   return yPx > 2 && yPx < pageLayout.heightPx;
@@ -410,6 +430,24 @@ function wordIsTopPageAnchoredSmallImage(element: RecordValue, pageLayout: WordP
     xPx >= pageLayout.paddingLeft * 0.75 &&
     yPx >= pageLayout.paddingTop * 0.8 &&
     yPx <= pageLayout.heightPx * 0.2;
+}
+
+function wordIsTopGroupedPictureChildElement(element: RecordValue, pageLayout: WordPageLayout): boolean {
+  if (wordIsFullBleedElement(element, pageLayout)) return false;
+  const box = asRecord(element.bbox);
+  const rawWidth = emuToPx(box?.widthEmu);
+  const rawHeight = emuToPx(box?.heightEmu);
+  const xPx = emuToPx(box?.xEmu);
+  const yPx = emuToPx(box?.yEmu);
+  return rawWidth > 0 &&
+    rawHeight > 0 &&
+    rawWidth <= pageLayout.widthPx * 0.4 &&
+    rawHeight >= pageLayout.heightPx * 0.18 &&
+    rawHeight <= pageLayout.heightPx * 0.32 &&
+    xPx >= pageLayout.paddingLeft &&
+    xPx + rawWidth <= pageLayout.widthPx - pageLayout.paddingRight &&
+    yPx >= 0 &&
+    yPx <= pageLayout.heightPx * 0.08;
 }
 
 function wordIsPageMarginAlignedTopImage(element: RecordValue, pageLayout: WordPageLayout): boolean {
