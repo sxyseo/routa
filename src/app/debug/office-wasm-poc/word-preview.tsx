@@ -48,6 +48,7 @@ import {
   wordTableStyle,
 } from "./word-preview-layout";
 import { WordPageCropMarks } from "./word-preview-crop-marks";
+import { wordBulletMarker } from "./word-preview-numbering";
 import {
   wordEmptyParagraphEstimatedHeight,
   wordEmptyParagraphStyle,
@@ -1396,17 +1397,6 @@ function wordNumberingMarkerForDefinition(
   if (!markerValue) return "";
   if (!levelText.includes("%")) return markerValue;
   return levelText.replace(/%\d+/g, markerValue.replace(/[.)]$/u, ""));
-}
-
-function wordBulletMarker(levelText: string): string {
-  return (
-    {
-      "\uf0a7": "▪",
-      "\uf0b7": "•",
-      "\uf0d8": "➢",
-      "\uf0fc": "✓",
-    } satisfies Record<string, string>
-  )[levelText] ?? (levelText || "•");
 }
 
 function wordNumberingFormatAutoType(format: string): string {
