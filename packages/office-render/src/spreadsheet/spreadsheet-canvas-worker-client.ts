@@ -40,5 +40,5 @@ export function createSpreadsheetCanvasWorkerRenderer(
 }
 
 function defaultSpreadsheetCanvasWorkerFactory(): Worker {
-  return new Worker(new URL("./spreadsheet-canvas.worker.js", import.meta.url), { type: "module" });
+  return new Worker(new URL("./spreadsheet-canvas.worker.ts", import.meta.url), { type: "module" });
 }
