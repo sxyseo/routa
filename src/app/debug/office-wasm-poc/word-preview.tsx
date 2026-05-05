@@ -38,6 +38,7 @@ import {
   wordFillToCss,
   wordImageStyle,
   wordIsFullBleedElement,
+  wordIsPageOverlayAnchoredElement,
   wordPageContentWidthPx,
   wordPageLayout,
   type WordPageLayout,

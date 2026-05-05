@@ -288,7 +288,7 @@ function wordIsPageFooterAnchoredElement(element: RecordValue, pageLayout: WordP
   return rawWidth > 0 && rawHeight > 0 && yPx >= footerBandTop && yPx + rawHeight <= pageLayout.heightPx + 4;
 }
 
-function wordIsPageOverlayAnchoredElement(element: RecordValue, pageLayout: WordPageLayout): boolean {
+export function wordIsPageOverlayAnchoredElement(element: RecordValue, pageLayout: WordPageLayout): boolean {
   if (wordIsPageFooterAnchoredElement(element, pageLayout)) return true;
   if (wordIsTopPageAnchoredSmallImage(element, pageLayout)) return true;
   if (!wordIsFullBleedElement(element, pageLayout)) return false;

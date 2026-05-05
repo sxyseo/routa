@@ -847,6 +847,50 @@ describe("WordPreview", () => {
     expect(pages.length).toBeGreaterThan(1);
   });
 
+  it("does not count page-overlay DOCX images as body pagination height", () => {
+    const paragraphText = "Body paragraph that drives pagination after an overlaid page image. ";
+    const overlay = {
+      bbox: {
+        heightEmu: 5_345_735,
+        widthEmu: 7_560_000,
+        xEmu: -1_424,
+        yEmu: 5_372_100,
+      },
+      imageReference: { id: "airport" },
+    };
+    const elements = [
+      overlay,
+      ...Array.from({ length: 5 }, (_, index) => ({
+        paragraphs: [{ runs: [{ text: `${index + 1}. ${paragraphText.repeat(4)}` }] }],
+      })),
+    ];
+
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements,
+          images: [{ contentType: "image/png", data: Array.from({ length: 256 }, () => 1), id: "airport" }],
+          sections: [
+            {
+              elements,
+              id: "section-overlay-pagination",
+              pageSetup: {
+                heightEmu: 10_691_470,
+                pageMargin: { bottom: 1_143_000, left: 914_400, right: 914_400, top: 914_400 },
+                widthEmu: 7_560_000,
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const firstPage = container.querySelector('[data-testid="document-preview"]');
+    expect(firstPage?.querySelector('[role="img"]')).not.toBeNull();
+    expect(firstPage?.textContent).toContain("1. Body paragraph");
+  });
+
   it("keeps single trailing DOCX body paragraphs with the previous visual page", () => {
     const longParagraph = "Long body paragraph that fills a page in the Word preview estimator. ".repeat(120);
     const elements = [
