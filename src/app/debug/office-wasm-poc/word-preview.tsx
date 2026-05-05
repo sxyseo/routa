@@ -45,6 +45,7 @@ import {
   wordTableCellStyle,
   wordTableContainerStyle,
   wordTableRowStyle,
+  wordTextBoxStyle,
   wordTableStyle,
 } from "./word-preview-layout";
 import { WordPageCropMarks } from "./word-preview-crop-marks";
@@ -577,6 +578,7 @@ function wordElementEstimatedHeight(
 
   const paragraphs = asArray(record.paragraphs);
   if (paragraphs.length === 0) return 0;
+  if (wordIsPositionedTextBoxElement(record)) return 0;
   return paragraphs.reduce<number>(
     (total, paragraph) => total + wordParagraphEstimatedHeight(paragraph, styleMaps, pageLayout),
     0,
@@ -774,7 +776,7 @@ function WordElement({
   );
   if (paragraphs.length === 0) return null;
 
-  return (
+  const paragraphElements = (
     <>
       {paragraphs.map((paragraph, index) => (
         <WordParagraph
@@ -785,6 +787,16 @@ function WordElement({
       ))}
     </>
   );
+
+  if (wordIsPositionedTextBoxElement(element)) {
+    return (
+      <div data-testid="word-text-box" style={wordTextBoxStyle(element, pageLayout)}>
+        {paragraphElements}
+      </div>
+    );
+  }
+
+  return paragraphElements;
 }
 
 function WordChart({ chart, element, pageLayout }: { chart: RecordValue; element: RecordValue; pageLayout: WordPageLayout }) {
@@ -927,6 +939,16 @@ function WordRun({ inheritFont = false, run }: { inheritFont?: boolean; run: Tex
 
 function wordParagraphHasTab(paragraph: ParagraphView): boolean {
   return paragraph.runs.some((run) => run.text.includes("\t"));
+}
+
+function wordIsPositionedTextBoxElement(element: RecordValue): boolean {
+  const bbox = asRecord(element.bbox);
+  return asNumber(bbox?.widthEmu) > 0 &&
+    asNumber(bbox?.heightEmu) > 0 &&
+    asArray(element.paragraphs).length > 0 &&
+    !elementImageReferenceId(element) &&
+    asRecord(element.chartReference) == null &&
+    asRecord(element.table) == null;
 }
 
 function wordParagraphUsesLeaderTab(paragraph: ParagraphView, trailingText?: string): boolean {

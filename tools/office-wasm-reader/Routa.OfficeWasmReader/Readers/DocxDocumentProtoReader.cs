@@ -448,6 +448,8 @@ internal static class DocxDocumentProtoReader
 
                     break;
                 }
+                case W.Drawing:
+                    break;
                 case W.CommentRangeStart commentStart:
                     if (honorCommentRangeMarkers && commentStart.Id?.Value is { } startId)
                     {
@@ -501,6 +503,13 @@ internal static class DocxDocumentProtoReader
                 continue;
             }
 
+            var textBoxElement = WriteTextBoxElement(drawing, context, partContainer, paragraph);
+            if (textBoxElement is not null)
+            {
+                yield return textBoxElement;
+                continue;
+            }
+
             var blip = drawing.Descendants<A.Blip>().FirstOrDefault();
             var relationshipId = blip?.Embed?.Value ?? blip?.Link?.Value;
             if (string.IsNullOrEmpty(relationshipId))
@@ -548,6 +557,60 @@ internal static class DocxDocumentProtoReader
                 WriteString(output, 27, $"element-{image.Id["image-".Length..]}");
             });
         }
+    }
+
+    private static byte[]? WriteTextBoxElement(
+        W.Drawing drawing,
+        DocxReadContext context,
+        OpenXmlPartContainer partContainer,
+        W.Paragraph paragraph)
+    {
+        var sourceParagraphs = drawing.Descendants<W.TextBoxContent>()
+            .SelectMany(content => content.Elements<W.Paragraph>())
+            .ToList();
+        if (!sourceParagraphs.Any(HasVisibleText))
+        {
+            return null;
+        }
+
+        var paragraphs = sourceParagraphs
+            .Select(textBoxParagraph => WriteParagraph(textBoxParagraph, context, partContainer))
+            .Where(textBoxParagraph => textBoxParagraph is not null)
+            .Select(textBoxParagraph => textBoxParagraph!)
+            .ToList();
+        if (paragraphs.Count == 0)
+        {
+            return null;
+        }
+
+        var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
+        var widthEmu = ToLong(extent?.Cx) ?? 0;
+        var heightEmu = ToLong(extent?.Cy) ?? 0;
+        var (xEmu, yEmu) = DrawingPosition(
+            drawing,
+            context.Page,
+            paragraph.ParagraphProperties?.Justification?.Val?.ToString(),
+            widthEmu,
+            heightEmu);
+
+        return Message(output =>
+        {
+            WriteMessage(output, 1, WriteBoundingBox(xEmu, yEmu, widthEmu, heightEmu, writeZeroY: true));
+            WriteInt32(output, 2, DrawingZIndex(drawing));
+            foreach (var textBoxParagraph in paragraphs)
+            {
+                WriteMessage(output, 6, textBoxParagraph);
+            }
+
+            WriteInt32(output, 11, ElementTypeText);
+            WriteString(output, 27, $"element-textbox-{context.NextTextBoxElementIndex():x8}");
+        });
+    }
+
+    private static bool HasVisibleText(W.Paragraph paragraph)
+    {
+        return paragraph.Descendants<W.Text>()
+            .Any(text => !string.IsNullOrWhiteSpace(text.Text));
     }
 
     private static IEnumerable<byte[]> ExtractDrawingEffects(W.Drawing drawing)
@@ -3229,6 +3292,7 @@ internal static class DocxDocumentProtoReader
         private int _tableRowIndex = 1;
         private int _tableCellIndex = 1;
         private int _chartElementIndex = 1;
+        private int _textBoxElementIndex = 1;
         private int _fallbackImageOrder;
         private readonly List<string> _activeCommentIds = [];
 
@@ -3257,6 +3321,8 @@ internal static class DocxDocumentProtoReader
         public int NextTableCellIndex() => _tableCellIndex++;
 
         public int NextChartElementIndex() => _chartElementIndex++;
+
+        public int NextTextBoxElementIndex() => _textBoxElementIndex++;
 
         public void PushActiveComment(string commentId)
         {

@@ -24,7 +24,7 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 **Key Status**:
 - ✅ Protocol equivalence locked against Walnut for all committed fixtures + real-world Chinese samples
 - ✅ Core rendering (text/styles/tables/images/headers/footers/sections) production-ready
-- ⏳ Visual layout depth (floating object ordering/wrap distance/effects) and chart payload long-tail next
+- ⏳ Visual layout depth (floating object ordering/wrap distance/effects/shape styling) and chart payload long-tail next
 - ⏳ Long-tail edge cases (rare style/table/header combinations)
 
 ## Feature Domains
@@ -140,9 +140,10 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 - [x] Behind-doc layer ordering
 - [ ] Image effects (rotations, reflections)
 - [ ] Group objects and nested drawings
-- [ ] Text boxes and callouts
+- [x] Positioned text box content
+- [ ] Callout geometry and connector shapes
 - [ ] Shapes (rectangles, circles, arrows, callouts)
-- [ ] Shape text and text styling inside shapes
+- [ ] Rich shape text styling beyond ordinary paragraph/run properties
 - [ ] Shape line styles and fill
 - [ ] Shape effects (shadows, 3D, reflections)
 
@@ -154,6 +155,7 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 - [x] Picture shadow metadata
 - [x] Behind-doc layer ordering
 - [ ] Shape effect metadata (soft edges, glows)
+- [ ] Shape fill/line metadata and connector endpoint rendering
 
 ---
 

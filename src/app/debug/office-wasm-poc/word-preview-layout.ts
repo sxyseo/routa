@@ -102,6 +102,22 @@ export function wordTableContainerStyle(element: RecordValue, pageLayout?: WordP
   };
 }
 
+export function wordTextBoxStyle(element: RecordValue, pageLayout: WordPageLayout): CSSProperties {
+  const contentWidth = wordPageContentWidthPx(pageLayout);
+  const box = wordElementBox(element, contentWidth, 80, contentWidth);
+  return {
+    boxSizing: "border-box",
+    display: "block",
+    height: box.hasDecodedSize ? box.height : undefined,
+    left: wordPageAnchoredLeft(element, pageLayout, box.width),
+    overflow: "hidden",
+    position: "absolute",
+    top: wordPageAnchoredTop(element, pageLayout, box.height),
+    width: box.width,
+    zIndex: wordImageZIndex(element, true) ?? 2,
+  };
+}
+
 export function wordBodyContentStyle(root: RecordValue | null): CSSProperties {
   const columns = wordSectionColumns(root);
   const style: CSSProperties = {

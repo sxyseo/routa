@@ -437,6 +437,35 @@ describe("WordPreview", () => {
     expect(marker?.style.color).toBe("rgb(74, 166, 178)");
   });
 
+  it("renders decoded DOCX text boxes as positioned page overlays", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              bbox: {
+                heightEmu: 952_500,
+                widthEmu: 1_905_000,
+                xEmu: 952_500,
+                yEmu: 1_905_000,
+              },
+              paragraphs: [{ runs: [{ text: "Box text" }] }],
+            },
+          ],
+          heightEmu: 10_691_470,
+          widthEmu: 7_560_000,
+        }}
+      />,
+    );
+
+    const textBox = container.querySelector<HTMLElement>('[data-testid="word-text-box"]');
+    expect(textBox?.textContent).toBe("Box text");
+    expect(textBox?.style.position).toBe("absolute");
+    expect(textBox?.style.left).toBe("100px");
+    expect(textBox?.style.top).toBe("200px");
+  });
+
   it("renders decoded DOCX hyperlinks and note reference markers", () => {
     const { container } = render(
       <WordPreview

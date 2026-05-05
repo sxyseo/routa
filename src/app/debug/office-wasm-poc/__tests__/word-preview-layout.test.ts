@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { wordImageStyle } from "../word-preview-layout";
+import { wordImageStyle, wordTextBoxStyle } from "../word-preview-layout";
 
 describe("word preview layout", () => {
   it("renders decoded DOCX image outlines as CSS borders", () => {
@@ -35,5 +35,28 @@ describe("word preview layout", () => {
     );
 
     expect(style.boxShadow).toBe("0px 1px 2px rgba(0, 0, 0, 0.5)");
+  });
+
+  it("positions decoded DOCX text boxes as page overlays", () => {
+    const style = wordTextBoxStyle(
+      {
+        bbox: {
+          heightEmu: 952_500,
+          widthEmu: 1_905_000,
+          xEmu: 952_500,
+          yEmu: 1_905_000,
+        },
+      },
+      {
+        heightPx: 1122.53,
+        paddingBottom: 96,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style).toMatchObject({ height: 100, left: 100, position: "absolute", top: 200, width: 200 });
   });
 });

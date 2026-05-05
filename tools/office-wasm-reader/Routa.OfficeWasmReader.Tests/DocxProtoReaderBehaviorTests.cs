@@ -105,6 +105,44 @@ public class DocxProtoReaderBehaviorTests
         });
     }
 
+    private static byte[] TextBoxDocx()
+    {
+        return BuildDocx((_, body) =>
+        {
+            body.AppendChild(new Paragraph(new Run(new Drawing(TextBoxDrawingXml()))));
+        });
+    }
+
+    private static string TextBoxDrawingXml()
+    {
+        return """
+<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+  <wp:anchor allowOverlap="1" behindDoc="0" distB="0" distT="0" distL="0" distR="0" layoutInCell="1" relativeHeight="0" simplePos="0">
+    <wp:simplePos x="0" y="0"/>
+    <wp:positionH relativeFrom="page"><wp:posOffset>952500</wp:posOffset></wp:positionH>
+    <wp:positionV relativeFrom="page"><wp:posOffset>1905000</wp:posOffset></wp:positionV>
+    <wp:extent cx="1905000" cy="952500"/>
+    <wp:effectExtent b="0" l="0" r="0" t="0"/>
+    <wp:wrapNone/>
+    <wp:docPr id="2" name="Text Box 1"/>
+    <a:graphic>
+      <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+        <wps:wsp>
+          <wps:txbx>
+            <w:txbxContent>
+              <w:p>
+                <w:r><w:t>Box text</w:t></w:r>
+              </w:p>
+            </w:txbxContent>
+          </wps:txbx>
+        </wps:wsp>
+      </a:graphicData>
+    </a:graphic>
+  </wp:anchor>
+</w:drawing>
+""";
+    }
+
     private static string AnchoredImageDrawingXml(
         long verticalOffsetEmu,
         string sourceRectangle = "",
@@ -291,6 +329,14 @@ public class DocxProtoReaderBehaviorTests
         var shadowed = DocxDocumentProtoReader.Read(ShadowedImageDocx());
 
         Assert.True(shadowed.Length > plain.Length);
+    }
+
+    [Fact]
+    public void Read_TextBox_PreservesPositionedText()
+    {
+        var result = DocxDocumentProtoReader.Read(TextBoxDocx());
+
+        Assert.Contains("Box text", Encoding.UTF8.GetString(result));
     }
 
     [Fact]
