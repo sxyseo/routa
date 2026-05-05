@@ -210,7 +210,7 @@ function WordSectionContent({
   styleMaps: OfficeTextStyleMaps;
   variant: "footer" | "header";
 }) {
-  if (elements.length === 0) return null;
+  if (!wordElementsHaveRenderableContent(elements)) return null;
 
   return (
     <section style={variant === "header" ? wordHeaderContentStyle : wordFooterContentStyle}>
@@ -440,9 +440,20 @@ function wordImageBoxKey(element: RecordValue): string {
 
 function wordPageBodyCapacity(layout: WordPageLayout, page: WordPreviewPage): number {
   if (layout.heightPx <= 0) return 0;
-  const headerReserve = page.headerElements.length > 0 ? 16 : 0;
-  const footerReserve = page.footerElements.length > 0 ? 12 : 0;
+  const headerReserve = wordElementsHaveRenderableContent(page.headerElements) ? 16 : 0;
+  const footerReserve = wordElementsHaveRenderableContent(page.footerElements) ? 12 : 0;
   return Math.max(180, layout.heightPx - layout.paddingTop - layout.paddingBottom - headerReserve - footerReserve);
+}
+
+function wordElementsHaveRenderableContent(elements: unknown[]): boolean {
+  return elements.some((element) => {
+    const record = asRecord(element);
+    if (!record) return false;
+    if (elementImageReferenceId(record) || asRecord(record.table) || asRecord(record.chartReference)) return true;
+    return asArray(record.paragraphs).some((paragraph) =>
+      wordParagraphHasVisibleContent(paragraphView(paragraph, { textStyles: new Map(), images: new Map() })),
+    );
+  });
 }
 
 function wordElementEstimatedHeight(
