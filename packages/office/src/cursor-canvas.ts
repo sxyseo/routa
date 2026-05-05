@@ -227,8 +227,21 @@ export async function renderPptxCursorCanvasSource(
   protoBytes: Uint8Array,
   options: RenderPptxCursorCanvasOptions,
 ): Promise<string> {
+  const payload = await buildPptxCursorCanvasPayload(protoBytes, options);
+  return renderPptxCursorCanvasSourceFromPayload(payload);
+}
+
+export async function buildPptxCursorCanvasPayload(
+  protoBytes: Uint8Array,
+  options: RenderPptxCursorCanvasOptions,
+): Promise<DirectCanvasPayload> {
   const presentation = decodePresentation(protoBytes);
-  const payload = await buildPresentationPayload(presentation, options);
+  return buildPresentationPayload(presentation, options);
+}
+
+export function renderPptxCursorCanvasSourceFromPayload(
+  payload: DirectCanvasPayload,
+): string {
   return renderPresentationCanvasSource(payload);
 }
 

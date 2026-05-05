@@ -3,18 +3,18 @@ import { createHash } from "node:crypto";
 import { loadSharp, type SharpFactory } from "./optional-sharp.js";
 import { ProtoReader } from "./proto-reader.js";
 
-type CanvasMedia = {
+export type CanvasMedia = {
   height: number;
   src: string;
   width: number;
 };
 
-type DocumentBlock =
+export type DocumentBlock =
   | { kind: "image"; mediaId: string; path: string }
   | { kind: "paragraph"; paragraphs: DocumentParagraph[]; path: string; text: string }
   | { kind: "table"; path: string; rows: DocumentTableCell[][] };
 
-type DocumentParagraph = {
+export type DocumentParagraph = {
   align: "center" | "justify" | "left" | "right";
   indentPx?: number;
   marginBottomPx?: number;
@@ -23,7 +23,7 @@ type DocumentParagraph = {
   runs: DocumentRun[];
 };
 
-type DocumentRun = {
+export type DocumentRun = {
   background?: string;
   bold?: boolean;
   color?: string;
@@ -35,12 +35,12 @@ type DocumentRun = {
   underline?: boolean;
 };
 
-type DocumentTableCell = {
+export type DocumentTableCell = {
   paragraphs: DocumentParagraph[];
   text: string;
 };
 
-type DocumentPayload = {
+export type DocumentPayload = {
   artifact: {
     generatedBy: string;
     kind: "docx";
@@ -71,7 +71,7 @@ type OfficeArtifact = {
   title: string;
 };
 
-type WorkbookCell = {
+export type WorkbookCell = {
   address: string;
   background: string;
   bold: boolean;
@@ -79,7 +79,7 @@ type WorkbookCell = {
   value: string;
 };
 
-type WorkbookPayload = {
+export type WorkbookPayload = {
   artifact: {
     generatedBy: string;
     kind: "xlsx";
@@ -132,6 +132,14 @@ export async function renderDocxCursorCanvasSource(
   protoBytes: Uint8Array,
   options: RenderOfficeCursorCanvasOptions,
 ): Promise<string> {
+  const payload = await buildDocxCursorCanvasPayload(protoBytes, options);
+  return renderDocxCursorCanvasSourceFromPayload(payload);
+}
+
+export async function buildDocxCursorCanvasPayload(
+  protoBytes: Uint8Array,
+  options: RenderOfficeCursorCanvasOptions,
+): Promise<DocumentPayload> {
   const document = decodeDocxDocument(protoBytes, options.title);
   const artifact =
     document.textBlocks.length > 0 ||
@@ -139,7 +147,12 @@ export async function renderDocxCursorCanvasSource(
     document.images.length > 0
       ? document
       : decodeOfficeArtifact(protoBytes);
-  const payload = await buildDocumentPayload(artifact, options);
+  return buildDocumentPayload(artifact, options);
+}
+
+export function renderDocxCursorCanvasSourceFromPayload(
+  payload: DocumentPayload,
+): string {
   return renderDocumentCanvasSource(payload);
 }
 
@@ -147,8 +160,21 @@ export function renderXlsxCursorCanvasSource(
   protoBytes: Uint8Array,
   options: RenderOfficeCursorCanvasOptions,
 ): string {
+  const payload = buildXlsxCursorCanvasPayload(protoBytes, options);
+  return renderXlsxCursorCanvasSourceFromPayload(payload);
+}
+
+export function buildXlsxCursorCanvasPayload(
+  protoBytes: Uint8Array,
+  options: RenderOfficeCursorCanvasOptions,
+): WorkbookPayload {
   const workbook = decodeWorkbook(protoBytes);
-  const payload = buildWorkbookPayload(workbook, options);
+  return buildWorkbookPayload(workbook, options);
+}
+
+export function renderXlsxCursorCanvasSourceFromPayload(
+  payload: WorkbookPayload,
+): string {
   return renderWorkbookCanvasSource(payload);
 }
 

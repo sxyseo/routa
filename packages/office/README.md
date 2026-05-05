@@ -112,15 +112,50 @@ Return the version string embedded in the WASM assembly.
 Available from `@autodev/office/cursor-canvas`. Convert PPTX protobuf bytes
 from `extractPptxProto` into Cursor Canvas TSX source.
 
+### `buildPptxCursorCanvasPayload(protoBytes, options): Promise<DirectCanvasPayload>`
+
+Available from `@autodev/office/cursor-canvas`. Convert PPTX protobuf bytes
+into the intermediate Canvas payload used by the source renderer.
+
+### `renderPptxCursorCanvasSourceFromPayload(payload): string`
+
+Available from `@autodev/office/cursor-canvas`. Convert a PPTX Canvas payload
+into self-contained Cursor Canvas TSX source.
+
 ### `renderDocxCursorCanvasSource(protoBytes, options): Promise<string>`
 
 Available from `@autodev/office/office-canvas`. Convert DOCX protobuf bytes
 from `extractDocxProto` into Cursor Canvas TSX source.
 
+### `buildDocxCursorCanvasPayload(protoBytes, options): Promise<DocumentPayload>`
+
+Available from `@autodev/office/office-canvas`. Convert DOCX protobuf bytes
+into the intermediate Canvas payload used by the source renderer.
+
+### `renderDocxCursorCanvasSourceFromPayload(payload): string`
+
+Available from `@autodev/office/office-canvas`. Convert a DOCX Canvas payload
+into self-contained Cursor Canvas TSX source.
+
 ### `renderXlsxCursorCanvasSource(protoBytes, options): string`
 
 Available from `@autodev/office/office-canvas`. Convert XLSX protobuf bytes
 from `extractXlsxProto` into Cursor Canvas TSX source.
+
+### `buildXlsxCursorCanvasPayload(protoBytes, options): WorkbookPayload`
+
+Available from `@autodev/office/office-canvas`. Convert XLSX protobuf bytes
+into the intermediate Canvas payload used by the source renderer.
+
+### `renderXlsxCursorCanvasSourceFromPayload(payload): string`
+
+Available from `@autodev/office/office-canvas`. Convert an XLSX Canvas payload
+into self-contained Cursor Canvas TSX source.
+
+The `build*CanvasPayload` APIs are the intended reuse boundary for Routa's own
+Canvas runtime: Cursor can receive self-contained TSX, while Routa can keep the
+same parsed payload and render it through host-provided modules or prebuilt
+canvas templates.
 
 ## Notes
 
