@@ -77,11 +77,25 @@ public class DocxProtoReaderBehaviorTests
         });
     }
 
+    private static byte[] OutlinedImageDocx()
+    {
+        return BuildDocx((mainPart, body) =>
+        {
+            var imagePart = mainPart.AddImagePart(ImagePartType.Png, "rIdImage1");
+            using var imageStream = new MemoryStream(TinyPng);
+            imagePart.FeedData(imageStream);
+            body.AppendChild(new Paragraph(new Run(new Drawing(AnchoredImageDrawingXml(
+                0,
+                shapePropertiesExtra: "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill></a:ln>")))));
+        });
+    }
+
     private static string AnchoredImageDrawingXml(
         long verticalOffsetEmu,
         string sourceRectangle = "",
         string behindDoc = "0",
-        int relativeHeight = 0)
+        int relativeHeight = 0,
+        string shapePropertiesExtra = "")
     {
         var offset = verticalOffsetEmu.ToString(CultureInfo.InvariantCulture);
         var relativeHeightValue = relativeHeight.ToString(CultureInfo.InvariantCulture);
@@ -100,7 +114,7 @@ public class DocxProtoReaderBehaviorTests
         <pic:pic>
           <pic:nvPicPr><pic:cNvPr id="0" name="test.png"/><pic:cNvPicPr/></pic:nvPicPr>
           <pic:blipFill><a:blip r:embed="rIdImage1"/>{sourceRectangle}<a:stretch><a:fillRect/></a:stretch></pic:blipFill>
-          <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"/></pic:spPr>
+          <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"/>{shapePropertiesExtra}</pic:spPr>
         </pic:pic>
       </a:graphicData>
     </a:graphic>
@@ -244,6 +258,15 @@ public class DocxProtoReaderBehaviorTests
         var cropped = DocxDocumentProtoReader.Read(CroppedImageDocx());
 
         Assert.True(cropped.Length > uncropped.Length);
+    }
+
+    [Fact]
+    public void Read_ImageOutline_AffectsImageProto()
+    {
+        var plain = DocxDocumentProtoReader.Read(AnchoredImageDocx(0));
+        var outlined = DocxDocumentProtoReader.Read(OutlinedImageDocx());
+
+        Assert.True(outlined.Length > plain.Length);
     }
 
     [Fact]

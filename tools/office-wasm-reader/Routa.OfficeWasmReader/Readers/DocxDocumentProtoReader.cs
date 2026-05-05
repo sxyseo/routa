@@ -533,10 +533,61 @@ internal static class DocxDocumentProtoReader
                     WriteMessage(output, 19, cropFill);
                 }
 
+                if (WriteImageLine(drawing) is { } imageLine)
+                {
+                    WriteMessage(output, 30, imageLine);
+                }
+
                 WriteInt32(output, 11, ElementTypeImageReference);
                 WriteString(output, 27, $"element-{image.Id["image-".Length..]}");
             });
         }
+    }
+
+    private static byte[]? WriteImageLine(W.Drawing drawing)
+    {
+        var line = drawing.Descendants<A.Outline>().FirstOrDefault();
+        if (line is null || line.GetFirstChild<A.NoFill>() is not null)
+        {
+            return null;
+        }
+
+        var fill = line.GetFirstChild<A.SolidFill>();
+        var color = fill is null ? null : DrawingRgbColor(fill);
+        var width = StrictIntFromString(RawAttributeValue(line, "w", namespaceUri: null));
+        if (color is null && width is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteInt32(output, 1, DrawingLineStyle(line));
+            WriteInt32(output, 2, width);
+            if (color is not null)
+            {
+                WriteMessage(output, 3, WriteColorFill(color, writeSolidType: true));
+            }
+        });
+    }
+
+    private static int DrawingLineStyle(A.Outline line)
+    {
+        return line.GetFirstChild<A.PresetDash>()?.Val?.InnerText switch
+        {
+            "dash" or "lgDash" or "sysDash" => LineStyleDashed,
+            "dot" or "sysDot" => LineStyleDotted,
+            "dashDot" or "lgDashDot" or "sysDashDot" => LineStyleDashDot,
+            "lgDashDotDot" or "sysDashDotDot" => LineStyleDashDotDot,
+            _ => LineStyleSolid,
+        };
+    }
+
+    private static string? DrawingRgbColor(OpenXmlElement element)
+    {
+        return element.Descendants<A.RgbColorModelHex>()
+            .Select(color => color.Val?.Value)
+            .FirstOrDefault(IsProtocolColor);
     }
 
     private static byte[]? WriteImageCropFill(W.Drawing drawing, string imageId)

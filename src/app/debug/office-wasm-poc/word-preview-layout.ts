@@ -49,8 +49,10 @@ export function wordImageStyle(
     backgroundPosition: wordImageBackgroundPosition(element),
     backgroundRepeat: "no-repeat",
     backgroundSize: wordImageBackgroundSize(element, box, pageLayout),
+    ...wordImageLineStyle(element),
     borderRadius: wordImageBorderRadius(element, pageLayout),
     boxShadow: wordImageBoxShadow(element, pageLayout),
+    boxSizing: "border-box",
     display: "block",
     height: box.hasDecodedSize ? undefined : box.height,
     left: pageOverlay && pageLayout ? wordPageAnchoredLeft(element, pageLayout, fullBleed ? pageLayout.widthPx : box.width) : undefined,
@@ -306,6 +308,19 @@ function wordImageBorderRadius(element: RecordValue, pageLayout?: WordPageLayout
 function wordImageBoxShadow(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties["boxShadow"] {
   if (!pageLayout || !wordIsTopCircularPortraitImage(element, pageLayout)) return undefined;
   return "inset 0 0 0 3px #ffffff, 0 0 0 2px rgba(71, 85, 105, 0.75)";
+}
+
+function wordImageLineStyle(element: RecordValue): Pick<CSSProperties, "borderColor" | "borderStyle" | "borderWidth"> {
+  const line = asRecord(element.line);
+  if (!line) return {};
+
+  const border = lineToCss(line);
+  if (!border.color && asNumber(line.widthEmu) <= 0) return {};
+  return {
+    borderColor: border.color ?? "#0f172a",
+    borderStyle: "solid",
+    borderWidth: border.width,
+  };
 }
 
 function wordImageZIndex(element: RecordValue, pageOverlay: boolean): CSSProperties["zIndex"] {
