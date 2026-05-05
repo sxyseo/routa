@@ -991,7 +991,9 @@ function numberValue(value: unknown): number {
 
 function semanticBboxEmu(value: unknown): number {
   const number = numberValue(value);
-  return Math.round(number / 10) * 10;
+  // 1,000 EMU is roughly one tenth of a CSS pixel at 96 DPI, so this keeps
+  // Walnut/Routa sub-pixel rounding noise out of semantic production gates.
+  return Math.round(number / 1000) * 1000;
 }
 
 function stringValue(value: unknown): string {

@@ -317,14 +317,15 @@ function wordPaginatePreviewPages(
 function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextStyleMaps): WordPreviewPage[] {
   const layout = wordPageLayout(page.root);
   const capacity = wordPageBodyCapacity(layout, page);
-  if (capacity <= 0 || page.elements.length <= 1) return [page];
+  const elements = wordSplitOversizedTableElements(page.elements, capacity);
+  if (capacity <= 0 || elements.length <= 1) return [{ ...page, elements }];
   if (wordIsCoverLikeFullBleedPage(page, layout)) return [page];
 
   const chunks: WordPreviewPage[] = [];
   let current: unknown[] = [];
   let currentHeight = 0;
 
-  for (const element of wordSplitOversizedTableElements(page.elements, capacity)) {
+  for (const element of elements) {
     const estimatedHeight = wordElementEstimatedHeight(element, styleMaps, layout);
     const shouldBreak = current.length > 0 && currentHeight + estimatedHeight > capacity;
     if (shouldBreak) {
@@ -464,8 +465,8 @@ function wordImageBoxKey(element: RecordValue): string {
 
 function wordPageBodyCapacity(layout: WordPageLayout, page: WordPreviewPage): number {
   if (layout.heightPx <= 0) return 0;
-  const headerReserve = page.headerElements.length > 0 ? 34 : 0;
-  const footerReserve = page.footerElements.length > 0 ? 34 : 0;
+  const headerReserve = page.headerElements.length > 0 ? 24 : 0;
+  const footerReserve = page.footerElements.length > 0 ? 24 : 0;
   return Math.max(180, layout.heightPx - layout.paddingTop - layout.paddingBottom - headerReserve - footerReserve);
 }
 
@@ -649,11 +650,13 @@ function WordChart({ chart, element }: { chart: RecordValue; element: RecordValu
 function WordParagraph({
   fallbackColor,
   paragraph,
+  variant = "body",
 }: {
   fallbackColor?: string;
   paragraph: ParagraphView;
+  variant?: "body" | "table";
 }) {
-  const style = wordParagraphStyle(paragraph);
+  const style = variant === "table" ? wordTableParagraphStyle(paragraph) : wordParagraphStyle(paragraph);
   if (fallbackColor && asRecord(paragraph.style?.fill)?.color == null) {
     style.color = fallbackColor;
   }
@@ -775,6 +778,7 @@ function WordTable({
                           fallbackColor={fallbackTextColor}
                           key={paragraph.id || index}
                           paragraph={paragraph}
+                          variant="table"
                         />
                       ))
                     ) : (
@@ -1071,21 +1075,8 @@ function wordRunStyle(run: TextRunView, hyperlink: boolean): CSSProperties {
 }
 
 function wordReviewMarkStyle(types: number[]): CSSProperties {
-  if (types.includes(2)) {
-    return {
-      color: "#b91c1c",
-      textDecoration: "line-through",
-    };
-  }
-
-  if (types.includes(1)) {
-    return {
-      backgroundColor: "#dcfce7",
-      textDecoration: "underline",
-      textDecorationColor: "#16a34a",
-    };
-  }
-
+  if (types.includes(2)) return { color: "#b91c1c", textDecoration: "line-through" };
+  if (types.includes(1)) return { backgroundColor: "#dcfce7", textDecoration: "underline", textDecorationColor: "#16a34a" };
   return {};
 }
 
@@ -1224,30 +1215,24 @@ function resetDeeperNumberingLevels(counters: Map<string, number>, numId: string
 }
 
 function wordNumberingMarker(type: string, value: number): string {
-  switch (type) {
-    case "arabicPeriod":
-      return `${value}.`;
-    case "arabicParenR":
-      return `${value})`;
-    case "alphaLcPeriod":
-      return `${alphabeticMarker(value, false)}.`;
-    case "alphaLcParenR":
-      return `${alphabeticMarker(value, false)})`;
-    case "alphaUcPeriod":
-      return `${alphabeticMarker(value, true)}.`;
-    case "alphaUcParenR":
-      return `${alphabeticMarker(value, true)})`;
-    case "romanLcPeriod":
-      return `${romanMarker(value).toLowerCase()}.`;
-    case "romanLcParenR":
-      return `${romanMarker(value).toLowerCase()})`;
-    case "romanUcPeriod":
-      return `${romanMarker(value)}.`;
-    case "romanUcParenR":
-      return `${romanMarker(value)})`;
-    default:
-      return "";
-  }
+  const alphaLc = alphabeticMarker(value, false);
+  const alphaUc = alphabeticMarker(value, true);
+  const romanUc = romanMarker(value);
+  const romanLc = romanUc.toLowerCase();
+  return (
+    {
+      alphaLcParenR: `${alphaLc})`,
+      alphaLcPeriod: `${alphaLc}.`,
+      alphaUcParenR: `${alphaUc})`,
+      alphaUcPeriod: `${alphaUc}.`,
+      arabicParenR: `${value})`,
+      arabicPeriod: `${value}.`,
+      romanLcParenR: `${romanLc})`,
+      romanLcPeriod: `${romanLc}.`,
+      romanUcParenR: `${romanUc})`,
+      romanUcPeriod: `${romanUc}.`,
+    } satisfies Record<string, string>
+  )[type] ?? "";
 }
 
 function wordNumberingMarkerForDefinition(
@@ -1269,20 +1254,15 @@ function wordNumberingMarkerForDefinition(
 }
 
 function wordNumberingFormatAutoType(format: string): string {
-  switch (format) {
-    case "decimal":
-      return "arabicPeriod";
-    case "lowerLetter":
-      return "alphaLcPeriod";
-    case "upperLetter":
-      return "alphaUcPeriod";
-    case "lowerRoman":
-      return "romanLcPeriod";
-    case "upperRoman":
-      return "romanUcPeriod";
-    default:
-      return "";
-  }
+  return (
+    {
+      decimal: "arabicPeriod",
+      lowerLetter: "alphaLcPeriod",
+      lowerRoman: "romanLcPeriod",
+      upperLetter: "alphaUcPeriod",
+      upperRoman: "romanUcPeriod",
+    } satisfies Record<string, string>
+  )[format] ?? "";
 }
 
 function alphabeticMarker(value: number, uppercase: boolean): string {
@@ -1497,10 +1477,7 @@ function wordPageMarginPx(value: unknown, fallback: number): number {
 
 const WORD_PREVIEW_CONTENT_WIDTH_PX = 720;
 
-const wordDocumentStackStyle: CSSProperties = {
-  display: "grid",
-  gap: 20,
-};
+const wordDocumentStackStyle: CSSProperties = { display: "grid", gap: 20 };
 
 function wordParagraphStyle(paragraph: ParagraphView): CSSProperties {
   const style = paragraphStyle(paragraph);
@@ -1528,12 +1505,8 @@ function wordParagraphCssLineHeight(paragraph: ParagraphView, fontSize: number):
 }
 
 const wordHeading2RuleStyle: CSSProperties = {
-  borderBottomColor: "#3c9faa",
-  borderBottomStyle: "solid",
-  borderBottomWidth: 1,
-  borderTopColor: "#3c9faa",
-  borderTopStyle: "solid",
-  borderTopWidth: 1,
+  borderBottom: "1px solid #3c9faa",
+  borderTop: "1px solid #3c9faa",
   marginBottom: 18,
   marginTop: 18,
   paddingBottom: 6,
@@ -1554,9 +1527,7 @@ function wordParagraphMarkerStyle(marker: string): CSSProperties {
 }
 
 const wordHeaderContentStyle: CSSProperties = {
-  borderBottomColor: "#e2e8f0",
-  borderBottomStyle: "solid",
-  borderBottomWidth: 1,
+  borderBottom: "1px solid #e2e8f0",
   color: "#475569",
   fontSize: 12,
   marginBottom: 12,
@@ -1564,9 +1535,7 @@ const wordHeaderContentStyle: CSSProperties = {
 };
 
 const wordFooterContentStyle: CSSProperties = {
-  borderTopColor: "#e2e8f0",
-  borderTopStyle: "solid",
-  borderTopWidth: 1,
+  borderTop: "1px solid #e2e8f0",
   color: "#475569",
   fontSize: 12,
   marginTop: 12,
@@ -1580,9 +1549,7 @@ const wordReferenceMarkerStyle: CSSProperties = {
 };
 
 const wordSupplementalNotesStyle: CSSProperties = {
-  borderTopColor: "#cbd5e1",
-  borderTopStyle: "solid",
-  borderTopWidth: 1,
+  borderTop: "1px solid #cbd5e1",
   display: "grid",
   gap: 4,
   marginTop: 18,
@@ -1621,17 +1588,11 @@ function hexCssToRgb(value: string): [number, number, number] | null {
   const match = value.match(/^#([0-9a-f]{6})$/i);
   if (!match) return null;
   const hex = match[1];
-  return [
-    Number.parseInt(hex.slice(0, 2), 16),
-    Number.parseInt(hex.slice(2, 4), 16),
-    Number.parseInt(hex.slice(4, 6), 16),
-  ];
+  return [Number.parseInt(hex.slice(0, 2), 16), Number.parseInt(hex.slice(2, 4), 16), Number.parseInt(hex.slice(4, 6), 16)];
 }
 
 const documentFallbackBlockStyle: CSSProperties = {
-  borderBottomColor: "#e2e8f0",
-  borderBottomStyle: "solid",
-  borderBottomWidth: 1,
+  borderBottom: "1px solid #e2e8f0",
   color: "#0f172a",
   lineHeight: 1.6,
   margin: 0,

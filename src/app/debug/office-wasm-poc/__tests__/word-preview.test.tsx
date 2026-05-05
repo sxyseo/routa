@@ -649,6 +649,35 @@ describe("WordPreview", () => {
     expect(pages.length).toBeGreaterThan(1);
   });
 
+  it("splits oversized decoded DOCX tables across preview pages", () => {
+    const rows = Array.from({ length: 12 }, (_, index) => ({
+      cells: [{ paragraphs: [{ runs: [{ text: `Row ${index + 1}` }] }] }],
+    }));
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [{ table: { rows } }],
+          sections: [
+            {
+              elements: [{ table: { rows } }],
+              id: "section-table",
+              pageSetup: {
+                heightEmu: 2_286_000,
+                pageMargin: { bottom: 360, left: 720, right: 720, top: 360 },
+                widthEmu: 4_572_000,
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages.length).toBeGreaterThan(1);
+    expect(container.querySelectorAll("table").length).toBeGreaterThan(1);
+  });
+
   it("maps decoded DOCX section columns into body CSS columns", () => {
     const { container } = render(
       <WordPreview
