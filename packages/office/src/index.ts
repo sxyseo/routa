@@ -140,7 +140,7 @@ export async function extractXlsxProto(
 
 /**
  * Return the reader version string embedded in the WASM assembly
- * (e.g. `"routa-office-wasm-reader/0.1.0"`).
+ * (e.g. `"routa-office-wasm-reader/<version>"`).
  */
 export async function getReaderVersion(): Promise<string> {
   const reader = await loadOfficeReader();
