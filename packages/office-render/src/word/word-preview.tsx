@@ -29,16 +29,16 @@ import {
   wordPageLayout,
   wordPositionedShapeStyle,
   type WordPageLayout,
-} from "./word-preview-layout";
-import { WordPageCropMarks } from "./word-preview-crop-marks";
+} from "./word-layout";
+import { WordPageCropMarks } from "./word-crop-marks";
 import { wordNumberingMarkers } from "./word-numbering";
 import { WordSupplementalNotes, wordFooterNeedsComputedPageNumber } from "./word-notes-renderer";
 import { WordParagraph, wordParagraphView } from "./word-paragraph-renderer";
 import { wordIsPositionedShapeElement, wordPreviewPages } from "./word-pagination";
-import { wordElementsHaveRenderableContent } from "./word-preview-paragraph-utils";
+import { wordElementsHaveRenderableContent } from "./word-paragraph-utils";
 import { WordTable } from "./word-table-renderer";
 import { wordReferenceMarkers, wordReviewMarkTypes } from "./word-run-renderer";
-import { WordPositionedTextBox, wordIsPositionedTextBoxElement } from "./word-preview-text-box";
+import { WordPositionedTextBox, wordIsPositionedTextBoxElement } from "./word-text-box";
 
 export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);

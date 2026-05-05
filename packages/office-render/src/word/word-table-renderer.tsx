@@ -9,7 +9,7 @@ import {
   wordTableContainerStyle,
   wordTableRowStyle,
   wordTableStyle,
-} from "./word-preview-layout";
+} from "./word-layout";
 import { WordParagraph, wordParagraphView } from "./word-paragraph-renderer";
 
 export function WordTable({

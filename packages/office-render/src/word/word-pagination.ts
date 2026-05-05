@@ -22,14 +22,14 @@ import {
   wordPageContentWidthPx,
   wordPageLayout,
   type WordPageLayout,
-} from "./word-preview-layout";
+} from "./word-layout";
 import {
   wordEmptyParagraphEstimatedHeight,
   wordElementsHaveRenderableContent,
   wordParagraphHasVisibleContent,
-} from "./word-preview-paragraph-utils";
-import { wordSplitOversizedTableElements, wordTableElementEstimatedHeight } from "./word-preview-table-pagination";
-import { wordIsPositionedTextBoxElement } from "./word-preview-text-box";
+} from "./word-paragraph-utils";
+import { wordSplitOversizedTableElements, wordTableElementEstimatedHeight } from "./word-table-pagination";
+import { wordIsPositionedTextBoxElement } from "./word-text-box";
 
 const WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX = 28;
 const WORD_PRETEXT_WORD_LAYOUT_COMPENSATION = 1.06;

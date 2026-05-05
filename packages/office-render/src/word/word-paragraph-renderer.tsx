@@ -12,7 +12,7 @@ import {
   paragraphView,
   type RecordValue,
 } from "../shared/office-preview-utils";
-import { wordEmptyParagraphStyle, wordParagraphHasVisibleContent } from "./word-preview-paragraph-utils";
+import { wordEmptyParagraphStyle, wordParagraphHasVisibleContent } from "./word-paragraph-utils";
 import { wordCssFontSize, wordEstimatedLineHeight } from "./word-pagination";
 import {
   WordRun,

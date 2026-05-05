@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { wordImageStyle, wordTextBoxStyle } from "../word-preview-layout";
+import { wordImageStyle, wordTextBoxStyle } from "../word-layout";
 
 describe("word preview layout", () => {
   it("renders decoded DOCX image outlines as CSS borders", () => {

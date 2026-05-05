@@ -7,7 +7,7 @@ import {
   elementImageReferenceId,
   type RecordValue,
 } from "../shared/office-preview-utils";
-import { wordTextBoxStyle, type WordPageLayout } from "./word-preview-layout";
+import { wordTextBoxStyle, type WordPageLayout } from "./word-layout";
 
 export function WordPositionedTextBox({
   children,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { wordBulletMarker } from "../word-preview-numbering";
+import { wordBulletMarker } from "../word-numbering";
 
 describe("WordPreview numbering", () => {
   it("normalizes Symbol font DOCX bullet markers", () => {

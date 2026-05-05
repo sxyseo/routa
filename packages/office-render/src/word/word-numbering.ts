@@ -7,7 +7,6 @@ import {
   paragraphView,
   type RecordValue,
 } from "../shared/office-preview-utils";
-import { wordBulletMarker } from "./word-preview-numbering";
 
 export function wordNumberingMarkers(
   elements: unknown[],
@@ -186,4 +185,15 @@ function romanMarker(value: number): string {
     }
   }
   return marker;
+}
+
+export function wordBulletMarker(levelText: string): string {
+  return (
+    {
+      "\uf0a7": "▪",
+      "\uf0b7": "•",
+      "\uf0d8": "➢",
+      "\uf0fc": "✓",
+    } satisfies Record<string, string>
+  )[levelText] ?? (levelText || "•");
 }

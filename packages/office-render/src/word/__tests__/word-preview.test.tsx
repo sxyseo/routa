@@ -10,7 +10,7 @@ import {
   wordTableCellStyle,
   wordTableContainerStyle,
   wordTableRowStyle,
-} from "../word-preview-layout";
+} from "../word-layout";
 import { WordPreview } from "../word-preview";
 
 const labels: PreviewLabels = {

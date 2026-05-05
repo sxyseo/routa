@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { WordPageLayout } from "./word-preview-layout";
+import type { WordPageLayout } from "./word-layout";
 
 type WordCropMarkCorner = "bottom-left" | "bottom-right" | "top-left" | "top-right";
 
