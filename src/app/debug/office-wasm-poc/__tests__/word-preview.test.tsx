@@ -1175,6 +1175,30 @@ describe("WordPreview", () => {
     });
   });
 
+  it("maps decoded DOCX image crop rectangles into background positioning", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 1_905_000,
+          widthEmu: 3_810_000,
+        },
+        fill: {
+          srcRect: {
+            b: 20_000,
+            l: 10_000,
+            r: 30_000,
+            t: 5_000,
+          },
+        },
+      },
+      "blob:test-image",
+    );
+
+    expect(style.backgroundPosition).toBe("25% 20%");
+    expect(style.backgroundSize).toContain("166.666666666666");
+    expect(style.backgroundSize).toContain("133.33333333333334%");
+  });
+
   it("renders page-width DOCX images outside body margins", () => {
     const style = wordImageStyle(
       {

@@ -29,6 +29,7 @@ internal static class DocxDocumentProtoReader
     private const int BarDirectionBar = 2;
     private const int ColorTypeRgb = 1;
     private const int FillTypeSolid = 1;
+    private const int FillTypePicture = 4;
     private const int LineStyleSolid = 1;
     private const int LineStyleDashed = 2;
     private const int LineStyleDotted = 3;
@@ -526,10 +527,57 @@ internal static class DocxDocumentProtoReader
             {
                 WriteMessage(output, 1, WriteBoundingBox(xEmu, yEmu, widthEmu, heightEmu, writeZeroY: true));
                 WriteMessage(output, 3, WriteImageReference(image.Id));
+                if (WriteImageCropFill(drawing, image.Id) is { } cropFill)
+                {
+                    WriteMessage(output, 19, cropFill);
+                }
+
                 WriteInt32(output, 11, ElementTypeImageReference);
                 WriteString(output, 27, $"element-{image.Id["image-".Length..]}");
             });
         }
+    }
+
+    private static byte[]? WriteImageCropFill(W.Drawing drawing, string imageId)
+    {
+        var sourceRect = drawing.Descendants<A.SourceRectangle>().FirstOrDefault();
+        if (sourceRect is null)
+        {
+            return null;
+        }
+
+        var cropRect = WriteCropRectangle(sourceRect);
+        if (cropRect is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteInt32(output, 1, FillTypePicture);
+            WriteMessage(output, 11, WriteImageReference(imageId));
+            WriteMessage(output, 14, cropRect);
+        });
+    }
+
+    private static byte[]? WriteCropRectangle(A.SourceRectangle sourceRect)
+    {
+        var left = StrictIntFromString(RawAttributeValue(sourceRect, "l", namespaceUri: null));
+        var top = StrictIntFromString(RawAttributeValue(sourceRect, "t", namespaceUri: null));
+        var right = StrictIntFromString(RawAttributeValue(sourceRect, "r", namespaceUri: null));
+        var bottom = StrictIntFromString(RawAttributeValue(sourceRect, "b", namespaceUri: null));
+        if (left is null && top is null && right is null && bottom is null)
+        {
+            return null;
+        }
+
+        return Message(output =>
+        {
+            WriteInt32(output, 1, left);
+            WriteInt32(output, 2, top);
+            WriteInt32(output, 3, right);
+            WriteInt32(output, 4, bottom);
+        });
     }
 
     private static void RegisterPackageImages(

@@ -58,7 +58,20 @@ public class DocxProtoReaderBehaviorTests
         });
     }
 
-    private static string AnchoredImageDrawingXml(long verticalOffsetEmu)
+    private static byte[] CroppedImageDocx()
+    {
+        return BuildDocx((mainPart, body) =>
+        {
+            var imagePart = mainPart.AddImagePart(ImagePartType.Png, "rIdImage1");
+            using var imageStream = new MemoryStream(TinyPng);
+            imagePart.FeedData(imageStream);
+            body.AppendChild(new Paragraph(new Run(new Drawing(AnchoredImageDrawingXml(
+                0,
+                "<a:srcRect l=\"10000\" t=\"5000\" r=\"30000\" b=\"20000\"/>")))));
+        });
+    }
+
+    private static string AnchoredImageDrawingXml(long verticalOffsetEmu, string sourceRectangle = "")
     {
         var offset = verticalOffsetEmu.ToString(CultureInfo.InvariantCulture);
         return $"""
@@ -75,7 +88,7 @@ public class DocxProtoReaderBehaviorTests
       <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
         <pic:pic>
           <pic:nvPicPr><pic:cNvPr id="0" name="test.png"/><pic:cNvPicPr/></pic:nvPicPr>
-          <pic:blipFill><a:blip r:embed="rIdImage1"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+          <pic:blipFill><a:blip r:embed="rIdImage1"/>{sourceRectangle}<a:stretch><a:fillRect/></a:stretch></pic:blipFill>
           <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"/></pic:spPr>
         </pic:pic>
       </a:graphicData>
@@ -211,6 +224,15 @@ public class DocxProtoReaderBehaviorTests
         var lowerAnchored = DocxDocumentProtoReader.Read(AnchoredImageDocx(914_400));
 
         Assert.NotEqual(topAnchored, lowerAnchored);
+    }
+
+    [Fact]
+    public void Read_ImageSourceRectangle_AffectsImageProto()
+    {
+        var uncropped = DocxDocumentProtoReader.Read(AnchoredImageDocx(0));
+        var cropped = DocxDocumentProtoReader.Read(CroppedImageDocx());
+
+        Assert.True(cropped.Length > uncropped.Length);
     }
 
     // ── review marks ──────────────────────────────────────────────────────────

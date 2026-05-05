@@ -46,7 +46,7 @@ export function wordImageStyle(
   return {
     aspectRatio: box.hasDecodedSize ? `${box.rawWidth} / ${box.rawHeight}` : undefined,
     backgroundImage: `url("${imageSrc}")`,
-    backgroundPosition: "center",
+    backgroundPosition: wordImageBackgroundPosition(element),
     backgroundRepeat: "no-repeat",
     backgroundSize: wordImageBackgroundSize(element, box, pageLayout),
     borderRadius: wordImageBorderRadius(element, pageLayout),
@@ -251,8 +251,51 @@ function wordImageBackgroundSize(
   box: WordElementBox,
   pageLayout?: WordPageLayout,
 ): CSSProperties["backgroundSize"] {
+  const crop = wordImageCrop(element);
+  if (crop) {
+    return `${100 / crop.visibleWidthPercent}% ${100 / crop.visibleHeightPercent}%`;
+  }
+
   if (pageLayout && wordIsTopCircularPortraitImage(element, pageLayout, box)) return "cover";
   return "contain";
+}
+
+function wordImageBackgroundPosition(element: RecordValue): CSSProperties["backgroundPosition"] {
+  const crop = wordImageCrop(element);
+  if (!crop) return "center";
+
+  return `${crop.xPercent}% ${crop.yPercent}%`;
+}
+
+function wordImageCrop(element: RecordValue): {
+  visibleHeightPercent: number;
+  visibleWidthPercent: number;
+  xPercent: number;
+  yPercent: number;
+} | null {
+  const rect = asRecord(asRecord(element.fill)?.srcRect);
+  if (!rect) return null;
+
+  const left = wordCropFraction(rect.l);
+  const top = wordCropFraction(rect.t);
+  const right = wordCropFraction(rect.r);
+  const bottom = wordCropFraction(rect.b);
+  if (left === 0 && top === 0 && right === 0 && bottom === 0) return null;
+
+  const visibleWidthPercent = Math.max(0.01, 1 - left - right);
+  const visibleHeightPercent = Math.max(0.01, 1 - top - bottom);
+  return {
+    visibleHeightPercent,
+    visibleWidthPercent,
+    xPercent: left + right > 0 ? (left / (left + right)) * 100 : 50,
+    yPercent: top + bottom > 0 ? (top / (top + bottom)) * 100 : 50,
+  };
+}
+
+function wordCropFraction(value: unknown): number {
+  const percentage = asNumber(value);
+  if (!Number.isFinite(percentage) || percentage <= 0) return 0;
+  return Math.min(0.99, percentage / 100_000);
 }
 
 function wordImageBorderRadius(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties["borderRadius"] {
