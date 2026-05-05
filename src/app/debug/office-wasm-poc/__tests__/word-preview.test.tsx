@@ -512,6 +512,32 @@ describe("WordPreview", () => {
     expect(pages.map((page) => page.textContent)).toEqual(["Cover page", "Second page"]);
   });
 
+  it("does not give adjacent tiny duplicate image placeholders their own layout height", () => {
+    const bbox = {
+      heightEmu: 2_794_000,
+      widthEmu: 5_731_200,
+      xEmu: 914_400,
+      yEmu: 0,
+    };
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            { bbox, imageReference: { id: "real-image" } },
+            { bbox, imageReference: { id: "tiny-placeholder" } },
+          ],
+          images: [
+            { contentType: "image/png", data: Array.from({ length: 256 }, () => 1), id: "real-image" },
+            { contentType: "image/png", data: Array.from({ length: 70 }, () => 1), id: "tiny-placeholder" },
+          ],
+        }}
+      />,
+    );
+
+    expect(container.querySelectorAll('[role="img"]')).toHaveLength(1);
+  });
+
   it("uses section boundaries without dropping trailing root DOCX elements", () => {
     const { container } = render(
       <WordPreview
