@@ -170,7 +170,9 @@ async function loadPresentation(page: Page): Promise<void> {
   await page.waitForFunction(
     () => {
       const root = document.querySelector('[data-testid="presentation-preview"]');
-      return (root?.querySelectorAll("aside img").length ?? 0) >= 1 && (root?.querySelectorAll("canvas").length ?? 0) === 0;
+      const thumbnailCount = root?.querySelectorAll('[data-testid="presentation-thumbnail"]').length ?? 0;
+      const bitmapCount = root?.querySelectorAll("aside img").length ?? 0;
+      return thumbnailCount >= 1 && bitmapCount >= thumbnailCount;
     },
     null,
     { timeout: 60_000 },
