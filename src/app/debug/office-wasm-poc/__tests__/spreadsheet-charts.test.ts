@@ -11,7 +11,7 @@ import {
 import { spreadsheetChartFrame } from "../spreadsheet-chart-frame";
 import { spreadsheetChartZeroBaselineY } from "../spreadsheet-chart-scale";
 import { spreadsheetChartCanvasFont, spreadsheetChartTextWidth } from "../spreadsheet-chart-typography";
-import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetRowTop } from "../spreadsheet-layout";
+import { buildSpreadsheetLayout, spreadsheetColumnLeft, spreadsheetEmuToPx, spreadsheetRowTop } from "../spreadsheet-layout";
 
 describe("spreadsheet charts", () => {
   it("builds chart specs from sheet drawing anchors", () => {
@@ -75,6 +75,53 @@ describe("spreadsheet charts", () => {
       label: "Fitness Score",
       marker: "diamond",
       values: [62.6, 64.5],
+    });
+  });
+
+  it("builds root workbook chart bounds from two-cell anchor offsets", () => {
+    const sheet = {
+      name: "01_Dashboard",
+      rows: Array.from({ length: 16 }, (_, index) => ({
+        cells: index === 0 ? [{ address: "A1", value: "Dashboard" }] : [],
+        index: index + 1,
+      })),
+    };
+    const layout = buildSpreadsheetLayout(sheet);
+    const charts = buildSpreadsheetCharts({
+      activeSheet: sheet,
+      charts: [
+        {
+          anchor: {
+            fromCol: "1",
+            fromColOffsetEmu: "95250",
+            fromRow: "2",
+            fromRowOffsetEmu: "190500",
+            toCol: "6",
+            toColOffsetEmu: "190500",
+            toRow: "16",
+            toRowOffsetEmu: "95250",
+          },
+          series: [{ categories: ["Jan", "Feb"], name: "Fitness", values: [10, 20] }],
+          sheetName: "01_Dashboard",
+          title: "Root Chart",
+          type: 13,
+        },
+      ],
+      layout,
+      sheets: [sheet],
+    });
+    const left = spreadsheetColumnLeft(layout, 1) + spreadsheetEmuToPx("95250");
+    const top = spreadsheetRowTop(layout, 2) + spreadsheetEmuToPx("190500");
+    const right = spreadsheetColumnLeft(layout, 6) + spreadsheetEmuToPx("190500");
+    const bottom = spreadsheetRowTop(layout, 16) + spreadsheetEmuToPx("95250");
+
+    expect(charts[0]).toMatchObject({
+      height: bottom - top,
+      left,
+      title: "Root Chart",
+      top,
+      width: right - left,
+      zIndex: 10000,
     });
   });
 

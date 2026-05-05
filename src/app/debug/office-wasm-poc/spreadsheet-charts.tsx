@@ -254,20 +254,18 @@ function buildRootSpreadsheetCharts(
       const anchor = asRecord(chart.anchor);
       const fromCol = protocolNumber(anchor?.fromCol, 0);
       const fromRow = protocolNumber(anchor?.fromRow, 0);
-      const left = spreadsheetColumnLeft(layout, fromCol);
-      const top = spreadsheetRowTop(layout, fromRow);
-      const extWidth = spreadsheetEmuToPx(anchor?.toColOffsetEmu);
-      const extHeight = spreadsheetEmuToPx(anchor?.toRowOffsetEmu);
       const toCol = Math.max(fromCol + 5, protocolNumber(anchor?.toCol, fromCol + 5));
       const toRow = Math.max(fromRow + 10, protocolNumber(anchor?.toRow, fromRow + 10));
-      const right = spreadsheetColumnLeft(layout, toCol);
-      const bottom = spreadsheetRowTop(layout, toRow);
+      const left = spreadsheetColumnLeft(layout, fromCol) + spreadsheetEmuToPx(anchor?.fromColOffsetEmu);
+      const top = spreadsheetRowTop(layout, fromRow) + spreadsheetEmuToPx(anchor?.fromRowOffsetEmu);
+      const right = spreadsheetColumnLeft(layout, toCol) + spreadsheetEmuToPx(anchor?.toColOffsetEmu);
+      const bottom = spreadsheetRowTop(layout, toRow) + spreadsheetEmuToPx(anchor?.toRowOffsetEmu);
 
       return chartFromRecord(chart, {
-        height: chartDimension(extHeight, bottom - top, 220),
+        height: chartDimension(bottom - top, 0, 220),
         left,
         top,
-        width: chartDimension(extWidth, right - left, 360),
+        width: chartDimension(right - left, 0, 360),
         zIndex: 10_000 + index,
       });
     })
