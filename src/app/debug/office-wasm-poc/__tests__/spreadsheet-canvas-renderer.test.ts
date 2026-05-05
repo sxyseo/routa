@@ -76,7 +76,20 @@ describe("spreadsheet canvas renderer", () => {
       rows: [{ cells: [{ address: "A1" }], index: 1 }],
     });
     const commands = buildSpreadsheetCanvasCommands({
-      cellPaints: new Map([["1:0", { color: "#222222", fill: "#fafafa", text: "Hello" }]]),
+      cellPaints: new Map([[
+        "1:0",
+        {
+          color: "#222222",
+          fill: "#fafafa",
+          fontFamily: "Aptos, sans-serif",
+          fontSize: 15,
+          fontStyle: "italic",
+          fontWeight: 700,
+          paddingLeft: 17,
+          text: "Hello",
+          textAlign: "right",
+        },
+      ]]),
       layout,
       scroll: { left: 0, top: 0 },
       viewportSize: { height: 80, width: 180 },
@@ -92,7 +105,13 @@ describe("spreadsheet canvas renderer", () => {
     expect(plan.cells[0]).toMatchObject({
       color: "#222222",
       fill: "#fafafa",
+      fontFamily: "Aptos, sans-serif",
+      fontSize: 15,
+      fontStyle: "italic",
+      fontWeight: 700,
+      paddingLeft: 17,
       text: "Hello",
+      textAlign: "right",
     });
   });
 });

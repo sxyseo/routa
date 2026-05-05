@@ -18,9 +18,15 @@ export type SpreadsheetCanvasCellCommand = {
   addressKey: string;
   color?: string;
   fill?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fontStyle?: string;
+  fontWeight?: number | string;
   height: number;
   left: number;
+  paddingLeft?: number;
   text?: string;
+  textAlign?: "center" | "left" | "right";
   top: number;
   width: number;
 };
@@ -43,7 +49,13 @@ export type SpreadsheetCanvasCommands = {
 export type SpreadsheetCanvasCellPaint = {
   color?: string;
   fill?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fontStyle?: string;
+  fontWeight?: number | string;
+  paddingLeft?: number;
   text?: string;
+  textAlign?: "center" | "left" | "right";
 };
 
 export function buildSpreadsheetCanvasCommands({
@@ -74,9 +86,15 @@ export function buildSpreadsheetCanvasCommands({
         addressKey,
         color: paint?.color,
         fill: paint?.fill,
+        fontFamily: paint?.fontFamily,
+        fontSize: paint?.fontSize,
+        fontStyle: paint?.fontStyle,
+        fontWeight: paint?.fontWeight,
         height: spreadsheetRowTop(layout, rowOffset + (merge?.rowSpan ?? 1)) - top,
         left,
+        paddingLeft: paint?.paddingLeft,
         text: paint?.text,
+        textAlign: paint?.textAlign,
         top,
         width: spreadsheetColumnLeft(layout, columnIndex + (merge?.columnSpan ?? 1)) - left,
       });

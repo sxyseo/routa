@@ -16,16 +16,24 @@ import { visibleCellIntersectsRange } from "./spreadsheet-render-snapshot";
 
 type SpreadsheetCellEdits = Record<string, string | undefined>;
 
+type SpreadsheetCanvasProjectedStyle = {
+  background?: unknown;
+  color?: unknown;
+  fontFamily?: unknown;
+  fontSize?: unknown;
+  fontStyle?: unknown;
+  fontWeight?: unknown;
+  paddingLeft?: unknown;
+  textAlign?: unknown;
+};
+
 type SpreadsheetCanvasPaintProjector = {
   cellStyle: (
     cell: RecordValue,
     row: RecordValue | undefined,
     columnIndex: number,
     key: string,
-  ) => {
-    background?: unknown;
-    color?: unknown;
-  };
+  ) => SpreadsheetCanvasProjectedStyle;
   cellText: (
     cell: RecordValue,
     row: RecordValue | undefined,
@@ -60,11 +68,10 @@ export function buildSpreadsheetCanvasCellPaints({
       if (!visibleCellIntersectsRange(layout, rowOffset, columnIndex, visibleRange)) continue;
       const key = spreadsheetCellKey(rowIndex, columnIndex);
       const cellStyle = project.cellStyle(cell, rowRecord, columnIndex, key);
-      paints.set(key, {
-        color: asString(cellStyle.color),
-        fill: asString(cellStyle.background),
-        text: cellEdits[key] ?? project.cellText(cell, rowRecord, columnIndex, key),
-      });
+      paints.set(key, spreadsheetCanvasPaintFromStyle(
+        cellStyle,
+        cellEdits[key] ?? project.cellText(cell, rowRecord, columnIndex, key),
+      ));
     }
   }
 
@@ -78,4 +85,48 @@ export function buildSpreadsheetCanvasCellPaints({
   }
 
   return paints;
+}
+
+function spreadsheetCanvasPaintFromStyle(
+  style: SpreadsheetCanvasProjectedStyle,
+  text: string,
+): SpreadsheetCanvasCellPaint {
+  return {
+    color: spreadsheetCanvasString(style.color),
+    fill: spreadsheetCanvasString(style.background),
+    fontFamily: spreadsheetCanvasString(style.fontFamily),
+    fontSize: spreadsheetCanvasNumber(style.fontSize),
+    fontStyle: spreadsheetCanvasFontStyle(style.fontStyle),
+    fontWeight: spreadsheetCanvasFontWeight(style.fontWeight),
+    paddingLeft: spreadsheetCanvasNumber(style.paddingLeft),
+    text,
+    textAlign: spreadsheetCanvasTextAlign(style.textAlign),
+  };
+}
+
+function spreadsheetCanvasString(value: unknown): string | undefined {
+  const text = asString(value);
+  return text ? text : undefined;
+}
+
+function spreadsheetCanvasNumber(value: unknown): number | undefined {
+  const numberValue = typeof value === "number" ? value : Number(asString(value));
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function spreadsheetCanvasFontStyle(value: unknown): string | undefined {
+  const normalized = asString(value).toLowerCase();
+  return normalized === "italic" ? "italic" : undefined;
+}
+
+function spreadsheetCanvasFontWeight(value: unknown): number | string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = asString(value);
+  return text ? text : undefined;
+}
+
+function spreadsheetCanvasTextAlign(value: unknown): SpreadsheetCanvasCellPaint["textAlign"] {
+  const normalized = asString(value).toLowerCase();
+  if (normalized === "center" || normalized === "right") return normalized;
+  return normalized === "left" ? "left" : undefined;
 }

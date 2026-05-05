@@ -15,7 +15,16 @@ describe("spreadsheet canvas paints", () => {
       cellEdits: { "20:0": "edited hidden" },
       layout,
       project: {
-        cellStyle: () => ({ background: "#ffffff", color: "#111111" }),
+        cellStyle: () => ({
+          background: "#ffffff",
+          color: "#111111",
+          fontFamily: "Aptos, sans-serif",
+          fontSize: 14,
+          fontStyle: "italic",
+          fontWeight: 700,
+          paddingLeft: 21,
+          textAlign: "right",
+        }),
         cellText: (cell) => String(cell.value ?? ""),
       },
       visibleRange: {
@@ -29,7 +38,13 @@ describe("spreadsheet canvas paints", () => {
     expect(paints.get("1:0")).toEqual({
       color: "#111111",
       fill: "#ffffff",
+      fontFamily: "Aptos, sans-serif",
+      fontSize: 14,
+      fontStyle: "italic",
+      fontWeight: 700,
+      paddingLeft: 21,
       text: "visible",
+      textAlign: "right",
     });
     expect(paints.has("20:0")).toBe(false);
   });

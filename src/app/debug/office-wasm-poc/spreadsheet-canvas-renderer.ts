@@ -22,8 +22,14 @@ export type SpreadsheetCanvasBitmapSize = {
 export type SpreadsheetCanvasDrawRect = SpreadsheetViewportRect & {
   color?: string;
   fill?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fontStyle?: string;
+  fontWeight?: number | string;
+  paddingLeft?: number;
   stroke?: string;
   text?: string;
+  textAlign?: "center" | "left" | "right";
 };
 
 export type SpreadsheetCanvasRenderPlan = {
@@ -111,10 +117,16 @@ function spreadsheetCanvasCellRect(
   return {
     fill: cell.fill ?? "#ffffff",
     color: cell.color,
+    fontFamily: cell.fontFamily,
+    fontSize: cell.fontSize,
+    fontStyle: cell.fontStyle,
+    fontWeight: cell.fontWeight,
     height: cell.height,
     left: cell.left - scroll.left,
+    paddingLeft: cell.paddingLeft,
     stroke: "#e2e8f0",
     text: cell.text,
+    textAlign: cell.textAlign,
     top: cell.top - scroll.top,
     width: cell.width,
   };
@@ -147,13 +159,30 @@ function drawSpreadsheetCanvasRect(
   context.strokeRect(rect.left + 0.5, rect.top + 0.5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1));
   if (!rect.text) return;
   context.fillStyle = rect.color ?? "#3c4043";
-  context.font = "500 13px Arial, Helvetica, sans-serif";
-  context.textAlign = "left";
+  context.font = spreadsheetCanvasFont(rect);
+  const textAlign = rect.textAlign ?? "left";
+  context.textAlign = textAlign;
   context.textBaseline = "middle";
   context.save();
   context.beginPath();
   context.rect(rect.left + 3, rect.top + 1, Math.max(0, rect.width - 6), Math.max(0, rect.height - 2));
   context.clip();
-  context.fillText(rect.text, rect.left + 8, rect.top + rect.height / 2);
+  context.fillText(rect.text, spreadsheetCanvasTextX(rect, textAlign), rect.top + rect.height / 2);
   context.restore();
+}
+
+function spreadsheetCanvasFont(rect: SpreadsheetCanvasDrawRect): string {
+  const weight = rect.fontWeight ?? 500;
+  const style = rect.fontStyle === "italic" ? "italic " : "";
+  const size = Math.max(8, Math.min(32, rect.fontSize ?? 13));
+  return `${style}${weight} ${size}px ${rect.fontFamily || "Arial, Helvetica, sans-serif"}`;
+}
+
+function spreadsheetCanvasTextX(
+  rect: SpreadsheetCanvasDrawRect,
+  textAlign: CanvasTextAlign,
+): number {
+  if (textAlign === "right") return rect.left + Math.max(0, rect.width - 8);
+  if (textAlign === "center") return rect.left + rect.width / 2;
+  return rect.left + (rect.paddingLeft ?? 8);
 }
