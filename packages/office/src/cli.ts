@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -28,6 +28,8 @@ type CliOptions = {
   name?: string;
   outputPath?: string;
 };
+
+const OFFICE_EXTENSIONS = new Set([".docx", ".pptx", ".xlsx"]);
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -90,11 +92,13 @@ async function main(): Promise<void> {
 }
 
 function parseArgs(args: string[]): CliOptions {
+  const command = normalizeCommand(args[0]);
   const options: CliOptions = {
-    command: args[0] ?? "help",
+    command: command.name,
     cursor: false,
+    inputPath: command.inputPath,
   };
-  for (let index = 1; index < args.length; index++) {
+  for (let index = command.nextIndex; index < args.length; index++) {
     const arg = args[index];
     if (arg === "--cursor") {
       options.cursor = true;
@@ -123,6 +127,23 @@ function parseArgs(args: string[]): CliOptions {
   return options;
 }
 
+function normalizeCommand(firstArg: string | undefined): {
+  inputPath?: string;
+  name: string;
+  nextIndex: number;
+} {
+  if (!firstArg || firstArg === "--help" || firstArg === "-h") {
+    return { name: "help", nextIndex: firstArg ? 1 : 0 };
+  }
+  if (firstArg === "canvas" || firstArg === "convert") {
+    return { name: firstArg, nextIndex: 1 };
+  }
+  if (!firstArg.startsWith("-") && OFFICE_EXTENSIONS.has(path.extname(firstArg).toLowerCase())) {
+    return { inputPath: firstArg, name: "canvas", nextIndex: 1 };
+  }
+  return { name: firstArg, nextIndex: 1 };
+}
+
 function numberValue(value: string, option: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -141,7 +162,13 @@ function requiredValue(args: string[], index: number, option: string): string {
 
 function resolveOutputPath(inputPath: string, options: CliOptions): string {
   const basename = `${slugify(options.name ?? path.basename(inputPath, path.extname(inputPath)))}.canvas.tsx`;
-  if (options.outputPath) return path.resolve(options.outputPath);
+  if (options.outputPath) {
+    const resolvedOutputPath = path.resolve(options.outputPath);
+    if (isExistingDirectory(resolvedOutputPath)) {
+      return path.join(resolvedOutputPath, basename);
+    }
+    return resolvedOutputPath;
+  }
   if (options.cursorProject) {
     return path.resolve(options.cursorProject, "canvases", basename);
   }
@@ -149,6 +176,14 @@ function resolveOutputPath(inputPath: string, options: CliOptions): string {
     return path.join(os.homedir(), ".cursor/projects", cursorProjectName(process.cwd()), "canvases", basename);
   }
   return path.resolve(process.cwd(), basename);
+}
+
+function isExistingDirectory(value: string): boolean {
+  try {
+    return statSync(value).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function shouldWriteCursorStatus(outputPath: string, options: CliOptions): boolean {
@@ -177,6 +212,7 @@ function printHelp(): void {
   console.log(`@autodev/office
 
 Usage:
+  autodev-office <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
   autodev-office canvas <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
   autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor
   autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor-project ~/.cursor/projects/<project>

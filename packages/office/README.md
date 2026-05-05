@@ -9,6 +9,8 @@ files from them.
 Generate a Cursor Canvas file:
 
 ```bash
+npx @autodev/office ./deck.pptx --output ./deck.canvas.tsx
+npx @autodev/office ./deck.pptx --output ./canvases
 npx @autodev/office canvas ./deck.pptx --output ./deck.canvas.tsx
 npx @autodev/office canvas ./document.docx --output ./document.canvas.tsx
 npx @autodev/office canvas ./workbook.xlsx --output ./workbook.canvas.tsx
@@ -44,6 +46,7 @@ Requirements:
 ## CLI
 
 ```bash
+autodev-office <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
 autodev-office canvas <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
 autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor
 autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor-project ~/.cursor/projects/<project>
@@ -52,6 +55,8 @@ autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor-project ~/.cursor
 Options:
 
 - `-o, --output <path>` writes the generated `.canvas.tsx` file.
+  If `<path>` is an existing directory, the CLI writes `<input>.canvas.tsx`
+  inside that directory.
 - `--cursor` writes into the Cursor project for the current working directory.
 - `--cursor-project <dir>` writes into `<dir>/canvases`.
 - `--media-quality <1-100>` controls JPEG quality for embedded media.
