@@ -178,7 +178,7 @@ describe("WordPreview", () => {
     expect(paragraph?.style.textIndent).toBe("-5px");
   });
 
-  it("maps decoded DOCX Word font units into CSS pixels", () => {
+  it("maps decoded DOCX style font units into CSS pixels", () => {
     const { container } = render(
       <WordPreview
         labels={labels}
@@ -187,10 +187,16 @@ describe("WordPreview", () => {
             {
               paragraphs: [
                 {
-                  textStyle: { fontSize: 1000 },
-                  runs: [{ text: "10 point body", textStyle: { fontSize: 1000 } }],
+                  runs: [{ text: "10 point body" }],
+                  styleId: "Body10",
                 },
               ],
+            },
+          ],
+          textStyles: [
+            {
+              id: "Body10",
+              textStyle: { fontSize: 1000 },
             },
           ],
         }}
@@ -201,6 +207,36 @@ describe("WordPreview", () => {
     const run = container.querySelector<HTMLElement>("p span");
     expect(Number.parseFloat(paragraph?.style.fontSize ?? "0")).toBeCloseTo(13.33, 1);
     expect(Number.parseFloat(run?.style.fontSize ?? "0")).toBeCloseTo(13.33, 1);
+  });
+
+  it("does not apply DOCX paragraph mark color to visible text runs", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  textStyle: {
+                    fill: { color: { value: "FF0000" } },
+                    fontSize: 1450,
+                  },
+                  runs: [{ text: "Paragraph mark formatting should not be visible" }],
+                },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const paragraph = container.querySelector<HTMLElement>("p");
+    const run = container.querySelector<HTMLElement>("p span");
+    expect(paragraph?.style.color).toBe("rgb(15, 23, 42)");
+    expect(Number.parseFloat(paragraph?.style.fontSize ?? "0")).toBe(14);
+    expect(run?.style.color).toBe("");
+    expect(run?.style.fontSize).toBe("");
   });
 
   it("maps decoded DOCX scheme metadata into run CSS", () => {
@@ -574,6 +610,33 @@ describe("WordPreview", () => {
     expect(pages.map((page) => page.textContent)).toEqual([
       "First sectionShared footer",
       "Second sectionShared footer",
+    ]);
+  });
+
+  it("renders computed DOCX footer page numbers for PAGE fields", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          sections: [
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Cover" }] }] }],
+              footer: { elements: [{ paragraphs: [{ runs: [{ text: "©2023 Thoughtworks |  " }] }] }] },
+              id: "section-cover",
+            },
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Body" }] }] }],
+              id: "section-body",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages.map((page) => page.textContent)).toEqual([
+      "Cover©2023 Thoughtworks |  ",
+      "Body©2023 Thoughtworks |  1",
     ]);
   });
 

@@ -218,7 +218,7 @@ export function paragraphView(paragraph: unknown, styleMaps: OfficeTextStyleMaps
     ...resolvedTextStyle(styleId, styleMaps),
     ...(asRecord(record?.paragraphStyle) ?? {}),
     ...(asRecord(record?.style) ?? {}),
-    ...(asRecord(record?.textStyle) ?? {}),
+    ...paragraphMarkTextStyle(asRecord(record?.textStyle)),
     ...definedRecordProperties(record, TEXT_STYLE_FIELDS),
   };
   const runs = asArray(record?.runs)
@@ -242,6 +242,11 @@ export function paragraphView(paragraph: unknown, styleMaps: OfficeTextStyleMaps
     styleId,
     style,
   };
+}
+
+function paragraphMarkTextStyle(style: RecordValue | null): RecordValue {
+  if (style == null) return {};
+  return definedRecordProperties(style, ["alignment"]);
 }
 
 function resolvedTextStyle(styleId: string, styleMaps: OfficeTextStyleMaps, visited = new Set<string>()): RecordValue {

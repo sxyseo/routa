@@ -90,6 +90,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
       headerElements={page.headerElements}
       key={page.id || index}
       numberingMarkers={numberingMarkers}
+      pageNumber={index + 1}
       pageLayout={wordPageLayout(page.root)}
       pageRoot={page.root}
       referenceMarkers={referenceMarkers}
@@ -108,6 +109,7 @@ function WordDocumentPage({
   footerElements,
   headerElements,
   numberingMarkers,
+  pageNumber,
   pageLayout,
   pageRoot,
   referenceMarkers,
@@ -120,6 +122,7 @@ function WordDocumentPage({
   footerElements: unknown[];
   headerElements: unknown[];
   numberingMarkers: Map<string, string>;
+  pageNumber: number;
   pageLayout: WordPageLayout;
   pageRoot: RecordValue | null;
   referenceMarkers: Map<string, string[]>;
@@ -155,6 +158,7 @@ function WordDocumentPage({
         charts={charts}
         elements={headerElements}
         numberingMarkers={numberingMarkers}
+        pageNumber={pageNumber}
         referenceMarkers={referenceMarkers}
         reviewMarkTypes={reviewMarkTypes}
         pageLayout={pageLayout}
@@ -186,6 +190,7 @@ function WordDocumentPage({
         charts={charts}
         elements={footerElements}
         numberingMarkers={numberingMarkers}
+        pageNumber={pageNumber}
         referenceMarkers={referenceMarkers}
         reviewMarkTypes={reviewMarkTypes}
         pageLayout={pageLayout}
@@ -200,6 +205,7 @@ function WordSectionContent({
   charts,
   elements,
   numberingMarkers,
+  pageNumber,
   pageLayout,
   referenceMarkers,
   reviewMarkTypes,
@@ -209,6 +215,7 @@ function WordSectionContent({
   charts: RecordValue[];
   elements: unknown[];
   numberingMarkers: Map<string, string>;
+  pageNumber: number;
   pageLayout: WordPageLayout;
   referenceMarkers: Map<string, string[]>;
   reviewMarkTypes: Map<string, number>;
@@ -216,6 +223,10 @@ function WordSectionContent({
   variant: "footer" | "header";
 }) {
   if (!wordElementsHaveRenderableContent(elements)) return null;
+  const computedPageNumber =
+    variant === "footer" && pageNumber > 1 && wordFooterNeedsComputedPageNumber(elements)
+      ? String(pageNumber - 1)
+      : undefined;
 
   return (
     <section style={variant === "header" ? wordHeaderContentStyle : wordFooterContentStyle}>
@@ -229,6 +240,7 @@ function WordSectionContent({
           referenceMarkers={referenceMarkers}
           reviewMarkTypes={reviewMarkTypes}
           styleMaps={styleMaps}
+          trailingText={computedPageNumber && index === elements.length - 1 ? computedPageNumber : undefined}
         />
       ))}
     </section>
@@ -566,6 +578,7 @@ function WordElement({
   referenceMarkers,
   reviewMarkTypes,
   styleMaps,
+  trailingText,
 }: {
   charts: RecordValue[];
   element: RecordValue;
@@ -574,6 +587,7 @@ function WordElement({
   referenceMarkers: Map<string, string[]>;
   reviewMarkTypes: Map<string, number>;
   styleMaps: OfficeTextStyleMaps;
+  trailingText?: string;
 }) {
   const table = asRecord(element.table);
   if (table) {
@@ -613,7 +627,11 @@ function WordElement({
   return (
     <>
       {paragraphs.map((paragraph, index) => (
-        <WordParagraph key={paragraph.id || index} paragraph={paragraph} />
+        <WordParagraph
+          key={paragraph.id || index}
+          paragraph={paragraph}
+          trailingText={trailingText && index === paragraphs.length - 1 ? trailingText : undefined}
+        />
       ))}
     </>
   );
@@ -657,22 +675,24 @@ function WordChart({ chart, element, pageLayout }: { chart: RecordValue; element
 function WordParagraph({
   fallbackColor,
   paragraph,
+  trailingText,
   variant = "body",
 }: {
   fallbackColor?: string;
   paragraph: ParagraphView;
+  trailingText?: string;
   variant?: "body" | "table";
 }) {
   const style = variant === "table" ? wordTableParagraphStyle(paragraph) : wordParagraphStyle(paragraph);
   if (fallbackColor && asRecord(paragraph.style?.fill)?.color == null) {
     style.color = fallbackColor;
   }
-  if (!wordParagraphHasVisibleContent(paragraph)) {
+  if (!trailingText && !wordParagraphHasVisibleContent(paragraph)) {
     return <p aria-hidden="true" style={wordEmptyParagraphStyle(style)} />;
   }
 
   if (wordParagraphHasTab(paragraph)) {
-    return <WordTabbedParagraph paragraph={paragraph} style={style} />;
+    return <WordTabbedParagraph paragraph={paragraph} style={style} trailingText={trailingText} />;
   }
 
   return (
@@ -685,11 +705,20 @@ function WordParagraph({
       {paragraph.runs.map((run, index) => (
         <WordRun key={run.id || index} run={run} />
       ))}
+      {trailingText ? <span style={wordComputedPageNumberStyle}>{trailingText}</span> : null}
     </p>
   );
 }
 
-function WordTabbedParagraph({ paragraph, style }: { paragraph: ParagraphView; style: CSSProperties }) {
+function WordTabbedParagraph({
+  paragraph,
+  style,
+  trailingText,
+}: {
+  paragraph: ParagraphView;
+  style: CSSProperties;
+  trailingText?: string;
+}) {
   const { leftRuns, rightRuns } = wordSplitParagraphRunsAtLastTab(paragraph.runs);
   return (
     <p style={{ ...style, alignItems: "baseline", display: "flex", gap: 8, whiteSpace: "nowrap" }}>
@@ -708,6 +737,7 @@ function WordTabbedParagraph({ paragraph, style }: { paragraph: ParagraphView; s
         {rightRuns.map((run, index) => (
           <WordRun key={`${run.id || index}-right-${index}`} run={run} />
         ))}
+        {trailingText ? <span style={wordComputedPageNumberStyle}>{trailingText}</span> : null}
       </span>
     </p>
   );
@@ -1122,6 +1152,19 @@ function wordSectionContentElements(root: RecordValue | null, key: "footer" | "h
     if (elements.length > 0) return elements;
   }
   return [];
+}
+
+function wordFooterNeedsComputedPageNumber(elements: unknown[]): boolean {
+  const text = elements.map(wordElementVisibleText).join("").trimEnd();
+  return /\|\s*$/u.test(text);
+}
+
+function wordElementVisibleText(element: unknown): string {
+  const record = asRecord(element);
+  if (!record) return "";
+  return asArray(record.paragraphs)
+    .map((paragraph) => asArray(asRecord(paragraph)?.runs).map((run) => asString(asRecord(run)?.text)).join(""))
+    .join("");
 }
 
 function wordSupplementalParagraphs(
@@ -1722,6 +1765,7 @@ const wordFooterContentStyle: CSSProperties = {
 };
 
 const wordReferenceMarkerStyle: CSSProperties = { color: "#475569", fontSize: "0.72em", marginLeft: 2 };
+const wordComputedPageNumberStyle: CSSProperties = { marginLeft: 4 };
 
 const wordSupplementalNotesStyle: CSSProperties = {
   borderTop: "1px solid #cbd5e1",
