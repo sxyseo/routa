@@ -678,6 +678,35 @@ describe("WordPreview", () => {
     expect(container.querySelectorAll("table").length).toBeGreaterThan(1);
   });
 
+  it("splits decoded DOCX tables using tall row content height", () => {
+    const longCellText = "Tall DOCX table cell content that should affect pagination. ".repeat(20);
+    const rows = Array.from({ length: 4 }, (_, index) => ({
+      cells: [{ paragraphs: [{ runs: [{ text: `Row ${index + 1}. ${longCellText}` }] }] }],
+    }));
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [{ table: { rows } }],
+          sections: [
+            {
+              elements: [{ table: { rows } }],
+              id: "section-tall-table-rows",
+              pageSetup: {
+                heightEmu: 2_286_000,
+                pageMargin: { bottom: 360, left: 720, right: 720, top: 360 },
+                widthEmu: 4_572_000,
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(container.querySelectorAll('[data-testid="document-preview"]').length).toBeGreaterThan(1);
+    expect(container.querySelectorAll("table").length).toBeGreaterThan(1);
+  });
+
   it("maps decoded DOCX section columns into body CSS columns", () => {
     const { container } = render(
       <WordPreview

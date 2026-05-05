@@ -29,6 +29,10 @@ import {
   presentationChartById,
   presentationChartReferenceId,
 } from "./presentation-chart-renderer";
+import {
+  wordSplitOversizedTableElements,
+  wordTableElementEstimatedHeight,
+} from "./word-preview-table-pagination";
 
 export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
@@ -317,7 +321,8 @@ function wordPaginatePreviewPages(
 function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextStyleMaps): WordPreviewPage[] {
   const layout = wordPageLayout(page.root);
   const capacity = wordPageBodyCapacity(layout, page);
-  const elements = wordSplitOversizedTableElements(page.elements, capacity);
+  const tableHeightContext = wordTableHeightContext(styleMaps, layout);
+  const elements = wordSplitOversizedTableElements(page.elements, capacity, tableHeightContext);
   if (capacity <= 0 || elements.length <= 1) return [{ ...page, elements }];
   if (wordIsCoverLikeFullBleedPage(page, layout)) return [page];
 
@@ -343,38 +348,6 @@ function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextSty
   }
 
   return chunks.length > 0 ? chunks : [page];
-}
-
-function wordSplitOversizedTableElements(elements: unknown[], capacity: number): unknown[] {
-  return elements.flatMap((element) => wordSplitOversizedTableElement(element, capacity));
-}
-
-function wordSplitOversizedTableElement(element: unknown, capacity: number): unknown[] {
-  const record = asRecord(element);
-  const table = asRecord(record?.table);
-  const rows = asArray(table?.rows);
-  if (!record || !table || rows.length <= 1 || capacity <= 0) return [element];
-
-  const rowHeight = wordEstimatedTableRowHeight();
-  const tableHeight = wordTableEstimatedHeight(rows.length);
-  if (tableHeight <= capacity * 0.92) return [element];
-
-  const rowsPerPage = Math.max(1, Math.floor((capacity - 24) / rowHeight));
-  if (rowsPerPage >= rows.length) return [element];
-
-  const chunks: unknown[] = [];
-  for (let index = 0; index < rows.length; index += rowsPerPage) {
-    const chunkIndex = chunks.length + 1;
-    chunks.push({
-      ...record,
-      id: `${asString(record.id) || "table"}-chunk-${chunkIndex}`,
-      table: {
-        ...table,
-        rows: rows.slice(index, index + rowsPerPage),
-      },
-    });
-  }
-  return chunks;
 }
 
 function wordIsCoverLikeFullBleedPage(page: WordPreviewPage, pageLayout: WordPageLayout): boolean {
@@ -488,8 +461,7 @@ function wordElementEstimatedHeight(
 
   const table = asRecord(record.table);
   if (table) {
-    const rows = asArray(table.rows).map(asRecord).filter(Boolean);
-    return Math.max(36, Math.min(760, wordTableEstimatedHeight(rows.length)));
+    return wordTableElementEstimatedHeight(table, wordTableHeightContext(styleMaps, pageLayout));
   }
 
   const paragraphs = asArray(record.paragraphs);
@@ -498,14 +470,6 @@ function wordElementEstimatedHeight(
     (total, paragraph) => total + wordParagraphEstimatedHeight(paragraph, styleMaps, pageLayout),
     0,
   );
-}
-
-function wordTableEstimatedHeight(rowCount: number): number {
-  return rowCount * wordEstimatedTableRowHeight() + 24;
-}
-
-function wordEstimatedTableRowHeight(): number {
-  return 24;
 }
 
 function wordEstimatedBoxHeight(element: RecordValue, pageLayout: WordPageLayout, fallbackHeight: number): number {
@@ -535,6 +499,32 @@ function wordParagraphEstimatedHeight(
   const before = Math.min(32, asNumber(style?.spaceBefore) / 20);
   const after = Math.min(28, asNumber(style?.spaceAfter) / 20);
   return Math.max(8, before + lines * lineHeight + after);
+}
+
+function wordTableHeightContext(styleMaps: OfficeTextStyleMaps, pageLayout: WordPageLayout) {
+  return {
+    contentWidth: Math.max(120, pageLayout.widthPx - pageLayout.paddingLeft - pageLayout.paddingRight),
+    paragraphHeight: (paragraph: unknown) => wordParagraphEstimatedHeight(paragraph, styleMaps, pageLayout),
+    tableParagraphHeight: (paragraph: unknown, contentWidth: number) =>
+      wordTableParagraphEstimatedHeight(paragraph, styleMaps, contentWidth),
+  };
+}
+
+function wordTableParagraphEstimatedHeight(
+  paragraph: unknown,
+  styleMaps: OfficeTextStyleMaps,
+  contentWidth: number,
+): number {
+  const view = paragraphView(paragraph, styleMaps);
+  const style = view.style;
+  const textLength = Math.max(1, view.runs.reduce((total, run) => total + run.text.length, 0));
+  const fontSize = Math.min(wordCssFontSize(style?.fontSize, 10.5), 10.5);
+  const lineHeight = fontSize * 1.15;
+  const averageCharWidth = Math.max(4, fontSize * 0.48);
+  const charsPerLine = Math.max(8, Math.floor(contentWidth / averageCharWidth));
+  const explicitLines = view.runs.reduce((count, run) => count + run.text.split("\n").length - 1, 0);
+  const lines = Math.max(1, Math.ceil(textLength / charsPerLine) + explicitLines);
+  return Math.max(20, lines * lineHeight + 1);
 }
 
 function wordEstimatedLineHeight(style: RecordValue | null, fontSize: number): number {
@@ -1368,10 +1358,10 @@ export function wordTableCellStyle(cell: RecordValue, background: string, color:
     backgroundImage: wordTableDiagonalBorders(cell.lines),
     color,
     ...wordTableCellBorders(cell.lines),
-    paddingBottom: tableCellPaddingPx(cell.marginBottom, 4),
-    paddingLeft: tableCellPaddingPx(cell.marginLeft, 6),
-    paddingRight: tableCellPaddingPx(cell.marginRight, 6),
-    paddingTop: tableCellPaddingPx(cell.marginTop, 4),
+    paddingBottom: tableCellPaddingPx(cell.marginBottom, 3),
+    paddingLeft: tableCellPaddingPx(cell.marginLeft, 5),
+    paddingRight: tableCellPaddingPx(cell.marginRight, 5),
+    paddingTop: tableCellPaddingPx(cell.marginTop, 3),
     verticalAlign: wordVerticalAlign(cell.anchor),
   };
 }
@@ -1506,9 +1496,9 @@ function wordParagraphCssLineHeight(paragraph: ParagraphView, fontSize: number):
 
 function wordTableParagraphStyle(paragraph: ParagraphView): CSSProperties {
   const style = wordParagraphStyle(paragraph);
-  style.fontSize = Math.min(asNumber(style.fontSize, 12), 12);
-  style.lineHeight = 1.25;
-  style.marginBottom = 2;
+  style.fontSize = Math.min(asNumber(style.fontSize, 10.5), 10.5);
+  style.lineHeight = 1.15;
+  style.marginBottom = 1;
   style.marginTop = 0;
   return style;
 }
