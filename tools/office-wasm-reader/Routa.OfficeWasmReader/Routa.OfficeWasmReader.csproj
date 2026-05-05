@@ -13,6 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" />
     <PackageReference Include="DocumentFormat.OpenXml" />
     <PackageReference Include="DocumentFormat.OpenXml.Framework" />
     <PackageReference Include="Google.Protobuf" />

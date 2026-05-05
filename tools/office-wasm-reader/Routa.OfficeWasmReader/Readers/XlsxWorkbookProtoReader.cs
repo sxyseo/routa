@@ -27,11 +27,14 @@ internal static class XlsxWorkbookProtoReader
         using var stream = new MemoryStream(bytes, writable: false);
         using var document = SpreadsheetDocument.Open(stream, false);
         var workbookPart = document.WorkbookPart;
-        if (workbookPart?.Workbook.Sheets is null)
+        if (workbookPart?.Workbook?.Sheets is null)
         {
             return Message(_ => { });
         }
 
+        using var formulaValues = WorkbookNeedsFormulaBackfill(workbookPart)
+            ? ClosedXmlFormulaValueProvider.TryCreate(bytes)
+            : null;
         var sharedStrings = workbookPart.SharedStringTablePart?.SharedStringTable;
         var stylesheet = workbookPart.WorkbookStylesPart?.Stylesheet;
         var sheetIndex = 0;
@@ -51,7 +54,7 @@ internal static class XlsxWorkbookProtoReader
                     continue;
                 }
 
-                WriteMessage(output, 1, WriteSheet(worksheetPart, sheetElement, sharedStrings, stylesheet, sheetIndex));
+                WriteMessage(output, 1, WriteSheet(worksheetPart, sheetElement, sharedStrings, stylesheet, formulaValues, sheetIndex));
                 sheetIndex += 1;
                 if (sheetIndex >= OpenXmlReaderLimits.MaxSheets)
                 {
@@ -116,13 +119,27 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
+    private static bool WorkbookNeedsFormulaBackfill(WorkbookPart workbookPart)
+    {
+        return workbookPart.WorksheetParts.Any(part =>
+            (part.Worksheet?.Descendants<S.Cell>() ?? [])
+                .Any(cell => cell.CellFormula is not null && string.IsNullOrEmpty(cell.CellValue?.Text)));
+    }
+
     private static byte[] WriteSheet(
         WorksheetPart worksheetPart,
         S.Sheet sheetElement,
         S.SharedStringTable? sharedStrings,
         S.Stylesheet? stylesheet,
+        ClosedXmlFormulaValueProvider? formulaValues,
         int sheetIndex)
     {
+        var worksheet = worksheetPart.Worksheet;
+        if (worksheet is null)
+        {
+            return Message(_ => { });
+        }
+
         var name = PreserveText(sheetElement.Name?.Value);
         return Message(output =>
         {
@@ -130,17 +147,17 @@ internal static class XlsxWorkbookProtoReader
             WriteString(output, 2, name.Length > 0 ? name : $"Sheet {sheetIndex + 1}");
             WriteString(output, 20, sheetElement.SheetId?.Value.ToString() ?? "");
 
-            foreach (var row in worksheetPart.Worksheet.Descendants<S.Row>().Take(OpenXmlReaderLimits.MaxRowsPerSheet))
+            foreach (var row in worksheet.Descendants<S.Row>().Take(OpenXmlReaderLimits.MaxRowsPerSheet))
             {
-                WriteMessage(output, 3, WriteRow(row, sharedStrings, stylesheet));
+                WriteMessage(output, 3, WriteRow(row, name, sharedStrings, stylesheet, formulaValues));
             }
 
-            foreach (var column in worksheetPart.Worksheet.Elements<S.Columns>().SelectMany(columns => columns.Elements<S.Column>()))
+            foreach (var column in worksheet.Elements<S.Columns>().SelectMany(columns => columns.Elements<S.Column>()))
             {
                 WriteMessage(output, 6, WriteColumn(column));
             }
 
-            var format = worksheetPart.Worksheet.SheetFormatProperties;
+            var format = worksheet.SheetFormatProperties;
             WriteFloat(output, 7, (float)(format?.DefaultRowHeight?.Value ?? 0));
             WriteFloatIncludingZero(output, 21, (float)(format?.BaseColumnWidth?.Value ?? 0));
 
@@ -150,15 +167,15 @@ internal static class XlsxWorkbookProtoReader
             }
 
             WriteFloat(output, 9, (float)(format?.DefaultColumnWidth?.Value ?? 0));
-            var sheetView = worksheetPart.Worksheet.SheetViews?.Elements<S.SheetView>().FirstOrDefault();
+            var sheetView = worksheet.SheetViews?.Elements<S.SheetView>().FirstOrDefault();
             if (sheetView?.ShowGridLines?.Value is { } showGridLines)
             {
                 WriteBool(output, 10, showGridLines);
             }
 
-            WriteMessage(output, 18, WriteColor(worksheetPart.Worksheet.SheetProperties?.TabColor));
+            WriteMessage(output, 18, WriteColor(worksheet.SheetProperties?.TabColor));
 
-            foreach (var mergeCell in worksheetPart.Worksheet.Descendants<S.MergeCell>())
+            foreach (var mergeCell in worksheet.Descendants<S.MergeCell>())
             {
                 var range = WriteRangeTarget(name, mergeCell.Reference?.Value ?? "");
                 if (range.Length > 0)
@@ -167,12 +184,12 @@ internal static class XlsxWorkbookProtoReader
                 }
             }
 
-            foreach (var formatting in worksheetPart.Worksheet.Descendants<S.ConditionalFormatting>())
+            foreach (var formatting in worksheet.Descendants<S.ConditionalFormatting>())
             {
                 WriteMessage(output, 13, WriteConditionalFormatting(name, formatting));
             }
 
-            foreach (var sharedFormula in SharedFormulas(worksheetPart.Worksheet))
+            foreach (var sharedFormula in SharedFormulas(worksheet))
             {
                 WriteMessage(output, 14, sharedFormula);
             }
@@ -192,13 +209,13 @@ internal static class XlsxWorkbookProtoReader
                 WriteMessage(output, 17, slicer);
             }
 
-            var sparklineGroups = WriteSparklineGroups(worksheetPart.Worksheet);
+            var sparklineGroups = WriteSparklineGroups(worksheet);
             if (sparklineGroups is not null)
             {
                 WriteMessage(output, 27, sparklineGroups);
             }
 
-            var dataValidations = worksheetPart.Worksheet.Elements<S.DataValidations>().FirstOrDefault();
+            var dataValidations = worksheet.Elements<S.DataValidations>().FirstOrDefault();
             if (dataValidations is not null)
             {
                 WriteMessage(output, 28, WriteDataValidations(dataValidations));
@@ -206,14 +223,19 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
-    private static byte[] WriteRow(S.Row row, S.SharedStringTable? sharedStrings, S.Stylesheet? stylesheet)
+    private static byte[] WriteRow(
+        S.Row row,
+        string sheetName,
+        S.SharedStringTable? sharedStrings,
+        S.Stylesheet? stylesheet,
+        ClosedXmlFormulaValueProvider? formulaValues)
     {
         return Message(output =>
         {
             WriteInt32(output, 1, (int)(row.RowIndex?.Value ?? 0));
             foreach (var cell in row.Elements<S.Cell>().Take(OpenXmlReaderLimits.MaxCellsPerRow))
             {
-                WriteMessage(output, 2, WriteCell(cell, sharedStrings, stylesheet));
+                WriteMessage(output, 2, WriteCell(cell, sheetName, sharedStrings, stylesheet, formulaValues));
             }
 
             WriteFloat(output, 3, (float)(row.Height?.Value ?? 0));
@@ -230,13 +252,18 @@ internal static class XlsxWorkbookProtoReader
         });
     }
 
-    private static byte[] WriteCell(S.Cell cell, S.SharedStringTable? sharedStrings, S.Stylesheet? stylesheet)
+    private static byte[] WriteCell(
+        S.Cell cell,
+        string sheetName,
+        S.SharedStringTable? sharedStrings,
+        S.Stylesheet? stylesheet,
+        ClosedXmlFormulaValueProvider? formulaValues)
     {
         return Message(output =>
         {
             var address = cell.CellReference?.Value ?? "";
             var sharedStringItem = SharedStringItem(cell, sharedStrings);
-            var text = ReadCellText(cell, sharedStringItem);
+            var text = ReadCellText(cell, sharedStringItem, formulaValues, sheetName, address);
             var formula = cell.CellFormula;
             var formulaText = PreserveText(formula?.Text);
             WriteString(output, 1, address);
@@ -3645,7 +3672,12 @@ internal static class XlsxWorkbookProtoReader
         return element.GetFirstChild<A.SaturationModulation>()?.Val?.Value;
     }
 
-    private static string ReadCellText(S.Cell cell, S.SharedStringItem? sharedStringItem)
+    private static string ReadCellText(
+        S.Cell cell,
+        S.SharedStringItem? sharedStringItem,
+        ClosedXmlFormulaValueProvider? formulaValues,
+        string sheetName,
+        string address)
     {
         var raw = cell.CellValue?.Text;
         if (string.IsNullOrEmpty(raw) && cell.CellFormula is null)
@@ -3655,6 +3687,12 @@ internal static class XlsxWorkbookProtoReader
 
         if (string.IsNullOrEmpty(raw))
         {
+            if (cell.CellFormula is not null &&
+                formulaValues?.TryGetFormulaValue(sheetName, address, out var formulaValue) == true)
+            {
+                return PreserveText(formulaValue);
+            }
+
             return "";
         }
 
