@@ -51,7 +51,7 @@ function wordSplitOversizedTableElement(
 
   rows.forEach((row, index) => {
     const rowHeight = rowHeights[index] ?? WORD_ESTIMATED_TABLE_ROW_HEIGHT;
-    if (chunkRows.length > 0 && chunkHeight + rowHeight > Math.max(80, capacity - 24)) pushChunk();
+    if (chunkRows.length > 0 && chunkHeight + rowHeight > Math.max(80, capacity + 64)) pushChunk();
     chunkRows.push(row);
     chunkHeight += rowHeight;
   });
