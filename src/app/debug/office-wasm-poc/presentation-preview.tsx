@@ -170,6 +170,7 @@ export function PresentationPreview({
       <SlideStage
         charts={charts}
         images={imageElements}
+        key={slideRenderKey(selectedSlide, selectedSlideIndex)}
         labels={labels}
         layouts={layouts}
         slide={selectedSlide}
@@ -237,6 +238,7 @@ function SlideStage({
   );
   const selectedTarget =
     selection?.slideKey === slideKey ? (elementTargets.find((target) => target.id === selection.elementId) ?? null) : null;
+  const footnoteTop = Math.max(0, (viewportSize.height - canvasHeight) / 2 + canvasHeight + 14);
 
   return (
     <main className={styles.mainPanel}>
@@ -288,16 +290,16 @@ function SlideStage({
               ) : null}
             </button>
           </div>
+          {footnote ? (
+            <pre
+              className={styles.footnote}
+              data-testid="presentation-footnote"
+              style={{ top: footnoteTop, width: canvasWidth }}
+            >
+              {footnote}
+            </pre>
+          ) : null}
         </div>
-        {footnote ? (
-          <pre
-            className={styles.footnote}
-            data-testid="presentation-footnote"
-            style={{ width: canvasWidth }}
-          >
-            {footnote}
-          </pre>
-        ) : null}
       </div>
     </main>
   );
