@@ -135,7 +135,7 @@ function spreadsheetCanvasCellRect(
     left: cell.left - scroll.left,
     paddingLeft: cell.paddingLeft,
     stroke: "#e2e8f0",
-    text: cell.text,
+    text: undefined,
     textAlign: cell.textAlign,
     top: cell.top - scroll.top,
     verticalAlign: cell.verticalAlign,
@@ -152,7 +152,7 @@ function spreadsheetCanvasHeaderRect(
     height: header.height,
     left: header.type === "column" ? header.left - scroll.left : 0,
     stroke: "#dadce0",
-    text: header.label,
+    text: undefined,
     top: header.type === "row" ? header.top - scroll.top : 0,
     width: header.width,
   };

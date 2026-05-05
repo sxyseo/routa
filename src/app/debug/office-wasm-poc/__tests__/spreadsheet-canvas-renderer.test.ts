@@ -53,14 +53,14 @@ describe("spreadsheet canvas renderer", () => {
     expect(plan.columnHeaders[0]).toMatchObject({
       height: 20,
       left: -20,
-      text: "A",
+      text: undefined,
       top: 0,
       width: 75,
     });
     expect(plan.rowHeaders[0]).toMatchObject({
       height: 20,
       left: 0,
-      text: "1",
+      text: undefined,
       top: 0,
       width: 40,
     });
@@ -72,7 +72,7 @@ describe("spreadsheet canvas renderer", () => {
     });
   });
 
-  it("preserves cell text and paint commands for worker rendering", () => {
+  it("projects cell paint commands without duplicating DOM text", () => {
     const layout = buildSpreadsheetLayout({
       rows: [{ cells: [{ address: "A1" }], index: 1 }],
     });
@@ -116,7 +116,7 @@ describe("spreadsheet canvas renderer", () => {
       fontStyle: "italic",
       fontWeight: 700,
       paddingLeft: 17,
-      text: "Hello",
+      text: undefined,
       textAlign: "right",
       verticalAlign: "bottom",
     });
