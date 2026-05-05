@@ -19,7 +19,7 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 
 ## Overview
 
-**Completeness**: ~50% (per-run text + master inheritance shipped; theme colors and tables next)
+**Completeness**: ~60% (theme colors + tables shipped; charts, SmartArt, effects next)
 
 **Key Status**:
 - ✅ Core slide structure and basic shape rendering
@@ -28,8 +28,8 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 - ✅ Thumbnail generation and slideshow mode
 - ✅ Per-run text rendering (DirectTextParagraph[]/DirectTextRun[] — mixed colors/sizes/weights per element)
 - ✅ Master slide inheritance with 3-tier placeholder dedup (master→layout→slide)
-- ⏳ Theme color resolution (scheme/accent colors not yet resolved in render layer)
-- ⏳ Tables in slides (reader 90% complete; render layer not yet consuming)
+- ✅ Theme color resolution (accent1-6, dk1/dk2, lt1/lt2, hlink, folHlink → RGB)
+- ✅ Tables in slides (decoded from proto field 21; HTML table render with borders/fills/per-run text)
 - ⏳ SmartArt/diagrams and complex nested shapes
 - ⏳ Advanced effects, cropping, and masks
 - ⏳ Presentation interaction (navigation, timing, transitions)
@@ -83,7 +83,7 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 - [ ] Nested layout/master resolution chains
 
 **Remaining** (blocking production fidelity):
-- [ ] Theme color scheme resolution in render layer (scheme/accent refs → RGB via theme palette)
+- [x] Theme color scheme resolution in render layer (accent1-6, dk1/dk2, lt1/lt2, hlink, folHlink + aliases)
 - [ ] Master placeholder text style cascading (run font, size, color) — proto available, render not consuming
 - [ ] Layout-specific placeholder overrides
 - [ ] Multiple master slides and fallback resolution
@@ -152,7 +152,7 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 
 ### 5. Tables
 
-**Status**: 90% complete
+**Status**: 95% complete (render layer now consuming table proto)
 
 - [x] Table structure (rows, columns, cells)
 - [x] Table cell text and styling
@@ -409,13 +409,14 @@ A structured inventory of PPTX reader and renderer capabilities, organized by fe
 4. ✅ Charts (basic types and series)
 5. ✅ Thumbnail and slideshow UI
 
-### Phase 2: Theme & Master Inheritance (In Progress)
+### Phase 2: Theme & Master Inheritance (Mostly Done)
 1. ✅ Master slide decoding + 3-tier placeholder dedup (slide > layout > master)
 2. ✅ Per-run text rendering (DirectTextParagraph[]/DirectTextRun[]) in both SVG thumbnails and HTML canvas
-3. Theme color scheme resolution: map scheme color refs (accent1-6, dk1/dk2, lt1/lt2) → RGB via decoded theme palette
-4. Complete layout-specific placeholder overrides (text style cascading from master/layout runs)
-5. Add multiple master slide support and fallback resolution
-6. Implement list-level defaults from master/layout
+3. ✅ Theme color scheme resolution: accent1-6, dk1/dk2, lt1/lt2, hlink, folHlink → RGB + aliases (tx1, bg1, phclr)
+4. ✅ Tables decoded and rendered (HTML table with borders, fills, per-run text)
+5. Complete layout-specific placeholder overrides (text style cascading from master/layout runs)
+6. Add multiple master slide support and fallback resolution
+7. Implement list-level defaults from master/layout
 
 ### Phase 3: Visual Fidelity (Medium Priority)
 1. SmartArt and diagram support
