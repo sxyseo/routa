@@ -167,6 +167,7 @@ function WordDocumentPage({
         gap: 6,
         gridTemplateColumns: "minmax(0, 1fr)",
         gridTemplateRows: "auto minmax(0, 1fr) auto auto",
+        isolation: "isolate",
         margin: "0 auto",
         maxWidth: "100%",
         minWidth: 0,

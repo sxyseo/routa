@@ -19,12 +19,12 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 
 ## Overview
 
-**Completeness**: ~89% (protocol nearly feature-complete; rendering/visual fidelity is the next frontier)
+**Completeness**: ~90% (protocol nearly feature-complete; rendering/visual fidelity is the next frontier)
 
 **Key Status**:
 - ✅ Protocol equivalence locked against Walnut for all committed fixtures + real-world Chinese samples
 - ✅ Core rendering (text/styles/tables/images/headers/footers/sections) production-ready
-- ⏳ Visual layout depth (floating/wrapping/effects) and chart payload long-tail next
+- ⏳ Visual layout depth (floating object ordering/wrap distance/effects) and chart payload long-tail next
 - ⏳ Long-tail edge cases (rare style/table/header combinations)
 
 ## Feature Domains
@@ -135,6 +135,7 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 - [x] Floating image anchor frame (page, margin, column, paragraph)
 - [x] Floating wrap mode (text wrapping, behind text, in-front)
 - [x] Image crop
+- [x] Behind-doc layer ordering
 - [ ] Image effects (shadows, borders, rotations, reflections)
 - [ ] Group objects and nested drawings
 - [ ] Text boxes and callouts
@@ -145,8 +146,9 @@ A structured inventory of DOCX reader and renderer capabilities, organized by fe
 
 **Remaining** (per Walnut gap):
 - [ ] Advanced wrap mode logic (`distance-from-text`)
-- [ ] Overlap and z-order (`behind-doc`, `in-front` precedence)
+- [ ] Full overlap and z-order precedence between multiple foreground objects
 - [x] Crop coordinates and aspect-ratio preservation
+- [x] Behind-doc layer ordering
 - [ ] Shape effect metadata (shadows, soft edges, glows)
 
 ---

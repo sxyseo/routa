@@ -526,6 +526,7 @@ internal static class DocxDocumentProtoReader
             yield return Message(output =>
             {
                 WriteMessage(output, 1, WriteBoundingBox(xEmu, yEmu, widthEmu, heightEmu, writeZeroY: true));
+                WriteInt32(output, 2, DrawingZIndex(drawing));
                 WriteMessage(output, 3, WriteImageReference(image.Id));
                 if (WriteImageCropFill(drawing, image.Id) is { } cropFill)
                 {
@@ -639,10 +640,28 @@ internal static class DocxDocumentProtoReader
                 widthEmu,
                 heightEmu,
                 writeZeroY: true));
+            WriteInt32(output, 2, DrawingZIndex(drawing));
             WriteMessage(output, 18, WriteChartReference(chartPart.Uri.OriginalString));
             WriteInt32(output, 11, ElementTypeChartReference);
             WriteString(output, 27, $"element-chart-{context.NextChartElementIndex():x8}");
         });
+    }
+
+    private static int? DrawingZIndex(W.Drawing drawing)
+    {
+        var anchor = drawing.GetFirstChild<DW.Anchor>();
+        if (anchor is null)
+        {
+            return null;
+        }
+
+        if (BoolAttribute(RawAttributeValue(anchor, "behindDoc", namespaceUri: null)) == true)
+        {
+            var relativeHeight = StrictIntFromString(RawAttributeValue(anchor, "relativeHeight", namespaceUri: null));
+            return -Math.Max(1, relativeHeight ?? 1);
+        }
+
+        return null;
     }
 
     private static (long XEmu, long YEmu) DrawingPosition(
@@ -2698,6 +2717,16 @@ internal static class DocxDocumentProtoReader
                 string.Equals(attribute.LocalName, localName, StringComparison.OrdinalIgnoreCase) &&
                 (namespaceUri is null || string.Equals(attribute.NamespaceUri, namespaceUri, StringComparison.Ordinal)))
             .Value;
+    }
+
+    private static bool? BoolAttribute(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            "1" or "true" or "on" => true,
+            "0" or "false" or "off" => false,
+            _ => null,
+        };
     }
 
     private static byte[] WriteColorFill(string color, bool writeSolidType = false)

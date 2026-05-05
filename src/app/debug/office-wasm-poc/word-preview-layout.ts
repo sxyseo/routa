@@ -69,7 +69,7 @@ export function wordImageStyle(
       : box.hasDecodedSize
         ? box.width
         : "100%",
-    zIndex: pageOverlay ? 2 : undefined,
+    zIndex: wordImageZIndex(element, pageOverlay),
   };
 }
 
@@ -306,6 +306,15 @@ function wordImageBorderRadius(element: RecordValue, pageLayout?: WordPageLayout
 function wordImageBoxShadow(element: RecordValue, pageLayout?: WordPageLayout): CSSProperties["boxShadow"] {
   if (!pageLayout || !wordIsTopCircularPortraitImage(element, pageLayout)) return undefined;
   return "inset 0 0 0 3px #ffffff, 0 0 0 2px rgba(71, 85, 105, 0.75)";
+}
+
+function wordImageZIndex(element: RecordValue, pageOverlay: boolean): CSSProperties["zIndex"] {
+  if (!pageOverlay) return undefined;
+
+  const decoded = asNumber(element.zIndex, 0);
+  if (decoded < 0) return -1;
+  if (decoded > 0) return Math.min(1000, 2 + decoded);
+  return 2;
 }
 
 function wordImageFlowMarginLeft(

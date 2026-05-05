@@ -47,14 +47,20 @@ public class DocxProtoReaderBehaviorTests
             body.AppendChild(new Paragraph(new Run(new Text(text)))));
     }
 
-    private static byte[] AnchoredImageDocx(long verticalOffsetEmu)
+    private static byte[] AnchoredImageDocx(
+        long verticalOffsetEmu,
+        string behindDoc = "0",
+        int relativeHeight = 0)
     {
         return BuildDocx((mainPart, body) =>
         {
             var imagePart = mainPart.AddImagePart(ImagePartType.Png, "rIdImage1");
             using var imageStream = new MemoryStream(TinyPng);
             imagePart.FeedData(imageStream);
-            body.AppendChild(new Paragraph(new Run(new Drawing(AnchoredImageDrawingXml(verticalOffsetEmu)))));
+            body.AppendChild(new Paragraph(new Run(new Drawing(AnchoredImageDrawingXml(
+                verticalOffsetEmu,
+                behindDoc: behindDoc,
+                relativeHeight: relativeHeight)))));
         });
     }
 
@@ -71,12 +77,17 @@ public class DocxProtoReaderBehaviorTests
         });
     }
 
-    private static string AnchoredImageDrawingXml(long verticalOffsetEmu, string sourceRectangle = "")
+    private static string AnchoredImageDrawingXml(
+        long verticalOffsetEmu,
+        string sourceRectangle = "",
+        string behindDoc = "0",
+        int relativeHeight = 0)
     {
         var offset = verticalOffsetEmu.ToString(CultureInfo.InvariantCulture);
+        var relativeHeightValue = relativeHeight.ToString(CultureInfo.InvariantCulture);
         return $"""
 <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <wp:anchor allowOverlap="1" behindDoc="0" distB="0" distT="0" distL="0" distR="0" layoutInCell="1" relativeHeight="0" simplePos="0">
+  <wp:anchor allowOverlap="1" behindDoc="{behindDoc}" distB="0" distT="0" distL="0" distR="0" layoutInCell="1" relativeHeight="{relativeHeightValue}" simplePos="0">
     <wp:simplePos x="0" y="0"/>
     <wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>
     <wp:positionV relativeFrom="page"><wp:posOffset>{offset}</wp:posOffset></wp:positionV>
@@ -233,6 +244,21 @@ public class DocxProtoReaderBehaviorTests
         var cropped = DocxDocumentProtoReader.Read(CroppedImageDocx());
 
         Assert.True(cropped.Length > uncropped.Length);
+    }
+
+    [Fact]
+    public void Read_AnchoredImageLayering_AffectsImageProto()
+    {
+        var foreground = DocxDocumentProtoReader.Read(AnchoredImageDocx(
+            0,
+            behindDoc: "0",
+            relativeHeight: 10));
+        var behindText = DocxDocumentProtoReader.Read(AnchoredImageDocx(
+            0,
+            behindDoc: "1",
+            relativeHeight: 10));
+
+        Assert.NotEqual(foreground, behindText);
     }
 
     // ── review marks ──────────────────────────────────────────────────────────

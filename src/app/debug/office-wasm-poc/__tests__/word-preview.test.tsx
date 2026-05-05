@@ -1418,6 +1418,58 @@ describe("WordPreview", () => {
     expect(style.width).toBeCloseTo(793.73, 2);
   });
 
+  it("places behind-text DOCX page anchors below foreground body content", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 5_345_735,
+          widthEmu: 7_560_000,
+          xEmu: -1_424,
+          yEmu: 5_372_100,
+        },
+        zIndex: -10,
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.position).toBe("absolute");
+    expect(style.zIndex).toBe(-1);
+  });
+
+  it("places in-front DOCX page anchors above ordinary overlays", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 5_345_735,
+          widthEmu: 7_560_000,
+          xEmu: -1_424,
+          yEmu: 5_372_100,
+        },
+        zIndex: 24,
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.position).toBe("absolute");
+    expect(style.zIndex).toBe(26);
+  });
+
   it("uses decoded DOCX table bbox for preview dimensions", () => {
     const style = wordTableContainerStyle({
       bbox: {
