@@ -17,6 +17,20 @@ describe("spreadsheet cell overlays", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("renders rating icon sets as SVG bars instead of text glyphs", () => {
+    const { container } = render(
+      <SpreadsheetCellContent
+        text=""
+        visual={{ iconSet: { color: "#16638a", iconSet: "5Rating", level: 4, levelCount: 5, showValue: false } }}
+      />,
+    );
+
+    const icon = container.querySelector('[data-testid="spreadsheet-icon-set"]');
+    expect(icon?.tagName.toLowerCase()).toBe("svg");
+    expect(icon?.querySelectorAll("rect")).toHaveLength(5);
+    expect(container.textContent).toBe("");
+  });
+
   it("maps common Excel icon-set families to stable renderer shapes", () => {
     expect(spreadsheetIconSetShape({ color: "#16638a", iconSet: "5Rating", level: 4, levelCount: 5, showValue: false })).toBe("rating");
     expect(spreadsheetIconSetShape({ color: "#16638a", iconSet: "5Quarters", level: 4, levelCount: 5, showValue: false })).toBe("quarter");

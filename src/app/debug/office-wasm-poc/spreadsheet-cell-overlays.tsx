@@ -471,15 +471,13 @@ function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVis
   }
 
   return (
-    <span
+    <svg
       aria-hidden="true"
       data-testid="spreadsheet-icon-set"
+      viewBox="0 0 18 18"
       style={{
-        alignItems: "end",
-        display: "inline-flex",
-        gap: 1,
-        height: 14,
-        justifyContent: "center",
+        display: "inline-block",
+        height: 16,
         marginRight: visual.showValue ? 5 : 0,
         position: "relative",
         top: 2,
@@ -487,19 +485,25 @@ function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVis
         zIndex: 1,
       }}
     >
-      {Array.from({ length: 5 }, (_, index) => (
-        <span
-          key={index}
-          style={{
-            background: index < visual.level ? visual.color : "#d1d5db",
-            display: "inline-block",
-            height: 3 + index * 2,
-            opacity: index < visual.level ? 1 : 0.45,
-            width: 2,
-          }}
-        />
-      ))}
-    </span>
+      {Array.from({ length: 5 }, (_, index) => {
+        const height = 3 + index * 2;
+        const active = index < visual.level;
+        return (
+          <rect
+            fill={active ? visual.color : "#c7cdd4"}
+            height={height}
+            key={index}
+            opacity={active ? 1 : 0.55}
+            rx="0.6"
+            stroke={active ? "rgba(15, 23, 42, 0.22)" : "#9ca3af"}
+            strokeWidth="0.45"
+            width="2.2"
+            x={3 + index * 2.4}
+            y={15 - height}
+          />
+        );
+      })}
+    </svg>
   );
 }
 
