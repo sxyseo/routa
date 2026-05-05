@@ -292,6 +292,7 @@ function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextSty
   const layout = wordPageLayout(page.root);
   const capacity = wordPageBodyCapacity(layout, page);
   if (capacity <= 0 || page.elements.length <= 1) return [page];
+  if (wordIsCoverLikeFullBleedPage(page, layout)) return [page];
 
   const chunks: WordPreviewPage[] = [];
   let current: unknown[] = [];
@@ -315,6 +316,13 @@ function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextSty
   }
 
   return chunks.length > 0 ? chunks : [page];
+}
+
+function wordIsCoverLikeFullBleedPage(page: WordPreviewPage, pageLayout: WordPageLayout): boolean {
+  return page.elements.length <= 12 && page.elements.some((element) => {
+    const record = asRecord(element);
+    return record != null && elementImageReferenceId(record) !== "" && wordIsFullBleedElement(record, pageLayout);
+  });
 }
 
 function wordPreviewPageChunk(page: WordPreviewPage, index: number, elements: unknown[]): WordPreviewPage {
