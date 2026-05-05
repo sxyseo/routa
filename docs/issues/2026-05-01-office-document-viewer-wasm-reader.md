@@ -131,6 +131,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX conditional formula evaluation now supports sparse-range `SUMIF`, `SUMIFS`, and `AVERAGEIF` for aggregate threshold rules without dense range materialization.
 - XLSX conditional formula evaluation now handles common text helpers used in production rules, including `SEARCH`, `FIND`, `LEFT`, `RIGHT`, `MID`, `LOWER`, `UPPER`, and `TRIM`.
 - XLSX chart renderer now consumes decoded chart-family options: bar `gapWidth`/`overlap`/`varyColors` affect clustered bar geometry and coloring, while doughnut `firstSliceAngle`/`holeSize` affect slice rotation and inner radius.
+- XLSX chart protocol/render contract now includes bar `grouping`, `gapWidth`, and `overlap` from `c:barChart`, so Walnut/Routa chart layout differences surface in the render-contract comparer instead of being hidden by summaries.
 - XLSX conditional formula evaluation now handles date-part and parity helpers used in production rules, including `YEAR`, `MONTH`, `DAY`, `WEEKDAY`, `ISODD`, and `ISEVEN`.
 - XLSX conditional formula evaluation now supports arithmetic expressions and numeric rounding helpers, including `+`, `-`, `*`, `/`, `^`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `INT`, `FLOOR`, and `CEILING`.
 - XLSX conditional formula evaluation now supports multi-condition aggregate helpers `AVERAGEIFS`, `MINIFS`, and `MAXIFS` on sparse ranges.

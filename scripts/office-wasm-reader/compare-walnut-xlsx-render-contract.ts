@@ -494,12 +494,27 @@ function summarizeAnchor(value: unknown) {
 
 function summarizeChart(chart: Record<string, unknown>) {
   return {
+    barOptions: summarizeBarOptions(chart.barOptions),
     legend: summarizeLegend(chart.legend),
     series: arrayOfRecords(chart.series).map(summarizeChartSeries),
     title: stringValue(chart.title),
     type: nullableNumberValue(chart.type),
     xAxis: summarizeAxis(chart.xAxis),
     yAxis: summarizeAxis(chart.yAxis),
+  };
+}
+
+function summarizeBarOptions(value: unknown) {
+  const options = asRecord(value);
+  if (!options) {
+    return null;
+  }
+
+  return {
+    gapWidth: nullableNumberValue(options.gapWidth),
+    grouping: nullableNumberValue(options.grouping),
+    overlap: nullableNumberValue(options.overlap),
+    varyColors: booleanValue(options.varyColors),
   };
 }
 

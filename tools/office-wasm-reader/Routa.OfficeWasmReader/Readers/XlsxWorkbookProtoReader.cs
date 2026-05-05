@@ -1795,11 +1795,14 @@ internal static class XlsxWorkbookProtoReader
         return Message(output =>
         {
             WriteInt32(output, 1, chart.BarDirection);
-            WriteInt32IncludingZero(output, 2, 0);
+            WriteInt32IncludingZero(output, 2, chart.BarGrouping ?? 0);
             if (chart.BarVaryColors is { } varyColors)
             {
                 WriteBool(output, 3, varyColors);
             }
+
+            WriteInt32Value(output, 4, chart.BarGapWidth);
+            WriteInt32Value(output, 6, chart.BarOverlap);
         });
     }
 
@@ -1889,7 +1892,10 @@ internal static class XlsxWorkbookProtoReader
                 RoundedCorners: null,
                 HasView3D: false,
                 BarDirection: 0,
+                BarGrouping: null,
                 BarVaryColors: null,
+                BarGapWidth: null,
+                BarOverlap: null,
                 AreaGrouping: null,
                 AreaVaryColors: null,
                 PieFirstSliceAngle: null,
@@ -1912,6 +1918,7 @@ internal static class XlsxWorkbookProtoReader
         var categoryAxis = chartSpace.Descendants<C.CategoryAxis>().FirstOrDefault();
         var valueAxis = chartSpace.Descendants<C.ValueAxis>().FirstOrDefault();
         var areaChart = chartSpace.Descendants<C.AreaChart>().FirstOrDefault();
+        var barChart = chartSpace.Descendants<C.BarChart>().FirstOrDefault();
         var pieChart = chartSpace.Descendants<C.PieChart>().FirstOrDefault();
         var doughnutChart = chartSpace.Descendants<C.DoughnutChart>().FirstOrDefault();
         var scatterChart = chartSpace.Descendants<C.ScatterChart>().FirstOrDefault();
@@ -1931,7 +1938,10 @@ internal static class XlsxWorkbookProtoReader
             RoundedCorners(chartSpace),
             chartSpace.Descendants<C.View3D>().Any(),
             BarDirection(chartSpace.Descendants<C.BarDirection>().FirstOrDefault()),
-            chartSpace.Descendants<C.VaryColors>().FirstOrDefault()?.Val?.Value,
+            barChart is null ? null : BarGrouping(ChildByLocalName(barChart, "grouping")),
+            barChart is null ? null : BoolValueFromChild(barChart, "varyColors"),
+            barChart is null ? null : IntValueFromChild(barChart, "gapWidth"),
+            barChart is null ? null : IntValueFromChild(barChart, "overlap"),
             areaChart is null ? null : AreaGrouping(ChildByLocalName(areaChart, "grouping")),
             areaChart is null ? null : BoolValueFromChild(areaChart, "varyColors"),
             pieChart is null ? null : IntValueFromChild(pieChart, "firstSliceAng"),
@@ -1990,6 +2000,22 @@ internal static class XlsxWorkbookProtoReader
         {
             "col" => 1,
             "bar" => 2,
+            _ => 0,
+        };
+    }
+
+    private static int? BarGrouping(OpenXmlElement? grouping)
+    {
+        if (grouping is null)
+        {
+            return null;
+        }
+
+        return AttributeValue(grouping, "val") switch
+        {
+            "clustered" => 1,
+            "stacked" => 2,
+            "percentStacked" => 3,
             _ => 0,
         };
     }
@@ -4444,7 +4470,10 @@ internal static class XlsxWorkbookProtoReader
         bool? RoundedCorners,
         bool HasView3D,
         int BarDirection,
+        int? BarGrouping,
         bool? BarVaryColors,
+        int? BarGapWidth,
+        int? BarOverlap,
         int? AreaGrouping,
         bool? AreaVaryColors,
         int? PieFirstSliceAngle,

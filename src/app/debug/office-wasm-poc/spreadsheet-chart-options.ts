@@ -1,6 +1,7 @@
 import { asNumber, asRecord, asString, type RecordValue } from "./office-preview-utils";
 
 export type SpreadsheetChartRendererOptions = {
+  barGrouping: "clustered" | "percentStacked" | "stacked";
   barGapWidth: number;
   barOverlap: number;
   firstSliceAngle: number;
@@ -13,12 +14,20 @@ export function spreadsheetChartRendererOptions(chart: RecordValue): Spreadsheet
   const pieOptions = chartOptionsRecord(chart, "pie");
   const doughnutOptions = chartOptionsRecord(chart, "doughnut");
   return {
+    barGrouping: chartBarGrouping(barOptions),
     barGapWidth: chartOptionNumber(barOptions, ["gapWidth"], 150),
     barOverlap: chartOptionNumber(barOptions, ["overlap"], 0),
     firstSliceAngle: chartOptionNumber(doughnutOptions ?? pieOptions ?? chart, ["firstSliceAngle", "firstSliceAng"], 0),
     holeSize: chartOptionNumber(doughnutOptions ?? chart, ["holeSize"], 55),
     varyColors: chartOptionBoolean(barOptions ?? doughnutOptions ?? pieOptions ?? chart, "varyColors"),
   };
+}
+
+function chartBarGrouping(record: RecordValue | null): SpreadsheetChartRendererOptions["barGrouping"] {
+  const value = record?.grouping;
+  if (asString(value) === "3" || asString(value).toLowerCase() === "percentstacked") return "percentStacked";
+  if (asString(value) === "2" || asString(value).toLowerCase() === "stacked") return "stacked";
+  return "clustered";
 }
 
 function chartOptionsRecord(chart: RecordValue, family: string): RecordValue | null {

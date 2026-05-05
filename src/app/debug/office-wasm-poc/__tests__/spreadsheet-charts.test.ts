@@ -547,7 +547,7 @@ describe("spreadsheet charts", () => {
       drawings: [
         {
           chart: {
-            barOptions: { gapWidth: 50, overlap: 25, varyColors: true },
+            barOptions: { gapWidth: 50, grouping: 2, overlap: 25, varyColors: true },
             series: [{ categories: ["Q1", "Q2"], name: "Revenue", values: [10, 20] }],
             title: "Revenue",
             type: 1,
@@ -568,7 +568,7 @@ describe("spreadsheet charts", () => {
     const layout = buildSpreadsheetLayout(sheet);
     const charts = buildSpreadsheetCharts({ activeSheet: sheet, charts: [], layout, sheets: [sheet] });
 
-    expect(charts[0]?.options).toMatchObject({ barGapWidth: 50, barOverlap: 25, varyColors: true });
+    expect(charts[0]?.options).toMatchObject({ barGapWidth: 50, barGrouping: "stacked", barOverlap: 25, varyColors: true });
     expect(charts[1]?.options).toMatchObject({ firstSliceAngle: 45, holeSize: 70 });
   });
 
@@ -618,11 +618,11 @@ describe("spreadsheet charts", () => {
       zIndex: 0,
     };
     const wideGap = spreadsheetBarChartGeometry(
-      { ...baseChart, options: { barGapWidth: 300, barOverlap: 0, firstSliceAngle: 0, holeSize: 55, varyColors: false } },
+      { ...baseChart, options: { barGapWidth: 300, barGrouping: "clustered", barOverlap: 0, firstSliceAngle: 0, holeSize: 55, varyColors: false } },
       { left: 52, right: 338 },
     );
     const narrowGap = spreadsheetBarChartGeometry(
-      { ...baseChart, options: { barGapWidth: 50, barOverlap: 0, firstSliceAngle: 0, holeSize: 55, varyColors: false } },
+      { ...baseChart, options: { barGapWidth: 50, barGrouping: "clustered", barOverlap: 0, firstSliceAngle: 0, holeSize: 55, varyColors: false } },
       { left: 52, right: 338 },
     );
 
