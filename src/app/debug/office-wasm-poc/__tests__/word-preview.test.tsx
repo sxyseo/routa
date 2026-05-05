@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PreviewLabels } from "../office-preview-utils";
 import {
-  WordPreview,
   wordChartStyle,
   wordDocumentPageStyle,
   wordImageStyle,
@@ -11,7 +10,8 @@ import {
   wordTableCellStyle,
   wordTableContainerStyle,
   wordTableRowStyle,
-} from "../word-preview";
+} from "../word-preview-layout";
+import { WordPreview } from "../word-preview";
 
 const labels: PreviewLabels = {
   closeSlideshow: "Close",
