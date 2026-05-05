@@ -14,7 +14,15 @@
  *   DOTNET   Override the dotnet executable path.
  */
 
-import { chmodSync, cpSync, existsSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -92,6 +100,23 @@ function findBundleRoot(publishDir) {
   return candidates.find((dir) => existsSync(path.join(dir, "_framework")));
 }
 
+function stripNativeSymbolLoad(bundleDir) {
+  const frameworkDir = path.join(bundleDir, "_framework");
+  const bootConfigPath = path.join(frameworkDir, "blazor.boot.json");
+  if (existsSync(bootConfigPath)) {
+    const bootConfig = JSON.parse(readFileSync(bootConfigPath, "utf8"));
+    if (bootConfig.resources?.wasmSymbols) {
+      delete bootConfig.resources.wasmSymbols;
+      writeFileSync(bootConfigPath, `${JSON.stringify(bootConfig, null, 2)}\n`);
+    }
+  }
+
+  const symbolPath = path.join(frameworkDir, "dotnet.native.js.symbols");
+  if (existsSync(symbolPath)) {
+    unlinkSync(symbolPath);
+  }
+}
+
 // ─── Step 1: dotnet publish ───────────────────────────────────────────────────
 
 console.log("▶ Step 1/3  dotnet publish");
@@ -112,6 +137,7 @@ if (!bundleRoot) {
 console.log(`▶ Step 2/3  copy bundle → ${path.relative(repoRoot, publicDir)}`);
 rmSync(publicDir, { force: true, recursive: true });
 cpSync(bundleRoot, publicDir, { recursive: true });
+stripNativeSymbolLoad(publicDir);
 
 // ─── Step 3: Copy to packages/office/wasm/ (npm package) ─────────────────────
 
@@ -120,6 +146,7 @@ console.log(
 );
 rmSync(packageWasmDir, { force: true, recursive: true });
 cpSync(bundleRoot, packageWasmDir, { recursive: true });
+stripNativeSymbolLoad(packageWasmDir);
 
 // ─── Step 4: TypeScript compile ───────────────────────────────────────────────
 

@@ -51,6 +51,8 @@ npx @autodev/office canvas ./deck.pptx \
 
 The CLI uses the package's embedded WASM reader and emits a self-contained
 `.canvas.tsx` file with slide navigation and slideshow mode.
+When writing into a Cursor project, it also writes the matching
+`.canvas.status.json` sidecar so Cursor can discover the generated canvas.
 When `sharp` is available, the CLI compresses embedded slide media and renders
 small JPEG thumbnails to keep the generated Canvas size manageable.
 
@@ -100,7 +102,6 @@ from `extractXlsxProto` into Cursor Canvas TSX source.
 - The WASM runtime initialises once per Node.js process (Node module cache).
 - Package size is ~10 MB owing to the embedded .wasm assemblies.
 - Cursor Canvas generation supports PPTX, DOCX, and XLSX.
-- `MONO_WASM: Error loading symbol file` is a harmless diagnostic message from the Mono runtime.
 
 ## Building from source
 

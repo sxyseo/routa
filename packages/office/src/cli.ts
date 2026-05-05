@@ -78,6 +78,13 @@ async function main(): Promise<void> {
   }
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, source, "utf8");
+  if (shouldWriteCursorStatus(outputPath, options)) {
+    await writeFile(
+      cursorStatusPath(outputPath),
+      JSON.stringify({ status: "rendered" }),
+      "utf8",
+    );
+  }
   console.log(JSON.stringify({ inputPath, outputPath, type: "cursor-canvas" }, null, 2));
 }
 
@@ -141,6 +148,16 @@ function resolveOutputPath(inputPath: string, options: CliOptions): string {
     return path.join(os.homedir(), ".cursor/projects", cursorProjectName(process.cwd()), "canvases", basename);
   }
   return path.resolve(process.cwd(), basename);
+}
+
+function shouldWriteCursorStatus(outputPath: string, options: CliOptions): boolean {
+  if (options.cursor || options.cursorProject) return true;
+  const normalized = outputPath.split(path.sep).join("/");
+  return normalized.includes("/.cursor/projects/") && normalized.includes("/canvases/");
+}
+
+function cursorStatusPath(outputPath: string): string {
+  return outputPath.replace(/\.canvas\.tsx$/u, ".canvas.status.json");
 }
 
 function cursorProjectName(cwd: string): string {
