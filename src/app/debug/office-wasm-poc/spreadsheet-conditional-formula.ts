@@ -5,6 +5,7 @@ import {
   asString,
   cellText,
   columnIndexFromAddress,
+  columnLabel,
   parseCellRange,
   type RecordValue,
 } from "./office-preview-utils";
@@ -116,6 +117,10 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "NOT") {
     return !valueToBoolean(evaluateFormulaExpression(args[0] ?? "", context));
   }
+  if (normalizedName === "LT" || normalizedName === "LTE" || normalizedName === "GT" || normalizedName === "GTE") {
+    const operator = normalizedName === "LT" ? "<" : normalizedName === "LTE" ? "<=" : normalizedName === "GT" ? ">" : ">=";
+    return compareFormulaValues(evaluateFormulaValue(args[0] ?? "", context), evaluateFormulaValue(args[1] ?? "", context), operator);
+  }
   if (normalizedName === "ISBLANK") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)).trim().length === 0;
   }
@@ -165,6 +170,13 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   }
   if (normalizedName === "LEN") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)).length;
+  }
+  if (normalizedName === "CHAR") {
+    const code = Math.trunc(Number(evaluateFormulaValue(args[0] ?? "", context)));
+    return Number.isFinite(code) && code >= 1 && code <= 255 ? String.fromCharCode(code) : "#VALUE!";
+  }
+  if (normalizedName === "TEXTBEFORE" || normalizedName === "TEXTAFTER") {
+    return textBeforeAfterFormulaValue(args, context, normalizedName);
   }
   if (normalizedName === "EXACT") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)) === asString(evaluateFormulaValue(args[1] ?? "", context));
@@ -257,6 +269,9 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "SUM") {
     return formulaNumericArgs(args, context).reduce((sum, value) => sum + value, 0);
   }
+  if (normalizedName === "SUBTOTAL") {
+    return subtotalFormulaValue(args, context);
+  }
   if (normalizedName === "AVERAGE") {
     const values = formulaNumericArgs(args, context);
     return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : Number.NaN;
@@ -339,6 +354,9 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   }
   if (normalizedName === "TODAY") {
     return currentExcelSerialDay();
+  }
+  if (normalizedName === "NOW") {
+    return currentExcelSerialNow();
   }
   if (normalizedName === "DATEVALUE") {
     return dateValueFormulaNumber(asString(evaluateFormulaValue(args[0] ?? "", context)));
@@ -443,6 +461,27 @@ function chooseFormulaValue(args: string[], context: ConditionalFormulaContext):
   const index = Math.trunc(Number(evaluateFormulaValue(args[0] ?? "", context)));
   if (!Number.isFinite(index) || index < 1 || index >= args.length) return "";
   return evaluateFormulaExpression(args[index] ?? "", context);
+}
+
+function textBeforeAfterFormulaValue(args: string[], context: ConditionalFormulaContext, mode: "TEXTAFTER" | "TEXTBEFORE"): string {
+  const text = asString(evaluateFormulaValue(args[0] ?? "", context));
+  const delimiter = asString(evaluateFormulaValue(args[1] ?? "", context));
+  const instance = Math.trunc(Number(evaluateFormulaValue(args[2] ?? "1", context)));
+  const ifNotFound = args[5] != null ? asString(evaluateFormulaValue(args[5], context)) : "#N/A";
+  if (!delimiter || !Number.isFinite(instance) || instance === 0) return "#VALUE!";
+
+  const indexes: number[] = [];
+  let searchFrom = 0;
+  while (searchFrom <= text.length) {
+    const index = text.indexOf(delimiter, searchFrom);
+    if (index < 0) break;
+    indexes.push(index);
+    searchFrom = index + delimiter.length;
+  }
+
+  const delimiterIndex = instance > 0 ? indexes[instance - 1] : indexes[indexes.length + instance];
+  if (delimiterIndex == null) return ifNotFound;
+  return mode === "TEXTBEFORE" ? text.slice(0, delimiterIndex) : text.slice(delimiterIndex + delimiter.length);
 }
 
 function valueFormulaNumber(value: string): number {
@@ -566,6 +605,22 @@ function formulaRawArgs(args: string[], context: ConditionalFormulaContext): unk
   return values;
 }
 
+function subtotalFormulaValue(args: string[], context: ConditionalFormulaContext): number {
+  const functionNumber = Math.trunc(Number(evaluateFormulaValue(args[0] ?? "", context)));
+  const values = formulaNumericArgs(args.slice(1), context);
+  if (functionNumber === 1 || functionNumber === 101) {
+    return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : Number.NaN;
+  }
+  if (functionNumber === 2 || functionNumber === 102) return values.length;
+  if (functionNumber === 4 || functionNumber === 104) return values.length > 0 ? Math.max(...values) : Number.NaN;
+  if (functionNumber === 5 || functionNumber === 105) return values.length > 0 ? Math.min(...values) : Number.NaN;
+  if (functionNumber === 9 || functionNumber === 109) return values.reduce((sum, value) => sum + value, 0);
+  if (functionNumber === 3 || functionNumber === 103) {
+    return formulaRawArgs(args.slice(1), context).filter((value) => asString(value).trim().length > 0).length;
+  }
+  return Number.NaN;
+}
+
 function formulaArgumentCanExpandRange(expression: string, context: ConditionalFormulaContext): boolean {
   return formulaRangeTarget(expression, context).includes(":");
 }
@@ -594,7 +649,8 @@ function formulaRangeCells(expression: string, context: ConditionalFormulaContex
 }
 
 function formulaRangeTarget(expression: string, context: ConditionalFormulaContext): string {
-  return definedNameTarget(stripFormulaPrefix(expression), context) ?? stripFormulaPrefix(expression);
+  const target = definedNameTarget(stripFormulaPrefix(expression), context) ?? stripFormulaPrefix(expression);
+  return offsetFormulaRangeTarget(target, context) ?? target;
 }
 
 function countIf(args: string[], context: ConditionalFormulaContext): number {
@@ -755,6 +811,29 @@ function formulaCriteriaRangeMatches(criteriaRange: FormulaCriteriaRange, rowOff
 
 function formulaRange(expression: string, context: ConditionalFormulaContext): ReturnType<typeof parseCellRange> {
   return parseCellRange(formulaRangeTarget(expression, context));
+}
+
+function offsetFormulaRangeTarget(expression: string, context: ConditionalFormulaContext): string | null {
+  const call = parseFunctionCall(stripFormulaPrefix(expression));
+  if (!call || call.name.toUpperCase() !== "OFFSET") return null;
+  const rawBaseTarget = definedNameTarget(stripFormulaPrefix(call.args[0] ?? ""), context) ?? stripFormulaPrefix(call.args[0] ?? "");
+  const baseTarget = offsetFormulaRangeTarget(rawBaseTarget, context) ?? rawBaseTarget;
+  const { reference, sheetName } = splitFormulaSheetReference(baseTarget);
+  const baseRange = parseCellRange(reference);
+  if (!baseRange) return null;
+
+  const rowOffset = Math.trunc(Number(evaluateFormulaValue(call.args[1] ?? "0", context)));
+  const columnOffset = Math.trunc(Number(evaluateFormulaValue(call.args[2] ?? "0", context)));
+  const rowSpan = Math.max(1, Math.trunc(Number(evaluateFormulaValue(call.args[3] ?? String(baseRange.rowSpan), context))));
+  const columnSpan = Math.max(1, Math.trunc(Number(evaluateFormulaValue(call.args[4] ?? String(baseRange.columnSpan), context))));
+  if (![rowOffset, columnOffset, rowSpan, columnSpan].every(Number.isFinite)) return null;
+
+  const startColumn = Math.max(0, baseRange.startColumn + columnOffset);
+  const startRow = Math.max(1, baseRange.startRow + rowOffset);
+  const endColumn = startColumn + columnSpan - 1;
+  const endRow = startRow + rowSpan - 1;
+  const referenceText = `${columnLabel(startColumn)}${startRow}:${columnLabel(endColumn)}${endRow}`;
+  return sheetName ? `${sheetName}!${referenceText}` : referenceText;
 }
 
 function indexFormulaValue(args: string[], context: ConditionalFormulaContext): string {
@@ -1062,6 +1141,11 @@ const EXCEL_SERIAL_EPOCH_UTC = Date.UTC(1899, 11, 30);
 function currentExcelSerialDay(): number {
   const now = new Date();
   return Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - EXCEL_SERIAL_EPOCH_UTC) / DAY_MS);
+}
+
+function currentExcelSerialNow(): number {
+  const now = new Date();
+  return (now.getTime() - EXCEL_SERIAL_EPOCH_UTC) / DAY_MS;
 }
 
 function excelSerialDay(year: number, month: number, day: number): number {
