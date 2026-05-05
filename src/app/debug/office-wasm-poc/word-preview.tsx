@@ -7,6 +7,7 @@ import {
   asNumber,
   asRecord,
   asString,
+  bytesFromUnknown,
   collectTextBlocks,
   colorToCss,
   cssFontSize,
@@ -249,12 +250,12 @@ function wordPreviewPages(
     .filter((page) => page.elements.length > 0 || page.headerElements.length > 0 || page.footerElements.length > 0);
 
   if (sectionPages.some((page) => page.elements.length > 0)) {
-    return wordPreviewSectionPages(rootElements, sectionPages, styleMaps);
+    return wordPreviewSectionPages(root, rootElements, sectionPages, styleMaps);
   }
 
   return wordPaginatePreviewPages([
     {
-      elements: rootElements,
+      elements: wordCollapseTinyDuplicateImages(rootElements, root),
       footerElements: wordSectionContentElements(root, "footer"),
       headerElements: wordSectionContentElements(root, "header"),
       id: "document",
@@ -264,11 +265,17 @@ function wordPreviewPages(
 }
 
 function wordPreviewSectionPages(
+  root: RecordValue | null,
   rootElements: unknown[],
   sectionPages: WordPreviewPage[],
   styleMaps: OfficeTextStyleMaps,
 ): WordPreviewPage[] {
-  if (rootElements.length === 0) return wordPaginatePreviewPages(sectionPages, styleMaps);
+  if (rootElements.length === 0) {
+    return wordPaginatePreviewPages(
+      sectionPages.map((page) => ({ ...page, elements: wordCollapseTinyDuplicateImages(page.elements, root) })),
+      styleMaps,
+    );
+  }
 
   let offset = 0;
   const pages = sectionPages.map((page, index) => {
@@ -278,7 +285,10 @@ function wordPreviewSectionPages(
     return { ...page, elements };
   });
 
-  return wordPaginatePreviewPages(pages, styleMaps);
+  return wordPaginatePreviewPages(
+    pages.map((page) => ({ ...page, elements: wordCollapseTinyDuplicateImages(page.elements, root) })),
+    styleMaps,
+  );
 }
 
 function wordPaginatePreviewPages(
@@ -331,6 +341,52 @@ function wordPreviewPageChunk(page: WordPreviewPage, index: number, elements: un
     elements,
     id: `${page.id}-page-${index + 1}`,
   };
+}
+
+function wordCollapseTinyDuplicateImages(elements: unknown[], root: RecordValue | null): unknown[] {
+  const tinyImageIds = wordTinyImageIds(root);
+  if (tinyImageIds.size === 0) return elements;
+
+  let previousImageBoxKey = "";
+  return elements.filter((element) => {
+    const record = asRecord(element);
+    if (!record) {
+      previousImageBoxKey = "";
+      return true;
+    }
+
+    const imageId = elementImageReferenceId(record);
+    if (!imageId) {
+      previousImageBoxKey = "";
+      return true;
+    }
+
+    const boxKey = wordImageBoxKey(record);
+    const isTinyDuplicate = tinyImageIds.has(imageId) && boxKey !== "" && boxKey === previousImageBoxKey;
+    previousImageBoxKey = boxKey;
+    return !isTinyDuplicate;
+  });
+}
+
+function wordTinyImageIds(root: RecordValue | null): Set<string> {
+  const ids = new Set<string>();
+  for (const image of asArray(root?.images).map(asRecord)) {
+    const id = asString(image?.id);
+    const bytes = bytesFromUnknown(image?.data ?? image?.bytes);
+    if (id && bytes != null && bytes.byteLength > 0 && bytes.byteLength <= 100) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+function wordImageBoxKey(element: RecordValue): string {
+  const box = asRecord(element.bbox);
+  const x = Math.round(asNumber(box?.xEmu));
+  const y = Math.round(asNumber(box?.yEmu));
+  const width = Math.round(asNumber(box?.widthEmu));
+  const height = Math.round(asNumber(box?.heightEmu));
+  return width > 0 && height > 0 ? `${x}:${y}:${width}:${height}` : "";
 }
 
 function wordPageBodyCapacity(layout: WordPageLayout, page: WordPreviewPage): number {
@@ -516,7 +572,7 @@ function WordParagraph({
   fallbackColor?: string;
   paragraph: ParagraphView;
 }) {
-  const style = paragraphStyle(paragraph);
+  const style = wordParagraphStyle(paragraph);
   if (fallbackColor && asRecord(paragraph.style?.fill)?.color == null) {
     style.color = fallbackColor;
   }
@@ -524,7 +580,7 @@ function WordParagraph({
   return (
     <p style={style}>
       {paragraph.marker ? (
-        <span aria-hidden="true" style={wordParagraphMarkerStyle}>
+        <span aria-hidden="true" style={wordParagraphMarkerStyle(paragraph.marker)}>
           {paragraph.marker}
         </span>
       ) : null}
@@ -921,6 +977,10 @@ function wordRunStyle(run: TextRunView, hyperlink: boolean): CSSProperties {
     ...textRunStyle(run),
     ...wordReviewMarkStyle(run.reviewMarkTypes ?? []),
   };
+  if (run.style?.fontSize != null) {
+    style.fontSize = wordCssFontSize(run.style.fontSize, 14);
+  }
+
   if (!hyperlink) return style;
   return {
     ...style,
@@ -1008,6 +1068,7 @@ function wordNumberingMarkers(
     });
   }
 
+  const numberingDefinitions = wordNumberingDefinitionLevels(root);
   const counters = new Map<string, number>();
   const markers = new Map<string, string>();
   for (const paragraph of wordParagraphRecords(elements)) {
@@ -1017,16 +1078,41 @@ function wordNumberingMarkers(
 
     resetDeeperNumberingLevels(counters, numbering.numId, numbering.level);
     const counterKey = `${numbering.numId}:${numbering.level}`;
+    const definition = numberingDefinitions.get(counterKey);
     const current = counters.has(counterKey)
       ? (counters.get(counterKey) ?? 0) + 1
-      : Math.max(1, Math.floor(asNumber(view.style?.autoNumberStartAt, 1)));
+      : Math.max(1, Math.floor(asNumber(view.style?.autoNumberStartAt, asNumber(definition?.startAt, 1))));
     counters.set(counterKey, current);
 
-    const marker = wordNumberingMarker(asString(view.style?.autoNumberType), current);
+    const marker = wordNumberingMarkerForDefinition(asString(view.style?.autoNumberType), definition, current);
     if (marker) markers.set(view.id, marker);
   }
 
   return markers;
+}
+
+type WordNumberingLevel = {
+  levelText: string;
+  numberFormat: string;
+  startAt: number;
+};
+
+function wordNumberingDefinitionLevels(root: RecordValue | null): Map<string, WordNumberingLevel> {
+  const levelsByKey = new Map<string, WordNumberingLevel>();
+  for (const definition of asArray(root?.numberingDefinitions).map(asRecord)) {
+    const numId = asString(definition?.numId);
+    if (!numId) continue;
+
+    for (const level of asArray(definition?.levels).map(asRecord)) {
+      const levelIndex = Math.max(0, Math.floor(asNumber(level?.level)));
+      levelsByKey.set(`${numId}:${levelIndex}`, {
+        levelText: asString(level?.levelText),
+        numberFormat: asString(level?.numberFormat),
+        startAt: Math.max(1, Math.floor(asNumber(level?.startAt, 1))),
+      });
+    }
+  }
+  return levelsByKey;
 }
 
 function wordParagraphRecords(elements: unknown[]): unknown[] {
@@ -1078,6 +1164,41 @@ function wordNumberingMarker(type: string, value: number): string {
       return `${romanMarker(value)}.`;
     case "romanUcParenR":
       return `${romanMarker(value)})`;
+    default:
+      return "";
+  }
+}
+
+function wordNumberingMarkerForDefinition(
+  autoNumberType: string,
+  definition: WordNumberingLevel | undefined,
+  value: number,
+): string {
+  if (autoNumberType) return wordNumberingMarker(autoNumberType, value);
+  if (!definition) return "";
+
+  const format = definition.numberFormat;
+  const levelText = definition.levelText;
+  if (format === "bullet") return levelText || "•";
+
+  const markerValue = wordNumberingMarker(wordNumberingFormatAutoType(format), value);
+  if (!markerValue) return "";
+  if (!levelText.includes("%")) return markerValue;
+  return levelText.replace(/%\d+/g, markerValue.replace(/[.)]$/u, ""));
+}
+
+function wordNumberingFormatAutoType(format: string): string {
+  switch (format) {
+    case "decimal":
+      return "arabicPeriod";
+    case "lowerLetter":
+      return "alphaLcPeriod";
+    case "upperLetter":
+      return "alphaUcPeriod";
+    case "lowerRoman":
+      return "romanLcPeriod";
+    case "upperRoman":
+      return "romanUcPeriod";
     default:
       return "";
   }
@@ -1300,12 +1421,56 @@ const wordDocumentStackStyle: CSSProperties = {
   gap: 20,
 };
 
-const wordParagraphMarkerStyle: CSSProperties = {
-  display: "inline-block",
-  minWidth: "2.25em",
-  paddingRight: "0.35em",
-  textAlign: "right",
+function wordParagraphStyle(paragraph: ParagraphView): CSSProperties {
+  const style = paragraphStyle(paragraph);
+  const isTitle = paragraph.styleId === "Title";
+  const isHeading = /^Heading/i.test(paragraph.styleId);
+  const fontSize = wordCssFontSize(paragraph.style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14);
+  const hasText = paragraph.runs.some((run) => run.text.trim() !== "");
+
+  return {
+    ...style,
+    ...(paragraph.styleId === "Heading2" && hasText ? wordHeading2RuleStyle : {}),
+    fontSize,
+    lineHeight: wordParagraphCssLineHeight(paragraph, fontSize),
+  };
+}
+
+function wordParagraphCssLineHeight(paragraph: ParagraphView, fontSize: number): CSSProperties["lineHeight"] {
+  const exactPoints = asNumber(paragraph.style?.lineSpacing);
+  if (exactPoints > 0) return `${wordEstimatedLineHeight(paragraph.style, fontSize)}px`;
+
+  const percent = asNumber(paragraph.style?.lineSpacingPercent);
+  if (percent > 0) return Math.max(0.8, Math.min(3, percent / 100_000));
+
+  return 1.35;
+}
+
+const wordHeading2RuleStyle: CSSProperties = {
+  borderBottomColor: "#3c9faa",
+  borderBottomStyle: "solid",
+  borderBottomWidth: 1,
+  borderTopColor: "#3c9faa",
+  borderTopStyle: "solid",
+  borderTopWidth: 1,
+  marginBottom: 18,
+  marginTop: 18,
+  paddingBottom: 6,
+  paddingTop: 6,
 };
+
+function wordParagraphMarkerStyle(marker: string): CSSProperties {
+  const isBullet = /^[•●○▪■o]$/u.test(marker);
+  return {
+    color: isBullet ? "#4aa6b2" : undefined,
+    display: "inline-block",
+    fontSize: isBullet ? "1.08em" : undefined,
+    fontWeight: isBullet ? 700 : undefined,
+    minWidth: isBullet ? "1.9em" : "2.25em",
+    paddingRight: "0.35em",
+    textAlign: "right",
+  };
+}
 
 const wordHeaderContentStyle: CSSProperties = {
   borderBottomColor: "#e2e8f0",

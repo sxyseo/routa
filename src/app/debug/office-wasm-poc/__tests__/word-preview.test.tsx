@@ -178,6 +178,31 @@ describe("WordPreview", () => {
     expect(paragraph?.style.textIndent).toBe("-5px");
   });
 
+  it("maps decoded DOCX Word font units into CSS pixels", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  textStyle: { fontSize: 1000 },
+                  runs: [{ text: "10 point body", textStyle: { fontSize: 1000 } }],
+                },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const paragraph = container.querySelector<HTMLElement>("p");
+    const run = container.querySelector<HTMLElement>("p span");
+    expect(Number.parseFloat(paragraph?.style.fontSize ?? "0")).toBeCloseTo(13.33, 1);
+    expect(Number.parseFloat(run?.style.fontSize ?? "0")).toBeCloseTo(13.33, 1);
+  });
+
   it("maps decoded DOCX scheme metadata into run CSS", () => {
     const { container } = render(
       <WordPreview
@@ -343,6 +368,37 @@ describe("WordPreview", () => {
     const marker = container.querySelector<HTMLElement>("p span");
     expect(marker?.textContent).toBe("•");
     expect(container.querySelector("p")?.textContent).toBe("•Bullet item");
+  });
+
+  it("renders decoded DOCX bullet markers from numbering definitions", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  id: "p-bullet",
+                  runs: [{ text: "Definition bullet item" }],
+                },
+              ],
+            },
+          ],
+          numberingDefinitions: [
+            {
+              levels: [{ level: 0, levelText: "●", numberFormat: "bullet", startAt: 1 }],
+              numId: "bullet-list",
+            },
+          ],
+          paragraphNumberings: [{ level: 0, numId: "bullet-list", paragraphId: "p-bullet" }],
+        }}
+      />,
+    );
+
+    const marker = container.querySelector<HTMLElement>("p span");
+    expect(marker?.textContent).toBe("●");
+    expect(marker?.style.color).toBe("rgb(74, 166, 178)");
   });
 
   it("renders decoded DOCX hyperlinks and note reference markers", () => {
