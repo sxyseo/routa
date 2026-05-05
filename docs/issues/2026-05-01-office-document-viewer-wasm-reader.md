@@ -111,6 +111,12 @@ Progress - 2026-05-02:
 - Workbench PPTX production check now separates PowerPoint-visible drift from Walnut-only bbox anomalies: `1. Assumptions & Dependencies` and `10. Executive Summary` pass decoded semantic parity after group-origin rounding and sub-pixel bbox normalization. The first 10 Workbench PPTX files improved from `1/10` to `4/10` semantic matches. Remaining mismatches in `11. Governance & Communication` slide 25 and `12. Hiring & Talent Management` slide 49 are dominated by flipped nested group/custom-geometry bbox values where LibreOffice/PowerPoint-like rendering places shapes/connectors at Routa's coordinates while Walnut decodes some decorative flipped elements far left or negative-x; keep these as PowerPoint-vs-Walnut compatibility notes instead of moving the renderer away from the PowerPoint visual.
 - Next PPT item is SmartArt/diagram/custom geometry and deeper table-style inheritance; pixel-level PowerPoint typography remains a renderer fidelity limitation until the viewer has a native screenshot/raster path or a deeper text layout engine.
 
+Progress - 2026-05-05:
+
+- Added a PowerPoint-like per-slide render comparator, `compare:office-wasm-reader:pptx-powerpoint-render`, which converts a PPTX to PDF/PNG through LibreOffice and compares every Routa/Walnut viewer slide canvas against that reference. Outputs are kept under `/tmp/routa-office-wasm-pptx-powerpoint-render` and must not be committed.
+- PPT preview now keeps the slide viewport height independent from footnote/source-note height: footnotes scroll below the fixed slide viewport instead of reducing the fitted canvas height. The main slide canvas and thumbnail buttons also expose stable test IDs for per-slide browser verification.
+- Latest validation on `/Users/phodal/Downloads/《此心安处》 方案 by GPT Pro.pptx`: `compare:office-wasm-reader:pptx-powerpoint-render -- --assert --changed-ratio 0.10 --average-delta 12` passes for all `12/12` slides; the largest drift is slide 2 (`changedPixelRatio ~= 0.0674`, `averageDelta ~= 10.45`). The existing Walnut/Routa render contract still passes on the same file.
+
 ## Expected Behavior
 
 Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（DOCX/PPTX/XLSX/CSV），提供与 Codex 类似的文件类型路由和渲染体验。
