@@ -512,6 +512,33 @@ describe("WordPreview", () => {
     expect(pages.map((page) => page.textContent)).toEqual(["Cover page", "Second page"]);
   });
 
+  it("inherits decoded DOCX section footer content across later sections", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          sections: [
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "First section" }] }] }],
+              footer: { elements: [{ paragraphs: [{ runs: [{ text: "Shared footer" }] }] }] },
+              id: "section-first",
+            },
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Second section" }] }] }],
+              id: "section-second",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages.map((page) => page.textContent)).toEqual([
+      "First sectionShared footer",
+      "Second sectionShared footer",
+    ]);
+  });
+
   it("does not give adjacent tiny duplicate image placeholders their own layout height", () => {
     const bbox = {
       heightEmu: 2_794_000,

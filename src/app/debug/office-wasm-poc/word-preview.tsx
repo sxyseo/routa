@@ -237,16 +237,21 @@ function wordPreviewPages(
   rootElements: unknown[],
   styleMaps: OfficeTextStyleMaps,
 ): WordPreviewPage[] {
-  const sectionPages = asArray(root?.sections)
+  const sections = asArray(root?.sections)
     .map(asRecord)
-    .filter((section): section is RecordValue => section != null)
-    .map((section, index) => ({
+    .filter((section): section is RecordValue => section != null);
+  const inheritedSectionContent = { footer: [] as unknown[], header: [] as unknown[] };
+  const sectionPages = sections.map((section, index) => {
+    const headerElements = wordInheritedSectionContentElements(section, "header", inheritedSectionContent);
+    const footerElements = wordInheritedSectionContentElements(section, "footer", inheritedSectionContent);
+    return {
       elements: asArray(section.elements),
-      footerElements: wordSectionContentElements(section, "footer"),
-      headerElements: wordSectionContentElements(section, "header"),
+      footerElements,
+      headerElements,
       id: asString(section.id) || `section-${index + 1}`,
       root: section,
-    }))
+    };
+  })
     .filter((page) => page.elements.length > 0 || page.headerElements.length > 0 || page.footerElements.length > 0);
 
   if (sectionPages.some((page) => page.elements.length > 0)) {
@@ -262,6 +267,20 @@ function wordPreviewPages(
       root,
     },
   ], styleMaps);
+}
+
+function wordInheritedSectionContentElements(
+  section: RecordValue,
+  key: "footer" | "header",
+  inheritedContent: { footer: unknown[]; header: unknown[] },
+): unknown[] {
+  const elements = wordSectionContentElements(section, key);
+  if (elements.length > 0) {
+    inheritedContent[key] = elements;
+    return elements;
+  }
+
+  return inheritedContent[key];
 }
 
 function wordPreviewSectionPages(
