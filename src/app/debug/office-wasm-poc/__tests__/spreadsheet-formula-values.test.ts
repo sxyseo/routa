@@ -89,4 +89,25 @@ describe("spreadsheet volatile formula values", () => {
     expect(cells.find((cell) => cell.address === "A1")?.value).toBe("2");
     expect(cells.find((cell) => cell.address === "B1")?.value).toBe("1");
   });
+
+  it("uses the uploaded workbook name for CELL filename formulas that cannot be evaluated in wasm", () => {
+    const sheet = workbookSheet("Industry Partners", {
+      G4: {
+        formula: 'TEXTBEFORE(TEXTBEFORE(TEXTAFTER(CELL("filename"),"["),"]"),".")',
+        value: "#NAME?",
+      },
+    });
+
+    const next = spreadsheetSheetWithVolatileFormulaValues(
+      sheet,
+      [sheet],
+      new Date(2026, 4, 5),
+      "Thoughtworks Response DTA Cloud Marketplace Part B Attachment A - Category Capability and Experience.xlsx",
+    );
+    const row = (next?.rows as RecordValue[])[0];
+    const cells = row.cells as RecordValue[];
+
+    expect(cells.find((cell) => cell.address === "G4")?.value)
+      .toBe("Thoughtworks Response DTA Cloud Marketplace Part B Attachment A - Category Capability and Experience");
+  });
 });

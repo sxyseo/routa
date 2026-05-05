@@ -23,6 +23,7 @@ export function spreadsheetSheetWithVolatileFormulaValues(
   sheet: RecordValue | undefined,
   sheets: readonly RecordValue[],
   today = new Date(),
+  sourceName = "",
 ): RecordValue | undefined {
   if (!sheet) return sheet;
   const workbookIndex = workbookCellsBySheet(sheets);
@@ -38,6 +39,13 @@ export function spreadsheetSheetWithVolatileFormulaValues(
       const cell = asRecord(cellValue);
       if (!cell) return cellValue;
       const formula = asString(cell.formula);
+      const sourceNameValue = formulaWorkbookFilenameValue(formula, sourceName, asString(cell.value));
+      if (sourceNameValue != null) {
+        rowChanged = true;
+        changed = true;
+        return { ...cell, value: sourceNameValue };
+      }
+
       if (!formulaShouldRefreshDisplayValue(cell, formula)) return cellValue;
       const value = evaluateVolatileFormula(formula, sheetName, workbookIndex, today) ??
         evaluatePreviewFormula(formula, sheetName, rowsByIndex, rowsBySheet, cell);
@@ -157,6 +165,15 @@ function formulaNeedsVolatileEvaluation(formula: string): boolean {
 function formulaShouldRefreshDisplayValue(cell: RecordValue, formula: string): boolean {
   if (!formula) return false;
   return formulaNeedsVolatileEvaluation(formula) || asString(cell.value).trim().length === 0;
+}
+
+function formulaWorkbookFilenameValue(formula: string, sourceName: string, value: string): string | null {
+  if (!sourceName || !/\bCELL\s*\(\s*"filename"/i.test(formula)) return null;
+  const currentValue = value.trim();
+  if (currentValue.length > 0 && currentValue !== "#NAME?") return null;
+  const fileName = sourceName.split(/[\\/]/).pop() ?? sourceName;
+  const firstDotIndex = fileName.indexOf(".");
+  return firstDotIndex >= 0 ? fileName.slice(0, firstDotIndex) : fileName;
 }
 
 function formulaDisplayValue(value: unknown, formula: string): string | null {

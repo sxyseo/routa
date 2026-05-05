@@ -171,7 +171,15 @@ async function parseDocument(file: File, kind: "docx" | "pptx" | "xlsx"): Promis
     /* webpackIgnore: true */ `${SPREADSHEET_MODULE}?v=spreadsheet`
   )) as { Workbook: { decode: (value: unknown) => unknown } };
   const proto = Workbook.decode(walnut.XlsxReader.ExtractXlsxProto(bytes, false));
-  return { kind: "spreadsheet", proto, readerMode: "walnut", sourceKind: "xlsx" };
+  return {
+    kind: "spreadsheet",
+    proto: {
+      ...(proto && typeof proto === "object" ? proto as Record<string, unknown> : {}),
+      sourceName: file.name,
+    },
+    readerMode: "walnut",
+    sourceKind: "xlsx",
+  };
 }
 
 async function parseDocumentWithGeneratedReader(file: File, kind: OfficeWasmArtifactKind): Promise<ParsedArtifact> {

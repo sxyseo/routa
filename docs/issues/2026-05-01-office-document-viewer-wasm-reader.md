@@ -157,6 +157,7 @@ Routa 应能在 session canvas 或 artifact tab 中直接预览 Office 文档（
 - XLSX conditional formula evaluation now supports date/time formatting and conversion helpers used by production rules, including `TEXT`, `DATEVALUE`, `TIME`, and `TIMEVALUE`.
 - XLSX workbook formula value backfill now uses the same .NET-side ClosedXML dependency when formula cells have no cached `<v>` value. The reader still preserves existing OpenXML cached values as the protocol source of truth, but fills empty formula results for common workbook formulas and normalizes ClosedXML error enums back to Excel strings such as `#DIV/0!`.
 - XLSX formula backfill now preserves existing cached formula `<v>` values even when another cell in the same workbook triggers ClosedXML backfill, and adds a guarded `XLOOKUP` fallback because ClosedXML 0.105.0 reports `#NAME?` for `_xlfn.XLOOKUP(...)`. Validation on `/Users/phodal/Downloads/excel` still reports `21/21` decoded protocol matches and `21/21` render-contract matches against Walnut after rebuilding the generated WASM bundle.
+- XLSX formula preview now applies a narrow Excel-like display repair for `CELL("filename")` workbook-name formulas that arrive with `#NAME?` cached values: the preview uses the uploaded `sourceName` to render the workbook basename while leaving the decoded Walnut/Routa protocol unchanged.
 
 ## Codex 技术方案逆向分析
 

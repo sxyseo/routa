@@ -170,10 +170,8 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const viewportScroll = viewportState.scroll;
   const viewportSize = viewportState.size;
   const activeSheetSource = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
-  const activeSheet = useMemo(
-    () => spreadsheetSheetWithVolatileFormulaValues(activeSheetSource, sheets),
-    [activeSheetSource, sheets],
-  );
+  const sourceName = asString(root?.sourceName);
+  const activeSheet = useMemo(() => spreadsheetSheetWithVolatileFormulaValues(activeSheetSource, sheets, new Date(), sourceName), [activeSheetSource, sheets, sourceName]);
   const layout = useMemo(() => buildSpreadsheetLayout(activeSheet, sizeOverrides), [activeSheet, sizeOverrides]);
   const chartSpecs = useMemo(() => buildSpreadsheetCharts({
     activeSheet,
