@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type sharp from "sharp";
 
+import { loadSharp, type SharpFactory } from "./optional-sharp.js";
 import { ProtoReader } from "./proto-reader.js";
 
 type RecordValue = Record<string, unknown>;
@@ -218,11 +218,10 @@ export type RenderPptxCursorCanvasOptions = {
   mediaQuality?: number;
   mediaWidth?: number;
   readerVersion: string;
-  sourcePath: string;
+  sourceLabel?: string;
+  sourcePath?: string;
   title: string;
 };
-
-type SharpFactory = typeof sharp;
 
 export async function renderPptxCursorCanvasSource(
   protoBytes: Uint8Array,
@@ -566,7 +565,7 @@ async function buildPresentationPayload(
       generatedBy: "@autodev/office",
       mode: "proto-direct",
       reader: options.readerVersion,
-      source: options.sourcePath,
+      source: sourceLabel(options),
       title: options.title,
     },
     media: Object.fromEntries(mediaIndex.media),
@@ -1338,17 +1337,17 @@ function readUint32BE(bytes: Uint8Array, offset: number): number {
   );
 }
 
-async function loadSharp(): Promise<SharpFactory | null> {
-  try {
-    const imported = await import("sharp");
-    return imported.default;
-  } catch {
-    return null;
-  }
-}
-
 function clampQuality(value: number): number {
   return Math.max(1, Math.min(100, Math.round(value)));
+}
+
+function sourceLabel(options: RenderPptxCursorCanvasOptions): string {
+  return options.sourceLabel ?? basename(options.sourcePath) ?? options.title;
+}
+
+function basename(value?: string): string | undefined {
+  const parts = value?.split(/[\\/]+/u).filter(Boolean);
+  return parts?.[parts.length - 1];
 }
 
 function sha256(bytes: Uint8Array): string {

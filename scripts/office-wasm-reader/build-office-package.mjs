@@ -18,8 +18,10 @@ import {
   chmodSync,
   cpSync,
   existsSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -117,6 +119,18 @@ function stripNativeSymbolLoad(bundleDir) {
   }
 }
 
+function stripSourceMaps(dir) {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir)) {
+    const entryPath = path.join(dir, entry);
+    if (statSync(entryPath).isDirectory()) {
+      stripSourceMaps(entryPath);
+    } else if (entry.endsWith(".map")) {
+      unlinkSync(entryPath);
+    }
+  }
+}
+
 // ─── Step 1: dotnet publish ───────────────────────────────────────────────────
 
 console.log("▶ Step 1/3  dotnet publish");
@@ -138,6 +152,7 @@ console.log(`▶ Step 2/3  copy bundle → ${path.relative(repoRoot, publicDir)}
 rmSync(publicDir, { force: true, recursive: true });
 cpSync(bundleRoot, publicDir, { recursive: true });
 stripNativeSymbolLoad(publicDir);
+stripSourceMaps(publicDir);
 
 // ─── Step 3: Copy to packages/office/wasm/ (npm package) ─────────────────────
 
@@ -147,11 +162,16 @@ console.log(
 rmSync(packageWasmDir, { force: true, recursive: true });
 cpSync(bundleRoot, packageWasmDir, { recursive: true });
 stripNativeSymbolLoad(packageWasmDir);
+stripSourceMaps(packageWasmDir);
 
 // ─── Step 4: TypeScript compile ───────────────────────────────────────────────
 
 console.log("▶ Step 4/4  tsc");
 const tsconfigPath = path.join(repoRoot, "packages/office/tsconfig.json");
+rmSync(path.join(repoRoot, "packages/office/dist"), {
+  force: true,
+  recursive: true,
+});
 const tscBin = path.join(
   repoRoot,
   "node_modules/.bin/tsc",

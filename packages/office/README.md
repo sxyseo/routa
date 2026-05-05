@@ -5,7 +5,10 @@
 ## Requirements
 
 - Node.js ≥ 18
-- No native add-ons. The `.wasm` bundle ships inside this package.
+- No native add-ons are installed by default. The `.wasm` bundle ships inside
+  this package.
+- Optional: install `sharp` in your project to enable JPEG recompression and
+  thumbnails during Canvas generation.
 
 ## Installation
 
@@ -46,15 +49,16 @@ Or target a specific Cursor project:
 
 ```bash
 npx @autodev/office canvas ./deck.pptx \
-  --cursor-project ~/.cursor/projects/Users-phodal-ai-routa-js
+  --cursor-project ~/.cursor/projects/<project>
 ```
 
 The CLI uses the package's embedded WASM reader and emits a self-contained
 `.canvas.tsx` file with slide navigation and slideshow mode.
 When writing into a Cursor project, it also writes the matching
 `.canvas.status.json` sidecar so Cursor can discover the generated canvas.
-When `sharp` is available, the CLI compresses embedded slide media and renders
-small JPEG thumbnails to keep the generated Canvas size manageable.
+When `sharp` is available from the caller's project, the CLI compresses embedded
+slide media and renders small JPEG thumbnails to keep the generated Canvas size
+manageable.
 
 ## API
 
@@ -102,6 +106,8 @@ from `extractXlsxProto` into Cursor Canvas TSX source.
 - The WASM runtime initialises once per Node.js process (Node module cache).
 - Package size is ~10 MB owing to the embedded .wasm assemblies.
 - Cursor Canvas generation supports PPTX, DOCX, and XLSX.
+- Generated Canvas metadata stores the input basename, not the absolute local
+  file path.
 
 ## Building from source
 

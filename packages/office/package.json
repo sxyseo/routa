@@ -1,6 +1,6 @@
 {
   "name": "@autodev/office",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Office document reader powered by .NET browser-wasm — reads DOCX, PPTX, XLSX and returns protobuf bytes.",
   "type": "module",
   "license": "MIT",
@@ -44,16 +44,23 @@
     }
   },
   "files": [
-    "dist",
+    "dist/**/*.d.ts",
+    "dist/**/*.js",
     "wasm",
     "README.md"
   ],
   "scripts": {
-    "build:ts": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:ts": "npm run clean && tsc -p tsconfig.json && chmod +x dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "optionalDependencies": {
+  "peerDependencies": {
     "sharp": "^0.34.5"
+  },
+  "peerDependenciesMeta": {
+    "sharp": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "typescript": "5.9.3"

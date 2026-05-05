@@ -47,30 +47,31 @@ async function main(): Promise<void> {
   const outputPath = resolveOutputPath(inputPath, options);
   const sourceBytes = new Uint8Array(await readFile(inputPath));
   const readerVersion = await getReaderVersion();
+  const sourceLabel = path.basename(inputPath);
   const source =
     extension === ".pptx"
       ? await renderPptxCursorCanvasSource(await extractPptxProto(sourceBytes), {
           mediaQuality: options.mediaQuality,
           mediaWidth: options.mediaWidth,
           readerVersion,
-          sourcePath: inputPath,
-          title: path.basename(inputPath),
+          sourceLabel,
+          title: sourceLabel,
         })
       : extension === ".docx"
         ? await renderDocxCursorCanvasSource(await extractDocxProto(sourceBytes), {
             mediaQuality: options.mediaQuality,
             mediaWidth: options.mediaWidth,
             readerVersion,
-            sourcePath: inputPath,
-            title: path.basename(inputPath),
+            sourceLabel,
+            title: sourceLabel,
           })
         : extension === ".xlsx"
           ? renderXlsxCursorCanvasSource(await extractXlsxProto(sourceBytes), {
               maxColumns: options.maxColumns,
               maxRows: options.maxRows,
               readerVersion,
-              sourcePath: inputPath,
-              title: path.basename(inputPath),
+              sourceLabel,
+              title: sourceLabel,
             })
           : null;
   if (!source) {

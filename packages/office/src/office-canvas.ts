@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
-import type sharp from "sharp";
 
+import { loadSharp, type SharpFactory } from "./optional-sharp.js";
 import { ProtoReader } from "./proto-reader.js";
-
-type SharpFactory = typeof sharp;
 
 type CanvasMedia = {
   height: number;
@@ -89,7 +87,8 @@ export type RenderOfficeCursorCanvasOptions = {
   mediaQuality?: number;
   mediaWidth?: number;
   readerVersion: string;
-  sourcePath: string;
+  sourceLabel?: string;
+  sourcePath?: string;
   title: string;
 };
 
@@ -391,7 +390,7 @@ async function buildDocumentPayload(
       generatedBy: "@autodev/office",
       kind: "docx",
       reader: options.readerVersion,
-      source: options.sourcePath,
+      source: sourceLabel(options),
       title: artifact.title || options.title,
     },
     blocks,
@@ -562,7 +561,7 @@ function buildWorkbookPayload(
       generatedBy: "@autodev/office",
       kind: "xlsx",
       reader: options.readerVersion,
-      source: options.sourcePath,
+      source: sourceLabel(options),
       title: options.title,
     },
     sheets: workbook.sheets.map((sheet) => ({
@@ -773,16 +772,17 @@ async function encodeImage(
   return { bytes: new Uint8Array(buffer), contentType: "image/jpeg" };
 }
 
-async function loadSharp(): Promise<SharpFactory | null> {
-  try {
-    return (await import("sharp")).default;
-  } catch {
-    return null;
-  }
-}
-
 function fillColor(fill?: { color?: string }): string | undefined {
   return fill?.color && fill.color !== "#000000" ? fill.color : undefined;
+}
+
+function sourceLabel(options: RenderOfficeCursorCanvasOptions): string {
+  return options.sourceLabel ?? basename(options.sourcePath) ?? options.title;
+}
+
+function basename(value?: string): string | undefined {
+  const parts = value?.split(/[\\/]+/u).filter(Boolean);
+  return parts?.[parts.length - 1];
 }
 
 function columnIndex(address: string): number {
