@@ -4,14 +4,25 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { getReaderVersion, extractPptxProto } from "./index.js";
+import {
+  extractDocxProto,
+  extractPptxProto,
+  extractXlsxProto,
+  getReaderVersion,
+} from "./index.js";
 import { renderPptxCursorCanvasSource } from "./cursor-canvas.js";
+import {
+  renderDocxCursorCanvasSource,
+  renderXlsxCursorCanvasSource,
+} from "./office-canvas.js";
 
 type CliOptions = {
   command: string;
   cursor: boolean;
   cursorProject?: string;
   inputPath?: string;
+  maxColumns?: number;
+  maxRows?: number;
   mediaQuality?: number;
   mediaWidth?: number;
   name?: string;
@@ -32,19 +43,39 @@ async function main(): Promise<void> {
   if (!existsSync(inputPath)) {
     throw new Error(`Input file not found: ${inputPath}`);
   }
-  if (path.extname(inputPath).toLowerCase() !== ".pptx") {
-    throw new Error("Cursor Canvas conversion currently supports .pptx files.");
-  }
-
+  const extension = path.extname(inputPath).toLowerCase();
   const outputPath = resolveOutputPath(inputPath, options);
-  const protoBytes = await extractPptxProto(new Uint8Array(await readFile(inputPath)));
-  const source = await renderPptxCursorCanvasSource(protoBytes, {
-    mediaQuality: options.mediaQuality,
-    mediaWidth: options.mediaWidth,
-    readerVersion: await getReaderVersion(),
-    sourcePath: inputPath,
-    title: path.basename(inputPath),
-  });
+  const sourceBytes = new Uint8Array(await readFile(inputPath));
+  const readerVersion = await getReaderVersion();
+  const source =
+    extension === ".pptx"
+      ? await renderPptxCursorCanvasSource(await extractPptxProto(sourceBytes), {
+          mediaQuality: options.mediaQuality,
+          mediaWidth: options.mediaWidth,
+          readerVersion,
+          sourcePath: inputPath,
+          title: path.basename(inputPath),
+        })
+      : extension === ".docx"
+        ? await renderDocxCursorCanvasSource(await extractDocxProto(sourceBytes), {
+            mediaQuality: options.mediaQuality,
+            mediaWidth: options.mediaWidth,
+            readerVersion,
+            sourcePath: inputPath,
+            title: path.basename(inputPath),
+          })
+        : extension === ".xlsx"
+          ? renderXlsxCursorCanvasSource(await extractXlsxProto(sourceBytes), {
+              maxColumns: options.maxColumns,
+              maxRows: options.maxRows,
+              readerVersion,
+              sourcePath: inputPath,
+              title: path.basename(inputPath),
+            })
+          : null;
+  if (!source) {
+    throw new Error("Cursor Canvas conversion supports .pptx, .docx, and .xlsx files.");
+  }
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, source, "utf8");
   console.log(JSON.stringify({ inputPath, outputPath, type: "cursor-canvas" }, null, 2));
@@ -67,6 +98,10 @@ function parseArgs(args: string[]): CliOptions {
       options.mediaQuality = numberValue(requiredValue(args, ++index, arg), arg);
     } else if (arg === "--media-width") {
       options.mediaWidth = numberValue(requiredValue(args, ++index, arg), arg);
+    } else if (arg === "--max-columns") {
+      options.maxColumns = numberValue(requiredValue(args, ++index, arg), arg);
+    } else if (arg === "--max-rows") {
+      options.maxRows = numberValue(requiredValue(args, ++index, arg), arg);
     } else if (arg === "--output" || arg === "-o") {
       options.outputPath = requiredValue(args, ++index, arg);
     } else if (arg === "--help" || arg === "-h") {
@@ -124,9 +159,9 @@ function printHelp(): void {
   console.log(`@autodev/office
 
 Usage:
-  autodev-office canvas <file.pptx> [--output file.canvas.tsx]
-  autodev-office canvas <file.pptx> --cursor
-  autodev-office canvas <file.pptx> --cursor-project ~/.cursor/projects/<project>
+  autodev-office canvas <file.pptx|file.docx|file.xlsx> [--output file.canvas.tsx]
+  autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor
+  autodev-office canvas <file.pptx|file.docx|file.xlsx> --cursor-project ~/.cursor/projects/<project>
 
 Options:
   -o, --output <path>          Write the generated Cursor Canvas file.
@@ -134,6 +169,8 @@ Options:
       --cursor-project <dir>  Write into <dir>/canvases.
       --media-quality <1-100> JPEG quality for embedded media. Default: 70.
       --media-width <px>      Max embedded media width. Default: 1280.
+      --max-columns <n>       Max XLSX columns to render. Default: 24.
+      --max-rows <n>          Max XLSX rows to render. Default: 100.
       --name <slug>           Override the output file basename.
 `);
 }

@@ -8,7 +8,7 @@
   "homepage": "https://github.com/phodal/routa#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/phodal/routa.git",
+    "url": "git+https://github.com/phodal/routa.git",
     "directory": "packages/office"
   },
   "engines": {
@@ -26,8 +26,8 @@
     "protobuf"
   ],
   "bin": {
-    "autodev-office": "./dist/cli.js",
-    "office-canvas": "./dist/cli.js"
+    "autodev-office": "dist/cli.js",
+    "office-canvas": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -37,6 +37,10 @@
     "./cursor-canvas": {
       "import": "./dist/cursor-canvas.js",
       "types": "./dist/cursor-canvas.d.ts"
+    },
+    "./office-canvas": {
+      "import": "./dist/office-canvas.js",
+      "types": "./dist/office-canvas.d.ts"
     }
   },
   "files": [
