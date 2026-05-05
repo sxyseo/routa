@@ -25,9 +25,18 @@ type DirectCanvasElement =
   | {
       color: string;
       fontSize: number;
+      italic: boolean;
+      insetBottom: number;
+      insetLeft: number;
+      insetRight: number;
+      insetTop: number;
       kind: "text";
+      lineHeight: number;
       text: string;
       textAlign: "center" | "left" | "right";
+      typeface: string;
+      underline: boolean;
+      verticalAlign: "bottom" | "middle" | "top";
       weight: number;
       x: number;
       y: number;
@@ -262,7 +271,7 @@ function buildSlide(
   const effectiveSlide = renderer.applyPresentationLayoutInheritance(slide, layouts);
   const bounds = renderer.getSlideBounds(effectiveSlide);
   const elements = slideElements(effectiveSlide)
-    .map((element) => directElement(element, mediaIndex, renderer, preview))
+    .flatMap((element) => directElements(element, mediaIndex, renderer, preview))
     .filter((element): element is DirectCanvasElement => element != null);
 
   return {
@@ -285,46 +294,33 @@ function slideElements(slide: RecordValue): RecordValue[] {
     .sort((left, right) => asNumber(left.zIndex, 0) - asNumber(right.zIndex, 0));
 }
 
-function directElement(
+function directElements(
   element: RecordValue,
   mediaIndex: MediaIndex,
   renderer: PresentationRendererHelpers,
   preview: OfficePreviewHelpers,
-): DirectCanvasElement | null {
+): DirectCanvasElement[] {
   const bbox = asRecord(element.bbox);
-  if (!bbox) return null;
+  if (!bbox) return [];
   const rect = {
     height: asNumber(bbox.heightEmu, 0),
     width: asNumber(bbox.widthEmu, 0),
     x: asNumber(bbox.xEmu, 0),
     y: asNumber(bbox.yEmu, 0),
   };
-  if (rect.width <= 0 || rect.height <= 0) return null;
+  if (rect.width <= 0 && rect.height <= 0) return [];
 
   const imageId = preview.elementImageReferenceId(element);
   const mediaId = imageId ? mediaIndex.byImageId.get(imageId) : null;
+  const elements: DirectCanvasElement[] = [];
   if (mediaId) {
     const media = mediaIndex.media.get(mediaId);
-    return {
+    elements.push({
       crop: media ? renderer.presentationImageSourceRect(element, media) : null,
       kind: "image",
       mediaId,
       ...rect,
-    };
-  }
-
-  const text = textFromElement(element);
-  if (text) {
-    const style = firstRunStyle(element);
-    return {
-      color: preview.fillToCss(style.fill) ?? "#0f172a",
-      fontSize: fontSizeFromStyle(style),
-      kind: "text",
-      text,
-      textAlign: paragraphTextAlign(element),
-      weight: asBoolean(style.bold) ? 700 : 500,
-      ...rect,
-    };
+    });
   }
 
   const shape = asRecord(element.shape);
@@ -336,16 +332,46 @@ function directElement(
     top: rect.y,
     width: rect.width,
   }));
-  if (fill === "transparent" && !line.color) return null;
-  return {
-    fill,
-    kind: "shape",
-    radius: shapeKind === "roundRect" ? Math.min(rect.width, rect.height) * 0.12 : 0,
-    shapeKind,
-    stroke: line.color ?? "none",
-    strokeWidth: line.color ? line.width * 9_525 : 0,
-    ...rect,
-  };
+  if (!mediaId && (fill !== "transparent" || line.color || shapeKind === "line")) {
+    elements.push({
+      fill,
+      kind: "shape",
+      radius: shapeKind === "roundRect" ? Math.min(rect.width, rect.height) * 0.12 : 0,
+      shapeKind,
+      stroke: line.color ?? "none",
+      strokeWidth: line.color ? line.width * 9_525 : 0,
+      ...rect,
+    });
+  }
+
+  const rawText = textFromElement(element);
+  if (rawText && rect.width > 0 && rect.height > 0) {
+    const style = firstRunStyle(element);
+    const textStyle = asRecord(element.textStyle) ?? {};
+    const fontSize = fontSizeFromStyle(style);
+    const insetLeft = asNumber(textStyle.leftInset, 0);
+    const insetRight = asNumber(textStyle.rightInset, 0);
+    elements.push({
+      color: preview.fillToCss(style.fill) ?? "#0f172a",
+      fontSize,
+      italic: asBoolean(style.italic),
+      insetBottom: asNumber(textStyle.bottomInset, 0),
+      insetLeft,
+      insetRight,
+      insetTop: asNumber(textStyle.topInset, 0),
+      kind: "text",
+      lineHeight: fontSize * 1.18,
+      text: wrapTextForSvg(rawText, fontSize, Math.max(fontSize * 1.2, rect.width - insetLeft - insetRight)),
+      textAlign: paragraphTextAlign(element),
+      typeface: asString(style.typeface),
+      underline: asString(style.underline).toLowerCase() === "sng" || asBoolean(style.underline),
+      verticalAlign: verticalTextAlign(textStyle),
+      weight: asBoolean(style.bold) ? 700 : 500,
+      ...rect,
+    });
+  }
+
+  return elements;
 }
 
 function textFromElement(element: RecordValue): string {
@@ -374,9 +400,16 @@ function firstRunStyle(element: RecordValue): RecordValue {
 function paragraphTextAlign(element: RecordValue): "center" | "left" | "right" {
   const paragraph = asRecord(asArray(element.paragraphs)[0]);
   const alignment = asNumber(asRecord(paragraph?.textStyle)?.alignment, 0);
-  if (alignment === 1) return "center";
-  if (alignment === 2) return "right";
+  if (alignment === 2) return "center";
+  if (alignment === 3) return "right";
   return "left";
+}
+
+function verticalTextAlign(textStyle: RecordValue): "bottom" | "middle" | "top" {
+  const anchor = asNumber(textStyle.anchor, 1);
+  if (anchor === 2) return "middle";
+  if (anchor === 3) return "bottom";
+  return "top";
 }
 
 function fontSizeFromStyle(style: RecordValue): number {
@@ -389,6 +422,61 @@ function normalizeShapeKind(kind: string): DirectShapeKind {
     return kind;
   }
   return "rect";
+}
+
+function wrapTextForSvg(text: string, fontSize: number, maxWidth: number): string {
+  const maxLineWidth = Math.max(fontSize * 1.2, maxWidth * 0.94);
+  const lines: string[] = [];
+  for (const sourceLine of text.split(/\n/u)) {
+    const tokens = textWrapTokens(sourceLine);
+    let line = "";
+    let lineWidth = 0;
+    for (const token of tokens) {
+      const tokenWidth = estimatedTextWidth(token, fontSize);
+      if (line && lineWidth + tokenWidth > maxLineWidth) {
+        lines.push(line.trimEnd());
+        line = token.trimStart();
+        lineWidth = estimatedTextWidth(line, fontSize);
+        continue;
+      }
+      line += token;
+      lineWidth += tokenWidth;
+    }
+    lines.push(line.trimEnd());
+  }
+  return lines.join("\n").trim();
+}
+
+function textWrapTokens(text: string): string[] {
+  const tokens: string[] = [];
+  let latin = "";
+  for (const char of text) {
+    if (/[\w\s.,:;!?()[\]{}'"“”‘’·/@#%&+\-=|<>]/u.test(char)) {
+      latin += char;
+      continue;
+    }
+    if (latin) {
+      tokens.push(latin);
+      latin = "";
+    }
+    tokens.push(char);
+  }
+  if (latin) tokens.push(latin);
+  return tokens;
+}
+
+function estimatedTextWidth(text: string, fontSize: number): number {
+  let width = 0;
+  for (const char of text) {
+    if (/\s/u.test(char)) {
+      width += fontSize * 0.32;
+    } else if (char.charCodeAt(0) <= 0x7f) {
+      width += fontSize * 0.55;
+    } else {
+      width += fontSize * 0.95;
+    }
+  }
+  return width;
 }
 
 async function renderSlideThumbnailDataUrl(slide: DirectCanvasSlide, media: Map<string, DirectCanvasMedia>): Promise<string> {
@@ -480,7 +568,7 @@ function renderCanvasSource(payload: DirectCanvasPayload): string {
 
 type DirectCanvasElement =
   | { crop: DirectImageCrop | null; kind: "image"; mediaId: string; x: number; y: number; width: number; height: number }
-  | { color: string; fontSize: number; kind: "text"; text: string; textAlign: "center" | "left" | "right"; weight: number; x: number; y: number; width: number; height: number }
+  | { color: string; fontSize: number; italic: boolean; insetBottom: number; insetLeft: number; insetRight: number; insetTop: number; kind: "text"; lineHeight: number; text: string; textAlign: "center" | "left" | "right"; typeface: string; underline: boolean; verticalAlign: "bottom" | "middle" | "top"; weight: number; x: number; y: number; width: number; height: number }
   | { fill: string; kind: "shape"; radius: number; shapeKind: DirectShapeKind; stroke: string; strokeWidth: number; x: number; y: number; width: number; height: number };
 
 type DirectCanvasMedia = { height: number; src: string; width: number };
@@ -644,21 +732,39 @@ export default function DirectPptCanvas() {
 
 function SlideSurface({ slide }: { slide: DirectCanvasSlide }) {
   return (
-    <svg
+    <div
       role="img"
       aria-label={\`Slide \${slide.index}\`}
-      viewBox={\`0 0 \${slide.width} \${slide.height}\`}
       style={{
       aspectRatio: \`\${slide.width} / \${slide.height}\`,
       background: "#ffffff",
       border: "1px solid rgba(148, 163, 184, 0.44)",
       borderRadius: 8,
+      containerType: "inline-size",
       overflow: "hidden",
+      position: "relative",
       width: "100%",
     }}>
-      <rect x={0} y={0} width={slide.width} height={slide.height} fill={slide.background || "#ffffff"} />
-      {slide.elements.map((element, index) => <SlideElement element={element} key={index} />)}
-    </svg>
+      <svg
+        aria-hidden="true"
+        viewBox={\`0 0 \${slide.width} \${slide.height}\`}
+        style={{ display: "block", height: "100%", inset: 0, position: "absolute", width: "100%" }}
+      >
+        <rect x={0} y={0} width={slide.width} height={slide.height} fill={slide.background || "#ffffff"} />
+      </svg>
+      {slide.elements.map((element, index) => element.kind === "text" ? (
+        <SlideTextElement element={element} key={index} slide={slide} />
+      ) : (
+        <svg
+          aria-hidden="true"
+          key={index}
+          viewBox={\`0 0 \${slide.width} \${slide.height}\`}
+          style={{ display: "block", height: "100%", inset: 0, pointerEvents: "none", position: "absolute", width: "100%" }}
+        >
+          <SlideElement element={element} />
+        </svg>
+      ))}
+    </div>
   );
 }
 
@@ -689,27 +795,47 @@ function SlideElement({ element }: { element: DirectCanvasElement }) {
     }
     return <rect x={element.x} y={element.y} width={element.width} height={element.height} rx={element.radius} ry={element.radius} {...shapeProps} />;
   }
-  const lines = element.text.split("\\n");
-  const anchor = element.textAlign === "center" ? "middle" : element.textAlign === "right" ? "end" : "start";
-  const textX = element.textAlign === "center" ? element.x + element.width / 2 : element.textAlign === "right" ? element.x + element.width : element.x;
-  const lineHeight = element.fontSize * 1.18;
+  return null;
+}
+
+function SlideTextElement({ element, slide }: { element: Extract<DirectCanvasElement, { kind: "text" }>; slide: DirectCanvasSlide }) {
+  const justifyContent = element.verticalAlign === "middle" ? "center" : element.verticalAlign === "bottom" ? "flex-end" : "flex-start";
   return (
-    <text
-      fill={element.color}
-      fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif"
-      fontSize={element.fontSize}
-      fontWeight={element.weight}
-      textAnchor={anchor}
-      x={textX}
-      y={element.y + element.fontSize}
+    <div
+      style={{
+        boxSizing: "border-box",
+        color: element.color,
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: fontStack(element.typeface),
+        fontSize: \`\${(element.fontSize / slide.width) * 100}cqw\`,
+        fontStyle: element.italic ? "italic" : "normal",
+        fontWeight: element.weight,
+        height: \`\${(element.height / slide.height) * 100}%\`,
+        justifyContent,
+        left: \`\${(element.x / slide.width) * 100}%\`,
+        lineHeight: element.lineHeight / element.fontSize,
+        overflow: "hidden",
+        paddingBottom: \`\${(element.insetBottom / slide.height) * 100}%\`,
+        paddingLeft: \`\${(element.insetLeft / slide.width) * 100}%\`,
+        paddingRight: \`\${(element.insetRight / slide.width) * 100}%\`,
+        paddingTop: \`\${(element.insetTop / slide.height) * 100}%\`,
+        position: "absolute",
+        textAlign: element.textAlign,
+        textDecoration: element.underline ? "underline" : "none",
+        top: \`\${(element.y / slide.height) * 100}%\`,
+        whiteSpace: "pre-wrap",
+        width: \`\${(element.width / slide.width) * 100}%\`,
+      }}
     >
-      {lines.map((line, index) => (
-        <tspan key={index} x={textX} dy={index === 0 ? 0 : lineHeight}>
-          {line}
-        </tspan>
-      ))}
-    </text>
+      {element.text}
+    </div>
   );
+}
+
+function fontStack(typeface: string) {
+  const fallback = "-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif";
+  return typeface ? \`\${JSON.stringify(typeface).slice(1, -1)}, \${fallback}\` : fallback;
 }
 
 const chromeButtonStyle = {

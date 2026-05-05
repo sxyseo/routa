@@ -1006,13 +1006,14 @@ export default function OfficePptCanvas() {
 
   return (
     <div style={{
-      background: theme.bg.editor,
+      background: "#ffffff",
       border: \`1px solid \${theme.stroke.secondary}\`,
       borderRadius: 8,
       color: theme.text.primary,
       display: "grid",
       gridTemplateRows: "52px minmax(0, 1fr)",
-      height: "min(820px, calc(100vh - 40px))",
+      height: "calc(100vh - 16px)",
+      minHeight: 520,
       overflow: "hidden",
     }}>
       <header style={{
@@ -1034,7 +1035,7 @@ export default function OfficePptCanvas() {
         </Row>
       </header>
       <div style={{ display: "grid", gridTemplateColumns: "clamp(156px, 13vw, 252px) minmax(0, 1fr)", minHeight: 0 }}>
-        <aside style={{ borderRight: \`1px solid \${theme.stroke.secondary}\`, minHeight: 0, overflow: "auto", padding: "12px 14px 48px 8px" }}>
+        <aside style={{ background: "rgba(255,255,255,0.86)", borderRight: \`1px solid \${theme.stroke.secondary}\`, minHeight: 0, overflow: "auto", padding: "12px 14px 48px 8px", scrollbarColor: "#cbd5e1 transparent" }}>
           <Stack gap={12}>
             {slides.map((slide) => {
               const active = slide.index === selectedSlide.index;
@@ -1046,8 +1047,8 @@ export default function OfficePptCanvas() {
                   onClick={() => setSelectedIndex(slide.index)}
                   style={{
                     alignItems: "flex-start",
-                    background: active ? theme.fill.secondary : "transparent",
-                    border: \`1px solid \${active ? theme.accent.primary : "transparent"}\`,
+                    background: "transparent",
+                    border: 0,
                     borderRadius: 7,
                     color: theme.text.primary,
                     cursor: "pointer",
@@ -1071,35 +1072,16 @@ export default function OfficePptCanvas() {
                     textAlign: "right",
                   }}>{slide.index}</span>
                   <span style={{ flex: "1 1 auto", minWidth: 0 }}>
-                    {slide.thumbnail ? (
-                      <img alt="" draggable={false} src={slide.thumbnail} style={{
-                        aspectRatio: \`\${slide.width} / \${slide.height}\`,
-                        background: "#ffffff",
-                        borderRadius: 4,
-                        boxShadow: active ? \`0 0 0 1px \${theme.accent.primary}\` : "0 8px 22px rgba(15, 23, 42, 0.12)",
-                        display: "block",
-                        objectFit: "fill",
-                        userSelect: "none",
-                        width: "100%",
-                      }} />
-                    ) : (
-                      <span style={{
-                        aspectRatio: \`\${slide.width} / \${slide.height}\`,
-                        background: "#ffffff",
-                        borderRadius: 4,
-                        display: "block",
-                        width: "100%",
-                      }} />
-                    )}
+                    <SlideSurface active={active} mode="thumbnail" slide={slide} />
                   </span>
                 </button>
               );
             })}
           </Stack>
         </aside>
-        <main style={{ background: theme.fill.primary, minHeight: 0, overflow: "auto", padding: "16px 24px 20px" }}>
-          <div style={{ margin: "0 auto", maxWidth: 960 }}>
-            <SlideSurface slide={selectedSlide} />
+        <main style={{ background: "#f8fafc", minHeight: 0, overflow: "auto", padding: "16px 24px 20px" }}>
+          <div style={{ alignItems: "center", display: "flex", justifyContent: "center", minHeight: "100%", minWidth: 0 }}>
+            <SlideSurface mode="stage" slide={selectedSlide} />
           </div>
         </main>
       </div>
@@ -1121,8 +1103,8 @@ export default function OfficePptCanvas() {
             </Row>
           </div>
           <button aria-label="Next slide" onClick={goNext} style={{ background: "transparent", border: 0, cursor: "pointer", maxHeight: "100%", maxWidth: "100%", padding: 0 }} type="button">
-            <div style={{ width: "min(92vw, calc(92vh * 16 / 9))" }}>
-              <SlideSurface slide={selectedSlide} />
+            <div style={{ width: \`min(92vw, calc(92vh * \${selectedSlide.width} / \${selectedSlide.height}))\` }}>
+              <SlideSurface mode="slideshow" slide={selectedSlide} />
             </div>
           </button>
           <button aria-label="Previous slide" onClick={goPrevious} style={{ ...navButtonStyle, left: 18 }} type="button">{"<"}</button>
@@ -1133,7 +1115,27 @@ export default function OfficePptCanvas() {
   );
 }
 
-function SlideSurface({ slide }: { slide: DirectCanvasSlide }) {
+function SlideSurface({ active = false, mode = "stage", slide }: { active?: boolean; mode?: "slideshow" | "stage" | "thumbnail"; slide: DirectCanvasSlide }) {
+  const width =
+    mode === "thumbnail"
+      ? "100%"
+      : mode === "slideshow"
+        ? "100%"
+        : \`min(100%, calc((100vh - 124px) * \${slide.width} / \${slide.height}))\`;
+  const border =
+    mode === "thumbnail"
+      ? active
+        ? "2px solid #60a5fa"
+        : "0 solid transparent"
+      : "1px solid #cbd5e1";
+  const boxShadow =
+    mode === "thumbnail"
+      ? active
+        ? "0 8px 22px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(255,255,255,0.92)"
+        : "0 8px 22px rgba(15, 23, 42, 0.12)"
+      : mode === "stage"
+        ? "0 18px 40px rgba(15, 23, 42, 0.14)"
+        : "none";
   return (
     <div
       role="img"
@@ -1141,12 +1143,14 @@ function SlideSurface({ slide }: { slide: DirectCanvasSlide }) {
       style={{
       aspectRatio: \`\${slide.width} / \${slide.height}\`,
       background: "#ffffff",
-      border: "1px solid rgba(148, 163, 184, 0.44)",
-      borderRadius: 8,
+      border,
+      borderRadius: mode === "thumbnail" ? 4 : 7,
+      boxShadow,
+      boxSizing: "border-box",
       containerType: "inline-size",
       overflow: "hidden",
       position: "relative",
-      width: "100%",
+      width,
     }}>
       <svg
         aria-hidden="true"
@@ -1255,7 +1259,7 @@ function SlideTextElement({ element, slide }: { element: Extract<DirectCanvasEle
 
 function fontStack(typeface: string) {
   const fallback = "-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif";
-  return typeface ? \`\${JSON.stringify(typeface).slice(1, -1)}, \${fallback}\` : fallback;
+  return typeface ? \`\${JSON.stringify(typeface)}, \${fallback}\` : fallback;
 }
 
 const chromeButtonStyle = {
