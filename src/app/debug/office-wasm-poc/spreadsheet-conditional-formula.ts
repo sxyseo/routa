@@ -163,6 +163,12 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
   if (normalizedName === "LEN") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)).length;
   }
+  if (normalizedName === "EXACT") {
+    return asString(evaluateFormulaValue(args[0] ?? "", context)) === asString(evaluateFormulaValue(args[1] ?? "", context));
+  }
+  if (normalizedName === "VALUE") {
+    return valueFormulaNumber(asString(evaluateFormulaValue(args[0] ?? "", context)));
+  }
   if (normalizedName === "LOWER") {
     return asString(evaluateFormulaValue(args[0] ?? "", context)).toLowerCase();
   }
@@ -187,6 +193,18 @@ function evaluateFormulaFunction(name: string, args: string[], context: Conditio
     const start = Math.max(1, Math.floor(Number(evaluateFormulaValue(args[1] ?? "1", context))));
     const count = Math.max(0, Math.floor(Number(evaluateFormulaValue(args[2] ?? "0", context))));
     return value.slice(start - 1, start - 1 + (Number.isFinite(count) ? count : 0));
+  }
+  if (normalizedName === "SUBSTITUTE") {
+    return substituteFormulaText(args, context);
+  }
+  if (normalizedName === "REPLACE") {
+    return replaceFormulaText(args, context);
+  }
+  if (normalizedName === "CONCAT" || normalizedName === "CONCATENATE") {
+    return formulaRawArgs(args, context).map(asString).join("");
+  }
+  if (normalizedName === "TEXTJOIN") {
+    return textJoinFormulaText(args, context);
   }
   if (normalizedName === "SEARCH" || normalizedName === "FIND") {
     const needle = asString(evaluateFormulaValue(args[0] ?? "", context));
@@ -408,6 +426,45 @@ function chooseFormulaValue(args: string[], context: ConditionalFormulaContext):
   return evaluateFormulaExpression(args[index] ?? "", context);
 }
 
+function valueFormulaNumber(value: string): number {
+  const trimmed = value.trim();
+  const percent = trimmed.endsWith("%");
+  const parsed = Number(trimmed.replace(/%$/, "").replaceAll(",", ""));
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  return percent ? parsed / 100 : parsed;
+}
+
+function substituteFormulaText(args: string[], context: ConditionalFormulaContext): string {
+  const value = asString(evaluateFormulaValue(args[0] ?? "", context));
+  const target = asString(evaluateFormulaValue(args[1] ?? "", context));
+  const replacement = asString(evaluateFormulaValue(args[2] ?? "", context));
+  if (!target) return value;
+  const instanceValue = args.length > 3 ? evaluateFormulaValue(args[3] ?? "", context) : "";
+  const instance = Number(instanceValue);
+  if (asString(instanceValue).trim().length === 0 || !Number.isFinite(instance)) return value.split(target).join(replacement);
+
+  let seen = 0;
+  return value.replaceAll(target, (match) => {
+    seen += 1;
+    return seen === Math.trunc(instance) ? replacement : match;
+  });
+}
+
+function replaceFormulaText(args: string[], context: ConditionalFormulaContext): string {
+  const value = asString(evaluateFormulaValue(args[0] ?? "", context));
+  const start = Math.max(1, Math.trunc(Number(evaluateFormulaValue(args[1] ?? "1", context))));
+  const count = Math.max(0, Math.trunc(Number(evaluateFormulaValue(args[2] ?? "0", context))));
+  const replacement = asString(evaluateFormulaValue(args[3] ?? "", context));
+  return `${value.slice(0, start - 1)}${replacement}${value.slice(start - 1 + count)}`;
+}
+
+function textJoinFormulaText(args: string[], context: ConditionalFormulaContext): string {
+  const delimiter = asString(evaluateFormulaValue(args[0] ?? "", context));
+  const ignoreEmpty = valueToBoolean(evaluateFormulaValue(args[1] ?? "FALSE", context));
+  const values = formulaRawArgs(args.slice(2), context).map(asString);
+  return (ignoreEmpty ? values.filter((value) => value.length > 0) : values).join(delimiter);
+}
+
 function evaluateArithmeticExpression(
   expression: { left: string; operator: string; right: string },
   context: ConditionalFormulaContext,
@@ -453,7 +510,7 @@ function cellValueAtReference(reference: CellReference, context: ConditionalForm
 function formulaNumericArgs(args: string[], context: ConditionalFormulaContext): number[] {
   const values: number[] = [];
   for (const arg of args) {
-    const rangeValues = formulaRangeValues(arg, context);
+    const rangeValues = formulaArgumentCanExpandRange(arg, context) ? formulaRangeValues(arg, context) : null;
     if (rangeValues) {
       values.push(...rangeValues.map(Number).filter(Number.isFinite));
       continue;
@@ -468,7 +525,7 @@ function formulaNumericArgs(args: string[], context: ConditionalFormulaContext):
 function formulaRawArgs(args: string[], context: ConditionalFormulaContext): unknown[] {
   const values: unknown[] = [];
   for (const arg of args) {
-    const rangeValues = formulaRangeValues(arg, context);
+    const rangeValues = formulaArgumentCanExpandRange(arg, context) ? formulaRangeValues(arg, context) : null;
     if (rangeValues) {
       values.push(...rangeValues);
       continue;
@@ -477,6 +534,10 @@ function formulaRawArgs(args: string[], context: ConditionalFormulaContext): unk
     values.push(evaluateFormulaValue(arg, context));
   }
   return values;
+}
+
+function formulaArgumentCanExpandRange(expression: string, context: ConditionalFormulaContext): boolean {
+  return formulaRangeTarget(expression, context).includes(":");
 }
 
 function formulaRangeValues(expression: string, context: ConditionalFormulaContext): string[] | null {
