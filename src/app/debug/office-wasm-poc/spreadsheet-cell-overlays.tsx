@@ -1,5 +1,7 @@
 "use client";
 
+import type { PointerEvent } from "react";
+
 import {
   asArray,
   asNumber,
@@ -144,13 +146,17 @@ function cellRangeContains(
 }
 
 export function SpreadsheetCellContent({
+  filterActive,
   hasComment,
+  onFilterClick,
   sparkline,
   text,
   validation,
   visual,
 }: {
+  filterActive?: boolean;
   hasComment?: boolean;
+  onFilterClick?: (event: PointerEvent<HTMLButtonElement>) => void;
   sparkline?: SpreadsheetSparklineVisual;
   text: string;
   validation?: SpreadsheetValidationVisual;
@@ -200,22 +206,31 @@ export function SpreadsheetCellContent({
         : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
       {validation ? <SpreadsheetValidationIndicator validation={validation} /> : null}
       {visual?.filter ? (
-        <span
-          aria-hidden="true"
+        <button
+          aria-label="Open column filter"
+          data-filter-active={filterActive ? "true" : undefined}
+          onPointerDown={(event) => {
+            if (!onFilterClick) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onFilterClick(event);
+          }}
           style={{
             alignItems: "center",
-            background: "#ffffff",
-            borderColor: "#cbd5e1",
+            background: filterActive ? "#dbeafe" : "#ffffff",
+            borderColor: filterActive ? "#2563eb" : "#cbd5e1",
             borderRadius: 3,
             borderStyle: "solid",
             borderWidth: 1,
-            color: "#64748b",
+            color: filterActive ? "#1d4ed8" : "#64748b",
+            cursor: onFilterClick ? "pointer" : "default",
             display: "inline-flex",
             fontSize: 9,
             height: 14,
             justifyContent: "center",
             lineHeight: 1,
             marginLeft: 6,
+            padding: 0,
             position: "relative",
             top: -1,
             verticalAlign: "middle",
@@ -224,7 +239,7 @@ export function SpreadsheetCellContent({
           }}
         >
           ▾
-        </span>
+        </button>
       ) : null}
     </>
   );

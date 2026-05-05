@@ -91,6 +91,17 @@ import {
   type SpreadsheetSelectionDirection,
   type SpreadsheetSelection,
 } from "./spreadsheet-selection";
+import {
+  buildSpreadsheetTableFilterTargets,
+  spreadsheetTableFilterActiveKeys,
+  spreadsheetTableFilterRowHeightOverrides,
+  spreadsheetTableFilterSelectionForToggle,
+  spreadsheetTableFilterTargetAt,
+  spreadsheetTableFilterValues,
+  type SpreadsheetTableFilterState,
+  type SpreadsheetTableFilterTarget,
+  type SpreadsheetTableFilterValue,
+} from "./spreadsheet-table-filters";
 import { useSpreadsheetViewportStore } from "./spreadsheet-viewport-store";
 
 type SpreadsheetFloatingSpec = { height: number; left: number; top: number; width: number };
@@ -101,6 +112,10 @@ type SpreadsheetCellEditor = {
 };
 
 type SpreadsheetCellEdits = Record<string, string | undefined>;
+type SpreadsheetFilterMenuState = {
+  anchor: SpreadsheetFloatingSpec;
+  target: SpreadsheetTableFilterTarget;
+};
 
 const EXCEL_BUILT_IN_NUMBER_FORMATS = new Map<number, string>([
   [1, "0"],
@@ -164,7 +179,10 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const [resizeDrag, setResizeDrag] = useState<SpreadsheetResizeDrag | null>(null);
   const [cellEdits, setCellEdits] = useState<SpreadsheetCellEdits>({});
   const [editor, setEditor] = useState<SpreadsheetCellEditor | null>(null);
+  const [filterMenu, setFilterMenu] = useState<SpreadsheetFilterMenuState | null>(null);
+  const [tableFilterState, setTableFilterState] = useState<SpreadsheetTableFilterState>({});
   const [selection, setSelection] = useState<SpreadsheetSelection | null>(null);
+  const viewportShellRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const { state: viewportState, store: viewportStore } = useSpreadsheetViewportStore();
   const viewportScroll = viewportState.scroll;
@@ -172,7 +190,20 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const activeSheetSource = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
   const sourceName = asString(root?.sourceName);
   const activeSheet = useMemo(() => spreadsheetSheetWithVolatileFormulaValues(activeSheetSource, sheets, new Date(), sourceName), [activeSheetSource, sheets, sourceName]);
-  const layout = useMemo(() => buildSpreadsheetLayout(activeSheet, sizeOverrides), [activeSheet, sizeOverrides]);
+  const tableFilterTargets = useMemo(() => buildSpreadsheetTableFilterTargets(activeSheet), [activeSheet]);
+  const filterRowHeightOverrides = useMemo(
+    () => spreadsheetTableFilterRowHeightOverrides(activeSheet, tableFilterState),
+    [activeSheet, tableFilterState],
+  );
+  const effectiveSizeOverrides = useMemo(
+    () => mergeSpreadsheetLayoutOverrides(sizeOverrides, { rowHeights: filterRowHeightOverrides }),
+    [filterRowHeightOverrides, sizeOverrides],
+  );
+  const activeFilterKeys = useMemo(
+    () => spreadsheetTableFilterActiveKeys(tableFilterTargets, tableFilterState),
+    [tableFilterState, tableFilterTargets],
+  );
+  const layout = useMemo(() => buildSpreadsheetLayout(activeSheet, effectiveSizeOverrides), [activeSheet, effectiveSizeOverrides]);
   const chartSpecs = useMemo(() => buildSpreadsheetCharts({
     activeSheet,
     charts,
@@ -272,6 +303,8 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     setResizeCursor(undefined);
     setCellEdits({});
     setEditor(null);
+    setFilterMenu(null);
+    setTableFilterState({});
     setSelection(null);
     setActiveSheetIndex(index);
   };
@@ -285,12 +318,14 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     if (resizeHit) {
       event.preventDefault();
       setEditor(null);
+      setFilterMenu(null);
       viewport.setPointerCapture(event.pointerId);
       setResizeDrag(spreadsheetResizeDragFromHit(layout, resizeHit, point, scroll));
       return;
     }
 
     if (editor) commitSpreadsheetEditor(editor, setCellEdits, setEditor);
+    setFilterMenu(null);
     setSelection(spreadsheetSelectionFromViewportPoint(layout, point, scroll));
   };
 
@@ -342,6 +377,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       scroll: { left: scrollLeft, top: scrollTop },
       size: { height: clientHeight, width: clientWidth },
     });
+    setFilterMenu(null);
   };
 
   const handleViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -360,6 +396,49 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     setSelection(nextSelection);
     const viewport = viewportRef.current;
     if (viewport) scrollSpreadsheetSelectionIntoView(viewport, layout, nextSelection);
+  };
+
+  const handleFilterClick = (
+    target: SpreadsheetTableFilterTarget,
+    event: PointerEvent<HTMLButtonElement>,
+  ) => {
+    const hostBounds = viewportShellRef.current?.getBoundingClientRect();
+    const buttonBounds = event.currentTarget.getBoundingClientRect();
+    if (!hostBounds) return;
+    setEditor(null);
+    setFilterMenu({
+      anchor: {
+        height: buttonBounds.height,
+        left: buttonBounds.left - hostBounds.left,
+        top: buttonBounds.top - hostBounds.top,
+        width: buttonBounds.width,
+      },
+      target,
+    });
+  };
+
+  const handleFilterToggle = (
+    target: SpreadsheetTableFilterTarget,
+    value: string,
+    values: SpreadsheetTableFilterValue[],
+  ) => {
+    const allValues = values.map((item) => item.value);
+    setTableFilterState((current) => {
+      const nextSelection = spreadsheetTableFilterSelectionForToggle(current[target.id], allValues, value);
+      const next = { ...current };
+      if (nextSelection == null) delete next[target.id];
+      else next[target.id] = nextSelection;
+      return next;
+    });
+  };
+
+  const handleFilterClear = (target: SpreadsheetTableFilterTarget) => {
+    setTableFilterState((current) => {
+      if (current[target.id] == null) return current;
+      const next = { ...current };
+      delete next[target.id];
+      return next;
+    });
   };
 
   if (sheets.length === 0) {
@@ -386,7 +465,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     >
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
       <SpreadsheetFormulaBar activeSheet={activeSheet} cellEdits={cellEdits} selection={selection} styles={styles} />
-      <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
+      <div ref={viewportShellRef} style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
         <SpreadsheetCanvasLayer
           cellPaints={canvasCellPaints}
           layout={layout}
@@ -412,10 +491,13 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               cellVisuals={cellVisuals}
               commentVisuals={commentVisuals}
               layout={layout}
+              activeFilterKeys={activeFilterKeys}
+              onFilterClick={handleFilterClick}
               scroll={viewportScroll}
               selection={selection}
               sparklineVisuals={sparklineVisuals}
               styles={styles}
+              tableFilterTargets={tableFilterTargets}
               validationVisuals={validationVisuals}
               viewportSize={viewportSize}
             />
@@ -452,6 +534,17 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           viewportSize={viewportSize}
         />
         <SpreadsheetFrozenSelectionLayer layout={layout} scroll={viewportScroll} selection={selection} />
+        {filterMenu ? (
+          <SpreadsheetTableFilterMenu
+            anchor={filterMenu.anchor}
+            onClear={() => handleFilterClear(filterMenu.target)}
+            onClose={() => setFilterMenu(null)}
+            onToggle={(value, values) => handleFilterToggle(filterMenu.target, value, values)}
+            selectedValues={tableFilterState[filterMenu.target.id]}
+            target={filterMenu.target}
+            values={spreadsheetTableFilterValues(activeSheet, filterMenu.target)}
+          />
+        ) : null}
       </div>
       <div
         style={{
@@ -590,6 +683,130 @@ function applySpreadsheetInteractiveSizeOverride(
       [index]: size,
     },
   };
+}
+
+function mergeSpreadsheetLayoutOverrides(
+  base: SpreadsheetLayoutOverrides,
+  next: SpreadsheetLayoutOverrides,
+): SpreadsheetLayoutOverrides {
+  return {
+    columnWidths: {
+      ...base.columnWidths,
+      ...next.columnWidths,
+    },
+    rowHeights: {
+      ...base.rowHeights,
+      ...next.rowHeights,
+    },
+  };
+}
+
+function SpreadsheetTableFilterMenu({
+  anchor,
+  onClear,
+  onClose,
+  onToggle,
+  selectedValues,
+  target,
+  values,
+}: {
+  anchor: SpreadsheetFloatingSpec;
+  onClear: () => void;
+  onClose: () => void;
+  onToggle: (value: string, values: SpreadsheetTableFilterValue[]) => void;
+  selectedValues?: string[];
+  target: SpreadsheetTableFilterTarget;
+  values: SpreadsheetTableFilterValue[];
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handlePointerDown = (event: globalThis.PointerEvent) => {
+      const node = event.target;
+      if (node instanceof Node && menuRef.current?.contains(node)) return;
+      onClose();
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  const selected = new Set(selectedValues ?? values.map((item) => item.value));
+  return (
+    <div
+      data-testid="spreadsheet-filter-menu"
+      onPointerDown={(event) => event.stopPropagation()}
+      ref={menuRef}
+      style={{
+        background: "#ffffff",
+        borderColor: "#d7dde5",
+        borderRadius: 8,
+        borderStyle: "solid",
+        borderWidth: 1,
+        boxShadow: "0 18px 38px rgba(15, 23, 42, 0.18)",
+        color: "#0f172a",
+        fontFamily: SPREADSHEET_FONT_FAMILY,
+        fontSize: 12,
+        left: Math.max(8, anchor.left - 206),
+        minWidth: 220,
+        overflow: "hidden",
+        position: "absolute",
+        top: anchor.top + anchor.height + 4,
+        zIndex: 50_000,
+      }}
+    >
+      <div style={{ borderBottom: "1px solid #e2e8f0", fontWeight: 700, padding: "8px 10px" }}>
+        {target.columnName}
+      </div>
+      <button
+        onClick={onClear}
+        style={{
+          background: "transparent",
+          border: 0,
+          borderBottom: "1px solid #e2e8f0",
+          color: "#2563eb",
+          cursor: "pointer",
+          display: "block",
+          font: "inherit",
+          padding: "7px 10px",
+          textAlign: "left",
+          width: "100%",
+        }}
+        type="button"
+      >
+        Clear filter
+      </button>
+      <div style={{ maxHeight: 260, overflow: "auto", padding: "6px 0" }}>
+        {values.map((item) => (
+          <label
+            key={item.value}
+            style={{
+              alignItems: "center",
+              cursor: "pointer",
+              display: "flex",
+              gap: 8,
+              padding: "5px 10px",
+            }}
+          >
+            <input
+              checked={selected.has(item.value)}
+              onChange={() => onToggle(item.value, values)}
+              type="checkbox"
+            />
+            <span style={{ flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {item.label}
+            </span>
+            <span style={{ color: "#64748b", fontVariantNumeric: "tabular-nums" }}>{item.count}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SpreadsheetSelectionLayer({
@@ -806,27 +1023,33 @@ function SpreadsheetFrozenBodyLayer({
 }
 
 function SpreadsheetGrid({
+  activeFilterKeys,
   activeSheet,
   cellEdits,
   cellVisuals,
   commentVisuals,
   layout,
+  onFilterClick,
   scroll,
   selection,
   sparklineVisuals,
   styles,
+  tableFilterTargets,
   validationVisuals,
   viewportSize,
 }: {
+  activeFilterKeys: Set<string>;
   activeSheet: RecordValue | undefined;
   cellEdits: SpreadsheetCellEdits;
   cellVisuals: SpreadsheetCellVisualLookup;
   commentVisuals: Set<string>;
   layout: SpreadsheetLayout;
+  onFilterClick: (target: SpreadsheetTableFilterTarget, event: PointerEvent<HTMLButtonElement>) => void;
   scroll: SpreadsheetViewportScroll;
   selection: SpreadsheetSelection | null;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
   styles: RecordValue | null;
+  tableFilterTargets: SpreadsheetTableFilterTarget[];
   validationVisuals: SpreadsheetValidationVisualLookup;
   viewportSize: SpreadsheetViewportSize;
 }) {
@@ -897,6 +1120,7 @@ function SpreadsheetGrid({
               const validation = cellKey === selectedCellKey ? validationVisuals.get(cellKey) : undefined;
               const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
               const text = cellEdits[cellKey] ?? spreadsheetCellText(cell, styles, sheetName, styleIndex);
+              const filterTarget = visual?.filter ? spreadsheetTableFilterTargetAt(tableFilterTargets, rowIndex, columnIndex) : null;
               return (
                 <div
                   data-cell-address={asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`}
@@ -912,7 +1136,9 @@ function SpreadsheetGrid({
                   }}
                 >
                   <SpreadsheetCellContent
+                    filterActive={activeFilterKeys.has(cellKey)}
                     hasComment={hasComment}
+                    onFilterClick={filterTarget ? (event) => onFilterClick(filterTarget, event) : undefined}
                     sparkline={sparkline}
                     text={text}
                     validation={validation}
