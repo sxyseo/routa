@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@routa/office-preview": [
+        "./packages/office-preview/src/index.ts"
       ]
     },
     "baseUrl": "."

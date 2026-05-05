@@ -18,10 +18,13 @@ import {
   OFFICE_WASM_DOTNET_RUNTIME_CONFIG,
   OFFICE_WASM_READER_MODULES,
 } from "./office-wasm-config";
-import { type PreviewLabels } from "./office-preview-utils";
-import { PRESENTATION_HEADER_ACTIONS_ID, PresentationPreview } from "./presentation-preview";
-import { SpreadsheetPreview } from "./spreadsheet-preview";
-import { WordPreview } from "./word-preview";
+import {
+  PRESENTATION_HEADER_ACTIONS_ID,
+  PresentationPreview,
+  type PreviewLabels,
+  SpreadsheetPreview,
+  WordPreview,
+} from "@routa/office-preview";
 
 type ArtifactKind = "csv" | "tsv" | "docx" | "pptx" | "xlsx";
 type ParseStage = "idle" | "initializing" | "parsing" | "ready" | "error";
