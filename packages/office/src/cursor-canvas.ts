@@ -16,21 +16,13 @@ type DirectCanvasElement =
       height: number;
     }
   | {
-      color: string;
-      fontSize: number;
-      italic: boolean;
+      kind: "text";
+      paragraphs: DirectTextParagraph[];
       insetBottom: number;
       insetLeft: number;
       insetRight: number;
       insetTop: number;
-      kind: "text";
-      lineHeight: number;
-      text: string;
-      textAlign: "center" | "left" | "right";
-      typeface: string;
-      underline: boolean;
       verticalAlign: "bottom" | "middle" | "top";
-      weight: number;
       x: number;
       y: number;
       width: number;
@@ -48,6 +40,21 @@ type DirectCanvasElement =
       width: number;
       height: number;
     };
+
+type DirectTextParagraph = {
+  align: "center" | "left" | "right";
+  runs: DirectTextRun[];
+};
+
+type DirectTextRun = {
+  bold: boolean;
+  color: string;
+  fontSize: number;
+  italic: boolean;
+  text: string;
+  typeface: string;
+  underline: boolean;
+};
 
 type DirectCanvasMedia = {
   height: number;
@@ -95,6 +102,7 @@ type DirectShapeKind =
 type Presentation = {
   images: PresentationImage[];
   layouts: PresentationLayout[];
+  masters: PresentationLayout[];
   slides: PresentationSlide[];
 };
 
@@ -136,11 +144,12 @@ type PresentationImage = {
 };
 
 type PresentationLayout = {
+  background?: PresentationBackground;
   elements: PresentationElement[];
   id: string;
+  kind?: string;
   masterId?: string;
   name?: string;
-  background?: PresentationBackground;
 };
 
 type PresentationLine = {
@@ -229,6 +238,7 @@ function decodePresentation(bytes: Uint8Array): Presentation {
   const presentation: Presentation = {
     images: [],
     layouts: [],
+    masters: [],
     slides: [],
   };
   while (!reader.eof()) {
@@ -236,7 +246,12 @@ function decodePresentation(bytes: Uint8Array): Presentation {
     if (tag.fieldNumber === 1 && tag.wireType === 2) {
       presentation.slides.push(decodeSlide(reader.bytesField()));
     } else if (tag.fieldNumber === 3 && tag.wireType === 2) {
-      presentation.layouts.push(decodeLayout(reader.bytesField()));
+      const layout = decodeLayout(reader.bytesField());
+      if (layout.kind === "master") {
+        presentation.masters.push(layout);
+      } else {
+        presentation.layouts.push(layout);
+      }
     } else if (tag.fieldNumber === 4 && tag.wireType === 2) {
       presentation.images.push(decodeImage(reader.bytesField()));
     } else {
@@ -279,6 +294,7 @@ function decodeLayout(bytes: Uint8Array): PresentationLayout {
     const tag = reader.tag();
     if (tag.fieldNumber === 1) layout.id = reader.string();
     else if (tag.fieldNumber === 8) layout.name = reader.string();
+    else if (tag.fieldNumber === 9) layout.kind = reader.string();
     else if (tag.fieldNumber === 10 && tag.wireType === 2) {
       layout.background = decodeBackground(reader.bytesField());
     } else if (tag.fieldNumber === 11 && tag.wireType === 2) {
@@ -543,7 +559,7 @@ async function buildPresentationPayload(
   const sharp = await loadSharp();
   const mediaIndex = await buildMediaIndex(presentation.images, sharp, options);
   const slides = presentation.slides.map((slide, index) =>
-    buildSlide(slide, index, presentation.layouts, mediaIndex),
+    buildSlide(slide, index, presentation.layouts, presentation.masters, mediaIndex),
   );
   return {
     artifact: {
@@ -616,14 +632,18 @@ function buildSlide(
   slide: PresentationSlide,
   index: number,
   layouts: PresentationLayout[],
+  masters: PresentationLayout[],
   mediaIndex: MediaIndex,
 ): DirectCanvasSlide {
   const layout = layouts.find((item) => item.id === slide.useLayoutId);
-  const elements = slideElements(slide, layout)
+  const master = layout?.masterId
+    ? masters.find((item) => item.id === layout.masterId)
+    : undefined;
+  const elements = slideElements(slide, layout, master)
     .flatMap((element) => directElements(element, mediaIndex))
     .filter((element): element is DirectCanvasElement => element != null);
   return {
-    background: slideBackgroundToCss(slide, layout),
+    background: slideBackgroundToCss(slide, layout, master),
     elements,
     height: slide.heightEmu,
     index: slide.index || index + 1,
@@ -636,18 +656,50 @@ function buildSlide(
 function slideElements(
   slide: PresentationSlide,
   layout?: PresentationLayout,
+  master?: PresentationLayout,
 ): PresentationElement[] {
-  const inherited = layout?.elements.filter((element) => {
+  const isRendered = (element: PresentationElement) => {
     const placeholderType = (element.placeholderType ?? "").toLowerCase();
     return placeholderType !== "sldnum" && placeholderType !== "dt";
-  }) ?? [];
-  const own = slide.elements.filter((element) => {
-    const placeholderType = (element.placeholderType ?? "").toLowerCase();
-    return placeholderType !== "sldnum" && placeholderType !== "dt";
+  };
+  const slideEls = slide.elements.filter(isRendered);
+  const layoutEls = (layout?.elements ?? []).filter(isRendered);
+  const masterEls = (master?.elements ?? []).filter(isRendered);
+
+  const slideTypes = collectPlaceholderTypes(slideEls);
+  const layoutTypes = collectPlaceholderTypes(layoutEls);
+
+  const filteredMaster = masterEls.filter((element) => {
+    const type = normalizedPlaceholderType(element);
+    if (!type) return true;
+    return !layoutTypes.has(type) && !slideTypes.has(type);
   });
-  return [...inherited, ...own].sort(
-    (left, right) => (left.zIndex ?? 0) - (right.zIndex ?? 0),
-  );
+  const filteredLayout = layoutEls.filter((element) => {
+    const type = normalizedPlaceholderType(element);
+    if (!type) return true;
+    return !slideTypes.has(type);
+  });
+
+  const sortByZ = (left: PresentationElement, right: PresentationElement) =>
+    (left.zIndex ?? 0) - (right.zIndex ?? 0);
+  return [
+    ...filteredMaster.sort(sortByZ),
+    ...filteredLayout.sort(sortByZ),
+    ...slideEls.sort(sortByZ),
+  ];
+}
+
+function collectPlaceholderTypes(elements: PresentationElement[]): Set<string> {
+  const types = new Set<string>();
+  for (const element of elements) {
+    const type = normalizedPlaceholderType(element);
+    if (type) types.add(type);
+  }
+  return types;
+}
+
+function normalizedPlaceholderType(element: PresentationElement): string {
+  return (element.placeholderType ?? "").replace(/[^a-z0-9]/giu, "").toLowerCase();
 }
 
 function directElements(
@@ -692,33 +744,17 @@ function directElements(
     });
   }
 
-  const rawText = textFromElement(element);
-  if (rawText && rect.width > 0 && rect.height > 0) {
-    const style = firstRunStyle(element);
-    const fontSize = fontSizeFromStyle(style);
+  const paragraphs = buildTextParagraphs(element);
+  if (paragraphs.length > 0 && rect.width > 0 && rect.height > 0) {
     const textStyle = element.textStyle ?? {};
-    const insetLeft = textStyle.leftInset ?? 0;
-    const insetRight = textStyle.rightInset ?? 0;
     elements.push({
-      color: fillToCss(style.fill) ?? "#0f172a",
-      fontSize,
-      italic: style.italic === true,
-      insetBottom: textStyle.bottomInset ?? 0,
-      insetLeft,
-      insetRight,
-      insetTop: textStyle.topInset ?? 0,
       kind: "text",
-      lineHeight: fontSize * 1.18,
-      text: wrapTextForSvg(
-        rawText,
-        fontSize,
-        Math.max(fontSize * 1.2, rect.width - insetLeft - insetRight),
-      ),
-      textAlign: paragraphTextAlign(element),
-      typeface: style.typeface ?? "",
-      underline: style.underline === "sng" || style.underline === "single",
+      paragraphs,
+      insetBottom: textStyle.bottomInset ?? 0,
+      insetLeft: textStyle.leftInset ?? 0,
+      insetRight: textStyle.rightInset ?? 0,
+      insetTop: textStyle.topInset ?? 0,
       verticalAlign: verticalTextAlign(textStyle),
-      weight: style.bold === true ? 700 : 500,
       ...rect,
     });
   }
@@ -726,27 +762,39 @@ function directElements(
   return elements;
 }
 
-function firstRunStyle(element: PresentationElement): PresentationRunStyle {
-  for (const paragraph of element.paragraphs) {
-    for (const run of paragraph.runs) {
-      if (run.textStyle) return run.textStyle;
-    }
-  }
-  return {};
-}
-
-function textFromElement(element: PresentationElement): string {
-  return element.paragraphs
-    .map((paragraph) => paragraph.runs.map((run) => run.text).join("").trim())
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
-function paragraphTextAlign(
+function buildTextParagraphs(
   element: PresentationElement,
-): "center" | "left" | "right" {
-  const alignment = element.paragraphs[0]?.textStyle?.alignment ?? 0;
+): DirectTextParagraph[] {
+  const paragraphs: DirectTextParagraph[] = [];
+  for (const paragraph of element.paragraphs) {
+    const runs: DirectTextRun[] = [];
+    for (const run of paragraph.runs) {
+      if (!run.text) continue;
+      runs.push(buildTextRun(run));
+    }
+    if (runs.length === 0) continue;
+    paragraphs.push({
+      align: paragraphAlign(paragraph.textStyle?.alignment),
+      runs,
+    });
+  }
+  return paragraphs;
+}
+
+function buildTextRun(run: PresentationRun): DirectTextRun {
+  const style = run.textStyle ?? {};
+  return {
+    bold: style.bold === true,
+    color: fillToCss(style.fill) ?? "#0f172a",
+    fontSize: fontSizeFromStyle(style),
+    italic: style.italic === true,
+    text: run.text,
+    typeface: style.typeface ?? "",
+    underline: style.underline === "sng" || style.underline === "single",
+  };
+}
+
+function paragraphAlign(alignment?: number): "center" | "left" | "right" {
   if (alignment === 2) return "center";
   if (alignment === 3) return "right";
   return "left";
@@ -785,8 +833,14 @@ function lineToCss(line?: PresentationLine): { color?: string; width: number } {
 function slideBackgroundToCss(
   slide: PresentationSlide,
   layout?: PresentationLayout,
+  master?: PresentationLayout,
 ): string {
-  return fillToCss(slide.background?.fill) ?? fillToCss(layout?.background?.fill) ?? "#ffffff";
+  return (
+    fillToCss(slide.background?.fill) ??
+    fillToCss(layout?.background?.fill) ??
+    fillToCss(master?.background?.fill) ??
+    "#ffffff"
+  );
 }
 
 function imageSourceRect(
@@ -818,57 +872,6 @@ function normalizeShapeKind(geometry?: number): DirectShapeKind {
   if (geometry === 3 || geometry === 4) return "triangle";
   if (geometry === 6) return "diamond";
   return "rect";
-}
-
-function wrapTextForSvg(text: string, fontSize: number, maxWidth: number): string {
-  const maxLineWidth = Math.max(fontSize * 1.2, maxWidth * 0.94);
-  const lines: string[] = [];
-  for (const sourceLine of text.split(/\n/u)) {
-    const tokens = textWrapTokens(sourceLine);
-    let line = "";
-    let lineWidth = 0;
-    for (const token of tokens) {
-      const tokenWidth = estimatedTextWidth(token, fontSize);
-      if (line && lineWidth + tokenWidth > maxLineWidth) {
-        lines.push(line.trimEnd());
-        line = token.trimStart();
-        lineWidth = estimatedTextWidth(line, fontSize);
-        continue;
-      }
-      line += token;
-      lineWidth += tokenWidth;
-    }
-    lines.push(line.trimEnd());
-  }
-  return lines.join("\n").trim();
-}
-
-function textWrapTokens(text: string): string[] {
-  const tokens: string[] = [];
-  let latin = "";
-  for (const char of text) {
-    if (/[\w\s.,:;!?()[\]{}'"“”‘’·/@#%&+\-=|<>]/u.test(char)) {
-      latin += char;
-      continue;
-    }
-    if (latin) {
-      tokens.push(latin);
-      latin = "";
-    }
-    tokens.push(char);
-  }
-  if (latin) tokens.push(latin);
-  return tokens;
-}
-
-function estimatedTextWidth(text: string, fontSize: number): number {
-  let width = 0;
-  for (const char of text) {
-    if (/\s/u.test(char)) width += fontSize * 0.32;
-    else if (char.charCodeAt(0) <= 0x7f) width += fontSize * 0.55;
-    else width += fontSize * 0.95;
-  }
-  return width;
 }
 
 async function renderSlideThumbnailDataUrl(
@@ -923,22 +926,53 @@ function renderSlideThumbnailElement(
     }
     return `<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="${element.radius}" ry="${element.radius}" ${shapeProps}/>`;
   }
-  const lines = element.text.split(/\n/u);
-  const anchor = element.textAlign === "center" ? "middle" : element.textAlign === "right" ? "end" : "start";
-  const textX = element.textAlign === "center" ? element.x + element.width / 2 : element.textAlign === "right" ? element.x + element.width : element.x;
-  const lineHeight = element.fontSize * 1.18;
-  const tspans = lines
-    .map((line, index) => `<tspan x="${textX}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`)
-    .join("");
-  return `<text fill="${escapeXml(element.color)}" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="${element.fontSize}" font-weight="${element.weight}" text-anchor="${anchor}" x="${textX}" y="${element.y + element.fontSize}">${tspans}</text>`;
+  return renderSlideThumbnailText(element);
+}
+
+function renderSlideThumbnailText(
+  element: Extract<DirectCanvasElement, { kind: "text" }>,
+): string {
+  if (element.paragraphs.length === 0) return "";
+  const baseFontSize = element.paragraphs[0]?.runs[0]?.fontSize ?? 18 * 12_700;
+  let body = "";
+  for (let pi = 0; pi < element.paragraphs.length; pi++) {
+    const paragraph = element.paragraphs[pi];
+    const lineFontSize = paragraph.runs[0]?.fontSize ?? baseFontSize;
+    const lineHeight = lineFontSize * 1.18;
+    const anchor =
+      paragraph.align === "center"
+        ? "middle"
+        : paragraph.align === "right"
+          ? "end"
+          : "start";
+    const x =
+      paragraph.align === "center"
+        ? element.x + element.width / 2
+        : paragraph.align === "right"
+          ? element.x + element.width
+          : element.x;
+    for (let ri = 0; ri < paragraph.runs.length; ri++) {
+      const run = paragraph.runs[ri];
+      const lineStart = ri === 0;
+      const docStart = lineStart && pi === 0;
+      const xAttr = lineStart ? ` x="${x}" text-anchor="${anchor}"` : "";
+      const dy = docStart ? 0 : lineStart ? lineHeight : 0;
+      const decoration = run.underline ? ` text-decoration="underline"` : "";
+      body += `<tspan${xAttr} dy="${dy}" fill="${escapeXml(run.color)}" font-size="${run.fontSize}" font-weight="${run.bold ? 700 : 500}" font-style="${run.italic ? "italic" : "normal"}"${decoration}>${escapeXml(run.text)}</tspan>`;
+    }
+  }
+  return `<text font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" y="${element.y + baseFontSize}">${body}</text>`;
 }
 
 function renderPresentationCanvasSource(payload: DirectCanvasPayload): string {
   return `import { Button, Pill, Row, Stack, Text, useCanvasState, useHostTheme } from "cursor/canvas";
 
+type DirectTextRun = { bold: boolean; color: string; fontSize: number; italic: boolean; text: string; typeface: string; underline: boolean };
+type DirectTextParagraph = { align: "center" | "left" | "right"; runs: DirectTextRun[] };
+
 type DirectCanvasElement =
   | { crop: DirectImageCrop | null; kind: "image"; mediaId: string; x: number; y: number; width: number; height: number }
-  | { color: string; fontSize: number; italic: boolean; insetBottom: number; insetLeft: number; insetRight: number; insetTop: number; kind: "text"; lineHeight: number; text: string; textAlign: "center" | "left" | "right"; typeface: string; underline: boolean; verticalAlign: "bottom" | "middle" | "top"; weight: number; x: number; y: number; width: number; height: number }
+  | { kind: "text"; paragraphs: DirectTextParagraph[]; insetBottom: number; insetLeft: number; insetRight: number; insetTop: number; verticalAlign: "bottom" | "middle" | "top"; x: number; y: number; width: number; height: number }
   | { fill: string; kind: "shape"; radius: number; shapeKind: DirectShapeKind; stroke: string; strokeWidth: number; x: number; y: number; width: number; height: number };
 
 type DirectCanvasMedia = { height: number; src: string; width: number };
@@ -1174,31 +1208,48 @@ function SlideTextElement({ element, slide }: { element: Extract<DirectCanvasEle
     <div
       style={{
         boxSizing: "border-box",
-        color: element.color,
         display: "flex",
         flexDirection: "column",
-        fontFamily: fontStack(element.typeface),
-        fontSize: \`\${(element.fontSize / slide.width) * 100}cqw\`,
-        fontStyle: element.italic ? "italic" : "normal",
-        fontWeight: element.weight,
         height: \`\${(element.height / slide.height) * 100}%\`,
         justifyContent,
         left: \`\${(element.x / slide.width) * 100}%\`,
-        lineHeight: element.lineHeight / element.fontSize,
         overflow: "hidden",
         paddingBottom: \`\${(element.insetBottom / slide.height) * 100}%\`,
         paddingLeft: \`\${(element.insetLeft / slide.width) * 100}%\`,
         paddingRight: \`\${(element.insetRight / slide.width) * 100}%\`,
         paddingTop: \`\${(element.insetTop / slide.height) * 100}%\`,
         position: "absolute",
-        textAlign: element.textAlign,
-        textDecoration: element.underline ? "underline" : "none",
         top: \`\${(element.y / slide.height) * 100}%\`,
-        whiteSpace: "pre-wrap",
         width: \`\${(element.width / slide.width) * 100}%\`,
       }}
     >
-      {element.text}
+      {element.paragraphs.map((paragraph, paragraphIndex) => (
+        <p
+          key={paragraphIndex}
+          style={{
+            lineHeight: 1.18,
+            margin: 0,
+            textAlign: paragraph.align,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {paragraph.runs.map((run, runIndex) => (
+            <span
+              key={runIndex}
+              style={{
+                color: run.color,
+                fontFamily: fontStack(run.typeface),
+                fontSize: \`\${(run.fontSize / slide.width) * 100}cqw\`,
+                fontStyle: run.italic ? "italic" : "normal",
+                fontWeight: run.bold ? 700 : 500,
+                textDecoration: run.underline ? "underline" : "none",
+              }}
+            >
+              {run.text}
+            </span>
+          ))}
+        </p>
+      ))}
     </div>
   );
 }
@@ -1237,7 +1288,14 @@ const navButtonStyle = {
 }
 
 function firstText(elements: DirectCanvasElement[]): string {
-  return elements.find((element) => element.kind === "text")?.text.split(/\n/u)[0]?.trim() ?? "";
+  for (const element of elements) {
+    if (element.kind !== "text") continue;
+    for (const paragraph of element.paragraphs) {
+      const text = paragraph.runs.map((run) => run.text).join("").trim();
+      if (text) return text;
+    }
+  }
+  return "";
 }
 
 function imageSize(bytes: Uint8Array): { height: number; width: number } {
