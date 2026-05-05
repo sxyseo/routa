@@ -85,23 +85,33 @@ type SlideElementEntry = {
 type PresentationShapeKind =
   | "bracePair"
   | "bracketPair"
+  | "bentArrow"
+  | "bentUpArrow"
   | "chevron"
   | "diamond"
+  | "diagStripe"
   | "document"
   | "donut"
   | "ellipse"
   | "extract"
   | "frame"
   | "hexagon"
+  | "leftArrow"
+  | "lightningBolt"
   | "line"
   | "parallelogram"
   | "pentagon"
   | "rect"
   | "roundRect"
   | "rtTriangle"
+  | "snipRect"
+  | "star32"
   | "star5"
+  | "star6"
+  | "star8"
   | "trapezoid"
-  | "triangle";
+  | "triangle"
+  | "upDownArrow";
 
 export function computePresentationFit(
   viewport: PresentationSize,
@@ -182,7 +192,17 @@ export function emuRectToCanvasRect(bbox: RecordValue | null, bounds: Presentati
 
 export function presentationShapeKind(shape: RecordValue | null, rect: PresentationRect): PresentationShapeKind {
   const geometry = asNumber(shape?.geometry);
-  if (geometry === 1 || geometry === 96 || geometry === 97 || geometry === 98 || geometry === 101 || geometry === 102 || geometry === 103) {
+  if (
+    geometry === 1 ||
+    geometry === 96 ||
+    geometry === 97 ||
+    geometry === 98 ||
+    geometry === 99 ||
+    geometry === 100 ||
+    geometry === 101 ||
+    geometry === 102 ||
+    geometry === 103
+  ) {
     return "line";
   }
   if (geometry === 3 || geometry === 23) return "triangle";
@@ -190,16 +210,26 @@ export function presentationShapeKind(shape: RecordValue | null, rect: Presentat
   if (geometry === 26) return "roundRect";
   if (geometry === 6 || geometry === 30 || geometry === 133) return "diamond";
   if (geometry === 7 || geometry === 31 || geometry === 134 || geometry === 141) return "parallelogram";
-  if (geometry === 8 || geometry === 32 || geometry === 144) return "trapezoid";
+  if (geometry === 8 || geometry === 144) return "trapezoid";
   if (geometry === 10 || geometry === 37 || geometry === 160) return "pentagon";
   if (geometry === 11 || geometry === 39 || geometry === 140) return "hexagon";
   if (geometry === 17) return "star5";
+  if (geometry === 18) return "star6";
+  if (geometry === 20) return "star8";
+  if (geometry === 25) return "star32";
+  if (geometry === 32) return "snipRect";
   if (geometry === 35 || geometry === 89 || geometry === 139 || geometry === 143 || isTransparentOutlineEllipse(shape, rect)) return "ellipse";
   if (geometry === 38) return "chevron";
+  if (geometry === 45) return "leftArrow";
+  if (geometry === 50) return "bentUpArrow";
+  if (geometry === 52) return "upDownArrow";
+  if (geometry === 63) return "bentArrow";
+  if (geometry === 75) return "lightningBolt";
   if (geometry === 42) return "donut";
   if (geometry === 84) return "frame";
-  if (geometry === 111) return "bracePair";
-  if (geometry === 112) return "bracketPair";
+  if (geometry === 95 || geometry === 111) return "bracePair";
+  if (geometry === 94 || geometry === 112) return "bracketPair";
+  if (geometry === 87) return "diagStripe";
   if (geometry === 137 || geometry === 138) return "document";
   if (geometry === 150 || geometry === 151) return "extract";
   return "rect";
@@ -669,8 +699,16 @@ function elementPath(kind: PresentationShapeKind, rect: PresentationRect): Path2
     return path;
   }
 
-  if (kind === "star5") {
-    starPath(path, rect.width / 2, rect.height / 2, Math.min(rect.width, rect.height) / 2, Math.min(rect.width, rect.height) * 0.2, 5);
+  if (kind === "star5" || kind === "star6" || kind === "star8" || kind === "star32") {
+    const points = kind === "star32" ? 32 : kind === "star8" ? 8 : kind === "star6" ? 6 : 5;
+    starPath(
+      path,
+      rect.width / 2,
+      rect.height / 2,
+      Math.min(rect.width, rect.height) / 2,
+      Math.min(rect.width, rect.height) * 0.2,
+      points,
+    );
     return path;
   }
 
@@ -721,6 +759,95 @@ function elementPath(kind: PresentationShapeKind, rect: PresentationRect): Path2
       [rect.width, 0],
       [rect.width - skew, rect.height],
       [0, rect.height],
+    ]);
+    return path;
+  }
+
+  if (kind === "diagStripe") {
+    const skew = Math.min(rect.width * 0.45, rect.height * 0.55);
+    polygon(path, [
+      [skew, 0],
+      [rect.width, 0],
+      [rect.width - skew, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
+  if (kind === "snipRect") {
+    const snip = Math.min(rect.width, rect.height) * 0.18;
+    polygon(path, [
+      [snip, 0],
+      [rect.width, 0],
+      [rect.width, rect.height - snip],
+      [rect.width - snip, rect.height],
+      [0, rect.height],
+      [0, snip],
+    ]);
+    return path;
+  }
+
+  if (kind === "leftArrow") {
+    const head = Math.min(rect.width * 0.42, rect.height * 0.5);
+    const shaftTop = rect.height * 0.28;
+    const shaftBottom = rect.height * 0.72;
+    polygon(path, [
+      [0, rect.height / 2],
+      [head, 0],
+      [head, shaftTop],
+      [rect.width, shaftTop],
+      [rect.width, shaftBottom],
+      [head, shaftBottom],
+      [head, rect.height],
+    ]);
+    return path;
+  }
+
+  if (kind === "upDownArrow") {
+    const head = Math.min(rect.width * 0.42, rect.height * 0.28);
+    const shaftLeft = rect.width * 0.32;
+    const shaftRight = rect.width * 0.68;
+    polygon(path, [
+      [rect.width / 2, 0],
+      [rect.width, head],
+      [shaftRight, head],
+      [shaftRight, rect.height - head],
+      [rect.width, rect.height - head],
+      [rect.width / 2, rect.height],
+      [0, rect.height - head],
+      [shaftLeft, rect.height - head],
+      [shaftLeft, head],
+      [0, head],
+    ]);
+    return path;
+  }
+
+  if (kind === "lightningBolt") {
+    polygon(path, [
+      [rect.width * 0.58, 0],
+      [rect.width * 0.18, rect.height * 0.55],
+      [rect.width * 0.46, rect.height * 0.55],
+      [rect.width * 0.32, rect.height],
+      [rect.width * 0.82, rect.height * 0.38],
+      [rect.width * 0.54, rect.height * 0.38],
+    ]);
+    return path;
+  }
+
+  if (kind === "bentUpArrow" || kind === "bentArrow") {
+    const head = Math.min(rect.width * 0.36, rect.height * 0.32);
+    const shaft = Math.min(rect.width, rect.height) * 0.28;
+    const verticalX = kind === "bentArrow" ? rect.width - shaft : rect.width - head;
+    polygon(path, [
+      [verticalX, 0],
+      [rect.width, head],
+      [verticalX + shaft / 2, head],
+      [verticalX + shaft / 2, rect.height],
+      [0, rect.height],
+      [0, rect.height - shaft],
+      [verticalX - shaft / 2, rect.height - shaft],
+      [verticalX - shaft / 2, head],
+      [verticalX - head, head],
     ]);
     return path;
   }

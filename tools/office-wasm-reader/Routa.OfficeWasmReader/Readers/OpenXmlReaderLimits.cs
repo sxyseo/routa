@@ -3,7 +3,7 @@ namespace Routa.OfficeWasmReader;
 internal static class OpenXmlReaderLimits
 {
     public const int MaxDocumentTextBlocks = 2_000;
-    public const int MaxSlides = 200;
+    public const int MaxSlides = 500;
     public const int MaxSlideTextBlocks = 80;
     public const int MaxSheets = 25;
     public const int MaxRowsPerSheet = 2_000;

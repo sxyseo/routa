@@ -125,7 +125,7 @@ function collectPptxFiles(root: string): string[] {
 }
 
 function isPptxFile(file: string): boolean {
-  return path.extname(file).toLowerCase() === ".pptx";
+  return path.extname(file).toLowerCase() === ".pptx" && !path.basename(file).startsWith("~$");
 }
 
 function positionalArgs(): string[] {

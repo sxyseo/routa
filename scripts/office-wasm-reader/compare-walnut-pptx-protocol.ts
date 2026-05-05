@@ -286,12 +286,16 @@ function summarizeEquivalence(
     firstSlideElementCountDelta: routaElements.length - walnutElements.length,
     firstSlideBackgroundPresenceMatches: isRecord(walnutFirst.background) === isRecord(routaFirst.background),
     firstSlideHasPositionedElements: routaElements.some((element) => isRecord(element.bbox)),
-    firstSlideHasTextStyles: routaElements.some((element) =>
-      arrayOfRecords(element.paragraphs).some((paragraph) =>
-        arrayOfRecords(paragraph.runs).some((run) => isRecord(run.textStyle)),
-      ),
-    ),
+    firstSlideHasTextStyles: hasRunTextStyles(routaElements) || !hasRunTextStyles(walnutElements),
   };
+}
+
+function hasRunTextStyles(elements: Record<string, unknown>[]): boolean {
+  return elements.some((element) =>
+    arrayOfRecords(element.paragraphs).some((paragraph) =>
+      arrayOfRecords(paragraph.runs).some((run) => isRecord(run.textStyle)),
+    ),
+  );
 }
 
 function summarizeSemanticDiffs(
