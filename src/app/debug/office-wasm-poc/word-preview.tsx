@@ -275,12 +275,9 @@ function wordInheritedSectionContentElements(
   inheritedContent: { footer: unknown[]; header: unknown[] },
 ): unknown[] {
   const elements = wordSectionContentElements(section, key);
-  if (elements.length > 0) {
-    inheritedContent[key] = elements;
-    return elements;
-  }
-
-  return inheritedContent[key];
+  if (elements.length === 0) return inheritedContent[key];
+  inheritedContent[key] = elements;
+  return elements;
 }
 
 function wordPreviewSectionPages(
@@ -327,7 +324,7 @@ function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextSty
   let current: unknown[] = [];
   let currentHeight = 0;
 
-  for (const element of page.elements) {
+  for (const element of wordSplitOversizedTableElements(page.elements, capacity)) {
     const estimatedHeight = wordElementEstimatedHeight(element, styleMaps, layout);
     const shouldBreak = current.length > 0 && currentHeight + estimatedHeight > capacity;
     if (shouldBreak) {
@@ -345,6 +342,38 @@ function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextSty
   }
 
   return chunks.length > 0 ? chunks : [page];
+}
+
+function wordSplitOversizedTableElements(elements: unknown[], capacity: number): unknown[] {
+  return elements.flatMap((element) => wordSplitOversizedTableElement(element, capacity));
+}
+
+function wordSplitOversizedTableElement(element: unknown, capacity: number): unknown[] {
+  const record = asRecord(element);
+  const table = asRecord(record?.table);
+  const rows = asArray(table?.rows);
+  if (!record || !table || rows.length <= 1 || capacity <= 0) return [element];
+
+  const rowHeight = wordEstimatedTableRowHeight();
+  const tableHeight = wordTableEstimatedHeight(rows.length);
+  if (tableHeight <= capacity * 0.92) return [element];
+
+  const rowsPerPage = Math.max(1, Math.floor((capacity - 24) / rowHeight));
+  if (rowsPerPage >= rows.length) return [element];
+
+  const chunks: unknown[] = [];
+  for (let index = 0; index < rows.length; index += rowsPerPage) {
+    const chunkIndex = chunks.length + 1;
+    chunks.push({
+      ...record,
+      id: `${asString(record.id) || "table"}-chunk-${chunkIndex}`,
+      table: {
+        ...table,
+        rows: rows.slice(index, index + rowsPerPage),
+      },
+    });
+  }
+  return chunks;
 }
 
 function wordIsCoverLikeFullBleedPage(page: WordPreviewPage, pageLayout: WordPageLayout): boolean {
@@ -369,18 +398,10 @@ function wordCollapseTinyDuplicateImages(elements: unknown[], root: RecordValue 
   let previousImageBoxKey = "";
   for (const element of elements) {
     const record = asRecord(element);
-    if (!record) {
-      previousImageBoxKey = "";
-      collapsedElements.push(element);
-      continue;
-    }
+    if (!record) { previousImageBoxKey = ""; collapsedElements.push(element); continue; }
 
     const imageId = elementImageReferenceId(record);
-    if (!imageId) {
-      previousImageBoxKey = "";
-      collapsedElements.push(element);
-      continue;
-    }
+    if (!imageId) { previousImageBoxKey = ""; collapsedElements.push(element); continue; }
 
     const boxKey = wordImageBoxKey(record);
     const isTinyDuplicate = tinyImageIds.has(imageId) && boxKey !== "" && boxKey === previousImageBoxKey;
@@ -467,7 +488,7 @@ function wordElementEstimatedHeight(
   const table = asRecord(record.table);
   if (table) {
     const rows = asArray(table.rows).map(asRecord).filter(Boolean);
-    return Math.max(36, Math.min(760, rows.length * 34 + 24));
+    return Math.max(36, Math.min(760, wordTableEstimatedHeight(rows.length)));
   }
 
   const paragraphs = asArray(record.paragraphs);
@@ -476,6 +497,14 @@ function wordElementEstimatedHeight(
     (total, paragraph) => total + wordParagraphEstimatedHeight(paragraph, styleMaps, pageLayout),
     0,
   );
+}
+
+function wordTableEstimatedHeight(rowCount: number): number {
+  return rowCount * wordEstimatedTableRowHeight() + 24;
+}
+
+function wordEstimatedTableRowHeight(): number {
+  return 34;
 }
 
 function wordEstimatedBoxHeight(element: RecordValue, pageLayout: WordPageLayout, fallbackHeight: number): number {
