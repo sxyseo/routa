@@ -334,7 +334,7 @@ function wordPaginatePreviewPages(
   pages: WordPreviewPage[],
   styleMaps: OfficeTextStyleMaps,
 ): WordPreviewPage[] {
-  return pages.flatMap((page) => wordPaginatePreviewPage(page, styleMaps));
+  return wordMergePreviewOrphanPages(pages.flatMap((page) => wordPaginatePreviewPage(page, styleMaps)));
 }
 
 function wordPaginatePreviewPage(page: WordPreviewPage, styleMaps: OfficeTextStyleMaps): WordPreviewPage[] {
@@ -383,6 +383,58 @@ function wordPreviewPageChunk(page: WordPreviewPage, index: number, elements: un
     id: `${page.id}-page-${index + 1}`,
   };
 }
+
+function wordMergePreviewOrphanPages(pages: WordPreviewPage[]): WordPreviewPage[] {
+  const merged: WordPreviewPage[] = [];
+  for (const page of pages) {
+    const previous = merged.at(-1);
+    if (previous && wordCanMergeOrphanPage(previous, page)) {
+      merged[merged.length - 1] = {
+        ...previous,
+        elements: [...previous.elements, ...page.elements],
+      };
+      continue;
+    }
+
+    merged.push(page);
+  }
+  return merged;
+}
+
+function wordCanMergeOrphanPage(previous: WordPreviewPage, page: WordPreviewPage): boolean {
+  return wordPreviewPageBaseId(previous.id) === wordPreviewPageBaseId(page.id) &&
+    page.elements.length === 1 &&
+    wordIsPlainParagraphElement(page.elements[0]) &&
+    !wordIsHeadingParagraphElement(page.elements[0]) &&
+    wordPlainParagraphTextLength(page.elements[0]) <= WORD_ORPHAN_PARAGRAPH_MAX_TEXT_LENGTH;
+}
+
+function wordPreviewPageBaseId(id: string): string {
+  return id.replace(/-page-\d+$/u, "");
+}
+
+function wordIsPlainParagraphElement(element: unknown): boolean {
+  const record = asRecord(element);
+  return record != null &&
+    asRecord(record.table) == null &&
+    asRecord(record.chartReference) == null &&
+    elementImageReferenceId(record) === "" &&
+    asArray(record.paragraphs).length > 0;
+}
+
+function wordIsHeadingParagraphElement(element: unknown): boolean {
+  const paragraphs = asArray(asRecord(element)?.paragraphs).map(asRecord);
+  return paragraphs.some((paragraph) => /^Heading/i.test(asString(paragraph?.styleId)));
+}
+
+function wordPlainParagraphTextLength(element: unknown): number {
+  return asArray(asRecord(element)?.paragraphs).reduce<number>((total, paragraph) => {
+    const runs = asArray(asRecord(paragraph)?.runs);
+    return total + runs.reduce((runTotal, run) => runTotal + asString(asRecord(run)?.text).trim().length, 0);
+  }, 0);
+}
+
+const WORD_ORPHAN_PARAGRAPH_MAX_TEXT_LENGTH = 420;
 
 function wordCollapseTinyDuplicateImages(elements: unknown[], root: RecordValue | null): unknown[] {
   const tinyImageIds = wordTinyImageIds(root);
@@ -517,13 +569,14 @@ function wordParagraphEstimatedHeight(
   const fontSize = wordCssFontSize(style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14);
   const lineHeight = wordEstimatedLineHeight(style, fontSize);
   const contentWidth = Math.max(120, pageLayout.widthPx - pageLayout.paddingLeft - pageLayout.paddingRight);
-  const averageCharWidth = Math.max(4, fontSize * 0.52);
+  const averageCharWidth = Math.max(4, fontSize * 0.5);
   const charsPerLine = Math.max(8, Math.floor(contentWidth / averageCharWidth));
   const explicitLines = view.runs.reduce((count, run) => count + run.text.split("\n").length - 1, 0);
   const lines = Math.max(1, Math.ceil(textLength / charsPerLine) + explicitLines);
   const before = Math.min(32, asNumber(style?.spaceBefore) / 20);
   const after = Math.min(28, asNumber(style?.spaceAfter) / 20);
-  return Math.max(8, before + lines * lineHeight + after);
+  const headingRuleReserve = view.styleId === "Heading2" ? WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX : 0;
+  return Math.max(8, before + lines * lineHeight + after + headingRuleReserve);
 }
 
 function wordTableHeightContext(styleMaps: OfficeTextStyleMaps, pageLayout: WordPageLayout) {
@@ -1715,6 +1768,8 @@ const wordHeading2RuleStyle: CSSProperties = {
   paddingBottom: 6,
   paddingTop: 6,
 };
+
+const WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX = 28;
 
 const wordTabLeaderStyle: CSSProperties = {
   borderBottom: "1px dotted currentColor",

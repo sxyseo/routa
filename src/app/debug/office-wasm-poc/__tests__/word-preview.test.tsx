@@ -802,6 +802,38 @@ describe("WordPreview", () => {
     expect(pages.length).toBeGreaterThan(1);
   });
 
+  it("keeps single trailing DOCX body paragraphs with the previous visual page", () => {
+    const longParagraph = "Long body paragraph that fills a page in the Word preview estimator. ".repeat(120);
+    const elements = [
+      { paragraphs: [{ runs: [{ text: longParagraph }] }] },
+      { paragraphs: [{ runs: [{ text: longParagraph }] }] },
+      { paragraphs: [{ runs: [{ text: "Trailing paragraph should not become a lone page." }] }] },
+    ];
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements,
+          sections: [
+            {
+              elements,
+              id: "section-orphan",
+              pageSetup: {
+                heightEmu: 3_048_000,
+                pageMargin: { bottom: 360, left: 720, right: 720, top: 360 },
+                widthEmu: 4_572_000,
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages).toHaveLength(2);
+    expect(pages[1]?.textContent).toContain("Trailing paragraph should not become a lone page.");
+  });
+
   it("splits oversized decoded DOCX tables across preview pages", () => {
     const rows = Array.from({ length: 12 }, (_, index) => ({
       cells: [{ paragraphs: [{ runs: [{ text: `Row ${index + 1}` }] }] }],
