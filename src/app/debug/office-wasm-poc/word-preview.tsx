@@ -30,9 +30,11 @@ import {
   presentationChartReferenceId,
 } from "./presentation-chart-renderer";
 import {
-  wordSplitOversizedTableElements,
-  wordTableElementEstimatedHeight,
-} from "./word-preview-table-pagination";
+  wordEmptyParagraphEstimatedHeight,
+  wordEmptyParagraphStyle,
+  wordParagraphHasVisibleContent,
+} from "./word-preview-paragraph-utils";
+import { wordSplitOversizedTableElements, wordTableElementEstimatedHeight } from "./word-preview-table-pagination";
 
 export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
@@ -438,8 +440,8 @@ function wordImageBoxKey(element: RecordValue): string {
 
 function wordPageBodyCapacity(layout: WordPageLayout, page: WordPreviewPage): number {
   if (layout.heightPx <= 0) return 0;
-  const headerReserve = page.headerElements.length > 0 ? 24 : 0;
-  const footerReserve = page.footerElements.length > 0 ? 24 : 0;
+  const headerReserve = page.headerElements.length > 0 ? 16 : 0;
+  const footerReserve = page.footerElements.length > 0 ? 12 : 0;
   return Math.max(180, layout.heightPx - layout.paddingTop - layout.paddingBottom - headerReserve - footerReserve);
 }
 
@@ -486,6 +488,10 @@ function wordParagraphEstimatedHeight(
 ): number {
   const view = paragraphView(paragraph, styleMaps);
   const style = view.style;
+  if (!wordParagraphHasVisibleContent(view)) {
+    return wordEmptyParagraphEstimatedHeight(style);
+  }
+
   const textLength = Math.max(1, view.runs.reduce((total, run) => total + run.text.length, 0));
   const isTitle = view.styleId === "Title";
   const isHeading = /^Heading/i.test(view.styleId);
@@ -517,6 +523,8 @@ function wordTableParagraphEstimatedHeight(
 ): number {
   const view = paragraphView(paragraph, styleMaps);
   const style = view.style;
+  if (!wordParagraphHasVisibleContent(view)) return wordEmptyParagraphEstimatedHeight(style);
+
   const textLength = Math.max(1, view.runs.reduce((total, run) => total + run.text.length, 0));
   const fontSize = Math.min(wordCssFontSize(style?.fontSize, 10.5), 10.5);
   const lineHeight = fontSize * 1.15;
@@ -649,6 +657,9 @@ function WordParagraph({
   const style = variant === "table" ? wordTableParagraphStyle(paragraph) : wordParagraphStyle(paragraph);
   if (fallbackColor && asRecord(paragraph.style?.fill)?.color == null) {
     style.color = fallbackColor;
+  }
+  if (!wordParagraphHasVisibleContent(paragraph)) {
+    return <p aria-hidden="true" style={wordEmptyParagraphStyle(style)} />;
   }
 
   return (
