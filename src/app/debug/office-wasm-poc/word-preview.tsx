@@ -31,8 +31,7 @@ import {
 export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = asRecord(proto);
   const elements = asArray(root?.elements);
-  const headerElements = wordSectionContentElements(root, "header");
-  const footerElements = wordSectionContentElements(root, "footer");
+  const pages = wordPreviewPages(root, elements);
   const charts = asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null);
   const imageSources = useOfficeImageSources(root);
   const textStyles = new Map<string, RecordValue>();
@@ -46,7 +45,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
   const referenceMarkers = wordReferenceMarkers(root);
   const reviewMarkTypes = wordReviewMarkTypes(root);
 
-  const hasRenderableBlocks = [...headerElements, ...elements, ...footerElements].some((element) => {
+  const hasRenderableBlocks = pages.flatMap((page) => [...page.headerElements, ...page.elements, ...page.footerElements]).some((element) => {
     const record = asRecord(element);
     return (
       record != null &&
@@ -74,11 +73,57 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
     );
   }
 
+  const renderedPages = pages.map((page, index) => (
+    <WordDocumentPage
+      charts={charts}
+      elements={page.elements}
+      footerElements={page.footerElements}
+      headerElements={page.headerElements}
+      key={page.id || index}
+      numberingMarkers={numberingMarkers}
+      pageLayout={wordPageLayout(page.root)}
+      pageRoot={page.root}
+      referenceMarkers={referenceMarkers}
+      reviewMarkTypes={reviewMarkTypes}
+      supplementalRoot={index === pages.length - 1 ? root : null}
+      styleMaps={styleMaps}
+    />
+  ));
+
+  return pages.length > 1 ? <div style={wordDocumentStackStyle}>{renderedPages}</div> : renderedPages[0];
+}
+
+function WordDocumentPage({
+  charts,
+  elements,
+  footerElements,
+  headerElements,
+  numberingMarkers,
+  pageLayout,
+  pageRoot,
+  referenceMarkers,
+  reviewMarkTypes,
+  supplementalRoot,
+  styleMaps,
+}: {
+  charts: RecordValue[];
+  elements: unknown[];
+  footerElements: unknown[];
+  headerElements: unknown[];
+  numberingMarkers: Map<string, string>;
+  pageLayout: WordPageLayout;
+  pageRoot: RecordValue | null;
+  referenceMarkers: Map<string, string[]>;
+  reviewMarkTypes: Map<string, number>;
+  supplementalRoot: RecordValue | null;
+  styleMaps: OfficeTextStyleMaps;
+}) {
   return (
     <article
       data-testid="document-preview"
       style={{
-        ...wordDocumentPageStyle(root),
+        ...wordDocumentPageStyleFromLayout(pageLayout),
+        ...wordDocumentPageCssVars(pageLayout),
         background: "#ffffff",
         borderColor: "#d8e0ea",
         borderRadius: 8,
@@ -99,16 +144,18 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
         numberingMarkers={numberingMarkers}
         referenceMarkers={referenceMarkers}
         reviewMarkTypes={reviewMarkTypes}
+        pageLayout={pageLayout}
         styleMaps={styleMaps}
         variant="header"
       />
-      <section data-testid="word-body-content" style={wordBodyContentStyle(root)}>
+      <section data-testid="word-body-content" style={wordBodyContentStyle(pageRoot)}>
         {elements.map((element, index) => (
           <WordElement
             charts={charts}
             element={asRecord(element) ?? {}}
             key={`${asString(asRecord(element)?.id)}-${index}`}
             numberingMarkers={numberingMarkers}
+            pageLayout={pageLayout}
             referenceMarkers={referenceMarkers}
             reviewMarkTypes={reviewMarkTypes}
             styleMaps={styleMaps}
@@ -119,7 +166,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
         numberingMarkers={numberingMarkers}
         referenceMarkers={referenceMarkers}
         reviewMarkTypes={reviewMarkTypes}
-        root={root}
+        root={supplementalRoot}
         styleMaps={styleMaps}
       />
       <WordSectionContent
@@ -128,6 +175,7 @@ export function WordPreview({ labels, proto }: { labels: PreviewLabels; proto: u
         numberingMarkers={numberingMarkers}
         referenceMarkers={referenceMarkers}
         reviewMarkTypes={reviewMarkTypes}
+        pageLayout={pageLayout}
         styleMaps={styleMaps}
         variant="footer"
       />
@@ -139,6 +187,7 @@ function WordSectionContent({
   charts,
   elements,
   numberingMarkers,
+  pageLayout,
   referenceMarkers,
   reviewMarkTypes,
   styleMaps,
@@ -147,6 +196,7 @@ function WordSectionContent({
   charts: RecordValue[];
   elements: unknown[];
   numberingMarkers: Map<string, string>;
+  pageLayout: WordPageLayout;
   referenceMarkers: Map<string, string[]>;
   reviewMarkTypes: Map<string, number>;
   styleMaps: OfficeTextStyleMaps;
@@ -162,6 +212,7 @@ function WordSectionContent({
           element={asRecord(element) ?? {}}
           key={`${variant}-${asString(asRecord(element)?.id)}-${index}`}
           numberingMarkers={numberingMarkers}
+          pageLayout={pageLayout}
           referenceMarkers={referenceMarkers}
           reviewMarkTypes={reviewMarkTypes}
           styleMaps={styleMaps}
@@ -171,10 +222,59 @@ function WordSectionContent({
   );
 }
 
+type WordPreviewPage = {
+  elements: unknown[];
+  footerElements: unknown[];
+  headerElements: unknown[];
+  id: string;
+  root: RecordValue | null;
+};
+
+function wordPreviewPages(root: RecordValue | null, rootElements: unknown[]): WordPreviewPage[] {
+  const sectionPages = asArray(root?.sections)
+    .map(asRecord)
+    .filter((section): section is RecordValue => section != null)
+    .map((section, index) => ({
+      elements: asArray(section.elements),
+      footerElements: wordSectionContentElements(section, "footer"),
+      headerElements: wordSectionContentElements(section, "header"),
+      id: asString(section.id) || `section-${index + 1}`,
+      root: section,
+    }))
+    .filter((page) => page.elements.length > 0 || page.headerElements.length > 0 || page.footerElements.length > 0);
+
+  if (sectionPages.some((page) => page.elements.length > 0)) {
+    return wordPreviewSectionPages(rootElements, sectionPages);
+  }
+
+  return [
+    {
+      elements: rootElements,
+      footerElements: wordSectionContentElements(root, "footer"),
+      headerElements: wordSectionContentElements(root, "header"),
+      id: "document",
+      root,
+    },
+  ];
+}
+
+function wordPreviewSectionPages(rootElements: unknown[], sectionPages: WordPreviewPage[]): WordPreviewPage[] {
+  if (rootElements.length === 0) return sectionPages;
+
+  let offset = 0;
+  return sectionPages.map((page, index) => {
+    const nextOffset = offset + page.elements.length;
+    const elements = index === sectionPages.length - 1 ? rootElements.slice(offset) : rootElements.slice(offset, nextOffset);
+    offset = nextOffset;
+    return { ...page, elements };
+  });
+}
+
 function WordElement({
   charts,
   element,
   numberingMarkers,
+  pageLayout,
   referenceMarkers,
   reviewMarkTypes,
   styleMaps,
@@ -182,6 +282,7 @@ function WordElement({
   charts: RecordValue[];
   element: RecordValue;
   numberingMarkers: Map<string, string>;
+  pageLayout: WordPageLayout;
   referenceMarkers: Map<string, string[]>;
   reviewMarkTypes: Map<string, number>;
   styleMaps: OfficeTextStyleMaps;
@@ -207,7 +308,7 @@ function WordElement({
       <span
         aria-label={asString(element.name)}
         role="img"
-        style={wordImageStyle(element, imageSrc)}
+        style={wordImageStyle(element, imageSrc, pageLayout)}
       />
     );
   }
@@ -438,8 +539,14 @@ function WordSupplementalNotes({
   );
 }
 
-export function wordImageStyle(element: RecordValue, imageSrc: string): CSSProperties {
+export function wordImageStyle(
+  element: RecordValue,
+  imageSrc: string,
+  pageLayout?: WordPageLayout,
+): CSSProperties {
   const box = wordElementBox(element, WORD_PREVIEW_CONTENT_WIDTH_PX, 280);
+  const fullBleed = pageLayout ? wordIsFullBleedElement(element, pageLayout) : false;
+  const topBleed = fullBleed && wordElementY(element) <= 2;
 
   return {
     aspectRatio: box.hasDecodedSize ? `${box.rawWidth} / ${box.rawHeight}` : undefined,
@@ -449,11 +556,15 @@ export function wordImageStyle(element: RecordValue, imageSrc: string): CSSPrope
     backgroundSize: "contain",
     display: "block",
     height: box.hasDecodedSize ? undefined : box.height,
-    marginLeft: box.marginLeft,
-    marginTop: box.marginTop,
+    marginLeft: fullBleed ? "calc(-1 * var(--word-page-padding-left, 0px))" : box.marginLeft,
+    marginTop: topBleed ? "calc(-1 * var(--word-page-padding-top, 0px))" : box.marginTop,
     maxHeight: box.hasDecodedSize ? undefined : 360,
-    maxWidth: "100%",
-    width: box.hasDecodedSize ? box.width : "100%",
+    maxWidth: fullBleed ? "none" : "100%",
+    width: fullBleed && pageLayout
+      ? pageLayout.widthPx
+      : box.hasDecodedSize
+        ? box.width
+        : "100%",
   };
 }
 
@@ -495,23 +606,56 @@ export function wordBodyContentStyle(root: RecordValue | null): CSSProperties {
 }
 
 export function wordDocumentPageStyle(root: RecordValue | null): CSSProperties {
+  return wordDocumentPageStyleFromLayout(wordPageLayout(root));
+}
+
+function wordDocumentPageStyleFromLayout(pageLayout: WordPageLayout): CSSProperties {
+  return {
+    minHeight: pageLayout.heightPx > 0 ? Math.max(680, pageLayout.heightPx) : 680,
+    paddingBottom: pageLayout.paddingBottom,
+    paddingLeft: pageLayout.paddingLeft,
+    paddingRight: pageLayout.paddingRight,
+    paddingTop: pageLayout.paddingTop,
+    width: pageLayout.widthPx > 0 ? pageLayout.widthPx : "100%",
+  };
+}
+
+function wordDocumentPageCssVars(pageLayout: WordPageLayout): CSSProperties {
+  return {
+    "--word-page-padding-left": `${pageLayout.paddingLeft}px`,
+    "--word-page-padding-right": `${pageLayout.paddingRight}px`,
+    "--word-page-padding-top": `${pageLayout.paddingTop}px`,
+  } as CSSProperties;
+}
+
+export type WordPageLayout = {
+  heightPx: number;
+  paddingBottom: number;
+  paddingLeft: number;
+  paddingRight: number;
+  paddingTop: number;
+  widthPx: number;
+};
+
+function wordPageLayout(root: RecordValue | null): WordPageLayout {
   const page = wordPageSetup(root);
   const widthPx = wordPageUnitToPx(page?.widthEmu ?? root?.widthEmu);
   const heightPx = wordPageUnitToPx(page?.heightEmu ?? root?.heightEmu);
   const margin = asRecord(page?.pageMargin);
 
   return {
-    minHeight: heightPx > 0 ? Math.max(680, heightPx) : 680,
+    heightPx,
     paddingBottom: wordPageMarginPx(margin?.bottom, 56),
     paddingLeft: wordPageMarginPx(margin?.left, 64),
     paddingRight: wordPageMarginPx(margin?.right, 64),
     paddingTop: wordPageMarginPx(margin?.top, 56),
-    width: widthPx > 0 ? Math.max(480, Math.min(960, widthPx)) : "100%",
+    widthPx: widthPx > 0 ? Math.max(480, Math.min(960, widthPx)) : 0,
   };
 }
 
 function wordSectionColumns(root: RecordValue | null): { count: number; gapPx?: number; separator: boolean } | null {
-  for (const section of asArray(root?.sections).map(asRecord)) {
+  const sections = asRecord(root?.columns) ? [root] : asArray(root?.sections).map(asRecord);
+  for (const section of sections) {
     const columns = asRecord(section?.columns);
     const count = Math.floor(asNumber(columns?.count));
     if (count > 1) {
@@ -527,6 +671,9 @@ function wordSectionColumns(root: RecordValue | null): { count: number; gapPx?: 
 }
 
 function wordPageSetup(root: RecordValue | null): RecordValue | null {
+  const directPageSetup = asRecord(root?.pageSetup);
+  if (directPageSetup) return directPageSetup;
+
   for (const section of asArray(root?.sections).map(asRecord)) {
     const pageSetup = asRecord(section?.pageSetup);
     if (pageSetup) return pageSetup;
@@ -591,6 +738,10 @@ function wordCommentMeta(comment: RecordValue): string | undefined {
 }
 
 function wordSectionContentElements(root: RecordValue | null, key: "footer" | "header"): unknown[] {
+  const directContent = asRecord(root?.[key]);
+  const directElements = asArray(directContent?.elements);
+  if (directElements.length > 0) return directElements;
+
   for (const section of asArray(root?.sections).map(asRecord)) {
     const content = asRecord(section?.[key]);
     const elements = asArray(content?.elements);
@@ -856,6 +1007,18 @@ function wordElementBox(element: RecordValue, fallbackWidth: number, fallbackHei
   };
 }
 
+function wordIsFullBleedElement(element: RecordValue, pageLayout: WordPageLayout): boolean {
+  if (pageLayout.widthPx <= 0) return false;
+  const box = asRecord(element.bbox);
+  const rawWidth = emuToPx(box?.widthEmu);
+  const xPx = emuToPx(box?.xEmu);
+  return rawWidth >= pageLayout.widthPx - 2 && Math.abs(xPx) <= 2;
+}
+
+function wordElementY(element: RecordValue): number {
+  return emuToPx(asRecord(element.bbox)?.yEmu);
+}
+
 export function wordTableRowStyle(row: RecordValue): CSSProperties {
   const height = emuToPx(row.heightEmu ?? row.height);
   return {
@@ -986,6 +1149,11 @@ function wordPageMarginPx(value: unknown, fallback: number): number {
 }
 
 const WORD_PREVIEW_CONTENT_WIDTH_PX = 720;
+
+const wordDocumentStackStyle: CSSProperties = {
+  display: "grid",
+  gap: 20,
+};
 
 const wordParagraphMarkerStyle: CSSProperties = {
   display: "inline-block",

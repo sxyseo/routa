@@ -432,6 +432,62 @@ describe("WordPreview", () => {
     expect(paragraphs).toEqual(["Header text", "Body text", "Footer text"]);
   });
 
+  it("renders decoded DOCX section elements as separate pages", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          sections: [
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Cover page" }] }] }],
+              id: "section-cover",
+            },
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Second page" }] }] }],
+              id: "section-body",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages).toHaveLength(2);
+    expect(pages.map((page) => page.textContent)).toEqual(["Cover page", "Second page"]);
+  });
+
+  it("uses section boundaries without dropping trailing root DOCX elements", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            { paragraphs: [{ runs: [{ text: "Cover page" }] }] },
+            { paragraphs: [{ runs: [{ text: "Second page" }] }] },
+            { paragraphs: [{ runs: [{ text: "Trailing page image caption" }] }] },
+          ],
+          sections: [
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Cover page" }] }] }],
+              id: "section-cover",
+            },
+            {
+              elements: [{ paragraphs: [{ runs: [{ text: "Second page" }] }] }],
+              id: "section-body",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const pages = Array.from(container.querySelectorAll('[data-testid="document-preview"]'));
+    expect(pages).toHaveLength(2);
+    expect(pages.map((page) => page.textContent)).toEqual([
+      "Cover page",
+      "Second pageTrailing page image caption",
+    ]);
+  });
+
   it("maps decoded DOCX section columns into body CSS columns", () => {
     const { container } = render(
       <WordPreview
@@ -564,6 +620,35 @@ describe("WordPreview", () => {
       marginLeft: 48,
       marginTop: 24,
       width: 96,
+    });
+  });
+
+  it("renders page-width DOCX images outside body margins", () => {
+    const style = wordImageStyle(
+      {
+        bbox: {
+          heightEmu: 5_345_735,
+          widthEmu: 7_560_000,
+          xEmu: -380,
+          yEmu: 0,
+        },
+      },
+      "blob:test-image",
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style).toMatchObject({
+      marginLeft: "calc(-1 * var(--word-page-padding-left, 0px))",
+      marginTop: "calc(-1 * var(--word-page-padding-top, 0px))",
+      maxWidth: "none",
+      width: 793.73,
     });
   });
 
