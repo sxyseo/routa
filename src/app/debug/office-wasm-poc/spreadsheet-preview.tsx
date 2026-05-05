@@ -93,12 +93,7 @@ import {
 } from "./spreadsheet-selection";
 import { useSpreadsheetViewportStore } from "./spreadsheet-viewport-store";
 
-type SpreadsheetFloatingSpec = {
-  height: number;
-  left: number;
-  top: number;
-  width: number;
-};
+type SpreadsheetFloatingSpec = { height: number; left: number; top: number; width: number };
 
 type SpreadsheetCellEditor = {
   selection: SpreadsheetSelection;
