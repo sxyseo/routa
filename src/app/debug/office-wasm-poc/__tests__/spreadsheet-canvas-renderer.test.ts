@@ -79,6 +79,8 @@ describe("spreadsheet canvas renderer", () => {
       cellPaints: new Map([[
         "1:0",
         {
+          borderBottom: { color: "#123456", width: 2 },
+          borderRight: { color: "#654321", width: 3 },
           color: "#222222",
           fill: "#fafafa",
           fontFamily: "Aptos, sans-serif",
@@ -88,6 +90,7 @@ describe("spreadsheet canvas renderer", () => {
           paddingLeft: 17,
           text: "Hello",
           textAlign: "right",
+          verticalAlign: "bottom",
         },
       ]]),
       layout,
@@ -103,6 +106,8 @@ describe("spreadsheet canvas renderer", () => {
     });
 
     expect(plan.cells[0]).toMatchObject({
+      borderBottom: { color: "#123456", width: 2 },
+      borderRight: { color: "#654321", width: 3 },
       color: "#222222",
       fill: "#fafafa",
       fontFamily: "Aptos, sans-serif",
@@ -112,6 +117,7 @@ describe("spreadsheet canvas renderer", () => {
       paddingLeft: 17,
       text: "Hello",
       textAlign: "right",
+      verticalAlign: "bottom",
     });
   });
 });

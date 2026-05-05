@@ -23,12 +23,15 @@ describe("spreadsheet canvas commands", () => {
       cellPaints: new Map([[
         "2:1",
         {
+          borderBottom: { color: "#123456", width: 2 },
+          borderRight: { color: "#654321", width: 3 },
           color: "#111111",
           fill: "#eeeeee",
           fontSize: 14,
           fontWeight: 700,
           text: "Merged",
           textAlign: "center",
+          verticalAlign: "middle",
         },
       ]]),
       layout,
@@ -43,6 +46,8 @@ describe("spreadsheet canvas commands", () => {
     ]);
     expect(commands.cells).toContainEqual({
       addressKey: "2:1",
+      borderBottom: { color: "#123456", width: 2 },
+      borderRight: { color: "#654321", width: 3 },
       color: "#111111",
       fill: "#eeeeee",
       fontSize: 14,
@@ -52,6 +57,7 @@ describe("spreadsheet canvas commands", () => {
       text: "Merged",
       textAlign: "center",
       top: 40,
+      verticalAlign: "middle",
       width: 150,
     });
     expect(commands.cells.some((cell) => cell.addressKey === "3:2")).toBe(false);

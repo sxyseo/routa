@@ -17,6 +17,10 @@ describe("spreadsheet canvas paints", () => {
       project: {
         cellStyle: () => ({
           background: "#ffffff",
+          borderBottomColor: "#123456",
+          borderBottomWidth: "2px",
+          borderRightColor: "#654321",
+          borderRightWidth: 3,
           color: "#111111",
           fontFamily: "Aptos, sans-serif",
           fontSize: 14,
@@ -24,6 +28,7 @@ describe("spreadsheet canvas paints", () => {
           fontWeight: 700,
           paddingLeft: 21,
           textAlign: "right",
+          verticalAlign: "bottom",
         }),
         cellText: (cell) => String(cell.value ?? ""),
       },
@@ -36,6 +41,8 @@ describe("spreadsheet canvas paints", () => {
     });
 
     expect(paints.get("1:0")).toEqual({
+      borderBottom: { color: "#123456", width: 2 },
+      borderRight: { color: "#654321", width: 3 },
       color: "#111111",
       fill: "#ffffff",
       fontFamily: "Aptos, sans-serif",
@@ -45,6 +52,7 @@ describe("spreadsheet canvas paints", () => {
       paddingLeft: 21,
       text: "visible",
       textAlign: "right",
+      verticalAlign: "bottom",
     });
     expect(paints.has("20:0")).toBe(false);
   });

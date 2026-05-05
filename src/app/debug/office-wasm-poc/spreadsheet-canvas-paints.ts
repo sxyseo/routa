@@ -18,6 +18,10 @@ type SpreadsheetCellEdits = Record<string, string | undefined>;
 
 type SpreadsheetCanvasProjectedStyle = {
   background?: unknown;
+  borderBottomColor?: unknown;
+  borderBottomWidth?: unknown;
+  borderRightColor?: unknown;
+  borderRightWidth?: unknown;
   color?: unknown;
   fontFamily?: unknown;
   fontSize?: unknown;
@@ -25,6 +29,7 @@ type SpreadsheetCanvasProjectedStyle = {
   fontWeight?: unknown;
   paddingLeft?: unknown;
   textAlign?: unknown;
+  verticalAlign?: unknown;
 };
 
 type SpreadsheetCanvasPaintProjector = {
@@ -92,6 +97,8 @@ function spreadsheetCanvasPaintFromStyle(
   text: string,
 ): SpreadsheetCanvasCellPaint {
   return {
+    borderBottom: spreadsheetCanvasBorder(style.borderBottomColor, style.borderBottomWidth),
+    borderRight: spreadsheetCanvasBorder(style.borderRightColor, style.borderRightWidth),
     color: spreadsheetCanvasString(style.color),
     fill: spreadsheetCanvasString(style.background),
     fontFamily: spreadsheetCanvasString(style.fontFamily),
@@ -101,6 +108,7 @@ function spreadsheetCanvasPaintFromStyle(
     paddingLeft: spreadsheetCanvasNumber(style.paddingLeft),
     text,
     textAlign: spreadsheetCanvasTextAlign(style.textAlign),
+    verticalAlign: spreadsheetCanvasVerticalAlign(style.verticalAlign),
   };
 }
 
@@ -111,6 +119,24 @@ function spreadsheetCanvasString(value: unknown): string | undefined {
 
 function spreadsheetCanvasNumber(value: unknown): number | undefined {
   const numberValue = typeof value === "number" ? value : Number(asString(value));
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function spreadsheetCanvasBorder(
+  color: unknown,
+  width: unknown,
+): SpreadsheetCanvasCellPaint["borderBottom"] {
+  const borderColor = spreadsheetCanvasString(color);
+  const borderWidth = spreadsheetCanvasCssNumber(width);
+  if (!borderColor && borderWidth == null) return undefined;
+  return { color: borderColor, width: borderWidth };
+}
+
+function spreadsheetCanvasCssNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const match = asString(value).match(/-?\d+(?:\.\d+)?/);
+  if (!match) return undefined;
+  const numberValue = Number(match[0]);
   return Number.isFinite(numberValue) ? numberValue : undefined;
 }
 
@@ -129,4 +155,11 @@ function spreadsheetCanvasTextAlign(value: unknown): SpreadsheetCanvasCellPaint[
   const normalized = asString(value).toLowerCase();
   if (normalized === "center" || normalized === "right") return normalized;
   return normalized === "left" ? "left" : undefined;
+}
+
+function spreadsheetCanvasVerticalAlign(value: unknown): SpreadsheetCanvasCellPaint["verticalAlign"] {
+  const normalized = asString(value).toLowerCase();
+  if (normalized === "bottom") return "bottom";
+  if (normalized === "middle") return "middle";
+  return normalized === "top" ? "top" : undefined;
 }

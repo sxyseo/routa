@@ -20,6 +20,8 @@ export type SpreadsheetCanvasBitmapSize = {
 };
 
 export type SpreadsheetCanvasDrawRect = SpreadsheetViewportRect & {
+  borderBottom?: SpreadsheetCanvasDrawBorder;
+  borderRight?: SpreadsheetCanvasDrawBorder;
   color?: string;
   fill?: string;
   fontFamily?: string;
@@ -30,6 +32,12 @@ export type SpreadsheetCanvasDrawRect = SpreadsheetViewportRect & {
   stroke?: string;
   text?: string;
   textAlign?: "center" | "left" | "right";
+  verticalAlign?: "bottom" | "middle" | "top";
+};
+
+export type SpreadsheetCanvasDrawBorder = {
+  color?: string;
+  width?: number;
 };
 
 export type SpreadsheetCanvasRenderPlan = {
@@ -115,6 +123,8 @@ function spreadsheetCanvasCellRect(
   scroll: SpreadsheetViewportScroll,
 ): SpreadsheetCanvasDrawRect {
   return {
+    borderBottom: cell.borderBottom,
+    borderRight: cell.borderRight,
     fill: cell.fill ?? "#ffffff",
     color: cell.color,
     fontFamily: cell.fontFamily,
@@ -128,6 +138,7 @@ function spreadsheetCanvasCellRect(
     text: cell.text,
     textAlign: cell.textAlign,
     top: cell.top - scroll.top,
+    verticalAlign: cell.verticalAlign,
     width: cell.width,
   };
 }
@@ -154,9 +165,7 @@ function drawSpreadsheetCanvasRect(
   if (rect.width <= 0 || rect.height <= 0) return;
   context.fillStyle = rect.fill ?? "#ffffff";
   context.fillRect(rect.left, rect.top, rect.width, rect.height);
-  context.strokeStyle = rect.stroke ?? "#e2e8f0";
-  context.lineWidth = 1;
-  context.strokeRect(rect.left + 0.5, rect.top + 0.5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1));
+  drawSpreadsheetCanvasBorders(context, rect);
   if (!rect.text) return;
   context.fillStyle = rect.color ?? "#3c4043";
   context.font = spreadsheetCanvasFont(rect);
@@ -167,8 +176,64 @@ function drawSpreadsheetCanvasRect(
   context.beginPath();
   context.rect(rect.left + 3, rect.top + 1, Math.max(0, rect.width - 6), Math.max(0, rect.height - 2));
   context.clip();
-  context.fillText(rect.text, spreadsheetCanvasTextX(rect, textAlign), rect.top + rect.height / 2);
+  context.fillText(rect.text, spreadsheetCanvasTextX(rect, textAlign), spreadsheetCanvasTextY(rect));
   context.restore();
+}
+
+function drawSpreadsheetCanvasBorders(
+  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  rect: SpreadsheetCanvasDrawRect,
+) {
+  if (!rect.borderBottom && !rect.borderRight) {
+    context.strokeStyle = rect.stroke ?? "#e2e8f0";
+    context.lineWidth = 1;
+    context.strokeRect(rect.left + 0.5, rect.top + 0.5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1));
+    return;
+  }
+  drawSpreadsheetCanvasLine(context, {
+    border: rect.borderRight,
+    fallbackColor: rect.stroke,
+    x1: rect.left + rect.width - 0.5,
+    x2: rect.left + rect.width - 0.5,
+    y1: rect.top,
+    y2: rect.top + rect.height,
+  });
+  drawSpreadsheetCanvasLine(context, {
+    border: rect.borderBottom,
+    fallbackColor: rect.stroke,
+    x1: rect.left,
+    x2: rect.left + rect.width,
+    y1: rect.top + rect.height - 0.5,
+    y2: rect.top + rect.height - 0.5,
+  });
+}
+
+function drawSpreadsheetCanvasLine(
+  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  {
+    border,
+    fallbackColor,
+    x1,
+    x2,
+    y1,
+    y2,
+  }: {
+    border?: SpreadsheetCanvasDrawBorder;
+    fallbackColor?: string;
+    x1: number;
+    x2: number;
+    y1: number;
+    y2: number;
+  },
+) {
+  const color = border?.color ?? fallbackColor ?? "#e2e8f0";
+  if (color === "transparent") return;
+  context.strokeStyle = color;
+  context.lineWidth = Math.max(1, border?.width ?? 1);
+  context.beginPath();
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
+  context.stroke();
 }
 
 function spreadsheetCanvasFont(rect: SpreadsheetCanvasDrawRect): string {
@@ -185,4 +250,10 @@ function spreadsheetCanvasTextX(
   if (textAlign === "right") return rect.left + Math.max(0, rect.width - 8);
   if (textAlign === "center") return rect.left + rect.width / 2;
   return rect.left + (rect.paddingLeft ?? 8);
+}
+
+function spreadsheetCanvasTextY(rect: SpreadsheetCanvasDrawRect): number {
+  if (rect.verticalAlign === "top") return rect.top + 8;
+  if (rect.verticalAlign === "bottom") return rect.top + Math.max(8, rect.height - 8);
+  return rect.top + rect.height / 2;
 }

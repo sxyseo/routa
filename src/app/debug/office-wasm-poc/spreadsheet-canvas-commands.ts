@@ -16,6 +16,8 @@ import type { SpreadsheetViewportScroll, SpreadsheetViewportSize } from "./sprea
 
 export type SpreadsheetCanvasCellCommand = {
   addressKey: string;
+  borderBottom?: SpreadsheetCanvasCellBorder;
+  borderRight?: SpreadsheetCanvasCellBorder;
   color?: string;
   fill?: string;
   fontFamily?: string;
@@ -28,6 +30,7 @@ export type SpreadsheetCanvasCellCommand = {
   text?: string;
   textAlign?: "center" | "left" | "right";
   top: number;
+  verticalAlign?: "bottom" | "middle" | "top";
   width: number;
 };
 
@@ -46,7 +49,14 @@ export type SpreadsheetCanvasCommands = {
   snapshot: SpreadsheetRenderSnapshot;
 };
 
+export type SpreadsheetCanvasCellBorder = {
+  color?: string;
+  width?: number;
+};
+
 export type SpreadsheetCanvasCellPaint = {
+  borderBottom?: SpreadsheetCanvasCellBorder;
+  borderRight?: SpreadsheetCanvasCellBorder;
   color?: string;
   fill?: string;
   fontFamily?: string;
@@ -56,6 +66,7 @@ export type SpreadsheetCanvasCellPaint = {
   paddingLeft?: number;
   text?: string;
   textAlign?: "center" | "left" | "right";
+  verticalAlign?: "bottom" | "middle" | "top";
 };
 
 export function buildSpreadsheetCanvasCommands({
@@ -84,6 +95,8 @@ export function buildSpreadsheetCanvasCommands({
       const paint = cellPaints?.get(addressKey);
       cells.push({
         addressKey,
+        borderBottom: paint?.borderBottom,
+        borderRight: paint?.borderRight,
         color: paint?.color,
         fill: paint?.fill,
         fontFamily: paint?.fontFamily,
@@ -96,6 +109,7 @@ export function buildSpreadsheetCanvasCommands({
         text: paint?.text,
         textAlign: paint?.textAlign,
         top,
+        verticalAlign: paint?.verticalAlign,
         width: spreadsheetColumnLeft(layout, columnIndex + (merge?.columnSpan ?? 1)) - left,
       });
     }
