@@ -170,6 +170,29 @@ describe("spreadsheet cell formatting", () => {
     });
   });
 
+  it("lets direct cell fills override table backgrounds while preserving conditional fills", () => {
+    const styles = {
+      cellXfs: [{ fillId: 0 }],
+      fills: [{ color: { value: "EAFBF1" }, type: 1 }],
+    };
+
+    expect(spreadsheetCellStyle(
+      { address: "A4", styleIndex: 0 },
+      styles,
+      { background: "#c0d8e5", backgroundSource: "table" },
+      "02_Tasks_Table",
+      0,
+    ).background).toBe("#EAFBF1");
+
+    expect(spreadsheetCellStyle(
+      { address: "A4", styleIndex: 0 },
+      styles,
+      { background: "#fee2e2", backgroundSource: "conditional" },
+      "02_Tasks_Table",
+      0,
+    ).background).toBe("#fee2e2");
+  });
+
   it("builds visible sparkline cells from sheet sparkline groups", () => {
     const sheet = {
       rows: [

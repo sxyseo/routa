@@ -1093,12 +1093,16 @@ export function spreadsheetCellStyle(
   const textDirection = !horizontalAlignment && /[\u0590-\u08ff]/u.test(cellText(cell)) ? "rtl" : undefined;
   const fallbackTextAlign = visual?.iconSet?.showValue === false ? "left" : (fallbackStyle.textAlign ?? (textDirection === "rtl" ? "right" : spreadsheetDefaultTextAlign(cell)));
   const justifyContent = horizontalAlignment ? spreadsheetHorizontalJustifyContent(horizontalAlignment) : spreadsheetJustifyContentForTextAlign(fallbackTextAlign);
+  const visualBackground = visual?.background;
+  const background = visual?.backgroundSource === "table"
+    ? fillColor ?? visualBackground ?? fallbackStyle.background
+    : visualBackground ?? fillColor ?? fallbackStyle.background;
 
   return {
     ...sheetCellStyle,
     ...fallbackStyle,
     alignItems: spreadsheetVerticalAlignItems(verticalAlignment),
-    background: visual?.background ?? fillColor ?? fallbackStyle.background,
+    background,
     borderBottomColor: visual?.borderColor ?? bottomBorder.color,
     borderBottomStyle: bottomBorder.style,
     borderBottomWidth: bottomBorder.width,

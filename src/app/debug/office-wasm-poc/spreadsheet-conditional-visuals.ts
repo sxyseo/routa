@@ -16,6 +16,7 @@ import { tableStylePalette, type SpreadsheetTablePalette } from "./spreadsheet-t
 
 export type SpreadsheetCellVisual = {
   background?: string;
+  backgroundSource?: "conditional" | "table";
   borderColor?: string;
   dataBar?: {
     axisColor?: string;
@@ -431,7 +432,7 @@ function spreadsheetConditionalCellVisual(
     switch (rule.kind) {
       case "colorScale":
         if (value == null) break;
-        visual = mergeSpreadsheetCellVisuals(visual, { background: colorScaleColor(value, rule.stops) });
+        visual = mergeSpreadsheetCellVisuals(visual, { background: colorScaleColor(value, rule.stops), backgroundSource: "conditional" });
         if (rule.stopIfTrue) return visual;
         break;
       case "dataBar":
@@ -482,6 +483,7 @@ function spreadsheetConditionalCellVisual(
         )) break;
         visual = mergeSpreadsheetCellVisuals(visual, {
           background: protocolColorToCss(rule.format.fillColor),
+          backgroundSource: protocolColorToCss(rule.format.fillColor) ? "conditional" : undefined,
           color: protocolColorToCss(rule.format.fontColor),
           fontWeight: rule.format.bold === true ? 700 : undefined,
         });
@@ -492,6 +494,7 @@ function spreadsheetConditionalCellVisual(
         if (value == null) break;
         visual = mergeSpreadsheetCellVisuals(visual, {
           background: spreadsheetHeatColor(value, rule.minValue, rule.maxValue),
+          backgroundSource: "conditional",
         });
         break;
       case "fallbackDataBar":
@@ -532,6 +535,7 @@ function spreadsheetTableCellVisual(
     if (rowIndex < table.range.startRow + table.headerRowCount) {
       visual = mergeSpreadsheetCellVisuals(visual, {
         background: table.palette.header,
+        backgroundSource: "table",
         borderColor: table.palette.border,
         color: table.palette.headerText,
         filter: table.showFilter && rowIndex === table.range.startRow + table.headerRowCount - 1 ? true : undefined,
@@ -543,6 +547,7 @@ function spreadsheetTableCellVisual(
     if (rowIndex >= table.totalsStartRow) {
       visual = mergeSpreadsheetCellVisuals(visual, {
         background: table.palette.total,
+        backgroundSource: "table",
         borderColor: table.palette.border,
         color: table.palette.totalText,
         fontWeight: 700,
@@ -555,6 +560,7 @@ function spreadsheetTableCellVisual(
       const columnStripe = table.showColumnStripes && (columnIndex - table.range.startColumn) % 2 === 0;
       visual = mergeSpreadsheetCellVisuals(visual, {
         background: columnStripe ? table.palette.columnStripe : rowStripe ? table.palette.rowStripe : undefined,
+        backgroundSource: columnStripe || rowStripe ? "table" : undefined,
         borderColor: table.palette.border,
         fontWeight: (table.showFirstColumn && columnIndex === table.range.startColumn) || (table.showLastColumn && columnIndex === table.lastColumnIndex)
           ? 700
@@ -583,6 +589,7 @@ function mergeSpreadsheetCellVisuals(
 function definedSpreadsheetVisualFields(visual: SpreadsheetCellVisual): SpreadsheetCellVisual {
   const next: SpreadsheetCellVisual = {};
   if (visual.background !== undefined) next.background = visual.background;
+  if (visual.backgroundSource !== undefined) next.backgroundSource = visual.backgroundSource;
   if (visual.borderColor !== undefined) next.borderColor = visual.borderColor;
   if (visual.color !== undefined) next.color = visual.color;
   if (visual.dataBar !== undefined) next.dataBar = visual.dataBar;
