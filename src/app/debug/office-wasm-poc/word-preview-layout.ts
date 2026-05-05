@@ -145,7 +145,7 @@ export function wordDocumentPageStyle(root: RecordValue | null): CSSProperties {
 
 export function wordDocumentPageStyleFromLayout(pageLayout: WordPageLayout): CSSProperties {
   return {
-    minHeight: pageLayout.heightPx > 0 ? Math.max(680, pageLayout.heightPx) : 680,
+    height: pageLayout.heightPx > 0 ? Math.max(680, pageLayout.heightPx) : 680,
     paddingBottom: pageLayout.paddingBottom,
     paddingLeft: pageLayout.paddingLeft,
     paddingRight: pageLayout.paddingRight,

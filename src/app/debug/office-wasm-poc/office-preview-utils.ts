@@ -454,13 +454,42 @@ const OFFICE_SERIF_FONT_FALLBACK =
   '"Songti SC", STSong, SimSun, "Noto Serif CJK SC", "Noto Serif CJK", serif';
 
 export function officeFontFamily(typeface: string): string {
-  const normalized = typeface.trim();
-  if (!normalized) return OFFICE_FONT_FALLBACK;
-  const escaped = normalized.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-  const fallback = /serif|song|宋|明|仿宋|楷/i.test(normalized)
+  const families = officeTypefaceFamilies(typeface);
+  if (families.length === 0) return OFFICE_FONT_FALLBACK;
+  const renderedFamilies = families.map(formatCssFontFamily);
+  const fallback = families.some(isSerifTypeface)
     ? `${OFFICE_SERIF_FONT_FALLBACK}, ${OFFICE_FONT_FALLBACK}`
     : OFFICE_FONT_FALLBACK;
-  return `"${escaped}", ${fallback}`;
+  return `${renderedFamilies.join(", ")}, ${fallback}`;
+}
+
+function officeTypefaceFamilies(typeface: string): string[] {
+  return typeface
+    .split(/[;,]/u)
+    .map((family) => stripWrappingQuotes(family.trim()))
+    .filter(Boolean);
+}
+
+function stripWrappingQuotes(value: string): string {
+  if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function formatCssFontFamily(family: string): string {
+  if (/^(serif|sans-serif|monospace|cursive|fantasy|system-ui)$/iu.test(family)) {
+    return family;
+  }
+
+  const escaped = family.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  return `"${escaped}"`;
+}
+
+function isSerifTypeface(family: string): boolean {
+  const normalized = family.trim();
+  if (/^sans-serif$/iu.test(normalized)) return false;
+  return /(^|[\s-])serif($|[\s-])|song|宋|明|仿宋|楷/iu.test(normalized);
 }
 
 export async function prewarmOfficeFonts(typefaces: Iterable<string>): Promise<void> {

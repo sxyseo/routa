@@ -172,6 +172,7 @@ function WordDocumentPage({
         margin: "0 auto",
         maxWidth: "100%",
         minWidth: 0,
+        overflow: "hidden",
         position: "relative",
       }}
     >
@@ -1389,12 +1390,23 @@ function wordNumberingMarkerForDefinition(
 
   const format = definition.numberFormat;
   const levelText = definition.levelText;
-  if (format === "bullet") return levelText || "•";
+  if (format === "bullet") return wordBulletMarker(levelText);
 
   const markerValue = wordNumberingMarker(wordNumberingFormatAutoType(format), value);
   if (!markerValue) return "";
   if (!levelText.includes("%")) return markerValue;
   return levelText.replace(/%\d+/g, markerValue.replace(/[.)]$/u, ""));
+}
+
+function wordBulletMarker(levelText: string): string {
+  return (
+    {
+      "\uf0a7": "▪",
+      "\uf0b7": "•",
+      "\uf0d8": "➢",
+      "\uf0fc": "✓",
+    } satisfies Record<string, string>
+  )[levelText] ?? (levelText || "•");
 }
 
 function wordNumberingFormatAutoType(format: string): string {
@@ -1510,7 +1522,7 @@ const wordHeading2RuleStyle: CSSProperties = {
 };
 
 const WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX = 28;
-const WORD_PRETEXT_WORD_LAYOUT_COMPENSATION = 1.02;
+const WORD_PRETEXT_WORD_LAYOUT_COMPENSATION = 1.06;
 const WORD_PARAGRAPH_TAB_SIZE = 4;
 
 const wordTableOfContentsTitleStyle: CSSProperties = {

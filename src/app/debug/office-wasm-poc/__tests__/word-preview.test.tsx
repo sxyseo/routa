@@ -437,6 +437,35 @@ describe("WordPreview", () => {
     expect(marker?.style.color).toBe("rgb(74, 166, 178)");
   });
 
+  it("normalizes Symbol font DOCX bullet markers", () => {
+    const { container } = render(
+      <WordPreview
+        labels={labels}
+        proto={{
+          elements: [
+            {
+              paragraphs: [
+                {
+                  id: "p-symbol-bullet",
+                  runs: [{ text: "Symbol bullet item" }],
+                },
+              ],
+            },
+          ],
+          numberingDefinitions: [
+            {
+              levels: [{ level: 0, levelText: "\uf0b7", numberFormat: "bullet", startAt: 1 }],
+              numId: "symbol-bullet-list",
+            },
+          ],
+          paragraphNumberings: [{ level: 0, numId: "symbol-bullet-list", paragraphId: "p-symbol-bullet" }],
+        }}
+      />,
+    );
+
+    expect(container.querySelector<HTMLElement>("p span")?.textContent).toBe("•");
+  });
+
   it("renders decoded DOCX hyperlinks and note reference markers", () => {
     const { container } = render(
       <WordPreview
@@ -1055,7 +1084,7 @@ describe("WordPreview", () => {
 
     const preview = container.querySelector<HTMLElement>('[data-testid="document-preview"]');
     expect(preview?.style.width).toBe("672px");
-    expect(preview?.style.minHeight).toBe("1056px");
+    expect(preview?.style.height).toBe("1056px");
     expect(preview?.style.paddingLeft).toBe("60px");
     expect(preview?.style.paddingTop).toBe("48px");
   });
@@ -1113,7 +1142,7 @@ describe("WordPreview", () => {
         ],
       }),
     ).toMatchObject({
-      minHeight: 1056,
+      height: 1056,
       paddingBottom: 48,
       paddingLeft: 60,
       paddingRight: 60,
