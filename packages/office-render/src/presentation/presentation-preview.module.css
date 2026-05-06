@@ -330,6 +330,16 @@
   border-color: rgba(203, 213, 225, 0.52);
 }
 
+.slideshowIconButton:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+.slideshowIconButton:disabled:hover {
+  background: rgba(15, 23, 42, 0.86);
+  border-color: rgba(148, 163, 184, 0.34);
+}
+
 .slideshowIconButton[aria-pressed="true"] {
   background: rgba(248, 250, 252, 0.16);
   border-color: rgba(248, 250, 252, 0.7);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, StickyNote, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, StickyNote, X } from "lucide-react";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -474,9 +474,29 @@ function SlideshowOverlay({
       role="dialog"
     >
       <div className={styles.slideshowChrome}>
+        <button
+          aria-label={labels.previousSlide}
+          className={styles.slideshowIconButton}
+          data-testid="presentation-slideshow-previous"
+          disabled={selectedIndex === 0}
+          onClick={goPrevious}
+          type="button"
+        >
+          <ChevronLeft aria-hidden="true" size={18} strokeWidth={2} />
+        </button>
         <div className={styles.slideshowCounter}>
           {labels.slide} {asNumber(slide.index, selectedIndex + 1)} / {slides.length}
         </div>
+        <button
+          aria-label={labels.nextSlide}
+          className={styles.slideshowIconButton}
+          data-testid="presentation-slideshow-next"
+          disabled={selectedIndex >= slides.length - 1}
+          onClick={goNext}
+          type="button"
+        >
+          <ChevronRight aria-hidden="true" size={18} strokeWidth={2} />
+        </button>
         {hasSpeakerNotes ? (
           <button
             aria-label={showSpeakerNotes ? hideSpeakerNotesLabel : showSpeakerNotesLabel}

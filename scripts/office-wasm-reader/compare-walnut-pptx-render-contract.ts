@@ -28,8 +28,19 @@ type SlideshowStats = {
   canvasCount: number;
   fullscreen: boolean;
   imageCount: number;
+  nextButtonDisabled: boolean;
+  previousButtonDisabled: boolean;
   slideHeight: number;
   slideWidth: number;
+};
+
+type SpeakerNotesStats = {
+  found: boolean;
+  previewFootnoteLength: number;
+  slideIndex: number;
+  slideshowNotesLength: number;
+  textPreview: string;
+  toggleVisible: boolean;
 };
 
 type ScreenshotEvidence = {
@@ -52,6 +63,7 @@ type ReaderRenderResult = {
   narrow: PreviewStats;
   narrowScreenshot: ScreenshotEvidence;
   reader: ReaderMode;
+  speakerNotes?: SpeakerNotesStats;
   slideshow: SlideshowStats;
   slideshowScreenshot: ScreenshotEvidence;
 };
@@ -73,6 +85,7 @@ const repoRoot = process.cwd();
 const assertMode = process.argv.includes("--assert");
 const startServer = process.argv.includes("--start-server");
 const verboseMode = process.argv.includes("--verbose");
+const verifySpeakerNotes = process.argv.includes("--verify-speaker-notes");
 const port = numberArg("--port") ?? 3000;
 const baseUrl = stringArg("--base-url") ?? `http://127.0.0.1:${port}/debug/office-wasm-poc`;
 let activeBaseUrl = baseUrl;
@@ -140,6 +153,14 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Pp
     parity: {
       failures,
       previewScreenshotsMatch: desktopComparison.matches && narrowComparison.matches,
+      ...(verifySpeakerNotes
+        ? {
+            speakerNotesMatch:
+              Boolean(routa.speakerNotes?.found) &&
+              Boolean(walnut.speakerNotes?.found) &&
+              stableJson(routa.speakerNotes) === stableJson(walnut.speakerNotes),
+          }
+        : {}),
       slideshowScreenshotsMatch: slideshowComparison.matches,
       statsMatch: stableJson(renderComparableStats(routa)) === stableJson(renderComparableStats(walnut)),
     },
@@ -177,6 +198,7 @@ async function renderReader(
     await page.setViewportSize(slideshowViewport);
     await page.waitForTimeout(500);
     const slideshow = await captureSlideshow(page, fixtureLabel, reader);
+    const speakerNotes = verifySpeakerNotes ? await captureSpeakerNotes(page) : undefined;
 
     return {
       consoleMessages,
@@ -185,6 +207,7 @@ async function renderReader(
       narrow: narrow.stats,
       narrowScreenshot: narrow.screenshot,
       reader,
+      ...(speakerNotes ? { speakerNotes } : {}),
       slideshow: slideshow.stats,
       slideshowScreenshot: slideshow.screenshot,
     };
@@ -237,6 +260,55 @@ async function capturePreviewViewport(
   return { screenshot, stats };
 }
 
+async function captureSpeakerNotes(page: Page): Promise<SpeakerNotesStats> {
+  const thumbnailCount = await page.getByTestId("presentation-thumbnail").count();
+  for (let index = 1; index <= thumbnailCount; index++) {
+    await page.locator(`[data-testid="presentation-thumbnail"][data-slide-index="${index}"]`).click();
+    await page.waitForTimeout(200);
+    const previewFootnote = await page
+      .getByTestId("presentation-footnote")
+      .textContent({ timeout: 500 })
+      .catch(() => "");
+    const trimmedPreviewFootnote = previewFootnote?.trim() ?? "";
+    if (!trimmedPreviewFootnote) {
+      continue;
+    }
+
+    await page.getByRole("button", { name: /播放|Play|slideshow/i }).click();
+    await page.getByTestId("presentation-slideshow").waitFor({ timeout: 10_000 });
+    const notesToggle = page.getByTestId("presentation-speaker-notes-toggle");
+    const toggleVisible = await notesToggle.isVisible().catch(() => false);
+    if (toggleVisible) {
+      await notesToggle.click();
+    }
+    const slideshowNotes = await page
+      .locator('[data-testid="presentation-speaker-notes"] pre')
+      .textContent({ timeout: 5_000 })
+      .catch(() => "");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+
+    const normalizedSlideshowNotes = slideshowNotes?.trim() ?? "";
+    return {
+      found: true,
+      previewFootnoteLength: trimmedPreviewFootnote.length,
+      slideIndex: index,
+      slideshowNotesLength: normalizedSlideshowNotes.length,
+      textPreview: normalizedSlideshowNotes.slice(0, 120),
+      toggleVisible,
+    };
+  }
+
+  return {
+    found: false,
+    previewFootnoteLength: 0,
+    slideIndex: 0,
+    slideshowNotesLength: 0,
+    textPreview: "",
+    toggleVisible: false,
+  };
+}
+
 async function captureSlideshow(
   page: Page,
   fixtureLabel: string,
@@ -252,6 +324,12 @@ async function captureSlideshow(
       canvasCount: overlay?.querySelectorAll("canvas").length ?? 0,
       fullscreen: Boolean(document.fullscreenElement),
       imageCount: overlay?.querySelectorAll("img").length ?? 0,
+      nextButtonDisabled: Boolean(
+        overlay?.querySelector<HTMLButtonElement>('[data-testid="presentation-slideshow-next"]')?.disabled,
+      ),
+      previousButtonDisabled: Boolean(
+        overlay?.querySelector<HTMLButtonElement>('[data-testid="presentation-slideshow-previous"]')?.disabled,
+      ),
       slideHeight: Math.round(slide?.getBoundingClientRect().height ?? 0),
       slideWidth: Math.round(slide?.getBoundingClientRect().width ?? 0),
     };
@@ -303,6 +381,12 @@ function summarizeFailures(
     if (!result.slideshow.fullscreen) {
       failures.push(`${result.reader}: slideshow did not enter fullscreen`);
     }
+    if (!result.slideshow.previousButtonDisabled) {
+      failures.push(`${result.reader}: first slideshow slide should disable previous navigation`);
+    }
+    if (verifySpeakerNotes) {
+      failures.push(...speakerNotesFailures(result.reader, result.speakerNotes));
+    }
   }
 
   if (!desktopComparison.matches) {
@@ -317,7 +401,33 @@ function summarizeFailures(
   if (stableJson(renderComparableStats(routa)) !== stableJson(renderComparableStats(walnut))) {
     failures.push("layout stats differ between Routa and Walnut readers");
   }
+  if (
+    verifySpeakerNotes &&
+    (!routa.speakerNotes?.found ||
+      !walnut.speakerNotes?.found ||
+      stableJson(routa.speakerNotes) !== stableJson(walnut.speakerNotes))
+  ) {
+    failures.push("speaker notes verification differs between Routa and Walnut readers");
+  }
 
+  return failures;
+}
+
+function speakerNotesFailures(reader: ReaderMode, stats: SpeakerNotesStats | undefined): string[] {
+  const failures: string[] = [];
+  if (!stats?.found) {
+    failures.push(`${reader}: no slide with speaker notes was found`);
+    return failures;
+  }
+  if (!stats.toggleVisible) {
+    failures.push(`${reader}: speaker notes toggle was not visible in slideshow`);
+  }
+  if (stats.slideshowNotesLength <= 0) {
+    failures.push(`${reader}: speaker notes panel did not render text`);
+  }
+  if (stats.previewFootnoteLength !== stats.slideshowNotesLength) {
+    failures.push(`${reader}: speaker notes panel text length does not match preview footnote`);
+  }
   return failures;
 }
 
@@ -342,6 +452,7 @@ function renderComparableStats(result: ReaderRenderResult) {
   return {
     desktop: result.desktop,
     narrow: result.narrow,
+    ...(result.speakerNotes ? { speakerNotes: result.speakerNotes } : {}),
     slideshow: result.slideshow,
   };
 }
