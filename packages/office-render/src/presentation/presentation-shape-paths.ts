@@ -218,6 +218,22 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "rightArrow") {
+    const head = Math.min(rect.width * 0.42, rect.height * 0.5);
+    const shaftTop = rect.height * 0.28;
+    const shaftBottom = rect.height * 0.72;
+    polygon(path, [
+      [0, shaftTop],
+      [rect.width - head, shaftTop],
+      [rect.width - head, 0],
+      [rect.width, rect.height / 2],
+      [rect.width - head, rect.height],
+      [rect.width - head, shaftBottom],
+      [0, shaftBottom],
+    ]);
+    return path;
+  }
+
   if (kind === "upDownArrow") {
     const head = Math.min(rect.width * 0.42, rect.height * 0.28);
     const shaftLeft = rect.width * 0.32;

@@ -69,6 +69,7 @@ export type PresentationShapeKind =
   | "parallelogram"
   | "pentagon"
   | "rect"
+  | "rightArrow"
   | "roundRect"
   | "rtTriangle"
   | "snipRect"
@@ -127,13 +128,16 @@ export function applyPresentationLayoutInheritance(
     .map(asRecord)
     .filter((element): element is RecordValue => element != null)
     .map((element) => applyElementLayoutInheritance(element, layoutChain));
+  const inheritedElements = layoutChain
+    .flatMap(layoutRenderableElements)
+    .map((element) => applyElementLayoutInheritance(element, layoutChain));
 
   return {
     ...slide,
     ...(slide.background == null && inheritedBackground
       ? { background: inheritedBackground }
       : {}),
-    elements,
+    elements: [...inheritedElements, ...elements],
   };
 }
 
@@ -141,6 +145,9 @@ export function getSlideBounds(
   slide: RecordValue,
   layouts: RecordValue[] = [],
 ): PresentationSize {
+  const explicitBounds = explicitSlideBounds(slide);
+  if (explicitBounds) return explicitBounds;
+
   const elements = presentationElements(slide, layouts);
   return elements.reduce<PresentationSize>(
     (acc, element) => {
@@ -158,6 +165,15 @@ export function getSlideBounds(
     },
     { ...DEFAULT_SLIDE_BOUNDS },
   );
+}
+
+function explicitSlideBounds(slide: RecordValue): PresentationSize | null {
+  const width = asNumber(slide.widthEmu);
+  const height = asNumber(slide.heightEmu);
+  if (width > 0 && height > 0) {
+    return { height, width };
+  }
+  return null;
 }
 
 export function getSlideFrameSize(
@@ -228,6 +244,7 @@ export function presentationShapeKind(
     return "ellipse";
   }
   if (geometry === 38) return "chevron";
+  if (geometry === 44) return "rightArrow";
   if (geometry === 45) return "leftArrow";
   if (geometry === 50) return "bentUpArrow";
   if (geometry === 52) return "upDownArrow";
@@ -380,9 +397,10 @@ function applyElementLayoutInheritance(
   element: RecordValue,
   layoutChain: RecordValue[],
 ): RecordValue {
-  const placeholderDefaults = layoutChain
+  const placeholderMatches = layoutChain
     .map((layout) => findMatchingPlaceholderElement(layout, element))
-    .filter((match): match is RecordValue => match != null)
+    .filter((match): match is RecordValue => match != null);
+  const placeholderDefaults = placeholderMatches
     .reduce<RecordValue | null>(
       (acc, match) => mergeRecordDefaults(acc, match),
       null,
@@ -439,6 +457,33 @@ function flattenedLayoutElements(layout: RecordValue): RecordValue[] {
   return elements;
 }
 
+function layoutRenderableElements(layout: RecordValue): RecordValue[] {
+  const elements: RecordValue[] = [];
+
+  function visit(value: unknown): void {
+    const record = asRecord(value);
+    if (!record) return;
+    if (!isPlaceholderElement(record)) {
+      elements.push(record);
+    }
+    for (const child of asArray(record.children)) {
+      visit(child);
+    }
+  }
+
+  for (const element of asArray(layout.elements)) {
+    visit(element);
+  }
+  return elements;
+}
+
+function isPlaceholderElement(element: RecordValue): boolean {
+  return (
+    normalizedPlaceholderType(element) !== "" ||
+    asNumber(element.placeholderIndex, -1) >= 0
+  );
+}
+
 function placeholderMatchScore(
   candidate: RecordValue,
   element: RecordValue,
@@ -480,8 +525,26 @@ function presentationLevelStylesForElement(
         mergeRecordDefaults(byLevel.get(level) ?? null, style),
       );
     }
+
+    const placeholder = findMatchingPlaceholderElement(layout, element);
+    for (const style of placeholderLevelStyles(placeholder).map(asRecord)) {
+      if (!style) continue;
+      const level = asNumber(style.level, 1);
+      byLevel.set(
+        level,
+        mergeRecordDefaults(byLevel.get(level) ?? null, style),
+      );
+    }
   }
   return Array.from(byLevel.values());
+}
+
+function placeholderLevelStyles(
+  placeholder: RecordValue | null,
+): unknown[] {
+  return asArray(placeholder?.levelsStyles).length > 0
+    ? asArray(placeholder?.levelsStyles)
+    : asArray(placeholder?.levelStyles);
 }
 
 function placeholderLevelStyleField(

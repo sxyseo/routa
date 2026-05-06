@@ -67,6 +67,7 @@ export function presentationScaledFontSize(fontSize: unknown, slideScale: number
 export function drawPresentationTextBox({
   canvas,
   context,
+  defaultTextFill,
   element,
   rect,
   slideBounds,
@@ -75,13 +76,14 @@ export function drawPresentationTextBox({
 }: {
   canvas: PresentationSize;
   context: CanvasRenderingContext2D;
+  defaultTextFill?: string;
   element: RecordValue;
   rect: PresentationRect;
   slideBounds: PresentationSize;
   slideScale: number;
   textOverflow: PresentationTextOverflow;
 }): void {
-  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_OFFICE_TEXT_STYLE_MAPS));
+  const paragraphs = asArray(element.paragraphs).map(presentationParagraphView);
   if (paragraphs.length === 0) return;
 
   const textStyle = asRecord(element.textStyle);
@@ -89,7 +91,7 @@ export function drawPresentationTextBox({
   const maxWidth = Math.max(1, rect.width - insets.left - insets.right);
   const maxHeight = Math.max(1, rect.height - insets.top - insets.bottom);
   const layout = layoutTextFrame(context, paragraphs, {
-    autoFit: asRecord(textStyle?.autoFit) != null,
+    autoFit: presentationTextShouldShrinkForAutoFit(textStyle?.autoFit),
     emuScaleX: canvas.width / slideBounds.width,
     maxHeight,
     maxWidth: presentationEffectiveTextMaxWidth(maxWidth, asNumber(textStyle?.wrap, 2) !== 1),
@@ -109,7 +111,10 @@ export function drawPresentationTextBox({
 
   for (const segment of layout.segments) {
     applyRunFont(context, segment.run, segment.fontSize);
-    context.fillStyle = colorToCss(asRecord(segment.run.style?.fill)?.color) ?? "#0f172a";
+    context.fillStyle = presentationRunFill(
+      colorToCss(asRecord(segment.run.style?.fill)?.color),
+      defaultTextFill,
+    );
     const segmentX = insets.left + segment.x;
     const segmentY = insets.top + verticalOffset + segment.y;
     context.fillText(segment.text, segmentX, segmentY);
@@ -125,6 +130,50 @@ export function drawPresentationTextBox({
   }
 
   context.restore();
+}
+
+function presentationRunFill(fill: string | undefined, defaultTextFill: string | undefined): string {
+  if (defaultTextFill && (fill == null || isDefaultDarkTextFill(fill))) {
+    return defaultTextFill;
+  }
+  return fill ?? defaultTextFill ?? "#0f172a";
+}
+
+function isDefaultDarkTextFill(fill: string): boolean {
+  const normalized = fill.toLowerCase().replace(/\s+/gu, "");
+  return normalized === "#000000" || normalized === "#0f172a" || normalized === "rgb(0,0,0)" || normalized === "rgba(0,0,0,1)";
+}
+
+function presentationParagraphView(paragraph: unknown): ParagraphView {
+  const view = paragraphView(paragraph, EMPTY_OFFICE_TEXT_STYLE_MAPS);
+  const paragraphTextStyle = asRecord(asRecord(paragraph)?.textStyle);
+  if (!paragraphTextStyle) return view;
+
+  const style = {
+    ...view.style,
+    ...paragraphTextStyle,
+  };
+  return {
+    ...view,
+    runs: view.runs.map((run) => ({
+      ...run,
+      style: mergeDefinedTextStyle(style, run.style),
+    })),
+    style,
+  };
+}
+
+function mergeDefinedTextStyle(
+  base: RecordValue,
+  override: RecordValue | null | undefined,
+): RecordValue {
+  const merged: RecordValue = { ...base };
+  for (const [key, value] of Object.entries(override ?? {})) {
+    if (value !== undefined && value !== null) {
+      merged[key] = value;
+    }
+  }
+  return merged;
 }
 
 function layoutTextFrame(context: CanvasRenderingContext2D, paragraphs: ParagraphView[], options: TextFrameOptions): TextLayout {
@@ -291,7 +340,31 @@ function layoutTextRuns(
 }
 
 function shouldShrinkTextFrame(paragraphs: ParagraphView[], options: TextFrameOptions): boolean {
-  return options.autoFit || paragraphs.some((paragraph) => asRecord(paragraph.style?.autoFit) != null);
+  return options.autoFit || paragraphs.some((paragraph) => presentationTextShouldShrinkForAutoFit(paragraph.style?.autoFit));
+}
+
+export function presentationTextShouldShrinkForAutoFit(autoFit: unknown): boolean {
+  const record = asRecord(autoFit);
+  if (record == null) return false;
+  if (
+    asRecord(record.normalAutoFit) != null ||
+    asRecord(record.normAutoFit) != null ||
+    asRecord(record.normAutofit) != null ||
+    asRecord(record.normalAutofit) != null
+  ) {
+    return true;
+  }
+  if (
+    asRecord(record.noAutoFit) != null ||
+    asRecord(record.noAutofit) != null ||
+    asRecord(record.shapeAutoFit) != null ||
+    asRecord(record.shapeAutofit) != null ||
+    asRecord(record.spAutoFit) != null ||
+    asRecord(record.spAutofit) != null
+  ) {
+    return false;
+  }
+  return false;
 }
 
 function textInsets(
@@ -330,9 +403,9 @@ function paragraphAlignment(paragraph: ParagraphView): number {
 
 function paragraphLineSpacing(paragraph: ParagraphView): number {
   const percent = asNumber(paragraph.style?.lineSpacingPercent);
-  if (percent > 0) return clamp(percent / 118_000, 0.6, 3);
+  if (percent > 0) return clamp(percent / 100_000, 0.6, 3);
   const raw = asNumber(paragraph.style?.lineSpacing);
-  if (raw > 10_000) return clamp(raw / 118_000, 0.6, 3);
+  if (raw > 10_000) return clamp(raw / 100_000, 0.6, 3);
   if (raw > 0) return clamp(raw, 0.6, 3);
   return 1;
 }

@@ -1,7 +1,9 @@
 import {
   asNumber,
   asRecord,
+  asString,
   elementImageReferenceId,
+  fillToCss,
   slideBackgroundToCss,
   type RecordValue,
 } from "../shared/office-preview-utils";
@@ -83,6 +85,7 @@ export function renderPresentationSlide({
   layouts = [],
   slide,
   textOverflow = "visible",
+  theme,
   width,
 }: {
   charts?: RecordValue[];
@@ -92,9 +95,13 @@ export function renderPresentationSlide({
   layouts?: RecordValue[];
   slide: RecordValue;
   textOverflow?: PresentationTextOverflow;
+  theme?: RecordValue | null;
   width: number;
 }): void {
-  const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
+  const effectiveSlide = resolvePresentationThemeColors(
+    applyPresentationLayoutInheritance(slide, layouts),
+    presentationThemeColorMap(theme),
+  );
   const bounds = getSlideBounds(effectiveSlide);
   const elements = presentationElements(effectiveSlide)
     .map((element, index) => ({ element, index }))
@@ -111,14 +118,88 @@ export function renderPresentationSlide({
   context.fillStyle = slideBackgroundToCss(effectiveSlide);
   context.fillRect(0, 0, width, height);
 
-  for (const entry of elements) {
+  for (const [renderIndex, entry] of elements.entries()) {
     drawElement(context, entry, bounds, { height, width }, images, {
       charts,
+      previousElements: elements.slice(0, renderIndex),
       textOverflow,
     });
   }
 
   context.restore();
+}
+
+function resolvePresentationThemeColors<T>(value: T, themeColors: ReadonlyMap<string, string>): T {
+  if (themeColors.size === 0 || value == null) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => resolvePresentationThemeColors(item, themeColors)) as T;
+  }
+  if (typeof value !== "object") return value;
+
+  const record = value as RecordValue;
+  const next: RecordValue = {};
+  for (const [key, item] of Object.entries(record)) {
+    next[key] = resolvePresentationThemeColors(item, themeColors);
+  }
+
+  const schemeName = asString(next.value).toLowerCase();
+  if (asNumber(next.type) === 2 && schemeName && next.lastColor == null) {
+    const resolved = themeColors.get(schemeName) ?? themeColors.get(presentationSchemeColorAlias(schemeName));
+    if (resolved) next.lastColor = resolved;
+  }
+
+  return next as T;
+}
+
+function presentationThemeColorMap(theme: RecordValue | null | undefined): Map<string, string> {
+  const colors = new Map<string, string>();
+  collectThemeColors(theme, colors);
+  return colors;
+}
+
+function collectThemeColors(value: unknown, colors: Map<string, string>): void {
+  const record = asRecord(value);
+  if (record == null) return;
+
+  const directColors = asRecord(record.colors);
+  if (directColors) {
+    for (const [name, color] of Object.entries(directColors)) {
+      addThemeColor(colors, name, color);
+    }
+  }
+
+  const name = asString(record.name).toLowerCase();
+  const color = asRecord(record.color);
+  if (name && color) {
+    const hex = asString(color.value) || asString(color.lastColor);
+    addThemeColor(colors, name, hex);
+  }
+
+  for (const item of Object.values(record)) {
+    if (Array.isArray(item)) {
+      for (const child of item) collectThemeColors(child, colors);
+    } else if (typeof item === "object" && item != null) {
+      collectThemeColors(item, colors);
+    }
+  }
+}
+
+function addThemeColor(colors: Map<string, string>, name: string, color: unknown): void {
+  const normalizedName = name.toLowerCase();
+  const normalizedColor = asString(color).replace(/^#/u, "");
+  if (!normalizedName || !/^[0-9a-f]{6}$/iu.test(normalizedColor)) return;
+  colors.set(normalizedName, normalizedColor);
+}
+
+function presentationSchemeColorAlias(name: string): string {
+  const aliases: Record<string, string> = {
+    bg1: "lt1",
+    bg2: "lt2",
+    phclr: "lt1",
+    tx1: "dk1",
+    tx2: "dk2",
+  };
+  return aliases[name] ?? name;
 }
 
 function drawElement(
@@ -127,7 +208,11 @@ function drawElement(
   bounds: PresentationSize,
   canvas: PresentationSize,
   images: PresentationRenderImages,
-  options: { charts: RecordValue[]; textOverflow: PresentationTextOverflow },
+  options: {
+    charts: RecordValue[];
+    previousElements: SlideElementEntry[];
+    textOverflow: PresentationTextOverflow;
+  },
 ): void {
   const bbox = asRecord(element.bbox);
   const rect = emuRectToCanvasRect(bbox, bounds, canvas);
@@ -206,6 +291,7 @@ function drawElement(
   drawPresentationTextBox({
     canvas,
     context,
+    defaultTextFill: overlayTextDefaultFill(element, options.previousElements),
     element,
     rect,
     slideBounds: bounds,
@@ -213,6 +299,61 @@ function drawElement(
     textOverflow: options.textOverflow,
   });
   context.restore();
+}
+
+function overlayTextDefaultFill(
+  element: RecordValue,
+  previousElements: SlideElementEntry[],
+): string | undefined {
+  const paragraphs = Array.isArray(element.paragraphs) ? element.paragraphs : [];
+  if (paragraphs.length === 0) return undefined;
+  const bbox = asRecord(element.bbox);
+  const centerX = asNumber(bbox?.xEmu) + asNumber(bbox?.widthEmu) / 2;
+  const centerY = asNumber(bbox?.yEmu) + asNumber(bbox?.heightEmu) / 2;
+  if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) return undefined;
+
+  for (let index = previousElements.length - 1; index >= 0; index -= 1) {
+    const candidate = previousElements[index]?.element;
+    if (!candidate || candidate === element) continue;
+    const candidateBbox = asRecord(candidate.bbox);
+    if (!pointInsideBbox(centerX, centerY, candidateBbox)) continue;
+    const candidateShape = asRecord(candidate.shape);
+    const fill = fillToCss(candidateShape?.fill ?? candidate.fill);
+    const luminance = cssColorRelativeLuminance(fill);
+    if (luminance != null && luminance < 0.32) return "#ffffff";
+  }
+
+  return undefined;
+}
+
+function pointInsideBbox(x: number, y: number, bbox: RecordValue | null): boolean {
+  const left = asNumber(bbox?.xEmu);
+  const top = asNumber(bbox?.yEmu);
+  const width = asNumber(bbox?.widthEmu);
+  const height = asNumber(bbox?.heightEmu);
+  return x >= left && x <= left + width && y >= top && y <= top + height;
+}
+
+function cssColorRelativeLuminance(color: string | undefined): number | null {
+  if (!color) return null;
+  const hex = /^#?([0-9a-f]{6})$/iu.exec(color)?.[1];
+  if (hex) {
+    return relativeLuminance(
+      Number.parseInt(hex.slice(0, 2), 16),
+      Number.parseInt(hex.slice(2, 4), 16),
+      Number.parseInt(hex.slice(4, 6), 16),
+    );
+  }
+
+  const rgba = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)$/u.exec(color);
+  if (!rgba) return null;
+  const alpha = rgba[4] == null ? 1 : Number(rgba[4]);
+  if (Number.isFinite(alpha) && alpha < 0.5) return null;
+  return relativeLuminance(Number(rgba[1]), Number(rgba[2]), Number(rgba[3]));
+}
+
+function relativeLuminance(red: number, green: number, blue: number): number {
+  return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
 }
 
 function drawLine(

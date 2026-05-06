@@ -1,6 +1,5 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Play, StickyNote, X } from "lucide-react";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -58,9 +57,10 @@ export function PresentationPreview({
     () => asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null),
     [root],
   );
+  const theme = useMemo(() => asRecord(root?.theme), [root]);
   const imageSources = useOfficeImageSources(root);
   const imageElements = useLoadedOfficeImages(imageSources);
-  const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements, layouts, charts);
+  const slideBitmaps = useRenderedSlideBitmaps(slides, imageElements, layouts, charts, theme);
   const railRef = useRef<HTMLElement>(null);
   const railSize = useElementSize(railRef);
   const thumbnailWidth = Math.max(
@@ -162,6 +162,7 @@ export function PresentationPreview({
                 charts={charts}
                 layouts={layouts}
                 slide={slide}
+                theme={theme}
                 width={thumbnailWidth}
               />
             </button>
@@ -176,11 +177,12 @@ export function PresentationPreview({
         layouts={layouts}
         slide={selectedSlide}
         slideIndex={selectedSlideIndex}
+        theme={theme}
       />
       {headerActions
         ? createPortal(
             <button aria-label={labels.playSlideshow} className={styles.playButton} onClick={openSlideshow} type="button">
-              <Play aria-hidden="true" size={15} strokeWidth={2} />
+              <PresentationIcon name="play" size={15} />
               <span>{labels.playSlideshow}</span>
             </button>,
             headerActions,
@@ -196,6 +198,7 @@ export function PresentationPreview({
           onClose={closeSlideshow}
           setActiveSlideIndex={setActiveSlideIndex}
           slides={slides}
+          theme={theme}
         />
       ) : null}
     </div>
@@ -209,6 +212,7 @@ function SlideStage({
   layouts,
   slide,
   slideIndex,
+  theme,
 }: {
   charts: RecordValue[];
   images: ReadonlyMap<string, CanvasImageSource>;
@@ -216,6 +220,7 @@ function SlideStage({
   layouts: RecordValue[];
   slide: RecordValue;
   slideIndex: number;
+  theme: RecordValue | null;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<{ elementId: string; slideKey: string } | null>(null);
@@ -257,6 +262,7 @@ function SlideStage({
               slide={slide}
               testId="presentation-slide-canvas"
               textOverflow="visible"
+              theme={theme}
               width={canvasWidth}
             />
             <button
@@ -363,6 +369,7 @@ function SlideshowOverlay({
   onClose,
   setActiveSlideIndex,
   slides,
+  theme,
 }: {
   activeSlideIndex: number;
   charts: RecordValue[];
@@ -372,6 +379,7 @@ function SlideshowOverlay({
   onClose: () => void;
   setActiveSlideIndex: (index: number) => void;
   slides: RecordValue[];
+  theme: RecordValue | null;
 }) {
   const frameRef = useRef<HTMLButtonElement>(null);
   const frameSize = useElementSize(frameRef);
@@ -482,7 +490,7 @@ function SlideshowOverlay({
           onClick={goPrevious}
           type="button"
         >
-          <ChevronLeft aria-hidden="true" size={18} strokeWidth={2} />
+          <PresentationIcon name="left" />
         </button>
         <div className={styles.slideshowCounter}>
           {labels.slide} {asNumber(slide.index, selectedIndex + 1)} / {slides.length}
@@ -495,7 +503,7 @@ function SlideshowOverlay({
           onClick={goNext}
           type="button"
         >
-          <ChevronRight aria-hidden="true" size={18} strokeWidth={2} />
+          <PresentationIcon name="right" />
         </button>
         {hasSpeakerNotes ? (
           <button
@@ -506,11 +514,11 @@ function SlideshowOverlay({
             onClick={() => setShowSpeakerNotes((isOpen) => !isOpen)}
             type="button"
           >
-            <StickyNote aria-hidden="true" size={17} strokeWidth={2} />
+            <PresentationIcon name="note" size={17} />
           </button>
         ) : null}
         <button aria-label={labels.closeSlideshow} className={styles.slideshowIconButton} onClick={closeSlideshow} type="button">
-          <X aria-hidden="true" size={18} strokeWidth={2} />
+          <PresentationIcon name="close" />
         </button>
       </div>
       <div className={styles.slideshowPresenterLayout} data-notes-open={showSpeakerNotes && hasSpeakerNotes}>
@@ -528,6 +536,7 @@ function SlideshowOverlay({
             layouts={layouts}
             slide={slide}
             textOverflow="visible"
+            theme={theme}
             width={canvasWidth}
           />
         </button>
@@ -542,6 +551,39 @@ function SlideshowOverlay({
   );
 }
 
+function PresentationIcon({
+  name,
+  size = 18,
+}: {
+  name: "close" | "left" | "note" | "play" | "right";
+  size?: number;
+}) {
+  const paths = {
+    close: "M6 6l12 12M18 6L6 18",
+    left: "M15 6l-6 6 6 6",
+    note: "M7 4h8l2 2v14H7V4zM15 4v4h4M9 12h6M9 16h5",
+    play: "M8 5v14l11-7z",
+    right: "M9 6l6 6-6 6",
+  };
+  return (
+    <svg
+      aria-hidden="true"
+      height={size}
+      viewBox="0 0 24 24"
+      width={size}
+    >
+      <path
+        d={paths[name]}
+        fill={name === "play" ? "currentColor" : "none"}
+        stroke={name === "play" ? "none" : "currentColor"}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
 function SlideRasterFrame({
   alt,
   bitmap,
@@ -551,6 +593,7 @@ function SlideRasterFrame({
   fallbackTextOverflow,
   layouts,
   slide,
+  theme,
   width,
 }: {
   alt: string;
@@ -561,6 +604,7 @@ function SlideRasterFrame({
   fallbackTextOverflow: PresentationTextOverflow;
   layouts: RecordValue[];
   slide: RecordValue;
+  theme: RecordValue | null;
   width: number;
 }) {
   const frame = getSlideFrameSize(slide, layouts);
@@ -588,6 +632,7 @@ function SlideRasterFrame({
       layouts={layouts}
       slide={slide}
       textOverflow={fallbackTextOverflow}
+      theme={theme}
       width={width}
     />
   );
@@ -601,6 +646,7 @@ function SlideCanvasFrame({
   slide,
   testId,
   textOverflow,
+  theme,
   width,
 }: {
   charts: RecordValue[];
@@ -610,6 +656,7 @@ function SlideCanvasFrame({
   slide: RecordValue;
   testId?: string;
   textOverflow: PresentationTextOverflow;
+  theme: RecordValue | null;
   width: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -630,8 +677,8 @@ function SlideCanvasFrame({
     if (!context) return;
 
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    renderPresentationSlide({ charts, context, height, images, layouts, slide, textOverflow, width });
-  }, [charts, height, images, layouts, slide, textOverflow, width]);
+    renderPresentationSlide({ charts, context, height, images, layouts, slide, textOverflow, theme, width });
+  }, [charts, height, images, layouts, slide, textOverflow, theme, width]);
 
   return (
     <canvas
@@ -650,6 +697,7 @@ function useRenderedSlideBitmaps(
   images: ReadonlyMap<string, CanvasImageSource>,
   layouts: RecordValue[],
   charts: RecordValue[],
+  theme: RecordValue | null,
 ): ReadonlyMap<string, SlideBitmapSurface> {
   const [bitmaps, setBitmaps] = useState<ReadonlyMap<string, SlideBitmapSurface>>(new Map());
 
@@ -687,6 +735,7 @@ function useRenderedSlideBitmaps(
           layouts,
           slide,
           textOverflow: "visible",
+          theme,
           width,
         });
         const blob = await canvasToBlob(canvas);
@@ -708,7 +757,7 @@ function useRenderedSlideBitmaps(
         URL.revokeObjectURL(url);
       }
     };
-  }, [charts, images, layouts, slides]);
+  }, [charts, images, layouts, slides, theme]);
 
   return bitmaps;
 }

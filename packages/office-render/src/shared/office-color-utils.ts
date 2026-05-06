@@ -31,7 +31,11 @@ export function colorToCss(value: unknown): string | undefined {
 
   const lastColor = asString(color?.lastColor);
   const lastRgb = hexToRgb(lastColor);
-  if (lastRgb) return `#${lastColor}`;
+  if (lastRgb) {
+    const alpha = colorAlpha(color);
+    if (alpha < 1) return `rgba(${lastRgb.red}, ${lastRgb.green}, ${lastRgb.blue}, ${alpha})`;
+    return `#${lastColor}`;
+  }
   return undefined;
 }
 
@@ -66,4 +70,3 @@ export function slideBackgroundToCss(slide: RecordValue): string {
   const fill = asRecord(background?.fill);
   return fillToCss(fill) ?? "#ffffff";
 }
-

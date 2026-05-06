@@ -5,6 +5,7 @@ import {
   applyPresentationLayoutInheritance,
   computePresentationFit,
   emuRectToCanvasRect,
+  getSlideBounds,
   presentationGradientStops,
   presentationChartById,
   presentationChartReferenceId,
@@ -20,6 +21,7 @@ import {
 import {
   presentationEffectiveTextMaxWidth,
   presentationParagraphSpacingPx,
+  presentationTextShouldShrinkForAutoFit,
 } from "../presentation-text-layout";
 
 describe("presentation renderer helpers", () => {
@@ -99,6 +101,7 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 20 }, rect)).toBe("star8");
     expect(presentationShapeKind({ geometry: 25 }, rect)).toBe("star32");
     expect(presentationShapeKind({ geometry: 32 }, rect)).toBe("snipRect");
+    expect(presentationShapeKind({ geometry: 44 }, rect)).toBe("rightArrow");
     expect(presentationShapeKind({ geometry: 45 }, rect)).toBe("leftArrow");
     expect(presentationShapeKind({ geometry: 50 }, rect)).toBe("bentUpArrow");
     expect(presentationShapeKind({ geometry: 52 }, rect)).toBe("upDownArrow");
@@ -228,13 +231,13 @@ describe("presentation renderer helpers", () => {
         gradientStops: [
           { color: { type: 1, value: "FF0000" }, position: 0 },
           { color: { transform: { alpha: 50_000 }, type: 1, value: "00FF00" }, position: 50_000 },
-          { color: { type: 1, value: "0000FF" }, position: 100_000 },
+          { color: { lastColor: "0000FF", transform: { alpha: 25_000 }, type: 2, value: "accent2" }, position: 100_000 },
         ],
       }),
     ).toEqual([
       { color: "#FF0000", position: 0 },
       { color: "rgba(0, 255, 0, 0.5)", position: 0.5 },
-      { color: "#0000FF", position: 1 },
+      { color: "rgba(0, 0, 255, 0.25)", position: 1 },
     ]);
 
     expect(
@@ -278,6 +281,14 @@ describe("presentation renderer helpers", () => {
     expect(presentationParagraphSpacingPx(120, 2, true)).toBe(12);
     expect(presentationEffectiveTextMaxWidth(500, false)).toBe(500);
     expect(presentationEffectiveTextMaxWidth(500, true)).toBe(500);
+  });
+
+  it("only shrinks text for normal autofit, not shape autofit", () => {
+    expect(presentationTextShouldShrinkForAutoFit({ normalAutoFit: {} })).toBe(true);
+    expect(presentationTextShouldShrinkForAutoFit({ normAutofit: {} })).toBe(true);
+    expect(presentationTextShouldShrinkForAutoFit({ shapeAutoFit: {} })).toBe(false);
+    expect(presentationTextShouldShrinkForAutoFit({ spAutoFit: {} })).toBe(false);
+    expect(presentationTextShouldShrinkForAutoFit({ noAutoFit: {} })).toBe(false);
   });
 
   it("inherits PPT placeholder geometry and text styles from layouts and masters", () => {
@@ -351,6 +362,17 @@ describe("presentation renderer helpers", () => {
             },
             placeholderIndex: 1,
             placeholderType: "body",
+            levelStyles: [
+              {
+                level: 1,
+                paragraphStyle: {
+                  indent: -228_600,
+                },
+                textStyle: {
+                  fontSize: 2800,
+                },
+              },
+            ],
             textStyle: { anchor: 2 },
           },
         ],
@@ -377,13 +399,93 @@ describe("presentation renderer helpers", () => {
       yEmu: 200,
     });
     expect(body.textStyle).toEqual({ anchor: 2 });
-    expect(bodyTextStyle.fontSize).toBe(2400);
+    expect(bodyTextStyle.fontSize).toBe(2800);
     expect(bodyTextStyle.typeface).toBe("Aptos");
     expect(bodyParagraph.spaceAfter).toBe(120);
     expect(bodyParagraphStyle.bulletCharacter).toBe("•");
+    expect(bodyParagraphStyle.indent).toBe(-228_600);
     expect(bodyParagraphStyle.marginLeft).toBe(342_900);
     expect(titleTextStyle.fontSize).toBe(1800);
     expect(titleTextStyle.fill).toEqual({ color: { type: 1, value: "FFFFFF" } });
+  });
+
+  it("inherits non-placeholder layout artwork before slide content", () => {
+    const slide = {
+      elements: [
+        {
+          id: "title-1",
+          paragraphs: [{ runs: [{ text: "Slide title" }] }],
+          placeholderType: "title",
+        },
+      ],
+      useLayoutId: "layout-1",
+    };
+    const layouts = [
+      {
+        elements: [
+          {
+            bbox: {
+              heightEmu: 6_858_000,
+              widthEmu: 12_192_000,
+              xEmu: 0,
+              yEmu: 0,
+            },
+            fill: {
+              imageReference: { id: "/ppt/media/background.png" },
+              type: 4,
+            },
+            id: "background-art",
+            name: "background.png",
+            type: 7,
+          },
+          {
+            bbox: {
+              heightEmu: 1_000,
+              widthEmu: 2_000,
+              xEmu: 100,
+              yEmu: 200,
+            },
+            placeholderType: "title",
+          },
+        ],
+        id: "layout-1",
+      },
+    ];
+
+    const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
+    const effectiveElements = effectiveSlide.elements as Array<Record<string, unknown>>;
+
+    expect(effectiveElements).toHaveLength(2);
+    expect(effectiveElements[0]?.id).toBe("background-art");
+    expect(effectiveElements[1]?.id).toBe("title-1");
+    expect(effectiveElements[1]?.bbox).toEqual({
+      heightEmu: 1_000,
+      widthEmu: 2_000,
+      xEmu: 100,
+      yEmu: 200,
+    });
+  });
+
+  it("uses explicit PPT slide size instead of expanding to off-canvas template artwork", () => {
+    expect(
+      getSlideBounds({
+        elements: [
+          {
+            bbox: {
+              heightEmu: 1_000,
+              widthEmu: 1_000,
+              xEmu: 30_000_000,
+              yEmu: 0,
+            },
+          },
+        ],
+        heightEmu: 13_716_000,
+        widthEmu: 24_384_000,
+      }),
+    ).toEqual({
+      height: 13_716_000,
+      width: 24_384_000,
+    });
   });
 
   it("inherits document text styles through basedOn chains", () => {
