@@ -540,6 +540,21 @@ public class DocxProtoReaderBehaviorTests
     }
 
     [Fact]
+    public void Read_SectionWithPageSizeOnly_DoesNotInventPageMargin()
+    {
+        var docx = BuildDocx(body =>
+        {
+            body.AppendChild(new Paragraph(new Run(new Text("Content"))));
+            body.AppendChild(new SectionProperties(
+                new PageSize { Width = 12_240U, Height = 15_840U }));
+        });
+
+        var result = DocxDocumentProtoReader.Read(docx);
+
+        Assert.False(FirstSectionPageSetupHasMargin(result));
+    }
+
+    [Fact]
     public void Read_TrailingBodySectionAfterBreakExpansion_RetainsFinalSection()
     {
         var docx = BuildDocx(body =>
@@ -709,6 +724,54 @@ public class DocxProtoReaderBehaviorTests
         }
 
         return new ImageBox(x, y, width, height);
+    }
+
+    private static bool FirstSectionPageSetupHasMargin(byte[] protoBytes)
+    {
+        var input = new CodedInputStream(protoBytes);
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            if (WireFormat.GetTagFieldNumber(tag) == 13)
+            {
+                return SectionPageSetupHasMargin(input.ReadBytes().ToByteArray());
+            }
+
+            input.SkipLastField();
+        }
+
+        return false;
+    }
+
+    private static bool SectionPageSetupHasMargin(byte[] sectionBytes)
+    {
+        var input = new CodedInputStream(sectionBytes);
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            if (WireFormat.GetTagFieldNumber(tag) == 3)
+            {
+                return PageSetupHasMargin(input.ReadBytes().ToByteArray());
+            }
+
+            input.SkipLastField();
+        }
+
+        return false;
+    }
+
+    private static bool PageSetupHasMargin(byte[] pageSetupBytes)
+    {
+        var input = new CodedInputStream(pageSetupBytes);
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            if (WireFormat.GetTagFieldNumber(tag) == 3)
+            {
+                return true;
+            }
+
+            input.SkipLastField();
+        }
+
+        return false;
     }
 
     private static long ScaledEmu(long value, long outer, long child)

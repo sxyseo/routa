@@ -2164,16 +2164,19 @@ internal static class DocxDocumentProtoReader
                     WriteInt64(pageOutput, 1, page.WidthTwips);
                     WriteInt64(pageOutput, 2, page.HeightTwips);
                     var pageMargin = sectionProperties?.GetFirstChild<W.PageMargin>();
-                    WriteMessage(pageOutput, 3, Message(marginOutput =>
+                    if (pageMargin is not null)
                     {
-                        WriteInt32(marginOutput, 1, page.TopMarginTwips);
-                        WriteInt32(marginOutput, 2, page.BottomMarginTwips);
-                        WriteInt32(marginOutput, 3, page.LeftMarginTwips);
-                        WriteInt32(marginOutput, 4, page.RightMarginTwips);
-                        WriteInt32(marginOutput, 5, IntFromString(pageMargin?.Header?.InnerText));
-                        WriteInt32(marginOutput, 6, IntFromString(pageMargin?.Footer?.InnerText));
-                        WriteInt32Always(marginOutput, 7, page.GutterTwips);
-                    }));
+                        WriteMessage(pageOutput, 3, Message(marginOutput =>
+                        {
+                            WriteInt32(marginOutput, 1, page.TopMarginTwips);
+                            WriteInt32(marginOutput, 2, page.BottomMarginTwips);
+                            WriteInt32(marginOutput, 3, page.LeftMarginTwips);
+                            WriteInt32(marginOutput, 4, page.RightMarginTwips);
+                            WriteInt32(marginOutput, 5, IntFromString(pageMargin.Header?.InnerText));
+                            WriteInt32(marginOutput, 6, IntFromString(pageMargin.Footer?.InnerText));
+                            WriteInt32Always(marginOutput, 7, page.GutterTwips);
+                        }));
+                    }
                 }));
             }
             var columns = sectionProperties?.GetFirstChild<W.Columns>();
