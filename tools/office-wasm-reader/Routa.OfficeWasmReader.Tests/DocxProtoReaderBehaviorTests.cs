@@ -414,12 +414,12 @@ public class DocxProtoReaderBehaviorTests
     }
 
     [Fact]
-    public void Read_ImageSourceRectangle_AffectsImageProto()
+    public void Read_ImageSourceRectangle_MatchesWalnutByIgnoringCropFill()
     {
         var uncropped = DocxDocumentProtoReader.Read(AnchoredImageDocx(0));
         var cropped = DocxDocumentProtoReader.Read(CroppedImageDocx());
 
-        Assert.True(cropped.Length > uncropped.Length);
+        Assert.Equal(uncropped, cropped);
     }
 
     [Fact]

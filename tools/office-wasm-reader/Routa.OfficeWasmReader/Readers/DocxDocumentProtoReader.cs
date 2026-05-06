@@ -549,10 +549,6 @@ internal static class DocxDocumentProtoReader
                     writeZeroY: true));
                 WriteInt32(output, 2, DrawingZIndex(drawing));
                 WriteMessage(output, 3, WriteImageReference(image.Id));
-                if (WriteImageCropFill(geometry.SourceRectangle, image.Id) is { } cropFill)
-                {
-                    WriteMessage(output, 19, cropFill);
-                }
 
                 if (WriteImageLine(geometry.Outline) is { } imageLine)
                 {
@@ -613,9 +609,6 @@ internal static class DocxDocumentProtoReader
             outerWidthEmu,
             outerHeightEmu);
         var picture = blip!.Ancestors<Pic.Picture>().FirstOrDefault();
-        var sourceRectangle =
-            picture?.Descendants<A.SourceRectangle>().FirstOrDefault() ??
-            drawing.Descendants<A.SourceRectangle>().FirstOrDefault();
         var outline =
             picture?.ShapeProperties?.GetFirstChild<A.Outline>() ??
             drawing.Descendants<A.Outline>().FirstOrDefault();
@@ -636,7 +629,6 @@ internal static class DocxDocumentProtoReader
                 groupedBox.YEmu,
                 groupedBox.WidthEmu,
                 groupedBox.HeightEmu,
-                sourceRectangle,
                 picture?.ShapeProperties?.GetFirstChild<A.Outline>(),
                 frame);
         }
@@ -647,7 +639,6 @@ internal static class DocxDocumentProtoReader
             outerYEmu,
             outerWidthEmu,
             outerHeightEmu,
-            sourceRectangle,
             outline,
             null);
     }
@@ -922,47 +913,6 @@ internal static class DocxDocumentProtoReader
         }
 
         return (color.Val.Value, color.GetFirstChild<A.Alpha>()?.Val?.Value);
-    }
-
-    private static byte[]? WriteImageCropFill(A.SourceRectangle? sourceRect, string imageId)
-    {
-        if (sourceRect is null)
-        {
-            return null;
-        }
-
-        var cropRect = WriteCropRectangle(sourceRect);
-        if (cropRect is null)
-        {
-            return null;
-        }
-
-        return Message(output =>
-        {
-            WriteInt32(output, 1, FillTypePicture);
-            WriteMessage(output, 11, WriteImageReference(imageId));
-            WriteMessage(output, 14, cropRect);
-        });
-    }
-
-    private static byte[]? WriteCropRectangle(A.SourceRectangle sourceRect)
-    {
-        var left = StrictIntFromString(RawAttributeValue(sourceRect, "l", namespaceUri: null));
-        var top = StrictIntFromString(RawAttributeValue(sourceRect, "t", namespaceUri: null));
-        var right = StrictIntFromString(RawAttributeValue(sourceRect, "r", namespaceUri: null));
-        var bottom = StrictIntFromString(RawAttributeValue(sourceRect, "b", namespaceUri: null));
-        if (left is null && top is null && right is null && bottom is null)
-        {
-            return null;
-        }
-
-        return Message(output =>
-        {
-            WriteInt32(output, 1, left);
-            WriteInt32(output, 2, top);
-            WriteInt32(output, 3, right);
-            WriteInt32(output, 4, bottom);
-        });
     }
 
     private static void RegisterPackageImages(
@@ -3347,7 +3297,6 @@ internal static class DocxDocumentProtoReader
         long YEmu,
         long WidthEmu,
         long HeightEmu,
-        A.SourceRectangle? SourceRectangle,
         A.Outline? Outline,
         DrawingGroupFrame? Frame);
 
