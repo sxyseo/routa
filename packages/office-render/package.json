@@ -28,6 +28,10 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./presentation-cursor-runtime": {
+      "import": "./dist/presentation-cursor-runtime.js",
+      "types": "./dist/presentation-cursor-runtime.d.ts"
+    },
     "./spreadsheet-canvas.worker": {
       "import": "./dist/spreadsheet-canvas.worker.js"
     }
@@ -44,14 +48,10 @@
   },
   "peerDependencies": {
     "@chenglou/pretext": ">=0.0.6",
-    "lucide-react": ">=0.400.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
-    "lucide-react": {
-      "optional": true
-    },
     "@chenglou/pretext": {
       "optional": true
     }
