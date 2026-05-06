@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { loadSharp, type SharpFactory } from "./optional-sharp.js";
 import { ProtoReader } from "./proto-reader.js";
@@ -100,6 +102,28 @@ type DirectCanvasPayload = {
   slides: DirectCanvasSlide[];
 };
 
+type PresentationRendererCanvasPayload = {
+  artifact: {
+    generatedBy: string;
+    mode: "presentation-renderer";
+    reader: string;
+    rendererImport: string;
+    source: string;
+    title: string;
+  };
+  layouts: RecordValue[];
+  media: Record<string, DirectCanvasMedia>;
+  slides: PresentationRendererSlide[];
+  theme?: PresentationTheme;
+};
+
+type PresentationRendererSlide = RecordValue & {
+  heightEmu: number;
+  index: number;
+  title: string;
+  widthEmu: number;
+};
+
 type DirectCanvasSlide = {
   background: string;
   elements: DirectCanvasElement[];
@@ -138,7 +162,8 @@ type PresentationTheme = {
 };
 
 type PresentationColor = {
-  alpha?: number;
+  lastColor?: string;
+  transform?: { alpha?: number };
   type?: number;
   value?: string;
 };
@@ -147,8 +172,10 @@ type PresentationElement = {
   bbox?: PresentationRect;
   fill?: PresentationFill;
   imageReference?: { id?: string };
+  levelsStyles?: PresentationTextLevelStyle[];
   name?: string;
   paragraphs: PresentationParagraph[];
+  placeholderIndex?: number;
   placeholderType?: string;
   shape?: {
     fill?: PresentationFill;
@@ -205,11 +232,14 @@ type PresentationImage = {
 
 type PresentationLayout = {
   background?: PresentationBackground;
+  bodyLevelStyles?: PresentationTextLevelStyle[];
   elements: PresentationElement[];
   id: string;
   kind?: string;
   masterId?: string;
   name?: string;
+  otherLevelStyles?: PresentationTextLevelStyle[];
+  titleLevelStyles?: PresentationTextLevelStyle[];
 };
 
 type PresentationLine = {
@@ -219,14 +249,29 @@ type PresentationLine = {
 };
 
 type PresentationParagraph = {
+  indent?: number;
+  marginLeft?: number;
+  paragraphStyle?: PresentationParagraphStyle;
   runs: PresentationRun[];
-  textStyle?: {
-    alignment?: number;
-  };
+  textStyle?: PresentationParagraphTextStyle;
+};
+
+type PresentationParagraphTextStyle = PresentationRunStyle & {
+  alignment?: number;
+};
+
+type PresentationParagraphStyle = {
+  bulletCharacter?: string;
+  indent?: number;
+  lineSpacing?: number;
+  marginLeft?: number;
 };
 
 type PresentationRect = {
   heightEmu: number;
+  horizontalFlip?: boolean;
+  rotation?: number;
+  verticalFlip?: boolean;
   widthEmu: number;
   xEmu: number;
   yEmu: number;
@@ -246,6 +291,14 @@ type PresentationRunStyle = {
   underline?: string;
 };
 
+type PresentationTextLevelStyle = {
+  level?: number;
+  paragraphStyle?: PresentationParagraphStyle;
+  spaceAfter?: number;
+  spaceBefore?: number;
+  textStyle?: PresentationParagraphTextStyle;
+};
+
 type PresentationSlide = {
   background?: PresentationBackground;
   elements: PresentationElement[];
@@ -261,10 +314,13 @@ type PresentationBackground = {
 
 type PresentationTextStyle = {
   anchor?: number;
+  autoFit?: { noAutoFit?: Record<string, never>; normalAutoFit?: Record<string, never>; shapeAutoFit?: Record<string, never> };
   bottomInset?: number;
   leftInset?: number;
   rightInset?: number;
   topInset?: number;
+  useParagraphSpacing?: boolean;
+  wrap?: number;
 };
 
 type PresentationCropPercent = {
@@ -275,6 +331,7 @@ type PresentationCropPercent = {
 };
 
 export type RenderPptxCursorCanvasOptions = {
+  includeThumbnails?: boolean;
   mediaQuality?: number;
   mediaWidth?: number;
   readerVersion: string;
@@ -294,15 +351,24 @@ export async function renderPptxCursorCanvasSource(
 export async function buildPptxCursorCanvasPayload(
   protoBytes: Uint8Array,
   options: RenderPptxCursorCanvasOptions,
-): Promise<DirectCanvasPayload> {
+): Promise<PresentationRendererCanvasPayload> {
   const presentation = decodePresentation(protoBytes);
   return buildPresentationPayload(presentation, options);
 }
 
 export function renderPptxCursorCanvasSourceFromPayload(
-  payload: DirectCanvasPayload,
+  payload: DirectCanvasPayload | PresentationRendererCanvasPayload,
 ): string {
+  if (isPresentationRendererPayload(payload)) {
+    return renderPresentationRendererCanvasSource(payload);
+  }
   return renderPresentationCanvasSource(payload);
+}
+
+function isPresentationRendererPayload(
+  payload: DirectCanvasPayload | PresentationRendererCanvasPayload,
+): payload is PresentationRendererCanvasPayload {
+  return payload.artifact.mode === "presentation-renderer";
 }
 
 function decodePresentation(bytes: Uint8Array): Presentation {
@@ -373,6 +439,12 @@ function decodeLayout(bytes: Uint8Array): PresentationLayout {
       layout.background = decodeBackground(reader.bytesField());
     } else if (tag.fieldNumber === 11 && tag.wireType === 2) {
       layout.elements.push(decodeElement(reader.bytesField()));
+    } else if (tag.fieldNumber === 12 && tag.wireType === 2) {
+      (layout.bodyLevelStyles ??= []).push(decodeTextLevelStyle(reader.bytesField()));
+    } else if (tag.fieldNumber === 13 && tag.wireType === 2) {
+      (layout.titleLevelStyles ??= []).push(decodeTextLevelStyle(reader.bytesField()));
+    } else if (tag.fieldNumber === 14 && tag.wireType === 2) {
+      (layout.otherLevelStyles ??= []).push(decodeTextLevelStyle(reader.bytesField()));
     } else if (tag.fieldNumber === 15) layout.masterId = reader.string();
     else reader.skip(tag.wireType);
   }
@@ -394,9 +466,12 @@ function decodeElement(bytes: Uint8Array): PresentationElement {
       element.paragraphs.push(decodeParagraph(reader.bytesField()));
     } else if (tag.fieldNumber === 10) element.name = reader.string();
     else if (tag.fieldNumber === 11) element.type = reader.int32();
+    else if (tag.fieldNumber === 12) element.placeholderIndex = reader.int32();
     else if (tag.fieldNumber === 13) element.placeholderType = reader.string();
     else if (tag.fieldNumber === 14 && tag.wireType === 2) {
       element.textStyle = decodeTextStyle(reader.bytesField());
+    } else if (tag.fieldNumber === 16 && tag.wireType === 2) {
+      (element.levelsStyles ??= []).push(decodeTextLevelStyle(reader.bytesField()));
     } else if (tag.fieldNumber === 19 && tag.wireType === 2) {
       element.fill = decodeFill(reader.bytesField());
     } else if (tag.fieldNumber === 21 && tag.wireType === 2) {
@@ -437,6 +512,9 @@ function decodeBoundingBox(bytes: Uint8Array): PresentationRect {
     else if (tag.fieldNumber === 2) rect.yEmu = reader.int64();
     else if (tag.fieldNumber === 3) rect.widthEmu = reader.int64();
     else if (tag.fieldNumber === 4) rect.heightEmu = reader.int64();
+    else if (tag.fieldNumber === 5) rect.rotation = reader.int32();
+    else if (tag.fieldNumber === 6) rect.horizontalFlip = reader.bool();
+    else if (tag.fieldNumber === 7) rect.verticalFlip = reader.bool();
     else reader.skip(tag.wireType);
   }
   return rect;
@@ -450,7 +528,9 @@ function decodeColor(bytes: Uint8Array): PresentationColor {
     if (tag.fieldNumber === 1) color.type = reader.int32();
     else if (tag.fieldNumber === 2) color.value = reader.string();
     else if (tag.fieldNumber === 3 && tag.wireType === 2) {
-      color.alpha = decodeColorTransform(reader.bytesField()).alpha;
+      color.transform = decodeColorTransform(reader.bytesField());
+    } else if (tag.fieldNumber === 4) {
+      color.lastColor = reader.string();
     } else reader.skip(tag.wireType);
   }
   return color;
@@ -657,17 +737,30 @@ function decodeParagraph(bytes: Uint8Array): PresentationParagraph {
       paragraph.runs.push(decodeRun(reader.bytesField()));
     } else if (tag.fieldNumber === 2 && tag.wireType === 2) {
       paragraph.textStyle = decodeParagraphTextStyle(reader.bytesField());
+    } else if (tag.fieldNumber === 4) {
+      paragraph.marginLeft = reader.int32();
+    } else if (tag.fieldNumber === 5) {
+      paragraph.indent = reader.int32();
+    } else if (tag.fieldNumber === 10 && tag.wireType === 2) {
+      paragraph.paragraphStyle = decodeParagraphStyle(reader.bytesField());
     } else reader.skip(tag.wireType);
   }
   return paragraph;
 }
 
-function decodeParagraphTextStyle(bytes: Uint8Array): { alignment?: number } {
+function decodeParagraphTextStyle(bytes: Uint8Array): PresentationParagraphTextStyle {
   const reader = new ProtoReader(bytes);
-  const style: { alignment?: number } = {};
+  const style: PresentationParagraphTextStyle = {};
   while (!reader.eof()) {
     const tag = reader.tag();
-    if (tag.fieldNumber === 8) style.alignment = reader.int32();
+    if (tag.fieldNumber === 4) style.bold = reader.bool();
+    else if (tag.fieldNumber === 5) style.italic = reader.bool();
+    else if (tag.fieldNumber === 6) style.fontSize = reader.int32();
+    else if (tag.fieldNumber === 7 && tag.wireType === 2) {
+      style.fill = decodeFill(reader.bytesField());
+    } else if (tag.fieldNumber === 8) style.alignment = reader.int32();
+    else if (tag.fieldNumber === 9) style.underline = reader.string();
+    else if (tag.fieldNumber === 18) style.typeface = reader.string();
     else reader.skip(tag.wireType);
   }
   return style;
@@ -703,6 +796,37 @@ function decodeRunStyle(bytes: Uint8Array): PresentationRunStyle {
   return style;
 }
 
+function decodeTextLevelStyle(bytes: Uint8Array): PresentationTextLevelStyle {
+  const reader = new ProtoReader(bytes);
+  const style: PresentationTextLevelStyle = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 2) style.level = reader.int32();
+    else if (tag.fieldNumber === 3 && tag.wireType === 2) {
+      style.textStyle = decodeParagraphTextStyle(reader.bytesField());
+    } else if (tag.fieldNumber === 4 && tag.wireType === 2) {
+      style.paragraphStyle = decodeParagraphStyle(reader.bytesField());
+    } else if (tag.fieldNumber === 5) style.spaceBefore = reader.int32();
+    else if (tag.fieldNumber === 6) style.spaceAfter = reader.int32();
+    else reader.skip(tag.wireType);
+  }
+  return style;
+}
+
+function decodeParagraphStyle(bytes: Uint8Array): PresentationParagraphStyle {
+  const reader = new ProtoReader(bytes);
+  const style: PresentationParagraphStyle = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) style.bulletCharacter = reader.string();
+    else if (tag.fieldNumber === 2) style.marginLeft = reader.int32();
+    else if (tag.fieldNumber === 3) style.indent = reader.int32();
+    else if (tag.fieldNumber === 4) style.lineSpacing = reader.int32();
+    else reader.skip(tag.wireType);
+  }
+  return style;
+}
+
 function decodeShape(bytes: Uint8Array): NonNullable<PresentationElement["shape"]> {
   const reader = new ProtoReader(bytes);
   const shape: NonNullable<PresentationElement["shape"]> = {};
@@ -728,36 +852,156 @@ function decodeTextStyle(bytes: Uint8Array): PresentationTextStyle {
     else if (tag.fieldNumber === 11) style.leftInset = reader.int32();
     else if (tag.fieldNumber === 12) style.rightInset = reader.int32();
     else if (tag.fieldNumber === 13) style.topInset = reader.int32();
+    else if (tag.fieldNumber === 14) style.useParagraphSpacing = reader.bool();
+    else if (tag.fieldNumber === 20) style.wrap = reader.int32();
+    else if (tag.fieldNumber === 21 && tag.wireType === 2) {
+      style.autoFit = decodeTextAutoFit(reader.bytesField());
+    }
     else reader.skip(tag.wireType);
   }
   return style;
 }
 
+function decodeTextAutoFit(bytes: Uint8Array): NonNullable<PresentationTextStyle["autoFit"]> {
+  const reader = new ProtoReader(bytes);
+  const autoFit: NonNullable<PresentationTextStyle["autoFit"]> = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1 && tag.wireType === 2) {
+      reader.bytesField();
+      autoFit.noAutoFit = {};
+    } else if (tag.fieldNumber === 2 && tag.wireType === 2) {
+      reader.bytesField();
+      autoFit.normalAutoFit = {};
+    } else if (tag.fieldNumber === 3 && tag.wireType === 2) {
+      reader.bytesField();
+      autoFit.shapeAutoFit = {};
+    } else {
+      reader.skip(tag.wireType);
+    }
+  }
+  return autoFit;
+}
+
 async function buildPresentationPayload(
   presentation: Presentation,
   options: RenderPptxCursorCanvasOptions,
-): Promise<DirectCanvasPayload> {
+): Promise<PresentationRendererCanvasPayload> {
   const sharp = await loadSharp();
   const mediaIndex = await buildMediaIndex(presentation.images, sharp, options);
+  const layouts = rendererLayouts(presentation);
   const slides = presentation.slides.map((slide, index) =>
-    buildSlide(slide, index, presentation.layouts, presentation.masters, mediaIndex, presentation.theme),
+    rendererSlide(slide, index, layouts),
   );
   return {
     artifact: {
       generatedBy: "@autodev/office",
-      mode: "proto-direct",
+      mode: "presentation-renderer",
       reader: options.readerVersion,
+      rendererImport: "inline:@autodev/office-render/presentation-cursor-runtime",
       source: sourceLabel(options),
       title: options.title,
     },
-    media: Object.fromEntries(mediaIndex.media),
-    slides: await Promise.all(
-      slides.map(async (slide) => ({
-        ...slide,
-        thumbnail: await renderSlideThumbnailDataUrl(slide, mediaIndex.media, sharp),
-      })),
-    ),
+    layouts,
+    media: Object.fromEntries(mediaByImageId(mediaIndex)),
+    slides,
+    theme: presentation.theme,
   };
+}
+
+function rendererLayouts(presentation: Presentation): RecordValue[] {
+  return [
+    ...presentation.masters.map((layout) => rendererLayout(layout)),
+    ...presentation.layouts.map((layout) => rendererLayout(layout)),
+  ];
+}
+
+function rendererLayout(layout: PresentationLayout): RecordValue {
+  return compactRecord({
+    background: layout.background,
+    bodyLevelStyles: layout.bodyLevelStyles,
+    elements: layout.elements,
+    id: layout.id,
+    kind: layout.kind,
+    name: layout.name,
+    otherLevelStyles: layout.otherLevelStyles,
+    parentLayoutId: layout.masterId,
+    titleLevelStyles: layout.titleLevelStyles,
+  });
+}
+
+function rendererSlide(
+  slide: PresentationSlide,
+  index: number,
+  layouts: RecordValue[],
+): PresentationRendererSlide {
+  return compactRecord({
+    background: slide.background,
+    elements: slide.elements,
+    heightEmu: slide.heightEmu,
+    index: slide.index || index + 1,
+    title: firstPresentationText(slide, layouts) || `Slide ${index + 1}`,
+    useLayoutId: slide.useLayoutId,
+    widthEmu: slide.widthEmu,
+  }) as PresentationRendererSlide;
+}
+
+function compactRecord<T extends Record<string, unknown>>(record: T): RecordValue {
+  const result: RecordValue = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value !== undefined) result[key] = value;
+  }
+  return result;
+}
+
+function mediaByImageId(mediaIndex: MediaIndex): Map<string, DirectCanvasMedia> {
+  const media = new Map<string, DirectCanvasMedia>();
+  for (const [imageId, mediaId] of mediaIndex.byImageId) {
+    const entry = mediaIndex.media.get(mediaId);
+    if (entry) media.set(imageId, entry);
+  }
+  return media;
+}
+
+function firstPresentationText(
+  slide: PresentationSlide,
+  layouts: RecordValue[],
+): string {
+  const layout = layouts.find((item) => item.id === slide.useLayoutId);
+  const layoutElements =
+    (layout?.elements as PresentationElement[] | undefined) ?? [];
+  const elements = [...layoutElements, ...slide.elements];
+  for (const element of elements) {
+    for (const paragraph of element.paragraphs) {
+      const text = paragraph.runs.map((run) => run.text).join("").trim();
+      if (text) return text;
+    }
+  }
+  return "";
+}
+
+function officeRenderPresentationRuntimeInline(): string {
+  const explicit = process.env.AUTODEV_OFFICE_RENDER_CURSOR_RUNTIME_INLINE;
+  const runtimePath =
+    explicit ??
+    fileURLToPath(
+      new URL(
+        "../../office-render/dist/presentation-cursor-runtime.inline.global.js",
+        import.meta.url,
+      ),
+    );
+
+  try {
+    return readFileSync(runtimePath, "utf8");
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "unknown runtime read failure";
+    throw new Error(
+      `Missing @autodev/office-render Cursor runtime at ${runtimePath}. ` +
+        "Run `npm --prefix packages/office-render run build` before generating a PPTX Cursor Canvas. " +
+        message,
+    );
+  }
 }
 
 type MediaIndex = {
@@ -797,12 +1041,18 @@ async function encodeMediaImage(
   if (!sharp) {
     return { bytes: image.data, contentType: image.contentType };
   }
-  const buffer = await sharp(image.data)
-    .resize({
-      fit: "inside",
-      width: options.mediaWidth ?? 1280,
-      withoutEnlargement: true,
-    })
+  const metadata = await sharp(image.data).metadata();
+  const resized = sharp(image.data).resize({
+    fit: "inside",
+    width: options.mediaWidth ?? 1280,
+    withoutEnlargement: true,
+  });
+  if (metadata.hasAlpha === true) {
+    const buffer = await resized.png({ compressionLevel: 9 }).toBuffer();
+    return { bytes: new Uint8Array(buffer), contentType: "image/png" };
+  }
+
+  const buffer = await resized
     .flatten({ background: "#ffffff" })
     .jpeg({ mozjpeg: true, quality: clampQuality(options.mediaQuality ?? 70) })
     .toBuffer();
@@ -1059,7 +1309,7 @@ function fontSizeFromStyle(style: PresentationRunStyle): number {
 function fillToCss(fill?: PresentationFill, theme?: PresentationTheme): string | undefined {
   const color = fill?.color;
   if (!color?.value) return undefined;
-  if (color.alpha === 0) return "transparent";
+  if (color.transform?.alpha === 0) return "transparent";
   if (color.type === 1 || /^[0-9a-f]{6}$/iu.test(color.value)) {
     return `#${color.value}`;
   }
@@ -1154,10 +1404,14 @@ async function renderSlideThumbnailDataUrl(
   sharp: SharpFactory | null,
 ): Promise<string | null> {
   if (!sharp) return null;
-  const buffer = await sharp(Buffer.from(renderSlideThumbnailSvg(slide, media)))
-    .jpeg({ mozjpeg: true, quality: 50 })
-    .toBuffer();
-  return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+  try {
+    const buffer = await sharp(Buffer.from(renderSlideThumbnailSvg(slide, media)))
+      .jpeg({ mozjpeg: true, quality: 50 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+  } catch {
+    return null;
+  }
 }
 
 function renderSlideThumbnailSvg(
@@ -1658,6 +1912,26 @@ const navButtonStyle = {
   width: 46,
   zIndex: 2,
 };
+`;
+}
+
+function renderPresentationRendererCanvasSource(
+  payload: PresentationRendererCanvasPayload,
+): string {
+  const runtimeSource = officeRenderPresentationRuntimeInline();
+  return `import React from "react";
+
+globalThis.React = React;
+
+${runtimeSource}
+
+const { PresentationCursorCanvas } = OfficePresentationCursorRuntime;
+
+const payload = JSON.parse(${JSON.stringify(JSON.stringify(payload))});
+
+export default function OfficePptCanvas() {
+  return <PresentationCursorCanvas payload={payload} />;
+}
 `;
 }
 

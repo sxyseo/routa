@@ -5,7 +5,8 @@
  *   1. dotnet publish (browser-wasm AppBundle)
  *   2. Copy bundle  ->  public/office-wasm-reader/   (Next.js static assets)
  *   3. Copy bundle  ->  packages/office/wasm/         (npm package assets)
- *   4. tsc  ->  packages/office/dist/                 (TypeScript compile)
+ *   4. Build office-render Cursor runtime
+ *   5. tsc  ->  packages/office/dist/                 (TypeScript compile)
  *
  * Usage:
  *   node scripts/office-wasm-reader/build-office-package.mjs
@@ -133,7 +134,7 @@ function stripSourceMaps(dir) {
 
 // ─── Step 1: dotnet publish ───────────────────────────────────────────────────
 
-console.log("▶ Step 1/3  dotnet publish");
+console.log("▶ Step 1/5  dotnet publish");
 rmSync(publishDir, { force: true, recursive: true });
 rmSync(path.join(projectDir, "bin"), { force: true, recursive: true });
 rmSync(path.join(projectDir, "obj"), { force: true, recursive: true });
@@ -148,7 +149,7 @@ if (!bundleRoot) {
 
 // ─── Step 2: Copy to public/office-wasm-reader/ (Next.js static assets) ──────
 
-console.log(`▶ Step 2/3  copy bundle → ${path.relative(repoRoot, publicDir)}`);
+console.log(`▶ Step 2/5  copy bundle → ${path.relative(repoRoot, publicDir)}`);
 rmSync(publicDir, { force: true, recursive: true });
 cpSync(bundleRoot, publicDir, { recursive: true });
 stripNativeSymbolLoad(publicDir);
@@ -157,16 +158,21 @@ stripSourceMaps(publicDir);
 // ─── Step 3: Copy to packages/office/wasm/ (npm package) ─────────────────────
 
 console.log(
-  `▶ Step 3/4  copy bundle → ${path.relative(repoRoot, packageWasmDir)}`,
+  `▶ Step 3/5  copy bundle → ${path.relative(repoRoot, packageWasmDir)}`,
 );
 rmSync(packageWasmDir, { force: true, recursive: true });
 cpSync(bundleRoot, packageWasmDir, { recursive: true });
 stripNativeSymbolLoad(packageWasmDir);
 stripSourceMaps(packageWasmDir);
 
-// ─── Step 4: TypeScript compile ───────────────────────────────────────────────
+// ─── Step 4: Build office-render Cursor runtime ───────────────────────────────
 
-console.log("▶ Step 4/4  tsc");
+console.log("▶ Step 4/5  build office-render");
+run("npm", ["--prefix", "packages/office-render", "run", "build"]);
+
+// ─── Step 5: TypeScript compile ───────────────────────────────────────────────
+
+console.log("▶ Step 5/5  tsc");
 const tsconfigPath = path.join(repoRoot, "packages/office/tsconfig.json");
 rmSync(path.join(repoRoot, "packages/office/dist"), {
   force: true,

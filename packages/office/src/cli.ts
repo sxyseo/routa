@@ -31,6 +31,7 @@ type PptxPayload = Parameters<typeof renderPptxCursorCanvasSourceFromPayload>[0]
 type DocxPayload = Parameters<typeof renderDocxCursorCanvasSourceFromPayload>[0];
 type XlsxPayload = Parameters<typeof renderXlsxCursorCanvasSourceFromPayload>[0];
 type OfficeRenderOptions = {
+  includeThumbnails?: boolean;
   maxColumns?: number;
   maxRows?: number;
   mediaQuality?: number;
@@ -44,6 +45,7 @@ type CliOptions = {
   command: string;
   cursor: boolean;
   cursorProject?: string;
+  includeThumbnails?: boolean;
   inputFormat?: InputFormat;
   inputPath?: string;
   kind?: OfficeKind;
@@ -100,12 +102,15 @@ function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     command: command.name,
     cursor: false,
+    includeThumbnails: true,
     inputPath: command.inputPath,
   };
   for (let index = command.nextIndex; index < args.length; index++) {
     const arg = args[index];
     if (arg === "--cursor") {
       options.cursor = true;
+    } else if (arg === "--no-thumbnails") {
+      options.includeThumbnails = false;
     } else if (arg === "--cursor-project") {
       options.cursorProject = requiredValue(args, ++index, arg);
     } else if (arg === "--input-format" || arg === "--format") {
@@ -160,6 +165,7 @@ async function renderOutput(
   outputFormat: OutputFormat,
   kind: OfficeKind,
   options: {
+    includeThumbnails?: boolean;
     maxColumns?: number;
     maxRows?: number;
     mediaQuality?: number;
@@ -192,6 +198,7 @@ async function renderCanvasSource(
   inputFormat: InputFormat,
   kind: OfficeKind,
   options: {
+    includeThumbnails?: boolean;
     maxColumns?: number;
     maxRows?: number;
     mediaQuality?: number;
@@ -220,6 +227,7 @@ async function readCanvasPayload(
   inputFormat: InputFormat,
   kind: OfficeKind,
   options: {
+    includeThumbnails?: boolean;
     maxColumns?: number;
     maxRows?: number;
     mediaQuality?: number;
@@ -258,6 +266,7 @@ async function readProtoInput(
 
 async function buildRenderOptions(
   options: {
+    includeThumbnails?: boolean;
     maxColumns?: number;
     maxRows?: number;
     mediaQuality?: number;
@@ -270,6 +279,7 @@ async function buildRenderOptions(
     maxRows: options.maxRows,
     mediaQuality: options.mediaQuality,
     mediaWidth: options.mediaWidth,
+    includeThumbnails: options.includeThumbnails,
     readerVersion: await getReaderVersion(),
     sourceLabel: options.sourceLabel,
     title: options.sourceLabel,
@@ -426,6 +436,7 @@ Options:
       --output-format <format> Output format: canvas, proto, or json. Default: canvas.
       --media-quality <1-100> JPEG quality for embedded media. Default: 70.
       --media-width <px>      Max embedded media width. Default: 1280.
+      --no-thumbnails         Skip pre-rendered PPTX slide thumbnails.
       --max-columns <n>       Max XLSX columns to render. Default: 24.
       --max-rows <n>          Max XLSX rows to render. Default: 100.
       --name <slug>           Override the output file basename.

@@ -41,6 +41,7 @@ const port = numberArg("--port") ?? 3000;
 const baseUrl = stringArg("--base-url") ?? `http://127.0.0.1:${port}/debug/office-wasm-poc`;
 const outputDir = path.resolve(stringArg("--output-dir") ?? "/tmp/routa-office-wasm-pptx-powerpoint-render");
 const reader = readerArg("--reader") ?? "routa";
+const referenceDir = stringArg("--reference-dir");
 const changedPixelRatioTolerance = numberArg("--changed-ratio") ?? 0.42;
 const averageDeltaTolerance = numberArg("--average-delta") ?? 38;
 const fixturePaths = positionalArgs().map((arg) => path.resolve(repoRoot, arg));
@@ -90,7 +91,9 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
   rmSync(fixtureOutputDir, { force: true, recursive: true });
   mkdirSync(fixtureOutputDir, { recursive: true });
 
-  const referencePaths = await renderPowerPointLikeReference(fixturePath, path.join(fixtureOutputDir, "reference"));
+  const referencePaths = referenceDir
+    ? readReferenceSlides(referenceDir)
+    : await renderPowerPointLikeReference(fixturePath, path.join(fixtureOutputDir, "reference"));
   const viewerPaths = await renderViewerSlides(browser, fixturePath, fixtureLabel, path.join(fixtureOutputDir, "viewer"));
   const slideCount = Math.min(referencePaths.length, viewerPaths.length);
   const slides: SlideDiff[] = [];
@@ -121,6 +124,22 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
     reader,
     slides,
   };
+}
+
+function readReferenceSlides(referenceDir: string): string[] {
+  const absoluteReferenceDir = path.resolve(repoRoot, referenceDir);
+  if (!existsSync(absoluteReferenceDir)) {
+    throw new Error(`Missing reference directory: ${absoluteReferenceDir}`);
+  }
+
+  const slides = readdirSync(absoluteReferenceDir)
+    .filter((entry) => /^slide-\d+\.png$/u.test(entry))
+    .sort((left, right) => slideImageIndex(left) - slideImageIndex(right))
+    .map((entry) => path.join(absoluteReferenceDir, entry));
+  if (slides.length === 0) {
+    throw new Error(`No slide-*.png reference images found in ${absoluteReferenceDir}`);
+  }
+  return slides;
 }
 
 async function renderPowerPointLikeReference(fixturePath: string, referenceDir: string): Promise<string[]> {
@@ -358,6 +377,7 @@ function positionalArgs(): string[] {
       arg === "--changed-ratio" ||
       arg === "--output-dir" ||
       arg === "--port" ||
+      arg === "--reference-dir" ||
       arg === "--reader"
     ) {
       index++;

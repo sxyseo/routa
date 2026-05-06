@@ -1,6 +1,8 @@
 type SharpPipeline = {
   flatten(options: { background: string }): SharpPipeline;
   jpeg(options: { mozjpeg?: boolean; quality?: number }): SharpPipeline;
+  metadata(): Promise<{ hasAlpha?: boolean }>;
+  png(options?: { compressionLevel?: number }): SharpPipeline;
   resize(options: {
     fit?: "inside";
     width?: number;
