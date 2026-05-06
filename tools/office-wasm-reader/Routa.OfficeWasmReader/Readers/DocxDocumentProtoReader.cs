@@ -509,7 +509,9 @@ internal static class DocxDocumentProtoReader
                 continue;
             }
 
-            var textBoxElement = WriteTextBoxElement(drawing, context, partContainer, paragraph);
+            var textBoxElement = IsAlternateContentChoiceDrawing(drawing)
+                ? null
+                : WriteTextBoxElement(drawing, context, partContainer, paragraph);
             if (textBoxElement is not null)
             {
                 yield return textBoxElement;
@@ -572,6 +574,16 @@ internal static class DocxDocumentProtoReader
     {
         return drawing.Ancestors().Any(ancestor =>
             string.Equals(ancestor.LocalName, "Fallback", StringComparison.Ordinal) &&
+            string.Equals(
+                ancestor.NamespaceUri,
+                "http://schemas.openxmlformats.org/markup-compatibility/2006",
+                StringComparison.Ordinal));
+    }
+
+    private static bool IsAlternateContentChoiceDrawing(W.Drawing drawing)
+    {
+        return drawing.Ancestors().Any(ancestor =>
+            string.Equals(ancestor.LocalName, "Choice", StringComparison.Ordinal) &&
             string.Equals(
                 ancestor.NamespaceUri,
                 "http://schemas.openxmlformats.org/markup-compatibility/2006",

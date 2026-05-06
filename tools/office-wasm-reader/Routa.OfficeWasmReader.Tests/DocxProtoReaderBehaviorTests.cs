@@ -146,6 +146,25 @@ public class DocxProtoReaderBehaviorTests
         });
     }
 
+    private static byte[] AlternateContentTextBoxDocx()
+    {
+        return BuildDocx((_, body) =>
+        {
+            var run = new Run();
+            run.InnerXml = $"""
+<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <mc:Choice Requires="wps">
+    {TextBoxDrawingXml()}
+  </mc:Choice>
+  <mc:Fallback>
+    <w:pict xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>
+  </mc:Fallback>
+</mc:AlternateContent>
+""";
+            body.AppendChild(new Paragraph(run));
+        });
+    }
+
     private static string TextBoxDrawingXml()
     {
         return """
@@ -458,6 +477,14 @@ public class DocxProtoReaderBehaviorTests
         var result = DocxDocumentProtoReader.Read(TextBoxDocx());
 
         Assert.Contains("Box text", Encoding.UTF8.GetString(result));
+    }
+
+    [Fact]
+    public void Read_AlternateContentTextBox_SkipsChoiceTextBoxContent()
+    {
+        var result = DocxDocumentProtoReader.Read(AlternateContentTextBoxDocx());
+
+        Assert.DoesNotContain("Box text", Encoding.UTF8.GetString(result));
     }
 
     [Fact]
