@@ -75,6 +75,7 @@
     "compare:office-wasm-reader:xlsx": "node --import tsx scripts/office-wasm-reader/compare-walnut-xlsx-protocol.ts",
     "compare:office-wasm-reader:xlsx-render": "node --import tsx scripts/office-wasm-reader/compare-walnut-xlsx-render-contract.ts",
     "compare:office-wasm-reader:xlsx-viewer": "node --import tsx scripts/office-wasm-reader/compare-walnut-xlsx-viewer-screenshots.ts",
+    "scan:office-wasm-reader:xlsx": "node --import tsx scripts/office-wasm-reader/scan-xlsx-protocol-corpus.ts",
     "test:office-wasm-reader:docx-parity": "node --import tsx scripts/office-wasm-reader/compare-walnut-docx-protocol.ts --assert tools/office-wasm-reader/fixtures/dll_viewer_solution_test_document.docx tools/office-wasm-reader/fixtures/docx_advanced_contract.docx tools/office-wasm-reader/fixtures/docx_style_section_contract.docx tools/office-wasm-reader/fixtures/docx_table_style_contract.docx tools/office-wasm-reader/fixtures/docx_anchor_layout_contract.docx",
     "test:office-wasm-reader:pptx-parity": "node --import tsx scripts/office-wasm-reader/compare-walnut-pptx-protocol.ts --assert tools/office-wasm-reader/fixtures/agentic_ui_proactive_agent_technical_blueprint.pptx tools/office-wasm-reader/fixtures/pptx_table_contract.pptx tools/office-wasm-reader/fixtures/pptx_group_connector_contract.pptx",
     "test:office-wasm-reader:pptx-render": "node --import tsx scripts/office-wasm-reader/compare-walnut-pptx-render-contract.ts --assert --start-server --port 3218 tools/office-wasm-reader/fixtures/agentic_ui_proactive_agent_technical_blueprint.pptx",
