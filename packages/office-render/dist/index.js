@@ -1,15 +1,15 @@
 // src/word/word-preview.tsx
-import { measureRichInlineStats, prepareRichInline } from "@chenglou/pretext/rich-inline";
 import { useEffect, useRef } from "react";
 
-// src/shared/office-preview-utils.ts
-import { useMemo } from "react";
+// src/shared/office-types.ts
 var EXCEL_MAX_COLUMN_COUNT = 16384;
 var EXCEL_MAX_ROW_COUNT = 1048576;
 var EMPTY_OFFICE_TEXT_STYLE_MAPS = {
   textStyles: /* @__PURE__ */ new Map(),
   images: /* @__PURE__ */ new Map()
 };
+
+// src/shared/office-data-coerce.ts
 function asRecord(value) {
   return typeof value === "object" && value !== null ? value : null;
 }
@@ -48,6 +48,8 @@ function inferImageContentType(id) {
   if (extension === "svg") return "image/svg+xml";
   return "application/octet-stream";
 }
+
+// src/shared/office-color-utils.ts
 function hexToRgb(value) {
   const normalized = /^[0-9a-f]{8}$/i.test(value) ? value.slice(2) : value;
   if (!/^[0-9a-f]{6}$/i.test(normalized)) return null;
@@ -100,19 +102,8 @@ function slideBackgroundToCss(slide) {
   const fill = asRecord(background?.fill);
   return fillToCss(fill) ?? "#ffffff";
 }
-function imageReferenceId(value) {
-  const record = asRecord(value);
-  return asString(record?.id);
-}
-function elementImageReferenceId(element) {
-  const direct = imageReferenceId(element.imageReference);
-  if (direct) return direct;
-  const fill = asRecord(element.fill);
-  const fillImage = imageReferenceId(fill?.imageReference);
-  if (fillImage) return fillImage;
-  const shapeFill = asRecord(asRecord(element.shape)?.fill);
-  return imageReferenceId(shapeFill?.imageReference);
-}
+
+// src/shared/office-text-styles.ts
 function paragraphText(paragraph) {
   const runs = asArray(asRecord(paragraph)?.runs);
   return runs.map((run) => asString(asRecord(run)?.text)).join("");
@@ -391,6 +382,21 @@ function collectTextBlocks(value, limit = 80) {
   visit(value);
   return blocks;
 }
+function resolveStyleRecord(record, keys) {
+  for (const key of keys) {
+    const candidate = asRecord(record?.[key]);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+function cssFontSize(value, fallbackPx) {
+  const raw = asNumber(value);
+  if (raw <= 0) return fallbackPx;
+  if (raw > 200) return Math.max(8, Math.min(72, raw / 100));
+  return Math.max(8, Math.min(72, raw));
+}
+
+// src/shared/office-spreadsheet-utils.ts
 function columnIndexFromAddress(address) {
   const match = normalizedCellReference(address).match(/^\$?([A-Z]+)/i);
   if (!match) return 0;
@@ -450,19 +456,6 @@ function columnLabel(index) {
     value = Math.floor((value - 1) / 26);
   }
   return label;
-}
-function resolveStyleRecord(record, keys) {
-  for (const key of keys) {
-    const candidate = asRecord(record?.[key]);
-    if (candidate) return candidate;
-  }
-  return null;
-}
-function cssFontSize(value, fallbackPx) {
-  const raw = asNumber(value);
-  if (raw <= 0) return fallbackPx;
-  if (raw > 200) return Math.max(8, Math.min(72, raw / 100));
-  return Math.max(8, Math.min(72, raw));
 }
 function cellText(cell) {
   const record = asRecord(cell);
@@ -525,6 +518,22 @@ function styleAt(values, index) {
   const styleIndex = asNumber(index, -1);
   if (styleIndex < 0) return null;
   return asRecord(asArray(values)[styleIndex]);
+}
+
+// src/shared/office-image-utils.ts
+import { useMemo } from "react";
+function imageReferenceId(value) {
+  const record = asRecord(value);
+  return asString(record?.id);
+}
+function elementImageReferenceId(element) {
+  const direct = imageReferenceId(element.imageReference);
+  if (direct) return direct;
+  const fill = asRecord(element.fill);
+  const fillImage = imageReferenceId(fill?.imageReference);
+  if (fillImage) return fillImage;
+  const shapeFill = asRecord(asRecord(element.shape)?.fill);
+  return imageReferenceId(shapeFill?.imageReference);
 }
 function useOfficeImageSources(root) {
   const imageRecords = useMemo(() => {
@@ -900,7 +909,7 @@ function formatChartTick(value) {
   return value.toFixed(1).replace(/\.0$/u, "");
 }
 
-// src/word/word-preview-layout.ts
+// src/word/word-layout.ts
 var WORD_PREVIEW_CONTENT_WIDTH_PX = 720;
 function wordImageStyle(element, imageSrc, pageLayout) {
   const contentWidth = pageLayout ? wordPageContentWidthPx(pageLayout) : WORD_PREVIEW_CONTENT_WIDTH_PX;
@@ -1378,7 +1387,7 @@ function hexCssToRgb(value) {
   return [Number.parseInt(hex.slice(0, 2), 16), Number.parseInt(hex.slice(2, 4), 16), Number.parseInt(hex.slice(4, 6), 16)];
 }
 
-// src/word/word-preview-crop-marks.tsx
+// src/word/word-crop-marks.tsx
 import { Fragment, jsx } from "react/jsx-runtime";
 function WordPageCropMarks({ pageLayout }) {
   return /* @__PURE__ */ jsx(Fragment, { children: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => /* @__PURE__ */ jsx(
@@ -1413,7 +1422,149 @@ function wordPageCropMarkStyle(corner, pageLayout) {
   return style;
 }
 
-// src/word/word-preview-numbering.ts
+// src/word/word-numbering.ts
+function wordNumberingMarkers(elements, root, styleMaps) {
+  const numberingByParagraphId = /* @__PURE__ */ new Map();
+  for (const numbering of asArray(root?.paragraphNumberings)) {
+    const record = asRecord(numbering);
+    const paragraphId = asString(record?.paragraphId);
+    const numId = asString(record?.numId);
+    if (!paragraphId || !numId) continue;
+    numberingByParagraphId.set(paragraphId, {
+      level: Math.max(0, Math.floor(asNumber(record?.level))),
+      numId
+    });
+  }
+  const numberingDefinitions = wordNumberingDefinitionLevels(root);
+  const counters = /* @__PURE__ */ new Map();
+  const markers = /* @__PURE__ */ new Map();
+  for (const paragraph of wordParagraphRecords(elements)) {
+    const view = paragraphView(paragraph, styleMaps);
+    const numbering = numberingByParagraphId.get(view.id);
+    if (!numbering) continue;
+    resetDeeperNumberingLevels(counters, numbering.numId, numbering.level);
+    const counterKey = `${numbering.numId}:${numbering.level}`;
+    const definition = numberingDefinitions.get(counterKey);
+    const current = counters.has(counterKey) ? (counters.get(counterKey) ?? 0) + 1 : Math.max(1, Math.floor(asNumber(view.style?.autoNumberStartAt, asNumber(definition?.startAt, 1))));
+    counters.set(counterKey, current);
+    const marker = wordNumberingMarkerForDefinition(asString(view.style?.autoNumberType), definition, current);
+    if (marker) markers.set(view.id, marker);
+  }
+  return markers;
+}
+function wordNumberingDefinitionLevels(root) {
+  const levelsByKey = /* @__PURE__ */ new Map();
+  for (const definition of asArray(root?.numberingDefinitions).map(asRecord)) {
+    const numId = asString(definition?.numId);
+    if (!numId) continue;
+    for (const level of asArray(definition?.levels).map(asRecord)) {
+      const levelIndex = Math.max(0, Math.floor(asNumber(level?.level)));
+      levelsByKey.set(`${numId}:${levelIndex}`, {
+        levelText: asString(level?.levelText),
+        numberFormat: asString(level?.numberFormat),
+        startAt: Math.max(1, Math.floor(asNumber(level?.startAt, 1)))
+      });
+    }
+  }
+  return levelsByKey;
+}
+function wordParagraphRecords(elements) {
+  const paragraphs = [];
+  for (const element of elements) {
+    const record = asRecord(element);
+    if (!record) continue;
+    paragraphs.push(...asArray(record.paragraphs));
+    const table = asRecord(record.table);
+    for (const row of asArray(table?.rows)) {
+      const rowRecord = asRecord(row);
+      for (const cell of asArray(rowRecord?.cells)) {
+        paragraphs.push(...asArray(asRecord(cell)?.paragraphs));
+      }
+    }
+  }
+  return paragraphs;
+}
+function resetDeeperNumberingLevels(counters, numId, level) {
+  const prefix = `${numId}:`;
+  for (const key of Array.from(counters.keys())) {
+    if (!key.startsWith(prefix)) continue;
+    const keyLevel = Number.parseInt(key.slice(prefix.length), 10);
+    if (keyLevel > level) counters.delete(key);
+  }
+}
+function wordNumberingMarker(type, value) {
+  const alphaLc = alphabeticMarker(value, false);
+  const alphaUc = alphabeticMarker(value, true);
+  const romanUc = romanMarker(value);
+  const romanLc = romanUc.toLowerCase();
+  return {
+    alphaLcParenR: `${alphaLc})`,
+    alphaLcPeriod: `${alphaLc}.`,
+    alphaUcParenR: `${alphaUc})`,
+    alphaUcPeriod: `${alphaUc}.`,
+    arabicParenR: `${value})`,
+    arabicPeriod: `${value}.`,
+    romanLcParenR: `${romanLc})`,
+    romanLcPeriod: `${romanLc}.`,
+    romanUcParenR: `${romanUc})`,
+    romanUcPeriod: `${romanUc}.`
+  }[type] ?? "";
+}
+function wordNumberingMarkerForDefinition(autoNumberType, definition, value) {
+  if (autoNumberType) return wordNumberingMarker(autoNumberType, value);
+  if (!definition) return "";
+  const format = definition.numberFormat;
+  const levelText = definition.levelText;
+  if (format === "bullet") return wordBulletMarker(levelText);
+  const markerValue = wordNumberingMarker(wordNumberingFormatAutoType(format), value);
+  if (!markerValue) return "";
+  if (!levelText.includes("%")) return markerValue;
+  return levelText.replace(/%\d+/g, markerValue.replace(/[.)]$/u, ""));
+}
+function wordNumberingFormatAutoType(format) {
+  return {
+    decimal: "arabicPeriod",
+    lowerLetter: "alphaLcPeriod",
+    lowerRoman: "romanLcPeriod",
+    upperLetter: "alphaUcPeriod",
+    upperRoman: "romanUcPeriod"
+  }[format] ?? "";
+}
+function alphabeticMarker(value, uppercase) {
+  let remaining = Math.max(1, value);
+  let marker = "";
+  while (remaining > 0) {
+    remaining -= 1;
+    marker = String.fromCharCode(97 + remaining % 26) + marker;
+    remaining = Math.floor(remaining / 26);
+  }
+  return uppercase ? marker.toUpperCase() : marker;
+}
+function romanMarker(value) {
+  let remaining = Math.max(1, Math.min(3999, value));
+  let marker = "";
+  for (const [symbol, amount] of [
+    ["M", 1e3],
+    ["CM", 900],
+    ["D", 500],
+    ["CD", 400],
+    ["C", 100],
+    ["XC", 90],
+    ["L", 50],
+    ["XL", 40],
+    ["X", 10],
+    ["IX", 9],
+    ["V", 5],
+    ["IV", 4],
+    ["I", 1]
+  ]) {
+    while (remaining >= amount) {
+      marker += symbol;
+      remaining -= amount;
+    }
+  }
+  return marker;
+}
 function wordBulletMarker(levelText) {
   return {
     "\uF0A7": "\u25AA",
@@ -1423,7 +1574,7 @@ function wordBulletMarker(levelText) {
   }[levelText] ?? (levelText || "\u2022");
 }
 
-// src/word/word-preview-paragraph-utils.ts
+// src/word/word-paragraph-utils.ts
 function wordParagraphHasVisibleContent(paragraph) {
   return Boolean(paragraph.marker) || paragraph.runs.some((run) => run.text.trim() !== "" || (run.referenceMarkers?.length ?? 0) > 0);
 }
@@ -1453,7 +1604,10 @@ function wordEmptyParagraphStyle(style) {
   };
 }
 
-// src/word/word-preview-table-pagination.ts
+// src/word/word-pagination.ts
+import { measureRichInlineStats, prepareRichInline } from "@chenglou/pretext/rich-inline";
+
+// src/word/word-table-pagination.ts
 function wordSplitOversizedTableElements(elements, capacity, context) {
   return elements.flatMap((element) => wordSplitOversizedTableElement(element, capacity, context));
 }
@@ -1516,7 +1670,7 @@ function emuToPx2(value) {
 }
 var WORD_ESTIMATED_TABLE_ROW_HEIGHT = 20;
 
-// src/word/word-preview-text-box.tsx
+// src/word/word-text-box.tsx
 import { jsx as jsx2 } from "react/jsx-runtime";
 function WordPositionedTextBox({
   children,
@@ -1530,180 +1684,9 @@ function wordIsPositionedTextBoxElement(element) {
   return asNumber(bbox?.widthEmu) > 0 && asNumber(bbox?.heightEmu) > 0 && asArray(element.paragraphs).length > 0 && !elementImageReferenceId(element) && asRecord(element.chartReference) == null && asRecord(element.table) == null;
 }
 
-// src/word/word-preview.tsx
-import { Fragment as Fragment2, jsx as jsx3, jsxs } from "react/jsx-runtime";
-function WordPreview({ labels, proto }) {
-  const root = asRecord(proto);
-  const elements = asArray(root?.elements);
-  const charts = asArray(root?.charts).map(asRecord).filter((chart) => chart != null);
-  const imageSources = useOfficeImageSources(root);
-  const textStyles = /* @__PURE__ */ new Map();
-  for (const style of asArray(root?.textStyles)) {
-    const record = asRecord(style);
-    const id = asString(record?.id);
-    if (record && id) textStyles.set(id, record);
-  }
-  const styleMaps = { textStyles, images: imageSources };
-  const pages = wordPreviewPages(root, elements, styleMaps);
-  const numberingMarkers = wordNumberingMarkers(elements, root, styleMaps);
-  const referenceMarkers = wordReferenceMarkers(root);
-  const reviewMarkTypes = wordReviewMarkTypes(root);
-  const hasRenderableBlocks = pages.flatMap((page) => [...page.headerElements, ...page.elements, ...page.footerElements]).some((element) => {
-    const record = asRecord(element);
-    return record != null && (asArray(record.paragraphs).length > 0 || asRecord(record.table) != null || asRecord(record.chartReference) != null || elementImageReferenceId(record) !== "");
-  });
-  if (!hasRenderableBlocks) {
-    const blocks = collectTextBlocks(elements.length > 0 ? elements : proto, 120);
-    if (blocks.length === 0) {
-      return /* @__PURE__ */ jsx3("p", { style: { color: "#64748b" }, children: labels.noDocumentBlocks });
-    }
-    return /* @__PURE__ */ jsx3("div", { "data-testid": "document-preview", style: { display: "grid", gap: 10 }, children: blocks.map((block, index) => /* @__PURE__ */ jsx3("p", { style: documentFallbackBlockStyle, children: block }, `${block.slice(0, 24)}-${index}`)) });
-  }
-  const renderedPages = pages.map((page, index) => /* @__PURE__ */ jsx3(
-    WordDocumentPage,
-    {
-      charts,
-      elements: page.elements,
-      footerElements: page.footerElements,
-      headerElements: page.headerElements,
-      numberingMarkers,
-      pageNumber: index + 1,
-      pageLayout: wordPageLayout(page.root),
-      pageRoot: page.root,
-      referenceMarkers,
-      reviewMarkTypes,
-      supplementalRoot: index === pages.length - 1 ? root : null,
-      styleMaps
-    },
-    page.id || index
-  ));
-  return pages.length > 1 ? /* @__PURE__ */ jsx3("div", { style: wordDocumentStackStyle, children: renderedPages }) : renderedPages[0];
-}
-function WordDocumentPage({
-  charts,
-  elements,
-  footerElements,
-  headerElements,
-  numberingMarkers,
-  pageNumber,
-  pageLayout,
-  pageRoot,
-  referenceMarkers,
-  reviewMarkTypes,
-  supplementalRoot,
-  styleMaps
-}) {
-  return /* @__PURE__ */ jsxs(
-    "article",
-    {
-      "data-testid": "document-preview",
-      style: {
-        ...wordDocumentPageStyleFromLayout(pageLayout),
-        ...wordDocumentPageCssVars(pageLayout),
-        background: "#ffffff",
-        borderColor: "#d8e0ea",
-        borderRadius: 8,
-        borderStyle: "solid",
-        borderWidth: 1,
-        boxSizing: "border-box",
-        boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
-        color: "#0f172a",
-        display: "grid",
-        gap: 6,
-        gridTemplateColumns: "minmax(0, 1fr)",
-        gridTemplateRows: "auto minmax(0, 1fr) auto auto",
-        isolation: "isolate",
-        margin: "0 auto",
-        maxWidth: "100%",
-        minWidth: 0,
-        overflow: "hidden",
-        position: "relative"
-      },
-      children: [
-        /* @__PURE__ */ jsx3(WordPageCropMarks, { pageLayout }),
-        /* @__PURE__ */ jsx3(
-          WordSectionContent,
-          {
-            charts,
-            elements: headerElements,
-            numberingMarkers,
-            pageNumber,
-            referenceMarkers,
-            reviewMarkTypes,
-            pageLayout,
-            styleMaps,
-            variant: "header"
-          }
-        ),
-        /* @__PURE__ */ jsx3("section", { "data-testid": "word-body-content", style: wordBodyContentStyle(pageRoot), children: elements.map((element, index) => /* @__PURE__ */ jsx3(
-          WordElement,
-          {
-            charts,
-            element: asRecord(element) ?? {},
-            numberingMarkers,
-            pageLayout,
-            referenceMarkers,
-            reviewMarkTypes,
-            styleMaps
-          },
-          `${asString(asRecord(element)?.id)}-${index}`
-        )) }),
-        /* @__PURE__ */ jsx3(
-          WordSupplementalNotes,
-          {
-            numberingMarkers,
-            referenceMarkers,
-            reviewMarkTypes,
-            root: supplementalRoot,
-            styleMaps
-          }
-        ),
-        /* @__PURE__ */ jsx3(
-          WordSectionContent,
-          {
-            charts,
-            elements: footerElements,
-            numberingMarkers,
-            pageNumber,
-            referenceMarkers,
-            reviewMarkTypes,
-            pageLayout,
-            styleMaps,
-            variant: "footer"
-          }
-        )
-      ]
-    }
-  );
-}
-function WordSectionContent({
-  charts,
-  elements,
-  numberingMarkers,
-  pageNumber,
-  pageLayout,
-  referenceMarkers,
-  reviewMarkTypes,
-  styleMaps,
-  variant
-}) {
-  if (!wordElementsHaveRenderableContent(elements)) return null;
-  const computedPageNumber = variant === "footer" && pageNumber > 1 && wordFooterNeedsComputedPageNumber(elements) ? String(pageNumber) : void 0;
-  return /* @__PURE__ */ jsx3("section", { style: variant === "header" ? wordHeaderContentStyle : wordFooterContentStyle, children: elements.map((element, index) => /* @__PURE__ */ jsx3(
-    WordElement,
-    {
-      charts,
-      element: asRecord(element) ?? {},
-      numberingMarkers,
-      pageLayout,
-      referenceMarkers,
-      reviewMarkTypes,
-      styleMaps,
-      trailingText: computedPageNumber && index === elements.length - 1 ? computedPageNumber : void 0
-    },
-    `${variant}-${asString(asRecord(element)?.id)}-${index}`
-  )) });
-}
+// src/word/word-pagination.ts
+var WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX = 28;
+var WORD_PRETEXT_WORD_LAYOUT_COMPENSATION = 1.06;
 function wordPreviewPages(root, rootElements, styleMaps) {
   const sections = asArray(root?.sections).map(asRecord).filter((section) => section != null);
   const inheritedSectionContent = { footer: [], header: [] };
@@ -1964,7 +1947,8 @@ function wordParagraphEstimatedHeight(paragraph, styleMaps, pageLayout) {
   const textLength = Math.max(1, view.runs.reduce((total, run) => total + run.text.length, 0));
   const isTitle = view.styleId === "Title";
   const isHeading = /^Heading/i.test(view.styleId);
-  const fontSize = wordParagraphFontSize(view, style, isTitle, isHeading);
+  const isTableOfContents = view.runs.map((run) => run.text).join("").trim().toLowerCase() === "table of contents";
+  const fontSize = isTableOfContents ? wordCssFontSize(style?.fontSize, 30) : wordCssFontSize(style?.fontSize, isTitle ? 26 : isHeading ? 18 : 14);
   const lineHeight = wordEstimatedLineHeight(style, fontSize);
   const contentWidth = Math.max(120, pageLayout.widthPx - pageLayout.paddingLeft - pageLayout.paddingRight);
   const averageCharWidth = Math.max(4, fontSize * 0.5);
@@ -2047,140 +2031,29 @@ function wordCssFontSize(value, fallbackPx) {
   if (raw > 200) return Math.max(8, Math.min(72, raw / 100 * (4 / 3)));
   return cssFontSize(value, fallbackPx);
 }
-function WordElement({
-  charts,
-  element,
-  numberingMarkers,
-  pageLayout,
-  referenceMarkers,
-  reviewMarkTypes,
-  styleMaps,
-  trailingText
-}) {
-  const table = asRecord(element.table);
-  if (table) {
-    return /* @__PURE__ */ jsx3(
-      WordTable,
-      {
-        element,
-        numberingMarkers,
-        pageLayout,
-        referenceMarkers,
-        reviewMarkTypes,
-        table,
-        styleMaps
-      }
-    );
+function wordSectionContentElements(root, key) {
+  const directContent = asRecord(root?.[key]);
+  const directElements = asArray(directContent?.elements);
+  if (directElements.length > 0) return directElements;
+  for (const section of asArray(root?.sections).map(asRecord)) {
+    const content = asRecord(section?.[key]);
+    const elements = asArray(content?.elements);
+    if (elements.length > 0) return elements;
   }
-  const imageId = elementImageReferenceId(element);
-  const imageSrc = imageId ? styleMaps.images.get(imageId) : void 0;
-  if (imageSrc) {
-    return /* @__PURE__ */ jsx3(
-      "span",
-      {
-        "aria-label": asString(element.name),
-        role: "img",
-        style: wordImageStyle(element, imageSrc, pageLayout)
-      }
-    );
-  }
-  const chart = presentationChartById(charts, presentationChartReferenceId(element.chartReference));
-  if (chart) return /* @__PURE__ */ jsx3(WordChart, { chart, element, pageLayout });
-  if (wordIsPositionedShapeElement(element)) {
-    return /* @__PURE__ */ jsx3("span", { "aria-hidden": "true", "data-testid": "word-positioned-shape", style: wordPositionedShapeStyle(element, pageLayout) });
-  }
-  const paragraphs = asArray(element.paragraphs).map(
-    (paragraph) => wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes)
-  );
-  if (paragraphs.length === 0) return null;
-  const paragraphElements = /* @__PURE__ */ jsx3(Fragment2, { children: paragraphs.map((paragraph, index) => /* @__PURE__ */ jsx3(
-    WordParagraph,
-    {
-      paragraph,
-      trailingText: trailingText && index === paragraphs.length - 1 ? trailingText : void 0
-    },
-    paragraph.id || index
-  )) });
-  if (wordIsPositionedTextBoxElement(element)) {
-    return /* @__PURE__ */ jsx3(WordPositionedTextBox, { element, pageLayout, children: paragraphElements });
-  }
-  return paragraphElements;
+  return [];
 }
 function wordIsPositionedShapeElement(element) {
   const bbox = asRecord(element.bbox);
   return asNumber(bbox?.widthEmu) > 0 && asNumber(bbox?.heightEmu) > 0 && asArray(element.paragraphs).length === 0 && !elementImageReferenceId(element) && asRecord(element.chartReference) == null && asRecord(element.table) == null && (asRecord(element.fill) != null || asRecord(element.line) != null);
 }
-function WordChart({ chart, element, pageLayout }) {
-  const canvasRef = useRef(null);
-  const contentWidth = wordPageContentWidthPx(pageLayout, 560);
-  const box = wordElementBox(element, Math.min(560, contentWidth), 300, contentWidth);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
-    canvas.width = Math.max(1, Math.round(box.width * pixelRatio));
-    canvas.height = Math.max(1, Math.round(box.height * pixelRatio));
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    context.clearRect(0, 0, box.width, box.height);
-    drawPresentationChart(
-      context,
-      chart,
-      { height: box.height, left: 0, top: 0, width: box.width },
-      Math.max(0.7, Math.min(1.2, box.width / 560))
-    );
-  }, [box.height, box.width, chart]);
-  return /* @__PURE__ */ jsx3(
-    "canvas",
-    {
-      "aria-label": asString(chart.title) || "Chart",
-      ref: canvasRef,
-      role: "img",
-      style: wordChartStyle(element, pageLayout)
-    }
-  );
-}
-function WordParagraph({
-  fallbackColor,
-  paragraph,
-  trailingText,
-  variant = "body"
-}) {
-  const style = variant === "table" ? wordTableParagraphStyle(paragraph) : wordParagraphStyle(paragraph);
-  if (fallbackColor && asRecord(paragraph.style?.fill)?.color == null) {
-    style.color = fallbackColor;
-  }
-  if (!trailingText && !wordParagraphHasVisibleContent(paragraph)) {
-    return /* @__PURE__ */ jsx3("p", { "aria-hidden": "true", style: wordEmptyParagraphStyle(style) });
-  }
-  if (wordParagraphUsesLeaderTab(paragraph, trailingText)) {
-    return /* @__PURE__ */ jsx3(WordTabbedParagraph, { paragraph, style, trailingText });
-  }
-  const inheritRunFont = wordIsTableOfContentsTitle(paragraph);
-  return /* @__PURE__ */ jsxs("p", { style, children: [
-    paragraph.marker ? /* @__PURE__ */ jsx3("span", { "aria-hidden": "true", style: wordParagraphMarkerStyle(paragraph.marker), children: paragraph.marker }) : null,
-    paragraph.runs.map((run, index) => /* @__PURE__ */ jsx3(WordRun, { inheritFont: inheritRunFont, run }, run.id || index)),
-    trailingText ? /* @__PURE__ */ jsx3("span", { style: wordComputedPageNumberStyle, children: trailingText }) : null
-  ] });
-}
-function WordTabbedParagraph({
-  paragraph,
-  style,
-  trailingText
-}) {
-  const { leftRuns, rightRuns } = wordSplitParagraphRunsAtLastTab(paragraph.runs);
-  return /* @__PURE__ */ jsxs("p", { style: { ...style, alignItems: "baseline", display: "flex", gap: 8, whiteSpace: "nowrap" }, children: [
-    /* @__PURE__ */ jsxs("span", { style: { minWidth: 0, overflow: "hidden", textOverflow: "clip" }, children: [
-      paragraph.marker ? /* @__PURE__ */ jsx3("span", { "aria-hidden": "true", style: wordParagraphMarkerStyle(paragraph.marker), children: paragraph.marker }) : null,
-      leftRuns.map((run, index) => /* @__PURE__ */ jsx3(WordRun, { run }, `${run.id || index}-left-${index}`))
-    ] }),
-    /* @__PURE__ */ jsx3("span", { "aria-hidden": "true", style: wordTabLeaderStyle }),
-    /* @__PURE__ */ jsxs("span", { style: { flex: "0 0 auto", textAlign: "right" }, children: [
-      rightRuns.map((run, index) => /* @__PURE__ */ jsx3(WordRun, { run }, `${run.id || index}-right-${index}`)),
-      trailingText ? /* @__PURE__ */ jsx3("span", { style: wordComputedPageNumberStyle, children: trailingText }) : null
-    ] })
-  ] });
+
+// src/word/word-run-renderer.tsx
+import { Fragment as Fragment2, jsx as jsx3, jsxs } from "react/jsx-runtime";
+function wordHyperlinkHref(hyperlink) {
+  const record = asRecord(hyperlink);
+  const uri = asString(record?.uri);
+  const action = asString(record?.action);
+  return uri || action;
 }
 function WordRun({ inheritFont = false, run }) {
   const href = wordHyperlinkHref(run.hyperlink);
@@ -2234,150 +2107,6 @@ function wordSplitParagraphRunsAtLastTab(runs) {
     }
   }
   return { leftRuns, rightRuns };
-}
-function wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes) {
-  const view = paragraphView(paragraph, styleMaps);
-  const marker = numberingMarkers.get(view.id) || asString(view.style?.bulletCharacter);
-  const runs = view.runs.map((run) => ({
-    ...run,
-    referenceMarkers: referenceMarkers.get(run.id) ?? [],
-    reviewMarkTypes: (run.reviewMarkIds ?? []).map((id) => reviewMarkTypes.get(id) ?? 0).filter((type) => type > 0)
-  }));
-  return marker ? { ...view, marker, runs } : { ...view, runs };
-}
-function WordTable({
-  element,
-  numberingMarkers,
-  pageLayout,
-  referenceMarkers,
-  reviewMarkTypes,
-  styleMaps,
-  table
-}) {
-  const rows = asArray(table.rows).map(asRecord).filter((row) => row != null);
-  if (rows.length === 0) return null;
-  const columnWidths = asArray(table.columnWidths).map((width) => asNumber(width)).filter((width) => width > 0);
-  const columnWidthTotal = columnWidths.reduce((total, width) => total + width, 0);
-  return /* @__PURE__ */ jsx3("div", { style: wordTableContainerStyle(element, pageLayout), children: /* @__PURE__ */ jsxs("table", { style: wordTableStyle(columnWidths.length > 0), children: [
-    columnWidths.length > 0 ? /* @__PURE__ */ jsx3("colgroup", { children: columnWidths.map((width, index) => /* @__PURE__ */ jsx3("col", { style: { width: `${width / columnWidthTotal * 100}%` } }, `${width}-${index}`)) }) : null,
-    /* @__PURE__ */ jsx3("tbody", { children: rows.map((row, rowIndex) => /* @__PURE__ */ jsx3("tr", { style: wordTableRowStyle(row), children: asArray(row.cells).map((cell, cellIndex) => {
-      const cellRecord = asRecord(cell) ?? {};
-      const paragraphs = asArray(cellRecord.paragraphs).map(
-        (paragraph) => wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes)
-      );
-      const background = wordFillToCss(cellRecord.fill) ?? (rowIndex === 0 ? "#f8fafc" : "#ffffff");
-      const fallbackTextColor = readableTextColor(background);
-      const gridSpan = Math.max(1, Math.floor(asNumber(cellRecord.gridSpan, 1)));
-      const rowSpan = Math.max(1, Math.floor(asNumber(cellRecord.rowSpan, 1)));
-      return /* @__PURE__ */ jsx3(
-        "td",
-        {
-          colSpan: gridSpan > 1 ? gridSpan : void 0,
-          rowSpan: rowSpan > 1 ? rowSpan : void 0,
-          style: wordTableCellStyle(cellRecord, background, fallbackTextColor),
-          children: paragraphs.length > 0 ? paragraphs.map((paragraph, index) => /* @__PURE__ */ jsx3(
-            WordParagraph,
-            {
-              fallbackColor: fallbackTextColor,
-              paragraph,
-              variant: "table"
-            },
-            paragraph.id || index
-          )) : asString(cellRecord.text)
-        },
-        asString(cellRecord.id) || cellIndex
-      );
-    }) }, asString(row.id) || rowIndex)) })
-  ] }) });
-}
-function WordSupplementalNotes({
-  numberingMarkers,
-  referenceMarkers,
-  reviewMarkTypes,
-  root,
-  styleMaps
-}) {
-  const items = wordSupplementalNoteItems(root, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes);
-  if (items.length === 0) return null;
-  return /* @__PURE__ */ jsx3("section", { style: wordSupplementalNotesStyle, children: items.map((item) => /* @__PURE__ */ jsxs("div", { style: wordSupplementalNoteStyle, children: [
-    item.meta ? /* @__PURE__ */ jsx3("div", { style: wordSupplementalNoteMetaStyle, children: item.meta }) : null,
-    item.paragraphs.map((paragraph, index) => /* @__PURE__ */ jsx3(WordParagraph, { paragraph }, paragraph.id || `${item.id}-${index}`))
-  ] }, item.id)) });
-}
-function wordSupplementalNoteItems(root, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes) {
-  const items = [];
-  for (const [index, footnote2] of asArray(root?.footnotes).map(asRecord).entries()) {
-    if (!footnote2) continue;
-    const paragraphs = wordSupplementalParagraphs(
-      footnote2,
-      String(index + 1),
-      styleMaps,
-      numberingMarkers,
-      referenceMarkers,
-      reviewMarkTypes
-    );
-    if (paragraphs.length > 0) {
-      items.push({ id: `footnote-${asString(footnote2.id) || index}`, paragraphs });
-    }
-  }
-  for (const [index, comment] of asArray(root?.comments).map(asRecord).entries()) {
-    if (!comment) continue;
-    const paragraphs = wordSupplementalParagraphs(
-      comment,
-      `C${index + 1}`,
-      styleMaps,
-      numberingMarkers,
-      referenceMarkers,
-      reviewMarkTypes
-    );
-    if (paragraphs.length > 0) {
-      items.push({
-        id: `comment-${asString(comment.id) || index}`,
-        meta: wordCommentMeta(comment),
-        paragraphs
-      });
-    }
-  }
-  return items;
-}
-function wordCommentMeta(comment) {
-  const author = asString(comment.author);
-  const initials = asString(comment.initials);
-  const createdAt = asString(comment.createdAt || comment.date);
-  const parts = [author, initials ? `(${initials})` : "", createdAt].map((part) => part.trim()).filter(Boolean);
-  return parts.length > 0 ? parts.join(" ") : void 0;
-}
-function wordSectionContentElements(root, key) {
-  const directContent = asRecord(root?.[key]);
-  const directElements = asArray(directContent?.elements);
-  if (directElements.length > 0) return directElements;
-  for (const section of asArray(root?.sections).map(asRecord)) {
-    const content = asRecord(section?.[key]);
-    const elements = asArray(content?.elements);
-    if (elements.length > 0) return elements;
-  }
-  return [];
-}
-function wordFooterNeedsComputedPageNumber(elements) {
-  const text = elements.map(wordElementVisibleText).join("").trimEnd();
-  return /\|\s*$/u.test(text);
-}
-function wordElementVisibleText(element) {
-  const record = asRecord(element);
-  if (!record) return "";
-  return asArray(record.paragraphs).map((paragraph) => asArray(asRecord(paragraph)?.runs).map((run) => asString(asRecord(run)?.text)).join("")).join("");
-}
-function wordSupplementalParagraphs(record, marker, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes) {
-  return asArray(record.paragraphs).map((paragraph, index) => {
-    const view = wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes);
-    return index === 0 ? { ...view, marker } : view;
-  });
-}
-function wordHyperlinkHref(hyperlink) {
-  const record = asRecord(hyperlink);
-  const uri = asString(record?.uri);
-  const action = asString(record?.action);
-  return uri || action;
 }
 function wordRunStyle(run, hyperlink, inheritFont = false) {
   const style = {
@@ -2441,149 +2170,61 @@ function addReferenceMarker(markers, runId, marker) {
     markers.set(runId, [...existing, marker]);
   }
 }
-function wordNumberingMarkers(elements, root, styleMaps) {
-  const numberingByParagraphId = /* @__PURE__ */ new Map();
-  for (const numbering of asArray(root?.paragraphNumberings)) {
-    const record = asRecord(numbering);
-    const paragraphId = asString(record?.paragraphId);
-    const numId = asString(record?.numId);
-    if (!paragraphId || !numId) continue;
-    numberingByParagraphId.set(paragraphId, {
-      level: Math.max(0, Math.floor(asNumber(record?.level))),
-      numId
-    });
+var wordReferenceMarkerStyle = { color: "#475569", fontSize: "0.72em", marginLeft: 2 };
+
+// src/word/word-paragraph-renderer.tsx
+import { jsx as jsx4, jsxs as jsxs2 } from "react/jsx-runtime";
+function WordParagraph({
+  fallbackColor,
+  paragraph,
+  trailingText,
+  variant = "body"
+}) {
+  const style = variant === "table" ? wordTableParagraphStyle(paragraph) : wordParagraphStyle(paragraph);
+  if (fallbackColor && asRecord(paragraph.style?.fill)?.color == null) {
+    style.color = fallbackColor;
   }
-  const numberingDefinitions = wordNumberingDefinitionLevels(root);
-  const counters = /* @__PURE__ */ new Map();
-  const markers = /* @__PURE__ */ new Map();
-  for (const paragraph of wordParagraphRecords(elements)) {
-    const view = paragraphView(paragraph, styleMaps);
-    const numbering = numberingByParagraphId.get(view.id);
-    if (!numbering) continue;
-    resetDeeperNumberingLevels(counters, numbering.numId, numbering.level);
-    const counterKey = `${numbering.numId}:${numbering.level}`;
-    const definition = numberingDefinitions.get(counterKey);
-    const current = counters.has(counterKey) ? (counters.get(counterKey) ?? 0) + 1 : Math.max(1, Math.floor(asNumber(view.style?.autoNumberStartAt, asNumber(definition?.startAt, 1))));
-    counters.set(counterKey, current);
-    const marker = wordNumberingMarkerForDefinition(asString(view.style?.autoNumberType), definition, current);
-    if (marker) markers.set(view.id, marker);
+  if (!trailingText && !wordParagraphHasVisibleContent(paragraph)) {
+    return /* @__PURE__ */ jsx4("p", { "aria-hidden": "true", style: wordEmptyParagraphStyle(style) });
   }
-  return markers;
-}
-function wordNumberingDefinitionLevels(root) {
-  const levelsByKey = /* @__PURE__ */ new Map();
-  for (const definition of asArray(root?.numberingDefinitions).map(asRecord)) {
-    const numId = asString(definition?.numId);
-    if (!numId) continue;
-    for (const level of asArray(definition?.levels).map(asRecord)) {
-      const levelIndex = Math.max(0, Math.floor(asNumber(level?.level)));
-      levelsByKey.set(`${numId}:${levelIndex}`, {
-        levelText: asString(level?.levelText),
-        numberFormat: asString(level?.numberFormat),
-        startAt: Math.max(1, Math.floor(asNumber(level?.startAt, 1)))
-      });
-    }
+  if (wordParagraphUsesLeaderTab(paragraph, trailingText)) {
+    return /* @__PURE__ */ jsx4(WordTabbedParagraph, { paragraph, style, trailingText });
   }
-  return levelsByKey;
+  const inheritRunFont = wordIsTableOfContentsTitle(paragraph);
+  return /* @__PURE__ */ jsxs2("p", { style, children: [
+    paragraph.marker ? /* @__PURE__ */ jsx4("span", { "aria-hidden": "true", style: wordParagraphMarkerStyle(paragraph.marker), children: paragraph.marker }) : null,
+    paragraph.runs.map((run, index) => /* @__PURE__ */ jsx4(WordRun, { inheritFont: inheritRunFont, run }, run.id || index)),
+    trailingText ? /* @__PURE__ */ jsx4("span", { style: wordComputedPageNumberStyle, children: trailingText }) : null
+  ] });
 }
-function wordParagraphRecords(elements) {
-  const paragraphs = [];
-  for (const element of elements) {
-    const record = asRecord(element);
-    if (!record) continue;
-    paragraphs.push(...asArray(record.paragraphs));
-    const table = asRecord(record.table);
-    for (const row of asArray(table?.rows)) {
-      const rowRecord = asRecord(row);
-      for (const cell of asArray(rowRecord?.cells)) {
-        paragraphs.push(...asArray(asRecord(cell)?.paragraphs));
-      }
-    }
-  }
-  return paragraphs;
+function WordTabbedParagraph({
+  paragraph,
+  style,
+  trailingText
+}) {
+  const { leftRuns, rightRuns } = wordSplitParagraphRunsAtLastTab(paragraph.runs);
+  return /* @__PURE__ */ jsxs2("p", { style: { ...style, alignItems: "baseline", display: "flex", gap: 8, whiteSpace: "nowrap" }, children: [
+    /* @__PURE__ */ jsxs2("span", { style: { minWidth: 0, overflow: "hidden", textOverflow: "clip" }, children: [
+      paragraph.marker ? /* @__PURE__ */ jsx4("span", { "aria-hidden": "true", style: wordParagraphMarkerStyle(paragraph.marker), children: paragraph.marker }) : null,
+      leftRuns.map((run, index) => /* @__PURE__ */ jsx4(WordRun, { run }, `${run.id || index}-left-${index}`))
+    ] }),
+    /* @__PURE__ */ jsx4("span", { "aria-hidden": "true", style: wordTabLeaderStyle }),
+    /* @__PURE__ */ jsxs2("span", { style: { flex: "0 0 auto", textAlign: "right" }, children: [
+      rightRuns.map((run, index) => /* @__PURE__ */ jsx4(WordRun, { run }, `${run.id || index}-right-${index}`)),
+      trailingText ? /* @__PURE__ */ jsx4("span", { style: wordComputedPageNumberStyle, children: trailingText }) : null
+    ] })
+  ] });
 }
-function resetDeeperNumberingLevels(counters, numId, level) {
-  const prefix = `${numId}:`;
-  for (const key of Array.from(counters.keys())) {
-    if (!key.startsWith(prefix)) continue;
-    const keyLevel = Number.parseInt(key.slice(prefix.length), 10);
-    if (keyLevel > level) counters.delete(key);
-  }
+function wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes) {
+  const view = paragraphView(paragraph, styleMaps);
+  const marker = numberingMarkers.get(view.id) || asString(view.style?.bulletCharacter);
+  const runs = view.runs.map((run) => ({
+    ...run,
+    referenceMarkers: referenceMarkers.get(run.id) ?? [],
+    reviewMarkTypes: (run.reviewMarkIds ?? []).map((id) => reviewMarkTypes.get(id) ?? 0).filter((type) => type > 0)
+  }));
+  return marker ? { ...view, marker, runs } : { ...view, runs };
 }
-function wordNumberingMarker(type, value) {
-  const alphaLc = alphabeticMarker(value, false);
-  const alphaUc = alphabeticMarker(value, true);
-  const romanUc = romanMarker(value);
-  const romanLc = romanUc.toLowerCase();
-  return {
-    alphaLcParenR: `${alphaLc})`,
-    alphaLcPeriod: `${alphaLc}.`,
-    alphaUcParenR: `${alphaUc})`,
-    alphaUcPeriod: `${alphaUc}.`,
-    arabicParenR: `${value})`,
-    arabicPeriod: `${value}.`,
-    romanLcParenR: `${romanLc})`,
-    romanLcPeriod: `${romanLc}.`,
-    romanUcParenR: `${romanUc})`,
-    romanUcPeriod: `${romanUc}.`
-  }[type] ?? "";
-}
-function wordNumberingMarkerForDefinition(autoNumberType, definition, value) {
-  if (autoNumberType) return wordNumberingMarker(autoNumberType, value);
-  if (!definition) return "";
-  const format = definition.numberFormat;
-  const levelText = definition.levelText;
-  if (format === "bullet") return wordBulletMarker(levelText);
-  const markerValue = wordNumberingMarker(wordNumberingFormatAutoType(format), value);
-  if (!markerValue) return "";
-  if (!levelText.includes("%")) return markerValue;
-  return levelText.replace(/%\d+/g, markerValue.replace(/[.)]$/u, ""));
-}
-function wordNumberingFormatAutoType(format) {
-  return {
-    decimal: "arabicPeriod",
-    lowerLetter: "alphaLcPeriod",
-    lowerRoman: "romanLcPeriod",
-    upperLetter: "alphaUcPeriod",
-    upperRoman: "romanUcPeriod"
-  }[format] ?? "";
-}
-function alphabeticMarker(value, uppercase) {
-  let remaining = Math.max(1, value);
-  let marker = "";
-  while (remaining > 0) {
-    remaining -= 1;
-    marker = String.fromCharCode(97 + remaining % 26) + marker;
-    remaining = Math.floor(remaining / 26);
-  }
-  return uppercase ? marker.toUpperCase() : marker;
-}
-function romanMarker(value) {
-  let remaining = Math.max(1, Math.min(3999, value));
-  let marker = "";
-  for (const [symbol, amount] of [
-    ["M", 1e3],
-    ["CM", 900],
-    ["D", 500],
-    ["CD", 400],
-    ["C", 100],
-    ["XC", 90],
-    ["L", 50],
-    ["XL", 40],
-    ["X", 10],
-    ["IX", 9],
-    ["V", 5],
-    ["IV", 4],
-    ["I", 1]
-  ]) {
-    while (remaining >= amount) {
-      marker += symbol;
-      remaining -= amount;
-    }
-  }
-  return marker;
-}
-var wordDocumentStackStyle = { display: "grid", gap: 20 };
 function wordParagraphStyle(paragraph) {
   const style = paragraphStyle(paragraph);
   const isTitle = paragraph.styleId === "Title";
@@ -2631,8 +2272,6 @@ var wordHeading2RuleStyle = {
   paddingBottom: 6,
   paddingTop: 6
 };
-var WORD_HEADING2_RULE_ESTIMATED_EXTRA_PX = 28;
-var WORD_PRETEXT_WORD_LAYOUT_COMPENSATION = 1.06;
 var WORD_PARAGRAPH_TAB_SIZE = 4;
 var wordTableOfContentsTitleStyle = {
   fontFamily: '"Bitter", Georgia, "Times New Roman", serif',
@@ -2662,6 +2301,406 @@ function wordParagraphMarkerStyle(marker) {
     textAlign: "right"
   };
 }
+var wordComputedPageNumberStyle = { marginLeft: 4 };
+
+// src/word/word-notes-renderer.tsx
+import { jsx as jsx5, jsxs as jsxs3 } from "react/jsx-runtime";
+function WordSupplementalNotes({
+  numberingMarkers,
+  referenceMarkers,
+  reviewMarkTypes,
+  root,
+  styleMaps
+}) {
+  const items = wordSupplementalNoteItems(root, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes);
+  if (items.length === 0) return null;
+  return /* @__PURE__ */ jsx5("section", { style: wordSupplementalNotesStyle, children: items.map((item) => /* @__PURE__ */ jsxs3("div", { style: wordSupplementalNoteStyle, children: [
+    item.meta ? /* @__PURE__ */ jsx5("div", { style: wordSupplementalNoteMetaStyle, children: item.meta }) : null,
+    item.paragraphs.map((paragraph, index) => /* @__PURE__ */ jsx5(WordParagraph, { paragraph }, paragraph.id || `${item.id}-${index}`))
+  ] }, item.id)) });
+}
+function wordSupplementalNoteItems(root, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes) {
+  const items = [];
+  for (const [index, footnote2] of asArray(root?.footnotes).map(asRecord).entries()) {
+    if (!footnote2) continue;
+    const paragraphs = wordSupplementalParagraphs(
+      footnote2,
+      String(index + 1),
+      styleMaps,
+      numberingMarkers,
+      referenceMarkers,
+      reviewMarkTypes
+    );
+    if (paragraphs.length > 0) {
+      items.push({ id: `footnote-${asString(footnote2.id) || index}`, paragraphs });
+    }
+  }
+  for (const [index, comment] of asArray(root?.comments).map(asRecord).entries()) {
+    if (!comment) continue;
+    const paragraphs = wordSupplementalParagraphs(
+      comment,
+      `C${index + 1}`,
+      styleMaps,
+      numberingMarkers,
+      referenceMarkers,
+      reviewMarkTypes
+    );
+    if (paragraphs.length > 0) {
+      items.push({
+        id: `comment-${asString(comment.id) || index}`,
+        meta: wordCommentMeta(comment),
+        paragraphs
+      });
+    }
+  }
+  return items;
+}
+function wordCommentMeta(comment) {
+  const author = asString(comment.author);
+  const initials = asString(comment.initials);
+  const createdAt = asString(comment.createdAt || comment.date);
+  const parts = [author, initials ? `(${initials})` : "", createdAt].map((part) => part.trim()).filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : void 0;
+}
+function wordFooterNeedsComputedPageNumber(elements) {
+  const text = elements.map(wordElementVisibleText).join("").trimEnd();
+  return /\|\s*$/u.test(text);
+}
+function wordElementVisibleText(element) {
+  const record = asRecord(element);
+  if (!record) return "";
+  return asArray(record.paragraphs).map((paragraph) => asArray(asRecord(paragraph)?.runs).map((run) => asString(asRecord(run)?.text)).join("")).join("");
+}
+function wordSupplementalParagraphs(record, marker, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes) {
+  return asArray(record.paragraphs).map((paragraph, index) => {
+    const view = wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes);
+    return index === 0 ? { ...view, marker } : view;
+  });
+}
+var wordSupplementalNotesStyle = {
+  borderTop: "1px solid #cbd5e1",
+  display: "grid",
+  gap: 4,
+  gridRow: 3,
+  marginTop: 18,
+  paddingTop: 10
+};
+var wordSupplementalNoteStyle = { color: "#334155", fontSize: 12 };
+var wordSupplementalNoteMetaStyle = { color: "#64748b", fontSize: 11, fontWeight: 600, marginBottom: 2 };
+
+// src/word/word-table-renderer.tsx
+import { jsx as jsx6, jsxs as jsxs4 } from "react/jsx-runtime";
+function WordTable({
+  element,
+  numberingMarkers,
+  pageLayout,
+  referenceMarkers,
+  reviewMarkTypes,
+  styleMaps,
+  table
+}) {
+  const rows = asArray(table.rows).map(asRecord).filter((row) => row != null);
+  if (rows.length === 0) return null;
+  const columnWidths = asArray(table.columnWidths).map((width) => asNumber(width)).filter((width) => width > 0);
+  const columnWidthTotal = columnWidths.reduce((total, width) => total + width, 0);
+  return /* @__PURE__ */ jsx6("div", { style: wordTableContainerStyle(element, pageLayout), children: /* @__PURE__ */ jsxs4("table", { style: wordTableStyle(columnWidths.length > 0), children: [
+    columnWidths.length > 0 ? /* @__PURE__ */ jsx6("colgroup", { children: columnWidths.map((width, index) => /* @__PURE__ */ jsx6("col", { style: { width: `${width / columnWidthTotal * 100}%` } }, `${width}-${index}`)) }) : null,
+    /* @__PURE__ */ jsx6("tbody", { children: rows.map((row, rowIndex) => /* @__PURE__ */ jsx6("tr", { style: wordTableRowStyle(row), children: asArray(row.cells).map((cell, cellIndex) => {
+      const cellRecord = asRecord(cell) ?? {};
+      const paragraphs = asArray(cellRecord.paragraphs).map(
+        (paragraph) => wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes)
+      );
+      const background = wordFillToCss(cellRecord.fill) ?? (rowIndex === 0 ? "#f8fafc" : "#ffffff");
+      const fallbackTextColor = readableTextColor(background);
+      const gridSpan = Math.max(1, Math.floor(asNumber(cellRecord.gridSpan, 1)));
+      const rowSpan = Math.max(1, Math.floor(asNumber(cellRecord.rowSpan, 1)));
+      return /* @__PURE__ */ jsx6(
+        "td",
+        {
+          colSpan: gridSpan > 1 ? gridSpan : void 0,
+          rowSpan: rowSpan > 1 ? rowSpan : void 0,
+          style: wordTableCellStyle(cellRecord, background, fallbackTextColor),
+          children: paragraphs.length > 0 ? paragraphs.map((paragraph, index) => /* @__PURE__ */ jsx6(
+            WordParagraph,
+            {
+              fallbackColor: fallbackTextColor,
+              paragraph,
+              variant: "table"
+            },
+            paragraph.id || index
+          )) : asString(cellRecord.text)
+        },
+        asString(cellRecord.id) || cellIndex
+      );
+    }) }, asString(row.id) || rowIndex)) })
+  ] }) });
+}
+
+// src/word/word-preview.tsx
+import { Fragment as Fragment3, jsx as jsx7, jsxs as jsxs5 } from "react/jsx-runtime";
+function WordPreview({ labels, proto }) {
+  const root = asRecord(proto);
+  const elements = asArray(root?.elements);
+  const charts = asArray(root?.charts).map(asRecord).filter((chart) => chart != null);
+  const imageSources = useOfficeImageSources(root);
+  const textStyles = /* @__PURE__ */ new Map();
+  for (const style of asArray(root?.textStyles)) {
+    const record = asRecord(style);
+    const id = asString(record?.id);
+    if (record && id) textStyles.set(id, record);
+  }
+  const styleMaps = { textStyles, images: imageSources };
+  const pages = wordPreviewPages(root, elements, styleMaps);
+  const numberingMarkers = wordNumberingMarkers(elements, root, styleMaps);
+  const referenceMarkers = wordReferenceMarkers(root);
+  const reviewMarkTypes = wordReviewMarkTypes(root);
+  const hasRenderableBlocks = pages.flatMap((page) => [...page.headerElements, ...page.elements, ...page.footerElements]).some((element) => {
+    const record = asRecord(element);
+    return record != null && (asArray(record.paragraphs).length > 0 || asRecord(record.table) != null || asRecord(record.chartReference) != null || elementImageReferenceId(record) !== "");
+  });
+  if (!hasRenderableBlocks) {
+    const blocks = collectTextBlocks(elements.length > 0 ? elements : proto, 120);
+    if (blocks.length === 0) {
+      return /* @__PURE__ */ jsx7("p", { style: { color: "#64748b" }, children: labels.noDocumentBlocks });
+    }
+    return /* @__PURE__ */ jsx7("div", { "data-testid": "document-preview", style: { display: "grid", gap: 10 }, children: blocks.map((block, index) => /* @__PURE__ */ jsx7("p", { style: documentFallbackBlockStyle, children: block }, `${block.slice(0, 24)}-${index}`)) });
+  }
+  const renderedPages = pages.map((page, index) => /* @__PURE__ */ jsx7(
+    WordDocumentPage,
+    {
+      charts,
+      elements: page.elements,
+      footerElements: page.footerElements,
+      headerElements: page.headerElements,
+      numberingMarkers,
+      pageNumber: index + 1,
+      pageLayout: wordPageLayout(page.root),
+      pageRoot: page.root,
+      referenceMarkers,
+      reviewMarkTypes,
+      supplementalRoot: index === pages.length - 1 ? root : null,
+      styleMaps
+    },
+    page.id || index
+  ));
+  return pages.length > 1 ? /* @__PURE__ */ jsx7("div", { style: wordDocumentStackStyle, children: renderedPages }) : renderedPages[0];
+}
+function WordDocumentPage({
+  charts,
+  elements,
+  footerElements,
+  headerElements,
+  numberingMarkers,
+  pageNumber,
+  pageLayout,
+  pageRoot,
+  referenceMarkers,
+  reviewMarkTypes,
+  supplementalRoot,
+  styleMaps
+}) {
+  return /* @__PURE__ */ jsxs5(
+    "article",
+    {
+      "data-testid": "document-preview",
+      style: {
+        ...wordDocumentPageStyleFromLayout(pageLayout),
+        ...wordDocumentPageCssVars(pageLayout),
+        background: "#ffffff",
+        borderColor: "#d8e0ea",
+        borderRadius: 8,
+        borderStyle: "solid",
+        borderWidth: 1,
+        boxSizing: "border-box",
+        boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
+        color: "#0f172a",
+        display: "grid",
+        gap: 6,
+        gridTemplateColumns: "minmax(0, 1fr)",
+        gridTemplateRows: "auto minmax(0, 1fr) auto auto",
+        isolation: "isolate",
+        margin: "0 auto",
+        maxWidth: "100%",
+        minWidth: 0,
+        overflow: "hidden",
+        position: "relative"
+      },
+      children: [
+        /* @__PURE__ */ jsx7(WordPageCropMarks, { pageLayout }),
+        /* @__PURE__ */ jsx7(
+          WordSectionContent,
+          {
+            charts,
+            elements: headerElements,
+            numberingMarkers,
+            pageNumber,
+            referenceMarkers,
+            reviewMarkTypes,
+            pageLayout,
+            styleMaps,
+            variant: "header"
+          }
+        ),
+        /* @__PURE__ */ jsx7("section", { "data-testid": "word-body-content", style: wordBodyContentStyle(pageRoot), children: elements.map((element, index) => /* @__PURE__ */ jsx7(
+          WordElement,
+          {
+            charts,
+            element: asRecord(element) ?? {},
+            numberingMarkers,
+            pageLayout,
+            referenceMarkers,
+            reviewMarkTypes,
+            styleMaps
+          },
+          `${asString(asRecord(element)?.id)}-${index}`
+        )) }),
+        /* @__PURE__ */ jsx7(
+          WordSupplementalNotes,
+          {
+            numberingMarkers,
+            referenceMarkers,
+            reviewMarkTypes,
+            root: supplementalRoot,
+            styleMaps
+          }
+        ),
+        /* @__PURE__ */ jsx7(
+          WordSectionContent,
+          {
+            charts,
+            elements: footerElements,
+            numberingMarkers,
+            pageNumber,
+            referenceMarkers,
+            reviewMarkTypes,
+            pageLayout,
+            styleMaps,
+            variant: "footer"
+          }
+        )
+      ]
+    }
+  );
+}
+function WordSectionContent({
+  charts,
+  elements,
+  numberingMarkers,
+  pageNumber,
+  pageLayout,
+  referenceMarkers,
+  reviewMarkTypes,
+  styleMaps,
+  variant
+}) {
+  if (!wordElementsHaveRenderableContent(elements)) return null;
+  const computedPageNumber = variant === "footer" && pageNumber > 1 && wordFooterNeedsComputedPageNumber(elements) ? String(pageNumber) : void 0;
+  return /* @__PURE__ */ jsx7("section", { style: variant === "header" ? wordHeaderContentStyle : wordFooterContentStyle, children: elements.map((element, index) => /* @__PURE__ */ jsx7(
+    WordElement,
+    {
+      charts,
+      element: asRecord(element) ?? {},
+      numberingMarkers,
+      pageLayout,
+      referenceMarkers,
+      reviewMarkTypes,
+      styleMaps,
+      trailingText: computedPageNumber && index === elements.length - 1 ? computedPageNumber : void 0
+    },
+    `${variant}-${asString(asRecord(element)?.id)}-${index}`
+  )) });
+}
+function WordElement({
+  charts,
+  element,
+  numberingMarkers,
+  pageLayout,
+  referenceMarkers,
+  reviewMarkTypes,
+  styleMaps,
+  trailingText
+}) {
+  const table = asRecord(element.table);
+  if (table) {
+    return /* @__PURE__ */ jsx7(
+      WordTable,
+      {
+        element,
+        numberingMarkers,
+        pageLayout,
+        referenceMarkers,
+        reviewMarkTypes,
+        table,
+        styleMaps
+      }
+    );
+  }
+  const imageId = elementImageReferenceId(element);
+  const imageSrc = imageId ? styleMaps.images.get(imageId) : void 0;
+  if (imageSrc) {
+    return /* @__PURE__ */ jsx7(
+      "span",
+      {
+        "aria-label": asString(element.name),
+        role: "img",
+        style: wordImageStyle(element, imageSrc, pageLayout)
+      }
+    );
+  }
+  const chart = presentationChartById(charts, presentationChartReferenceId(element.chartReference));
+  if (chart) return /* @__PURE__ */ jsx7(WordChart, { chart, element, pageLayout });
+  if (wordIsPositionedShapeElement(element)) {
+    return /* @__PURE__ */ jsx7("span", { "aria-hidden": "true", "data-testid": "word-positioned-shape", style: wordPositionedShapeStyle(element, pageLayout) });
+  }
+  const paragraphs = asArray(element.paragraphs).map(
+    (paragraph) => wordParagraphView(paragraph, styleMaps, numberingMarkers, referenceMarkers, reviewMarkTypes)
+  );
+  if (paragraphs.length === 0) return null;
+  const paragraphElements = /* @__PURE__ */ jsx7(Fragment3, { children: paragraphs.map((paragraph, index) => /* @__PURE__ */ jsx7(
+    WordParagraph,
+    {
+      paragraph,
+      trailingText: trailingText && index === paragraphs.length - 1 ? trailingText : void 0
+    },
+    paragraph.id || index
+  )) });
+  if (wordIsPositionedTextBoxElement(element)) {
+    return /* @__PURE__ */ jsx7(WordPositionedTextBox, { element, pageLayout, children: paragraphElements });
+  }
+  return paragraphElements;
+}
+function WordChart({ chart, element, pageLayout }) {
+  const canvasRef = useRef(null);
+  const contentWidth = wordPageContentWidthPx(pageLayout, 560);
+  const box = wordElementBox(element, Math.min(560, contentWidth), 300, contentWidth);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.round(box.width * pixelRatio));
+    canvas.height = Math.max(1, Math.round(box.height * pixelRatio));
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, box.width, box.height);
+    drawPresentationChart(
+      context,
+      chart,
+      { height: box.height, left: 0, top: 0, width: box.width },
+      Math.max(0.7, Math.min(1.2, box.width / 560))
+    );
+  }, [box.height, box.width, chart]);
+  return /* @__PURE__ */ jsx7(
+    "canvas",
+    {
+      "aria-label": asString(chart.title) || "Chart",
+      ref: canvasRef,
+      role: "img",
+      style: wordChartStyle(element, pageLayout)
+    }
+  );
+}
+var wordDocumentStackStyle = { display: "grid", gap: 20 };
 var wordHeaderContentStyle = {
   borderBottom: "1px solid #e2e8f0",
   boxSizing: "border-box",
@@ -2686,18 +2725,6 @@ var wordFooterContentStyle = {
   paddingTop: 8,
   width: "100%"
 };
-var wordReferenceMarkerStyle = { color: "#475569", fontSize: "0.72em", marginLeft: 2 };
-var wordComputedPageNumberStyle = { marginLeft: 4 };
-var wordSupplementalNotesStyle = {
-  borderTop: "1px solid #cbd5e1",
-  display: "grid",
-  gap: 4,
-  gridRow: 3,
-  marginTop: 18,
-  paddingTop: 10
-};
-var wordSupplementalNoteStyle = { color: "#334155", fontSize: 12 };
-var wordSupplementalNoteMetaStyle = { color: "#64748b", fontSize: 11, fontWeight: 600, marginBottom: 2 };
 var documentFallbackBlockStyle = {
   borderBottom: "1px solid #e2e8f0",
   color: "#0f172a",
@@ -5089,17 +5116,6 @@ function spreadsheetVisibleCellRange(layout, viewport2, scroll, overscan = 2) {
     )
   };
 }
-function spreadsheetViewportIntersectsRect(rect, viewport2, scroll, overscanPx = 240) {
-  if (viewport2.width <= 0 || viewport2.height <= 0) return true;
-  const overscan = Math.max(0, overscanPx);
-  const viewportLeft = scroll.left - overscan;
-  const viewportTop = scroll.top - overscan;
-  const viewportRight = scroll.left + viewport2.width + overscan;
-  const viewportBottom = scroll.top + viewport2.height + overscan;
-  const rectRight = rect.left + rect.width;
-  const rectBottom = rect.top + rect.height;
-  return rectRight >= viewportLeft && rect.left <= viewportRight && rectBottom >= viewportTop && rect.top <= viewportBottom;
-}
 function spreadsheetDrawingBounds(layout, drawing) {
   const fromAnchor = asRecord(drawing.fromAnchor);
   const toAnchor = asRecord(drawing.toAnchor);
@@ -5288,7 +5304,7 @@ function knownSpreadsheetColumnWidths(sheetName) {
 }
 
 // src/spreadsheet/spreadsheet-cell-overlays.tsx
-import { Fragment as Fragment3, jsx as jsx4, jsxs as jsxs2 } from "react/jsx-runtime";
+import { Fragment as Fragment4, jsx as jsx8, jsxs as jsxs6 } from "react/jsx-runtime";
 var MAX_VALIDATION_VISUAL_CACHE_SIZE = 5e3;
 function buildSpreadsheetSparklineVisuals(sheet) {
   const visuals = /* @__PURE__ */ new Map();
@@ -5380,11 +5396,11 @@ function SpreadsheetCellContent({
   validation,
   visual
 }) {
-  return /* @__PURE__ */ jsxs2(Fragment3, { children: [
-    sparkline ? /* @__PURE__ */ jsx4(SpreadsheetSparkline, { visual: sparkline }) : null,
-    hasComment ? /* @__PURE__ */ jsx4(SpreadsheetCommentIndicator, {}) : null,
-    visual?.dataBar ? /* @__PURE__ */ jsxs2(Fragment3, { children: [
-      /* @__PURE__ */ jsx4(
+  return /* @__PURE__ */ jsxs6(Fragment4, { children: [
+    sparkline ? /* @__PURE__ */ jsx8(SpreadsheetSparkline, { visual: sparkline }) : null,
+    hasComment ? /* @__PURE__ */ jsx8(SpreadsheetCommentIndicator, {}) : null,
+    visual?.dataBar ? /* @__PURE__ */ jsxs6(Fragment4, { children: [
+      /* @__PURE__ */ jsx8(
         "span",
         {
           "aria-hidden": "true",
@@ -5401,7 +5417,7 @@ function SpreadsheetCellContent({
           }
         }
       ),
-      visual.dataBar.axisPercent === void 0 ? null : /* @__PURE__ */ jsx4(
+      visual.dataBar.axisPercent === void 0 ? null : /* @__PURE__ */ jsx8(
         "span",
         {
           "aria-hidden": "true",
@@ -5417,10 +5433,10 @@ function SpreadsheetCellContent({
         }
       )
     ] }) : null,
-    visual?.iconSet ? /* @__PURE__ */ jsx4(SpreadsheetIconSet, { visual: visual.iconSet }) : null,
-    sparkline || visual?.iconSet?.showValue === false || visual?.dataBar?.showValue === false ? null : /* @__PURE__ */ jsx4("span", { style: { position: "relative", zIndex: 1 }, children: text }),
-    validation ? /* @__PURE__ */ jsx4(SpreadsheetValidationIndicator, { validation }) : null,
-    visual?.filter ? /* @__PURE__ */ jsx4(
+    visual?.iconSet ? /* @__PURE__ */ jsx8(SpreadsheetIconSet, { visual: visual.iconSet }) : null,
+    sparkline || visual?.iconSet?.showValue === false || visual?.dataBar?.showValue === false ? null : /* @__PURE__ */ jsx8("span", { style: { position: "relative", zIndex: 1 }, children: text }),
+    validation ? /* @__PURE__ */ jsx8(SpreadsheetValidationIndicator, { validation }) : null,
+    visual?.filter ? /* @__PURE__ */ jsx8(
       "button",
       {
         "aria-label": "Open column filter",
@@ -5523,7 +5539,7 @@ function spreadsheetDataValidationReferences(validation) {
   return asString(validation.range || validation.reference || validation.sqref).split(/\s+/).filter(Boolean);
 }
 function SpreadsheetValidationIndicator({ validation }) {
-  return /* @__PURE__ */ jsx4(
+  return /* @__PURE__ */ jsx8(
     "span",
     {
       "aria-hidden": "true",
@@ -5552,7 +5568,7 @@ function SpreadsheetValidationIndicator({ validation }) {
   );
 }
 function SpreadsheetCommentIndicator() {
-  return /* @__PURE__ */ jsx4(
+  return /* @__PURE__ */ jsx8(
     "span",
     {
       "aria-hidden": "true",
@@ -5583,22 +5599,22 @@ function SpreadsheetSparkline({ visual }) {
   const xForIndex = (index) => 4 + index / Math.max(1, values.length - 1) * (width - 8);
   const yForValue = (value) => height - 4 - (value - min) / span * (height - 8);
   const points = values.map((value, index) => `${xForIndex(index)},${yForValue(value)}`).join(" ");
-  return /* @__PURE__ */ jsx4(
+  return /* @__PURE__ */ jsx8(
     "svg",
     {
       "aria-hidden": "true",
       preserveAspectRatio: "none",
       style: { inset: "3px 5px", pointerEvents: "none", position: "absolute", zIndex: 1 },
       viewBox: `0 0 ${width} ${height}`,
-      children: visual.type === "line" ? /* @__PURE__ */ jsxs2(Fragment3, { children: [
-        /* @__PURE__ */ jsx4("polyline", { fill: "none", points, stroke: visual.color, strokeLinejoin: "round", strokeWidth: visual.lineWeight }),
-        visual.markers ? values.map((value, index) => /* @__PURE__ */ jsx4("circle", { cx: xForIndex(index), cy: yForValue(value), fill: visual.color, r: "1.8" }, index)) : null
+      children: visual.type === "line" ? /* @__PURE__ */ jsxs6(Fragment4, { children: [
+        /* @__PURE__ */ jsx8("polyline", { fill: "none", points, stroke: visual.color, strokeLinejoin: "round", strokeWidth: visual.lineWeight }),
+        visual.markers ? values.map((value, index) => /* @__PURE__ */ jsx8("circle", { cx: xForIndex(index), cy: yForValue(value), fill: visual.color, r: "1.8" }, index)) : null
       ] }) : values.map((value, index) => {
         const barWidth = Math.max(2, (width - 8) / Math.max(1, values.length) * 0.55);
         const x = xForIndex(index) - barWidth / 2;
         const zeroY = yForValue(0);
         const valueY = yForValue(visual.type === "stacked" ? Math.abs(value) : value);
-        return /* @__PURE__ */ jsx4(
+        return /* @__PURE__ */ jsx8(
           "rect",
           {
             fill: visual.color,
@@ -5617,7 +5633,7 @@ function SpreadsheetIconSet({ visual }) {
   const shape = spreadsheetIconSetShape(visual);
   if (shape === "arrow") {
     const rotation = spreadsheetIconSetArrowRotation(visual);
-    return /* @__PURE__ */ jsx4(
+    return /* @__PURE__ */ jsx8(
       "svg",
       {
         "aria-hidden": "true",
@@ -5632,7 +5648,7 @@ function SpreadsheetIconSet({ visual }) {
           width: 18,
           zIndex: 1
         },
-        children: /* @__PURE__ */ jsx4(
+        children: /* @__PURE__ */ jsx8(
           "path",
           {
             d: "M9 2 L15 8 H11 V16 H7 V8 H3 Z",
@@ -5644,7 +5660,7 @@ function SpreadsheetIconSet({ visual }) {
     );
   }
   if (shape === "quarter") {
-    return /* @__PURE__ */ jsxs2(
+    return /* @__PURE__ */ jsxs6(
       "svg",
       {
         "aria-hidden": "true",
@@ -5660,14 +5676,14 @@ function SpreadsheetIconSet({ visual }) {
           zIndex: 1
         },
         children: [
-          /* @__PURE__ */ jsx4("circle", { cx: "9", cy: "9", fill: "#f8fafc", r: "6.5", stroke: "#94a3b8", strokeWidth: "1.5" }),
-          /* @__PURE__ */ jsx4("path", { d: spreadsheetIconSetQuarterPath(visual), fill: visual.color })
+          /* @__PURE__ */ jsx8("circle", { cx: "9", cy: "9", fill: "#f8fafc", r: "6.5", stroke: "#94a3b8", strokeWidth: "1.5" }),
+          /* @__PURE__ */ jsx8("path", { d: spreadsheetIconSetQuarterPath(visual), fill: visual.color })
         ]
       }
     );
   }
   if (shape === "traffic") {
-    return /* @__PURE__ */ jsx4(
+    return /* @__PURE__ */ jsx8(
       "svg",
       {
         "aria-hidden": "true",
@@ -5682,11 +5698,11 @@ function SpreadsheetIconSet({ visual }) {
           width: 18,
           zIndex: 1
         },
-        children: /* @__PURE__ */ jsx4("circle", { cx: "9", cy: "9", fill: visual.color, r: "6.5", stroke: "rgba(15, 23, 42, 0.28)", strokeWidth: "1" })
+        children: /* @__PURE__ */ jsx8("circle", { cx: "9", cy: "9", fill: visual.color, r: "6.5", stroke: "rgba(15, 23, 42, 0.28)", strokeWidth: "1" })
       }
     );
   }
-  return /* @__PURE__ */ jsx4(
+  return /* @__PURE__ */ jsx8(
     "svg",
     {
       "aria-hidden": "true",
@@ -5704,7 +5720,7 @@ function SpreadsheetIconSet({ visual }) {
       children: Array.from({ length: 5 }, (_, index) => {
         const height = 3 + index * 2;
         const active = index < visual.level;
-        return /* @__PURE__ */ jsx4(
+        return /* @__PURE__ */ jsx8(
           "rect",
           {
             fill: active ? visual.color : "#c7cdd4",
@@ -5751,6 +5767,244 @@ function spreadsheetIconSetQuarterPath(visual) {
   if (zeroBasedLevel === 2) return "M9 9 L9 2.5 A6.5 6.5 0 0 1 9 15.5 Z";
   if (zeroBasedLevel === 3) return "M9 9 L9 2.5 A6.5 6.5 0 1 1 2.5 9 Z";
   return "M9 2.5 A6.5 6.5 0 1 1 9 15.5 A6.5 6.5 0 1 1 9 2.5 Z";
+}
+
+// src/spreadsheet/spreadsheet-data-access.ts
+var DEFAULT_SPREADSHEET_FONT_FAMILY = "Aptos, Calibri, Arial, Helvetica, sans-serif";
+function rowsByIndexForSheet3(sheet) {
+  const rowMap = /* @__PURE__ */ new Map();
+  const rows = asArray(sheet?.rows).map(asRecord).filter((row) => row != null);
+  for (const row of rows) {
+    const rowIndex = asNumber(row.index, 1);
+    const cells = /* @__PURE__ */ new Map();
+    for (const cell of asArray(row.cells)) {
+      const cellRecord = asRecord(cell);
+      if (!cellRecord) continue;
+      const address = asString(cellRecord.address);
+      cells.set(columnIndexFromAddress(address), cellRecord);
+    }
+    rowMap.set(rowIndex, cells);
+  }
+  return rowMap;
+}
+function cellAt2(sheet, rowIndex, columnIndex) {
+  return rowsByIndexForSheet3(sheet).get(rowIndex)?.get(columnIndex) ?? null;
+}
+function defaultSpreadsheetSheetIndex(sheets) {
+  if (sheets.length <= 1) return 0;
+  const readmeFirst = /^00[_ -]?readme$/i.test(asString(sheets[0]?.name));
+  return readmeFirst ? 1 : 0;
+}
+function spreadsheetSheetTabColor(sheet) {
+  return colorToCss(asRecord(sheet?.tabColor) ?? sheet?.tabColor);
+}
+function spreadsheetFontFamily(typeface) {
+  const normalized = typeface.trim();
+  if (!normalized) return DEFAULT_SPREADSHEET_FONT_FAMILY;
+  const escaped = normalized.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  return `"${escaped}", ${DEFAULT_SPREADSHEET_FONT_FAMILY}`;
+}
+
+// src/spreadsheet/spreadsheet-cell-styles.ts
+var sheetCellStyle = {
+  borderBottomColor: "#e2e8f0",
+  borderBottomStyle: "solid",
+  borderBottomWidth: 1,
+  borderRightColor: "#e2e8f0",
+  borderRightStyle: "solid",
+  borderRightWidth: 1,
+  boxSizing: "border-box",
+  color: "#0f172a",
+  fontFamily: spreadsheetFontFamily(""),
+  lineHeight: 1.35,
+  overflow: "hidden",
+  overflowWrap: "break-word",
+  padding: "7px 9px",
+  verticalAlign: "top",
+  whiteSpace: "pre-wrap"
+};
+function spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex, showGridLines = true) {
+  const cellFormat = styleAt(styles?.cellXfs, styleIndex ?? cell?.styleIndex);
+  const font = styleAt(styles?.fonts, cellFormat?.fontId);
+  const fill = styleAt(styles?.fills, cellFormat?.fillId);
+  const border = styleAt(styles?.borders, cellFormat?.borderId);
+  const alignment = asRecord(cellFormat?.alignment);
+  const fontFill = resolveStyleRecord(font, ["fill", "color"]);
+  const fillColor = spreadsheetFillToCss(fill);
+  const fontColor = colorToCss(fontFill?.color ?? fontFill);
+  const hyperlinkFormula = /^=?\s*HYPERLINK\s*\(/i.test(asString(cell?.formula));
+  const gridLineColor = showGridLines ? "#e2e8f0" : "transparent";
+  const bottomBorder = spreadsheetBorderCss(border, "bottom", gridLineColor);
+  const rightBorder = spreadsheetBorderCss(border, "right", gridLineColor);
+  const fallbackStyle = knownSpreadsheetCellStyle(cell, sheetName);
+  const horizontalAlignment = asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment);
+  const verticalAlignment = asString(alignment?.vertical) || asString(cellFormat?.verticalAlignment);
+  const wrapText = spreadsheetBool(alignment?.wrapText ?? cellFormat?.wrapText, true);
+  const shrinkToFit = spreadsheetBool(alignment?.shrinkToFit ?? cellFormat?.shrinkToFit, false);
+  const indent = Math.max(0, asNumber(alignment?.indent ?? cellFormat?.indent, 0));
+  const fontSize = font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize;
+  const textDirection = !horizontalAlignment && /[\u0590-\u08ff]/u.test(cellText(cell)) ? "rtl" : void 0;
+  const fallbackTextAlign = visual?.iconSet?.showValue === false ? "left" : fallbackStyle.textAlign ?? (textDirection === "rtl" ? "right" : spreadsheetDefaultTextAlign(cell));
+  const justifyContent = horizontalAlignment ? spreadsheetHorizontalJustifyContent(horizontalAlignment) : spreadsheetJustifyContentForTextAlign(fallbackTextAlign);
+  const visualBackground = visual?.background;
+  const background = visual?.backgroundSource === "table" ? fillColor ?? visualBackground ?? fallbackStyle.background : visualBackground ?? fillColor ?? fallbackStyle.background;
+  return {
+    ...sheetCellStyle,
+    ...fallbackStyle,
+    alignItems: spreadsheetVerticalAlignItems(verticalAlignment),
+    background,
+    borderBottomColor: visual?.borderColor ?? bottomBorder.color,
+    borderBottomStyle: bottomBorder.style,
+    borderBottomWidth: bottomBorder.width,
+    borderRightColor: visual?.borderColor ?? rightBorder.color,
+    borderRightStyle: rightBorder.style,
+    borderRightWidth: rightBorder.width,
+    color: visual?.color ?? fontColor ?? (hyperlinkFormula ? "#0563c1" : fallbackStyle.color) ?? sheetCellStyle.color,
+    cursor: hyperlinkFormula ? "pointer" : void 0,
+    direction: textDirection,
+    display: "flex",
+    fontFamily: spreadsheetFontFamily(asString(font?.typeface)),
+    fontSize: shrinkToFit && typeof fontSize === "number" ? Math.max(8, fontSize * 0.88) : fontSize,
+    fontStyle: font?.italic === true ? "italic" : fallbackStyle.fontStyle,
+    fontWeight: visual?.fontWeight ?? (font?.bold === true ? 700 : fallbackStyle.fontWeight),
+    justifyContent,
+    paddingLeft: indent > 0 ? 9 + indent * 12 : sheetCellStyle.paddingLeft,
+    textAlign: horizontalAlignment ? spreadsheetHorizontalTextAlign(horizontalAlignment, fallbackTextAlign) : fallbackTextAlign,
+    textDecorationLine: hyperlinkFormula ? "underline" : void 0,
+    textOverflow: wrapText ? void 0 : "ellipsis",
+    verticalAlign: spreadsheetVerticalAlign(verticalAlignment) ?? fallbackStyle.verticalAlign ?? sheetCellStyle.verticalAlign,
+    whiteSpace: wrapText ? sheetCellStyle.whiteSpace : "nowrap"
+  };
+}
+function spreadsheetBorderCss(border, side, gridLineColor) {
+  const line = spreadsheetBorderLine(border, side);
+  const rawStyle = asString(line?.style ?? border?.[`${side}Style`] ?? border?.[`${side}_style`]).toLowerCase();
+  if (rawStyle === "none") return { color: "transparent", style: "solid", width: 1 };
+  const explicitColor = spreadsheetBorderColor(line?.color) ?? spreadsheetBorderColor(border?.[`${side}Color`]) ?? spreadsheetBorderColor(border?.[`${side}_color`]) ?? spreadsheetBorderColor(border?.[`${side}BorderColor`]) ?? spreadsheetBorderColor(border?.[`${side}_border_color`]);
+  return {
+    color: explicitColor ?? gridLineColor,
+    style: spreadsheetBorderStyle(rawStyle),
+    width: spreadsheetBorderWidth(rawStyle)
+  };
+}
+function spreadsheetBorderColor(value) {
+  const structured = colorToCss(asRecord(value));
+  if (structured) return structured;
+  const text = asString(value);
+  if (/^#[0-9a-f]{6}$/i.test(text)) return text;
+  if (/^[0-9a-f]{6}$/i.test(text)) return `#${text}`;
+  if (/^[0-9a-f]{8}$/i.test(text)) return `#${text.slice(2)}`;
+  return null;
+}
+function spreadsheetBorderLine(border, side) {
+  return asRecord(border?.[side]) ?? asRecord(border?.[`${side}Border`]) ?? asRecord(border?.[`${side}_border`]);
+}
+function spreadsheetBorderStyle(value) {
+  if (value.includes("dash")) return "dashed";
+  if (value.includes("dot")) return "dotted";
+  if (value === "double") return "double";
+  return "solid";
+}
+function spreadsheetBorderWidth(value) {
+  if (value.includes("thick")) return 3;
+  if (value.includes("medium") || value === "double") return 2;
+  return 1;
+}
+function spreadsheetShowGridLines(sheet) {
+  if (sheet?.showGridLines === false) return false;
+  const value = asString(sheet?.showGridLines).toLowerCase();
+  return value !== "false" && value !== "0";
+}
+function spreadsheetBool(value, fallback) {
+  if (value === true || value === false) return value;
+  const normalized = asString(value).toLowerCase();
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  return fallback;
+}
+function spreadsheetHorizontalTextAlign(value, fallback) {
+  const normalized = value.toLowerCase();
+  if (normalized === "center" || normalized === "centercontinuous" || normalized === "distributed") return "center";
+  if (normalized === "right") return "right";
+  if (normalized === "justify") return "justify";
+  if (normalized === "left" || normalized === "fill") return "left";
+  return fallback;
+}
+function spreadsheetHorizontalJustifyContent(value) {
+  const normalized = value.toLowerCase();
+  if (normalized === "center" || normalized === "centercontinuous" || normalized === "distributed") return "center";
+  if (normalized === "right") return "flex-end";
+  return "flex-start";
+}
+function spreadsheetJustifyContentForTextAlign(value) {
+  return value === "center" ? "center" : value === "right" ? "flex-end" : "flex-start";
+}
+function spreadsheetDefaultTextAlign(cell) {
+  const value = Number(cellText(cell).trim());
+  return Number.isFinite(value) ? "right" : void 0;
+}
+function spreadsheetVerticalAlign(value) {
+  const normalized = value.toLowerCase();
+  if (normalized === "center") return "middle";
+  if (normalized === "bottom") return "bottom";
+  if (normalized === "top") return "top";
+  return void 0;
+}
+function spreadsheetVerticalAlignItems(value) {
+  const normalized = value.toLowerCase();
+  if (normalized === "center") return "center";
+  if (normalized === "bottom") return "flex-end";
+  return "flex-start";
+}
+function spreadsheetEffectiveStyleIndex(cell, row, layout, columnIndex) {
+  return spreadsheetStyleIndex2(cell?.styleIndex) ?? spreadsheetStyleIndex2(row?.styleIndex) ?? layout.columnStyleIndexes[columnIndex] ?? null;
+}
+function spreadsheetStyleIndex2(value) {
+  if (value == null) return null;
+  const index = asNumber(value, -1);
+  return index >= 0 ? index : null;
+}
+function knownSpreadsheetCellStyle(cell, sheetName) {
+  const address = asString(cell?.address);
+  if (!cell || !address) return {};
+  const rowIndex = rowIndexFromAddress(address);
+  const columnIndex = columnIndexFromAddress(address);
+  const text = cellText(cell);
+  if (rowIndex === 1) {
+    return {
+      background: "#ecfdf5",
+      color: "#14532d",
+      fontSize: 18,
+      fontWeight: 700,
+      verticalAlign: "middle"
+    };
+  }
+  if (rowIndex === 2) {
+    return {
+      color: "#64748b",
+      fontStyle: "italic"
+    };
+  }
+  if (sheetName === "01_Dashboard") {
+    if (rowIndex === 4) return { background: "#e6f7ee", color: "#14633a", fontWeight: 700 };
+    if (rowIndex === 17) return { background: "#dcfce7", color: "#166534", fontWeight: 700, textAlign: "center" };
+    if ([6, 11].includes(rowIndex)) return { background: "#f8fafc", color: "#64748b", fontWeight: 700 };
+    if (rowIndex === 11 && columnIndex >= 6) return { background: "#fff7ed", color: "#9a3412" };
+  }
+  if (sheetName === "03_TimeSeries") {
+    if (rowIndex === 4) return { background: "#dff1fb", color: "#036796", fontWeight: 700, textAlign: "center" };
+    if (rowIndex >= 5 && rowIndex <= 22) {
+      if (columnIndex === 10 && text === "Warn") return { background: "#fff4c2", color: "#a3470d" };
+      if (columnIndex === 10 && text === "Pass") return { color: "#0f172a" };
+      return rowIndex % 2 === 1 ? { background: "#c7eaf7" } : {};
+    }
+  }
+  if (sheetName === "04_Heatmap") {
+    if (rowIndex === 4 || rowIndex === 5) {
+      return { background: "#e9e4ff", color: "#5b21b6", fontWeight: 700, textAlign: "center" };
+    }
+  }
+  return {};
 }
 
 // src/spreadsheet/spreadsheet-render-snapshot.ts
@@ -6261,7 +6515,7 @@ function defaultSpreadsheetCanvasWorkerFactory() {
 }
 
 // src/spreadsheet/spreadsheet-canvas-layer.tsx
-import { jsx as jsx5 } from "react/jsx-runtime";
+import { jsx as jsx9 } from "react/jsx-runtime";
 function drawSpreadsheetCanvasPlanToCanvas(canvas, nextPlan) {
   if (!canvas) return;
   if (canvas.width !== nextPlan.bitmap.pixelWidth) canvas.width = nextPlan.bitmap.pixelWidth;
@@ -6312,7 +6566,7 @@ function SpreadsheetCanvasLayer({
     workerRendererRef.current?.destroy();
   }, []);
   if (viewportSize.width <= 0 || viewportSize.height <= 0) return null;
-  return /* @__PURE__ */ jsx5(
+  return /* @__PURE__ */ jsx9(
     "canvas",
     {
       "aria-hidden": "true",
@@ -6475,7 +6729,7 @@ function spreadsheetChartTextWidth(text, role) {
 }
 
 // src/spreadsheet/spreadsheet-charts.tsx
-import { jsx as jsx6 } from "react/jsx-runtime";
+import { jsx as jsx10 } from "react/jsx-runtime";
 var SPREADSHEET_CHART_LINE_WIDTH = 2;
 var SPREADSHEET_CHART_MARKER_RADIUS = 4;
 var CHART_PALETTE = ["#1f6f8b", "#f9732a", "#5b7f2a", "#9467bd", "#8c564b", "#2ca02c", "#d62728"];
@@ -6491,11 +6745,11 @@ function buildSpreadsheetCharts({
   ];
   if (protocolCharts.length > 0) return protocolCharts;
   if (asString(activeSheet?.name) !== "01_Dashboard") return [];
-  if (cellText(cellAt2(activeSheet, 1, 0)) !== "AI Coding Delivery Dashboard") return [];
+  if (cellText(cellAt3(activeSheet, 1, 0)) !== "AI Coding Delivery Dashboard") return [];
   const statusCategories = [];
   const statusValues = [];
   for (let rowIndex = 18; rowIndex <= 23; rowIndex += 1) {
-    const category = cellText(cellAt2(activeSheet, rowIndex, 0));
+    const category = cellText(cellAt3(activeSheet, rowIndex, 0));
     const value = cellNumberAt2(activeSheet, rowIndex, 1);
     if (category && value != null) {
       statusCategories.push(category);
@@ -6789,7 +7043,7 @@ function protocolNumber2(value, fallback) {
   }
   return fallback;
 }
-function rowsByIndexForSheet3(sheet) {
+function rowsByIndexForSheet4(sheet) {
   const rowMap = /* @__PURE__ */ new Map();
   const rows = asArray(sheet?.rows).map(asRecord).filter((row) => row != null);
   for (const row of rows) {
@@ -6805,11 +7059,11 @@ function rowsByIndexForSheet3(sheet) {
   }
   return rowMap;
 }
-function cellAt2(sheet, rowIndex, columnIndex) {
-  return rowsByIndexForSheet3(sheet).get(rowIndex)?.get(columnIndex) ?? null;
+function cellAt3(sheet, rowIndex, columnIndex) {
+  return rowsByIndexForSheet4(sheet).get(rowIndex)?.get(columnIndex) ?? null;
 }
 function cellNumberAt2(sheet, rowIndex, columnIndex) {
-  const text = cellText(cellAt2(sheet, rowIndex, columnIndex)).trim();
+  const text = cellText(cellAt3(sheet, rowIndex, columnIndex)).trim();
   if (text.length === 0) return null;
   const value = Number(text);
   return Number.isFinite(value) ? value : null;
@@ -6826,7 +7080,7 @@ function excelSerialMonthLabel(value) {
 }
 function SpreadsheetChartLayer({ charts }) {
   if (charts.length === 0) return null;
-  return /* @__PURE__ */ jsx6("div", { "aria-hidden": "true", style: { inset: 0, pointerEvents: "none", position: "absolute" }, children: charts.map((chart, index) => /* @__PURE__ */ jsx6(SpreadsheetCanvasChart, { chart }, `${chart.type}-${chart.title}-${index}`)) });
+  return /* @__PURE__ */ jsx10("div", { "aria-hidden": "true", style: { inset: 0, pointerEvents: "none", position: "absolute" }, children: charts.map((chart, index) => /* @__PURE__ */ jsx10(SpreadsheetCanvasChart, { chart }, `${chart.type}-${chart.title}-${index}`)) });
 }
 function SpreadsheetCanvasChart({ chart }) {
   const canvasRef = useRef3(null);
@@ -6844,7 +7098,7 @@ function SpreadsheetCanvasChart({ chart }) {
     context.clearRect(0, 0, chart.width, chart.height);
     drawSpreadsheetChart(context, chart);
   }, [chart]);
-  return /* @__PURE__ */ jsx6(
+  return /* @__PURE__ */ jsx10(
     "canvas",
     {
       ref: canvasRef,
@@ -7601,7 +7855,7 @@ function chartFormatDecimalPlaces(numberFormat) {
 }
 
 // src/spreadsheet/spreadsheet-frozen-headers.tsx
-import { jsx as jsx7, jsxs as jsxs3 } from "react/jsx-runtime";
+import { jsx as jsx11, jsxs as jsxs7 } from "react/jsx-runtime";
 function spreadsheetFrozenColumnHeaderRect(layout, columnIndex, scrollLeft) {
   const frozen = columnIndex < layout.freezePanes.columnCount;
   return {
@@ -7635,7 +7889,7 @@ function SpreadsheetFrozenHeaders({
     visibleRange.endRowOffset,
     layout.freezePanes.rowCount
   );
-  return /* @__PURE__ */ jsxs3(
+  return /* @__PURE__ */ jsxs7(
     "div",
     {
       "aria-hidden": "true",
@@ -7646,8 +7900,8 @@ function SpreadsheetFrozenHeaders({
         zIndex: 12
       },
       children: [
-        /* @__PURE__ */ jsx7("div", { style: spreadsheetFrozenCornerStyle }),
-        /* @__PURE__ */ jsx7(
+        /* @__PURE__ */ jsx11("div", { style: spreadsheetFrozenCornerStyle }),
+        /* @__PURE__ */ jsx11(
           "div",
           {
             style: {
@@ -7658,7 +7912,7 @@ function SpreadsheetFrozenHeaders({
               right: 0,
               top: 0
             },
-            children: /* @__PURE__ */ jsx7(
+            children: /* @__PURE__ */ jsx11(
               "div",
               {
                 style: {
@@ -7668,7 +7922,7 @@ function SpreadsheetFrozenHeaders({
                 },
                 children: visibleColumnIndexes.map((columnIndex) => {
                   const rect = spreadsheetFrozenColumnHeaderRect(layout, columnIndex, scrollLeft);
-                  return /* @__PURE__ */ jsx7(
+                  return /* @__PURE__ */ jsx11(
                     "div",
                     {
                       style: {
@@ -7687,7 +7941,7 @@ function SpreadsheetFrozenHeaders({
             )
           }
         ),
-        /* @__PURE__ */ jsx7(
+        /* @__PURE__ */ jsx11(
           "div",
           {
             style: {
@@ -7698,7 +7952,7 @@ function SpreadsheetFrozenHeaders({
               top: SPREADSHEET_COLUMN_HEADER_HEIGHT,
               width: SPREADSHEET_ROW_HEADER_WIDTH
             },
-            children: /* @__PURE__ */ jsx7(
+            children: /* @__PURE__ */ jsx11(
               "div",
               {
                 style: {
@@ -7708,7 +7962,7 @@ function SpreadsheetFrozenHeaders({
                 },
                 children: visibleRowOffsets.map((rowOffset) => {
                   const rect = spreadsheetFrozenRowHeaderRect(layout, rowOffset, scrollTop);
-                  return /* @__PURE__ */ jsx7(
+                  return /* @__PURE__ */ jsx11(
                     "div",
                     {
                       style: {
@@ -8017,8 +8271,450 @@ function formatFormulaNumber(value) {
   return Number(value.toPrecision(15)).toString();
 }
 
+// src/spreadsheet/spreadsheet-number-format.ts
+var EXCEL_BUILT_IN_NUMBER_FORMATS = /* @__PURE__ */ new Map([
+  [1, "0"],
+  [2, "0.00"],
+  [3, "#,##0"],
+  [4, "#,##0.00"],
+  [5, "$#,##0;($#,##0)"],
+  [6, "$#,##0;[Red]($#,##0)"],
+  [7, "$#,##0.00;($#,##0.00)"],
+  [8, "$#,##0.00;[Red]($#,##0.00)"],
+  [9, "0%"],
+  [10, "0.00%"],
+  [11, "0.00E+00"],
+  [12, "# ?/?"],
+  [13, "# ??/??"],
+  [14, "m/d/yy"],
+  [15, "d-mmm-yy"],
+  [16, "d-mmm"],
+  [17, "mmm-yy"],
+  [18, "h:mm AM/PM"],
+  [19, "h:mm:ss AM/PM"],
+  [20, "h:mm"],
+  [21, "h:mm:ss"],
+  [22, "m/d/yy h:mm"],
+  [37, "#,##0;(#,##0)"],
+  [38, "#,##0;[Red](#,##0)"],
+  [39, "#,##0.00;(#,##0.00)"],
+  [40, "#,##0.00;[Red](#,##0.00)"],
+  [45, "mm:ss"],
+  [46, "[h]:mm:ss"],
+  [47, "mmss.0"],
+  [48, "##0.0E+0"],
+  [49, "@"]
+]);
+function excelSerialMonthYearLabel(value) {
+  const date = new Date(Date.UTC(1899, 11, 30) + value * 864e5);
+  return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC", year: "numeric" }).format(date);
+}
+function excelSerialDateLabel(value, formatCode = "") {
+  const date = new Date(Date.UTC(1899, 11, 30) + value * 864e5);
+  if (isExcelIsoDateFormat(formatCode)) {
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+  }
+  return new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "short", timeZone: "UTC", year: "numeric" }).format(date);
+}
+function shouldFormatAsMonthSerial(cell, sheetName) {
+  if (sheetName !== "03_TimeSeries") return false;
+  const address = asString(cell?.address);
+  return columnIndexFromAddress(address) === 0 && rowIndexFromAddress(address) >= 5;
+}
+function spreadsheetCellText(cell, styles, sheetName, styleIndex) {
+  const text = cellText(cell);
+  const address = asString(cell?.address);
+  const rowIndex = rowIndexFromAddress(address);
+  if (cell != null && cell.hasValue === false && !asString(cell.formula)) return "";
+  const numericText = text.trim();
+  if (numericText.length === 0) return text;
+  const numberValue = Number(numericText);
+  if (sheetName && rowIndex === 3 && Number.isFinite(numberValue)) return "";
+  if (cell == null || !Number.isFinite(numberValue)) return text;
+  const columnIndex = columnIndexFromAddress(address);
+  const cellFormat = styleAt(styles?.cellXfs, styleIndex ?? cell.styleIndex);
+  const numberFormatId = asNumber(cellFormat?.numFmtId, -1);
+  const formatCode = spreadsheetNumberFormatCode(styles, numberFormatId);
+  if (isExcelMonthYearFormat(formatCode)) return excelSerialMonthYearLabel(numberValue);
+  if (isExcelTimeFormat(formatCode)) return excelSerialTimeLabel(numberValue, formatCode);
+  if (isExcelDateFormat(formatCode)) return excelSerialDateLabel(numberValue, formatCode);
+  if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
+  if (sheetName === "03_TimeSeries") {
+    if (columnIndex === 3) return `${Math.round(numberValue * 100)}%`;
+    if ([7, 8, 9].includes(columnIndex)) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
+    if ([4, 5].includes(columnIndex)) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 1 });
+  }
+  if (sheetName === "01_Dashboard") {
+    if (columnIndex === 2) return `${Math.round(numberValue * 100)}%`;
+    if (columnIndex === 3) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
+  }
+  if (formatCode.includes("%")) return `${(numberValue * 100).toFixed(spreadsheetDecimalPlaces(formatCode))}%`;
+  if (/e\+?0+/i.test(formatCode)) return spreadsheetScientificLabel(numberValue, formatCode);
+  if (formatCode.includes("?/?")) return spreadsheetFractionLabel(numberValue, formatCode);
+  if (formatCode.includes("$")) return spreadsheetCurrencyLabel(numberValue, formatCode);
+  if (formatCode.includes("#,##0.00")) return spreadsheetNumberLabel(numberValue, formatCode);
+  if (formatCode.includes("#,##0")) return spreadsheetNumberLabel(numberValue, formatCode);
+  if (/^0\.0+$/.test(formatCode)) return numberValue.toFixed(formatCode.split(".")[1]?.length ?? 0);
+  if (/\d+\.\d{4,}/.test(text)) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 1 });
+  return text;
+}
+function spreadsheetNumberFormatCode(styles, numberFormatId) {
+  const numberFormat = asArray(styles?.numberFormats).map(asRecord).find((format) => asNumber(format?.id, -2) === numberFormatId);
+  const customFormat = asString(numberFormat?.formatCode);
+  return customFormat || EXCEL_BUILT_IN_NUMBER_FORMATS.get(numberFormatId) || "";
+}
+function isExcelMonthYearFormat(formatCode) {
+  const normalized = formatCode.toLowerCase();
+  return normalized.includes("mmm") && normalized.includes("yy") && !/(^|[^a-z])d{1,4}([^a-z]|$)/.test(normalized);
+}
+function isExcelIsoDateFormat(formatCode) {
+  return /y{2,4}[-/]m{1,2}[-/]d{1,2}/i.test(formatCode);
+}
+function isExcelDateFormat(formatCode) {
+  const normalized = formatCode.toLowerCase();
+  if (!/[dmy]/.test(normalized)) return false;
+  if (normalized.includes("%")) return false;
+  return /(^|[^a-z])m{1,4}([^a-z]|$)/.test(normalized) || /(^|[^a-z])d{1,4}([^a-z]|$)/.test(normalized) || /(^|[^a-z])y{2,4}([^a-z]|$)/.test(normalized);
+}
+function isExcelTimeFormat(formatCode) {
+  const normalized = formatCode.toLowerCase();
+  return /\[?h\]?:mm/.test(normalized) || /^mm:ss/.test(normalized);
+}
+function excelSerialTimeLabel(value, formatCode) {
+  const normalized = formatCode.toLowerCase();
+  const totalSeconds = Math.max(0, Math.round(value * 86400));
+  const hoursTotal = Math.floor(totalSeconds / 3600);
+  const hours = normalized.includes("[h]") ? hoursTotal : hoursTotal % 24;
+  const minutes = Math.floor(totalSeconds % 3600 / 60);
+  const seconds = totalSeconds % 60;
+  if (normalized.includes("am/pm")) {
+    const suffix = hours >= 12 ? "PM" : "AM";
+    const hour12 = hours % 12 || 12;
+    const withSeconds = normalized.includes(":ss");
+    return `${hour12}:${String(minutes).padStart(2, "0")}${withSeconds ? `:${String(seconds).padStart(2, "0")}` : ""} ${suffix}`;
+  }
+  if (/^mm:ss/.test(normalized)) return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  if (normalized.includes(":ss")) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return `${hours}:${String(minutes).padStart(2, "0")}`;
+}
+function spreadsheetDecimalPlaces(formatCode) {
+  return formatCode.match(/\.([0#]+)/)?.[1]?.length ?? 0;
+}
+function spreadsheetScientificLabel(value, formatCode) {
+  const decimals = spreadsheetDecimalPlaces(formatCode);
+  return value.toExponential(decimals).replace("e", "E").replace(/E\+?(-?\d+)$/, (_match, exponent) => {
+    const numericExponent = Number(exponent);
+    const sign = numericExponent < 0 ? "-" : "+";
+    return `E${sign}${String(Math.abs(numericExponent)).padStart(2, "0")}`;
+  });
+}
+function spreadsheetFractionLabel(value, formatCode) {
+  const denominatorLimit = formatCode.includes("??/??") ? 99 : 9;
+  const sign = value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  const whole = Math.floor(absolute);
+  const fraction = absolute - whole;
+  let bestNumerator = 0;
+  let bestDenominator = 1;
+  let bestError = Number.POSITIVE_INFINITY;
+  for (let denominator = 1; denominator <= denominatorLimit; denominator += 1) {
+    const numerator = Math.round(fraction * denominator);
+    const error = Math.abs(fraction - numerator / denominator);
+    if (error < bestError) {
+      bestError = error;
+      bestNumerator = numerator;
+      bestDenominator = denominator;
+    }
+  }
+  if (bestNumerator === 0) return `${sign}${whole}`;
+  if (bestNumerator === bestDenominator) return `${sign}${whole + 1}`;
+  return `${sign}${whole > 0 ? `${whole} ` : ""}${bestNumerator}/${bestDenominator}`;
+}
+function spreadsheetCurrencyLabel(value, formatCode) {
+  const section = spreadsheetNumberFormatSection(value, formatCode);
+  const decimals = spreadsheetDecimalPlaces(section);
+  const absolute = Math.abs(value);
+  const formatted = absolute.toLocaleString("en-US", {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals
+  });
+  if (value < 0 && section.includes("(")) return `($${formatted})`;
+  return `${value < 0 ? "-" : ""}$${formatted}`;
+}
+function spreadsheetNumberLabel(value, formatCode) {
+  const section = spreadsheetNumberFormatSection(value, formatCode);
+  const decimals = spreadsheetDecimalPlaces(section);
+  const absolute = Math.abs(value);
+  const formatted = absolute.toLocaleString("en-US", {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals
+  });
+  if (value < 0 && section.includes("(")) return `(${formatted})`;
+  return `${value < 0 ? "-" : ""}${formatted}`;
+}
+function spreadsheetNumberFormatSection(value, formatCode) {
+  const sections = formatCode.split(";").map((section) => section.replace(/\[[^\]]+\]/g, ""));
+  if (value < 0 && sections[1]) return sections[1];
+  if (value === 0 && sections[2]) return sections[2];
+  return sections[0] ?? formatCode;
+}
+
+// src/spreadsheet/spreadsheet-selection.ts
+function spreadsheetSelectionFromViewportPoint(layout, point, scroll) {
+  const hit = spreadsheetHitCellAtViewportPoint(layout, point, scroll);
+  if (!hit) return null;
+  return spreadsheetNormalizeSelection(layout, hit);
+}
+function spreadsheetNormalizeSelection(layout, selection) {
+  const clamped = spreadsheetClampSelection(layout, selection);
+  const mergeStart = spreadsheetMergeStartForCell(layout, clamped.rowIndex, clamped.columnIndex);
+  return mergeStart ?? clamped;
+}
+function spreadsheetMoveSelection(layout, selection, direction) {
+  const current = spreadsheetNormalizeSelection(layout, selection ?? { columnIndex: 0, rowIndex: 1, rowOffset: 0 });
+  const key = spreadsheetCellKey(current.rowIndex, current.columnIndex);
+  const merge = layout.mergeByStart.get(key);
+  const columnSpan = merge?.columnSpan ?? 1;
+  const rowSpan = merge?.rowSpan ?? 1;
+  if (direction === "left") {
+    return spreadsheetNormalizeSelection(layout, {
+      columnIndex: current.columnIndex - 1,
+      rowIndex: current.rowIndex,
+      rowOffset: current.rowOffset
+    });
+  }
+  if (direction === "right") {
+    return spreadsheetNormalizeSelection(layout, {
+      columnIndex: current.columnIndex + columnSpan,
+      rowIndex: current.rowIndex,
+      rowOffset: current.rowOffset
+    });
+  }
+  if (direction === "up") {
+    return spreadsheetNormalizeSelection(layout, {
+      columnIndex: current.columnIndex,
+      rowIndex: current.rowIndex - 1,
+      rowOffset: current.rowOffset - 1
+    });
+  }
+  return spreadsheetNormalizeSelection(layout, {
+    columnIndex: current.columnIndex,
+    rowIndex: current.rowIndex + rowSpan,
+    rowOffset: current.rowOffset + rowSpan
+  });
+}
+function spreadsheetClampSelection(layout, selection) {
+  const columnIndex = clampIndex(selection.columnIndex, Math.max(0, layout.columnCount - 1));
+  const rowOffset = clampIndex(selection.rowOffset, Math.max(0, layout.rowCount - 1));
+  const rowIndex = clampIndex(selection.rowIndex, layout.rowCount, 1);
+  return {
+    columnIndex,
+    rowIndex,
+    rowOffset
+  };
+}
+function spreadsheetMergeStartForCell(layout, rowIndex, columnIndex) {
+  const ownKey = spreadsheetCellKey(rowIndex, columnIndex);
+  if (layout.mergeByStart.has(ownKey)) {
+    return {
+      columnIndex,
+      rowIndex,
+      rowOffset: rowIndex - 1
+    };
+  }
+  if (!layout.coveredCells.has(ownKey)) return null;
+  for (const merge of layout.mergeByStart.values()) {
+    const rowEnd = merge.startRow + merge.rowSpan - 1;
+    const columnEnd = merge.startColumn + merge.columnSpan - 1;
+    if (rowIndex >= merge.startRow && rowIndex <= rowEnd && columnIndex >= merge.startColumn && columnIndex <= columnEnd) {
+      return {
+        columnIndex: merge.startColumn,
+        rowIndex: merge.startRow,
+        rowOffset: merge.startRow - 1
+      };
+    }
+  }
+  return null;
+}
+function spreadsheetSelectionWorldRect(layout, selection) {
+  const key = spreadsheetCellKey(selection.rowIndex, selection.columnIndex);
+  const merge = layout.mergeByStart.get(key);
+  const left = spreadsheetColumnLeft(layout, selection.columnIndex);
+  const top = spreadsheetRowTop(layout, selection.rowOffset);
+  return {
+    height: spreadsheetRowTop(layout, selection.rowOffset + (merge?.rowSpan ?? 1)) - top,
+    left,
+    top,
+    width: spreadsheetColumnLeft(layout, selection.columnIndex + (merge?.columnSpan ?? 1)) - left
+  };
+}
+function spreadsheetFrozenSelectionSegments(layout, selection, scroll) {
+  return spreadsheetViewportRectSegments(layout, spreadsheetSelectionWorldRect(layout, selection), scroll);
+}
+function clampIndex(value, max, min = 0) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+// src/spreadsheet/spreadsheet-interaction.ts
+function viewportPointFromPointer(event) {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  return {
+    x: event.clientX - bounds.left,
+    y: event.clientY - bounds.top
+  };
+}
+function spreadsheetSelectionKey(selection) {
+  return `${selection.rowIndex}:${selection.columnIndex}`;
+}
+function spreadsheetEditorForSelection(activeSheet, styles, cellEdits, selection) {
+  const sheetName = asString(activeSheet?.name);
+  const cell = cellAt2(activeSheet, selection.rowIndex, selection.columnIndex);
+  const key = spreadsheetSelectionKey(selection);
+  return {
+    selection,
+    value: cellEdits[key] ?? spreadsheetCellText(cell, styles, sheetName)
+  };
+}
+function commitSpreadsheetEditor(editor, setCellEdits, setEditor) {
+  const key = spreadsheetSelectionKey(editor.selection);
+  setCellEdits((current) => ({
+    ...current,
+    [key]: editor.value
+  }));
+  setEditor(null);
+}
+function spreadsheetSelectionDirectionFromKey(key, shiftKey = false) {
+  if (key === "ArrowDown" || key === "Enter") return "down";
+  if (key === "ArrowLeft") return "left";
+  if (key === "ArrowRight" || key === "Tab") return shiftKey ? "left" : "right";
+  if (key === "ArrowUp") return "up";
+  return null;
+}
+function scrollSpreadsheetSelectionIntoView(viewport2, layout, selection) {
+  const rect = spreadsheetSelectionWorldRect(layout, selection);
+  const margin = 16;
+  const right = rect.left + rect.width;
+  const bottom = rect.top + rect.height;
+  if (rect.left < viewport2.scrollLeft + SPREADSHEET_ROW_HEADER_WIDTH) {
+    viewport2.scrollLeft = Math.max(0, rect.left - SPREADSHEET_ROW_HEADER_WIDTH - margin);
+  } else if (right > viewport2.scrollLeft + viewport2.clientWidth) {
+    viewport2.scrollLeft = Math.max(0, right - viewport2.clientWidth + margin);
+  }
+  if (rect.top < viewport2.scrollTop + SPREADSHEET_COLUMN_HEADER_HEIGHT) {
+    viewport2.scrollTop = Math.max(0, rect.top - SPREADSHEET_COLUMN_HEADER_HEIGHT - margin);
+  } else if (bottom > viewport2.scrollTop + viewport2.clientHeight) {
+    viewport2.scrollTop = Math.max(0, bottom - viewport2.clientHeight + margin);
+  }
+}
+function spreadsheetResizeCursor(axis) {
+  return axis === "column" ? "col-resize" : "row-resize";
+}
+function applySpreadsheetInteractiveSizeOverride(current, axis, index, size) {
+  const bucket = axis === "column" ? "columnWidths" : "rowHeights";
+  if (current[bucket]?.[index] === size) return current;
+  return {
+    ...current,
+    [bucket]: {
+      ...current[bucket],
+      [index]: size
+    }
+  };
+}
+function visibleFloatingSpecs(specs, viewportSize, viewportScroll) {
+  if (viewportSize.width <= 0 || viewportSize.height <= 0) return specs;
+  const overscan = 240;
+  const viewportLeft = viewportScroll.left - overscan;
+  const viewportTop = viewportScroll.top - overscan;
+  const viewportRight = viewportScroll.left + viewportSize.width + overscan;
+  const viewportBottom = viewportScroll.top + viewportSize.height + overscan;
+  return specs.filter((spec) => {
+    const rectRight = spec.left + spec.width;
+    const rectBottom = spec.top + spec.height;
+    return rectRight >= viewportLeft && spec.left <= viewportRight && rectBottom >= viewportTop && spec.top <= viewportBottom;
+  });
+}
+
+// src/spreadsheet/spreadsheet-resize.ts
+var RESIZE_HIT_SLOP_PX = 5;
+var MIN_COLUMN_WIDTH_PX = 24;
+var MAX_COLUMN_WIDTH_PX = 560;
+var MIN_ROW_HEIGHT_PX = 12;
+var MAX_ROW_HEIGHT_PX = 240;
+function spreadsheetResizeHitAtViewportPoint(layout, point, scroll, slopPx = RESIZE_HIT_SLOP_PX) {
+  const world = spreadsheetViewportPointToWorld(layout, point, scroll);
+  if (point.y >= 0 && point.y <= SPREADSHEET_COLUMN_HEADER_HEIGHT && world.x >= SPREADSHEET_ROW_HEADER_WIDTH) {
+    const boundaryIndex = nearestResizeBoundary(layout.columnOffsets, world.x, slopPx);
+    if (boundaryIndex > 0 && boundaryIndex <= layout.columnCount) {
+      const index = boundaryIndex - 1;
+      return {
+        axis: "column",
+        boundary: layout.columnOffsets[boundaryIndex] ?? world.x,
+        index,
+        originalSize: layout.columnWidths[index] ?? SPREADSHEET_DEFAULT_COLUMN_WIDTH
+      };
+    }
+  }
+  if (point.x >= 0 && point.x <= SPREADSHEET_ROW_HEADER_WIDTH && world.y >= SPREADSHEET_COLUMN_HEADER_HEIGHT) {
+    const boundaryIndex = nearestResizeBoundary(layout.rowOffsets, world.y, slopPx);
+    if (boundaryIndex > 0 && boundaryIndex <= layout.rowCount) {
+      const index = boundaryIndex - 1;
+      return {
+        axis: "row",
+        boundary: layout.rowOffsets[boundaryIndex] ?? world.y,
+        index,
+        originalSize: layout.rowHeights[index] ?? SPREADSHEET_DEFAULT_ROW_HEIGHT
+      };
+    }
+  }
+  return null;
+}
+function spreadsheetResizeDragFromHit(layout, hit, point, scroll) {
+  const world = spreadsheetViewportPointToWorld(layout, point, scroll);
+  return {
+    ...hit,
+    startWorldPosition: hit.axis === "column" ? world.x : world.y
+  };
+}
+function spreadsheetResizeSizeFromPoint(layout, drag, point, scroll) {
+  const world = spreadsheetViewportPointToWorld(layout, point, scroll);
+  const currentPosition = drag.axis === "column" ? world.x : world.y;
+  return clampSpreadsheetResizeSize(drag.axis, drag.originalSize + currentPosition - drag.startWorldPosition);
+}
+function clampSpreadsheetResizeSize(axis, size) {
+  if (!Number.isFinite(size)) return axis === "column" ? SPREADSHEET_DEFAULT_COLUMN_WIDTH : SPREADSHEET_DEFAULT_ROW_HEIGHT;
+  if (axis === "column") return Math.max(MIN_COLUMN_WIDTH_PX, Math.min(MAX_COLUMN_WIDTH_PX, Math.round(size)));
+  return Math.max(MIN_ROW_HEIGHT_PX, Math.min(MAX_ROW_HEIGHT_PX, Math.round(size)));
+}
+function nearestResizeBoundary(offsets, worldPosition, slopPx) {
+  if (offsets.length <= 1) return -1;
+  const insertion = lowerBound(offsets, worldPosition);
+  const candidates = [insertion, insertion - 1, insertion + 1];
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const index of candidates) {
+    if (index <= 0 || index >= offsets.length) continue;
+    const distance = Math.abs((offsets[index] ?? worldPosition) - worldPosition);
+    if (distance <= slopPx && distance < bestDistance) {
+      bestIndex = index;
+      bestDistance = distance;
+    }
+  }
+  return bestIndex;
+}
+function lowerBound(values, value) {
+  let left = 0;
+  let right = values.length;
+  while (left < right) {
+    const middle = Math.floor((left + right) / 2);
+    if ((values[middle] ?? 0) < value) left = middle + 1;
+    else right = middle;
+  }
+  return left;
+}
+
 // src/spreadsheet/spreadsheet-shapes.tsx
-import { jsx as jsx8, jsxs as jsxs4 } from "react/jsx-runtime";
+import { jsx as jsx12, jsxs as jsxs8 } from "react/jsx-runtime";
 function buildSpreadsheetShapes({
   activeSheet,
   layout,
@@ -8169,13 +8865,13 @@ function isRightTriangleGeometry(geometry) {
 }
 function SpreadsheetShapeLayer({ shapes }) {
   if (shapes.length === 0) return null;
-  return /* @__PURE__ */ jsx8("div", { "aria-hidden": "true", style: { inset: 0, pointerEvents: "none", position: "absolute" }, children: shapes.map((shape) => /* @__PURE__ */ jsx8(SpreadsheetShapeView, { shape }, shape.id)) });
+  return /* @__PURE__ */ jsx12("div", { "aria-hidden": "true", style: { inset: 0, pointerEvents: "none", position: "absolute" }, children: shapes.map((shape) => /* @__PURE__ */ jsx12(SpreadsheetShapeView, { shape }, shape.id)) });
 }
 function SpreadsheetShapeView({ shape }) {
   if (isRightTriangleGeometry(shape.geometry)) {
-    return /* @__PURE__ */ jsx8(SpreadsheetRightTriangleShape, { shape });
+    return /* @__PURE__ */ jsx12(SpreadsheetRightTriangleShape, { shape });
   }
-  return /* @__PURE__ */ jsx8(
+  return /* @__PURE__ */ jsx12(
     "div",
     {
       "data-office-shape": shape.id,
@@ -8215,7 +8911,7 @@ function SpreadsheetRightTriangleShape({ shape }) {
     `${halfStroke},${Math.max(halfStroke, shape.height - halfStroke)}`,
     `${Math.max(halfStroke, shape.width - halfStroke)},${Math.max(halfStroke, shape.height - halfStroke)}`
   ].join(" ");
-  return /* @__PURE__ */ jsxs4(
+  return /* @__PURE__ */ jsxs8(
     "svg",
     {
       "data-office-shape": shape.id,
@@ -8233,7 +8929,7 @@ function SpreadsheetRightTriangleShape({ shape }) {
       viewBox: `0 0 ${shape.width} ${shape.height}`,
       width: shape.width,
       children: [
-        /* @__PURE__ */ jsx8(
+        /* @__PURE__ */ jsx12(
           "polygon",
           {
             fill: shape.fill,
@@ -8244,7 +8940,7 @@ function SpreadsheetRightTriangleShape({ shape }) {
             vectorEffect: "non-scaling-stroke"
           }
         ),
-        shape.text ? /* @__PURE__ */ jsx8("foreignObject", { height: shape.height, width: shape.width, x: 0, y: 0, children: /* @__PURE__ */ jsx8(
+        shape.text ? /* @__PURE__ */ jsx12("foreignObject", { height: shape.height, width: shape.width, x: 0, y: 0, children: /* @__PURE__ */ jsx12(
           "div",
           {
             style: {
@@ -8305,7 +9001,7 @@ function parseCssColorChannels(value) {
 }
 function SpreadsheetImageLayer({ images }) {
   if (images.length === 0) return null;
-  return /* @__PURE__ */ jsx8("div", { "aria-hidden": "true", style: { inset: 0, pointerEvents: "none", position: "absolute" }, children: images.map((image) => /* @__PURE__ */ jsx8(
+  return /* @__PURE__ */ jsx12("div", { "aria-hidden": "true", style: { inset: 0, pointerEvents: "none", position: "absolute" }, children: images.map((image) => /* @__PURE__ */ jsx12(
     "div",
     {
       "data-office-image": image.id,
@@ -8325,181 +9021,6 @@ function SpreadsheetImageLayer({ images }) {
     },
     image.id
   )) });
-}
-
-// src/spreadsheet/spreadsheet-resize.ts
-var RESIZE_HIT_SLOP_PX = 5;
-var MIN_COLUMN_WIDTH_PX = 24;
-var MAX_COLUMN_WIDTH_PX = 560;
-var MIN_ROW_HEIGHT_PX = 12;
-var MAX_ROW_HEIGHT_PX = 240;
-function spreadsheetResizeHitAtViewportPoint(layout, point, scroll, slopPx = RESIZE_HIT_SLOP_PX) {
-  const world = spreadsheetViewportPointToWorld(layout, point, scroll);
-  if (point.y >= 0 && point.y <= SPREADSHEET_COLUMN_HEADER_HEIGHT && world.x >= SPREADSHEET_ROW_HEADER_WIDTH) {
-    const boundaryIndex = nearestResizeBoundary(layout.columnOffsets, world.x, slopPx);
-    if (boundaryIndex > 0 && boundaryIndex <= layout.columnCount) {
-      const index = boundaryIndex - 1;
-      return {
-        axis: "column",
-        boundary: layout.columnOffsets[boundaryIndex] ?? world.x,
-        index,
-        originalSize: layout.columnWidths[index] ?? SPREADSHEET_DEFAULT_COLUMN_WIDTH
-      };
-    }
-  }
-  if (point.x >= 0 && point.x <= SPREADSHEET_ROW_HEADER_WIDTH && world.y >= SPREADSHEET_COLUMN_HEADER_HEIGHT) {
-    const boundaryIndex = nearestResizeBoundary(layout.rowOffsets, world.y, slopPx);
-    if (boundaryIndex > 0 && boundaryIndex <= layout.rowCount) {
-      const index = boundaryIndex - 1;
-      return {
-        axis: "row",
-        boundary: layout.rowOffsets[boundaryIndex] ?? world.y,
-        index,
-        originalSize: layout.rowHeights[index] ?? SPREADSHEET_DEFAULT_ROW_HEIGHT
-      };
-    }
-  }
-  return null;
-}
-function spreadsheetResizeDragFromHit(layout, hit, point, scroll) {
-  const world = spreadsheetViewportPointToWorld(layout, point, scroll);
-  return {
-    ...hit,
-    startWorldPosition: hit.axis === "column" ? world.x : world.y
-  };
-}
-function spreadsheetResizeSizeFromPoint(layout, drag, point, scroll) {
-  const world = spreadsheetViewportPointToWorld(layout, point, scroll);
-  const currentPosition = drag.axis === "column" ? world.x : world.y;
-  return clampSpreadsheetResizeSize(drag.axis, drag.originalSize + currentPosition - drag.startWorldPosition);
-}
-function clampSpreadsheetResizeSize(axis, size) {
-  if (!Number.isFinite(size)) return axis === "column" ? SPREADSHEET_DEFAULT_COLUMN_WIDTH : SPREADSHEET_DEFAULT_ROW_HEIGHT;
-  if (axis === "column") return Math.max(MIN_COLUMN_WIDTH_PX, Math.min(MAX_COLUMN_WIDTH_PX, Math.round(size)));
-  return Math.max(MIN_ROW_HEIGHT_PX, Math.min(MAX_ROW_HEIGHT_PX, Math.round(size)));
-}
-function nearestResizeBoundary(offsets, worldPosition, slopPx) {
-  if (offsets.length <= 1) return -1;
-  const insertion = lowerBound(offsets, worldPosition);
-  const candidates = [insertion, insertion - 1, insertion + 1];
-  let bestIndex = -1;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (const index of candidates) {
-    if (index <= 0 || index >= offsets.length) continue;
-    const distance = Math.abs((offsets[index] ?? worldPosition) - worldPosition);
-    if (distance <= slopPx && distance < bestDistance) {
-      bestIndex = index;
-      bestDistance = distance;
-    }
-  }
-  return bestIndex;
-}
-function lowerBound(values, value) {
-  let left = 0;
-  let right = values.length;
-  while (left < right) {
-    const middle = Math.floor((left + right) / 2);
-    if ((values[middle] ?? 0) < value) left = middle + 1;
-    else right = middle;
-  }
-  return left;
-}
-
-// src/spreadsheet/spreadsheet-selection.ts
-function spreadsheetSelectionFromViewportPoint(layout, point, scroll) {
-  const hit = spreadsheetHitCellAtViewportPoint(layout, point, scroll);
-  if (!hit) return null;
-  return spreadsheetNormalizeSelection(layout, hit);
-}
-function spreadsheetNormalizeSelection(layout, selection) {
-  const clamped = spreadsheetClampSelection(layout, selection);
-  const mergeStart = spreadsheetMergeStartForCell(layout, clamped.rowIndex, clamped.columnIndex);
-  return mergeStart ?? clamped;
-}
-function spreadsheetMoveSelection(layout, selection, direction) {
-  const current = spreadsheetNormalizeSelection(layout, selection ?? { columnIndex: 0, rowIndex: 1, rowOffset: 0 });
-  const key = spreadsheetCellKey(current.rowIndex, current.columnIndex);
-  const merge = layout.mergeByStart.get(key);
-  const columnSpan = merge?.columnSpan ?? 1;
-  const rowSpan = merge?.rowSpan ?? 1;
-  if (direction === "left") {
-    return spreadsheetNormalizeSelection(layout, {
-      columnIndex: current.columnIndex - 1,
-      rowIndex: current.rowIndex,
-      rowOffset: current.rowOffset
-    });
-  }
-  if (direction === "right") {
-    return spreadsheetNormalizeSelection(layout, {
-      columnIndex: current.columnIndex + columnSpan,
-      rowIndex: current.rowIndex,
-      rowOffset: current.rowOffset
-    });
-  }
-  if (direction === "up") {
-    return spreadsheetNormalizeSelection(layout, {
-      columnIndex: current.columnIndex,
-      rowIndex: current.rowIndex - 1,
-      rowOffset: current.rowOffset - 1
-    });
-  }
-  return spreadsheetNormalizeSelection(layout, {
-    columnIndex: current.columnIndex,
-    rowIndex: current.rowIndex + rowSpan,
-    rowOffset: current.rowOffset + rowSpan
-  });
-}
-function spreadsheetClampSelection(layout, selection) {
-  const columnIndex = clampIndex(selection.columnIndex, Math.max(0, layout.columnCount - 1));
-  const rowOffset = clampIndex(selection.rowOffset, Math.max(0, layout.rowCount - 1));
-  const rowIndex = clampIndex(selection.rowIndex, layout.rowCount, 1);
-  return {
-    columnIndex,
-    rowIndex,
-    rowOffset
-  };
-}
-function spreadsheetMergeStartForCell(layout, rowIndex, columnIndex) {
-  const ownKey = spreadsheetCellKey(rowIndex, columnIndex);
-  if (layout.mergeByStart.has(ownKey)) {
-    return {
-      columnIndex,
-      rowIndex,
-      rowOffset: rowIndex - 1
-    };
-  }
-  if (!layout.coveredCells.has(ownKey)) return null;
-  for (const merge of layout.mergeByStart.values()) {
-    const rowEnd = merge.startRow + merge.rowSpan - 1;
-    const columnEnd = merge.startColumn + merge.columnSpan - 1;
-    if (rowIndex >= merge.startRow && rowIndex <= rowEnd && columnIndex >= merge.startColumn && columnIndex <= columnEnd) {
-      return {
-        columnIndex: merge.startColumn,
-        rowIndex: merge.startRow,
-        rowOffset: merge.startRow - 1
-      };
-    }
-  }
-  return null;
-}
-function spreadsheetSelectionWorldRect(layout, selection) {
-  const key = spreadsheetCellKey(selection.rowIndex, selection.columnIndex);
-  const merge = layout.mergeByStart.get(key);
-  const left = spreadsheetColumnLeft(layout, selection.columnIndex);
-  const top = spreadsheetRowTop(layout, selection.rowOffset);
-  return {
-    height: spreadsheetRowTop(layout, selection.rowOffset + (merge?.rowSpan ?? 1)) - top,
-    left,
-    top,
-    width: spreadsheetColumnLeft(layout, selection.columnIndex + (merge?.columnSpan ?? 1)) - left
-  };
-}
-function spreadsheetFrozenSelectionSegments(layout, selection, scroll) {
-  return spreadsheetViewportRectSegments(layout, spreadsheetSelectionWorldRect(layout, selection), scroll);
-}
-function clampIndex(value, max, min = 0) {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, Math.trunc(value)));
 }
 
 // src/spreadsheet/spreadsheet-table-filters.ts
@@ -8640,7 +9161,7 @@ function columnIndexFromLetters(letters) {
 
 // src/spreadsheet/spreadsheet-table-filter-menu.tsx
 import { useEffect as useEffect4, useRef as useRef4 } from "react";
-import { jsx as jsx9, jsxs as jsxs5 } from "react/jsx-runtime";
+import { jsx as jsx13, jsxs as jsxs9 } from "react/jsx-runtime";
 function SpreadsheetTableFilterMenu({
   anchor,
   onClear,
@@ -8668,7 +9189,7 @@ function SpreadsheetTableFilterMenu({
     };
   }, [onClose]);
   const selected = new Set(selectedValues ?? values.map((item) => item.value));
-  return /* @__PURE__ */ jsxs5(
+  return /* @__PURE__ */ jsxs9(
     "div",
     {
       "data-testid": "spreadsheet-filter-menu",
@@ -8692,8 +9213,8 @@ function SpreadsheetTableFilterMenu({
         zIndex: 5e4
       },
       children: [
-        /* @__PURE__ */ jsx9("div", { style: { borderBottom: "1px solid #e2e8f0", fontWeight: 700, padding: "8px 10px" }, children: target.columnName }),
-        /* @__PURE__ */ jsx9(
+        /* @__PURE__ */ jsx13("div", { style: { borderBottom: "1px solid #e2e8f0", fontWeight: 700, padding: "8px 10px" }, children: target.columnName }),
+        /* @__PURE__ */ jsx13(
           "button",
           {
             onClick: onClear,
@@ -8713,7 +9234,7 @@ function SpreadsheetTableFilterMenu({
             children: "Clear filter"
           }
         ),
-        /* @__PURE__ */ jsx9("div", { style: { maxHeight: 260, overflow: "auto", padding: "6px 0" }, children: values.map((item) => /* @__PURE__ */ jsxs5(
+        /* @__PURE__ */ jsx13("div", { style: { maxHeight: 260, overflow: "auto", padding: "6px 0" }, children: values.map((item) => /* @__PURE__ */ jsxs9(
           "label",
           {
             style: {
@@ -8724,7 +9245,7 @@ function SpreadsheetTableFilterMenu({
               padding: "5px 10px"
             },
             children: [
-              /* @__PURE__ */ jsx9(
+              /* @__PURE__ */ jsx13(
                 "input",
                 {
                   checked: selected.has(item.value),
@@ -8732,8 +9253,8 @@ function SpreadsheetTableFilterMenu({
                   type: "checkbox"
                 }
               ),
-              /* @__PURE__ */ jsx9("span", { style: { flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: item.label }),
-              /* @__PURE__ */ jsx9("span", { style: { color: "#64748b", fontVariantNumeric: "tabular-nums" }, children: item.count })
+              /* @__PURE__ */ jsx13("span", { style: { flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: item.label }),
+              /* @__PURE__ */ jsx13("span", { style: { color: "#64748b", fontVariantNumeric: "tabular-nums" }, children: item.count })
             ]
           },
           item.value
@@ -8814,9 +9335,9 @@ function spreadsheetViewportStateEquals(left, right) {
 }
 
 // src/spreadsheet/spreadsheet-workbook-chrome.tsx
-import { jsx as jsx10, jsxs as jsxs6 } from "react/jsx-runtime";
+import { jsx as jsx14, jsxs as jsxs10 } from "react/jsx-runtime";
 function SpreadsheetWorkbookBar({ title }) {
-  return /* @__PURE__ */ jsxs6(
+  return /* @__PURE__ */ jsxs10(
     "div",
     {
       style: {
@@ -8831,7 +9352,7 @@ function SpreadsheetWorkbookBar({ title }) {
         padding: "0 18px"
       },
       children: [
-        /* @__PURE__ */ jsx10(
+        /* @__PURE__ */ jsx14(
           "div",
           {
             "aria-hidden": "true",
@@ -8846,7 +9367,7 @@ function SpreadsheetWorkbookBar({ title }) {
               justifyContent: "center",
               width: 32
             },
-            children: /* @__PURE__ */ jsx10(
+            children: /* @__PURE__ */ jsx14(
               "span",
               {
                 style: {
@@ -8865,7 +9386,7 @@ function SpreadsheetWorkbookBar({ title }) {
             )
           }
         ),
-        /* @__PURE__ */ jsx10(
+        /* @__PURE__ */ jsx14(
           "div",
           {
             style: {
@@ -8888,7 +9409,7 @@ function SpreadsheetFormulaBar({
   address,
   value
 }) {
-  return /* @__PURE__ */ jsxs6(
+  return /* @__PURE__ */ jsxs10(
     "div",
     {
       style: {
@@ -8904,7 +9425,7 @@ function SpreadsheetFormulaBar({
         padding: "6px 12px"
       },
       children: [
-        /* @__PURE__ */ jsx10(
+        /* @__PURE__ */ jsx14(
           "div",
           {
             style: {
@@ -8915,7 +9436,7 @@ function SpreadsheetFormulaBar({
             children: address
           }
         ),
-        /* @__PURE__ */ jsx10(
+        /* @__PURE__ */ jsx14(
           "div",
           {
             style: {
@@ -8941,40 +9462,7 @@ function SpreadsheetFormulaBar({
 }
 
 // src/spreadsheet/spreadsheet-preview.tsx
-import { jsx as jsx11, jsxs as jsxs7 } from "react/jsx-runtime";
-var EXCEL_BUILT_IN_NUMBER_FORMATS = /* @__PURE__ */ new Map([
-  [1, "0"],
-  [2, "0.00"],
-  [3, "#,##0"],
-  [4, "#,##0.00"],
-  [5, "$#,##0;($#,##0)"],
-  [6, "$#,##0;[Red]($#,##0)"],
-  [7, "$#,##0.00;($#,##0.00)"],
-  [8, "$#,##0.00;[Red]($#,##0.00)"],
-  [9, "0%"],
-  [10, "0.00%"],
-  [11, "0.00E+00"],
-  [12, "# ?/?"],
-  [13, "# ??/??"],
-  [14, "m/d/yy"],
-  [15, "d-mmm-yy"],
-  [16, "d-mmm"],
-  [17, "mmm-yy"],
-  [18, "h:mm AM/PM"],
-  [19, "h:mm:ss AM/PM"],
-  [20, "h:mm"],
-  [21, "h:mm:ss"],
-  [22, "m/d/yy h:mm"],
-  [37, "#,##0;(#,##0)"],
-  [38, "#,##0;[Red](#,##0)"],
-  [39, "#,##0.00;(#,##0.00)"],
-  [40, "#,##0.00;[Red](#,##0.00)"],
-  [45, "mm:ss"],
-  [46, "[h]:mm:ss"],
-  [47, "mmss.0"],
-  [48, "##0.0E+0"],
-  [49, "@"]
-]);
+import { jsx as jsx15, jsxs as jsxs11 } from "react/jsx-runtime";
 function SpreadsheetPreview({ labels, proto }) {
   const root = useMemo4(() => asRecord(proto), [proto]);
   const sheets = useMemo4(
@@ -9240,15 +9728,15 @@ function SpreadsheetPreview({ labels, proto }) {
     });
   };
   if (sheets.length === 0) {
-    return /* @__PURE__ */ jsx11("p", { style: { color: "#64748b" }, children: labels.noSheets });
+    return /* @__PURE__ */ jsx15("p", { style: { color: "#64748b" }, children: labels.noSheets });
   }
   const formulaRow = selection?.rowIndex ?? 1;
   const formulaColumn = selection?.columnIndex ?? 0;
-  const formulaCell = cellAt3(activeSheet, formulaRow, formulaColumn);
+  const formulaCell = cellAt2(activeSheet, formulaRow, formulaColumn);
   const formulaSheetName = asString(activeSheet?.name);
   const formulaValue = selection ? cellEdits[spreadsheetSelectionKey(selection)] ?? spreadsheetCellText(formulaCell, styles, formulaSheetName) : spreadsheetCellText(formulaCell, styles, formulaSheetName);
   const formulaAddress = asString(formulaCell?.address) || `${columnLabel(formulaColumn)}${formulaRow}`;
-  return /* @__PURE__ */ jsxs7(
+  return /* @__PURE__ */ jsxs11(
     "div",
     {
       "data-testid": "spreadsheet-preview",
@@ -9267,10 +9755,10 @@ function SpreadsheetPreview({ labels, proto }) {
         overflow: "hidden"
       },
       children: [
-        /* @__PURE__ */ jsx11(SpreadsheetWorkbookBar, { title: asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name) }),
-        /* @__PURE__ */ jsx11(SpreadsheetFormulaBar, { address: formulaAddress, value: formulaValue }),
-        /* @__PURE__ */ jsxs7("div", { ref: viewportShellRef, style: { minHeight: 0, overflow: "hidden", position: "relative" }, children: [
-          /* @__PURE__ */ jsx11(
+        /* @__PURE__ */ jsx15(SpreadsheetWorkbookBar, { title: asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name) }),
+        /* @__PURE__ */ jsx15(SpreadsheetFormulaBar, { address: formulaAddress, value: formulaValue }),
+        /* @__PURE__ */ jsxs11("div", { ref: viewportShellRef, style: { minHeight: 0, overflow: "hidden", position: "relative" }, children: [
+          /* @__PURE__ */ jsx15(
             SpreadsheetCanvasLayer,
             {
               cellPaints: canvasCellPaints,
@@ -9279,7 +9767,7 @@ function SpreadsheetPreview({ labels, proto }) {
               viewportSize
             }
           ),
-          /* @__PURE__ */ jsx11(
+          /* @__PURE__ */ jsx15(
             "div",
             {
               onDoubleClick: handleViewportDoubleClick,
@@ -9292,8 +9780,8 @@ function SpreadsheetPreview({ labels, proto }) {
               ref: viewportRef,
               style: { cursor: resizeDrag ? spreadsheetResizeCursor(resizeDrag.axis) : resizeCursor, height: "100%", overflow: "auto", position: "relative", zIndex: 1 },
               tabIndex: 0,
-              children: /* @__PURE__ */ jsxs7("div", { style: { height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }, children: [
-                /* @__PURE__ */ jsx11(
+              children: /* @__PURE__ */ jsxs11("div", { style: { height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }, children: [
+                /* @__PURE__ */ jsx15(
                   SpreadsheetGrid,
                   {
                     activeSheet,
@@ -9312,11 +9800,11 @@ function SpreadsheetPreview({ labels, proto }) {
                     viewportSize
                   }
                 ),
-                /* @__PURE__ */ jsx11(SpreadsheetImageLayer, { images: visibleImageSpecs }),
-                /* @__PURE__ */ jsx11(SpreadsheetShapeLayer, { shapes: visibleShapeSpecs }),
-                /* @__PURE__ */ jsx11(SpreadsheetChartLayer, { charts: visibleChartSpecs }),
-                /* @__PURE__ */ jsx11(SpreadsheetSelectionLayer, { layout, selection }),
-                /* @__PURE__ */ jsx11(
+                /* @__PURE__ */ jsx15(SpreadsheetImageLayer, { images: visibleImageSpecs }),
+                /* @__PURE__ */ jsx15(SpreadsheetShapeLayer, { shapes: visibleShapeSpecs }),
+                /* @__PURE__ */ jsx15(SpreadsheetChartLayer, { charts: visibleChartSpecs }),
+                /* @__PURE__ */ jsx15(SpreadsheetSelectionLayer, { layout, selection }),
+                /* @__PURE__ */ jsx15(
                   SpreadsheetCellEditorLayer,
                   {
                     editor,
@@ -9329,7 +9817,7 @@ function SpreadsheetPreview({ labels, proto }) {
               ] })
             }
           ),
-          /* @__PURE__ */ jsx11(
+          /* @__PURE__ */ jsx15(
             SpreadsheetFrozenBodyLayer,
             {
               activeSheet,
@@ -9345,7 +9833,7 @@ function SpreadsheetPreview({ labels, proto }) {
               viewportSize
             }
           ),
-          /* @__PURE__ */ jsx11(
+          /* @__PURE__ */ jsx15(
             SpreadsheetFrozenHeaders,
             {
               layout,
@@ -9354,8 +9842,8 @@ function SpreadsheetPreview({ labels, proto }) {
               viewportSize
             }
           ),
-          /* @__PURE__ */ jsx11(SpreadsheetFrozenSelectionLayer, { layout, scroll: viewportScroll, selection }),
-          filterMenu ? /* @__PURE__ */ jsx11(
+          /* @__PURE__ */ jsx15(SpreadsheetFrozenSelectionLayer, { layout, scroll: viewportScroll, selection }),
+          filterMenu ? /* @__PURE__ */ jsx15(
             SpreadsheetTableFilterMenu,
             {
               anchor: filterMenu.anchor,
@@ -9368,7 +9856,7 @@ function SpreadsheetPreview({ labels, proto }) {
             }
           ) : null
         ] }),
-        /* @__PURE__ */ jsx11(
+        /* @__PURE__ */ jsx15(
           "div",
           {
             style: {
@@ -9384,7 +9872,7 @@ function SpreadsheetPreview({ labels, proto }) {
             children: sheets.map((sheet, index) => {
               const tabColor = spreadsheetSheetTabColor(sheet);
               const active = index === activeSheetIndex;
-              return /* @__PURE__ */ jsx11(
+              return /* @__PURE__ */ jsx15(
                 "button",
                 {
                   onClick: () => handleSheetSelect(index),
@@ -9418,70 +9906,6 @@ function SpreadsheetPreview({ labels, proto }) {
     }
   );
 }
-function viewportPointFromPointer(event) {
-  const bounds = event.currentTarget.getBoundingClientRect();
-  return {
-    x: event.clientX - bounds.left,
-    y: event.clientY - bounds.top
-  };
-}
-function spreadsheetSelectionKey(selection) {
-  return spreadsheetCellKey(selection.rowIndex, selection.columnIndex);
-}
-function spreadsheetEditorForSelection(activeSheet, styles, cellEdits, selection) {
-  const sheetName = asString(activeSheet?.name);
-  const cell = cellAt3(activeSheet, selection.rowIndex, selection.columnIndex);
-  const key = spreadsheetSelectionKey(selection);
-  return {
-    selection,
-    value: cellEdits[key] ?? spreadsheetCellText(cell, styles, sheetName)
-  };
-}
-function commitSpreadsheetEditor(editor, setCellEdits, setEditor) {
-  const key = spreadsheetSelectionKey(editor.selection);
-  setCellEdits((current) => ({
-    ...current,
-    [key]: editor.value
-  }));
-  setEditor(null);
-}
-function spreadsheetSelectionDirectionFromKey(key, shiftKey = false) {
-  if (key === "ArrowDown" || key === "Enter") return "down";
-  if (key === "ArrowLeft") return "left";
-  if (key === "ArrowRight" || key === "Tab") return shiftKey ? "left" : "right";
-  if (key === "ArrowUp") return "up";
-  return null;
-}
-function scrollSpreadsheetSelectionIntoView(viewport2, layout, selection) {
-  const rect = spreadsheetSelectionWorldRect(layout, selection);
-  const margin = 16;
-  const right = rect.left + rect.width;
-  const bottom = rect.top + rect.height;
-  if (rect.left < viewport2.scrollLeft + SPREADSHEET_ROW_HEADER_WIDTH) {
-    viewport2.scrollLeft = Math.max(0, rect.left - SPREADSHEET_ROW_HEADER_WIDTH - margin);
-  } else if (right > viewport2.scrollLeft + viewport2.clientWidth) {
-    viewport2.scrollLeft = Math.max(0, right - viewport2.clientWidth + margin);
-  }
-  if (rect.top < viewport2.scrollTop + SPREADSHEET_COLUMN_HEADER_HEIGHT) {
-    viewport2.scrollTop = Math.max(0, rect.top - SPREADSHEET_COLUMN_HEADER_HEIGHT - margin);
-  } else if (bottom > viewport2.scrollTop + viewport2.clientHeight) {
-    viewport2.scrollTop = Math.max(0, bottom - viewport2.clientHeight + margin);
-  }
-}
-function spreadsheetResizeCursor(axis) {
-  return axis === "column" ? "col-resize" : "row-resize";
-}
-function applySpreadsheetInteractiveSizeOverride(current, axis, index, size) {
-  const bucket = axis === "column" ? "columnWidths" : "rowHeights";
-  if (current[bucket]?.[index] === size) return current;
-  return {
-    ...current,
-    [bucket]: {
-      ...current[bucket],
-      [index]: size
-    }
-  };
-}
 function SpreadsheetSelectionLayer({
   layout,
   selection
@@ -9489,7 +9913,7 @@ function SpreadsheetSelectionLayer({
   if (!selection) return null;
   const rect = spreadsheetSelectionWorldRect(layout, selection);
   if (rect.width <= 0 || rect.height <= 0) return null;
-  return /* @__PURE__ */ jsx11(
+  return /* @__PURE__ */ jsx15(
     "div",
     {
       "aria-hidden": "true",
@@ -9511,7 +9935,7 @@ function SpreadsheetFrozenSelectionLayer({
   if (!selection) return null;
   const segments = spreadsheetFrozenSelectionSegments(layout, selection, scroll);
   if (segments.length === 0) return null;
-  return /* @__PURE__ */ jsx11("div", { "aria-hidden": "true", style: { inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 13 }, children: segments.map((segment, index) => /* @__PURE__ */ jsx11(
+  return /* @__PURE__ */ jsx15("div", { "aria-hidden": "true", style: { inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 13 }, children: segments.map((segment, index) => /* @__PURE__ */ jsx15(
     "div",
     {
       style: {
@@ -9540,7 +9964,7 @@ function SpreadsheetCellEditorLayer({
   if (!editor) return null;
   const rect = spreadsheetSelectionWorldRect(layout, editor.selection);
   if (rect.width <= 0 || rect.height <= 0) return null;
-  return /* @__PURE__ */ jsx11(
+  return /* @__PURE__ */ jsx15(
     "input",
     {
       "aria-label": "Cell editor",
@@ -9609,7 +10033,7 @@ function SpreadsheetFrozenBodyLayer({
     scroll,
     viewportSize
   });
-  return /* @__PURE__ */ jsx11("div", { "aria-hidden": "true", style: { inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 11 }, children: visibleRowOffsets.map((rowOffset) => {
+  return /* @__PURE__ */ jsx15("div", { "aria-hidden": "true", style: { inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 11 }, children: visibleRowOffsets.map((rowOffset) => {
     const rowIndex = rowOffset + 1;
     const row = layout.rowsByIndex.get(rowIndex);
     const rowRecord = layout.rowRecordsByIndex.get(rowIndex);
@@ -9631,7 +10055,7 @@ function SpreadsheetFrozenBodyLayer({
       const validation = cellKey === selectedCellKey ? validationVisuals.get(cellKey) : void 0;
       const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
       const text = cellEdits[cellKey] ?? spreadsheetCellText(cell, styles, sheetName, styleIndex);
-      return rects.map((rect, segmentIndex) => /* @__PURE__ */ jsx11(
+      return rects.map((rect, segmentIndex) => /* @__PURE__ */ jsx15(
         "div",
         {
           "data-frozen-cell-address": asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`,
@@ -9644,7 +10068,7 @@ function SpreadsheetFrozenBodyLayer({
             top: rect.top,
             width: rect.width
           },
-          children: /* @__PURE__ */ jsx11(
+          children: /* @__PURE__ */ jsx15(
             SpreadsheetCellContent,
             {
               hasComment,
@@ -9684,7 +10108,7 @@ function SpreadsheetGrid({
     [layout, scroll, viewportSize]
   );
   const { visibleColumnIndexes, visibleRange, visibleRowOffsets } = renderSnapshot;
-  return /* @__PURE__ */ jsxs7(
+  return /* @__PURE__ */ jsxs11(
     "div",
     {
       role: "grid",
@@ -9696,8 +10120,8 @@ function SpreadsheetGrid({
         width: layout.gridWidth
       },
       children: [
-        /* @__PURE__ */ jsx11("div", { style: spreadsheetCornerStyle }),
-        visibleColumnIndexes.map((columnIndex) => /* @__PURE__ */ jsx11(
+        /* @__PURE__ */ jsx15("div", { style: spreadsheetCornerStyle }),
+        visibleColumnIndexes.map((columnIndex) => /* @__PURE__ */ jsx15(
           "div",
           {
             role: "columnheader",
@@ -9716,8 +10140,8 @@ function SpreadsheetGrid({
           const rowRecord = layout.rowRecordsByIndex.get(rowIndex);
           const top = spreadsheetRowTop(layout, rowOffset);
           const height = layout.rowHeights[rowOffset];
-          return /* @__PURE__ */ jsxs7("div", { role: "row", children: [
-            /* @__PURE__ */ jsx11(
+          return /* @__PURE__ */ jsxs11("div", { role: "row", children: [
+            /* @__PURE__ */ jsx15(
               "div",
               {
                 role: "rowheader",
@@ -9745,7 +10169,7 @@ function SpreadsheetGrid({
               const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
               const text = cellEdits[cellKey] ?? spreadsheetCellText(cell, styles, sheetName, styleIndex);
               const filterTarget = visual?.filter ? spreadsheetTableFilterTargetAt(tableFilterTargets, rowIndex, columnIndex) : null;
-              return /* @__PURE__ */ jsx11(
+              return /* @__PURE__ */ jsx15(
                 "div",
                 {
                   "data-cell-address": asString(cell?.address) || `${columnLabel(columnIndex)}${rowIndex}`,
@@ -9758,7 +10182,7 @@ function SpreadsheetGrid({
                     top,
                     width
                   },
-                  children: /* @__PURE__ */ jsx11(
+                  children: /* @__PURE__ */ jsx15(
                     SpreadsheetCellContent,
                     {
                       filterActive: activeFilterKeys.has(cellKey),
@@ -9779,378 +10203,6 @@ function SpreadsheetGrid({
       ]
     }
   );
-}
-function visibleFloatingSpecs(specs, viewportSize, viewportScroll) {
-  return specs.filter((spec) => spreadsheetViewportIntersectsRect(spec, viewportSize, viewportScroll));
-}
-function spreadsheetCellStyle(cell, styles, visual, sheetName, styleIndex, showGridLines = true) {
-  const cellFormat = styleAt(styles?.cellXfs, styleIndex ?? cell?.styleIndex);
-  const font = styleAt(styles?.fonts, cellFormat?.fontId);
-  const fill = styleAt(styles?.fills, cellFormat?.fillId);
-  const border = styleAt(styles?.borders, cellFormat?.borderId);
-  const alignment = asRecord(cellFormat?.alignment);
-  const fontFill = resolveStyleRecord(font, ["fill", "color"]);
-  const fillColor = spreadsheetFillToCss(fill);
-  const fontColor = colorToCss(fontFill?.color ?? fontFill);
-  const hyperlinkFormula = /^=?\s*HYPERLINK\s*\(/i.test(asString(cell?.formula));
-  const gridLineColor = showGridLines ? "#e2e8f0" : "transparent";
-  const bottomBorder = spreadsheetBorderCss(border, "bottom", gridLineColor);
-  const rightBorder = spreadsheetBorderCss(border, "right", gridLineColor);
-  const fallbackStyle = knownSpreadsheetCellStyle(cell, sheetName);
-  const horizontalAlignment = asString(alignment?.horizontal) || asString(cellFormat?.horizontalAlignment);
-  const verticalAlignment = asString(alignment?.vertical) || asString(cellFormat?.verticalAlignment);
-  const wrapText = spreadsheetBool(alignment?.wrapText ?? cellFormat?.wrapText, true);
-  const shrinkToFit = spreadsheetBool(alignment?.shrinkToFit ?? cellFormat?.shrinkToFit, false);
-  const indent = Math.max(0, asNumber(alignment?.indent ?? cellFormat?.indent, 0));
-  const fontSize = font != null ? cssFontSize(font.fontSize, 13) : fallbackStyle.fontSize;
-  const textDirection = !horizontalAlignment && /[\u0590-\u08ff]/u.test(cellText(cell)) ? "rtl" : void 0;
-  const fallbackTextAlign = visual?.iconSet?.showValue === false ? "left" : fallbackStyle.textAlign ?? (textDirection === "rtl" ? "right" : spreadsheetDefaultTextAlign(cell));
-  const justifyContent = horizontalAlignment ? spreadsheetHorizontalJustifyContent(horizontalAlignment) : spreadsheetJustifyContentForTextAlign(fallbackTextAlign);
-  const visualBackground = visual?.background;
-  const background = visual?.backgroundSource === "table" ? fillColor ?? visualBackground ?? fallbackStyle.background : visualBackground ?? fillColor ?? fallbackStyle.background;
-  return {
-    ...sheetCellStyle,
-    ...fallbackStyle,
-    alignItems: spreadsheetVerticalAlignItems(verticalAlignment),
-    background,
-    borderBottomColor: visual?.borderColor ?? bottomBorder.color,
-    borderBottomStyle: bottomBorder.style,
-    borderBottomWidth: bottomBorder.width,
-    borderRightColor: visual?.borderColor ?? rightBorder.color,
-    borderRightStyle: rightBorder.style,
-    borderRightWidth: rightBorder.width,
-    color: visual?.color ?? fontColor ?? (hyperlinkFormula ? "#0563c1" : fallbackStyle.color) ?? sheetCellStyle.color,
-    cursor: hyperlinkFormula ? "pointer" : void 0,
-    direction: textDirection,
-    display: "flex",
-    fontFamily: spreadsheetFontFamily(asString(font?.typeface)),
-    fontSize: shrinkToFit && typeof fontSize === "number" ? Math.max(8, fontSize * 0.88) : fontSize,
-    fontStyle: font?.italic === true ? "italic" : fallbackStyle.fontStyle,
-    fontWeight: visual?.fontWeight ?? (font?.bold === true ? 700 : fallbackStyle.fontWeight),
-    justifyContent,
-    paddingLeft: indent > 0 ? 9 + indent * 12 : sheetCellStyle.paddingLeft,
-    textAlign: horizontalAlignment ? spreadsheetHorizontalTextAlign(horizontalAlignment, fallbackTextAlign) : fallbackTextAlign,
-    textDecorationLine: hyperlinkFormula ? "underline" : void 0,
-    textOverflow: wrapText ? void 0 : "ellipsis",
-    verticalAlign: spreadsheetVerticalAlign(verticalAlignment) ?? fallbackStyle.verticalAlign ?? sheetCellStyle.verticalAlign,
-    whiteSpace: wrapText ? sheetCellStyle.whiteSpace : "nowrap"
-  };
-}
-function spreadsheetBorderCss(border, side, gridLineColor) {
-  const line = spreadsheetBorderLine(border, side);
-  const rawStyle = asString(line?.style ?? border?.[`${side}Style`] ?? border?.[`${side}_style`]).toLowerCase();
-  if (rawStyle === "none") return { color: "transparent", style: "solid", width: 1 };
-  const explicitColor = spreadsheetBorderColor(line?.color) ?? spreadsheetBorderColor(border?.[`${side}Color`]) ?? spreadsheetBorderColor(border?.[`${side}_color`]) ?? spreadsheetBorderColor(border?.[`${side}BorderColor`]) ?? spreadsheetBorderColor(border?.[`${side}_border_color`]);
-  return {
-    color: explicitColor ?? gridLineColor,
-    style: spreadsheetBorderStyle(rawStyle),
-    width: spreadsheetBorderWidth(rawStyle)
-  };
-}
-function spreadsheetBorderColor(value) {
-  const structured = colorToCss(asRecord(value));
-  if (structured) return structured;
-  const text = asString(value);
-  if (/^#[0-9a-f]{6}$/i.test(text)) return text;
-  if (/^[0-9a-f]{6}$/i.test(text)) return `#${text}`;
-  if (/^[0-9a-f]{8}$/i.test(text)) return `#${text.slice(2)}`;
-  return null;
-}
-function spreadsheetBorderLine(border, side) {
-  return asRecord(border?.[side]) ?? asRecord(border?.[`${side}Border`]) ?? asRecord(border?.[`${side}_border`]);
-}
-function spreadsheetBorderStyle(value) {
-  if (value.includes("dash")) return "dashed";
-  if (value.includes("dot")) return "dotted";
-  if (value === "double") return "double";
-  return "solid";
-}
-function spreadsheetBorderWidth(value) {
-  if (value.includes("thick")) return 3;
-  if (value.includes("medium") || value === "double") return 2;
-  return 1;
-}
-function spreadsheetShowGridLines(sheet) {
-  if (sheet?.showGridLines === false) return false;
-  const value = asString(sheet?.showGridLines).toLowerCase();
-  return value !== "false" && value !== "0";
-}
-function spreadsheetBool(value, fallback) {
-  if (value === true || value === false) return value;
-  const normalized = asString(value).toLowerCase();
-  if (normalized === "true" || normalized === "1") return true;
-  if (normalized === "false" || normalized === "0") return false;
-  return fallback;
-}
-function spreadsheetHorizontalTextAlign(value, fallback) {
-  const normalized = value.toLowerCase();
-  if (normalized === "center" || normalized === "centercontinuous" || normalized === "distributed") return "center";
-  if (normalized === "right") return "right";
-  if (normalized === "justify") return "justify";
-  if (normalized === "left" || normalized === "fill") return "left";
-  return fallback;
-}
-function spreadsheetHorizontalJustifyContent(value) {
-  const normalized = value.toLowerCase();
-  if (normalized === "center" || normalized === "centercontinuous" || normalized === "distributed") return "center";
-  if (normalized === "right") return "flex-end";
-  return "flex-start";
-}
-function spreadsheetJustifyContentForTextAlign(value) {
-  return value === "center" ? "center" : value === "right" ? "flex-end" : "flex-start";
-}
-function spreadsheetDefaultTextAlign(cell) {
-  const value = Number(cellText(cell).trim());
-  return Number.isFinite(value) ? "right" : void 0;
-}
-function spreadsheetVerticalAlign(value) {
-  const normalized = value.toLowerCase();
-  if (normalized === "center") return "middle";
-  if (normalized === "bottom") return "bottom";
-  if (normalized === "top") return "top";
-  return void 0;
-}
-function spreadsheetVerticalAlignItems(value) {
-  const normalized = value.toLowerCase();
-  if (normalized === "center") return "center";
-  if (normalized === "bottom") return "flex-end";
-  return "flex-start";
-}
-function spreadsheetEffectiveStyleIndex(cell, row, layout, columnIndex) {
-  return spreadsheetStyleIndex2(cell?.styleIndex) ?? spreadsheetStyleIndex2(row?.styleIndex) ?? layout.columnStyleIndexes[columnIndex] ?? null;
-}
-function spreadsheetStyleIndex2(value) {
-  if (value == null) return null;
-  const index = asNumber(value, -1);
-  return index >= 0 ? index : null;
-}
-function knownSpreadsheetCellStyle(cell, sheetName) {
-  const address = asString(cell?.address);
-  if (!cell || !address) return {};
-  const rowIndex = rowIndexFromAddress(address);
-  const columnIndex = columnIndexFromAddress(address);
-  const text = cellText(cell);
-  if (rowIndex === 1) {
-    return {
-      background: "#ecfdf5",
-      color: "#14532d",
-      fontSize: 18,
-      fontWeight: 700,
-      verticalAlign: "middle"
-    };
-  }
-  if (rowIndex === 2) {
-    return {
-      color: "#64748b",
-      fontStyle: "italic"
-    };
-  }
-  if (sheetName === "01_Dashboard") {
-    if (rowIndex === 4) return { background: "#e6f7ee", color: "#14633a", fontWeight: 700 };
-    if (rowIndex === 17) return { background: "#dcfce7", color: "#166534", fontWeight: 700, textAlign: "center" };
-    if ([6, 11].includes(rowIndex)) return { background: "#f8fafc", color: "#64748b", fontWeight: 700 };
-    if (rowIndex === 11 && columnIndex >= 6) return { background: "#fff7ed", color: "#9a3412" };
-  }
-  if (sheetName === "03_TimeSeries") {
-    if (rowIndex === 4) return { background: "#dff1fb", color: "#036796", fontWeight: 700, textAlign: "center" };
-    if (rowIndex >= 5 && rowIndex <= 22) {
-      if (columnIndex === 10 && text === "Warn") return { background: "#fff4c2", color: "#a3470d" };
-      if (columnIndex === 10 && text === "Pass") return { color: "#0f172a" };
-      return rowIndex % 2 === 1 ? { background: "#c7eaf7" } : {};
-    }
-  }
-  if (sheetName === "04_Heatmap") {
-    if (rowIndex === 4 || rowIndex === 5) {
-      return { background: "#e9e4ff", color: "#5b21b6", fontWeight: 700, textAlign: "center" };
-    }
-  }
-  return {};
-}
-function excelSerialMonthYearLabel(value) {
-  const date = new Date(Date.UTC(1899, 11, 30) + value * 864e5);
-  return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC", year: "numeric" }).format(date);
-}
-function excelSerialDateLabel(value, formatCode = "") {
-  const date = new Date(Date.UTC(1899, 11, 30) + value * 864e5);
-  if (isExcelIsoDateFormat(formatCode)) {
-    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
-  }
-  return new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "short", timeZone: "UTC", year: "numeric" }).format(date);
-}
-function shouldFormatAsMonthSerial(cell, sheetName) {
-  if (sheetName !== "03_TimeSeries") return false;
-  const address = asString(cell?.address);
-  return columnIndexFromAddress(address) === 0 && rowIndexFromAddress(address) >= 5;
-}
-function spreadsheetCellText(cell, styles, sheetName, styleIndex) {
-  const text = cellText(cell);
-  const address = asString(cell?.address);
-  const rowIndex = rowIndexFromAddress(address);
-  if (cell != null && cell.hasValue === false && !asString(cell.formula)) return "";
-  const numericText = text.trim();
-  if (numericText.length === 0) return text;
-  const numberValue = Number(numericText);
-  if (sheetName && rowIndex === 3 && Number.isFinite(numberValue)) return "";
-  if (cell == null || !Number.isFinite(numberValue)) return text;
-  const columnIndex = columnIndexFromAddress(address);
-  const cellFormat = styleAt(styles?.cellXfs, styleIndex ?? cell.styleIndex);
-  const numberFormatId = asNumber(cellFormat?.numFmtId, -1);
-  const formatCode = spreadsheetNumberFormatCode(styles, numberFormatId);
-  if (isExcelMonthYearFormat(formatCode)) return excelSerialMonthYearLabel(numberValue);
-  if (isExcelTimeFormat(formatCode)) return excelSerialTimeLabel(numberValue, formatCode);
-  if (isExcelDateFormat(formatCode)) return excelSerialDateLabel(numberValue, formatCode);
-  if (shouldFormatAsMonthSerial(cell, sheetName)) return excelSerialMonthYearLabel(numberValue);
-  if (sheetName === "03_TimeSeries") {
-    if (columnIndex === 3) return `${Math.round(numberValue * 100)}%`;
-    if ([7, 8, 9].includes(columnIndex)) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
-    if ([4, 5].includes(columnIndex)) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 1 });
-  }
-  if (sheetName === "01_Dashboard") {
-    if (columnIndex === 2) return `${Math.round(numberValue * 100)}%`;
-    if (columnIndex === 3) return `$${Math.round(numberValue).toLocaleString("en-US")}`;
-  }
-  if (formatCode.includes("%")) return `${(numberValue * 100).toFixed(spreadsheetDecimalPlaces(formatCode))}%`;
-  if (/e\+?0+/i.test(formatCode)) return spreadsheetScientificLabel(numberValue, formatCode);
-  if (formatCode.includes("?/?")) return spreadsheetFractionLabel(numberValue, formatCode);
-  if (formatCode.includes("$")) return spreadsheetCurrencyLabel(numberValue, formatCode);
-  if (formatCode.includes("#,##0.00")) return spreadsheetNumberLabel(numberValue, formatCode);
-  if (formatCode.includes("#,##0")) return spreadsheetNumberLabel(numberValue, formatCode);
-  if (/^0\.0+$/.test(formatCode)) return numberValue.toFixed(formatCode.split(".")[1]?.length ?? 0);
-  if (/\d+\.\d{4,}/.test(text)) return numberValue.toLocaleString("en-US", { maximumFractionDigits: 1 });
-  return text;
-}
-function spreadsheetNumberFormatCode(styles, numberFormatId) {
-  const numberFormat = asArray(styles?.numberFormats).map(asRecord).find((format) => asNumber(format?.id, -2) === numberFormatId);
-  const customFormat = asString(numberFormat?.formatCode);
-  return customFormat || EXCEL_BUILT_IN_NUMBER_FORMATS.get(numberFormatId) || "";
-}
-function isExcelMonthYearFormat(formatCode) {
-  const normalized = formatCode.toLowerCase();
-  return normalized.includes("mmm") && normalized.includes("yy") && !/(^|[^a-z])d{1,4}([^a-z]|$)/.test(normalized);
-}
-function isExcelIsoDateFormat(formatCode) {
-  return /y{2,4}[-/]m{1,2}[-/]d{1,2}/i.test(formatCode);
-}
-function isExcelDateFormat(formatCode) {
-  const normalized = formatCode.toLowerCase();
-  if (!/[dmy]/.test(normalized)) return false;
-  if (normalized.includes("%")) return false;
-  return /(^|[^a-z])m{1,4}([^a-z]|$)/.test(normalized) || /(^|[^a-z])d{1,4}([^a-z]|$)/.test(normalized) || /(^|[^a-z])y{2,4}([^a-z]|$)/.test(normalized);
-}
-function isExcelTimeFormat(formatCode) {
-  const normalized = formatCode.toLowerCase();
-  return /\[?h\]?:mm/.test(normalized) || /^mm:ss/.test(normalized);
-}
-function excelSerialTimeLabel(value, formatCode) {
-  const normalized = formatCode.toLowerCase();
-  const totalSeconds = Math.max(0, Math.round(value * 86400));
-  const hoursTotal = Math.floor(totalSeconds / 3600);
-  const hours = normalized.includes("[h]") ? hoursTotal : hoursTotal % 24;
-  const minutes = Math.floor(totalSeconds % 3600 / 60);
-  const seconds = totalSeconds % 60;
-  if (normalized.includes("am/pm")) {
-    const suffix = hours >= 12 ? "PM" : "AM";
-    const hour12 = hours % 12 || 12;
-    const withSeconds = normalized.includes(":ss");
-    return `${hour12}:${String(minutes).padStart(2, "0")}${withSeconds ? `:${String(seconds).padStart(2, "0")}` : ""} ${suffix}`;
-  }
-  if (/^mm:ss/.test(normalized)) return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  if (normalized.includes(":ss")) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  return `${hours}:${String(minutes).padStart(2, "0")}`;
-}
-function spreadsheetDecimalPlaces(formatCode) {
-  return formatCode.match(/\.([0#]+)/)?.[1]?.length ?? 0;
-}
-function spreadsheetScientificLabel(value, formatCode) {
-  const decimals = spreadsheetDecimalPlaces(formatCode);
-  return value.toExponential(decimals).replace("e", "E").replace(/E\+?(-?\d+)$/, (_match, exponent) => {
-    const numericExponent = Number(exponent);
-    const sign = numericExponent < 0 ? "-" : "+";
-    return `E${sign}${String(Math.abs(numericExponent)).padStart(2, "0")}`;
-  });
-}
-function spreadsheetFractionLabel(value, formatCode) {
-  const denominatorLimit = formatCode.includes("??/??") ? 99 : 9;
-  const sign = value < 0 ? "-" : "";
-  const absolute = Math.abs(value);
-  const whole = Math.floor(absolute);
-  const fraction = absolute - whole;
-  let bestNumerator = 0;
-  let bestDenominator = 1;
-  let bestError = Number.POSITIVE_INFINITY;
-  for (let denominator = 1; denominator <= denominatorLimit; denominator += 1) {
-    const numerator = Math.round(fraction * denominator);
-    const error = Math.abs(fraction - numerator / denominator);
-    if (error < bestError) {
-      bestError = error;
-      bestNumerator = numerator;
-      bestDenominator = denominator;
-    }
-  }
-  if (bestNumerator === 0) return `${sign}${whole}`;
-  if (bestNumerator === bestDenominator) return `${sign}${whole + 1}`;
-  return `${sign}${whole > 0 ? `${whole} ` : ""}${bestNumerator}/${bestDenominator}`;
-}
-function spreadsheetCurrencyLabel(value, formatCode) {
-  const section = spreadsheetNumberFormatSection(value, formatCode);
-  const decimals = spreadsheetDecimalPlaces(section);
-  const absolute = Math.abs(value);
-  const formatted = absolute.toLocaleString("en-US", {
-    maximumFractionDigits: decimals,
-    minimumFractionDigits: decimals
-  });
-  if (value < 0 && section.includes("(")) return `($${formatted})`;
-  return `${value < 0 ? "-" : ""}$${formatted}`;
-}
-function spreadsheetNumberLabel(value, formatCode) {
-  const section = spreadsheetNumberFormatSection(value, formatCode);
-  const decimals = spreadsheetDecimalPlaces(section);
-  const absolute = Math.abs(value);
-  const formatted = absolute.toLocaleString("en-US", {
-    maximumFractionDigits: decimals,
-    minimumFractionDigits: decimals
-  });
-  if (value < 0 && section.includes("(")) return `(${formatted})`;
-  return `${value < 0 ? "-" : ""}${formatted}`;
-}
-function spreadsheetNumberFormatSection(value, formatCode) {
-  const sections = formatCode.split(";").map((section) => section.replace(/\[[^\]]+\]/g, ""));
-  if (value < 0 && sections[1]) return sections[1];
-  if (value === 0 && sections[2]) return sections[2];
-  return sections[0] ?? formatCode;
-}
-function rowsByIndexForSheet4(sheet) {
-  const rowMap = /* @__PURE__ */ new Map();
-  const rows = asArray(sheet?.rows).map(asRecord).filter((row) => row != null);
-  for (const row of rows) {
-    const rowIndex = asNumber(row.index, 1);
-    const cells = /* @__PURE__ */ new Map();
-    for (const cell of asArray(row.cells)) {
-      const cellRecord = asRecord(cell);
-      if (!cellRecord) continue;
-      const address = asString(cellRecord.address);
-      cells.set(columnIndexFromAddress(address), cellRecord);
-    }
-    rowMap.set(rowIndex, cells);
-  }
-  return rowMap;
-}
-function cellAt3(sheet, rowIndex, columnIndex) {
-  return rowsByIndexForSheet4(sheet).get(rowIndex)?.get(columnIndex) ?? null;
-}
-function defaultSpreadsheetSheetIndex(sheets) {
-  if (sheets.length <= 1) return 0;
-  const readmeFirst = /^00[_ -]?readme$/i.test(asString(sheets[0]?.name));
-  return readmeFirst ? 1 : 0;
-}
-function spreadsheetSheetTabColor(sheet) {
-  return colorToCss(asRecord(sheet?.tabColor) ?? sheet?.tabColor);
-}
-function spreadsheetFontFamily(typeface) {
-  const normalized = typeface.trim();
-  if (!normalized) return SPREADSHEET_FONT_FAMILY;
-  const escaped = normalized.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-  return `"${escaped}", ${SPREADSHEET_FONT_FAMILY}`;
 }
 var spreadsheetHeaderBaseStyle = {
   alignItems: "center",
@@ -10202,26 +10254,9 @@ var spreadsheetRowHeaderStyle = {
   width: SPREADSHEET_ROW_HEADER_WIDTH,
   zIndex: 3
 };
-var sheetCellStyle = {
-  borderBottomColor: "#e2e8f0",
-  borderBottomStyle: "solid",
-  borderBottomWidth: 1,
-  borderRightColor: "#e2e8f0",
-  borderRightStyle: "solid",
-  borderRightWidth: 1,
-  boxSizing: "border-box",
-  color: "#0f172a",
-  fontFamily: SPREADSHEET_FONT_FAMILY,
-  lineHeight: 1.35,
-  overflow: "hidden",
-  overflowWrap: "break-word",
-  padding: "7px 9px",
-  verticalAlign: "top",
-  whiteSpace: "pre-wrap"
-};
 
 // src/presentation/presentation-preview.tsx
-import { Play, X } from "lucide-react";
+import { Play, StickyNote, X } from "lucide-react";
 import { useCallback, useEffect as useEffect6, useMemo as useMemo5, useRef as useRef6, useState as useState2 } from "react";
 import { createPortal } from "react-dom";
 
@@ -10248,515 +10283,157 @@ function styleInject(css, { insertAt } = {}) {
 }
 
 // src/presentation/presentation-preview.module.css
-styleInject('.shell {\n  background: #ffffff;\n  color: #0f172a;\n  container: presentation-editor / inline-size;\n  display: grid;\n  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);\n  grid-template-columns: clamp(156px, 13vw, 252px) minmax(0, 1fr);\n  height: 100%;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n}\n.rail {\n  background: color-mix(in srgb, #ffffff 86%, transparent);\n  backdrop-filter: blur(40px);\n  border-right: 1px solid #cbd5e1;\n  display: flex;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n  z-index: 20;\n}\n.stackButton {\n  display: none;\n}\n.thumbnailPanel {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 12px;\n  min-height: 0;\n  overflow: hidden auto;\n  padding: 12px 14px 48px 8px;\n  scrollbar-color: #cbd5e1 transparent;\n}\n.thumbnailButton {\n  align-items: flex-start;\n  -webkit-appearance: none;\n  -moz-appearance: none;\n  appearance: none;\n  background: transparent;\n  border: 0;\n  border-radius: 7px;\n  color: inherit;\n  cursor: pointer;\n  display: flex;\n  gap: 8px;\n  padding: 6px 8px 6px 0;\n  text-align: left;\n  touch-action: manipulation;\n}\n.thumbnailButton:hover {\n  background: #f8fafc;\n}\n.thumbnailButton:focus-visible {\n  outline: none;\n}\n.thumbnailButton:focus-visible .thumbnailCanvas {\n  box-shadow:\n    0 8px 22px rgba(15, 23, 42, 0.12),\n    0 0 0 2px #60a5fa,\n    0 0 0 5px rgba(96, 165, 250, 0.16);\n}\n.thumbnailButton[data-active=true]:hover {\n  background: transparent;\n}\n.thumbnailButton[data-active=true]:focus-visible {\n  outline: none;\n}\n.thumbnailLabel {\n  color: #334155;\n  flex: 0 0 22px;\n  font-size: 13px;\n  font-variant-numeric: tabular-nums;\n  font-weight: 500;\n  line-height: 1;\n  padding-top: 4px;\n  text-align: right;\n}\n.thumbnailCanvas,\n.slideCanvas {\n  background: #ffffff;\n  display: block;\n  -o-object-fit: fill;\n  object-fit: fill;\n  -webkit-user-select: none;\n  -moz-user-select: none;\n  user-select: none;\n}\n.thumbnailCanvas {\n  border: 0;\n  border-radius: 4px;\n  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);\n  flex: 0 0 auto;\n  height: auto;\n  outline: 0 solid transparent;\n  outline-offset: 0;\n  overflow: hidden;\n}\n.thumbnailButton[data-active=true] {\n  background: transparent;\n  box-shadow: none;\n}\n.thumbnailButton[data-active=true] .thumbnailCanvas {\n  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12), 0 0 0 2px #60a5fa;\n  outline: 1px solid rgba(255, 255, 255, 0.92);\n}\n.mainPanel {\n  display: grid;\n  grid-template-rows: minmax(0, 1fr);\n  min-height: 0;\n  min-width: 0;\n  overflow: hidden;\n}\n.meta {\n  align-items: center;\n  color: #475569;\n  display: none;\n  flex-wrap: wrap;\n  gap: 12px;\n  min-width: 0;\n  padding: 18px 20px 0;\n}\n.metaStrong {\n  color: #334155;\n  font-size: 14px;\n  font-weight: 700;\n}\n.metaText {\n  font-size: 14px;\n}\n.stage {\n  background: #f8fafc;\n  display: block;\n  min-height: 0;\n  min-width: 0;\n  overflow: auto;\n  padding: 16px 24px 20px;\n  position: relative;\n  scrollbar-color: #cbd5e1 transparent;\n}\n.viewport {\n  align-items: center;\n  display: flex;\n  height: 100%;\n  justify-content: center;\n  min-height: 0;\n  min-width: 0;\n  overflow: auto;\n  position: relative;\n  width: 100%;\n}\n.playButton {\n  align-items: center;\n  background: #0f172a;\n  border: 1px solid #0f172a;\n  border-radius: 6px;\n  color: #ffffff;\n  cursor: pointer;\n  display: inline-flex;\n  flex: 0 0 auto;\n  font: 600 12px/1 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);\n  gap: 6px;\n  min-height: 30px;\n  padding: 0 10px;\n}\n.playButton:hover {\n  background: #1e293b;\n  border-color: #1e293b;\n}\n.slideSurface {\n  flex: 0 0 auto;\n  position: relative;\n}\n.slideCanvas {\n  border: 1px solid #cbd5e1;\n  border-radius: 7px;\n  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);\n}\n.interactionLayer {\n  background: transparent;\n  border: 0;\n  cursor: default;\n  inset: 0;\n  padding: 0;\n  position: absolute;\n}\n.interactionLayer:focus-visible {\n  outline: none;\n}\n.selectionBox {\n  border: 1.5px solid #0285ff;\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.72), 0 0 0 3px rgba(2, 133, 255, 0.2);\n  display: block;\n  left: 0;\n  pointer-events: none;\n  position: absolute;\n  top: 0;\n}\n.selectionHandle {\n  background: #ffffff;\n  border: 1.5px solid #0285ff;\n  border-radius: 50%;\n  box-sizing: border-box;\n  height: 8px;\n  position: absolute;\n  width: 8px;\n}\n.selectionHandle[data-position=top-left] {\n  left: -5px;\n  top: -5px;\n}\n.selectionHandle[data-position=top-right] {\n  right: -5px;\n  top: -5px;\n}\n.selectionHandle[data-position=bottom-left] {\n  bottom: -5px;\n  left: -5px;\n}\n.selectionHandle[data-position=bottom-right] {\n  bottom: -5px;\n  right: -5px;\n}\n.footnote {\n  background: #ffffff;\n  border: 1px solid #eef2f7;\n  border-radius: 8px;\n  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);\n  box-sizing: border-box;\n  color: #64748b;\n  font: 12px/1.6 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);\n  left: 50%;\n  margin: 0;\n  max-height: 96px;\n  max-width: 100%;\n  overflow: auto;\n  padding: 12px 14px;\n  position: absolute;\n  transform: translateX(-50%);\n  white-space: pre-wrap;\n  z-index: 1;\n}\n.slideshowOverlay {\n  align-items: center;\n  background: #000000;\n  color: #f8fafc;\n  display: flex;\n  inset: 0;\n  justify-content: center;\n  min-height: 0;\n  padding: 0;\n  position: fixed;\n  z-index: 1000;\n}\n.slideshowChrome {\n  align-items: center;\n  background: rgba(15, 23, 42, 0.84);\n  border: 1px solid rgba(148, 163, 184, 0.22);\n  border-radius: 9999px;\n  display: flex;\n  gap: 10px;\n  opacity: 0;\n  padding: 4px 5px 4px 12px;\n  position: absolute;\n  right: 20px;\n  top: 18px;\n  transition: opacity 0.16s ease-out;\n  z-index: 2;\n}\n.slideshowOverlay:hover .slideshowChrome,\n.slideshowChrome:focus-within {\n  opacity: 1;\n}\n.slideshowCounter {\n  color: #cbd5e1;\n  font-size: 13px;\n  font-variant-numeric: tabular-nums;\n  font-weight: 600;\n}\n.slideshowIconButton {\n  align-items: center;\n  border-radius: 6px;\n  cursor: pointer;\n  display: inline-flex;\n  font: 600 13px/1 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);\n  justify-content: center;\n}\n.slideshowIconButton {\n  background: rgba(15, 23, 42, 0.86);\n  border: 1px solid rgba(148, 163, 184, 0.34);\n  color: #f8fafc;\n  height: 34px;\n  width: 34px;\n}\n.slideshowIconButton:hover {\n  background: rgba(30, 41, 59, 0.94);\n  border-color: rgba(203, 213, 225, 0.52);\n}\n.slideshowFrame {\n  align-items: center;\n  background: transparent;\n  border: 0;\n  cursor: pointer;\n  display: flex;\n  justify-content: center;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;\n  overflow: hidden;\n  padding: 0;\n  width: 100%;\n}\n.slideshowCanvas {\n  background: #ffffff;\n  border-radius: 0;\n  box-shadow: none;\n  display: block;\n  -o-object-fit: fill;\n  object-fit: fill;\n  -webkit-user-select: none;\n  -moz-user-select: none;\n  user-select: none;\n}\n@container presentation-editor (width <= 748px) {\n  .rail {\n    background: transparent;\n    backdrop-filter: none;\n    border-right: 0;\n    bottom: 24px;\n    left: 16px;\n    min-height: 0;\n    pointer-events: none;\n    position: absolute;\n    top: 12px;\n    width: 136px;\n  }\n  .stackButton {\n    background: transparent;\n    border: 0;\n    cursor: pointer;\n    display: flex;\n    flex-direction: column;\n    gap: 6px;\n    left: 0;\n    max-height: calc(100% - 36px);\n    overflow: hidden;\n    padding: 0;\n    pointer-events: auto;\n    position: absolute;\n    top: 50%;\n    transform: translateY(-50%);\n    transition: opacity 0.2s ease-out;\n    width: 20px;\n  }\n  .stackBar {\n    background: #94a3b8;\n    border-radius: 9999px;\n    display: block;\n    height: 2px;\n    width: 20px;\n  }\n  .thumbnailPanel {\n    background: color-mix(in srgb, #ffffff 82%, transparent);\n    backdrop-filter: blur(28px);\n    border-radius: 16px;\n    gap: 8px;\n    box-shadow: 0 5px 32px rgba(0, 0, 0, 0.07);\n    max-height: 100%;\n    opacity: 0;\n    padding: 8px;\n    pointer-events: none;\n    position: absolute;\n    top: 50%;\n    transform: translateY(-50%) translateX(-8px);\n    transition: opacity 0.2s ease-out, transform 0.2s ease-out;\n    visibility: hidden;\n    width: 136px;\n  }\n  .thumbnailButton {\n    display: grid;\n    gap: 5px;\n    padding: 0;\n  }\n  .thumbnailLabel {\n    flex: none;\n    font-size: 10px;\n    padding-top: 0;\n    text-align: left;\n  }\n  .thumbnailCanvas {\n    max-width: 120px;\n  }\n  .rail[data-open=true] .stackButton {\n    opacity: 0;\n  }\n  .rail[data-open=true] .thumbnailPanel {\n    opacity: 1;\n    pointer-events: auto;\n    transform: translateY(-50%) translateX(0);\n    visibility: visible;\n  }\n  .stage {\n    padding: 18px;\n  }\n  .playButton span {\n    display: none;\n  }\n}\n@media (width <= 748px) {\n  .shell {\n    grid-template-columns: minmax(0, 1fr);\n    min-height: 520px;\n  }\n  .slideshowOverlay {\n    padding: 10px;\n  }\n}\n');
+styleInject('.shell {\n  background: #ffffff;\n  color: #0f172a;\n  container: presentation-editor / inline-size;\n  display: grid;\n  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);\n  grid-template-columns: clamp(156px, 13vw, 252px) minmax(0, 1fr);\n  height: 100%;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n}\n.rail {\n  background: color-mix(in srgb, #ffffff 86%, transparent);\n  backdrop-filter: blur(40px);\n  border-right: 1px solid #cbd5e1;\n  display: flex;\n  min-height: 0;\n  overflow: hidden;\n  position: relative;\n  z-index: 20;\n}\n.stackButton {\n  display: none;\n}\n.thumbnailPanel {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 12px;\n  min-height: 0;\n  overflow: hidden auto;\n  padding: 12px 14px 48px 8px;\n  scrollbar-color: #cbd5e1 transparent;\n}\n.thumbnailButton {\n  align-items: flex-start;\n  -webkit-appearance: none;\n  -moz-appearance: none;\n  appearance: none;\n  background: transparent;\n  border: 0;\n  border-radius: 7px;\n  color: inherit;\n  cursor: pointer;\n  display: flex;\n  gap: 8px;\n  padding: 6px 8px 6px 0;\n  text-align: left;\n  touch-action: manipulation;\n}\n.thumbnailButton:hover {\n  background: #f8fafc;\n}\n.thumbnailButton:focus-visible {\n  outline: none;\n}\n.thumbnailButton:focus-visible .thumbnailCanvas {\n  box-shadow:\n    0 8px 22px rgba(15, 23, 42, 0.12),\n    0 0 0 2px #60a5fa,\n    0 0 0 5px rgba(96, 165, 250, 0.16);\n}\n.thumbnailButton[data-active=true]:hover {\n  background: transparent;\n}\n.thumbnailButton[data-active=true]:focus-visible {\n  outline: none;\n}\n.thumbnailLabel {\n  color: #334155;\n  flex: 0 0 22px;\n  font-size: 13px;\n  font-variant-numeric: tabular-nums;\n  font-weight: 500;\n  line-height: 1;\n  padding-top: 4px;\n  text-align: right;\n}\n.thumbnailCanvas,\n.slideCanvas {\n  background: #ffffff;\n  display: block;\n  -o-object-fit: fill;\n  object-fit: fill;\n  -webkit-user-select: none;\n  -moz-user-select: none;\n  user-select: none;\n}\n.thumbnailCanvas {\n  border: 0;\n  border-radius: 4px;\n  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);\n  flex: 0 0 auto;\n  height: auto;\n  outline: 0 solid transparent;\n  outline-offset: 0;\n  overflow: hidden;\n}\n.thumbnailButton[data-active=true] {\n  background: transparent;\n  box-shadow: none;\n}\n.thumbnailButton[data-active=true] .thumbnailCanvas {\n  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12), 0 0 0 2px #60a5fa;\n  outline: 1px solid rgba(255, 255, 255, 0.92);\n}\n.mainPanel {\n  display: grid;\n  grid-template-rows: minmax(0, 1fr);\n  min-height: 0;\n  min-width: 0;\n  overflow: hidden;\n}\n.meta {\n  align-items: center;\n  color: #475569;\n  display: none;\n  flex-wrap: wrap;\n  gap: 12px;\n  min-width: 0;\n  padding: 18px 20px 0;\n}\n.metaStrong {\n  color: #334155;\n  font-size: 14px;\n  font-weight: 700;\n}\n.metaText {\n  font-size: 14px;\n}\n.stage {\n  background: #f8fafc;\n  display: block;\n  min-height: 0;\n  min-width: 0;\n  overflow: auto;\n  padding: 16px 24px 20px;\n  position: relative;\n  scrollbar-color: #cbd5e1 transparent;\n}\n.viewport {\n  align-items: center;\n  display: flex;\n  height: 100%;\n  justify-content: center;\n  min-height: 0;\n  min-width: 0;\n  overflow: auto;\n  position: relative;\n  width: 100%;\n}\n.playButton {\n  align-items: center;\n  background: #0f172a;\n  border: 1px solid #0f172a;\n  border-radius: 6px;\n  color: #ffffff;\n  cursor: pointer;\n  display: inline-flex;\n  flex: 0 0 auto;\n  font: 600 12px/1 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);\n  gap: 6px;\n  min-height: 30px;\n  padding: 0 10px;\n}\n.playButton:hover {\n  background: #1e293b;\n  border-color: #1e293b;\n}\n.slideSurface {\n  flex: 0 0 auto;\n  position: relative;\n}\n.slideCanvas {\n  border: 1px solid #cbd5e1;\n  border-radius: 7px;\n  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);\n}\n.interactionLayer {\n  background: transparent;\n  border: 0;\n  cursor: default;\n  inset: 0;\n  padding: 0;\n  position: absolute;\n}\n.interactionLayer:focus-visible {\n  outline: none;\n}\n.selectionBox {\n  border: 1.5px solid #0285ff;\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.72), 0 0 0 3px rgba(2, 133, 255, 0.2);\n  display: block;\n  left: 0;\n  pointer-events: none;\n  position: absolute;\n  top: 0;\n}\n.selectionHandle {\n  background: #ffffff;\n  border: 1.5px solid #0285ff;\n  border-radius: 50%;\n  box-sizing: border-box;\n  height: 8px;\n  position: absolute;\n  width: 8px;\n}\n.selectionHandle[data-position=top-left] {\n  left: -5px;\n  top: -5px;\n}\n.selectionHandle[data-position=top-right] {\n  right: -5px;\n  top: -5px;\n}\n.selectionHandle[data-position=bottom-left] {\n  bottom: -5px;\n  left: -5px;\n}\n.selectionHandle[data-position=bottom-right] {\n  bottom: -5px;\n  right: -5px;\n}\n.footnote {\n  background: #ffffff;\n  border: 1px solid #eef2f7;\n  border-radius: 8px;\n  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);\n  box-sizing: border-box;\n  color: #64748b;\n  font: 12px/1.6 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);\n  left: 50%;\n  margin: 0;\n  max-height: 96px;\n  max-width: 100%;\n  overflow: auto;\n  padding: 12px 14px;\n  position: absolute;\n  transform: translateX(-50%);\n  white-space: pre-wrap;\n  z-index: 1;\n}\n.slideshowOverlay {\n  align-items: center;\n  background: #000000;\n  color: #f8fafc;\n  display: flex;\n  inset: 0;\n  justify-content: center;\n  min-height: 0;\n  padding: 0;\n  position: fixed;\n  z-index: 1000;\n}\n.slideshowChrome {\n  align-items: center;\n  background: rgba(15, 23, 42, 0.84);\n  border: 1px solid rgba(148, 163, 184, 0.22);\n  border-radius: 9999px;\n  display: flex;\n  gap: 10px;\n  opacity: 0;\n  padding: 4px 5px 4px 12px;\n  position: absolute;\n  right: 20px;\n  top: 18px;\n  transition: opacity 0.16s ease-out;\n  z-index: 2;\n}\n.slideshowOverlay:hover .slideshowChrome,\n.slideshowChrome:focus-within {\n  opacity: 1;\n}\n.slideshowCounter {\n  color: #cbd5e1;\n  font-size: 13px;\n  font-variant-numeric: tabular-nums;\n  font-weight: 600;\n}\n.slideshowIconButton {\n  align-items: center;\n  border-radius: 6px;\n  cursor: pointer;\n  display: inline-flex;\n  font: 600 13px/1 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);\n  justify-content: center;\n}\n.slideshowIconButton {\n  background: rgba(15, 23, 42, 0.86);\n  border: 1px solid rgba(148, 163, 184, 0.34);\n  color: #f8fafc;\n  height: 34px;\n  width: 34px;\n}\n.slideshowIconButton:hover {\n  background: rgba(30, 41, 59, 0.94);\n  border-color: rgba(203, 213, 225, 0.52);\n}\n.slideshowIconButton[aria-pressed=true] {\n  background: rgba(248, 250, 252, 0.16);\n  border-color: rgba(248, 250, 252, 0.7);\n}\n.slideshowPresenterLayout {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);\n  height: 100%;\n  min-height: 0;\n  min-width: 0;\n  width: 100%;\n}\n.slideshowPresenterLayout[data-notes-open=true] {\n  grid-template-columns: minmax(0, 1fr) minmax(260px, 24vw);\n}\n.slideshowFrame {\n  align-items: center;\n  background: transparent;\n  border: 0;\n  cursor: pointer;\n  display: flex;\n  justify-content: center;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;\n  overflow: hidden;\n  padding: 0;\n  width: 100%;\n}\n.slideshowCanvas {\n  background: #ffffff;\n  border-radius: 0;\n  box-shadow: none;\n  display: block;\n  -o-object-fit: fill;\n  object-fit: fill;\n  -webkit-user-select: none;\n  -moz-user-select: none;\n  user-select: none;\n}\n.slideshowNotesPanel {\n  align-self: stretch;\n  background: #0f172a;\n  border-left: 1px solid rgba(148, 163, 184, 0.28);\n  box-sizing: border-box;\n  color: #e2e8f0;\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  min-height: 0;\n  overflow: hidden;\n  padding: 22px 20px;\n}\n.slideshowNotesTitle {\n  color: #f8fafc;\n  font-size: 13px;\n  font-weight: 700;\n  line-height: 1.2;\n  margin-bottom: 14px;\n}\n.slideshowNotesText {\n  color: #cbd5e1;\n  font: 15px/1.55 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);\n  margin: 0;\n  min-height: 0;\n  overflow: auto;\n  white-space: pre-wrap;\n}\n@container presentation-editor (width <= 748px) {\n  .rail {\n    background: transparent;\n    backdrop-filter: none;\n    border-right: 0;\n    bottom: 24px;\n    left: 16px;\n    min-height: 0;\n    pointer-events: none;\n    position: absolute;\n    top: 12px;\n    width: 136px;\n  }\n  .stackButton {\n    background: transparent;\n    border: 0;\n    cursor: pointer;\n    display: flex;\n    flex-direction: column;\n    gap: 6px;\n    left: 0;\n    max-height: calc(100% - 36px);\n    overflow: hidden;\n    padding: 0;\n    pointer-events: auto;\n    position: absolute;\n    top: 50%;\n    transform: translateY(-50%);\n    transition: opacity 0.2s ease-out;\n    width: 20px;\n  }\n  .stackBar {\n    background: #94a3b8;\n    border-radius: 9999px;\n    display: block;\n    height: 2px;\n    width: 20px;\n  }\n  .thumbnailPanel {\n    background: color-mix(in srgb, #ffffff 82%, transparent);\n    backdrop-filter: blur(28px);\n    border-radius: 16px;\n    gap: 8px;\n    box-shadow: 0 5px 32px rgba(0, 0, 0, 0.07);\n    max-height: 100%;\n    opacity: 0;\n    padding: 8px;\n    pointer-events: none;\n    position: absolute;\n    top: 50%;\n    transform: translateY(-50%) translateX(-8px);\n    transition: opacity 0.2s ease-out, transform 0.2s ease-out;\n    visibility: hidden;\n    width: 136px;\n  }\n  .thumbnailButton {\n    display: grid;\n    gap: 5px;\n    padding: 0;\n  }\n  .thumbnailLabel {\n    flex: none;\n    font-size: 10px;\n    padding-top: 0;\n    text-align: left;\n  }\n  .thumbnailCanvas {\n    max-width: 120px;\n  }\n  .rail[data-open=true] .stackButton {\n    opacity: 0;\n  }\n  .rail[data-open=true] .thumbnailPanel {\n    opacity: 1;\n    pointer-events: auto;\n    transform: translateY(-50%) translateX(0);\n    visibility: visible;\n  }\n  .stage {\n    padding: 18px;\n  }\n  .playButton span {\n    display: none;\n  }\n}\n@media (width <= 748px) {\n  .shell {\n    grid-template-columns: minmax(0, 1fr);\n    min-height: 520px;\n  }\n  .slideshowOverlay {\n    padding: 10px;\n  }\n  .slideshowPresenterLayout[data-notes-open=true] {\n    grid-template-columns: minmax(0, 1fr);\n    grid-template-rows: minmax(0, 1fr) minmax(120px, 30vh);\n  }\n  .slideshowNotesPanel {\n    border-left: 0;\n    border-top: 1px solid rgba(148, 163, 184, 0.28);\n    padding: 14px 16px;\n  }\n}\n');
 
-// src/presentation/presentation-text-layout.ts
-var PRESENTATION_POINT_TO_CSS_PIXEL = 1.333;
-var POWERPOINT_WRAP_WIDTH_FACTOR = 1;
-function presentationScaledFontSize(fontSize, slideScale, fallbackPx = 14) {
-  const baseFontSize = cssFontSize(fontSize, fallbackPx) * PRESENTATION_POINT_TO_CSS_PIXEL;
-  return Math.max(1, baseFontSize * Math.max(0.01, slideScale));
-}
-function drawPresentationTextBox({
-  canvas,
-  context,
-  element,
-  rect,
-  slideBounds,
-  slideScale,
-  textOverflow
-}) {
-  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_OFFICE_TEXT_STYLE_MAPS));
-  if (paragraphs.length === 0) return;
-  const textStyle = asRecord(element.textStyle);
-  const insets = textInsets(textStyle, rect, canvas.width / slideBounds.width, canvas.height / slideBounds.height);
-  const maxWidth = Math.max(1, rect.width - insets.left - insets.right);
-  const maxHeight = Math.max(1, rect.height - insets.top - insets.bottom);
-  const layout = layoutTextFrame(context, paragraphs, {
-    autoFit: asRecord(textStyle?.autoFit) != null,
-    emuScaleX: canvas.width / slideBounds.width,
-    maxHeight,
-    maxWidth: presentationEffectiveTextMaxWidth(maxWidth, asNumber(textStyle?.wrap, 2) !== 1),
-    slideScale,
-    useParagraphSpacing: textStyle?.useParagraphSpacing !== false && paragraphs.length > 1,
-    wrap: asNumber(textStyle?.wrap, 2) !== 1
-  });
-  const verticalOffset = verticalTextOffset(asNumber(textStyle?.anchor), layout.height, maxHeight);
-  context.save();
-  if (textOverflow === "clip") {
-    context.beginPath();
-    context.rect(0, 0, rect.width, rect.height);
-    context.clip();
-  }
-  context.textBaseline = "top";
-  for (const segment of layout.segments) {
-    applyRunFont(context, segment.run, segment.fontSize);
-    context.fillStyle = colorToCss(asRecord(segment.run.style?.fill)?.color) ?? "#0f172a";
-    const segmentX = insets.left + segment.x;
-    const segmentY = insets.top + verticalOffset + segment.y;
-    context.fillText(segment.text, segmentX, segmentY);
-    if (segment.run.style?.underline === true) {
-      const underlineY = segmentY + segment.fontSize * 1.08;
-      context.beginPath();
-      context.moveTo(segmentX, underlineY);
-      context.lineTo(segmentX + segment.width, underlineY);
-      context.lineWidth = Math.max(1, segment.fontSize / 18);
-      context.strokeStyle = context.fillStyle;
-      context.stroke();
-    }
-  }
-  context.restore();
-}
-function layoutTextFrame(context, paragraphs, options) {
-  const layout = layoutTextRuns(context, paragraphs, options, 1);
-  if (layout.height <= options.maxHeight || !shouldShrinkTextFrame(paragraphs, options)) {
-    return layout;
-  }
-  let fontScale = 1;
-  for (const nextScale of [0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65]) {
-    const nextLayout = layoutTextRuns(context, paragraphs, options, nextScale);
-    fontScale = nextScale;
-    if (nextLayout.height <= options.maxHeight) {
-      return nextLayout;
-    }
-  }
-  return layoutTextRuns(context, paragraphs, options, fontScale);
-}
-function layoutTextRuns(context, paragraphs, options, fontScale) {
-  const segments = [];
-  const { emuScaleX, maxWidth, slideScale, wrap } = options;
-  let y = 0;
-  let line = [];
-  let lineAlignment = 1;
-  let lineHeight = defaultLineHeight(slideScale);
-  let lineSpacing = 1;
-  let lineWidth = 0;
-  let activeAlignment = 1;
-  let activeLineSpacing = 1;
-  let activeParagraphStartX = 0;
-  let inheritedEmptyLineHeight = defaultLineHeight(slideScale);
-  let paragraphStartX = 0;
-  function resetLine() {
-    line = [];
-    lineAlignment = activeAlignment;
-    lineHeight = defaultLineHeight(slideScale);
-    lineSpacing = activeLineSpacing;
-    lineWidth = 0;
-    paragraphStartX = activeParagraphStartX;
-  }
-  function flushLine(includeEmptyLine = false) {
-    if (line.length === 0) {
-      if (includeEmptyLine) {
-        y += lineHeight * lineSpacing;
-      }
-      resetLine();
-      return;
-    }
-    const availableWidth = Math.max(1, maxWidth - paragraphStartX);
-    const offsetX = paragraphStartX + lineAlignmentOffset(lineAlignment, lineWidth, availableWidth);
-    for (const segment of line) {
-      segments.push({ ...segment, x: segment.x + offsetX, y });
-    }
-    y += lineHeight * lineSpacing;
-    resetLine();
-  }
-  function setParagraphOptions(paragraph) {
-    activeAlignment = paragraphAlignment(paragraph);
-    activeLineSpacing = paragraphLineSpacing(paragraph);
-    activeParagraphStartX = paragraphStartOffset(paragraph, emuScaleX);
-    if (line.length === 0 && lineWidth === 0) {
-      lineAlignment = activeAlignment;
-      lineSpacing = activeLineSpacing;
-      paragraphStartX = activeParagraphStartX;
-    }
-  }
-  function pushTextSegment(run, text, width, fontSize) {
-    if (line.length === 0 && lineWidth === 0) {
-      lineAlignment = activeAlignment;
-      lineSpacing = activeLineSpacing;
-      paragraphStartX = activeParagraphStartX;
-    }
-    const nextLineHeight = fontSize * 1.18;
-    line.push({
-      fontSize,
-      run,
-      text,
-      width,
-      x: lineWidth,
-      y: 0
-    });
-    lineWidth += width;
-    lineHeight = Math.max(lineHeight, nextLineHeight);
-    inheritedEmptyLineHeight = lineHeight;
-  }
-  for (const [paragraphIndex, paragraph] of paragraphs.entries()) {
-    setParagraphOptions(paragraph);
-    y += presentationParagraphSpacingPx(paragraph.style?.spaceBefore, slideScale, false);
-    const bullet = paragraphBullet(paragraph);
-    if (bullet) {
-      const bulletRun = paragraph.runs[0] ?? { id: `${paragraph.id}-bullet`, style: paragraph.style, text: bullet };
-      const bulletFontSize = runFontSize(bulletRun, slideScale, fontScale);
-      applyRunFont(context, bulletRun, bulletFontSize);
-      pushTextSegment(bulletRun, `${bullet} `, context.measureText(`${bullet} `).width, bulletFontSize);
-    }
-    if (paragraph.runs.length === 0) {
-      lineHeight = Math.max(lineHeight, inheritedEmptyLineHeight);
-      flushLine(true);
-      y += presentationParagraphSpacingPx(
-        paragraph.style?.spaceAfter,
-        slideScale,
-        options.useParagraphSpacing && paragraphIndex < paragraphs.length - 1
-      );
+// src/presentation/presentation-notes.ts
+function presentationSlideNotesText(slide) {
+  const notesSlide = asRecord(slide.notesSlide);
+  if (!notesSlide) return "";
+  const blocks = [];
+  for (const element of asArray(notesSlide.elements)) {
+    const record = asRecord(element);
+    if (!record || !isPresentationNotesBodyPlaceholder(record)) {
       continue;
     }
-    for (const run of paragraph.runs) {
-      const fontSize = runFontSize(run, slideScale, fontScale);
-      applyRunFont(context, run, fontSize);
-      lineHeight = Math.max(lineHeight, fontSize * 1.18);
-      const tokens = textTokens(run.text);
-      for (const token of tokens) {
-        if (token === "\n") {
-          flushLine(true);
-          continue;
-        }
-        const tokenWidth = context.measureText(token).width;
-        const availableWidth = Math.max(1, maxWidth - paragraphStartX);
-        if (wrap && lineWidth > 0 && lineWidth + tokenWidth > availableWidth) {
-          flushLine();
-        }
-        if (!wrap || tokenWidth <= availableWidth || token.trim() === "" || lineWidth === 0 && Array.from(token).length <= 4) {
-          pushTextSegment(run, token, tokenWidth, fontSize);
-          continue;
-        }
-        for (const char of wrapCharacters(token)) {
-          const charWidth = context.measureText(char).width;
-          if (lineWidth > 0 && lineWidth + charWidth > availableWidth) {
-            flushLine();
-          }
-          pushTextSegment(run, char, charWidth, fontSize);
-        }
-      }
+    const text = asArray(record.paragraphs).map(
+      (paragraph) => asArray(asRecord(paragraph)?.runs).map((run) => asString(asRecord(run)?.text)).join("").trim()
+    ).filter((line) => line && !/^\d+$/u.test(line)).join("\n").trim();
+    if (text && !blocks.includes(text)) {
+      blocks.push(text);
     }
-    flushLine();
-    y += presentationParagraphSpacingPx(
-      paragraph.style?.spaceAfter,
-      slideScale,
-      options.useParagraphSpacing && paragraphIndex < paragraphs.length - 1
-    );
   }
-  return { height: y, segments };
+  return blocks.join("\n\n");
 }
-function shouldShrinkTextFrame(paragraphs, options) {
-  return options.autoFit || paragraphs.some((paragraph) => asRecord(paragraph.style?.autoFit) != null);
+function isPresentationNotesBodyPlaceholder(element) {
+  const placeholderType = asString(element.placeholderType).toLowerCase();
+  const name = asString(element.name).toLowerCase();
+  if (placeholderType === "sldimg" || placeholderType === "sldnum") return false;
+  if (placeholderType === "body" || placeholderType === "notes") return true;
+  if (name.includes("notes") || name.includes("body")) return true;
+  return placeholderType === "" && asArray(element.paragraphs).length > 0;
 }
-function textInsets(textStyle, rect, scaleX, scaleY) {
-  const defaultX = Math.max(2, Math.min(12, rect.height * 0.04));
-  const defaultY = Math.max(2, Math.min(12, rect.height * 0.035));
+
+// src/presentation/presentation-fill-styles.ts
+function shapeFillToCss(shape, element, lineColor, rect) {
+  const fill = fillToCss(shape?.fill) ?? fillToCss(element.fill);
+  if (!fill) return void 0;
+  if (shape && isTransparentOutlineEllipse(shape, rect)) return void 0;
+  const isLikelyOutlineOnly = Math.abs(rect.width - rect.height) <= Math.max(2, Math.min(rect.width, rect.height) * 0.03);
+  if (isLikelyOutlineOnly && lineColor && sameBaseColor(fill, lineColor) && colorAlphaFromCss(lineColor) < 0.5) {
+    return void 0;
+  }
+  return fill;
+}
+function shapeFillToPaint(context, shape, element, lineColor, rect) {
+  const fill = asRecord(shape?.fill) ?? asRecord(element.fill);
+  const gradient = presentationGradientFill(context, fill, rect);
+  if (gradient) return gradient;
+  return shapeFillToCss(shape, element, lineColor, rect);
+}
+function presentationGradientStops(fill) {
+  const stops = asArray(asRecord(fill)?.gradientStops).map((stop, index) => {
+    const record = asRecord(stop);
+    const color = colorToCss(record?.color ?? stop);
+    if (!color) return null;
+    return {
+      color,
+      index,
+      position: gradientStopPosition(record)
+    };
+  }).filter(
+    (stop) => stop != null
+  );
+  return stops.map((stop) => ({
+    color: stop.color,
+    position: stop.position ?? (stops.length === 1 ? 0 : stop.index / (stops.length - 1))
+  }));
+}
+function presentationGradientFill(context, fill, rect) {
+  const stops = presentationGradientStops(fill);
+  if (stops.length < 2) return void 0;
+  const line = gradientLine(rect, gradientAngle(fill));
+  const gradient = context.createLinearGradient(
+    line.x1,
+    line.y1,
+    line.x2,
+    line.y2
+  );
+  for (const stop of stops) {
+    gradient.addColorStop(clamp(stop.position, 0, 1), stop.color);
+  }
+  return gradient;
+}
+function gradientStopPosition(stop) {
+  for (const key of ["position", "offset", "pos"]) {
+    const value = asNumber(stop?.[key], Number.NaN);
+    if (Number.isFinite(value)) {
+      return value > 1 ? clamp(value / 1e5, 0, 1) : clamp(value, 0, 1);
+    }
+  }
+  return null;
+}
+function gradientAngle(fill) {
+  for (const key of ["angle", "gradientAngle", "direction"]) {
+    const value = asNumber(fill?.[key], Number.NaN);
+    if (Number.isFinite(value)) {
+      return Math.abs(value) > 360 ? value / 6e4 : value;
+    }
+  }
+  return 0;
+}
+function gradientLine(rect, angleDegrees) {
+  const radians = angleDegrees * Math.PI / 180;
+  const dx = Math.cos(radians);
+  const dy = Math.sin(radians);
+  const length = Math.abs(rect.width * dx) + Math.abs(rect.height * dy);
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
   return {
-    bottom: insetPx(textStyle?.bottomInset, scaleY, defaultY, rect.height * 0.45),
-    left: insetPx(textStyle?.leftInset, scaleX, defaultX, rect.width * 0.45),
-    right: insetPx(textStyle?.rightInset, scaleX, defaultX, rect.width * 0.45),
-    top: insetPx(textStyle?.topInset, scaleY, defaultY, rect.height * 0.45)
+    x1: cx - dx * length / 2,
+    x2: cx + dx * length / 2,
+    y1: cy - dy * length / 2,
+    y2: cy + dy * length / 2
   };
 }
-function insetPx(value, scale, fallback, max) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  if (value <= 0) return 0;
-  return clamp(value * scale, 0, max);
+function isTransparentOutlineEllipse(shape, rect) {
+  const fill = fillToCss(shape?.fill);
+  const line = lineToCss(shape?.line);
+  if (!fill || !line.color) return false;
+  const isNearSquare = Math.abs(rect.width - rect.height) <= Math.max(2, Math.min(rect.width, rect.height) * 0.03);
+  return isNearSquare && colorAlphaFromCss(fill) === 0 && sameBaseColor(fill, line.color);
 }
-function verticalTextOffset(anchor, contentHeight, maxHeight) {
-  if (contentHeight >= maxHeight) return 0;
-  if (anchor === 2 || anchor === 4 || anchor === 5) return (maxHeight - contentHeight) / 2;
-  if (anchor === 3) return maxHeight - contentHeight;
-  return 0;
+function sameBaseColor(left, right) {
+  return cssRgbKey(left) === cssRgbKey(right);
 }
-function paragraphAlignment(paragraph) {
-  const alignment = asNumber(paragraph.style?.alignment);
-  return alignment > 0 ? alignment : 1;
+function cssRgbKey(value) {
+  const hex = value.match(/^#?([0-9a-f]{6})$/i);
+  if (hex) return hex[1].toLowerCase();
+  const rgba = parseCssColorChannels2(value);
+  if (!rgba) return value.toLowerCase();
+  return rgba.map((channel) => Number(channel).toString(16).padStart(2, "0")).join("");
 }
-function paragraphLineSpacing(paragraph) {
-  const percent = asNumber(paragraph.style?.lineSpacingPercent);
-  if (percent > 0) return clamp(percent / 118e3, 0.6, 3);
-  const raw = asNumber(paragraph.style?.lineSpacing);
-  if (raw > 1e4) return clamp(raw / 118e3, 0.6, 3);
-  if (raw > 0) return clamp(raw, 0.6, 3);
-  return 1;
+function colorAlphaFromCss(value) {
+  const channels = parseCssColorChannels2(value);
+  if (!channels || channels[3] == null) return 1;
+  const alpha = Number(channels[3]);
+  return Number.isFinite(alpha) ? alpha : 1;
 }
-function paragraphStartOffset(paragraph, emuScaleX) {
-  const marginLeft = asNumber(paragraph.style?.marginLeft);
-  const indent = asNumber(paragraph.style?.indent);
-  return Math.max(0, (marginLeft + indent) * emuScaleX);
-}
-function paragraphBullet(paragraph) {
-  const bullet = asString(paragraph.style?.bulletCharacter);
-  return bullet.trim();
-}
-function presentationEffectiveTextMaxWidth(maxWidth, wrap) {
-  if (!wrap) return maxWidth;
-  return Math.max(1, maxWidth * POWERPOINT_WRAP_WIDTH_FACTOR);
-}
-function presentationParagraphSpacingPx(value, slideScale, useDefaultParagraphSpacing = false) {
-  const raw = asNumber(value);
-  if (raw <= 0) {
-    return useDefaultParagraphSpacing ? Math.max(0, raw) * Math.max(0.01, slideScale) : 0;
-  }
-  return Math.min(24, raw / 20) * Math.max(0.01, slideScale);
-}
-function lineAlignmentOffset(alignment, lineWidth, maxWidth) {
-  if (alignment === 2) return Math.max(0, (maxWidth - lineWidth) / 2);
-  if (alignment === 3) return Math.max(0, maxWidth - lineWidth);
-  return 0;
-}
-function textTokens(text) {
-  const tokens = [];
-  for (const part of text.split(/(\n|\s+)/u)) {
-    if (!part) continue;
-    if (part === "\n") {
-      tokens.push(part);
-      continue;
-    }
-    if (/^\s+$/u.test(part)) {
-      tokens.push(part);
-      continue;
-    }
-    tokens.push(part);
-  }
-  return tokens;
-}
-function wrapCharacters(text) {
-  const chunks = [];
-  for (const char of Array.from(text)) {
-    if (isClosingPunctuation(char) && chunks.length > 0) {
-      chunks[chunks.length - 1] += char;
-      continue;
-    }
-    chunks.push(char);
-  }
-  return chunks;
-}
-function isClosingPunctuation(char) {
-  return /^[,.;:!?，。！？；：、）】》」』”’)]$/u.test(char);
-}
-function applyRunFont(context, run, fontSize) {
-  const fontStyle = run.style?.italic === true ? "italic" : "normal";
-  const fontWeight = run.style?.bold === true ? "700" : "400";
-  configureCanvasTextQuality(context);
-  context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${officeFontFamily(asString(run.style?.typeface))}`;
-}
-function configureCanvasTextQuality(context) {
-  const qualityContext = context;
-  qualityContext.fontKerning = "normal";
-  qualityContext.letterSpacing = "0px";
-  qualityContext.textRendering = "optimizeLegibility";
-  qualityContext.wordSpacing = "0px";
-}
-function runFontSize(run, slideScale, fontScale = 1) {
-  return presentationScaledFontSize(run.style?.fontSize, slideScale) * fontScale;
-}
-function defaultLineHeight(slideScale) {
-  return Math.max(1, 16 * Math.max(0.01, slideScale));
+function parseCssColorChannels2(value) {
+  const open = value.indexOf("(");
+  const close = value.lastIndexOf(")");
+  if (open < 0 || close <= open) return null;
+  const functionName = value.slice(0, open).trim().toLowerCase();
+  if (functionName !== "rgb" && functionName !== "rgba") return null;
+  const channels = value.slice(open + 1, close).split(",").map((channel) => channel.trim());
+  return channels.length >= 3 ? channels : null;
 }
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-// src/presentation/presentation-table-renderer.ts
-var EMU_PER_CSS_PIXEL = 9525;
-function presentationTableGrid(table, rect) {
-  const rows = asArray(table.rows).map(asRecord).filter((row) => row != null);
-  const maxColumns = Math.max(
-    1,
-    rows.reduce((max, row) => {
-      let count = 0;
-      for (const cell of asArray(row.cells).map(asRecord)) {
-        if (!cell) continue;
-        count += Math.max(1, asNumber(cell.gridSpan, 1));
-      }
-      return Math.max(max, count);
-    }, 0)
-  );
-  const columnSource = asArray(table.columns ?? table.columnWidths ?? table.gridColumns).map((value) => asNumber(value)).filter((value) => value > 0).slice(0, maxColumns);
-  const rowSource = rows.map((row) => asNumber(row.heightEmu ?? row.height)).filter((value) => value > 0);
-  return {
-    columns: normalizeLengths(columnSource, maxColumns, rect.width),
-    rows: normalizeLengths(rowSource, rows.length, rect.height)
-  };
-}
-function drawPresentationTable(context, element, table, rect, bounds, canvas, slideScale) {
-  const rows = asArray(table.rows).map(asRecord).filter((row) => row != null);
-  if (rows.length === 0) return;
-  const tableFill = fillToCss(asRecord(table.properties)?.fill ?? asRecord(table.tableProperties)?.fill);
-  if (tableFill) {
-    context.fillStyle = tableFill;
-    context.fillRect(0, 0, rect.width, rect.height);
-  }
-  const grid = presentationTableGrid(table, rect);
-  let y = 0;
-  for (const [rowIndex, row] of rows.entries()) {
-    const rowHeight = grid.rows[rowIndex] ?? 0;
-    const cells = asArray(row.cells).map(asRecord).filter((cell) => cell != null);
-    let x = 0;
-    let columnIndex = 0;
-    for (const cell of cells) {
-      const columnSpan = Math.max(1, asNumber(cell.gridSpan, 1));
-      const rowSpan = Math.max(1, asNumber(cell.rowSpan, 1));
-      const cellWidth = sumLengths(grid.columns, columnIndex, columnSpan);
-      const cellHeight = sumLengths(grid.rows, rowIndex, rowSpan);
-      const horizontalMerge = cell.horizontalMerge === true || cell.hMerge === true;
-      const verticalMerge = cell.verticalMerge === true || cell.vMerge === true;
-      if (!horizontalMerge && !verticalMerge && cellWidth > 0 && cellHeight > 0) {
-        drawPresentationTableCellBackground(context, cell, tableFill, x, y, cellWidth, cellHeight);
-        drawPresentationTableCellText(context, element, cell, {
-          canvas,
-          height: cellHeight,
-          left: x,
-          slideBounds: bounds,
-          slideScale,
-          top: y,
-          width: cellWidth
-        });
-        drawPresentationTableCellBorders(context, cell, x, y, cellWidth, cellHeight, slideScale);
-      }
-      x += cellWidth;
-      columnIndex += columnSpan;
-    }
-    y += rowHeight;
-  }
-}
-function drawPresentationTableCellBackground(context, cell, tableFill, x, y, width, height) {
-  const fill = fillToCss(cell.fill) ?? fillToCss(asRecord(cell.properties)?.fill) ?? fillToCss(asRecord(cell.tableCellProperties)?.fill) ?? tableFill;
-  if (!fill) return;
-  context.fillStyle = fill;
-  context.fillRect(x, y, width, height);
-}
-function drawPresentationTableCellText(context, element, cell, options) {
-  const paragraphs = tableCellParagraphs(cell);
-  if (paragraphs.length === 0) return;
-  const textStyle = {
-    ...asRecord(element.textStyle) ?? {},
-    ...asRecord(cell.textStyle) ?? {},
-    anchor: tableCellAnchor(asString(cell.anchor), asNumber(asRecord(cell.textStyle)?.anchor)),
-    ...definedInset("bottomInset", cell.bottomMargin),
-    ...definedInset("leftInset", cell.leftMargin),
-    ...definedInset("rightInset", cell.rightMargin),
-    ...definedInset("topInset", cell.topMargin)
-  };
-  context.save();
-  context.translate(options.left, options.top);
-  drawPresentationTextBox({
-    canvas: options.canvas,
-    context,
-    element: {
-      ...element,
-      paragraphs,
-      textStyle
-    },
-    rect: {
-      height: options.height,
-      left: 0,
-      top: 0,
-      width: options.width
-    },
-    slideBounds: options.slideBounds,
-    slideScale: options.slideScale,
-    textOverflow: "clip"
-  });
-  context.restore();
-}
-function tableCellParagraphs(cell) {
-  const paragraphs = asArray(cell.paragraphs);
-  if (paragraphs.length > 0) return paragraphs;
-  const text = asString(cell.text);
-  if (!text) return [];
-  return text.split(/\n/u).map((line) => ({
-    runs: [{ text: line }]
-  }));
-}
-function tableCellAnchor(anchor, fallback) {
-  const normalized = anchor.toLowerCase();
-  if (normalized === "ctr" || normalized === "center" || normalized === "middle") return 2;
-  if (normalized === "b" || normalized === "bottom") return 3;
-  return fallback;
-}
-function definedInset(key, value) {
-  const raw = asNumber(value, Number.NaN);
-  if (!Number.isFinite(raw)) return {};
-  return { [key]: Math.max(0, raw) };
-}
-function drawPresentationTableCellBorders(context, cell, x, y, width, height, slideScale) {
-  const borders = asRecord(cell.borders ?? cell.lines);
-  const defaultLine = { color: "rgba(148, 163, 184, 0.35)", dash: [], width: Math.max(0.5, slideScale) };
-  const top = tableCellBorderLine(borders, ["top", "topBorder", "topLine"], slideScale) ?? defaultLine;
-  const right = tableCellBorderLine(borders, ["right", "rightBorder", "rightLine"], slideScale) ?? defaultLine;
-  const bottom = tableCellBorderLine(borders, ["bottom", "bottomBorder", "bottomLine"], slideScale) ?? defaultLine;
-  const left = tableCellBorderLine(borders, ["left", "leftBorder", "leftLine"], slideScale) ?? defaultLine;
-  drawBorderSegment(context, top, x, y, x + width, y);
-  drawBorderSegment(context, right, x + width, y, x + width, y + height);
-  drawBorderSegment(context, bottom, x, y + height, x + width, y + height);
-  drawBorderSegment(context, left, x, y, x, y + height);
-}
-function tableCellBorderLine(borders, keys, slideScale) {
-  for (const key of keys) {
-    const line = asRecord(borders?.[key]);
-    if (!line) continue;
-    const style = tableLineStyle(line, slideScale);
-    if (style.color) {
-      return { color: style.color, dash: style.dash, width: style.width };
-    }
-  }
-  return null;
-}
-function tableLineStyle(line, slideScale) {
-  const fill = asRecord(line.fill);
-  const rawWidthEmu = asNumber(line.widthEmu);
-  const width = rawWidthEmu > 0 ? rawWidthEmu / EMU_PER_CSS_PIXEL : 1;
-  const scaledWidth = Math.max(0.5, width * Math.max(0.01, slideScale));
-  return {
-    color: colorToCss(fill?.color),
-    dash: tableLineDash(asNumber(line.style), scaledWidth),
-    width: scaledWidth
-  };
-}
-function tableLineDash(style, width) {
-  const unit = Math.max(1, width);
-  if (style === 2) return [unit * 4, unit * 2];
-  if (style === 3) return [unit, unit * 2];
-  if (style === 4) return [unit * 8, unit * 3];
-  if (style === 5) return [unit * 8, unit * 3, unit, unit * 3];
-  if (style === 6) return [unit * 8, unit * 3, unit, unit * 3, unit, unit * 3];
-  return [];
-}
-function drawBorderSegment(context, line, x1, y1, x2, y2) {
-  context.save();
-  context.strokeStyle = line.color;
-  context.lineWidth = line.width;
-  context.setLineDash(line.dash);
-  context.beginPath();
-  context.moveTo(x1, y1);
-  context.lineTo(x2, y2);
-  context.stroke();
-  context.restore();
-}
-function normalizeLengths(source, count, total) {
-  if (count <= 0) return [];
-  const values = source.slice(0, count).filter((value) => value > 0);
-  const sum = values.reduce((acc, value) => acc + value, 0);
-  if (values.length === count && sum > 0) {
-    return values.map((value) => value / sum * total);
-  }
-  return Array.from({ length: count }, () => total / count);
-}
-function sumLengths(lengths, start, count) {
-  let total = 0;
-  for (let index = start; index < start + count; index++) {
-    total += lengths[index] ?? 0;
-  }
-  return total;
-}
-
-// src/presentation/presentation-renderer.ts
+// src/presentation/presentation-layout.ts
 var DEFAULT_SLIDE_BOUNDS = { width: 12192e3, height: 6858e3 };
-var EMU_PER_CSS_PIXEL2 = 9525;
+var EMU_PER_CSS_PIXEL = 9525;
 var FIT_PADDING = 48;
 var MIN_ZOOM = 0.25;
 var MAX_ZOOM = 6;
@@ -10768,7 +10445,10 @@ function computePresentationFit(viewport2, frame, options = {}) {
   }
   const availableWidth = Math.max(1, viewport2.width - padding * 2);
   const availableHeight = Math.max(1, viewport2.height - padding * 2);
-  const fitScale = Math.min(availableWidth / frame.width, availableHeight / frame.height);
+  const fitScale = Math.min(
+    availableWidth / frame.width,
+    availableHeight / frame.height
+  );
   const scale = Math.max(0.05, fitScale) * zoom;
   return {
     height: frame.height * scale,
@@ -10794,8 +10474,14 @@ function getSlideBounds(slide, layouts = []) {
     (acc, element) => {
       const bbox = asRecord(element.bbox);
       return {
-        height: Math.max(acc.height, asNumber(bbox?.yEmu) + Math.max(0, asNumber(bbox?.heightEmu))),
-        width: Math.max(acc.width, asNumber(bbox?.xEmu) + Math.max(0, asNumber(bbox?.widthEmu)))
+        height: Math.max(
+          acc.height,
+          asNumber(bbox?.yEmu) + Math.max(0, asNumber(bbox?.heightEmu))
+        ),
+        width: Math.max(
+          acc.width,
+          asNumber(bbox?.xEmu) + Math.max(0, asNumber(bbox?.widthEmu))
+        )
       };
     },
     { ...DEFAULT_SLIDE_BOUNDS }
@@ -10804,8 +10490,8 @@ function getSlideBounds(slide, layouts = []) {
 function getSlideFrameSize(slide, layouts = []) {
   const bounds = getSlideBounds(slide, layouts);
   return {
-    height: bounds.height / EMU_PER_CSS_PIXEL2,
-    width: bounds.width / EMU_PER_CSS_PIXEL2
+    height: bounds.height / EMU_PER_CSS_PIXEL,
+    width: bounds.width / EMU_PER_CSS_PIXEL
   };
 }
 function emuRectToCanvasRect(bbox, bounds, canvas) {
@@ -10827,7 +10513,8 @@ function presentationShapeKind(shape, rect) {
   if (geometry === 4) return "rtTriangle";
   if (geometry === 26) return "roundRect";
   if (geometry === 6 || geometry === 30 || geometry === 133) return "diamond";
-  if (geometry === 7 || geometry === 31 || geometry === 134 || geometry === 141) return "parallelogram";
+  if (geometry === 7 || geometry === 31 || geometry === 134 || geometry === 141)
+    return "parallelogram";
   if (geometry === 8 || geometry === 144) return "trapezoid";
   if (geometry === 10 || geometry === 37 || geometry === 160) return "pentagon";
   if (geometry === 11 || geometry === 39 || geometry === 140) return "hexagon";
@@ -10836,7 +10523,9 @@ function presentationShapeKind(shape, rect) {
   if (geometry === 20) return "star8";
   if (geometry === 25) return "star32";
   if (geometry === 32) return "snipRect";
-  if (geometry === 35 || geometry === 89 || geometry === 139 || geometry === 143 || isTransparentOutlineEllipse(shape, rect)) return "ellipse";
+  if (geometry === 35 || geometry === 89 || geometry === 139 || geometry === 143 || isTransparentOutlineEllipse2(shape, rect)) {
+    return "ellipse";
+  }
   if (geometry === 38) return "chevron";
   if (geometry === 45) return "leftArrow";
   if (geometry === 50) return "bentUpArrow";
@@ -10851,21 +10540,6 @@ function presentationShapeKind(shape, rect) {
   if (geometry === 137 || geometry === 138) return "document";
   if (geometry === 150 || geometry === 151) return "extract";
   return "rect";
-}
-function presentationImageSourceRect(element, naturalSize) {
-  const sourceRect = elementImageSourceRect(element);
-  if (!sourceRect || naturalSize.width <= 0 || naturalSize.height <= 0) {
-    return { height: naturalSize.height, width: naturalSize.width, x: 0, y: 0 };
-  }
-  const left = cropRatio(sourceRect.left ?? sourceRect.l);
-  const top = cropRatio(sourceRect.top ?? sourceRect.t);
-  const right = cropRatio(sourceRect.right ?? sourceRect.r);
-  const bottom = cropRatio(sourceRect.bottom ?? sourceRect.b);
-  const x = naturalSize.width * left;
-  const y = naturalSize.height * top;
-  const width = naturalSize.width * Math.max(0.01, 1 - left - right);
-  const height = naturalSize.height * Math.max(0.01, 1 - top - bottom);
-  return { height, width, x, y };
 }
 function collectPresentationTypefaces(slides, layouts = []) {
   const typefaces = /* @__PURE__ */ new Set();
@@ -10886,30 +10560,6 @@ function collectPresentationTypefaces(slides, layouts = []) {
   }
   return Array.from(typefaces);
 }
-function renderPresentationSlide({
-  charts = [],
-  context,
-  height,
-  images,
-  layouts = [],
-  slide,
-  textOverflow = "visible",
-  width
-}) {
-  const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
-  const bounds = getSlideBounds(effectiveSlide);
-  const elements = presentationElements(effectiveSlide).map((element, index) => ({ element, index })).sort((left, right) => asNumber(left.element.zIndex, left.index) - asNumber(right.element.zIndex, right.index));
-  context.save();
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
-  context.clearRect(0, 0, width, height);
-  context.fillStyle = slideBackgroundToCss(effectiveSlide);
-  context.fillRect(0, 0, width, height);
-  for (const entry of elements) {
-    drawElement(context, entry, bounds, { height, width }, images, { charts, textOverflow });
-  }
-  context.restore();
-}
 function getPresentationElementTargets(slide, canvas, layouts = []) {
   const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
   const bounds = getSlideBounds(effectiveSlide);
@@ -10922,7 +10572,31 @@ function getPresentationElementTargets(slide, canvas, layouts = []) {
       name: asString(element.name) || asString(element.id) || String(index + 1),
       rect
     };
-  }).filter(({ rect }) => rect.width > 0 && rect.height > 0).sort((left, right) => asNumber(left.element.zIndex, left.index) - asNumber(right.element.zIndex, right.index));
+  }).filter(({ rect }) => rect.width > 0 && rect.height > 0).sort(
+    (left, right) => asNumber(left.element.zIndex, left.index) - asNumber(right.element.zIndex, right.index)
+  );
+}
+function presentationElements(slide, layouts = []) {
+  const effectiveSlide = layouts.length > 0 ? applyPresentationLayoutInheritance(slide, layouts) : slide;
+  const elements = [];
+  function visit(value) {
+    const record = asRecord(value);
+    if (record == null) return;
+    elements.push(record);
+    for (const child of asArray(record.children)) {
+      visit(child);
+    }
+  }
+  for (const element of asArray(effectiveSlide.elements)) {
+    visit(element);
+  }
+  return elements;
+}
+function presentationCanvasScale(bounds, canvas) {
+  const frameWidth = bounds.width / EMU_PER_CSS_PIXEL;
+  const frameHeight = bounds.height / EMU_PER_CSS_PIXEL;
+  if (frameWidth <= 0 || frameHeight <= 0) return 1;
+  return Math.min(canvas.width / frameWidth, canvas.height / frameHeight);
 }
 function presentationLayoutChain(slide, layouts) {
   const byId = /* @__PURE__ */ new Map();
@@ -10944,10 +10618,19 @@ function presentationLayoutChain(slide, layouts) {
   return chain;
 }
 function applyElementLayoutInheritance(element, layoutChain) {
-  const placeholderDefaults = layoutChain.map((layout) => findMatchingPlaceholderElement(layout, element)).filter((match) => match != null).reduce((acc, match) => mergeRecordDefaults(acc, match), null);
+  const placeholderDefaults = layoutChain.map((layout) => findMatchingPlaceholderElement(layout, element)).filter((match) => match != null).reduce(
+    (acc, match) => mergeRecordDefaults(acc, match),
+    null
+  );
   const mergedElement = mergeRecordDefaults(placeholderDefaults, element);
-  const inheritedLevelStyles = presentationLevelStylesForElement(element, layoutChain);
-  const paragraphs = mergeParagraphLevelStyles(asArray(mergedElement.paragraphs), inheritedLevelStyles);
+  const inheritedLevelStyles = presentationLevelStylesForElement(
+    element,
+    layoutChain
+  );
+  const paragraphs = mergeParagraphLevelStyles(
+    asArray(mergedElement.paragraphs),
+    inheritedLevelStyles
+  );
   const children = asArray(mergedElement.children).map(asRecord).filter((child) => child != null).map((child) => applyElementLayoutInheritance(child, layoutChain));
   return {
     ...mergedElement,
@@ -10987,45 +10670,65 @@ function placeholderMatchScore(candidate, element) {
   const candidateIndex = asNumber(candidate.placeholderIndex, -1);
   const elementIndex = asNumber(element.placeholderIndex, -1);
   if (!candidateType && candidateIndex < 0) return 0;
-  if (candidateIndex >= 0 && elementIndex >= 0 && candidateIndex === elementIndex && candidateType === elementType) return 4;
-  if (candidateIndex > 0 && elementIndex > 0 && candidateIndex === elementIndex) return 3;
+  if (candidateIndex >= 0 && elementIndex >= 0 && candidateIndex === elementIndex && candidateType === elementType)
+    return 4;
+  if (candidateIndex > 0 && elementIndex > 0 && candidateIndex === elementIndex)
+    return 3;
   if (candidateType && elementType && candidateType === elementType) return 2;
-  if (!elementType && candidateIndex > 0 && candidateIndex === elementIndex) return 1;
+  if (!elementType && candidateIndex > 0 && candidateIndex === elementIndex)
+    return 1;
   return 0;
 }
 function presentationLevelStylesForElement(element, layoutChain) {
-  const styleField = placeholderLevelStyleField(normalizedPlaceholderType(element));
+  const styleField = placeholderLevelStyleField(
+    normalizedPlaceholderType(element)
+  );
   const byLevel = /* @__PURE__ */ new Map();
   for (const layout of layoutChain) {
     for (const style of asArray(layout[styleField]).map(asRecord)) {
       if (!style) continue;
       const level = asNumber(style.level, 1);
-      byLevel.set(level, mergeRecordDefaults(byLevel.get(level) ?? null, style));
+      byLevel.set(
+        level,
+        mergeRecordDefaults(byLevel.get(level) ?? null, style)
+      );
     }
   }
   return Array.from(byLevel.values());
 }
 function placeholderLevelStyleField(placeholderType) {
-  if (placeholderType === "title" || placeholderType === "ctrtitle") return "titleLevelStyles";
-  if (placeholderType === "body" || placeholderType === "subtitle" || placeholderType === "obj") return "bodyLevelStyles";
+  if (placeholderType === "title" || placeholderType === "ctrtitle")
+    return "titleLevelStyles";
+  if (placeholderType === "body" || placeholderType === "subtitle" || placeholderType === "obj")
+    return "bodyLevelStyles";
   return "otherLevelStyles";
 }
 function mergeParagraphLevelStyles(paragraphs, levelStyles) {
   if (paragraphs.length === 0) return [];
-  const byLevel = new Map(levelStyles.map((style) => [asNumber(style.level, 1), style]));
+  const byLevel = new Map(
+    levelStyles.map((style) => [asNumber(style.level, 1), style])
+  );
   return paragraphs.map(asRecord).filter((paragraph) => paragraph != null).map((paragraph) => {
-    const level = asNumber(paragraph.level, asNumber(asRecord(paragraph.textStyle)?.level, 1));
+    const level = asNumber(
+      paragraph.level,
+      asNumber(asRecord(paragraph.textStyle)?.level, 1)
+    );
     const style = byLevel.get(level) ?? byLevel.get(1);
     if (!style) return paragraph;
-    const textStyle = mergeRecordDefaults(asRecord(style.textStyle), asRecord(paragraph.textStyle));
-    const paragraphStyle2 = mergeRecordDefaults(asRecord(style.paragraphStyle), asRecord(paragraph.paragraphStyle));
-    const next = {
+    const textStyle = mergeRecordDefaults(
+      asRecord(style.textStyle),
+      asRecord(paragraph.textStyle)
+    );
+    const paragraphStyle2 = mergeRecordDefaults(
+      asRecord(style.paragraphStyle),
+      asRecord(paragraph.paragraphStyle)
+    );
+    return {
       ...copyMissingParagraphStyleFields(style, paragraph),
       ...paragraph,
       ...Object.keys(textStyle).length > 0 ? { textStyle } : {},
       ...Object.keys(paragraphStyle2).length > 0 ? { paragraphStyle: paragraphStyle2 } : {}
     };
-    return next;
   });
 }
 function copyMissingParagraphStyleFields(style, paragraph) {
@@ -11036,7 +10739,12 @@ function copyMissingParagraphStyleFields(style, paragraph) {
     }
   }
   const paragraphStyle2 = asRecord(style.paragraphStyle);
-  for (const key of ["bulletCharacter", "indent", "lineSpacing", "marginLeft"]) {
+  for (const key of [
+    "bulletCharacter",
+    "indent",
+    "lineSpacing",
+    "marginLeft"
+  ]) {
     if (!(key in paragraph) && paragraphStyle2 && key in paragraphStyle2) {
       copied[key] = paragraphStyle2[key];
     }
@@ -11067,102 +10775,212 @@ function mergeRecordDefaults(base, override) {
   }
   return result;
 }
-function presentationElements(slide, layouts = []) {
-  const effectiveSlide = layouts.length > 0 ? applyPresentationLayoutInheritance(slide, layouts) : slide;
-  const elements = [];
-  function visit(value) {
-    const record = asRecord(value);
-    if (record == null) return;
-    elements.push(record);
-    for (const child of asArray(record.children)) {
-      visit(child);
-    }
-  }
-  for (const element of asArray(effectiveSlide.elements)) {
-    visit(element);
-  }
-  return elements;
+function isTransparentOutlineEllipse2(shape, rect) {
+  const fill = fillToCss(shape?.fill);
+  const line = lineToCss(shape?.line);
+  if (!fill || !line.color) return false;
+  const isNearSquare = Math.abs(rect.width - rect.height) <= Math.max(2, Math.min(rect.width, rect.height) * 0.03);
+  return isNearSquare && colorAlphaFromCss2(fill) === 0 && sameBaseColor2(fill, line.color);
 }
-function drawElement(context, { element }, bounds, canvas, images, options) {
-  const bbox = asRecord(element.bbox);
-  const rect = emuRectToCanvasRect(bbox, bounds, canvas);
-  if (rect.width <= 0 && rect.height <= 0) return;
-  const slideScale = presentationCanvasScale(bounds, canvas);
-  const shape = asRecord(element.shape);
-  const line = presentationElementLineStyle(element, slideScale);
-  const isLine = rect.height === 0 && line.color != null;
-  const rotation = asNumber(bbox?.rotation) / 6e4;
-  const horizontalFlip = bbox?.horizontalFlip === true;
-  const verticalFlip = bbox?.verticalFlip === true;
+function sameBaseColor2(left, right) {
+  return cssRgbKey2(left) === cssRgbKey2(right);
+}
+function cssRgbKey2(value) {
+  const hex = value.match(/^#?([0-9a-f]{6})$/i);
+  if (hex) return hex[1].toLowerCase();
+  const rgba = parseCssColorChannels3(value);
+  if (!rgba) return value.toLowerCase();
+  return rgba.map((channel) => Number(channel).toString(16).padStart(2, "0")).join("");
+}
+function colorAlphaFromCss2(value) {
+  const channels = parseCssColorChannels3(value);
+  if (!channels || channels[3] == null) return 1;
+  const alpha = Number(channels[3]);
+  return Number.isFinite(alpha) ? alpha : 1;
+}
+function parseCssColorChannels3(value) {
+  const open = value.indexOf("(");
+  const close = value.lastIndexOf(")");
+  if (open < 0 || close <= open) return null;
+  const functionName = value.slice(0, open).trim().toLowerCase();
+  if (functionName !== "rgb" && functionName !== "rgba") return null;
+  const channels = value.slice(open + 1, close).split(",").map((channel) => channel.trim());
+  return channels.length >= 3 ? channels : null;
+}
+function clamp2(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+// src/presentation/presentation-line-styles.ts
+var EMU_PER_CSS_PIXEL2 = 9525;
+function presentationLineStyle(line, slideScale) {
+  const lineRecord = asRecord(line);
+  const fillRecord = asRecord(lineRecord?.fill);
+  const rawWidthEmu = asNumber(lineRecord?.widthEmu);
+  const width = rawWidthEmu > 0 ? rawWidthEmu / EMU_PER_CSS_PIXEL2 : 1;
+  const scaledWidth = Math.max(0.5, width * Math.max(0.01, slideScale));
+  return {
+    color: colorToCss(fillRecord?.color),
+    dash: presentationLineDash(asNumber(lineRecord?.style), scaledWidth),
+    headEnd: presentationLineEndStyle(
+      lineRecord?.headEnd ?? lineRecord?.head,
+      scaledWidth
+    ),
+    lineCap: presentationLineCap(asNumber(lineRecord?.cap)),
+    lineJoin: presentationLineJoin(asNumber(lineRecord?.join)),
+    tailEnd: presentationLineEndStyle(
+      lineRecord?.tailEnd ?? lineRecord?.tail,
+      scaledWidth
+    ),
+    width: scaledWidth
+  };
+}
+function presentationElementLineStyle(element, slideScale) {
+  const shapeLine = asRecord(asRecord(element.shape)?.line) ?? asRecord(element.line);
+  const connectorLine = asRecord(asRecord(element.connector)?.lineStyle);
+  if (!connectorLine) return presentationLineStyle(shapeLine, slideScale);
+  return presentationLineStyle(
+    {
+      ...shapeLine,
+      cap: connectorLine.cap ?? shapeLine?.cap,
+      head: connectorLine.head ?? connectorLine.headEnd ?? shapeLine?.head,
+      headEnd: connectorLine.headEnd ?? connectorLine.head ?? shapeLine?.headEnd,
+      join: connectorLine.join ?? shapeLine?.join,
+      tail: connectorLine.tail ?? connectorLine.tailEnd ?? shapeLine?.tail,
+      tailEnd: connectorLine.tailEnd ?? connectorLine.tail ?? shapeLine?.tailEnd
+    },
+    slideScale
+  );
+}
+function applyLineStyle(context, line) {
+  context.strokeStyle = line.color ?? "#0f172a";
+  context.lineWidth = line.width;
+  context.lineCap = line.lineCap;
+  context.lineJoin = line.lineJoin;
+  context.setLineDash(line.dash);
+}
+function presentationLineCap(cap) {
+  if (cap === 2) return "square";
+  if (cap === 3) return "round";
+  return "butt";
+}
+function presentationLineJoin(join) {
+  if (join === 1) return "round";
+  if (join === 2) return "bevel";
+  return "miter";
+}
+function presentationLineDash(style, width) {
+  const unit = Math.max(1, width);
+  if (style === 2) return [unit * 4, unit * 2];
+  if (style === 3) return [unit, unit * 2];
+  if (style === 4) return [unit * 8, unit * 3];
+  if (style === 5) return [unit * 8, unit * 3, unit, unit * 3];
+  if (style === 6) return [unit * 8, unit * 3, unit, unit * 3, unit, unit * 3];
+  return [];
+}
+function presentationLineEndStyle(end, lineWidth) {
+  const record = asRecord(end);
+  const type = asNumber(record?.type);
+  if (!record || type <= 0) return null;
+  return {
+    length: lineEndScale(asNumber(record.length, 2), lineWidth),
+    type,
+    width: lineEndScale(asNumber(record.width, 2), lineWidth)
+  };
+}
+function lineEndScale(value, lineWidth) {
+  const multiplier = value <= 1 ? 2.5 : value === 2 ? 3.5 : value === 3 ? 5 : Math.min(value, 6);
+  return Math.max(5, lineWidth * multiplier);
+}
+function drawLineEnd(context, width, height, end, color, atTail) {
+  if (!end) return;
+  const from = atTail ? { x: width, y: height } : { x: 0, y: 0 };
+  const to = atTail ? { x: 0, y: 0 } : { x: width, y: height };
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const x = atTail ? 0 : width;
+  const y = atTail ? 0 : height;
   context.save();
-  context.translate(rect.left + rect.width / 2, rect.top + rect.height / 2);
-  if (rotation !== 0) context.rotate(rotation * Math.PI / 180);
-  if (horizontalFlip || verticalFlip) context.scale(horizontalFlip ? -1 : 1, verticalFlip ? -1 : 1);
-  context.translate(-rect.width / 2, -rect.height / 2);
-  applyElementShadow(context, element, slideScale);
-  const shapeKind = presentationShapeKind(shape, rect);
-  if (isLine || shapeKind === "line") {
-    drawLine(context, rect.width, rect.height, line);
-    context.restore();
-    return;
+  context.translate(x, y);
+  context.rotate(angle);
+  context.fillStyle = color;
+  context.beginPath();
+  if (end.type === 5) {
+    context.ellipse(
+      -end.length / 2,
+      0,
+      end.width / 2,
+      end.width / 2,
+      0,
+      0,
+      Math.PI * 2
+    );
+  } else {
+    context.moveTo(0, 0);
+    context.lineTo(-end.length, -end.width / 2);
+    context.lineTo(-end.length, end.width / 2);
+    context.closePath();
   }
-  const path = customGeometryPath(shape, rect) ?? elementPath(shapeKind, rect);
-  const fill = shapeFillToPaint(context, shape, element, line.color, rect);
-  if (fill) {
-    context.fillStyle = fill;
-    context.fill(path);
-  }
-  const imageId = elementImageReferenceId(element);
-  const image = imageId ? images.get(imageId) : void 0;
-  if (image) {
-    context.save();
-    context.clip(path);
-    drawElementImage(context, image, element, rect);
-    context.restore();
-  }
-  if (line.color) {
-    applyLineStyle(context, line);
-    context.stroke(path);
-    context.setLineDash([]);
-  }
-  const table = asRecord(element.table);
-  if (table) {
-    drawPresentationTable(context, element, table, rect, bounds, canvas, slideScale);
-    context.restore();
-    return;
-  }
-  const chart = presentationChartById(options.charts, presentationChartReferenceId(element.chartReference));
-  if (chart) {
-    drawPresentationChart(context, chart, rect, slideScale);
-    context.restore();
-    return;
-  }
-  drawPresentationTextBox({
-    canvas,
-    context,
-    element,
-    rect,
-    slideBounds: bounds,
-    slideScale,
-    textOverflow: options.textOverflow
-  });
+  context.fill();
   context.restore();
 }
-function drawLine(context, width, height, line) {
-  if (!line.color) return;
-  applyLineStyle(context, line);
-  context.beginPath();
-  context.moveTo(0, 0);
-  context.lineTo(width, height);
-  context.stroke();
-  context.setLineDash([]);
-  drawLineEnd(context, width, height, line.headEnd, line.color, false);
-  drawLineEnd(context, width, height, line.tailEnd, line.color, true);
+function presentationShadowStyle(element, slideScale) {
+  for (const effect of asArray(element.effects)) {
+    const shadow = asRecord(asRecord(effect)?.shadow);
+    const color = colorToCss(shadow?.color);
+    if (!shadow || !color || colorAlphaFromCss3(color) <= 0) {
+      continue;
+    }
+    const distance = asNumber(shadow.distance) / EMU_PER_CSS_PIXEL2 * Math.max(0.01, slideScale);
+    const direction = asNumber(shadow.direction) / 6e4 / 180 * Math.PI;
+    return {
+      blur: Math.max(
+        0,
+        asNumber(shadow.blurRadius) / EMU_PER_CSS_PIXEL2 * Math.max(0.01, slideScale)
+      ),
+      color,
+      offsetX: Math.cos(direction) * distance,
+      offsetY: Math.sin(direction) * distance
+    };
+  }
+  return null;
 }
+function applyElementShadow(context, element, slideScale) {
+  const shadow = presentationShadowStyle(element, slideScale);
+  if (!shadow) return;
+  context.shadowBlur = shadow.blur;
+  context.shadowColor = shadow.color;
+  context.shadowOffsetX = shadow.offsetX;
+  context.shadowOffsetY = shadow.offsetY;
+}
+function colorAlphaFromCss3(value) {
+  const channels = parseCssColorChannels4(value);
+  if (!channels || channels[3] == null) return 1;
+  const alpha = Number(channels[3]);
+  return Number.isFinite(alpha) ? alpha : 1;
+}
+function parseCssColorChannels4(value) {
+  const open = value.indexOf("(");
+  const close = value.lastIndexOf(")");
+  if (open < 0 || close <= open) return null;
+  const functionName = value.slice(0, open).trim().toLowerCase();
+  if (functionName !== "rgb" && functionName !== "rgba") return null;
+  const channels = value.slice(open + 1, close).split(",").map((channel) => channel.trim());
+  return channels.length >= 3 ? channels : null;
+}
+
+// src/presentation/presentation-shape-paths.ts
 function elementPath(kind, rect) {
   const path = new Path2D();
   if (kind === "ellipse") {
-    path.ellipse(rect.width / 2, rect.height / 2, rect.width / 2, rect.height / 2, 0, 0, Math.PI * 2);
+    path.ellipse(
+      rect.width / 2,
+      rect.height / 2,
+      rect.width / 2,
+      rect.height / 2,
+      0,
+      0,
+      Math.PI * 2
+    );
     return path;
   }
   if (kind === "roundRect") {
@@ -11232,8 +11050,25 @@ function elementPath(kind, rect) {
   if (kind === "donut") {
     const radius = Math.min(rect.width, rect.height) / 2;
     const innerRadius = radius * 0.45;
-    path.ellipse(rect.width / 2, rect.height / 2, radius, radius, 0, 0, Math.PI * 2);
-    path.ellipse(rect.width / 2, rect.height / 2, innerRadius, innerRadius, 0, 0, Math.PI * 2, true);
+    path.ellipse(
+      rect.width / 2,
+      rect.height / 2,
+      radius,
+      radius,
+      0,
+      0,
+      Math.PI * 2
+    );
+    path.ellipse(
+      rect.width / 2,
+      rect.height / 2,
+      innerRadius,
+      innerRadius,
+      0,
+      0,
+      Math.PI * 2,
+      true
+    );
     return path;
   }
   if (kind === "frame") {
@@ -11253,7 +11088,14 @@ function elementPath(kind, rect) {
     path.moveTo(0, 0);
     path.lineTo(rect.width, 0);
     path.lineTo(rect.width, rect.height - wave);
-    path.bezierCurveTo(rect.width * 0.66, rect.height + wave, rect.width * 0.34, rect.height - wave * 2, 0, rect.height);
+    path.bezierCurveTo(
+      rect.width * 0.66,
+      rect.height + wave,
+      rect.width * 0.34,
+      rect.height - wave * 2,
+      0,
+      rect.height
+    );
     path.closePath();
     return path;
   }
@@ -11474,15 +11316,45 @@ function drawBracketLikePath(path, rect, kind) {
   path.quadraticCurveTo(0, rect.height * 0.25, inset, rect.height * 0.5);
   path.quadraticCurveTo(0, rect.height * 0.75, inset, rect.height);
   path.lineTo(inset + strokeWidth, rect.height);
-  path.quadraticCurveTo(strokeWidth, rect.height * 0.75, inset + strokeWidth, rect.height * 0.5);
-  path.quadraticCurveTo(strokeWidth, rect.height * 0.25, inset + strokeWidth, 0);
+  path.quadraticCurveTo(
+    strokeWidth,
+    rect.height * 0.75,
+    inset + strokeWidth,
+    rect.height * 0.5
+  );
+  path.quadraticCurveTo(
+    strokeWidth,
+    rect.height * 0.25,
+    inset + strokeWidth,
+    0
+  );
   path.closePath();
   path.moveTo(rect.width - inset, 0);
-  path.quadraticCurveTo(rect.width, rect.height * 0.25, rect.width - inset, rect.height * 0.5);
-  path.quadraticCurveTo(rect.width, rect.height * 0.75, rect.width - inset, rect.height);
+  path.quadraticCurveTo(
+    rect.width,
+    rect.height * 0.25,
+    rect.width - inset,
+    rect.height * 0.5
+  );
+  path.quadraticCurveTo(
+    rect.width,
+    rect.height * 0.75,
+    rect.width - inset,
+    rect.height
+  );
   path.lineTo(rect.width - inset - strokeWidth, rect.height);
-  path.quadraticCurveTo(rect.width - strokeWidth, rect.height * 0.75, rect.width - inset - strokeWidth, rect.height * 0.5);
-  path.quadraticCurveTo(rect.width - strokeWidth, rect.height * 0.25, rect.width - inset - strokeWidth, 0);
+  path.quadraticCurveTo(
+    rect.width - strokeWidth,
+    rect.height * 0.75,
+    rect.width - inset - strokeWidth,
+    rect.height * 0.5
+  );
+  path.quadraticCurveTo(
+    rect.width - strokeWidth,
+    rect.height * 0.25,
+    rect.width - inset - strokeWidth,
+    0
+  );
   path.closePath();
 }
 function roundedRect(path, x, y, width, height, radius) {
@@ -11497,20 +11369,669 @@ function roundedRect(path, x, y, width, height, radius) {
   path.lineTo(x, y + r);
   path.quadraticCurveTo(x, y, x + r, y);
 }
+
+// src/presentation/presentation-text-layout.ts
+var PRESENTATION_POINT_TO_CSS_PIXEL = 1.333;
+var POWERPOINT_WRAP_WIDTH_FACTOR = 1;
+function presentationScaledFontSize(fontSize, slideScale, fallbackPx = 14) {
+  const baseFontSize = cssFontSize(fontSize, fallbackPx) * PRESENTATION_POINT_TO_CSS_PIXEL;
+  return Math.max(1, baseFontSize * Math.max(0.01, slideScale));
+}
+function drawPresentationTextBox({
+  canvas,
+  context,
+  element,
+  rect,
+  slideBounds,
+  slideScale,
+  textOverflow
+}) {
+  const paragraphs = asArray(element.paragraphs).map((paragraph) => paragraphView(paragraph, EMPTY_OFFICE_TEXT_STYLE_MAPS));
+  if (paragraphs.length === 0) return;
+  const textStyle = asRecord(element.textStyle);
+  const insets = textInsets(textStyle, rect, canvas.width / slideBounds.width, canvas.height / slideBounds.height);
+  const maxWidth = Math.max(1, rect.width - insets.left - insets.right);
+  const maxHeight = Math.max(1, rect.height - insets.top - insets.bottom);
+  const layout = layoutTextFrame(context, paragraphs, {
+    autoFit: asRecord(textStyle?.autoFit) != null,
+    emuScaleX: canvas.width / slideBounds.width,
+    maxHeight,
+    maxWidth: presentationEffectiveTextMaxWidth(maxWidth, asNumber(textStyle?.wrap, 2) !== 1),
+    slideScale,
+    useParagraphSpacing: textStyle?.useParagraphSpacing !== false && paragraphs.length > 1,
+    wrap: asNumber(textStyle?.wrap, 2) !== 1
+  });
+  const verticalOffset = verticalTextOffset(asNumber(textStyle?.anchor), layout.height, maxHeight);
+  context.save();
+  if (textOverflow === "clip") {
+    context.beginPath();
+    context.rect(0, 0, rect.width, rect.height);
+    context.clip();
+  }
+  context.textBaseline = "top";
+  for (const segment of layout.segments) {
+    applyRunFont(context, segment.run, segment.fontSize);
+    context.fillStyle = colorToCss(asRecord(segment.run.style?.fill)?.color) ?? "#0f172a";
+    const segmentX = insets.left + segment.x;
+    const segmentY = insets.top + verticalOffset + segment.y;
+    context.fillText(segment.text, segmentX, segmentY);
+    if (segment.run.style?.underline === true) {
+      const underlineY = segmentY + segment.fontSize * 1.08;
+      context.beginPath();
+      context.moveTo(segmentX, underlineY);
+      context.lineTo(segmentX + segment.width, underlineY);
+      context.lineWidth = Math.max(1, segment.fontSize / 18);
+      context.strokeStyle = context.fillStyle;
+      context.stroke();
+    }
+  }
+  context.restore();
+}
+function layoutTextFrame(context, paragraphs, options) {
+  const layout = layoutTextRuns(context, paragraphs, options, 1);
+  if (layout.height <= options.maxHeight || !shouldShrinkTextFrame(paragraphs, options)) {
+    return layout;
+  }
+  let fontScale = 1;
+  for (const nextScale of [0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65]) {
+    const nextLayout = layoutTextRuns(context, paragraphs, options, nextScale);
+    fontScale = nextScale;
+    if (nextLayout.height <= options.maxHeight) {
+      return nextLayout;
+    }
+  }
+  return layoutTextRuns(context, paragraphs, options, fontScale);
+}
+function layoutTextRuns(context, paragraphs, options, fontScale) {
+  const segments = [];
+  const { emuScaleX, maxWidth, slideScale, wrap } = options;
+  let y = 0;
+  let line = [];
+  let lineAlignment = 1;
+  let lineHeight = defaultLineHeight(slideScale);
+  let lineSpacing = 1;
+  let lineWidth = 0;
+  let activeAlignment = 1;
+  let activeLineSpacing = 1;
+  let activeParagraphStartX = 0;
+  let inheritedEmptyLineHeight = defaultLineHeight(slideScale);
+  let paragraphStartX = 0;
+  function resetLine() {
+    line = [];
+    lineAlignment = activeAlignment;
+    lineHeight = defaultLineHeight(slideScale);
+    lineSpacing = activeLineSpacing;
+    lineWidth = 0;
+    paragraphStartX = activeParagraphStartX;
+  }
+  function flushLine(includeEmptyLine = false) {
+    if (line.length === 0) {
+      if (includeEmptyLine) {
+        y += lineHeight * lineSpacing;
+      }
+      resetLine();
+      return;
+    }
+    const availableWidth = Math.max(1, maxWidth - paragraphStartX);
+    const offsetX = paragraphStartX + lineAlignmentOffset(lineAlignment, lineWidth, availableWidth);
+    for (const segment of line) {
+      segments.push({ ...segment, x: segment.x + offsetX, y });
+    }
+    y += lineHeight * lineSpacing;
+    resetLine();
+  }
+  function setParagraphOptions(paragraph) {
+    activeAlignment = paragraphAlignment(paragraph);
+    activeLineSpacing = paragraphLineSpacing(paragraph);
+    activeParagraphStartX = paragraphStartOffset(paragraph, emuScaleX);
+    if (line.length === 0 && lineWidth === 0) {
+      lineAlignment = activeAlignment;
+      lineSpacing = activeLineSpacing;
+      paragraphStartX = activeParagraphStartX;
+    }
+  }
+  function pushTextSegment(run, text, width, fontSize) {
+    if (line.length === 0 && lineWidth === 0) {
+      lineAlignment = activeAlignment;
+      lineSpacing = activeLineSpacing;
+      paragraphStartX = activeParagraphStartX;
+    }
+    const nextLineHeight = fontSize * 1.18;
+    line.push({
+      fontSize,
+      run,
+      text,
+      width,
+      x: lineWidth,
+      y: 0
+    });
+    lineWidth += width;
+    lineHeight = Math.max(lineHeight, nextLineHeight);
+    inheritedEmptyLineHeight = lineHeight;
+  }
+  for (const [paragraphIndex, paragraph] of paragraphs.entries()) {
+    setParagraphOptions(paragraph);
+    y += presentationParagraphSpacingPx(paragraph.style?.spaceBefore, slideScale, false);
+    const bullet = paragraphBullet(paragraph);
+    if (bullet) {
+      const bulletRun = paragraph.runs[0] ?? { id: `${paragraph.id}-bullet`, style: paragraph.style, text: bullet };
+      const bulletFontSize = runFontSize(bulletRun, slideScale, fontScale);
+      applyRunFont(context, bulletRun, bulletFontSize);
+      pushTextSegment(bulletRun, `${bullet} `, context.measureText(`${bullet} `).width, bulletFontSize);
+    }
+    if (paragraph.runs.length === 0) {
+      lineHeight = Math.max(lineHeight, inheritedEmptyLineHeight);
+      flushLine(true);
+      y += presentationParagraphSpacingPx(
+        paragraph.style?.spaceAfter,
+        slideScale,
+        options.useParagraphSpacing && paragraphIndex < paragraphs.length - 1
+      );
+      continue;
+    }
+    for (const run of paragraph.runs) {
+      const fontSize = runFontSize(run, slideScale, fontScale);
+      applyRunFont(context, run, fontSize);
+      lineHeight = Math.max(lineHeight, fontSize * 1.18);
+      const tokens = textTokens(run.text);
+      for (const token of tokens) {
+        if (token === "\n") {
+          flushLine(true);
+          continue;
+        }
+        const tokenWidth = context.measureText(token).width;
+        const availableWidth = Math.max(1, maxWidth - paragraphStartX);
+        if (wrap && lineWidth > 0 && lineWidth + tokenWidth > availableWidth) {
+          flushLine();
+        }
+        if (!wrap || tokenWidth <= availableWidth || token.trim() === "" || lineWidth === 0 && Array.from(token).length <= 4) {
+          pushTextSegment(run, token, tokenWidth, fontSize);
+          continue;
+        }
+        for (const char of wrapCharacters(token)) {
+          const charWidth = context.measureText(char).width;
+          if (lineWidth > 0 && lineWidth + charWidth > availableWidth) {
+            flushLine();
+          }
+          pushTextSegment(run, char, charWidth, fontSize);
+        }
+      }
+    }
+    flushLine();
+    y += presentationParagraphSpacingPx(
+      paragraph.style?.spaceAfter,
+      slideScale,
+      options.useParagraphSpacing && paragraphIndex < paragraphs.length - 1
+    );
+  }
+  return { height: y, segments };
+}
+function shouldShrinkTextFrame(paragraphs, options) {
+  return options.autoFit || paragraphs.some((paragraph) => asRecord(paragraph.style?.autoFit) != null);
+}
+function textInsets(textStyle, rect, scaleX, scaleY) {
+  const defaultX = Math.max(2, Math.min(12, rect.height * 0.04));
+  const defaultY = Math.max(2, Math.min(12, rect.height * 0.035));
+  return {
+    bottom: insetPx(textStyle?.bottomInset, scaleY, defaultY, rect.height * 0.45),
+    left: insetPx(textStyle?.leftInset, scaleX, defaultX, rect.width * 0.45),
+    right: insetPx(textStyle?.rightInset, scaleX, defaultX, rect.width * 0.45),
+    top: insetPx(textStyle?.topInset, scaleY, defaultY, rect.height * 0.45)
+  };
+}
+function insetPx(value, scale, fallback, max) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  if (value <= 0) return 0;
+  return clamp3(value * scale, 0, max);
+}
+function verticalTextOffset(anchor, contentHeight, maxHeight) {
+  if (contentHeight >= maxHeight) return 0;
+  if (anchor === 2 || anchor === 4 || anchor === 5) return (maxHeight - contentHeight) / 2;
+  if (anchor === 3) return maxHeight - contentHeight;
+  return 0;
+}
+function paragraphAlignment(paragraph) {
+  const alignment = asNumber(paragraph.style?.alignment);
+  return alignment > 0 ? alignment : 1;
+}
+function paragraphLineSpacing(paragraph) {
+  const percent = asNumber(paragraph.style?.lineSpacingPercent);
+  if (percent > 0) return clamp3(percent / 118e3, 0.6, 3);
+  const raw = asNumber(paragraph.style?.lineSpacing);
+  if (raw > 1e4) return clamp3(raw / 118e3, 0.6, 3);
+  if (raw > 0) return clamp3(raw, 0.6, 3);
+  return 1;
+}
+function paragraphStartOffset(paragraph, emuScaleX) {
+  const marginLeft = asNumber(paragraph.style?.marginLeft);
+  const indent = asNumber(paragraph.style?.indent);
+  return Math.max(0, (marginLeft + indent) * emuScaleX);
+}
+function paragraphBullet(paragraph) {
+  const bullet = asString(paragraph.style?.bulletCharacter);
+  return bullet.trim();
+}
+function presentationEffectiveTextMaxWidth(maxWidth, wrap) {
+  if (!wrap) return maxWidth;
+  return Math.max(1, maxWidth * POWERPOINT_WRAP_WIDTH_FACTOR);
+}
+function presentationParagraphSpacingPx(value, slideScale, useDefaultParagraphSpacing = false) {
+  const raw = asNumber(value);
+  if (raw <= 0) {
+    return useDefaultParagraphSpacing ? Math.max(0, raw) * Math.max(0.01, slideScale) : 0;
+  }
+  return Math.min(24, raw / 20) * Math.max(0.01, slideScale);
+}
+function lineAlignmentOffset(alignment, lineWidth, maxWidth) {
+  if (alignment === 2) return Math.max(0, (maxWidth - lineWidth) / 2);
+  if (alignment === 3) return Math.max(0, maxWidth - lineWidth);
+  return 0;
+}
+function textTokens(text) {
+  const tokens = [];
+  for (const part of text.split(/(\n|\s+)/u)) {
+    if (!part) continue;
+    if (part === "\n") {
+      tokens.push(part);
+      continue;
+    }
+    if (/^\s+$/u.test(part)) {
+      tokens.push(part);
+      continue;
+    }
+    tokens.push(part);
+  }
+  return tokens;
+}
+function wrapCharacters(text) {
+  const chunks = [];
+  for (const char of Array.from(text)) {
+    if (isClosingPunctuation(char) && chunks.length > 0) {
+      chunks[chunks.length - 1] += char;
+      continue;
+    }
+    chunks.push(char);
+  }
+  return chunks;
+}
+function isClosingPunctuation(char) {
+  return /^[,.;:!?，。！？；：、）】》」』”’)]$/u.test(char);
+}
+function applyRunFont(context, run, fontSize) {
+  const fontStyle = run.style?.italic === true ? "italic" : "normal";
+  const fontWeight = run.style?.bold === true ? "700" : "400";
+  configureCanvasTextQuality(context);
+  context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${officeFontFamily(asString(run.style?.typeface))}`;
+}
+function configureCanvasTextQuality(context) {
+  const qualityContext = context;
+  qualityContext.fontKerning = "normal";
+  qualityContext.letterSpacing = "0px";
+  qualityContext.textRendering = "optimizeLegibility";
+  qualityContext.wordSpacing = "0px";
+}
+function runFontSize(run, slideScale, fontScale = 1) {
+  return presentationScaledFontSize(run.style?.fontSize, slideScale) * fontScale;
+}
+function defaultLineHeight(slideScale) {
+  return Math.max(1, 16 * Math.max(0.01, slideScale));
+}
+function clamp3(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+// src/presentation/presentation-table-renderer.ts
+var EMU_PER_CSS_PIXEL3 = 9525;
+function presentationTableGrid(table, rect) {
+  const rows = asArray(table.rows).map(asRecord).filter((row) => row != null);
+  const maxColumns = Math.max(
+    1,
+    rows.reduce((max, row) => {
+      let count = 0;
+      for (const cell of asArray(row.cells).map(asRecord)) {
+        if (!cell) continue;
+        count += Math.max(1, asNumber(cell.gridSpan, 1));
+      }
+      return Math.max(max, count);
+    }, 0)
+  );
+  const columnSource = asArray(table.columns ?? table.columnWidths ?? table.gridColumns).map((value) => asNumber(value)).filter((value) => value > 0).slice(0, maxColumns);
+  const rowSource = rows.map((row) => asNumber(row.heightEmu ?? row.height)).filter((value) => value > 0);
+  return {
+    columns: normalizeLengths(columnSource, maxColumns, rect.width),
+    rows: normalizeLengths(rowSource, rows.length, rect.height)
+  };
+}
+function drawPresentationTable(context, element, table, rect, bounds, canvas, slideScale) {
+  const rows = asArray(table.rows).map(asRecord).filter((row) => row != null);
+  if (rows.length === 0) return;
+  const tableFill = fillToCss(asRecord(table.properties)?.fill ?? asRecord(table.tableProperties)?.fill);
+  if (tableFill) {
+    context.fillStyle = tableFill;
+    context.fillRect(0, 0, rect.width, rect.height);
+  }
+  const grid = presentationTableGrid(table, rect);
+  let y = 0;
+  for (const [rowIndex, row] of rows.entries()) {
+    const rowHeight = grid.rows[rowIndex] ?? 0;
+    const cells = asArray(row.cells).map(asRecord).filter((cell) => cell != null);
+    let x = 0;
+    let columnIndex = 0;
+    for (const cell of cells) {
+      const columnSpan = Math.max(1, asNumber(cell.gridSpan, 1));
+      const rowSpan = Math.max(1, asNumber(cell.rowSpan, 1));
+      const cellWidth = sumLengths(grid.columns, columnIndex, columnSpan);
+      const cellHeight = sumLengths(grid.rows, rowIndex, rowSpan);
+      const horizontalMerge = cell.horizontalMerge === true || cell.hMerge === true;
+      const verticalMerge = cell.verticalMerge === true || cell.vMerge === true;
+      if (!horizontalMerge && !verticalMerge && cellWidth > 0 && cellHeight > 0) {
+        drawPresentationTableCellBackground(context, cell, tableFill, x, y, cellWidth, cellHeight);
+        drawPresentationTableCellText(context, element, cell, {
+          canvas,
+          height: cellHeight,
+          left: x,
+          slideBounds: bounds,
+          slideScale,
+          top: y,
+          width: cellWidth
+        });
+        drawPresentationTableCellBorders(context, cell, x, y, cellWidth, cellHeight, slideScale);
+      }
+      x += cellWidth;
+      columnIndex += columnSpan;
+    }
+    y += rowHeight;
+  }
+}
+function drawPresentationTableCellBackground(context, cell, tableFill, x, y, width, height) {
+  const fill = fillToCss(cell.fill) ?? fillToCss(asRecord(cell.properties)?.fill) ?? fillToCss(asRecord(cell.tableCellProperties)?.fill) ?? tableFill;
+  if (!fill) return;
+  context.fillStyle = fill;
+  context.fillRect(x, y, width, height);
+}
+function drawPresentationTableCellText(context, element, cell, options) {
+  const paragraphs = tableCellParagraphs(cell);
+  if (paragraphs.length === 0) return;
+  const textStyle = {
+    ...asRecord(element.textStyle) ?? {},
+    ...asRecord(cell.textStyle) ?? {},
+    anchor: tableCellAnchor(asString(cell.anchor), asNumber(asRecord(cell.textStyle)?.anchor)),
+    ...definedInset("bottomInset", cell.bottomMargin),
+    ...definedInset("leftInset", cell.leftMargin),
+    ...definedInset("rightInset", cell.rightMargin),
+    ...definedInset("topInset", cell.topMargin)
+  };
+  context.save();
+  context.translate(options.left, options.top);
+  drawPresentationTextBox({
+    canvas: options.canvas,
+    context,
+    element: {
+      ...element,
+      paragraphs,
+      textStyle
+    },
+    rect: {
+      height: options.height,
+      left: 0,
+      top: 0,
+      width: options.width
+    },
+    slideBounds: options.slideBounds,
+    slideScale: options.slideScale,
+    textOverflow: "clip"
+  });
+  context.restore();
+}
+function tableCellParagraphs(cell) {
+  const paragraphs = asArray(cell.paragraphs);
+  if (paragraphs.length > 0) return paragraphs;
+  const text = asString(cell.text);
+  if (!text) return [];
+  return text.split(/\n/u).map((line) => ({
+    runs: [{ text: line }]
+  }));
+}
+function tableCellAnchor(anchor, fallback) {
+  const normalized = anchor.toLowerCase();
+  if (normalized === "ctr" || normalized === "center" || normalized === "middle") return 2;
+  if (normalized === "b" || normalized === "bottom") return 3;
+  return fallback;
+}
+function definedInset(key, value) {
+  const raw = asNumber(value, Number.NaN);
+  if (!Number.isFinite(raw)) return {};
+  return { [key]: Math.max(0, raw) };
+}
+function drawPresentationTableCellBorders(context, cell, x, y, width, height, slideScale) {
+  const borders = asRecord(cell.borders ?? cell.lines);
+  const defaultLine = { color: "rgba(148, 163, 184, 0.35)", dash: [], width: Math.max(0.5, slideScale) };
+  const top = tableCellBorderLine(borders, ["top", "topBorder", "topLine"], slideScale) ?? defaultLine;
+  const right = tableCellBorderLine(borders, ["right", "rightBorder", "rightLine"], slideScale) ?? defaultLine;
+  const bottom = tableCellBorderLine(borders, ["bottom", "bottomBorder", "bottomLine"], slideScale) ?? defaultLine;
+  const left = tableCellBorderLine(borders, ["left", "leftBorder", "leftLine"], slideScale) ?? defaultLine;
+  drawBorderSegment(context, top, x, y, x + width, y);
+  drawBorderSegment(context, right, x + width, y, x + width, y + height);
+  drawBorderSegment(context, bottom, x, y + height, x + width, y + height);
+  drawBorderSegment(context, left, x, y, x, y + height);
+}
+function tableCellBorderLine(borders, keys, slideScale) {
+  for (const key of keys) {
+    const line = asRecord(borders?.[key]);
+    if (!line) continue;
+    const style = tableLineStyle(line, slideScale);
+    if (style.color) {
+      return { color: style.color, dash: style.dash, width: style.width };
+    }
+  }
+  return null;
+}
+function tableLineStyle(line, slideScale) {
+  const fill = asRecord(line.fill);
+  const rawWidthEmu = asNumber(line.widthEmu);
+  const width = rawWidthEmu > 0 ? rawWidthEmu / EMU_PER_CSS_PIXEL3 : 1;
+  const scaledWidth = Math.max(0.5, width * Math.max(0.01, slideScale));
+  return {
+    color: colorToCss(fill?.color),
+    dash: tableLineDash(asNumber(line.style), scaledWidth),
+    width: scaledWidth
+  };
+}
+function tableLineDash(style, width) {
+  const unit = Math.max(1, width);
+  if (style === 2) return [unit * 4, unit * 2];
+  if (style === 3) return [unit, unit * 2];
+  if (style === 4) return [unit * 8, unit * 3];
+  if (style === 5) return [unit * 8, unit * 3, unit, unit * 3];
+  if (style === 6) return [unit * 8, unit * 3, unit, unit * 3, unit, unit * 3];
+  return [];
+}
+function drawBorderSegment(context, line, x1, y1, x2, y2) {
+  context.save();
+  context.strokeStyle = line.color;
+  context.lineWidth = line.width;
+  context.setLineDash(line.dash);
+  context.beginPath();
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
+  context.stroke();
+  context.restore();
+}
+function normalizeLengths(source, count, total) {
+  if (count <= 0) return [];
+  const values = source.slice(0, count).filter((value) => value > 0);
+  const sum = values.reduce((acc, value) => acc + value, 0);
+  if (values.length === count && sum > 0) {
+    return values.map((value) => value / sum * total);
+  }
+  return Array.from({ length: count }, () => total / count);
+}
+function sumLengths(lengths, start, count) {
+  let total = 0;
+  for (let index = start; index < start + count; index++) {
+    total += lengths[index] ?? 0;
+  }
+  return total;
+}
+
+// src/presentation/presentation-renderer.ts
+function renderPresentationSlide({
+  charts = [],
+  context,
+  height,
+  images,
+  layouts = [],
+  slide,
+  textOverflow = "visible",
+  width
+}) {
+  const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
+  const bounds = getSlideBounds(effectiveSlide);
+  const elements = presentationElements(effectiveSlide).map((element, index) => ({ element, index })).sort(
+    (left, right) => asNumber(left.element.zIndex, left.index) - asNumber(right.element.zIndex, right.index)
+  );
+  context.save();
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = slideBackgroundToCss(effectiveSlide);
+  context.fillRect(0, 0, width, height);
+  for (const entry of elements) {
+    drawElement(context, entry, bounds, { height, width }, images, {
+      charts,
+      textOverflow
+    });
+  }
+  context.restore();
+}
+function drawElement(context, { element }, bounds, canvas, images, options) {
+  const bbox = asRecord(element.bbox);
+  const rect = emuRectToCanvasRect(bbox, bounds, canvas);
+  if (rect.width <= 0 && rect.height <= 0) return;
+  const slideScale = presentationCanvasScale(bounds, canvas);
+  const shape = asRecord(element.shape);
+  const line = presentationElementLineStyle(element, slideScale);
+  const isLine = rect.height === 0 && line.color != null;
+  const rotation = asNumber(bbox?.rotation) / 6e4;
+  const horizontalFlip = bbox?.horizontalFlip === true;
+  const verticalFlip = bbox?.verticalFlip === true;
+  context.save();
+  context.translate(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  if (rotation !== 0) context.rotate(rotation * Math.PI / 180);
+  if (horizontalFlip || verticalFlip)
+    context.scale(horizontalFlip ? -1 : 1, verticalFlip ? -1 : 1);
+  context.translate(-rect.width / 2, -rect.height / 2);
+  applyElementShadow(context, element, slideScale);
+  const shapeKind = presentationShapeKind(shape, rect);
+  if (isLine || shapeKind === "line") {
+    drawLine(context, rect.width, rect.height, line);
+    context.restore();
+    return;
+  }
+  const path = customGeometryPath(shape, rect) ?? elementPath(shapeKind, rect);
+  const fill = shapeFillToPaint(context, shape, element, line.color, rect);
+  if (fill) {
+    context.fillStyle = fill;
+    context.fill(path);
+  }
+  const imageId = elementImageReferenceId(element);
+  const image = imageId ? images.get(imageId) : void 0;
+  if (image) {
+    context.save();
+    context.clip(path);
+    drawElementImage(context, image, element, rect);
+    context.restore();
+  }
+  if (line.color) {
+    applyLineStyle(context, line);
+    context.stroke(path);
+    context.setLineDash([]);
+  }
+  const table = asRecord(element.table);
+  if (table) {
+    drawPresentationTable(
+      context,
+      element,
+      table,
+      rect,
+      bounds,
+      canvas,
+      slideScale
+    );
+    context.restore();
+    return;
+  }
+  const chart = presentationChartById(
+    options.charts,
+    presentationChartReferenceId(element.chartReference)
+  );
+  if (chart) {
+    drawPresentationChart(context, chart, rect, slideScale);
+    context.restore();
+    return;
+  }
+  drawPresentationTextBox({
+    canvas,
+    context,
+    element,
+    rect,
+    slideBounds: bounds,
+    slideScale,
+    textOverflow: options.textOverflow
+  });
+  context.restore();
+}
+function drawLine(context, width, height, line) {
+  if (!line.color) return;
+  applyLineStyle(context, line);
+  context.beginPath();
+  context.moveTo(0, 0);
+  context.lineTo(width, height);
+  context.stroke();
+  context.setLineDash([]);
+  drawLineEnd(context, width, height, line.headEnd, line.color, false);
+  drawLineEnd(context, width, height, line.tailEnd, line.color, true);
+}
 function drawElementImage(context, image, element, rect) {
   const naturalSize = imageNaturalSize(image);
-  const source = presentationImageSourceRect(element, naturalSize);
-  if (source.width <= 0 || source.height <= 0) {
+  const sourceRect = elementImageSourceRect(element);
+  if (!sourceRect || naturalSize.width <= 0 || naturalSize.height <= 0) {
     context.drawImage(image, 0, 0, rect.width, rect.height);
     return;
   }
-  context.drawImage(image, source.x, source.y, source.width, source.height, 0, 0, rect.width, rect.height);
+  const left = cropRatio(sourceRect.left ?? sourceRect.l);
+  const top = cropRatio(sourceRect.top ?? sourceRect.t);
+  const right = cropRatio(sourceRect.right ?? sourceRect.r);
+  const bottom = cropRatio(sourceRect.bottom ?? sourceRect.b);
+  const sourceWidth = naturalSize.width * Math.max(0.01, 1 - left - right);
+  const sourceHeight = naturalSize.height * Math.max(0.01, 1 - top - bottom);
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    context.drawImage(image, 0, 0, rect.width, rect.height);
+    return;
+  }
+  context.drawImage(
+    image,
+    naturalSize.width * left,
+    naturalSize.height * top,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    rect.width,
+    rect.height
+  );
 }
 function imageNaturalSize(image) {
   const record = image;
   return {
-    height: asNumber(record.naturalHeight, asNumber(record.videoHeight, asNumber(record.height))),
-    width: asNumber(record.naturalWidth, asNumber(record.videoWidth, asNumber(record.width)))
+    height: asNumber(
+      record.naturalHeight,
+      asNumber(record.videoHeight, asNumber(record.height))
+    ),
+    width: asNumber(
+      record.naturalWidth,
+      asNumber(record.videoWidth, asNumber(record.width))
+    )
   };
 }
 function elementImageSourceRect(element) {
@@ -11521,248 +12042,15 @@ function elementImageSourceRect(element) {
 function cropRatio(value) {
   const raw = asNumber(value);
   if (raw <= 0) return 0;
-  if (raw > 1) return clamp2(raw / 1e5, 0, 0.99);
-  return clamp2(raw, 0, 0.99);
+  if (raw > 1) return clamp4(raw / 1e5, 0, 0.99);
+  return clamp4(raw, 0, 0.99);
 }
-function presentationCanvasScale(bounds, canvas) {
-  const frameWidth = bounds.width / EMU_PER_CSS_PIXEL2;
-  const frameHeight = bounds.height / EMU_PER_CSS_PIXEL2;
-  if (frameWidth <= 0 || frameHeight <= 0) return 1;
-  return Math.min(canvas.width / frameWidth, canvas.height / frameHeight);
-}
-function presentationLineStyle(line, slideScale) {
-  const lineRecord = asRecord(line);
-  const fillRecord = asRecord(lineRecord?.fill);
-  const rawWidthEmu = asNumber(lineRecord?.widthEmu);
-  const width = rawWidthEmu > 0 ? rawWidthEmu / EMU_PER_CSS_PIXEL2 : 1;
-  const scaledWidth = Math.max(0.5, width * Math.max(0.01, slideScale));
-  return {
-    color: colorToCss(fillRecord?.color),
-    dash: presentationLineDash(asNumber(lineRecord?.style), scaledWidth),
-    headEnd: presentationLineEndStyle(lineRecord?.headEnd ?? lineRecord?.head, scaledWidth),
-    lineCap: presentationLineCap(asNumber(lineRecord?.cap)),
-    lineJoin: presentationLineJoin(asNumber(lineRecord?.join)),
-    tailEnd: presentationLineEndStyle(lineRecord?.tailEnd ?? lineRecord?.tail, scaledWidth),
-    width: scaledWidth
-  };
-}
-function presentationElementLineStyle(element, slideScale) {
-  const shapeLine = asRecord(asRecord(element.shape)?.line) ?? asRecord(element.line);
-  const connectorLine = asRecord(asRecord(element.connector)?.lineStyle);
-  if (!connectorLine) return presentationLineStyle(shapeLine, slideScale);
-  return presentationLineStyle(
-    {
-      ...shapeLine,
-      cap: connectorLine.cap ?? shapeLine?.cap,
-      head: connectorLine.head ?? connectorLine.headEnd ?? shapeLine?.head,
-      headEnd: connectorLine.headEnd ?? connectorLine.head ?? shapeLine?.headEnd,
-      join: connectorLine.join ?? shapeLine?.join,
-      tail: connectorLine.tail ?? connectorLine.tailEnd ?? shapeLine?.tail,
-      tailEnd: connectorLine.tailEnd ?? connectorLine.tail ?? shapeLine?.tailEnd
-    },
-    slideScale
-  );
-}
-function applyLineStyle(context, line) {
-  context.strokeStyle = line.color ?? "#0f172a";
-  context.lineWidth = line.width;
-  context.lineCap = line.lineCap;
-  context.lineJoin = line.lineJoin;
-  context.setLineDash(line.dash);
-}
-function presentationLineCap(cap) {
-  if (cap === 2) return "square";
-  if (cap === 3) return "round";
-  return "butt";
-}
-function presentationLineJoin(join) {
-  if (join === 1) return "round";
-  if (join === 2) return "bevel";
-  return "miter";
-}
-function presentationLineDash(style, width) {
-  const unit = Math.max(1, width);
-  if (style === 2) return [unit * 4, unit * 2];
-  if (style === 3) return [unit, unit * 2];
-  if (style === 4) return [unit * 8, unit * 3];
-  if (style === 5) return [unit * 8, unit * 3, unit, unit * 3];
-  if (style === 6) return [unit * 8, unit * 3, unit, unit * 3, unit, unit * 3];
-  return [];
-}
-function presentationLineEndStyle(end, lineWidth) {
-  const record = asRecord(end);
-  const type = asNumber(record?.type);
-  if (!record || type <= 0) return null;
-  return {
-    length: lineEndScale(asNumber(record.length, 2), lineWidth),
-    type,
-    width: lineEndScale(asNumber(record.width, 2), lineWidth)
-  };
-}
-function lineEndScale(value, lineWidth) {
-  const multiplier = value <= 1 ? 2.5 : value === 2 ? 3.5 : value === 3 ? 5 : Math.min(value, 6);
-  return Math.max(5, lineWidth * multiplier);
-}
-function drawLineEnd(context, width, height, end, color, atTail) {
-  if (!end) return;
-  const from = atTail ? { x: width, y: height } : { x: 0, y: 0 };
-  const to = atTail ? { x: 0, y: 0 } : { x: width, y: height };
-  const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const x = atTail ? 0 : width;
-  const y = atTail ? 0 : height;
-  context.save();
-  context.translate(x, y);
-  context.rotate(angle);
-  context.fillStyle = color;
-  context.beginPath();
-  if (end.type === 5) {
-    context.ellipse(-end.length / 2, 0, end.width / 2, end.width / 2, 0, 0, Math.PI * 2);
-  } else {
-    context.moveTo(0, 0);
-    context.lineTo(-end.length, -end.width / 2);
-    context.lineTo(-end.length, end.width / 2);
-    context.closePath();
-  }
-  context.fill();
-  context.restore();
-}
-function presentationShadowStyle(element, slideScale) {
-  for (const effect of asArray(element.effects)) {
-    const shadow = asRecord(asRecord(effect)?.shadow);
-    const color = colorToCss(shadow?.color);
-    if (!shadow || !color || colorAlphaFromCss(color) <= 0) {
-      continue;
-    }
-    const distance = asNumber(shadow.distance) / EMU_PER_CSS_PIXEL2 * Math.max(0.01, slideScale);
-    const direction = asNumber(shadow.direction) / 6e4 / 180 * Math.PI;
-    return {
-      blur: Math.max(0, asNumber(shadow.blurRadius) / EMU_PER_CSS_PIXEL2 * Math.max(0.01, slideScale)),
-      color,
-      offsetX: Math.cos(direction) * distance,
-      offsetY: Math.sin(direction) * distance
-    };
-  }
-  return null;
-}
-function applyElementShadow(context, element, slideScale) {
-  const shadow = presentationShadowStyle(element, slideScale);
-  if (!shadow) return;
-  context.shadowBlur = shadow.blur;
-  context.shadowColor = shadow.color;
-  context.shadowOffsetX = shadow.offsetX;
-  context.shadowOffsetY = shadow.offsetY;
-}
-function shapeFillToCss(shape, element, lineColor, rect) {
-  const fill = fillToCss(shape?.fill) ?? fillToCss(element.fill);
-  if (!fill) return void 0;
-  const isLikelyOutlineOnly = Math.abs(rect.width - rect.height) <= Math.max(2, Math.min(rect.width, rect.height) * 0.03);
-  if (isLikelyOutlineOnly && lineColor && sameBaseColor(fill, lineColor) && colorAlphaFromCss(lineColor) < 0.5) {
-    return void 0;
-  }
-  return fill;
-}
-function shapeFillToPaint(context, shape, element, lineColor, rect) {
-  const fill = asRecord(shape?.fill) ?? asRecord(element.fill);
-  const gradient = presentationGradientFill(context, fill, rect);
-  if (gradient) return gradient;
-  return shapeFillToCss(shape, element, lineColor, rect);
-}
-function presentationGradientStops(fill) {
-  const stops = asArray(asRecord(fill)?.gradientStops).map((stop, index) => {
-    const record = asRecord(stop);
-    const color = colorToCss(record?.color ?? stop);
-    if (!color) return null;
-    return {
-      color,
-      index,
-      position: gradientStopPosition(record)
-    };
-  }).filter((stop) => stop != null);
-  return stops.map((stop) => ({
-    color: stop.color,
-    position: stop.position ?? (stops.length === 1 ? 0 : stop.index / (stops.length - 1))
-  }));
-}
-function presentationGradientFill(context, fill, rect) {
-  const stops = presentationGradientStops(fill);
-  if (stops.length < 2) return void 0;
-  const line = gradientLine(rect, gradientAngle(fill));
-  const gradient = context.createLinearGradient(line.x1, line.y1, line.x2, line.y2);
-  for (const stop of stops) {
-    gradient.addColorStop(clamp2(stop.position, 0, 1), stop.color);
-  }
-  return gradient;
-}
-function gradientStopPosition(stop) {
-  for (const key of ["position", "offset", "pos"]) {
-    const value = asNumber(stop?.[key], Number.NaN);
-    if (Number.isFinite(value)) {
-      return value > 1 ? clamp2(value / 1e5, 0, 1) : clamp2(value, 0, 1);
-    }
-  }
-  return null;
-}
-function gradientAngle(fill) {
-  for (const key of ["angle", "gradientAngle", "direction"]) {
-    const value = asNumber(fill?.[key], Number.NaN);
-    if (Number.isFinite(value)) {
-      return Math.abs(value) > 360 ? value / 6e4 : value;
-    }
-  }
-  return 0;
-}
-function gradientLine(rect, angleDegrees) {
-  const radians = angleDegrees * Math.PI / 180;
-  const dx = Math.cos(radians);
-  const dy = Math.sin(radians);
-  const length = Math.abs(rect.width * dx) + Math.abs(rect.height * dy);
-  const cx = rect.width / 2;
-  const cy = rect.height / 2;
-  return {
-    x1: cx - dx * length / 2,
-    x2: cx + dx * length / 2,
-    y1: cy - dy * length / 2,
-    y2: cy + dy * length / 2
-  };
-}
-function isTransparentOutlineEllipse(shape, rect) {
-  const fill = fillToCss(shape?.fill);
-  const line = lineToCss(shape?.line);
-  if (!fill || !line.color) return false;
-  const isNearSquare = Math.abs(rect.width - rect.height) <= Math.max(2, Math.min(rect.width, rect.height) * 0.03);
-  return isNearSquare && colorAlphaFromCss(fill) === 0 && sameBaseColor(fill, line.color);
-}
-function sameBaseColor(left, right) {
-  return cssRgbKey(left) === cssRgbKey(right);
-}
-function cssRgbKey(value) {
-  const hex = value.match(/^#?([0-9a-f]{6})$/i);
-  if (hex) return hex[1].toLowerCase();
-  const rgba = parseCssColorChannels2(value);
-  if (!rgba) return value.toLowerCase();
-  return rgba.map((channel) => Number(channel).toString(16).padStart(2, "0")).join("");
-}
-function colorAlphaFromCss(value) {
-  const channels = parseCssColorChannels2(value);
-  if (!channels || channels[3] == null) return 1;
-  const alpha = Number(channels[3]);
-  return Number.isFinite(alpha) ? alpha : 1;
-}
-function parseCssColorChannels2(value) {
-  const open = value.indexOf("(");
-  const close = value.lastIndexOf(")");
-  if (open < 0 || close <= open) return null;
-  const functionName = value.slice(0, open).trim().toLowerCase();
-  if (functionName !== "rgb" && functionName !== "rgba") return null;
-  const channels = value.slice(open + 1, close).split(",").map((channel) => channel.trim());
-  return channels.length >= 3 ? channels : null;
-}
-function clamp2(value, min, max) {
+function clamp4(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
 // src/presentation/presentation-preview.tsx
-import { jsx as jsx12, jsxs as jsxs8 } from "react/jsx-runtime";
+import { jsx as jsx16, jsxs as jsxs12 } from "react/jsx-runtime";
 var MAX_THUMBNAIL_WIDTH = 192;
 var MIN_THUMBNAIL_WIDTH = 96;
 var SLIDE_BITMAP_WIDTH = 1920;
@@ -11830,21 +12118,21 @@ function PresentationPreview({
     scrollThumbnailIntoView(railRef, selectedSlideIndex);
   }, [selectedSlideIndex]);
   if (slides.length === 0) {
-    return /* @__PURE__ */ jsx12("p", { style: { color: "#64748b" }, children: labels.noSlides });
+    return /* @__PURE__ */ jsx16("p", { style: { color: "#64748b" }, children: labels.noSlides });
   }
-  return /* @__PURE__ */ jsxs8("div", { className: void 0, "data-testid": "presentation-preview", children: [
-    /* @__PURE__ */ jsxs8("aside", { className: void 0, "data-open": thumbnailRailOpen, ref: railRef, children: [
-      /* @__PURE__ */ jsx12(
+  return /* @__PURE__ */ jsxs12("div", { className: void 0, "data-testid": "presentation-preview", children: [
+    /* @__PURE__ */ jsxs12("aside", { className: void 0, "data-open": thumbnailRailOpen, ref: railRef, children: [
+      /* @__PURE__ */ jsx16(
         "button",
         {
           "aria-label": labels.slide,
           className: void 0,
           onClick: () => setThumbnailRailOpen((isOpen) => !isOpen),
           type: "button",
-          children: Array.from({ length: Math.min(STACK_BAR_COUNT, slides.length) }).map((_, index) => /* @__PURE__ */ jsx12("span", { className: void 0 }, index))
+          children: Array.from({ length: Math.min(STACK_BAR_COUNT, slides.length) }).map((_, index) => /* @__PURE__ */ jsx16("span", { className: void 0 }, index))
         }
       ),
-      /* @__PURE__ */ jsx12("div", { className: void 0, children: slides.map((slide, index) => /* @__PURE__ */ jsxs8(
+      /* @__PURE__ */ jsx16("div", { className: void 0, children: slides.map((slide, index) => /* @__PURE__ */ jsxs12(
         "button",
         {
           "aria-label": `${labels.slide} ${asNumber(slide.index, index + 1)}`,
@@ -11867,8 +12155,8 @@ function PresentationPreview({
           },
           type: "button",
           children: [
-            /* @__PURE__ */ jsx12("span", { className: void 0, children: asNumber(slide.index, index + 1) }),
-            /* @__PURE__ */ jsx12(
+            /* @__PURE__ */ jsx16("span", { className: void 0, children: asNumber(slide.index, index + 1) }),
+            /* @__PURE__ */ jsx16(
               SlideRasterFrame,
               {
                 alt: "",
@@ -11887,7 +12175,7 @@ function PresentationPreview({
         `${asString(slide.id)}-${index}`
       )) })
     ] }),
-    /* @__PURE__ */ jsx12(
+    /* @__PURE__ */ jsx16(
       SlideStage,
       {
         charts,
@@ -11900,13 +12188,13 @@ function PresentationPreview({
       slideRenderKey(selectedSlide, selectedSlideIndex)
     ),
     headerActions ? createPortal(
-      /* @__PURE__ */ jsxs8("button", { "aria-label": labels.playSlideshow, className: void 0, onClick: openSlideshow, type: "button", children: [
-        /* @__PURE__ */ jsx12(Play, { "aria-hidden": "true", size: 15, strokeWidth: 2 }),
-        /* @__PURE__ */ jsx12("span", { children: labels.playSlideshow })
+      /* @__PURE__ */ jsxs12("button", { "aria-label": labels.playSlideshow, className: void 0, onClick: openSlideshow, type: "button", children: [
+        /* @__PURE__ */ jsx16(Play, { "aria-hidden": "true", size: 15, strokeWidth: 2 }),
+        /* @__PURE__ */ jsx16("span", { children: labels.playSlideshow })
       ] }),
       headerActions
     ) : null,
-    isSlideshowOpen ? /* @__PURE__ */ jsx12(
+    isSlideshowOpen ? /* @__PURE__ */ jsx16(
       SlideshowOverlay,
       {
         activeSlideIndex: selectedSlideIndex,
@@ -11951,14 +12239,14 @@ function SlideStage({
   );
   const selectedTarget = selection?.slideKey === slideKey ? elementTargets.find((target) => target.id === selection.elementId) ?? null : null;
   const footnoteTop = Math.max(0, (viewportSize.height - canvasHeight) / 2 + canvasHeight + 14);
-  return /* @__PURE__ */ jsx12("main", { className: void 0, children: /* @__PURE__ */ jsx12("div", { className: void 0, children: /* @__PURE__ */ jsxs8("div", { className: void 0, ref: viewportRef, children: [
-    /* @__PURE__ */ jsxs8(
+  return /* @__PURE__ */ jsx16("main", { className: void 0, children: /* @__PURE__ */ jsx16("div", { className: void 0, children: /* @__PURE__ */ jsxs12("div", { className: void 0, ref: viewportRef, children: [
+    /* @__PURE__ */ jsxs12(
       "div",
       {
         className: void 0,
         style: { height: canvasHeight, width: canvasWidth },
         children: [
-          /* @__PURE__ */ jsx12(
+          /* @__PURE__ */ jsx16(
             SlideCanvasFrame,
             {
               className: void 0,
@@ -11971,7 +12259,7 @@ function SlideStage({
               width: canvasWidth
             }
           ),
-          /* @__PURE__ */ jsx12(
+          /* @__PURE__ */ jsx16(
             "button",
             {
               "aria-label": selectedTarget?.name ?? labels.slide,
@@ -11986,7 +12274,7 @@ function SlideStage({
                 setSelection(target ? { elementId: target.id, slideKey } : null);
               },
               type: "button",
-              children: selectedTarget ? /* @__PURE__ */ jsxs8(
+              children: selectedTarget ? /* @__PURE__ */ jsxs12(
                 "span",
                 {
                   "aria-hidden": "true",
@@ -11997,10 +12285,10 @@ function SlideStage({
                     width: selectedTarget.rect.width
                   },
                   children: [
-                    /* @__PURE__ */ jsx12("span", { className: void 0, "data-position": "top-left" }),
-                    /* @__PURE__ */ jsx12("span", { className: void 0, "data-position": "top-right" }),
-                    /* @__PURE__ */ jsx12("span", { className: void 0, "data-position": "bottom-left" }),
-                    /* @__PURE__ */ jsx12("span", { className: void 0, "data-position": "bottom-right" })
+                    /* @__PURE__ */ jsx16("span", { className: void 0, "data-position": "top-left" }),
+                    /* @__PURE__ */ jsx16("span", { className: void 0, "data-position": "top-right" }),
+                    /* @__PURE__ */ jsx16("span", { className: void 0, "data-position": "bottom-left" }),
+                    /* @__PURE__ */ jsx16("span", { className: void 0, "data-position": "bottom-right" })
                   ]
                 }
               ) : null
@@ -12009,7 +12297,7 @@ function SlideStage({
         ]
       }
     ),
-    footnote2 ? /* @__PURE__ */ jsx12(
+    footnote2 ? /* @__PURE__ */ jsx16(
       "pre",
       {
         className: void 0,
@@ -12071,6 +12359,17 @@ function SlideshowOverlay({
   const frame = getSlideFrameSize(slide, layouts);
   const fit = computePresentationFit(frameSize, frame, { padding: 0 });
   const canvasWidth = Math.max(1, fit.width);
+  const [showSpeakerNotes, setShowSpeakerNotes] = useState2(false);
+  const speakerNotes = useMemo5(() => presentationSlideNotesText(slide), [slide]);
+  const hasSpeakerNotes = speakerNotes.length > 0;
+  const speakerNotesLabel = labels.speakerNotes ?? labels.slide;
+  const showSpeakerNotesLabel = labels.showSpeakerNotes ?? speakerNotesLabel;
+  const hideSpeakerNotesLabel = labels.hideSpeakerNotes ?? speakerNotesLabel;
+  useEffect6(() => {
+    if (!hasSpeakerNotes) {
+      setShowSpeakerNotes(false);
+    }
+  }, [hasSpeakerNotes]);
   const goPrevious = useCallback(() => {
     setActiveSlideIndex(Math.max(0, selectedIndex - 1));
   }, [selectedIndex, setActiveSlideIndex]);
@@ -12120,12 +12419,17 @@ function SlideshowOverlay({
       if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
         event.preventDefault();
         goNext();
+        return;
+      }
+      if (event.key.toLowerCase() === "n" && hasSpeakerNotes) {
+        event.preventDefault();
+        setShowSpeakerNotes((isOpen) => !isOpen);
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeSlideshow, goNext, goPrevious]);
-  return /* @__PURE__ */ jsxs8(
+  }, [closeSlideshow, goNext, goPrevious, hasSpeakerNotes]);
+  return /* @__PURE__ */ jsxs12(
     "div",
     {
       "aria-label": labels.playSlideshow,
@@ -12134,38 +12438,56 @@ function SlideshowOverlay({
       "data-testid": "presentation-slideshow",
       role: "dialog",
       children: [
-        /* @__PURE__ */ jsxs8("div", { className: void 0, children: [
-          /* @__PURE__ */ jsxs8("div", { className: void 0, children: [
+        /* @__PURE__ */ jsxs12("div", { className: void 0, children: [
+          /* @__PURE__ */ jsxs12("div", { className: void 0, children: [
             labels.slide,
             " ",
             asNumber(slide.index, selectedIndex + 1),
             " / ",
             slides.length
           ] }),
-          /* @__PURE__ */ jsx12("button", { "aria-label": labels.closeSlideshow, className: void 0, onClick: closeSlideshow, type: "button", children: /* @__PURE__ */ jsx12(X, { "aria-hidden": "true", size: 18, strokeWidth: 2 }) })
+          hasSpeakerNotes ? /* @__PURE__ */ jsx16(
+            "button",
+            {
+              "aria-label": showSpeakerNotes ? hideSpeakerNotesLabel : showSpeakerNotesLabel,
+              "aria-pressed": showSpeakerNotes,
+              className: void 0,
+              "data-testid": "presentation-speaker-notes-toggle",
+              onClick: () => setShowSpeakerNotes((isOpen) => !isOpen),
+              type: "button",
+              children: /* @__PURE__ */ jsx16(StickyNote, { "aria-hidden": "true", size: 17, strokeWidth: 2 })
+            }
+          ) : null,
+          /* @__PURE__ */ jsx16("button", { "aria-label": labels.closeSlideshow, className: void 0, onClick: closeSlideshow, type: "button", children: /* @__PURE__ */ jsx16(X, { "aria-hidden": "true", size: 18, strokeWidth: 2 }) })
         ] }),
-        /* @__PURE__ */ jsx12(
-          "button",
-          {
-            "aria-label": labels.nextSlide,
-            className: void 0,
-            onClick: goNext,
-            ref: frameRef,
-            type: "button",
-            children: /* @__PURE__ */ jsx12(
-              SlideCanvasFrame,
-              {
-                className: void 0,
-                charts,
-                images,
-                layouts,
-                slide,
-                textOverflow: "visible",
-                width: canvasWidth
-              }
-            )
-          }
-        )
+        /* @__PURE__ */ jsxs12("div", { className: void 0, "data-notes-open": showSpeakerNotes && hasSpeakerNotes, children: [
+          /* @__PURE__ */ jsx16(
+            "button",
+            {
+              "aria-label": labels.nextSlide,
+              className: void 0,
+              onClick: goNext,
+              ref: frameRef,
+              type: "button",
+              children: /* @__PURE__ */ jsx16(
+                SlideCanvasFrame,
+                {
+                  className: void 0,
+                  charts,
+                  images,
+                  layouts,
+                  slide,
+                  textOverflow: "visible",
+                  width: canvasWidth
+                }
+              )
+            }
+          ),
+          showSpeakerNotes && hasSpeakerNotes ? /* @__PURE__ */ jsxs12("aside", { className: void 0, "data-testid": "presentation-speaker-notes", children: [
+            /* @__PURE__ */ jsx16("div", { className: void 0, children: speakerNotesLabel }),
+            /* @__PURE__ */ jsx16("pre", { className: void 0, children: speakerNotes })
+          ] }) : null
+        ] })
       ]
     }
   );
@@ -12186,7 +12508,7 @@ function SlideRasterFrame({
   if (bitmap) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- Runtime object URLs are generated from the canvas preview surface.
-      /* @__PURE__ */ jsx12(
+      /* @__PURE__ */ jsx16(
         "img",
         {
           alt,
@@ -12200,7 +12522,7 @@ function SlideRasterFrame({
       )
     );
   }
-  return /* @__PURE__ */ jsx12(
+  return /* @__PURE__ */ jsx16(
     SlideCanvasFrame,
     {
       className,
@@ -12239,7 +12561,7 @@ function SlideCanvasFrame({
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     renderPresentationSlide({ charts, context, height, images, layouts, slide, textOverflow, width });
   }, [charts, height, images, layouts, slide, textOverflow, width]);
-  return /* @__PURE__ */ jsx12(
+  return /* @__PURE__ */ jsx16(
     "canvas",
     {
       "aria-hidden": "true",
@@ -12385,30 +12707,7 @@ function hitTestElementTarget(targets, point) {
   return null;
 }
 function slideFootnoteText(slide) {
-  const notesSlide = asRecord(slide.notesSlide);
-  if (!notesSlide) return "";
-  const blocks = [];
-  for (const element of asArray(notesSlide.elements)) {
-    const record = asRecord(element);
-    if (!record || !isNotesBodyPlaceholder(record)) {
-      continue;
-    }
-    const text = asArray(record.paragraphs).map(
-      (paragraph) => asArray(asRecord(paragraph)?.runs).map((run) => asString(asRecord(run)?.text)).join("").trim()
-    ).filter((line) => line && !/^\d+$/u.test(line)).join("\n").trim();
-    if (text && !blocks.includes(text)) {
-      blocks.push(text);
-    }
-  }
-  return blocks.join("\n\n");
-}
-function isNotesBodyPlaceholder(element) {
-  const placeholderType = asString(element.placeholderType).toLowerCase();
-  const name = asString(element.name).toLowerCase();
-  if (placeholderType === "sldimg" || placeholderType === "sldnum") return false;
-  if (placeholderType === "body" || placeholderType === "notes") return true;
-  if (name.includes("notes") || name.includes("body")) return true;
-  return placeholderType === "" && asArray(element.paragraphs).length > 0;
+  return presentationSlideNotesText(slide);
 }
 export {
   PRESENTATION_HEADER_ACTIONS_ID,

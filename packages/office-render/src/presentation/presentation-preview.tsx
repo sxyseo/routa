@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, X } from "lucide-react";
+import { Play, StickyNote, X } from "lucide-react";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -15,6 +15,7 @@ import {
   useOfficeImageSources,
 } from "../shared/office-preview-utils";
 import * as styles from "./presentation-preview.module.css";
+import { presentationSlideNotesText } from "./presentation-notes";
 import {
   collectPresentationTypefaces,
   computePresentationFit,
@@ -380,6 +381,18 @@ function SlideshowOverlay({
   const frame = getSlideFrameSize(slide, layouts);
   const fit = computePresentationFit(frameSize, frame, { padding: 0 });
   const canvasWidth = Math.max(1, fit.width);
+  const [showSpeakerNotes, setShowSpeakerNotes] = useState(false);
+  const speakerNotes = useMemo(() => presentationSlideNotesText(slide), [slide]);
+  const hasSpeakerNotes = speakerNotes.length > 0;
+  const speakerNotesLabel = labels.speakerNotes ?? labels.slide;
+  const showSpeakerNotesLabel = labels.showSpeakerNotes ?? speakerNotesLabel;
+  const hideSpeakerNotesLabel = labels.hideSpeakerNotes ?? speakerNotesLabel;
+
+  useEffect(() => {
+    if (!hasSpeakerNotes) {
+      setShowSpeakerNotes(false);
+    }
+  }, [hasSpeakerNotes]);
 
   const goPrevious = useCallback(() => {
     setActiveSlideIndex(Math.max(0, selectedIndex - 1));
@@ -439,12 +452,18 @@ function SlideshowOverlay({
       if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
         event.preventDefault();
         goNext();
+        return;
+      }
+
+      if (event.key.toLowerCase() === "n" && hasSpeakerNotes) {
+        event.preventDefault();
+        setShowSpeakerNotes((isOpen) => !isOpen);
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeSlideshow, goNext, goPrevious]);
+  }, [closeSlideshow, goNext, goPrevious, hasSpeakerNotes]);
 
   return (
     <div
@@ -458,27 +477,47 @@ function SlideshowOverlay({
         <div className={styles.slideshowCounter}>
           {labels.slide} {asNumber(slide.index, selectedIndex + 1)} / {slides.length}
         </div>
+        {hasSpeakerNotes ? (
+          <button
+            aria-label={showSpeakerNotes ? hideSpeakerNotesLabel : showSpeakerNotesLabel}
+            aria-pressed={showSpeakerNotes}
+            className={styles.slideshowIconButton}
+            data-testid="presentation-speaker-notes-toggle"
+            onClick={() => setShowSpeakerNotes((isOpen) => !isOpen)}
+            type="button"
+          >
+            <StickyNote aria-hidden="true" size={17} strokeWidth={2} />
+          </button>
+        ) : null}
         <button aria-label={labels.closeSlideshow} className={styles.slideshowIconButton} onClick={closeSlideshow} type="button">
           <X aria-hidden="true" size={18} strokeWidth={2} />
         </button>
       </div>
-      <button
-        aria-label={labels.nextSlide}
-        className={styles.slideshowFrame}
-        onClick={goNext}
-        ref={frameRef}
-        type="button"
-      >
-        <SlideCanvasFrame
-          className={styles.slideshowCanvas}
-          charts={charts}
-          images={images}
-          layouts={layouts}
-          slide={slide}
-          textOverflow="visible"
-          width={canvasWidth}
-        />
-      </button>
+      <div className={styles.slideshowPresenterLayout} data-notes-open={showSpeakerNotes && hasSpeakerNotes}>
+        <button
+          aria-label={labels.nextSlide}
+          className={styles.slideshowFrame}
+          onClick={goNext}
+          ref={frameRef}
+          type="button"
+        >
+          <SlideCanvasFrame
+            className={styles.slideshowCanvas}
+            charts={charts}
+            images={images}
+            layouts={layouts}
+            slide={slide}
+            textOverflow="visible"
+            width={canvasWidth}
+          />
+        </button>
+        {showSpeakerNotes && hasSpeakerNotes ? (
+          <aside className={styles.slideshowNotesPanel} data-testid="presentation-speaker-notes">
+            <div className={styles.slideshowNotesTitle}>{speakerNotesLabel}</div>
+            <pre className={styles.slideshowNotesText}>{speakerNotes}</pre>
+          </aside>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -757,39 +796,5 @@ function hitTestElementTarget(
 }
 
 function slideFootnoteText(slide: RecordValue): string {
-  const notesSlide = asRecord(slide.notesSlide);
-  if (!notesSlide) return "";
-
-  const blocks: string[] = [];
-  for (const element of asArray(notesSlide.elements)) {
-    const record = asRecord(element);
-    if (!record || !isNotesBodyPlaceholder(record)) {
-      continue;
-    }
-
-    const text = asArray(record.paragraphs)
-      .map((paragraph) =>
-        asArray(asRecord(paragraph)?.runs)
-          .map((run) => asString(asRecord(run)?.text))
-          .join("")
-          .trim(),
-      )
-      .filter((line) => line && !/^\d+$/u.test(line))
-      .join("\n")
-      .trim();
-    if (text && !blocks.includes(text)) {
-      blocks.push(text);
-    }
-  }
-
-  return blocks.join("\n\n");
-}
-
-function isNotesBodyPlaceholder(element: RecordValue): boolean {
-  const placeholderType = asString(element.placeholderType).toLowerCase();
-  const name = asString(element.name).toLowerCase();
-  if (placeholderType === "sldimg" || placeholderType === "sldnum") return false;
-  if (placeholderType === "body" || placeholderType === "notes") return true;
-  if (name.includes("notes") || name.includes("body")) return true;
-  return placeholderType === "" && asArray(element.paragraphs).length > 0;
+  return presentationSlideNotesText(slide);
 }

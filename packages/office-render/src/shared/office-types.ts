@@ -2,9 +2,12 @@ export type RecordValue = Record<string, unknown>;
 
 export type PreviewLabels = {
   closeSlideshow: string;
+  hideSpeakerNotes?: string;
   nextSlide: string;
   playSlideshow: string;
   previousSlide: string;
+  showSpeakerNotes?: string;
+  speakerNotes?: string;
   visualPreview: string;
   rawJson: string;
   sheet: string;
@@ -54,4 +57,3 @@ export const EMPTY_OFFICE_TEXT_STYLE_MAPS: OfficeTextStyleMaps = {
   textStyles: new Map(),
   images: new Map(),
 };
-

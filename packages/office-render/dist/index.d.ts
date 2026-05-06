@@ -3,9 +3,12 @@ import * as react_jsx_runtime from 'react/jsx-runtime';
 type RecordValue = Record<string, unknown>;
 type PreviewLabels = {
     closeSlideshow: string;
+    hideSpeakerNotes?: string;
     nextSlide: string;
     playSlideshow: string;
     previousSlide: string;
+    showSpeakerNotes?: string;
+    speakerNotes?: string;
     visualPreview: string;
     rawJson: string;
     sheet: string;

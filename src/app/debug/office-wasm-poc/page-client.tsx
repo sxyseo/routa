@@ -537,9 +537,12 @@ export function OfficeWasmPocPageClient() {
       : truncateJson(JSON.stringify(artifact.rawProto ?? artifact.proto, null, 2));
   const labels: PreviewLabels = useMemo(() => ({
     closeSlideshow: t.debug.officeWasmPocCloseSlideshow,
+    hideSpeakerNotes: t.debug.officeWasmPocHideSpeakerNotes,
     nextSlide: t.debug.officeWasmPocNextSlide,
     playSlideshow: t.debug.officeWasmPocPlaySlideshow,
     previousSlide: t.debug.officeWasmPocPreviousSlide,
+    showSpeakerNotes: t.debug.officeWasmPocShowSpeakerNotes,
+    speakerNotes: t.debug.officeWasmPocSpeakerNotes,
     visualPreview: t.debug.officeWasmPocVisualPreview,
     rawJson: t.debug.officeWasmPocRawJson,
     sheet: t.debug.officeWasmPocSheet,

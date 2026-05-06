@@ -330,6 +330,24 @@
   border-color: rgba(203, 213, 225, 0.52);
 }
 
+.slideshowIconButton[aria-pressed="true"] {
+  background: rgba(248, 250, 252, 0.16);
+  border-color: rgba(248, 250, 252, 0.7);
+}
+
+.slideshowPresenterLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.slideshowPresenterLayout[data-notes-open="true"] {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 24vw);
+}
+
 .slideshowFrame {
   align-items: center;
   background: transparent;
@@ -352,6 +370,36 @@
   display: block;
   object-fit: fill;
   user-select: none;
+}
+
+.slideshowNotesPanel {
+  align-self: stretch;
+  background: #0f172a;
+  border-left: 1px solid rgba(148, 163, 184, 0.28);
+  box-sizing: border-box;
+  color: #e2e8f0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  padding: 22px 20px;
+}
+
+.slideshowNotesTitle {
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 14px;
+}
+
+.slideshowNotesText {
+  color: #cbd5e1;
+  font: 15px/1.55 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+  margin: 0;
+  min-height: 0;
+  overflow: auto;
+  white-space: pre-wrap;
 }
 
 @container presentation-editor (width <= 748px) {
@@ -458,5 +506,16 @@
 
   .slideshowOverlay {
     padding: 10px;
+  }
+
+  .slideshowPresenterLayout[data-notes-open="true"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(120px, 30vh);
+  }
+
+  .slideshowNotesPanel {
+    border-left: 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.28);
+    padding: 14px 16px;
   }
 }
