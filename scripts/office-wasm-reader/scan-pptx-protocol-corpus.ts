@@ -50,7 +50,11 @@ if (assertMode && (summary.mismatchCount > 0 || summary.errorCount > 0)) {
 
 function scanFile(file: string): ScanResult {
   const startedAt = Date.now();
-  const child = spawnSync(process.execPath, ["--import", "tsx", compareScript, file], {
+  const comparatorArgs = ["--import", "tsx", compareScript, file];
+  if (assertMode) {
+    comparatorArgs.push("--assert");
+  }
+  const child = spawnSync(process.execPath, comparatorArgs, {
     cwd: repoRoot,
     encoding: "utf8",
     maxBuffer: 1024 * 1024 * 64,
@@ -65,6 +69,16 @@ function scanFile(file: string): ScanResult {
       ok: false,
       status: "error",
       stderr: trimOutput(output),
+    };
+  }
+
+  if (assertMode) {
+    return {
+      durationMs,
+      failedChecks: [],
+      file: path.relative(repoRoot, file),
+      ok: true,
+      status: "match",
     };
   }
 

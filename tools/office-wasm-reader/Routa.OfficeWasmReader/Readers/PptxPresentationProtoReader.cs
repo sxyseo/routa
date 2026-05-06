@@ -68,7 +68,10 @@ internal static class PptxPresentationProtoReader
         var slideMasterParts = DistinctByUri(presentationPart?.SlideMasterParts ?? Enumerable.Empty<SlideMasterPart>()).ToList();
         var slideLayoutParts = DistinctByUri(slideMasterParts.SelectMany(part => part.SlideLayoutParts)).ToList();
         var rawTransformsByPart = RawTransformIndex.FromPackage(bytes);
-        var themePart = slideMasterParts.Select(part => part.ThemePart).FirstOrDefault(part => part is not null);
+        var themePart = slideMasterParts
+            .OrderBy(part => part.Uri.OriginalString, StringComparer.Ordinal)
+            .Select(part => part.ThemePart)
+            .FirstOrDefault(part => part is not null);
         var tableStylesPart = presentationPart?.TableStylesPart;
         var presentationParts = slideParts.Cast<OpenXmlPart>()
             .Concat(slideLayoutParts)
@@ -759,6 +762,7 @@ internal static class PptxPresentationProtoReader
                 runs = ExtractRuns(paragraph, includeEmptyText: true).Take(1).ToList();
             }
             var paragraphProperties = paragraph.ParagraphProperties;
+            var listStyleParagraphProperties = ListStyleParagraphProperties(textBody, paragraphProperties);
             yield return Message(output =>
             {
                 foreach (var run in runs)
@@ -766,7 +770,7 @@ internal static class PptxPresentationProtoReader
                     WriteMessage(output, 1, run);
                 }
 
-                var paragraphTextStyle = WriteParagraphTextStyle(paragraphProperties);
+                var paragraphTextStyle = WriteParagraphTextStyle(paragraphProperties, listStyleParagraphProperties);
                 if (paragraphTextStyle is not null)
                 {
                     WriteMessageAlways(output, 2, paragraphTextStyle);
@@ -790,6 +794,19 @@ internal static class PptxPresentationProtoReader
             });
             paragraphIndex++;
         }
+    }
+
+    private static OpenXmlElement? ListStyleParagraphProperties(OpenXmlElement textBody, A.ParagraphProperties? paragraphProperties)
+    {
+        var listStyle = textBody.GetFirstChild<A.ListStyle>();
+        if (listStyle is null)
+        {
+            return null;
+        }
+
+        var level = Math.Max(1, Math.Min(9, (IntAttribute(paragraphProperties, "lvl") ?? 0) + 1));
+        return listStyle.ChildElements.FirstOrDefault(element =>
+            string.Equals(element.LocalName, $"lvl{level}pPr", StringComparison.Ordinal));
     }
 
     private static IEnumerable<byte[]> ExtractRuns(
@@ -1189,16 +1206,25 @@ internal static class PptxPresentationProtoReader
         });
     }
 
-    private static byte[]? WriteParagraphTextStyle(A.ParagraphProperties? paragraphProperties)
+    private static byte[]? WriteParagraphTextStyle(
+        A.ParagraphProperties? paragraphProperties,
+        OpenXmlElement? listStyleParagraphProperties = null)
     {
-        if (paragraphProperties is null)
+        if (paragraphProperties is null && listStyleParagraphProperties is null)
         {
             return null;
         }
 
+        var textProperties =
+            paragraphProperties?.GetFirstChild<A.DefaultRunProperties>() ??
+            listStyleParagraphProperties?.GetFirstChild<A.DefaultRunProperties>();
+        var styleParagraphProperties = paragraphProperties ?? listStyleParagraphProperties;
+
         return Message(output =>
         {
-            var alignment = AlignmentCode(AttributeValue(paragraphProperties, "algn"));
+            WriteTextStyleProperties(output, textProperties, styleParagraphProperties);
+
+            var alignment = AlignmentCode(AttributeValue(styleParagraphProperties, "algn"));
             if (alignment == 4)
             {
                 alignment = null;
@@ -1806,7 +1832,8 @@ internal static class PptxPresentationProtoReader
             WriteMessage(output, 7, WriteFill(fill));
         }
 
-        WriteInt32(output, 8, AlignmentCode(AttributeValue(paragraphProperties, "algn")));
+        var alignment = AlignmentCode(AttributeValue(paragraphProperties, "algn"));
+        WriteInt32(output, 8, alignment == 4 ? null : alignment);
 
         var underline = AttributeValue(textProperties, "u");
         if (writeDefaults)

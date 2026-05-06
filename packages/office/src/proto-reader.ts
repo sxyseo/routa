@@ -54,11 +54,11 @@ export class ProtoReader {
   }
 
   int32(): number {
-    return Number(this.varint());
+    return Number(BigInt.asIntN(32, this.varint()));
   }
 
   int64(): number {
-    return Number(this.varint());
+    return Number(BigInt.asIntN(64, this.varint()));
   }
 
   skip(wireType: number): void {
