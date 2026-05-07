@@ -28,6 +28,15 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "arc") {
+    const points = presetGeometryLinePoints({ geometry: 89, ...shape }, rect);
+    for (const [index, point] of (points ?? []).entries()) {
+      if (index === 0) path.moveTo(point.x, point.y);
+      else path.lineTo(point.x, point.y);
+    }
+    return path;
+  }
+
   if (kind === "roundRect") {
     const radius = Math.min(rect.width, rect.height) * 0.08;
     roundedRect(path, 0, 0, rect.width, rect.height, radius);
@@ -851,6 +860,28 @@ export function customGeometryLinePoints(
     }
   }
 
+  return points.length >= 2 ? points : null;
+}
+
+export function presetGeometryLinePoints(
+  shape: RecordValue | null,
+  rect: PresentationRect,
+): Array<{ x: number; y: number }> | null {
+  if (asNumber(shape?.geometry) !== 89) return null;
+
+  const start = pptAngleToRadians(adjustmentValue(shape, "adj1") ?? 0);
+  let end = pptAngleToRadians(adjustmentValue(shape, "adj2") ?? 90 * 60_000);
+  while (end < start) end += Math.PI * 2;
+
+  const steps = Math.max(8, Math.ceil(((end - start) / (Math.PI * 2)) * 32));
+  const points: Array<{ x: number; y: number }> = [];
+  for (let step = 0; step <= steps; step += 1) {
+    const angle = start + ((end - start) * step) / steps;
+    points.push({
+      x: rect.width / 2 + Math.cos(angle) * (rect.width / 2),
+      y: rect.height / 2 + Math.sin(angle) * (rect.height / 2),
+    });
+  }
   return points.length >= 2 ? points : null;
 }
 

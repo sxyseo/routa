@@ -32,7 +32,12 @@ import {
   presentationElementLineStyle,
   type PresentationLineStyle,
 } from "./presentation-line-styles";
-import { customGeometryLinePoints, customGeometryPath, elementPath } from "./presentation-shape-paths";
+import {
+  customGeometryLinePoints,
+  customGeometryPath,
+  elementPath,
+  presetGeometryLinePoints,
+} from "./presentation-shape-paths";
 import { drawPresentationTable } from "./presentation-table-renderer";
 import {
   drawPresentationTextBox,
@@ -262,7 +267,8 @@ function drawElement(
   applyElementShadow(context, element, slideScale);
 
   const shapeKind = presentationShapeKind(shape, rect);
-  if (isLine || shapeKind === "line") {
+  const presetLinePoints = presetGeometryLinePoints(shape, rect);
+  if (isLine || shapeKind === "line" || presetLinePoints) {
     const connectorPoints = anchoredConnectorLinePoints(
       element,
       rect,
@@ -274,6 +280,12 @@ function drawElement(
       context.restore();
       context.save();
       drawLinePoints(context, connectorPoints, line);
+      context.restore();
+      return;
+    }
+
+    if (presetLinePoints) {
+      drawLinePoints(context, presetLinePoints, line);
       context.restore();
       return;
     }

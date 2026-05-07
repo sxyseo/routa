@@ -27,7 +27,11 @@ import {
 } from "../presentation-text-layout";
 import { shapeFillToPaint } from "../presentation-fill-styles";
 import { drawLineEndPath } from "../presentation-line-styles";
-import { customGeometryLinePoints, elementPath } from "../presentation-shape-paths";
+import {
+  customGeometryLinePoints,
+  elementPath,
+  presetGeometryLinePoints,
+} from "../presentation-shape-paths";
 
 describe("presentation renderer helpers", () => {
   it("quotes source typefaces and appends Office/CJK fallbacks", () => {
@@ -131,6 +135,7 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 75 }, rect)).toBe("lightningBolt");
     expect(presentationShapeKind({ geometry: 76 }, rect)).toBe("heart");
     expect(presentationShapeKind({ geometry: 78 }, rect)).toBe("moon");
+    expect(presentationShapeKind({ geometry: 89 }, rect)).toBe("arc");
     expect(presentationShapeKind({ geometry: 117 }, rect)).toBe("wedgeRectCallout");
     expect(presentationShapeKind({ geometry: 118 }, rect)).toBe("wedgeRoundRectCallout");
     expect(presentationShapeKind({ geometry: 119 }, rect)).toBe("wedgeEllipseCallout");
@@ -432,6 +437,47 @@ describe("presentation renderer helpers", () => {
     expect(context.rotations.at(-1)).toBeGreaterThan(1);
   });
 
+  it("renders PPT arc presets as sampled open lines", () => {
+    const context = mockCanvasContext();
+
+    renderPresentationSlide({
+      context,
+      height: 100,
+      images: new Map(),
+      slide: {
+        elements: [
+          {
+            bbox: { heightEmu: 1_000, widthEmu: 1_000, xEmu: 0, yEmu: 0 },
+            shape: {
+              adjustmentList: [
+                { formula: "val 0", name: "adj1" },
+                { formula: "val 5400000", name: "adj2" },
+              ],
+              geometry: 89,
+              line: {
+                fill: { color: { type: 1, value: "000000" } },
+                tailEnd: { length: 2, type: 2, width: 2 },
+                widthEmu: 9_525,
+              },
+            },
+          },
+        ],
+        heightEmu: 1_000,
+        widthEmu: 1_000,
+      },
+      width: 100,
+    });
+
+    const arcPath = context.paths.reduce((longest, path) =>
+      path.length > longest.length ? path : longest,
+    );
+    expect(arcPath?.length).toBeGreaterThan(8);
+    expect(arcPath?.[0]).toEqual({ command: "moveTo", x: 100, y: 50 });
+    expect(arcPath?.at(-1)?.x).toBeCloseTo(50, 6);
+    expect(arcPath?.at(-1)?.y).toBeCloseTo(100, 6);
+    expect(context.rotations.at(-1)).toBeGreaterThan(1);
+  });
+
   it("maps PPT line end records into canvas arrowhead dimensions", () => {
     expect(presentationLineEndStyle(undefined, 2)).toBeNull();
     expect(presentationLineEndStyle({ type: 0 }, 2)).toBeNull();
@@ -574,6 +620,23 @@ describe("presentation renderer helpers", () => {
       { x: 0, y: 40 },
       { x: 20, y: 40 },
     ]);
+  });
+
+  it("extracts PPT arc preset endpoints from geometry adjustments", () => {
+    const points = presetGeometryLinePoints(
+      {
+        adjustmentList: [
+          { formula: "val 0", name: "adj1" },
+          { formula: "val 5400000", name: "adj2" },
+        ],
+        geometry: 89,
+      },
+      { height: 100, left: 0, top: 0, width: 200 },
+    );
+
+    expect(points?.[0]).toEqual({ x: 200, y: 50 });
+    expect(points?.at(-1)?.x).toBeCloseTo(100, 6);
+    expect(points?.at(-1)?.y).toBeCloseTo(100, 6);
   });
 
   it("normalizes PPT gradient stops and percent positions", () => {

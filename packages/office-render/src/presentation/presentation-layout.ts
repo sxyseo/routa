@@ -50,6 +50,7 @@ export type SlideElementEntry = {
 };
 
 export type PresentationShapeKind =
+  | "arc"
   | "bracePair"
   | "bracketPair"
   | "bentArrow"
@@ -309,7 +310,6 @@ export function presentationShapeKind(
   if (geometry === 211) return "octagon";
   if (
     geometry === 35 ||
-    geometry === 89 ||
     geometry === 139 ||
     geometry === 143 ||
     isTransparentOutlineEllipse(shape, rect)
@@ -317,6 +317,7 @@ export function presentationShapeKind(
     return "ellipse";
   }
   if (geometry === 38) return "chevron";
+  if (geometry === 89) return "arc";
   if (geometry === 206) return "chord";
   if (geometry === 40) return "pie";
   if (geometry === 41) return "blockArc";
