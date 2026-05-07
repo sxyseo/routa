@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
@@ -128,7 +128,7 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
   for (const slide of slides) {
     if (!slide.matches) {
       failures.push(
-        `slide ${slide.viewerSlideIndex} changedRatio=${slide.changedPixelRatio.toFixed(4)}, averageDelta=${slide.averageDelta.toFixed(2)}, averageRgbDelta=${slide.averageRgbDelta.toFixed(2)}, maxDelta=${slide.maxDelta}`,
+        `reference slide ${slide.referenceSlideIndex} vs viewer slide ${slide.viewerSlideIndex} changedRatio=${slide.changedPixelRatio.toFixed(4)}, averageDelta=${slide.averageDelta.toFixed(2)}, averageRgbDelta=${slide.averageRgbDelta.toFixed(2)}, maxDelta=${slide.maxDelta}`,
       );
     }
   }
@@ -289,7 +289,7 @@ async function renderViewerSlides(
       await page.waitForTimeout(300);
       await page.getByTestId("presentation-slide-canvas").waitFor({ timeout: 15_000 });
       const screenshotPath = path.join(viewerDir, `${fixtureLabel}-${reader}-slide-${String(slideIndex).padStart(2, "0")}.png`);
-      await page.getByTestId("presentation-slide-canvas").screenshot({ path: screenshotPath });
+      await writeSlideCanvasBitmap(page, screenshotPath);
       screenshots.push({ path: screenshotPath, slideIndex });
     }
 
@@ -300,6 +300,17 @@ async function renderViewerSlides(
   } finally {
     await page.close();
   }
+}
+
+async function writeSlideCanvasBitmap(page: Page, screenshotPath: string): Promise<void> {
+  const dataUrl = await page.getByTestId("presentation-slide-canvas").evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) {
+      throw new Error("presentation-slide-canvas is not a canvas element");
+    }
+    return element.toDataURL("image/png");
+  });
+  const base64 = dataUrl.replace(/^data:image\/png;base64,/u, "");
+  writeFileSync(screenshotPath, Buffer.from(base64, "base64"));
 }
 
 async function loadPresentation(page: Page, fixturePath: string, mode: ReaderMode): Promise<void> {
