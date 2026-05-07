@@ -7,6 +7,7 @@ import {
   wordDocumentPageStyle,
   wordImageStyle,
   wordBodyContentStyle,
+  wordPositionedShapeStyle,
   wordTableCellStyle,
   wordTableContainerStyle,
   wordTableRowStyle,
@@ -1468,6 +1469,43 @@ describe("WordPreview", () => {
 
     expect(style.position).toBe("absolute");
     expect(style.zIndex).toBe(26);
+  });
+
+  it("positions DOCX grouped shape frames against the page box", () => {
+    const style = wordPositionedShapeStyle(
+      {
+        bbox: {
+          heightEmu: 5_345_735,
+          widthEmu: 7_560_000,
+          xEmu: -1_424,
+          yEmu: 5_372_100,
+        },
+        fill: { color: { value: "E2E8F0" } },
+        line: {
+          fill: { color: { value: "334155" } },
+          widthEmu: 19_050,
+        },
+        zIndex: -10,
+      },
+      {
+        heightPx: 1122.53,
+        paddingBottom: 120,
+        paddingLeft: 96,
+        paddingRight: 96,
+        paddingTop: 96,
+        widthPx: 793.73,
+      },
+    );
+
+    expect(style.backgroundColor).toBe("#E2E8F0");
+    expect(style.borderColor).toBe("#334155");
+    expect(style.position).toBe("absolute");
+    expect(style.left).toBe(0);
+    expect(style.top).toBeCloseTo(561.28, 2);
+    expect(style.marginLeft).toBeUndefined();
+    expect(style.marginTop).toBeUndefined();
+    expect(style.width).toBeCloseTo(793.73, 2);
+    expect(style.zIndex).toBe(-1);
   });
 
   it("uses decoded DOCX table bbox for preview dimensions", () => {

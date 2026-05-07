@@ -121,6 +121,10 @@ export function wordTextBoxStyle(element: RecordValue, pageLayout: WordPageLayou
 export function wordPositionedShapeStyle(element: RecordValue, pageLayout: WordPageLayout): CSSProperties {
   const contentWidth = wordPageContentWidthPx(pageLayout);
   const box = wordElementBox(element, contentWidth, 80, contentWidth);
+  const fullBleed = wordIsFullBleedElement(element, pageLayout);
+  const pageOverlay = wordIsPageOverlayAnchoredElement(element, pageLayout);
+  const width = fullBleed ? pageLayout.widthPx : box.width;
+  const height = fullBleed && box.rawWidth > 0 ? box.rawHeight * (pageLayout.widthPx / box.rawWidth) : box.height;
   const line = lineToCss(element.line);
   const background = wordFillToCss(element.fill);
   return {
@@ -130,10 +134,15 @@ export function wordPositionedShapeStyle(element: RecordValue, pageLayout: WordP
     borderWidth: line.color || asNumber(asRecord(element.line)?.widthEmu) > 0 ? line.width : undefined,
     boxSizing: "border-box",
     display: "block",
-    height: box.hasDecodedSize ? box.height : undefined,
-    marginLeft: box.marginLeft,
-    marginTop: box.marginTop,
-    width: box.width,
+    height: box.hasDecodedSize ? height : undefined,
+    left: pageOverlay ? wordPageAnchoredLeft(element, pageLayout, width) : undefined,
+    marginLeft: pageOverlay ? undefined : box.marginLeft,
+    marginTop: pageOverlay ? undefined : box.marginTop,
+    maxWidth: fullBleed ? "none" : "100%",
+    position: pageOverlay ? "absolute" : undefined,
+    top: pageOverlay ? wordPageAnchoredTop(element, pageLayout, height) : undefined,
+    width,
+    zIndex: wordImageZIndex(element, pageOverlay),
   };
 }
 

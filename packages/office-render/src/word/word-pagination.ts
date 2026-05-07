@@ -357,6 +357,7 @@ function wordElementEstimatedHeight(
   }
 
   if (wordIsPositionedShapeElement(record)) {
+    if (wordIsPageOverlayAnchoredElement(record, pageLayout)) return 0;
     return wordEstimatedBoxHeight(record, pageLayout, 80);
   }
 
