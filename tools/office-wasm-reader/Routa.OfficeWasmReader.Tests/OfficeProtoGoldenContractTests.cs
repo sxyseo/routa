@@ -92,6 +92,22 @@ public class OfficeProtoGoldenContractTests
         Assert.All(slides, slide => Assert.True(CountFields(slide).ContainsKey(3), "Slide should emit elements."));
     }
 
+    [Theory]
+    [InlineData("docx-renderer-gap-checklist.docx")]
+    [InlineData("docx_advanced_contract.docx")]
+    [InlineData("docx_anchor_layout_contract.docx")]
+    [InlineData("docx_style_section_contract.docx")]
+    [InlineData("docx_table_style_contract.docx")]
+    public void Read_DocxContractFixture_EmitsDocumentShell(string fixtureName)
+    {
+        var protoBytes = DocxDocumentProtoReader.Read(ReadFixture(fixtureName));
+        var documentFields = CountFields(protoBytes);
+
+        Assert.NotEmpty(protoBytes);
+        Assert.True(documentFields.ContainsKey(5), "Document should emit elements.");
+        Assert.True(documentFields.ContainsKey(13), "Document should emit section summaries.");
+    }
+
     private static byte[] ReadFixture(string name) =>
         File.ReadAllBytes(FixturePath(name));
 
