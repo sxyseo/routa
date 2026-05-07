@@ -57,6 +57,41 @@ public class OfficeProtoGoldenContractTests
         Assert.Equal(1, firstSlideFields[10]); // background
     }
 
+    [Theory]
+    [InlineData("xlsx_comments_contract.xlsx")]
+    [InlineData("xlsx_defined_names_contract.xlsx")]
+    [InlineData("xlsx_external_link_contract.xlsx")]
+    [InlineData("xlsx_image_drawing_contract.xlsx")]
+    [InlineData("xlsx_multi_chart_contract.xlsx")]
+    [InlineData("xlsx_pivot_contract.xlsx")]
+    [InlineData("xlsx_slicer_contract.xlsx")]
+    [InlineData("xlsx_sparkline_contract.xlsx")]
+    [InlineData("xlsx_surface_chart_contract.xlsx")]
+    [InlineData("xlsx_threaded_comments_contract.xlsx")]
+    [InlineData("xlsx_timeline_contract.xlsx")]
+    public void Read_XlsxContractFixture_EmitsWorkbookShell(string fixtureName)
+    {
+        var protoBytes = XlsxWorkbookProtoReader.Read(ReadFixture(fixtureName));
+        var sheets = MessagesForField(protoBytes, 1);
+
+        Assert.NotEmpty(protoBytes);
+        Assert.NotEmpty(sheets);
+        Assert.All(sheets, sheet => Assert.False(string.IsNullOrWhiteSpace(StringField(sheet, 2))));
+    }
+
+    [Theory]
+    [InlineData("pptx_group_connector_contract.pptx")]
+    [InlineData("pptx_table_contract.pptx")]
+    public void Read_PptxContractFixture_EmitsSlideShell(string fixtureName)
+    {
+        var protoBytes = PptxPresentationProtoReader.Read(ReadFixture(fixtureName));
+        var slides = MessagesForField(protoBytes, 1);
+
+        Assert.NotEmpty(protoBytes);
+        Assert.NotEmpty(slides);
+        Assert.All(slides, slide => Assert.True(CountFields(slide).ContainsKey(3), "Slide should emit elements."));
+    }
+
     private static byte[] ReadFixture(string name) =>
         File.ReadAllBytes(FixturePath(name));
 
