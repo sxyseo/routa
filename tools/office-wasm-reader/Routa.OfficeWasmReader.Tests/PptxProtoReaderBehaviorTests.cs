@@ -25,12 +25,18 @@ public class PptxProtoReaderBehaviorTests
 
         var slideElements = MessagesForField(slides[0], 3);
         var customShape = Assert.Single(slideElements, element => StringField(element, 10) == "Custom Geometry");
+        var radialShapeElement = Assert.Single(slideElements, element => StringField(element, 10) == "Radial Gradient");
         var customShapeFields = CountFields(customShape);
         var shape = Assert.Single(MessagesForField(customShape, 4));
+        var radialShape = Assert.Single(MessagesForField(radialShapeElement, 4));
+        var radialFill = Assert.Single(MessagesForField(radialShape, 5));
         var shapePath = Assert.Single(MessagesForField(shape, 9));
         var customLine = Assert.Single(MessagesForField(shape, 6));
 
         Assert.Equal(188, Int32Field(shape, 1)); // custom geometry
+        Assert.Equal(2, Int32Field(radialFill, 1)); // gradient fill
+        Assert.Equal(2, Int32Field(radialFill, 5)); // path gradient
+        Assert.Equal(2, MessagesForField(radialFill, 3).Count);
         Assert.Equal(4, customShapeFields[15]); // shadow, glow, reflection, soft edges
         Assert.Equal(5, CountFields(shapePath)[3]); // move, line, quad, cubic, close
         Assert.Equal(2, Int32Field(Assert.Single(MessagesForField(customLine, 8)), 1)); // triangle head
@@ -223,6 +229,20 @@ public class PptxProtoReaderBehaviorTests
       <p:xfrm><a:off x="3657600" y="914400"/><a:ext cx="4572000" cy="2743200"/></p:xfrm>
       <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart r:id="rIdChart1"/></a:graphicData></a:graphic>
     </p:graphicFrame>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="4" name="Radial Gradient"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr>
+        <a:xfrm><a:off x="914400" y="2743200"/><a:ext cx="1219200" cy="609600"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        <a:gradFill>
+          <a:gsLst>
+            <a:gs pos="0"><a:srgbClr val="FFFFFF"/></a:gs>
+            <a:gs pos="100000"><a:srgbClr val="808080"/></a:gs>
+          </a:gsLst>
+          <a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>
+        </a:gradFill>
+      </p:spPr>
+    </p:sp>
   </p:spTree>
 </p:cSld>
 <p:clrMapOvr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:masterClrMapping/></p:clrMapOvr>

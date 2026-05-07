@@ -25,6 +25,7 @@ import {
   presentationParagraphSpacingPx,
   presentationTextShouldShrinkForAutoFit,
 } from "../presentation-text-layout";
+import { shapeFillToPaint } from "../presentation-fill-styles";
 import { drawLineEndPath } from "../presentation-line-styles";
 import { customGeometryLinePoints } from "../presentation-shape-paths";
 
@@ -479,6 +480,46 @@ describe("presentation renderer helpers", () => {
       { color: "#111111", position: 0 },
       { color: "#222222", position: 0.5 },
       { color: "#333333", position: 1 },
+    ]);
+  });
+
+  it("renders PPT path gradients as radial gradients", () => {
+    const gradient = {
+      stops: [] as Array<{ color: string; offset: number }>,
+      addColorStop(offset: number, color: string) {
+        this.stops.push({ color, offset });
+      },
+    };
+    const calls: number[][] = [];
+    const context = {
+      createRadialGradient: (...args: number[]) => {
+        calls.push(args);
+        return gradient;
+      },
+    } as unknown as CanvasRenderingContext2D;
+
+    const paint = shapeFillToPaint(
+      context,
+      {
+        fill: {
+          gradientKind: 2,
+          gradientStops: [
+            { color: { type: 1, value: "FFFFFF" }, position: 0 },
+            { color: { type: 1, value: "808080" }, position: 100_000 },
+          ],
+          type: 2,
+        },
+      },
+      {},
+      undefined,
+      { height: 60, left: 10, top: 20, width: 120 },
+    );
+
+    expect(paint).toBe(gradient);
+    expect(calls).toEqual([[60, 30, 0, 60, 30, 60]]);
+    expect(gradient.stops).toEqual([
+      { color: "#FFFFFF", offset: 0 },
+      { color: "#808080", offset: 1 },
     ]);
   });
 

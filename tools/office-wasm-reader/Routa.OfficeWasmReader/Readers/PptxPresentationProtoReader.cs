@@ -24,6 +24,7 @@ internal static class PptxPresentationProtoReader
     private const int ColorTypeScheme = 2;
     private const int ColorTypeSystem = 3;
     private const int GradientKindLinear = 1;
+    private const int GradientKindPath = 2;
     private const int EffectTypeShadow = 1;
     private const int EffectTypeGlow = 3;
     private const int EffectTypeReflection = 4;
@@ -1626,6 +1627,10 @@ internal static class PptxPresentationProtoReader
                 }
 
                 WriteBoolValue(output, 7, linear.Scaled?.Value);
+            }
+            else if (fill.GetFirstChild<A.PathGradientFill>() is not null)
+            {
+                WriteInt32(output, 5, GradientKindPath);
             }
         });
     }

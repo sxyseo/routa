@@ -10,6 +10,8 @@ import {
 import type { PresentationRect } from "./presentation-layout";
 import type { PresentationLineStyle } from "./presentation-line-styles";
 
+const PRESENTATION_GRADIENT_KIND_PATH = 2;
+
 function shapeFillToCss(
   shape: RecordValue | null,
   element: RecordValue,
@@ -84,6 +86,24 @@ function presentationGradientFill(
 ): CanvasGradient | undefined {
   const stops = presentationGradientStops(fill);
   if (stops.length < 2) return undefined;
+
+  if (asNumber(fill?.gradientKind) === PRESENTATION_GRADIENT_KIND_PATH) {
+    const radius = Math.max(rect.width, rect.height) / 2;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const gradient = context.createRadialGradient(
+      centerX,
+      centerY,
+      0,
+      centerX,
+      centerY,
+      radius,
+    );
+    for (const stop of stops) {
+      gradient.addColorStop(clamp(stop.position, 0, 1), stop.color);
+    }
+    return gradient;
+  }
 
   const line = gradientLine(rect, gradientAngle(fill));
   const gradient = context.createLinearGradient(
