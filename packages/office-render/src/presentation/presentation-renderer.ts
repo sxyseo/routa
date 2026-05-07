@@ -121,6 +121,7 @@ export function renderPresentationSlide({
 
   for (const [renderIndex, entry] of elements.entries()) {
     drawElement(context, entry, bounds, { height, width }, images, {
+      allElements: elements,
       charts,
       previousElements: elements.slice(0, renderIndex),
       textOverflow,
@@ -210,6 +211,7 @@ function drawElement(
   canvas: PresentationSize,
   images: PresentationRenderImages,
   options: {
+    allElements: SlideElementEntry[];
     charts: RecordValue[];
     previousElements: SlideElementEntry[];
     textOverflow: PresentationTextOverflow;
@@ -237,6 +239,21 @@ function drawElement(
 
   const shapeKind = presentationShapeKind(shape, rect);
   if (isLine || shapeKind === "line") {
+    const connectorPoints = anchoredConnectorLinePoints(
+      element,
+      rect,
+      bounds,
+      canvas,
+      options.allElements,
+    );
+    if (connectorPoints) {
+      context.restore();
+      context.save();
+      drawLinePoints(context, connectorPoints, line);
+      context.restore();
+      return;
+    }
+
     drawLine(context, rect.width, rect.height, asNumber(shape?.geometry), line);
     context.restore();
     return;
@@ -366,6 +383,15 @@ function drawLine(
 ): void {
   if (!line.color) return;
   const points = connectorLinePoints(width, height, geometry);
+  drawLinePoints(context, points, line);
+}
+
+function drawLinePoints(
+  context: CanvasRenderingContext2D,
+  points: LinePoint[],
+  line: PresentationLineStyle,
+): void {
+  if (!line.color || points.length === 0) return;
   applyLineStyle(context, line);
   context.beginPath();
   context.moveTo(points[0]?.x ?? 0, points[0]?.y ?? 0);
@@ -379,6 +405,157 @@ function drawLine(
 }
 
 type LinePoint = { x: number; y: number };
+
+function anchoredConnectorLinePoints(
+  element: RecordValue,
+  rect: PresentationRect,
+  bounds: PresentationSize,
+  canvas: PresentationSize,
+  elements: SlideElementEntry[],
+): LinePoint[] | null {
+  const connector = asRecord(element.connector);
+  if (!connector) return null;
+
+  const shape = asRecord(element.shape);
+  const localPoints = connectorLinePoints(
+    rect.width,
+    rect.height,
+    asNumber(shape?.geometry),
+  );
+  const points = localPoints.map((point) =>
+    transformElementPoint(point, asRecord(element.bbox), bounds, canvas),
+  );
+  if (points.length < 2) return null;
+
+  const byId = elementTargetMap(elements);
+  const startId = asString(connector.start);
+  const endId = asString(connector.end);
+  const startTarget = startId ? byId.get(startId) : undefined;
+  const endTarget = endId ? byId.get(endId) : undefined;
+  if (!startTarget && !endTarget) return null;
+
+  if (startTarget) {
+    points[0] = connectionPointForElement(
+      startTarget,
+      asNumber(connector.startIndex, Number.NaN),
+      points.at(-1),
+      bounds,
+      canvas,
+    );
+  }
+  if (endTarget) {
+    points[points.length - 1] = connectionPointForElement(
+      endTarget,
+      asNumber(connector.endIndex, Number.NaN),
+      points[0],
+      bounds,
+      canvas,
+    );
+  }
+
+  return points;
+}
+
+function elementTargetMap(elements: SlideElementEntry[]): Map<string, RecordValue> {
+  const targets = new Map<string, RecordValue>();
+  for (const { element } of elements) {
+    for (const id of elementTargetIds(element)) {
+      if (id && !targets.has(id)) targets.set(id, element);
+    }
+  }
+  return targets;
+}
+
+function elementTargetIds(element: RecordValue): string[] {
+  const ids = [asString(element.id)];
+  const name = asString(element.name);
+  const embeddedId = /(?:^|;)(\d+)(?:;|$)/u.exec(name)?.[1];
+  if (embeddedId) ids.push(embeddedId);
+  return ids.filter(Boolean);
+}
+
+function connectionPointForElement(
+  element: RecordValue,
+  index: number,
+  toward: LinePoint | undefined,
+  bounds: PresentationSize,
+  canvas: PresentationSize,
+): LinePoint {
+  const bbox = asRecord(element.bbox);
+  const targetRect = emuRectToCanvasRect(bbox, bounds, canvas);
+  const side = Number.isFinite(index)
+    ? connectionSideFromIndex(index)
+    : nearestConnectionSide(targetRect, toward);
+  return transformElementPoint(
+    connectionPointOnRect(targetRect, side),
+    bbox,
+    bounds,
+    canvas,
+  );
+}
+
+type ConnectionSide = "bottom" | "left" | "right" | "top";
+
+function connectionSideFromIndex(index: number): ConnectionSide {
+  const normalized = ((Math.trunc(index) % 4) + 4) % 4;
+  if (normalized === 1) return "left";
+  if (normalized === 2) return "bottom";
+  if (normalized === 3) return "right";
+  return "top";
+}
+
+function nearestConnectionSide(
+  rect: PresentationRect,
+  toward: LinePoint | undefined,
+): ConnectionSide {
+  if (!toward) return "top";
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = toward.x - centerX;
+  const dy = toward.y - centerY;
+  if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? "left" : "right";
+  return dy < 0 ? "top" : "bottom";
+}
+
+function connectionPointOnRect(
+  rect: PresentationRect,
+  side: ConnectionSide,
+): LinePoint {
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+  if (side === "left") return { x: 0, y: centerY };
+  if (side === "right") return { x: rect.width, y: centerY };
+  if (side === "bottom") return { x: centerX, y: rect.height };
+  return { x: centerX, y: 0 };
+}
+
+function transformElementPoint(
+  point: LinePoint,
+  bbox: RecordValue | null,
+  bounds: PresentationSize,
+  canvas: PresentationSize,
+): LinePoint {
+  const rect = emuRectToCanvasRect(bbox, bounds, canvas);
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  let x = rect.left + point.x;
+  let y = rect.top + point.y;
+  if (bbox?.horizontalFlip === true) x = centerX - (x - centerX);
+  if (bbox?.verticalFlip === true) y = centerY - (y - centerY);
+
+  const rotation = asNumber(bbox?.rotation) / 60_000;
+  if (rotation === 0) return { x, y };
+
+  const radians = (rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = x - centerX;
+  const dy = y - centerY;
+  return {
+    x: centerX + dx * cos - dy * sin,
+    y: centerY + dx * sin + dy * cos,
+  };
+}
 
 function connectorLinePoints(width: number, height: number, geometry: number): LinePoint[] {
   if (geometry === 97) {

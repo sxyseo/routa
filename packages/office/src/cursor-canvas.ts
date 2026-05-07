@@ -210,6 +210,7 @@ type PresentationElement = {
   bbox?: PresentationRect;
   connector?: PresentationConnector;
   fill?: PresentationFill;
+  id?: string;
   imageReference?: { id?: string };
   levelsStyles?: PresentationTextLevelStyle[];
   name?: string;
@@ -537,6 +538,8 @@ function decodeElement(bytes: Uint8Array): PresentationElement {
       element.fill = decodeFill(reader.bytesField());
     } else if (tag.fieldNumber === 21 && tag.wireType === 2) {
       element.table = decodeTable(reader.bytesField());
+    } else if (tag.fieldNumber === 27) {
+      element.id = reader.string();
     } else if (tag.fieldNumber === 28 && tag.wireType === 2) {
       element.connector = decodeConnector(reader.bytesField());
     } else if (tag.fieldNumber === 30 && tag.wireType === 2) {

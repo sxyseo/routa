@@ -18,6 +18,7 @@ import {
   presentationShadowStyle,
   presentationShapeKind,
   presentationTableGrid,
+  renderPresentationSlide,
 } from "../presentation-renderer";
 import {
   presentationEffectiveTextMaxWidth,
@@ -240,6 +241,69 @@ describe("presentation renderer helpers", () => {
     expect(line.lineJoin).toBe("bevel");
     expect(line.headEnd?.type).toBe(2);
     expect(line.tailEnd?.type).toBe(5);
+  });
+
+  it("anchors connector paths to connected shape sites", () => {
+    const previousPath2D = globalThis.Path2D;
+    globalThis.Path2D = class {
+      arc() {}
+      bezierCurveTo() {}
+      closePath() {}
+      ellipse() {}
+      lineTo() {}
+      moveTo() {}
+      quadraticCurveTo() {}
+      rect() {}
+    } as unknown as typeof Path2D;
+    const context = mockCanvasContext();
+
+    try {
+      renderPresentationSlide({
+        context,
+        height: 100,
+        images: new Map(),
+        slide: {
+          elements: [
+            {
+              bbox: { heightEmu: 1_000, widthEmu: 1_000, xEmu: 1_000, yEmu: 1_000 },
+              id: "start",
+              shape: { fill: { color: { type: 1, value: "FFFFFF" } }, geometry: 5 },
+            },
+            {
+              bbox: { heightEmu: 1_000, widthEmu: 1_000, xEmu: 5_000, yEmu: 5_000 },
+              id: "end",
+              shape: { fill: { color: { type: 1, value: "FFFFFF" } }, geometry: 5 },
+            },
+            {
+              bbox: { heightEmu: 3_000, widthEmu: 3_000, xEmu: 2_000, yEmu: 2_000 },
+              connector: {
+                end: "end",
+                endIndex: 0,
+                start: "start",
+                startIndex: 2,
+              },
+              shape: {
+                geometry: 96,
+                line: {
+                  fill: { color: { type: 1, value: "000000" } },
+                  widthEmu: 9_525,
+                },
+              },
+              zIndex: 3,
+            },
+          ],
+          heightEmu: 10_000,
+          widthEmu: 10_000,
+        },
+        width: 100,
+      });
+    } finally {
+      globalThis.Path2D = previousPath2D;
+    }
+
+    const connectorPath = context.paths.at(-1);
+    expect(connectorPath?.[0]).toEqual({ command: "moveTo", x: 15, y: 20 });
+    expect(connectorPath?.at(-1)).toEqual({ command: "lineTo", x: 55, y: 50 });
   });
 
   it("maps PPT line end records into canvas arrowhead dimensions", () => {
@@ -727,10 +791,16 @@ describe("presentation renderer helpers", () => {
   });
 });
 
-function mockCanvasContext(): CanvasRenderingContext2D & { lineDashes: number[][]; strokeStyles: string[] } {
+function mockCanvasContext(): CanvasRenderingContext2D & {
+  lineDashes: number[][];
+  paths: Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>;
+  strokeStyles: string[];
+} {
   const state = {
+    currentPath: [] as Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>,
     fillStyle: "",
     lineDashes: [] as number[][],
+    paths: [] as Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>,
     strokeStyle: "",
     strokeStyles: [] as string[],
   };
@@ -744,6 +814,9 @@ function mockCanvasContext(): CanvasRenderingContext2D & { lineDashes: number[][
     get lineDashes() {
       return state.lineDashes;
     },
+    get paths() {
+      return state.paths;
+    },
     get strokeStyle() {
       return state.strokeStyle;
     },
@@ -754,22 +827,36 @@ function mockCanvasContext(): CanvasRenderingContext2D & { lineDashes: number[][
       return state.strokeStyles;
     },
     arc: () => {},
-    beginPath: () => {},
+    beginPath: () => {
+      state.currentPath = [];
+    },
+    clearRect: () => {},
     clip: () => {},
     closePath: () => {},
     fill: () => {},
     fillRect: () => {},
     fillText: () => {},
-    lineTo: () => {},
+    lineTo: (x: number, y: number) => {
+      state.currentPath.push({ command: "lineTo", x, y });
+    },
     measureText: (text: string) => ({ width: text.length * 6 }) as TextMetrics,
-    moveTo: () => {},
+    moveTo: (x: number, y: number) => {
+      state.currentPath.push({ command: "moveTo", x, y });
+    },
     rect: () => {},
     restore: () => {},
     rotate: () => {},
     save: () => {},
     setLineDash: (segments: number[]) => state.lineDashes.push([...segments]),
-    stroke: () => state.strokeStyles.push(state.strokeStyle),
+    stroke: () => {
+      state.strokeStyles.push(state.strokeStyle);
+      state.paths.push([...state.currentPath]);
+    },
     strokeRect: () => {},
     translate: () => {},
-  } as unknown) as CanvasRenderingContext2D & { lineDashes: number[][]; strokeStyles: string[] };
+  } as unknown) as CanvasRenderingContext2D & {
+    lineDashes: number[][];
+    paths: Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>;
+    strokeStyles: string[];
+  };
 }
