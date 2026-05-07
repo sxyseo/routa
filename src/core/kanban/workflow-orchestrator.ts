@@ -698,6 +698,7 @@ export class KanbanWorkflowOrchestrator {
           );
         }
         task.lastSyncError = newError;
+        task.dependencyStatus = "blocked";
         task.updatedAt = new Date();
         await this.taskStore.save(task);
         return;
@@ -1636,6 +1637,28 @@ export class KanbanWorkflowOrchestrator {
           t.updatedAt = new Date();
           await this.taskStore.save(t);
         }
+        newlyUnblocked.push(t.id);
+
+        this.eventBus.emit({
+          type: AgentEventType.COLUMN_TRANSITION,
+          agentId: "kanban-workflow-orchestrator",
+          workspaceId: automation.workspaceId,
+          data: {
+            cardId: t.id,
+            cardTitle: t.title,
+            boardId: automation.boardId,
+            workspaceId: automation.workspaceId,
+            fromColumnId: t.columnId ?? "",
+            toColumnId: t.columnId ?? "",
+            fromColumnName: "",
+            toColumnName: "",
+            source: { type: "dependency_unblock" },
+          },
+          timestamp: new Date(),
+        });
+      } else if (!depCheck.blocked && !getErrorType(t.lastSyncError)) {
+        // Dependencies satisfied but task never entered automation (no error marker).
+        // Emit COLUMN_TRANSITION to trigger automation for idle Backlog tasks.
         newlyUnblocked.push(t.id);
 
         this.eventBus.emit({

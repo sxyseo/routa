@@ -462,6 +462,7 @@ async function triggerAutoMerger(
       task: freshTask,
       ignoreExistingTrigger: true,
       bypassDependencyGate: true,
+      bypassQueue: true,
       step: {
         id: "auto-merger",
         role: "DEVELOPER",

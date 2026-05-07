@@ -254,6 +254,21 @@ export async function reviveMissingEntryAutomations(
       continue;
     }
 
+    // Dependency gate: skip re-triggering if dependencies are still unsatisfied
+    if (task.dependencies && task.dependencies.length > 0 && boardId) {
+      const board = await system.kanbanBoardStore.get(boardId);
+      if (board) {
+        const { checkDependencyGate } = await import("./dependency-gate");
+        const gateResult = await checkDependencyGate(task, board.columns, system.taskStore);
+        if (gateResult.blocked) {
+          console.log(
+            `[RestartRecovery] Skipping ${task.id} (${task.title}): blocked by [${gateResult.pendingDependencies.join(", ")}]`,
+          );
+          continue;
+        }
+      }
+    }
+
     await processKanbanColumnTransition(system, {
       cardId: task.id,
       cardTitle: task.title,

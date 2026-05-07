@@ -3,6 +3,7 @@ import { resolveTaskStatusForBoardColumn, type KanbanColumnStage } from "../mode
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { isTriggerSessionStale } from "./task-trigger-session";
 import { getTaskLaneSession, markTaskLaneSessionStatus } from "./task-lane-history";
+import { getErrorType } from "./sync-error-writer";
 import type { Task, TaskStatus } from "../models/task";
 
 export interface TaskRepairReport {
@@ -72,8 +73,8 @@ function repairTask(
     }
   }
 
-  // 4. Clear stale lastSyncError
-  if (task.lastSyncError && !task.triggerSessionId) {
+  // 4. Clear stale lastSyncError (but preserve dependency_blocked — that's structural, not stale)
+  if (task.lastSyncError && !task.triggerSessionId && getErrorType(task.lastSyncError) !== "dependency_blocked") {
     task.lastSyncError = undefined;
     fixes.push("lastSyncError: cleared (no active session)");
   }
