@@ -111,12 +111,23 @@ export function drawPresentationTextBox({
 
   for (const segment of layout.segments) {
     applyRunFont(context, segment.run, segment.fontSize);
+    const segmentX = insets.left + segment.x;
+    const segmentY = insets.top + verticalOffset + segment.y;
+    const highlight = presentationRunHighlight(segment.run.style?.scheme);
+    if (highlight) {
+      context.fillStyle = highlight;
+      context.fillRect(
+        segmentX,
+        segmentY,
+        segment.width,
+        segment.fontSize * 1.18,
+      );
+    }
+
     context.fillStyle = presentationRunFill(
       colorToCss(asRecord(segment.run.style?.fill)?.color),
       defaultTextFill,
     );
-    const segmentX = insets.left + segment.x;
-    const segmentY = insets.top + verticalOffset + segment.y;
     context.fillText(segment.text, segmentX, segmentY);
     if (segment.run.style?.underline === true) {
       const underlineY = segmentY + segment.fontSize * 1.08;
@@ -130,6 +141,43 @@ export function drawPresentationTextBox({
   }
 
   context.restore();
+}
+
+function presentationRunHighlight(scheme: unknown): string | undefined {
+  for (const part of asString(scheme).split(";")) {
+    if (
+      part.startsWith("__pptxHighlight:") ||
+      part.startsWith("__docxHighlight:")
+    ) {
+      return highlightColorToCss(part.slice(part.indexOf(":") + 1));
+    }
+  }
+  return undefined;
+}
+
+function highlightColorToCss(value: string): string | undefined {
+  const normalized = value.trim().replace(/^#/u, "");
+  if (/^[0-9a-f]{6}$/iu.test(normalized)) return `#${normalized}`;
+  switch (normalized.toLowerCase()) {
+    case "black":
+      return "#000000";
+    case "blue":
+      return "#0000ff";
+    case "cyan":
+      return "#00ffff";
+    case "green":
+      return "#00ff00";
+    case "magenta":
+      return "#ff00ff";
+    case "red":
+      return "#ff0000";
+    case "white":
+      return "#ffffff";
+    case "yellow":
+      return "#ffff00";
+    default:
+      return undefined;
+  }
 }
 
 function presentationRunFill(fill: string | undefined, defaultTextFill: string | undefined): string {

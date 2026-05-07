@@ -326,6 +326,7 @@ type PresentationRunStyle = {
   fill?: PresentationFill;
   fontSize?: number;
   italic?: boolean;
+  scheme?: string;
   typeface?: string;
   underline?: string;
 };
@@ -799,6 +800,7 @@ function decodeParagraphTextStyle(bytes: Uint8Array): PresentationParagraphTextS
       style.fill = decodeFill(reader.bytesField());
     } else if (tag.fieldNumber === 8) style.alignment = reader.int32();
     else if (tag.fieldNumber === 9) style.underline = reader.string();
+    else if (tag.fieldNumber === 17) style.scheme = reader.string();
     else if (tag.fieldNumber === 18) style.typeface = reader.string();
     else reader.skip(tag.wireType);
   }
@@ -829,6 +831,7 @@ function decodeRunStyle(bytes: Uint8Array): PresentationRunStyle {
     else if (tag.fieldNumber === 7 && tag.wireType === 2) {
       style.fill = decodeFill(reader.bytesField());
     } else if (tag.fieldNumber === 9) style.underline = reader.string();
+    else if (tag.fieldNumber === 17) style.scheme = reader.string();
     else if (tag.fieldNumber === 18) style.typeface = reader.string();
     else reader.skip(tag.wireType);
   }

@@ -1841,6 +1841,12 @@ internal static class PptxPresentationProtoReader
             WriteMessage(output, 7, WriteFill(fill));
         }
 
+        var highlight = textProperties?.GetFirstChild<A.Highlight>();
+        if (highlight is not null)
+        {
+            WriteString(output, 17, PptxTextHighlightScheme(highlight));
+        }
+
         var alignment = AlignmentCode(AttributeValue(paragraphProperties, "algn"));
         WriteInt32(output, 8, alignment == 4 ? null : alignment);
 
@@ -1859,6 +1865,23 @@ internal static class PptxPresentationProtoReader
             textProperties?.GetFirstChild<A.EastAsianFont>()?.Typeface?.Value ??
             textProperties?.GetFirstChild<A.ComplexScriptFont>()?.Typeface?.Value;
         WriteString(output, 18, typeface);
+    }
+
+    private static string? PptxTextHighlightScheme(A.Highlight highlight)
+    {
+        var color = ColorFromElement(highlight);
+        if (color is null)
+        {
+            return null;
+        }
+
+        var value = color.LastColor ?? color.Value;
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        return $"__pptxHighlight:{value}";
     }
 
     private static byte[] WriteImage(ImagePart imagePart, string alt)
