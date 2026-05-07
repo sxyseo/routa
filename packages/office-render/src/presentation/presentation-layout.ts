@@ -588,9 +588,12 @@ function mergeParagraphLevelStyles(
         asRecord(style.paragraphStyle),
         asRecord(paragraph.paragraphStyle),
       );
+      const paragraphDefaults = copyMissingParagraphStyleFields(
+        style,
+        paragraph,
+      );
       return {
-        ...copyMissingParagraphStyleFields(style, paragraph),
-        ...paragraph,
+        ...mergeRecordDefaults(paragraphDefaults, paragraph),
         ...(Object.keys(textStyle).length > 0 ? { textStyle } : {}),
         ...(Object.keys(paragraphStyle).length > 0 ? { paragraphStyle } : {}),
       };
@@ -603,7 +606,7 @@ function copyMissingParagraphStyleFields(
 ): RecordValue {
   const copied: RecordValue = {};
   for (const key of ["spaceBefore", "spaceAfter"] as const) {
-    if (!(key in paragraph) && key in style) {
+    if (paragraph[key] === undefined && style[key] !== undefined) {
       copied[key] = style[key];
     }
   }
@@ -615,7 +618,11 @@ function copyMissingParagraphStyleFields(
     "lineSpacing",
     "marginLeft",
   ] as const) {
-    if (!(key in paragraph) && paragraphStyle && key in paragraphStyle) {
+    if (
+      paragraph[key] === undefined &&
+      paragraphStyle &&
+      paragraphStyle[key] !== undefined
+    ) {
       copied[key] = paragraphStyle[key];
     }
   }
@@ -638,7 +645,11 @@ function mergeRecordDefaults(
 
   const result: RecordValue = { ...base };
   for (const [key, value] of Object.entries(override)) {
-    if (value == null) {
+    if (value === undefined) {
+      continue;
+    }
+
+    if (value === null) {
       result[key] = value;
       continue;
     }

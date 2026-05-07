@@ -436,6 +436,88 @@ describe("presentation renderer helpers", () => {
     expect(titleTextStyle.fill).toEqual({ color: { type: 1, value: "FFFFFF" } });
   });
 
+  it("does not let generated decoder undefined optionals erase placeholder styles", () => {
+    const slide = {
+      elements: [
+        {
+          id: "title-1",
+          paragraphs: [
+            {
+              indent: undefined,
+              marginLeft: undefined,
+              paragraphStyle: {
+                bulletCharacter: undefined,
+                indent: undefined,
+                marginLeft: undefined,
+              },
+              runs: [
+                {
+                  text: "Inherited title",
+                  textStyle: {
+                    fill: undefined,
+                    fontSize: 4800,
+                    typeface: undefined,
+                  },
+                },
+              ],
+              spaceAfter: undefined,
+              spaceBefore: undefined,
+              textStyle: {
+                alignment: 1,
+                fill: undefined,
+                fontSize: undefined,
+                typeface: undefined,
+              },
+            },
+          ],
+          placeholderType: "ctrTitle",
+        },
+      ],
+      useLayoutId: "layout-title",
+    };
+    const layouts = [
+      {
+        elements: [
+          {
+            placeholderType: "ctrTitle",
+            levelsStyles: [
+              {
+                level: 1,
+                paragraphStyle: {
+                  bulletCharacter: "",
+                  marginLeft: 12_700,
+                },
+                spaceAfter: 0,
+                spaceBefore: 0,
+                textStyle: {
+                  fill: { color: { type: 1, value: "FFFFFF" } },
+                  fontSize: 3200,
+                  typeface: "Bitter",
+                },
+              },
+            ],
+          },
+        ],
+        id: "layout-title",
+      },
+    ];
+
+    const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
+    const title = (effectiveSlide.elements as Array<Record<string, unknown>>)[0];
+    const paragraph = (title.paragraphs as Array<Record<string, unknown>>)[0];
+    const paragraphTextStyle = paragraph.textStyle as Record<string, unknown>;
+    const paragraphStyle = paragraph.paragraphStyle as Record<string, unknown>;
+
+    expect(paragraph.spaceAfter).toBe(0);
+    expect(paragraph.spaceBefore).toBe(0);
+    expect(paragraphStyle.bulletCharacter).toBe("");
+    expect(paragraphStyle.marginLeft).toBe(12_700);
+    expect(paragraphTextStyle.alignment).toBe(1);
+    expect(paragraphTextStyle.fill).toEqual({ color: { type: 1, value: "FFFFFF" } });
+    expect(paragraphTextStyle.fontSize).toBe(3200);
+    expect(paragraphTextStyle.typeface).toBe("Bitter");
+  });
+
   it("inherits non-placeholder layout artwork before slide content", () => {
     const slide = {
       elements: [
