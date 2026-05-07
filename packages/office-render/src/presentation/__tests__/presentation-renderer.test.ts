@@ -380,6 +380,42 @@ describe("presentation renderer helpers", () => {
     expect(connectorPath?.at(-1)).toEqual({ command: "lineTo", x: 55, y: 50 });
   });
 
+  it("renders curved PPT connectors as sampled curves for arrow-end direction", () => {
+    const context = mockCanvasContext();
+
+    renderPresentationSlide({
+      context,
+      height: 100,
+      images: new Map(),
+      slide: {
+        elements: [
+          {
+            bbox: { heightEmu: 1_000, widthEmu: 1_000, xEmu: 0, yEmu: 0 },
+            shape: {
+              geometry: 101,
+              line: {
+                fill: { color: { type: 1, value: "000000" } },
+                headEnd: { length: 2, type: 2, width: 2 },
+                tailEnd: { length: 2, type: 2, width: 2 },
+                widthEmu: 9_525,
+              },
+            },
+          },
+        ],
+        heightEmu: 1_000,
+        widthEmu: 1_000,
+      },
+      width: 100,
+    });
+
+    const connectorPath = context.paths.reduce((longest, path) =>
+      path.length > longest.length ? path : longest,
+    );
+    expect(connectorPath?.length).toBeGreaterThan(10);
+    expect(connectorPath?.[6]).toEqual({ command: "lineTo", x: 75, y: 25 });
+    expect(context.rotations.at(-1)).toBeGreaterThan(1);
+  });
+
   it("maps PPT line end records into canvas arrowhead dimensions", () => {
     expect(presentationLineEndStyle(undefined, 2)).toBeNull();
     expect(presentationLineEndStyle({ type: 0 }, 2)).toBeNull();

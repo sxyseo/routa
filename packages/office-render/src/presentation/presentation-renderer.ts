@@ -631,10 +631,70 @@ function connectorLinePoints(width: number, height: number, geometry: number): L
     ];
   }
 
+  if (geometry === 101) {
+    return quadraticConnectorPoints(
+      { x: 0, y: 0 },
+      { x: width, y: 0 },
+      { x: width, y: height },
+    );
+  }
+
+  if (geometry === 102) {
+    return cubicConnectorPoints(
+      { x: 0, y: 0 },
+      { x: width * 0.5, y: 0 },
+      { x: width, y: height * 0.5 },
+      { x: width, y: height },
+    );
+  }
+
+  if (geometry === 103) {
+    return cubicConnectorPoints(
+      { x: 0, y: 0 },
+      { x: width * 0.35, y: 0 },
+      { x: width * 0.65, y: height },
+      { x: width, y: height },
+    );
+  }
+
   return [
     { x: 0, y: 0 },
     { x: width, y: height },
   ];
+}
+
+function quadraticConnectorPoints(from: LinePoint, control: LinePoint, to: LinePoint): LinePoint[] {
+  const points: LinePoint[] = [];
+  for (let step = 0; step <= 12; step++) {
+    const t = step / 12;
+    const inverse = 1 - t;
+    points.push({
+      x: inverse * inverse * from.x + 2 * inverse * t * control.x + t * t * to.x,
+      y: inverse * inverse * from.y + 2 * inverse * t * control.y + t * t * to.y,
+    });
+  }
+  return points;
+}
+
+function cubicConnectorPoints(from: LinePoint, control1: LinePoint, control2: LinePoint, to: LinePoint): LinePoint[] {
+  const points: LinePoint[] = [];
+  for (let step = 0; step <= 12; step++) {
+    const t = step / 12;
+    const inverse = 1 - t;
+    points.push({
+      x:
+        inverse * inverse * inverse * from.x +
+        3 * inverse * inverse * t * control1.x +
+        3 * inverse * t * t * control2.x +
+        t * t * t * to.x,
+      y:
+        inverse * inverse * inverse * from.y +
+        3 * inverse * inverse * t * control1.y +
+        3 * inverse * t * t * control2.y +
+        t * t * t * to.y,
+    });
+  }
+  return points;
 }
 
 function drawConnectorLineEnd(
