@@ -120,6 +120,7 @@ type PresentationRendererCanvasPayload = {
 type PresentationRendererSlide = RecordValue & {
   heightEmu: number;
   index: number;
+  thumbnail?: string | null;
   title: string;
   widthEmu: number;
 };
@@ -890,8 +891,27 @@ async function buildPresentationPayload(
   const sharp = await loadSharp();
   const mediaIndex = await buildMediaIndex(presentation.images, sharp, options);
   const layouts = rendererLayouts(presentation);
+  const thumbnails =
+    options.includeThumbnails === false
+      ? []
+      : await Promise.all(
+          presentation.slides.map((slide, index) =>
+            renderSlideThumbnailDataUrl(
+              buildSlide(
+                slide,
+                index,
+                presentation.layouts,
+                presentation.masters,
+                mediaIndex,
+                presentation.theme,
+              ),
+              mediaIndex.media,
+              sharp,
+            ),
+          ),
+        );
   const slides = presentation.slides.map((slide, index) =>
-    rendererSlide(slide, index, layouts),
+    rendererSlide(slide, index, layouts, thumbnails[index] ?? null),
   );
   return {
     artifact: {
@@ -934,12 +954,14 @@ function rendererSlide(
   slide: PresentationSlide,
   index: number,
   layouts: RecordValue[],
+  thumbnail: string | null,
 ): PresentationRendererSlide {
   return compactRecord({
     background: slide.background,
     elements: slide.elements,
     heightEmu: slide.heightEmu,
     index: slide.index || index + 1,
+    thumbnail,
     title: firstPresentationText(slide, layouts) || `Slide ${index + 1}`,
     useLayoutId: slide.useLayoutId,
     widthEmu: slide.widthEmu,

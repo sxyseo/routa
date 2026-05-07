@@ -192,6 +192,7 @@ if (existsSync(generatedCanvasPath)) {
           bbox?: { rotation?: number };
           textStyle?: { autoFit?: unknown };
         }>;
+        thumbnail?: string | null;
       }>;
       theme?: { colors?: Record<string, string> };
     };
@@ -234,6 +235,12 @@ if (existsSync(generatedCanvasPath)) {
     }
     if (!payload.theme?.colors || Object.keys(payload.theme.colors).length === 0) {
       fail("Generated Canvas payload is missing theme colors for scheme fills");
+    }
+    const thumbnailCount = (payload.slides ?? []).filter((slide) =>
+      /^data:image\/(?:jpeg|png);base64,/u.test(slide.thumbnail ?? ""),
+    ).length;
+    if (thumbnailCount === 0) {
+      fail("Generated Canvas payload is missing pre-rendered slide thumbnails for the Cursor rail");
     }
     const allElements = (payload.slides ?? []).flatMap((slide) => slide.elements ?? []);
     if (!allElements.some((element) => typeof element.bbox?.rotation === "number")) {

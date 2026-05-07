@@ -138,6 +138,7 @@ export function PresentationCursorCanvas({
           {slides.map((slide, index) => {
             const slideIndex = asNumber(slide.index, index + 1);
             const active = slideIndex === selectedSlideIndex;
+            const thumbnail = asString(slide.thumbnail);
             return (
               <button
                 aria-current={active ? "true" : undefined}
@@ -149,16 +150,24 @@ export function PresentationCursorCanvas({
                 type="button"
               >
                 <span style={styles.thumbnailNumber}>{slideIndex}</span>
-                <SlideCanvasFrame
-                  active={active}
-                  charts={charts}
-                  images={images}
-                  layouts={layouts}
-                  mode="thumbnail"
-                  slide={slide}
-                  theme={theme}
-                  width={154}
-                />
+                {thumbnail ? (
+                  <img
+                    alt=""
+                    src={thumbnail}
+                    style={thumbnailImageStyle(active)}
+                  />
+                ) : (
+                  <SlideCanvasFrame
+                    active={active}
+                    charts={charts}
+                    images={images}
+                    layouts={layouts}
+                    mode="thumbnail"
+                    slide={slide}
+                    theme={theme}
+                    width={154}
+                  />
+                )}
               </button>
             );
           })}
@@ -396,6 +405,17 @@ function SlideCanvasFrame({
       width={Math.round(width)}
     />
   );
+}
+
+function thumbnailImageStyle(active: boolean): CSSProperties {
+  return {
+    ...styles.thumbnailCanvas,
+    boxShadow: active
+      ? "0 8px 22px rgba(15, 23, 42, 0.12), 0 0 0 2px #60a5fa"
+      : styles.thumbnailCanvas.boxShadow,
+    height: "auto",
+    objectFit: "contain",
+  };
 }
 
 function useLoadedCanvasImages(
