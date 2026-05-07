@@ -1635,21 +1635,27 @@ internal static class PptxPresentationProtoReader
 
     private static bool HasExplicitRectangleAttributes(OpenXmlElement? rectangle)
     {
-        return AttributeValue(rectangle, "l") is not null ||
-            AttributeValue(rectangle, "t") is not null ||
-            AttributeValue(rectangle, "r") is not null ||
-            AttributeValue(rectangle, "b") is not null;
+        return NonZeroIntAttribute(rectangle, "l") is not null ||
+            NonZeroIntAttribute(rectangle, "t") is not null ||
+            NonZeroIntAttribute(rectangle, "r") is not null ||
+            NonZeroIntAttribute(rectangle, "b") is not null;
     }
 
     private static byte[] WriteRectangleAttributes(OpenXmlElement? rectangle)
     {
         return Message(output =>
         {
-            WriteInt32Always(output, 1, IntAttribute(rectangle, "l") ?? 0);
-            WriteInt32Always(output, 2, IntAttribute(rectangle, "t") ?? 0);
-            WriteInt32Always(output, 3, IntAttribute(rectangle, "r") ?? 0);
-            WriteInt32Always(output, 4, IntAttribute(rectangle, "b") ?? 0);
+            WriteInt32(output, 1, NonZeroIntAttribute(rectangle, "l"));
+            WriteInt32(output, 2, NonZeroIntAttribute(rectangle, "t"));
+            WriteInt32(output, 3, NonZeroIntAttribute(rectangle, "r"));
+            WriteInt32(output, 4, NonZeroIntAttribute(rectangle, "b"));
         });
+    }
+
+    private static int? NonZeroIntAttribute(OpenXmlElement? element, string name)
+    {
+        var value = IntAttribute(element, name);
+        return value == 0 ? null : value;
     }
 
     private static byte[]? WriteImageMask(P.Picture picture)

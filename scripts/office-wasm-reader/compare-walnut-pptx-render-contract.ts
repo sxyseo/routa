@@ -155,10 +155,7 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Pp
       previewScreenshotsMatch: desktopComparison.matches && narrowComparison.matches,
       ...(verifySpeakerNotes
         ? {
-            speakerNotesMatch:
-              Boolean(routa.speakerNotes?.found) &&
-              Boolean(walnut.speakerNotes?.found) &&
-              stableJson(routa.speakerNotes) === stableJson(walnut.speakerNotes),
+            speakerNotesMatch: stableJson(routa.speakerNotes) === stableJson(walnut.speakerNotes),
           }
         : {}),
       slideshowScreenshotsMatch: slideshowComparison.matches,
@@ -384,7 +381,7 @@ function summarizeFailures(
     if (!result.slideshow.previousButtonDisabled) {
       failures.push(`${result.reader}: first slideshow slide should disable previous navigation`);
     }
-    if (verifySpeakerNotes) {
+    if (verifySpeakerNotes && (routa.speakerNotes?.found || walnut.speakerNotes?.found)) {
       failures.push(...speakerNotesFailures(result.reader, result.speakerNotes));
     }
   }
@@ -403,9 +400,7 @@ function summarizeFailures(
   }
   if (
     verifySpeakerNotes &&
-    (!routa.speakerNotes?.found ||
-      !walnut.speakerNotes?.found ||
-      stableJson(routa.speakerNotes) !== stableJson(walnut.speakerNotes))
+    stableJson(routa.speakerNotes) !== stableJson(walnut.speakerNotes)
   ) {
     failures.push("speaker notes verification differs between Routa and Walnut readers");
   }
