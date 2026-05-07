@@ -630,9 +630,10 @@ function copyMissingParagraphStyleFields(
 }
 
 function normalizedPlaceholderType(element: RecordValue): string {
-  return asString(element.placeholderType)
+  const type = asString(element.placeholderType)
     .replace(/[^a-z0-9]/giu, "")
     .toLowerCase();
+  return type === "ctrtitle" ? "title" : type;
 }
 
 function mergeRecordDefaults(

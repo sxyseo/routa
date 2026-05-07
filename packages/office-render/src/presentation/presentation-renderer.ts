@@ -27,6 +27,7 @@ import {
   applyElementShadow,
   applyLineStyle,
   drawLineEnd,
+  type PresentationLineEndStyle,
   presentationElementLineStyle,
   type PresentationLineStyle,
 } from "./presentation-line-styles";
@@ -236,7 +237,7 @@ function drawElement(
 
   const shapeKind = presentationShapeKind(shape, rect);
   if (isLine || shapeKind === "line") {
-    drawLine(context, rect.width, rect.height, line);
+    drawLine(context, rect.width, rect.height, asNumber(shape?.geometry), line);
     context.restore();
     return;
   }
@@ -360,17 +361,146 @@ function drawLine(
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
+  geometry: number,
   line: PresentationLineStyle,
 ): void {
   if (!line.color) return;
+  const points = connectorLinePoints(width, height, geometry);
   applyLineStyle(context, line);
   context.beginPath();
-  context.moveTo(0, 0);
-  context.lineTo(width, height);
+  context.moveTo(points[0]?.x ?? 0, points[0]?.y ?? 0);
+  for (const point of points.slice(1)) {
+    context.lineTo(point.x, point.y);
+  }
   context.stroke();
   context.setLineDash([]);
-  drawLineEnd(context, width, height, line.headEnd, line.color, false);
-  drawLineEnd(context, width, height, line.tailEnd, line.color, true);
+  drawConnectorLineEnd(context, points, line.headEnd, line.color, false);
+  drawConnectorLineEnd(context, points, line.tailEnd, line.color, true);
+}
+
+type LinePoint = { x: number; y: number };
+
+function connectorLinePoints(width: number, height: number, geometry: number): LinePoint[] {
+  if (geometry === 97) {
+    return [
+      { x: 0, y: 0 },
+      { x: width, y: 0 },
+      { x: width, y: height },
+    ];
+  }
+
+  if (geometry === 98) {
+    const midX = width / 2;
+    return [
+      { x: 0, y: 0 },
+      { x: midX, y: 0 },
+      { x: midX, y: height },
+      { x: width, y: height },
+    ];
+  }
+
+  if (geometry === 99) {
+    const midX1 = width / 3;
+    const midX2 = (width * 2) / 3;
+    return [
+      { x: 0, y: 0 },
+      { x: midX1, y: 0 },
+      { x: midX1, y: height },
+      { x: midX2, y: height },
+      { x: midX2, y: 0 },
+      { x: width, y: 0 },
+    ];
+  }
+
+  if (geometry === 100) {
+    const midX1 = width / 3;
+    const midX2 = (width * 2) / 3;
+    return [
+      { x: 0, y: 0 },
+      { x: midX1, y: 0 },
+      { x: midX1, y: height / 2 },
+      { x: midX2, y: height / 2 },
+      { x: midX2, y: height },
+      { x: width, y: height },
+    ];
+  }
+
+  return [
+    { x: 0, y: 0 },
+    { x: width, y: height },
+  ];
+}
+
+function drawConnectorLineEnd(
+  context: CanvasRenderingContext2D,
+  points: LinePoint[],
+  end: PresentationLineEndStyle | null,
+  color: string,
+  atTail: boolean,
+): void {
+  if (!end) return;
+  const segment = atTail ? firstNonZeroSegment(points) : lastNonZeroSegment(points);
+  if (!segment) {
+    drawLineEnd(context, points.at(-1)?.x ?? 0, points.at(-1)?.y ?? 0, end, color, atTail);
+    return;
+  }
+
+  drawLineEndOnSegment(context, segment.from, segment.to, end, color, atTail);
+}
+
+function firstNonZeroSegment(points: LinePoint[]): { from: LinePoint; to: LinePoint } | null {
+  for (let index = 1; index < points.length; index++) {
+    const from = points[index - 1]!;
+    const to = points[index]!;
+    if (from.x !== to.x || from.y !== to.y) return { from, to };
+  }
+  return null;
+}
+
+function lastNonZeroSegment(points: LinePoint[]): { from: LinePoint; to: LinePoint } | null {
+  for (let index = points.length - 1; index > 0; index--) {
+    const from = points[index - 1]!;
+    const to = points[index]!;
+    if (from.x !== to.x || from.y !== to.y) return { from, to };
+  }
+  return null;
+}
+
+function drawLineEndOnSegment(
+  context: CanvasRenderingContext2D,
+  from: LinePoint,
+  to: LinePoint,
+  end: PresentationLineEndStyle,
+  color: string,
+  atTail: boolean,
+): void {
+  const tip = atTail ? from : to;
+  const away = atTail ? to : from;
+  const angle = Math.atan2(away.y - tip.y, away.x - tip.x);
+
+  context.save();
+  context.translate(tip.x, tip.y);
+  context.rotate(angle);
+  context.fillStyle = color;
+  context.beginPath();
+  if (end.type === 5) {
+    context.ellipse(
+      -end.length / 2,
+      0,
+      end.width / 2,
+      end.width / 2,
+      0,
+      0,
+      Math.PI * 2,
+    );
+  } else {
+    context.moveTo(0, 0);
+    context.lineTo(-end.length, -end.width / 2);
+    context.lineTo(-end.length, end.width / 2);
+    context.closePath();
+  }
+  context.fill();
+  context.restore();
 }
 
 function drawElementImage(

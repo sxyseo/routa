@@ -518,6 +518,73 @@ describe("presentation renderer helpers", () => {
     expect(paragraphTextStyle.typeface).toBe("Bitter");
   });
 
+  it("inherits title master styles for center title placeholders", () => {
+    const slide = {
+      elements: [
+        {
+          id: "title-1",
+          paragraphs: [
+            {
+              runs: [{ text: "Center title", textStyle: { fontSize: 4800 } }],
+            },
+          ],
+          placeholderType: "ctrTitle",
+        },
+      ],
+      useLayoutId: "layout-title",
+    };
+    const layouts = [
+      {
+        elements: [
+          {
+            placeholderType: "title",
+            levelsStyles: [
+              {
+                level: 1,
+                textStyle: {
+                  bold: true,
+                  fill: { color: { type: 2, value: "dk1" } },
+                  fontSize: 2800,
+                  typeface: "Bitter",
+                },
+              },
+            ],
+          },
+        ],
+        id: "master-title",
+      },
+      {
+        elements: [
+          {
+            placeholderType: "ctrTitle",
+            levelsStyles: [
+              {
+                level: 1,
+                textStyle: {
+                  fill: { color: { type: 2, value: "lt1" } },
+                  fontSize: 3200,
+                },
+              },
+            ],
+          },
+        ],
+        id: "layout-title",
+        parentLayoutId: "master-title",
+      },
+    ];
+
+    const effectiveSlide = applyPresentationLayoutInheritance(slide, layouts);
+    const title = (effectiveSlide.elements as Array<Record<string, unknown>>)[0];
+    const paragraph = (title.paragraphs as Array<Record<string, unknown>>)[0];
+    const paragraphTextStyle = paragraph.textStyle as Record<string, unknown>;
+
+    expect(paragraphTextStyle.bold).toBe(true);
+    expect(paragraphTextStyle.fill).toEqual({ color: { type: 2, value: "lt1" } });
+    expect(paragraphTextStyle.fontSize).toBe(3200);
+    expect(paragraphTextStyle.typeface).toBe("Bitter");
+    expect(((paragraph.runs as Array<Record<string, unknown>>)[0].textStyle as Record<string, unknown>).fontSize).toBe(4800);
+  });
+
   it("inherits non-placeholder layout artwork before slide content", () => {
     const slide = {
       elements: [

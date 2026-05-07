@@ -208,6 +208,7 @@ type PresentationCustomPathPoint = {
 
 type PresentationElement = {
   bbox?: PresentationRect;
+  connector?: PresentationConnector;
   fill?: PresentationFill;
   imageReference?: { id?: string };
   levelsStyles?: PresentationTextLevelStyle[];
@@ -282,9 +283,29 @@ type PresentationLayout = {
 };
 
 type PresentationLine = {
+  cap?: number;
   fill?: PresentationFill;
+  head?: PresentationLineEnd;
+  headEnd?: PresentationLineEnd;
+  join?: number;
   style?: number;
+  tail?: PresentationLineEnd;
+  tailEnd?: PresentationLineEnd;
   widthEmu?: number;
+};
+
+type PresentationConnector = {
+  end?: string;
+  endIndex?: number;
+  lineStyle?: PresentationLine;
+  start?: string;
+  startIndex?: number;
+};
+
+type PresentationLineEnd = {
+  length?: number;
+  type?: number;
+  width?: number;
 };
 
 type PresentationParagraph = {
@@ -516,6 +537,8 @@ function decodeElement(bytes: Uint8Array): PresentationElement {
       element.fill = decodeFill(reader.bytesField());
     } else if (tag.fieldNumber === 21 && tag.wireType === 2) {
       element.table = decodeTable(reader.bytesField());
+    } else if (tag.fieldNumber === 28 && tag.wireType === 2) {
+      element.connector = decodeConnector(reader.bytesField());
     } else if (tag.fieldNumber === 30 && tag.wireType === 2) {
       element.shape = {
         ...element.shape,
@@ -763,9 +786,60 @@ function decodeLine(bytes: Uint8Array): PresentationLine {
     else if (tag.fieldNumber === 2) line.widthEmu = reader.int32();
     else if (tag.fieldNumber === 3 && tag.wireType === 2) {
       line.fill = decodeFill(reader.bytesField());
+    } else if (tag.fieldNumber === 6) {
+      line.cap = reader.int32();
+    } else if (tag.fieldNumber === 7) {
+      line.join = reader.int32();
     } else reader.skip(tag.wireType);
   }
   return line;
+}
+
+function decodeConnector(bytes: Uint8Array): PresentationConnector {
+  const reader = new ProtoReader(bytes);
+  const connector: PresentationConnector = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) connector.start = reader.string();
+    else if (tag.fieldNumber === 2) connector.startIndex = reader.int32();
+    else if (tag.fieldNumber === 3) connector.end = reader.string();
+    else if (tag.fieldNumber === 4) connector.endIndex = reader.int32();
+    else if (tag.fieldNumber === 5 && tag.wireType === 2) {
+      connector.lineStyle = decodeConnectorLineStyle(reader.bytesField());
+    } else reader.skip(tag.wireType);
+  }
+  return connector;
+}
+
+function decodeConnectorLineStyle(bytes: Uint8Array): PresentationLine {
+  const reader = new ProtoReader(bytes);
+  const line: PresentationLine = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 5) line.cap = reader.int32();
+    else if (tag.fieldNumber === 6) line.join = reader.int32();
+    else if (tag.fieldNumber === 7 && tag.wireType === 2) {
+      line.head = decodeLineEnd(reader.bytesField());
+      line.headEnd = line.head;
+    } else if (tag.fieldNumber === 8 && tag.wireType === 2) {
+      line.tail = decodeLineEnd(reader.bytesField());
+      line.tailEnd = line.tail;
+    } else reader.skip(tag.wireType);
+  }
+  return line;
+}
+
+function decodeLineEnd(bytes: Uint8Array): PresentationLineEnd {
+  const reader = new ProtoReader(bytes);
+  const end: PresentationLineEnd = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) end.type = reader.int32();
+    else if (tag.fieldNumber === 2) end.width = reader.int32();
+    else if (tag.fieldNumber === 3) end.length = reader.int32();
+    else reader.skip(tag.wireType);
+  }
+  return end;
 }
 
 function decodeParagraph(bytes: Uint8Array): PresentationParagraph {
@@ -1280,7 +1354,8 @@ function collectPlaceholderTypes(elements: PresentationElement[]): Set<string> {
 }
 
 function normalizedPlaceholderType(element: PresentationElement): string {
-  return (element.placeholderType ?? "").replace(/[^a-z0-9]/giu, "").toLowerCase();
+  const type = (element.placeholderType ?? "").replace(/[^a-z0-9]/giu, "").toLowerCase();
+  return type === "ctrtitle" ? "title" : type;
 }
 
 function directElements(
