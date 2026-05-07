@@ -29,6 +29,10 @@ describe("presentationScaledFontSize", () => {
     expect(presentationScaledFontSize(undefined, 1, 14)).toBeGreaterThan(14);
   });
 
+  it("keeps sub-8pt PPTX font sizes instead of clamping them up", () => {
+    expect(presentationScaledFontSize(700, 1)).toBeCloseTo(9.33, 1);
+  });
+
   it("applies fallback with slideScale", () => {
     const base = presentationScaledFontSize(null, 1, 16);
     expect(presentationScaledFontSize(null, 0.5, 16)).toBeCloseTo(base * 0.5, 1);

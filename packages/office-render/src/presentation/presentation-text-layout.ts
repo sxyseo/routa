@@ -4,7 +4,6 @@ import {
   asRecord,
   asString,
   colorToCss,
-  cssFontSize,
   EMPTY_OFFICE_TEXT_STYLE_MAPS,
   officeFontFamily,
   paragraphView,
@@ -63,7 +62,9 @@ type TextLayout = {
 };
 
 export function presentationScaledFontSize(fontSize: unknown, slideScale: number, fallbackPx = 14): number {
-  const baseFontSize = cssFontSize(fontSize, fallbackPx) * PRESENTATION_POINT_TO_CSS_PIXEL;
+  const raw = asNumber(fontSize);
+  const pointSize = raw <= 0 ? fallbackPx : raw > 200 ? raw / 100 : raw;
+  const baseFontSize = clamp(pointSize, 1, 72) * PRESENTATION_POINT_TO_CSS_PIXEL;
   return Math.max(1, baseFontSize * Math.max(0.01, slideScale));
 }
 
