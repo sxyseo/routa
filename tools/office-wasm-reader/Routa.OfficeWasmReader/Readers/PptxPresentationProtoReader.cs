@@ -615,9 +615,10 @@ internal static class PptxPresentationProtoReader
             }
 
             var line = OutlineFromProperties(picture.ShapeProperties);
-            if (line is not null)
+            var shape = WriteShape(picture.ShapeProperties, fill: null, line);
+            if (shape is not null)
             {
-                WriteMessage(output, 30, WriteLine(line));
+                WriteMessage(output, 4, shape);
             }
 
             foreach (var effect in ExtractEffects(picture.ShapeProperties))

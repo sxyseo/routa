@@ -64,6 +64,20 @@ public class PptxProtoReaderBehaviorTests
         Assert.Equal("© 2022 Thoughtworks | Confidential", StringField(run, 1));
     }
 
+    [Fact]
+    public void Read_PicturePresetGeometry_EmitsShapeGeometryForImageMasking()
+    {
+        var protoBytes = PptxPresentationProtoReader.Read(PictureGeometryPptx());
+        var slide = Assert.Single(MessagesForField(protoBytes, 1));
+        var picture = Assert.Single(MessagesForField(slide, 3), element => StringField(element, 10) == "Masked Picture");
+        var shape = Assert.Single(MessagesForField(picture, 4));
+        var fill = Assert.Single(MessagesForField(picture, 19));
+
+        Assert.Equal(7, Int32Field(picture, 11)); // image reference
+        Assert.Equal(35, Int32Field(shape, 1)); // ellipse geometry
+        Assert.Equal(4, Int32Field(fill, 1)); // picture fill
+    }
+
     private static byte[] CustomGeometryEffectsAndChartPptx()
     {
         using var ms = new MemoryStream();
@@ -141,6 +155,40 @@ public class PptxProtoReaderBehaviorTests
         return ms.ToArray();
     }
 
+    private static byte[] PictureGeometryPptx()
+    {
+        using var ms = new MemoryStream();
+        using (var document = PresentationDocument.Create(ms, PresentationDocumentType.Presentation))
+        {
+            var presentationPart = document.AddPresentationPart();
+            presentationPart.Presentation = new P.Presentation(
+                new P.SlideSize { Cx = 9_144_000, Cy = 5_143_500 },
+                new P.SlideIdList());
+
+            var slidePart = presentationPart.AddNewPart<SlidePart>("rIdSlide1");
+            slidePart.Slide = new P.Slide();
+            slidePart.Slide.InnerXml = PictureGeometrySlideXml();
+
+            var imagePart = slidePart.AddImagePart(ImagePartType.Png, "rIdImage1");
+            using (var imageStream = new MemoryStream(Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l8WU7wAAAABJRU5ErkJggg==")))
+            {
+                imagePart.FeedData(imageStream);
+            }
+
+            presentationPart.Presentation.SlideIdList!.Append(new P.SlideId
+            {
+                Id = 256U,
+                RelationshipId = "rIdSlide1"
+            });
+            presentationPart.Presentation.Save();
+            slidePart.Slide.Save();
+            document.Save();
+        }
+
+        return ms.ToArray();
+    }
+
     private static string MasterXml()
     {
         return """
@@ -183,6 +231,29 @@ public class PptxProtoReaderBehaviorTests
   <p:spTree>
     <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
     <p:grpSpPr/>
+  </p:spTree>
+</p:cSld>
+<p:clrMapOvr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:masterClrMapping/></p:clrMapOvr>
+""";
+    }
+
+    private static string PictureGeometrySlideXml()
+    {
+        return """
+<p:cSld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr/>
+    <p:pic>
+      <p:nvPicPr><p:cNvPr id="2" name="Masked Picture"/><p:cNvPicPr preferRelativeResize="0"/><p:nvPr/></p:nvPicPr>
+      <p:blipFill rotWithShape="1"><a:blip r:embed="rIdImage1"/><a:stretch/></p:blipFill>
+      <p:spPr>
+        <a:xfrm><a:off x="914400" y="914400"/><a:ext cx="914400" cy="914400"/></a:xfrm>
+        <a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>
+        <a:noFill/>
+        <a:ln w="9525"><a:solidFill><a:srgbClr val="003D4F"/></a:solidFill></a:ln>
+      </p:spPr>
+    </p:pic>
   </p:spTree>
 </p:cSld>
 <p:clrMapOvr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:masterClrMapping/></p:clrMapOvr>
