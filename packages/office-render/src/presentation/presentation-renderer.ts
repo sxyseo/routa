@@ -282,8 +282,8 @@ function drawElement(
     context.setLineDash([]);
     const customPoints = customGeometryLinePoints(shape, rect);
     if (customPoints) {
-      drawConnectorLineEnd(context, customPoints, line.headEnd, line.color, false);
-      drawConnectorLineEnd(context, customPoints, line.tailEnd, line.color, true);
+      drawConnectorLineEnd(context, customPoints, line.headEnd, line.color, true);
+      drawConnectorLineEnd(context, customPoints, line.tailEnd, line.color, false);
     }
   }
 
@@ -406,8 +406,8 @@ function drawLinePoints(
   }
   context.stroke();
   context.setLineDash([]);
-  drawConnectorLineEnd(context, points, line.headEnd, line.color, false);
-  drawConnectorLineEnd(context, points, line.tailEnd, line.color, true);
+  drawConnectorLineEnd(context, points, line.headEnd, line.color, true);
+  drawConnectorLineEnd(context, points, line.tailEnd, line.color, false);
 }
 
 type LinePoint = { x: number; y: number };
@@ -619,16 +619,16 @@ function drawConnectorLineEnd(
   points: LinePoint[],
   end: PresentationLineEndStyle | null,
   color: string,
-  atTail: boolean,
+  atStart: boolean,
 ): void {
   if (!end) return;
-  const segment = atTail ? firstNonZeroSegment(points) : lastNonZeroSegment(points);
+  const segment = atStart ? firstNonZeroSegment(points) : lastNonZeroSegment(points);
   if (!segment) {
-    drawLineEnd(context, points.at(-1)?.x ?? 0, points.at(-1)?.y ?? 0, end, color, atTail);
+    drawLineEnd(context, points.at(-1)?.x ?? 0, points.at(-1)?.y ?? 0, end, color, atStart);
     return;
   }
 
-  drawLineEndOnSegment(context, segment.from, segment.to, end, color, atTail);
+  drawLineEndOnSegment(context, segment.from, segment.to, end, color, atStart);
 }
 
 function firstNonZeroSegment(points: LinePoint[]): { from: LinePoint; to: LinePoint } | null {
@@ -655,11 +655,11 @@ function drawLineEndOnSegment(
   to: LinePoint,
   end: PresentationLineEndStyle,
   color: string,
-  atTail: boolean,
+  atStart: boolean,
 ): void {
-  const tip = atTail ? from : to;
-  const away = atTail ? to : from;
-  const angle = Math.atan2(away.y - tip.y, away.x - tip.x);
+  const tip = atStart ? from : to;
+  const away = atStart ? to : from;
+  const angle = Math.atan2(tip.y - away.y, tip.x - away.x);
 
   context.save();
   context.translate(tip.x, tip.y);

@@ -319,6 +319,45 @@ describe("presentation renderer helpers", () => {
     });
   });
 
+  it("places DrawingML headEnd at the line start and tailEnd at the line end", () => {
+    const context = mockCanvasContext();
+
+    renderPresentationSlide({
+      context,
+      height: 100,
+      images: new Map(),
+      slide: {
+        elements: [
+          {
+            bbox: { heightEmu: 0, widthEmu: 1_000, xEmu: 0, yEmu: 0 },
+            shape: {
+              geometry: 96,
+              line: {
+                fill: { color: { type: 1, value: "FF0000" } },
+                headEnd: { length: 2, type: 2, width: 2 },
+                tailEnd: { length: 2, type: 4, width: 2 },
+                widthEmu: 9_525,
+              },
+            },
+          },
+        ],
+        heightEmu: 1_000,
+        widthEmu: 1_000,
+      },
+      width: 100,
+    });
+
+    const lineEndTranslations = context.translations.slice(-2);
+    expect(lineEndTranslations[0]?.x).toBeCloseTo(0);
+    expect(lineEndTranslations[0]?.y).toBeCloseTo(0);
+    expect(lineEndTranslations[1]?.x).toBeCloseTo(100);
+    expect(lineEndTranslations[1]?.y).toBeCloseTo(0);
+
+    const lineEndRotations = context.rotations.slice(-2);
+    expect(lineEndRotations[0]).toBeCloseTo(Math.PI);
+    expect(lineEndRotations[1]).toBeCloseTo(0);
+  });
+
   it("draws PPT line end shapes according to their preset type", () => {
     const context = mockCanvasContext();
 
@@ -842,15 +881,19 @@ describe("presentation renderer helpers", () => {
 function mockCanvasContext(): CanvasRenderingContext2D & {
   lineDashes: number[][];
   paths: Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>;
+  rotations: number[];
   strokeStyles: string[];
+  translations: Array<{ x: number; y: number }>;
 } {
   const state = {
     currentPath: [] as Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>,
     fillStyle: "",
     lineDashes: [] as number[][],
     paths: [] as Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>,
+    rotations: [] as number[],
     strokeStyle: "",
     strokeStyles: [] as string[],
+    translations: [] as Array<{ x: number; y: number }>,
   };
   return ({
     get fillStyle() {
@@ -865,6 +908,9 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
     get paths() {
       return state.paths;
     },
+    get rotations() {
+      return state.rotations;
+    },
     get strokeStyle() {
       return state.strokeStyle;
     },
@@ -873,6 +919,9 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
     },
     get strokeStyles() {
       return state.strokeStyles;
+    },
+    get translations() {
+      return state.translations;
     },
     arc: () => {},
     beginPath: () => {
@@ -897,7 +946,9 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
     },
     rect: () => {},
     restore: () => {},
-    rotate: () => {},
+    rotate: (angle: number) => {
+      state.rotations.push(angle);
+    },
     save: () => {},
     setLineDash: (segments: number[]) => state.lineDashes.push([...segments]),
     stroke: () => {
@@ -905,10 +956,14 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
       state.paths.push([...state.currentPath]);
     },
     strokeRect: () => {},
-    translate: () => {},
+    translate: (x: number, y: number) => {
+      state.translations.push({ x, y });
+    },
   } as unknown) as CanvasRenderingContext2D & {
     lineDashes: number[][];
     paths: Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>;
+    rotations: number[];
     strokeStyles: string[];
+    translations: Array<{ x: number; y: number }>;
   };
 }
