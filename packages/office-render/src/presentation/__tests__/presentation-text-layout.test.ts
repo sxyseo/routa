@@ -4,6 +4,7 @@ import {
   presentationEffectiveTextMaxWidth,
   presentationParagraphSpacingPx,
   presentationScaledFontSize,
+  trimPresentationFrameParagraphs,
 } from "../presentation-text-layout";
 
 describe("presentationScaledFontSize", () => {
@@ -75,3 +76,45 @@ describe("presentationEffectiveTextMaxWidth", () => {
     expect(presentationEffectiveTextMaxWidth(0, true)).toBe(1);
   });
 });
+
+describe("trimPresentationFrameParagraphs", () => {
+  it("removes empty edge paragraphs while preserving internal blank lines", () => {
+    const paragraphs = [
+      paragraph("leading"),
+      paragraph("Chris Murphy"),
+      paragraph(""),
+      paragraph("Chief Client and Revenue Officer"),
+      paragraph("trailing"),
+    ];
+    paragraphs[0]!.runs = [];
+    paragraphs[4]!.runs = [];
+
+    expect(trimPresentationFrameParagraphs(paragraphs).map((item) => item.id)).toEqual([
+      "Chris Murphy",
+      "",
+      "Chief Client and Revenue Officer",
+    ]);
+  });
+
+  it("keeps empty bullet paragraphs because they carry visible markers", () => {
+    const paragraphs = [
+      {
+        ...paragraph("bullet"),
+        runs: [],
+        style: { bulletCharacter: "•" },
+      },
+      paragraph("body"),
+    ];
+
+    expect(trimPresentationFrameParagraphs(paragraphs).map((item) => item.id)).toEqual(["bullet", "body"]);
+  });
+});
+
+function paragraph(text: string) {
+  return {
+    id: text,
+    runs: text ? [{ id: `${text}-run`, style: {}, text }] : [],
+    style: {},
+    styleId: "",
+  };
+}

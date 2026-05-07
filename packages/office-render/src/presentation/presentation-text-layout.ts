@@ -14,6 +14,9 @@ import {
 } from "../shared/office-preview-utils";
 
 const PRESENTATION_POINT_TO_CSS_PIXEL = 1.333;
+const POWERPOINT_DEFAULT_LINE_HEIGHT_FACTOR = 1.18;
+const POWERPOINT_TIGHT_FRAME_HEIGHT = 100;
+const POWERPOINT_TIGHT_LINE_HEIGHT_FACTOR = 1;
 const POWERPOINT_WRAP_WIDTH_FACTOR = 1;
 
 export type PresentationTextOverflow = "clip" | "visible";
@@ -83,7 +86,9 @@ export function drawPresentationTextBox({
   slideScale: number;
   textOverflow: PresentationTextOverflow;
 }): void {
-  const paragraphs = asArray(element.paragraphs).map(presentationParagraphView);
+  const paragraphs = trimPresentationFrameParagraphs(
+    asArray(element.paragraphs).map(presentationParagraphView),
+  );
   if (paragraphs.length === 0) return;
 
   const textStyle = asRecord(element.textStyle);
@@ -211,6 +216,19 @@ function presentationParagraphView(paragraph: unknown): ParagraphView {
   };
 }
 
+export function trimPresentationFrameParagraphs(paragraphs: ParagraphView[]): ParagraphView[] {
+  let start = 0;
+  let end = paragraphs.length;
+  while (start < end && isBlankFrameEdgeParagraph(paragraphs[start]!)) start++;
+  while (end > start && isBlankFrameEdgeParagraph(paragraphs[end - 1]!)) end--;
+  return paragraphs.slice(start, end);
+}
+
+function isBlankFrameEdgeParagraph(paragraph: ParagraphView): boolean {
+  if (paragraphBullet(paragraph)) return false;
+  return paragraph.runs.every((run) => asString(run.text).trim().length === 0);
+}
+
 function mergeDefinedTextStyle(
   base: RecordValue,
   override: RecordValue | null | undefined,
@@ -250,22 +268,23 @@ function layoutTextRuns(
 ): TextLayout {
   const segments: DrawSegment[] = [];
   const { emuScaleX, maxWidth, slideScale, wrap } = options;
+  const lineHeightFactor = presentationLineHeightFactor(options.maxHeight);
   let y = 0;
   let line: DrawSegment[] = [];
   let lineAlignment = 1;
-  let lineHeight = defaultLineHeight(slideScale);
+  let lineHeight = 0;
   let lineSpacing = 1;
   let lineWidth = 0;
   let activeAlignment = 1;
   let activeLineSpacing = 1;
   let activeParagraphStartX = 0;
-  let inheritedEmptyLineHeight = defaultLineHeight(slideScale);
+  let inheritedEmptyLineHeight = presentationScaledFontSize(null, slideScale);
   let paragraphStartX = 0;
 
   function resetLine(): void {
     line = [];
     lineAlignment = activeAlignment;
-    lineHeight = defaultLineHeight(slideScale);
+    lineHeight = 0;
     lineSpacing = activeLineSpacing;
     lineWidth = 0;
     paragraphStartX = activeParagraphStartX;
@@ -307,7 +326,7 @@ function layoutTextRuns(
       paragraphStartX = activeParagraphStartX;
     }
 
-    const nextLineHeight = fontSize * 1.18;
+    const nextLineHeight = fontSize * lineHeightFactor;
     line.push({
       fontSize,
       run,
@@ -346,7 +365,7 @@ function layoutTextRuns(
     for (const run of paragraph.runs) {
       const fontSize = runFontSize(run, slideScale, fontScale);
       applyRunFont(context, run, fontSize);
-      lineHeight = Math.max(lineHeight, fontSize * 1.18);
+      lineHeight = Math.max(lineHeight, fontSize * lineHeightFactor);
 
       const tokens = textTokens(run.text);
       for (const token of tokens) {
@@ -458,6 +477,12 @@ function paragraphLineSpacing(paragraph: ParagraphView): number {
   return 1;
 }
 
+function presentationLineHeightFactor(maxHeight: number): number {
+  return maxHeight <= POWERPOINT_TIGHT_FRAME_HEIGHT
+    ? POWERPOINT_TIGHT_LINE_HEIGHT_FACTOR
+    : POWERPOINT_DEFAULT_LINE_HEIGHT_FACTOR;
+}
+
 function paragraphStartOffset(paragraph: ParagraphView, emuScaleX: number): number {
   const marginLeft = asNumber(paragraph.style?.marginLeft);
   const indent = asNumber(paragraph.style?.indent);
@@ -547,10 +572,6 @@ function configureCanvasTextQuality(context: CanvasRenderingContext2D): void {
 
 function runFontSize(run: TextRunView, slideScale: number, fontScale = 1): number {
   return presentationScaledFontSize(run.style?.fontSize, slideScale) * fontScale;
-}
-
-function defaultLineHeight(slideScale: number): number {
-  return Math.max(1, 16 * Math.max(0.01, slideScale));
 }
 
 function clamp(value: number, min: number, max: number): number {
