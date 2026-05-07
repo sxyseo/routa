@@ -793,6 +793,12 @@ function decodeLine(bytes: Uint8Array): PresentationLine {
       line.cap = reader.int32();
     } else if (tag.fieldNumber === 7) {
       line.join = reader.int32();
+    } else if (tag.fieldNumber === 8 && tag.wireType === 2) {
+      line.head = decodeLineEnd(reader.bytesField());
+      line.headEnd = line.head;
+    } else if (tag.fieldNumber === 9 && tag.wireType === 2) {
+      line.tail = decodeLineEnd(reader.bytesField());
+      line.tailEnd = line.tail;
     } else reader.skip(tag.wireType);
   }
   return line;

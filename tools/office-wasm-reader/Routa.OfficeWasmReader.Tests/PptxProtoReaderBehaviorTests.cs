@@ -28,10 +28,13 @@ public class PptxProtoReaderBehaviorTests
         var customShapeFields = CountFields(customShape);
         var shape = Assert.Single(MessagesForField(customShape, 4));
         var shapePath = Assert.Single(MessagesForField(shape, 9));
+        var customLine = Assert.Single(MessagesForField(shape, 6));
 
         Assert.Equal(188, Int32Field(shape, 1)); // custom geometry
         Assert.Equal(4, customShapeFields[15]); // shadow, glow, reflection, soft edges
         Assert.Equal(5, CountFields(shapePath)[3]); // move, line, quad, cubic, close
+        Assert.Equal(2, Int32Field(Assert.Single(MessagesForField(customLine, 8)), 1)); // triangle head
+        Assert.Equal(3, Int32Field(Assert.Single(MessagesForField(customLine, 9)), 1)); // stealth tail
 
         var chart = charts[0];
         var series = Assert.Single(MessagesForField(chart, 3));
@@ -100,6 +103,7 @@ public class PptxProtoReaderBehaviorTests
           </a:pathLst>
         </a:custGeom>
         <a:solidFill><a:srgbClr val="4472C4"/></a:solidFill>
+        <a:ln w="9525"><a:solidFill><a:srgbClr val="003D4F"/></a:solidFill><a:headEnd type="triangle" w="med" len="med"/><a:tailEnd type="stealth" w="med" len="med"/></a:ln>
         <a:effectLst>
           <a:outerShdw blurRad="19050" dist="38100" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="50000"/></a:srgbClr></a:outerShdw>
           <a:glow rad="25400"><a:srgbClr val="FFCC00"/></a:glow>

@@ -32,7 +32,7 @@ import {
   presentationElementLineStyle,
   type PresentationLineStyle,
 } from "./presentation-line-styles";
-import { customGeometryPath, elementPath } from "./presentation-shape-paths";
+import { customGeometryLinePoints, customGeometryPath, elementPath } from "./presentation-shape-paths";
 import { drawPresentationTable } from "./presentation-table-renderer";
 import {
   drawPresentationTextBox,
@@ -280,6 +280,11 @@ function drawElement(
     applyLineStyle(context, line);
     context.stroke(path);
     context.setLineDash([]);
+    const customPoints = customGeometryLinePoints(shape, rect);
+    if (customPoints) {
+      drawConnectorLineEnd(context, customPoints, line.headEnd, line.color, false);
+      drawConnectorLineEnd(context, customPoints, line.tailEnd, line.color, true);
+    }
   }
 
   const table = asRecord(element.table);

@@ -1064,7 +1064,7 @@ internal static class PptxPresentationProtoReader
                 WriteMessageAlways(output, 5, Message(_ => { }));
             }
 
-            if (line is not null && customGeometry is null)
+            if (line is not null)
             {
                 WriteMessage(output, 6, WriteLine(line, suppressLineStyle, suppressLineDetails));
             }
@@ -1749,6 +1749,17 @@ internal static class PptxPresentationProtoReader
                 WriteInt32(output, 4, LineCompound(AttributeValue(line, "cmpd")));
                 WriteInt32(output, 6, ConnectorLineCap(line is A.Outline outline ? outline.CapType?.Value.ToString() : null, AttributeValue(line, "cap") ?? ""));
                 WriteInt32(output, 7, ConnectorLineJoin(line));
+                var head = WriteConnectorLineEnd(line.GetFirstChild<A.HeadEnd>() ?? FirstChildByLocalName(line, "headEnd"));
+                if (head is not null)
+                {
+                    WriteMessage(output, 8, head);
+                }
+
+                var tail = WriteConnectorLineEnd(line.GetFirstChild<A.TailEnd>() ?? FirstChildByLocalName(line, "tailEnd"));
+                if (tail is not null)
+                {
+                    WriteMessage(output, 9, tail);
+                }
             }
         });
     }

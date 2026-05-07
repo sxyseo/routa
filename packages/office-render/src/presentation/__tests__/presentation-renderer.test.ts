@@ -26,6 +26,7 @@ import {
   presentationTextShouldShrinkForAutoFit,
 } from "../presentation-text-layout";
 import { drawLineEndPath } from "../presentation-line-styles";
+import { customGeometryLinePoints } from "../presentation-shape-paths";
 
 describe("presentation renderer helpers", () => {
   it("quotes source typefaces and appends Office/CJK fallbacks", () => {
@@ -335,6 +336,31 @@ describe("presentation renderer helpers", () => {
       { command: "lineTo", x: -10, y: -4 },
       { command: "lineTo", x: -6.2, y: 0 },
       { command: "lineTo", x: -10, y: 4 },
+    ]);
+  });
+
+  it("extracts custom geometry endpoints for line ends", () => {
+    expect(
+      customGeometryLinePoints(
+        {
+          customPaths: [
+            {
+              commands: [
+                { moveTo: { x: 0, y: 10 } },
+                { lineTo: { x: 0, y: 20 } },
+                { lineTo: { x: 10, y: 20 } },
+              ],
+              heightEmu: 20,
+              widthEmu: 10,
+            },
+          ],
+        },
+        { height: 40, left: 0, top: 0, width: 20 },
+      ),
+    ).toEqual([
+      { x: 0, y: 20 },
+      { x: 0, y: 40 },
+      { x: 20, y: 40 },
     ]);
   });
 

@@ -376,6 +376,41 @@ export function customGeometryPath(
   return hasCommands ? result : null;
 }
 
+export function customGeometryLinePoints(
+  shape: RecordValue | null,
+  rect: PresentationRect,
+): Array<{ x: number; y: number }> | null {
+  const paths = Array.isArray(shape?.customPaths) ? shape.customPaths : [];
+  const points: Array<{ x: number; y: number }> = [];
+  for (const rawPath of paths) {
+    const customPath = asRecord(rawPath);
+    const width = asNumber(customPath?.widthEmu, rect.width);
+    const height = asNumber(customPath?.heightEmu, rect.height);
+    const scaleX = width === 0 ? 1 : rect.width / width;
+    const scaleY = height === 0 ? 1 : rect.height / height;
+    const commands = Array.isArray(customPath?.commands)
+      ? customPath.commands
+      : [];
+    for (const rawCommand of commands) {
+      const command = asRecord(rawCommand);
+      if (!command) continue;
+      const point =
+        asRecord(command.moveTo) ??
+        asRecord(command.lineTo) ??
+        asRecord(command.quadBezTo) ??
+        asRecord(command.cubicBezTo);
+      if (point) {
+        points.push({
+          x: asNumber(point.x) * scaleX,
+          y: asNumber(point.y) * scaleY,
+        });
+      }
+    }
+  }
+
+  return points.length >= 2 ? points : null;
+}
+
 function polygon(path: Path2D, points: Array<[number, number]>): void {
   const [first, ...rest] = points;
   if (!first) return;
