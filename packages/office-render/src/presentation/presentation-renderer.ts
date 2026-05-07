@@ -145,6 +145,11 @@ function resolvePresentationThemeColors<T>(value: T, themeColors: ReadonlyMap<st
     next[key] = resolvePresentationThemeColors(item, themeColors);
   }
 
+  const scheme = asString(next.scheme);
+  if (scheme) {
+    next.scheme = resolvePresentationSchemeMetadata(scheme, themeColors);
+  }
+
   const schemeName = asString(next.value).toLowerCase();
   if (asNumber(next.type) === 2 && schemeName && next.lastColor == null) {
     const resolved = themeColors.get(schemeName) ?? themeColors.get(presentationSchemeColorAlias(schemeName));
@@ -152,6 +157,24 @@ function resolvePresentationThemeColors<T>(value: T, themeColors: ReadonlyMap<st
   }
 
   return next as T;
+}
+
+function resolvePresentationSchemeMetadata(scheme: string, themeColors: ReadonlyMap<string, string>): string {
+  return scheme
+    .split(";")
+    .map((part) => resolvePresentationHighlightMetadata(part, themeColors))
+    .join(";");
+}
+
+function resolvePresentationHighlightMetadata(part: string, themeColors: ReadonlyMap<string, string>): string {
+  const pptxPrefix = "__pptxHighlight:";
+  const docxPrefix = "__docxHighlight:";
+  const prefix = part.startsWith(pptxPrefix) ? pptxPrefix : part.startsWith(docxPrefix) ? docxPrefix : "";
+  if (!prefix) return part;
+
+  const color = part.slice(prefix.length).trim();
+  const resolved = themeColors.get(color.toLowerCase()) ?? themeColors.get(presentationSchemeColorAlias(color.toLowerCase()));
+  return resolved ? `${prefix}${resolved}` : part;
 }
 
 function presentationThemeColorMap(theme: RecordValue | null | undefined): Map<string, string> {

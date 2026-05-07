@@ -358,6 +358,55 @@ describe("presentation renderer helpers", () => {
     expect(lineEndRotations[1]).toBeCloseTo(0);
   });
 
+  it("resolves PPT highlight scheme metadata against presentation theme colors", () => {
+    const previousPath2D = globalThis.Path2D;
+    globalThis.Path2D = class {
+      arc() {}
+      bezierCurveTo() {}
+      closePath() {}
+      ellipse() {}
+      lineTo() {}
+      moveTo() {}
+      quadraticCurveTo() {}
+      rect() {}
+    } as unknown as typeof Path2D;
+    const context = mockCanvasContext();
+
+    renderPresentationSlide({
+      context,
+      height: 100,
+      images: new Map(),
+      slide: {
+        elements: [
+          {
+            bbox: { heightEmu: 1_000, widthEmu: 1_000, xEmu: 0, yEmu: 0 },
+            paragraphs: [
+              {
+                runs: [
+                  {
+                    text: "highlight",
+                    textStyle: {
+                      fill: { color: { type: 1, value: "FFFFFF" } },
+                      fontSize: 900,
+                      scheme: "__pptxHighlight:accent1",
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        heightEmu: 1_000,
+        widthEmu: 1_000,
+      },
+      theme: { colors: { accent1: "003D4F" } },
+      width: 100,
+    });
+    globalThis.Path2D = previousPath2D;
+
+    expect(context.fillRects.some((entry) => entry.fillStyle === "#003D4F")).toBe(true);
+  });
+
   it("draws PPT line end shapes according to their preset type", () => {
     const context = mockCanvasContext();
 
@@ -879,6 +928,7 @@ describe("presentation renderer helpers", () => {
 });
 
 function mockCanvasContext(): CanvasRenderingContext2D & {
+  fillRects: Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>;
   lineDashes: number[][];
   paths: Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>;
   rotations: number[];
@@ -888,6 +938,7 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
   const state = {
     currentPath: [] as Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>,
     fillStyle: "",
+    fillRects: [] as Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>,
     lineDashes: [] as number[][],
     paths: [] as Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>,
     rotations: [] as number[],
@@ -901,6 +952,9 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
     },
     set fillStyle(value: string | CanvasGradient | CanvasPattern) {
       state.fillStyle = String(value);
+    },
+    get fillRects() {
+      return state.fillRects;
     },
     get lineDashes() {
       return state.lineDashes;
@@ -935,7 +989,9 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
         state.paths.push([...state.currentPath]);
       }
     },
-    fillRect: () => {},
+    fillRect: (x: number, y: number, width: number, height: number) => {
+      state.fillRects.push({ fillStyle: state.fillStyle, height, width, x, y });
+    },
     fillText: () => {},
     lineTo: (x: number, y: number) => {
       state.currentPath.push({ command: "lineTo", x, y });
@@ -960,6 +1016,7 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
       state.translations.push({ x, y });
     },
   } as unknown) as CanvasRenderingContext2D & {
+    fillRects: Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>;
     lineDashes: number[][];
     paths: Array<Array<{ command: "lineTo" | "moveTo"; x: number; y: number }>>;
     rotations: number[];
