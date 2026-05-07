@@ -15,6 +15,9 @@ import {
 } from "./presentation-text-layout";
 
 const EMU_PER_CSS_PIXEL = 9_525;
+const DEFAULT_TABLE_CELL_HORIZONTAL_MARGIN_EMU = 91_440;
+const DEFAULT_DENSE_TABLE_CELL_VERTICAL_MARGIN_EMU = 45_720;
+const DEFAULT_SINGLE_COLUMN_TABLE_CELL_VERTICAL_MARGIN_EMU = 91_440;
 const TABLE_TEXT_ROW_HEIGHT_FACTOR = 1.12;
 
 type TableLineStyle = {
@@ -72,11 +75,13 @@ export function drawPresentationTable(
   }
 
   const grid = presentationTableGrid(table, rect);
+  const defaultVerticalMargin = defaultTableCellVerticalMargin(grid.columns.length);
   const rowHeights = expandedPresentationTableRowHeights(
     context,
     element,
     rows,
     grid,
+    defaultVerticalMargin,
     bounds,
     canvas,
     slideScale,
@@ -102,6 +107,7 @@ export function drawPresentationTable(
         drawPresentationTableCellBackground(context, cell, tableFill, x, y, cellWidth, cellHeight);
         drawPresentationTableCellText(context, element, cell, {
           canvas,
+          defaultVerticalMargin,
           height: cellHeight,
           left: x,
           slideBounds: bounds,
@@ -125,6 +131,7 @@ function expandedPresentationTableRowHeights(
   element: RecordValue,
   rows: RecordValue[],
   grid: { columns: number[]; rows: number[] },
+  defaultVerticalMargin: number,
   bounds: PresentationSize,
   canvas: PresentationSize,
   slideScale: number,
@@ -148,7 +155,7 @@ function expandedPresentationTableRowHeights(
         const textHeight = measurePresentationTextBoxHeight({
           canvas,
           context,
-          element: tableCellTextElement(element, cell, paragraphs),
+          element: tableCellTextElement(element, cell, paragraphs, defaultVerticalMargin),
           rect: {
             height: currentHeight,
             left: 0,
@@ -194,6 +201,7 @@ function drawPresentationTableCellText(
   cell: RecordValue,
   options: {
     canvas: PresentationSize;
+    defaultVerticalMargin: number;
     height: number;
     left: number;
     slideBounds: PresentationSize;
@@ -210,7 +218,7 @@ function drawPresentationTableCellText(
   drawPresentationTextBox({
     canvas: options.canvas,
     context,
-    element: tableCellTextElement(element, cell, paragraphs),
+    element: tableCellTextElement(element, cell, paragraphs, options.defaultVerticalMargin),
     rect: {
       height: options.height,
       left: 0,
@@ -224,7 +232,12 @@ function drawPresentationTableCellText(
   context.restore();
 }
 
-function tableCellTextElement(element: RecordValue, cell: RecordValue, paragraphs: unknown[]): RecordValue {
+function tableCellTextElement(
+  element: RecordValue,
+  cell: RecordValue,
+  paragraphs: unknown[],
+  defaultVerticalMargin: number,
+): RecordValue {
   return {
     ...element,
     paragraphs,
@@ -232,12 +245,18 @@ function tableCellTextElement(element: RecordValue, cell: RecordValue, paragraph
       ...(asRecord(element.textStyle) ?? {}),
       ...(asRecord(cell.textStyle) ?? {}),
       anchor: tableCellAnchor(asString(cell.anchor), asNumber(asRecord(cell.textStyle)?.anchor)),
-      ...definedInset("bottomInset", cell.bottomMargin),
-      ...definedInset("leftInset", cell.leftMargin),
-      ...definedInset("rightInset", cell.rightMargin),
-      ...definedInset("topInset", cell.topMargin),
+      ...definedInset("bottomInset", cell.bottomMargin, defaultVerticalMargin),
+      ...definedInset("leftInset", cell.leftMargin, DEFAULT_TABLE_CELL_HORIZONTAL_MARGIN_EMU),
+      ...definedInset("rightInset", cell.rightMargin, DEFAULT_TABLE_CELL_HORIZONTAL_MARGIN_EMU),
+      ...definedInset("topInset", cell.topMargin, defaultVerticalMargin),
     },
   };
+}
+
+function defaultTableCellVerticalMargin(columnCount: number): number {
+  return columnCount <= 1
+    ? DEFAULT_SINGLE_COLUMN_TABLE_CELL_VERTICAL_MARGIN_EMU
+    : DEFAULT_DENSE_TABLE_CELL_VERTICAL_MARGIN_EMU;
 }
 
 function tableCellParagraphs(cell: RecordValue): unknown[] {
@@ -258,9 +277,9 @@ function tableCellAnchor(anchor: string, fallback: number): number {
   return fallback;
 }
 
-function definedInset(key: string, value: unknown): RecordValue {
+function definedInset(key: string, value: unknown, fallback: number): RecordValue {
   const raw = asNumber(value, Number.NaN);
-  if (!Number.isFinite(raw)) return {};
+  if (!Number.isFinite(raw)) return { [key]: fallback };
   return { [key]: Math.max(0, raw) };
 }
 

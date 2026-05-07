@@ -84,6 +84,10 @@ type DirectTableCell = {
   borderTop: string;
   colSpan: number;
   fill: string;
+  marginBottom: number;
+  marginLeft: number;
+  marginRight: number;
+  marginTop: number;
   paragraphs: DirectTextParagraph[];
   rowSpan: number;
   verticalAlign: "bottom" | "middle" | "top";
@@ -249,12 +253,19 @@ type PresentationTableRow = {
 };
 
 type PresentationTableCell = {
+  anchor?: string;
+  anchorCenter?: boolean;
   borders?: PresentationTableCellBorders;
+  bottomMargin?: number;
   fill?: PresentationFill;
   gridSpan?: number;
   horizontalMerge?: boolean;
+  horizontalOverflow?: string;
+  leftMargin?: number;
   paragraphs: PresentationParagraph[];
+  rightMargin?: number;
   rowSpan?: number;
+  topMargin?: number;
   verticalAlign?: string;
   verticalMerge?: boolean;
 };
@@ -685,6 +696,20 @@ function decodeTableCell(bytes: Uint8Array): PresentationTableCell {
       cell.verticalMerge = reader.bool();
     } else if (tag.fieldNumber === 12) {
       cell.verticalAlign = reader.string();
+    } else if (tag.fieldNumber === 13) {
+      cell.leftMargin = reader.int32();
+    } else if (tag.fieldNumber === 14) {
+      cell.rightMargin = reader.int32();
+    } else if (tag.fieldNumber === 15) {
+      cell.topMargin = reader.int32();
+    } else if (tag.fieldNumber === 16) {
+      cell.bottomMargin = reader.int32();
+    } else if (tag.fieldNumber === 17) {
+      cell.anchor = reader.string();
+    } else if (tag.fieldNumber === 18) {
+      cell.anchorCenter = reader.bool();
+    } else if (tag.fieldNumber === 19) {
+      cell.horizontalOverflow = reader.string();
     } else reader.skip(tag.wireType);
   }
   return cell;
@@ -1526,9 +1551,13 @@ function buildDirectTable(
       borderTop: borderLineCss(cell.borders?.top, theme),
       colSpan: cell.gridSpan ?? 1,
       fill: fillToCss(cell.fill, theme) ?? "transparent",
+      marginBottom: cell.bottomMargin ?? 45_720,
+      marginLeft: cell.leftMargin ?? 91_440,
+      marginRight: cell.rightMargin ?? 91_440,
+      marginTop: cell.topMargin ?? 45_720,
       paragraphs: buildCellParagraphs(cell.paragraphs, theme),
       rowSpan: cell.rowSpan ?? 1,
-      verticalAlign: cellVerticalAlign(cell.verticalAlign),
+      verticalAlign: cellVerticalAlign(cell.anchor ?? cell.verticalAlign),
     })),
   }));
   return { columnWidths: table.columnWidths, kind: "table", rows, ...rect };
@@ -1870,7 +1899,7 @@ function renderPresentationCanvasSource(payload: DirectCanvasPayload): string {
 
 type DirectTextRun = { bold: boolean; color: string; fontSize: number; italic: boolean; text: string; typeface: string; underline: boolean };
 type DirectTextParagraph = { align: "center" | "left" | "right"; runs: DirectTextRun[] };
-type DirectTableCell = { borderBottom: string; borderLeft: string; borderRight: string; borderTop: string; colSpan: number; fill: string; paragraphs: DirectTextParagraph[]; rowSpan: number; verticalAlign: "bottom" | "middle" | "top" };
+type DirectTableCell = { borderBottom: string; borderLeft: string; borderRight: string; borderTop: string; colSpan: number; fill: string; marginBottom: number; marginLeft: number; marginRight: number; marginTop: number; paragraphs: DirectTextParagraph[]; rowSpan: number; verticalAlign: "bottom" | "middle" | "top" };
 type DirectTableRow = { cells: DirectTableCell[]; height: number };
 
 type DirectCanvasElement =
@@ -2202,7 +2231,7 @@ function SlideTableElement({ element, slide }: { element: Extract<DirectCanvasEl
                     borderTop: cell.borderTop,
                     boxSizing: "border-box",
                     overflow: "hidden",
-                    padding: \`\${(91_440 / slide.height) * 100}%\`,
+                    padding: \`\${(cell.marginTop / slide.height) * 100}% \${(cell.marginRight / slide.width) * 100}% \${(cell.marginBottom / slide.height) * 100}% \${(cell.marginLeft / slide.width) * 100}%\`,
                     verticalAlign: cell.verticalAlign,
                   }}
                 >

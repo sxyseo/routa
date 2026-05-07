@@ -48,6 +48,62 @@ describe("buildPptxCursorCanvasPayload", () => {
       { color: { type: 1, value: "404040" }, position: 100_000 },
     ]);
   });
+
+  it("decodes PPTX table cell margins and anchoring for Cursor payloads", async () => {
+    const tableCell = message([
+      bytesField(3, message([bytesField(1, message([stringField(1, "Cell")]))])),
+      int32Field(13, 12_345),
+      int32Field(14, 23_456),
+      int32Field(15, 3_456),
+      int32Field(16, 4_567),
+      stringField(17, "ctr"),
+      boolField(18, true),
+      stringField(19, "clip"),
+    ]);
+    const protoBytes = message([
+      bytesField(
+        1,
+        message([
+          int32Field(1, 1),
+          bytesField(
+            3,
+            message([
+              bytesField(1, bbox(0, 0, 1_000_000, 500_000)),
+              stringField(10, "Table"),
+              int32Field(11, 9),
+              bytesField(
+                21,
+                message([
+                  bytesField(1, message([bytesField(1, tableCell), int32Field(2, 500_000)])),
+                  int32Field(2, 1_000_000),
+                ]),
+              ),
+            ]),
+          ),
+          int64Field(5, 1_000_000),
+          int64Field(6, 500_000),
+        ]),
+      ),
+    ]);
+
+    const payload = await buildPptxCursorCanvasPayload(protoBytes, {
+      readerVersion: "test-reader",
+      sourcePath: "table.pptx",
+      title: "Table",
+    });
+    const firstSlide = payload.slides[0] as { elements?: Array<{ table?: { rows?: Array<{ cells?: Record<string, unknown>[] }> } }> } | undefined;
+    const cell = firstSlide?.elements?.[0]?.table?.rows?.[0]?.cells?.[0] ?? {};
+
+    expect(cell).toMatchObject({
+      anchor: "ctr",
+      anchorCenter: true,
+      bottomMargin: 4_567,
+      horizontalOverflow: "clip",
+      leftMargin: 12_345,
+      rightMargin: 23_456,
+      topMargin: 3_456,
+    });
+  });
 });
 
 function gradientStop(position: number, color: string): Uint8Array {

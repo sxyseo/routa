@@ -95,14 +95,54 @@ describe("presentationTableGrid", () => {
 
     expect(context.fillRects.some((rect) => rect.fillStyle === "#003D4F" && rect.height > 28)).toBe(true);
   });
+
+  it("uses PowerPoint table cell margins by default and preserves explicit zero margins", () => {
+    const context = mockCanvasContext();
+
+    drawPresentationTable(
+      context,
+      {},
+      {
+        columns: [1_000],
+        rows: [
+          {
+            cells: [
+              {
+                paragraphs: [{ runs: [{ text: "Default", textStyle: { fontSize: 1200 } }] }],
+              },
+            ],
+            height: 1_000,
+          },
+          {
+            cells: [
+              {
+                leftMargin: 0,
+                paragraphs: [{ runs: [{ text: "Zero", textStyle: { fontSize: 1200 } }] }],
+              },
+            ],
+            height: 1_000,
+          },
+        ],
+      },
+      { height: 80, left: 0, top: 0, width: 120 },
+      { height: 800_000, width: 1_200_000 },
+      { height: 80, width: 120 },
+      0.1,
+    );
+
+    expect(context.fillTexts.find((text) => text.text === "Default")?.x).toBeCloseTo(9.14, 1);
+    expect(context.fillTexts.find((text) => text.text === "Zero")?.x).toBe(0);
+  });
 });
 
 function mockCanvasContext(): CanvasRenderingContext2D & {
   fillRects: Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>;
+  fillTexts: Array<{ text: string; x: number; y: number }>;
 } {
   const state = {
     fillStyle: "",
     fillRects: [] as Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>,
+    fillTexts: [] as Array<{ text: string; x: number; y: number }>,
   };
   return ({
     get fillStyle() {
@@ -114,12 +154,17 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
     get fillRects() {
       return state.fillRects;
     },
+    get fillTexts() {
+      return state.fillTexts;
+    },
     beginPath: () => {},
     clip: () => {},
     fillRect: (x: number, y: number, width: number, height: number) => {
       state.fillRects.push({ fillStyle: state.fillStyle, height, width, x, y });
     },
-    fillText: () => {},
+    fillText: (text: string, x: number, y: number) => {
+      state.fillTexts.push({ text, x, y });
+    },
     lineTo: () => {},
     measureText: (text: string) => ({ width: text.length * 6 }) as TextMetrics,
     moveTo: () => {},
@@ -131,5 +176,6 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
     translate: () => {},
   } as unknown) as CanvasRenderingContext2D & {
     fillRects: Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>;
+    fillTexts: Array<{ text: string; x: number; y: number }>;
   };
 }
