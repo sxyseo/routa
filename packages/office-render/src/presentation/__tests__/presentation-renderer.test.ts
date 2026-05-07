@@ -131,6 +131,7 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 60 }, rect)).toBe("leftRightArrowCallout");
     expect(presentationShapeKind({ geometry: 62 }, rect)).toBe("quadArrowCallout");
     expect(presentationShapeKind({ geometry: 63 }, rect)).toBe("bentArrow");
+    expect(presentationShapeKind({ geometry: 74 }, rect)).toBe("can");
     expect(presentationShapeKind({ geometry: 40 }, rect)).toBe("pie");
     expect(presentationShapeKind({ geometry: 41 }, rect)).toBe("blockArc");
     expect(presentationShapeKind({ geometry: 75 }, rect)).toBe("lightningBolt");
@@ -142,6 +143,7 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 119 }, rect)).toBe("wedgeEllipseCallout");
     expect(presentationShapeKind({ geometry: 120 }, rect)).toBe("cloudCallout");
     expect(presentationShapeKind({ geometry: 158 }, rect)).toBe("delay");
+    expect(presentationShapeKind({ geometry: 155 }, rect)).toBe("can");
     expect(presentationShapeKind({ geometry: 176 }, rect)).toBe("mathPlus");
     expect(presentationShapeKind({ geometry: 177 }, rect)).toBe("mathEqual");
     expect(presentationShapeKind({ geometry: 206 }, rect)).toBe("chord");

@@ -56,6 +56,7 @@ export type PresentationShapeKind =
   | "bentArrow"
   | "bentUpArrow"
   | "blockArc"
+  | "can"
   | "chevron"
   | "chord"
   | "cloud"
@@ -340,6 +341,7 @@ export function presentationShapeKind(
   if (geometry === 60) return "leftRightArrowCallout";
   if (geometry === 62) return "quadArrowCallout";
   if (geometry === 63) return "bentArrow";
+  if (geometry === 74 || geometry === 155) return "can";
   if (geometry === 75) return "lightningBolt";
   if (geometry === 76) return "heart";
   if (geometry === 78) return "moon";

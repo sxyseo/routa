@@ -301,6 +301,23 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "can") {
+    const cap = Math.min(rect.height * 0.22, rect.width * 0.22);
+    path.moveTo(0, cap);
+    path.bezierCurveTo(0, 0, rect.width, 0, rect.width, cap);
+    path.lineTo(rect.width, rect.height - cap);
+    path.bezierCurveTo(
+      rect.width,
+      rect.height,
+      0,
+      rect.height,
+      0,
+      rect.height - cap,
+    );
+    path.closePath();
+    return path;
+  }
+
   if (kind === "cube") {
     const depthX = rect.width * 0.24;
     const depthY = rect.height * 0.18;
