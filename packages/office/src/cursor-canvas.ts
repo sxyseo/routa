@@ -268,10 +268,19 @@ type PresentationTableCellBorders = {
 
 type PresentationFill = {
   color?: PresentationColor;
+  gradientKind?: number;
+  gradientStops?: PresentationGradientStop[];
+  gradientAngle?: number;
+  gradientScaled?: boolean;
   imageReference?: { id?: string };
   srcRect?: PresentationCropPercent;
   stretchFillRect?: PresentationCropPercent;
   type?: number;
+};
+
+type PresentationGradientStop = {
+  color?: PresentationColor;
+  position?: number;
 };
 
 type PresentationImage = {
@@ -740,6 +749,14 @@ function decodeFill(bytes: Uint8Array): PresentationFill {
     if (tag.fieldNumber === 1) fill.type = reader.int32();
     else if (tag.fieldNumber === 2 && tag.wireType === 2) {
       fill.color = decodeColor(reader.bytesField());
+    } else if (tag.fieldNumber === 3 && tag.wireType === 2) {
+      (fill.gradientStops ??= []).push(decodeGradientStop(reader.bytesField()));
+    } else if (tag.fieldNumber === 5) {
+      fill.gradientKind = reader.int32();
+    } else if (tag.fieldNumber === 6) {
+      fill.gradientAngle = reader.double();
+    } else if (tag.fieldNumber === 7) {
+      fill.gradientScaled = reader.bool();
     } else if (tag.fieldNumber === 11 && tag.wireType === 2) {
       fill.imageReference = decodeImageReference(reader.bytesField());
     } else if (tag.fieldNumber === 14 && tag.wireType === 2) {
@@ -750,6 +767,18 @@ function decodeFill(bytes: Uint8Array): PresentationFill {
     } else reader.skip(tag.wireType);
   }
   return fill;
+}
+
+function decodeGradientStop(bytes: Uint8Array): PresentationGradientStop {
+  const reader = new ProtoReader(bytes);
+  const stop: PresentationGradientStop = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) stop.position = reader.int32();
+    else if (tag.fieldNumber === 2 && tag.wireType === 2) stop.color = decodeColor(reader.bytesField());
+    else reader.skip(tag.wireType);
+  }
+  return stop;
 }
 
 function decodeCropPercent(bytes: Uint8Array): PresentationCropPercent {
