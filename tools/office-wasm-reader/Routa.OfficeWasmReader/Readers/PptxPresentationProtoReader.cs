@@ -68,10 +68,13 @@ internal static class PptxPresentationProtoReader
         var slideMasterParts = DistinctByUri(presentationPart?.SlideMasterParts ?? Enumerable.Empty<SlideMasterPart>()).ToList();
         var slideLayoutParts = DistinctByUri(slideMasterParts.SelectMany(part => part.SlideLayoutParts)).ToList();
         var rawTransformsByPart = RawTransformIndex.FromPackage(bytes);
-        var themePart = slideMasterParts
-            .OrderBy(part => part.Uri.OriginalString, StringComparer.Ordinal)
-            .Select(part => part.ThemePart)
-            .FirstOrDefault(part => part is not null);
+        var themePart = slideParts
+            .Select(part => part.SlideLayoutPart?.SlideMasterPart?.ThemePart)
+            .FirstOrDefault(part => part is not null)
+            ?? slideMasterParts
+                .OrderBy(part => part.Uri.OriginalString, StringComparer.Ordinal)
+                .Select(part => part.ThemePart)
+                .FirstOrDefault(part => part is not null);
         var tableStylesPart = presentationPart?.TableStylesPart;
         var presentationParts = slideParts.Cast<OpenXmlPart>()
             .Concat(slideLayoutParts)
