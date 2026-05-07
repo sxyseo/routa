@@ -48,6 +48,7 @@ const baseUrl = stringArg("--base-url") ?? `http://127.0.0.1:${port}/debug/offic
 const outputDir = path.resolve(stringArg("--output-dir") ?? "/tmp/routa-office-wasm-pptx-powerpoint-render");
 const reader = readerArg("--reader") ?? "routa";
 const referenceDir = stringArg("--reference-dir");
+const referencePdf = stringArg("--reference-pdf");
 const changedPixelRatioTolerance = numberArg("--changed-ratio") ?? 0.42;
 const averageDeltaTolerance = numberArg("--average-delta") ?? 38;
 const fixturePaths = positionalArgs().map((arg) => path.resolve(repoRoot, arg));
@@ -98,9 +99,12 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
   mkdirSync(fixtureOutputDir, { recursive: true });
 
   const visibleSlideIndices = readVisibleSlideIndices(fixturePath);
-  const referencePaths = referenceDir
-    ? readReferenceSlides(referenceDir)
-    : await renderPowerPointLikeReference(fixturePath, path.join(fixtureOutputDir, "reference"));
+  const referencePaths = referencePdf
+    ? await renderPdfReference(referencePdf, path.join(fixtureOutputDir, "reference"))
+    : referenceDir
+      ? readReferenceSlides(referenceDir)
+      : await renderPowerPointLikeReference(fixturePath, path.join(fixtureOutputDir, "reference"));
+  const referenceLabel = referencePdf ? "PowerPoint PDF" : "PowerPoint-like";
   const viewerPaths = await renderViewerSlides(
     browser,
     fixturePath,
@@ -118,7 +122,7 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
   const failures: string[] = [];
   if (referencePaths.length !== viewerPaths.length) {
     failures.push(
-      `visible slide count differs: PowerPoint-like=${referencePaths.length}, viewer=${viewerPaths.length}, pptx-visible=${visibleSlideIndices.length}`,
+      `visible slide count differs: ${referenceLabel}=${referencePaths.length}, viewer=${viewerPaths.length}, pptx-visible=${visibleSlideIndices.length}`,
     );
   }
   for (const slide of slides) {
@@ -233,6 +237,19 @@ async function renderPowerPointLikeReference(fixturePath: string, referenceDir: 
     .filter((entry) => /^slide-\d+\.png$/u.test(entry))
     .sort((left, right) => slideImageIndex(left) - slideImageIndex(right))
     .map((entry) => path.join(referenceDir, entry));
+}
+
+async function renderPdfReference(pdfPath: string, referenceDir: string): Promise<string[]> {
+  const absolutePdfPath = path.resolve(repoRoot, pdfPath);
+  assertFile(absolutePdfPath, "PowerPoint PDF reference");
+  mkdirSync(referenceDir, { recursive: true });
+  const pdftoppmBin = commandPath("pdftoppm");
+  if (!pdftoppmBin) {
+    throw new Error("Missing pdftoppm. Install poppler to render the PowerPoint PDF reference.");
+  }
+  const prefix = path.join(referenceDir, "slide");
+  await execFileAsync(pdftoppmBin, ["-png", "-r", "144", absolutePdfPath, prefix], { maxBuffer: 10 * 1024 * 1024 });
+  return readReferenceSlides(referenceDir);
 }
 
 async function renderViewerSlides(
@@ -467,6 +484,7 @@ function positionalArgs(): string[] {
       arg === "--output-dir" ||
       arg === "--port" ||
       arg === "--reference-dir" ||
+      arg === "--reference-pdf" ||
       arg === "--reader"
     ) {
       index++;
