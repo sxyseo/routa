@@ -54,7 +54,9 @@ export type PresentationShapeKind =
   | "bracketPair"
   | "bentArrow"
   | "bentUpArrow"
+  | "blockArc"
   | "chevron"
+  | "delay"
   | "diamond"
   | "diagStripe"
   | "document"
@@ -71,6 +73,7 @@ export type PresentationShapeKind =
   | "line"
   | "parallelogram"
   | "pentagon"
+  | "pie"
   | "rect"
   | "rightBrace"
   | "rightArrow"
@@ -265,7 +268,7 @@ export function presentationShapeKind(
   }
   if (geometry === 3 || geometry === 23) return "triangle";
   if (geometry === 4) return "rtTriangle";
-  if (geometry === 26) return "roundRect";
+  if (geometry === 26 || geometry === 28 || geometry === 29) return "roundRect";
   if (geometry === 6 || geometry === 30 || geometry === 133) return "diamond";
   if (geometry === 7 || geometry === 31 || geometry === 134 || geometry === 141)
     return "parallelogram";
@@ -276,7 +279,7 @@ export function presentationShapeKind(
   if (geometry === 18) return "star6";
   if (geometry === 20) return "star8";
   if (geometry === 25) return "star32";
-  if (geometry === 32) return "snipRect";
+  if (geometry === 32 || geometry === 33) return "snipRect";
   if (
     geometry === 35 ||
     geometry === 89 ||
@@ -287,6 +290,8 @@ export function presentationShapeKind(
     return "ellipse";
   }
   if (geometry === 38) return "chevron";
+  if (geometry === 40) return "pie";
+  if (geometry === 41) return "blockArc";
   if (geometry === 44 || geometry === 48) return "rightArrow";
   if (geometry === 45) return "leftArrow";
   if (geometry === 46) return "upArrow";
@@ -307,6 +312,7 @@ export function presentationShapeKind(
   if (geometry === 87) return "diagStripe";
   if (geometry === 137 || geometry === 138) return "document";
   if (geometry === 150 || geometry === 151) return "extract";
+  if (geometry === 158) return "delay";
   return "rect";
 }
 

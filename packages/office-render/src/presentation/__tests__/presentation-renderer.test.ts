@@ -105,7 +105,10 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 18 }, rect)).toBe("star6");
     expect(presentationShapeKind({ geometry: 20 }, rect)).toBe("star8");
     expect(presentationShapeKind({ geometry: 25 }, rect)).toBe("star32");
+    expect(presentationShapeKind({ geometry: 28 }, rect)).toBe("roundRect");
+    expect(presentationShapeKind({ geometry: 29 }, rect)).toBe("roundRect");
     expect(presentationShapeKind({ geometry: 32 }, rect)).toBe("snipRect");
+    expect(presentationShapeKind({ geometry: 33 }, rect)).toBe("snipRect");
     expect(presentationShapeKind({ geometry: 44 }, rect)).toBe("rightArrow");
     expect(presentationShapeKind({ geometry: 45 }, rect)).toBe("leftArrow");
     expect(presentationShapeKind({ geometry: 46 }, rect)).toBe("upArrow");
@@ -115,7 +118,10 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 51 }, rect)).toBe("leftRightArrow");
     expect(presentationShapeKind({ geometry: 52 }, rect)).toBe("upDownArrow");
     expect(presentationShapeKind({ geometry: 63 }, rect)).toBe("bentArrow");
+    expect(presentationShapeKind({ geometry: 40 }, rect)).toBe("pie");
+    expect(presentationShapeKind({ geometry: 41 }, rect)).toBe("blockArc");
     expect(presentationShapeKind({ geometry: 75 }, rect)).toBe("lightningBolt");
+    expect(presentationShapeKind({ geometry: 158 }, rect)).toBe("delay");
     expect(presentationShapeKind({ geometry: 87 }, rect)).toBe("diagStripe");
     expect(presentationShapeKind({ geometry: 90 }, rect)).toBe("leftBracket");
     expect(presentationShapeKind({ geometry: 91 }, rect)).toBe("rightBracket");

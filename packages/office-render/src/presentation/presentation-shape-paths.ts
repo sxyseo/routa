@@ -128,6 +128,55 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "pie") {
+    const radiusX = rect.width / 2;
+    const radiusY = rect.height / 2;
+    path.moveTo(rect.width / 2, rect.height / 2);
+    path.lineTo(rect.width / 2, 0);
+    path.ellipse(
+      rect.width / 2,
+      rect.height / 2,
+      radiusX,
+      radiusY,
+      0,
+      -Math.PI / 2,
+      0,
+    );
+    path.closePath();
+    return path;
+  }
+
+  if (kind === "blockArc") {
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const outerX = rect.width / 2;
+    const outerY = rect.height / 2;
+    const innerX = outerX * 0.56;
+    const innerY = outerY * 0.56;
+    const start = -Math.PI * 0.72;
+    const end = Math.PI * 0.72;
+    path.ellipse(centerX, centerY, outerX, outerY, 0, start, end);
+    path.ellipse(centerX, centerY, innerX, innerY, 0, end, start, true);
+    path.closePath();
+    return path;
+  }
+
+  if (kind === "delay") {
+    path.moveTo(0, 0);
+    path.lineTo(rect.width * 0.5, 0);
+    path.bezierCurveTo(
+      rect.width,
+      0,
+      rect.width,
+      rect.height,
+      rect.width * 0.5,
+      rect.height,
+    );
+    path.lineTo(0, rect.height);
+    path.closePath();
+    return path;
+  }
+
   if (kind === "frame") {
     const inset = Math.min(rect.width, rect.height) * 0.16;
     path.rect(0, 0, rect.width, rect.height);
