@@ -12,6 +12,7 @@ type DirectCanvasElement =
       crop: DirectImageCrop | null;
       kind: "image";
       mediaId: string;
+      rotation?: number;
       x: number;
       y: number;
       width: number;
@@ -20,6 +21,7 @@ type DirectCanvasElement =
   | {
       kind: "text";
       paragraphs: DirectTextParagraph[];
+      rotation?: number;
       insetBottom: number;
       insetLeft: number;
       insetRight: number;
@@ -33,7 +35,9 @@ type DirectCanvasElement =
   | {
       fill: string;
       kind: "shape";
+      path?: string;
       radius: number;
+      rotation?: number;
       shapeKind: DirectShapeKind;
       stroke: string;
       strokeWidth: number;
@@ -45,6 +49,7 @@ type DirectCanvasElement =
   | {
       columnWidths: number[];
       kind: "table";
+      rotation?: number;
       rows: DirectTableRow[];
       x: number;
       y: number;
@@ -169,6 +174,38 @@ type PresentationColor = {
   value?: string;
 };
 
+type PresentationCustomGeometryPath = {
+  commands: PresentationCustomPathCommand[];
+  heightEmu?: number;
+  id?: string;
+  widthEmu?: number;
+};
+
+type PresentationCustomPathCommand = {
+  close?: Record<string, never>;
+  cubicBezTo?: {
+    x: number;
+    x1: number;
+    x2: number;
+    y: number;
+    y1: number;
+    y2: number;
+  };
+  lineTo?: PresentationCustomPathPoint;
+  moveTo?: PresentationCustomPathPoint;
+  quadBezTo?: {
+    x: number;
+    x1: number;
+    y: number;
+    y1: number;
+  };
+};
+
+type PresentationCustomPathPoint = {
+  x: number;
+  y: number;
+};
+
 type PresentationElement = {
   bbox?: PresentationRect;
   fill?: PresentationFill;
@@ -179,6 +216,7 @@ type PresentationElement = {
   placeholderIndex?: number;
   placeholderType?: string;
   shape?: {
+    customPaths?: PresentationCustomGeometryPath[];
     fill?: PresentationFill;
     geometry?: number;
     line?: PresentationLine;
@@ -838,9 +876,95 @@ function decodeShape(bytes: Uint8Array): NonNullable<PresentationElement["shape"
       shape.fill = decodeFill(reader.bytesField());
     } else if (tag.fieldNumber === 6 && tag.wireType === 2) {
       shape.line = decodeLine(reader.bytesField());
+    } else if (tag.fieldNumber === 9 && tag.wireType === 2) {
+      (shape.customPaths ??= []).push(decodeCustomGeometryPath(reader.bytesField()));
     } else reader.skip(tag.wireType);
   }
   return shape;
+}
+
+function decodeCustomGeometryPath(bytes: Uint8Array): PresentationCustomGeometryPath {
+  const reader = new ProtoReader(bytes);
+  const path: PresentationCustomGeometryPath = { commands: [] };
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) path.widthEmu = Number(reader.int64());
+    else if (tag.fieldNumber === 2) path.heightEmu = Number(reader.int64());
+    else if (tag.fieldNumber === 3 && tag.wireType === 2) {
+      path.commands.push(decodeCustomPathCommand(reader.bytesField()));
+    } else if (tag.fieldNumber === 4) path.id = reader.string();
+    else reader.skip(tag.wireType);
+  }
+  return path;
+}
+
+function decodeCustomPathCommand(bytes: Uint8Array): PresentationCustomPathCommand {
+  const reader = new ProtoReader(bytes);
+  const command: PresentationCustomPathCommand = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1 && tag.wireType === 2) {
+      command.moveTo = decodeCustomPathPoint(reader.bytesField());
+    } else if (tag.fieldNumber === 2 && tag.wireType === 2) {
+      command.lineTo = decodeCustomPathPoint(reader.bytesField());
+    } else if (tag.fieldNumber === 3 && tag.wireType === 2) {
+      reader.bytesField();
+      command.close = {};
+    } else if (tag.fieldNumber === 4 && tag.wireType === 2) {
+      command.quadBezTo = decodeCustomPathQuadraticBezier(reader.bytesField());
+    } else if (tag.fieldNumber === 5 && tag.wireType === 2) {
+      command.cubicBezTo = decodeCustomPathCubicBezier(reader.bytesField());
+    } else {
+      reader.skip(tag.wireType);
+    }
+  }
+  return command;
+}
+
+function decodeCustomPathPoint(bytes: Uint8Array): PresentationCustomPathPoint {
+  const reader = new ProtoReader(bytes);
+  const point: PresentationCustomPathPoint = { x: 0, y: 0 };
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) point.x = Number(reader.int64());
+    else if (tag.fieldNumber === 2) point.y = Number(reader.int64());
+    else reader.skip(tag.wireType);
+  }
+  return point;
+}
+
+function decodeCustomPathQuadraticBezier(
+  bytes: Uint8Array,
+): NonNullable<PresentationCustomPathCommand["quadBezTo"]> {
+  const reader = new ProtoReader(bytes);
+  const curve = { x: 0, x1: 0, y: 0, y1: 0 };
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) curve.x1 = Number(reader.int64());
+    else if (tag.fieldNumber === 2) curve.y1 = Number(reader.int64());
+    else if (tag.fieldNumber === 3) curve.x = Number(reader.int64());
+    else if (tag.fieldNumber === 4) curve.y = Number(reader.int64());
+    else reader.skip(tag.wireType);
+  }
+  return curve;
+}
+
+function decodeCustomPathCubicBezier(
+  bytes: Uint8Array,
+): NonNullable<PresentationCustomPathCommand["cubicBezTo"]> {
+  const reader = new ProtoReader(bytes);
+  const curve = { x: 0, x1: 0, x2: 0, y: 0, y1: 0, y2: 0 };
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) curve.x1 = Number(reader.int64());
+    else if (tag.fieldNumber === 2) curve.y1 = Number(reader.int64());
+    else if (tag.fieldNumber === 3) curve.x2 = Number(reader.int64());
+    else if (tag.fieldNumber === 4) curve.y2 = Number(reader.int64());
+    else if (tag.fieldNumber === 5) curve.x = Number(reader.int64());
+    else if (tag.fieldNumber === 6) curve.y = Number(reader.int64());
+    else reader.skip(tag.wireType);
+  }
+  return curve;
 }
 
 function decodeTextStyle(bytes: Uint8Array): PresentationTextStyle {
@@ -1165,6 +1289,7 @@ function directElements(
   if (!bbox) return [];
   const rect = {
     height: bbox.heightEmu,
+    rotation: bbox.rotation,
     width: bbox.widthEmu,
     x: bbox.xEmu,
     y: bbox.yEmu,
@@ -1190,12 +1315,14 @@ function directElements(
   }
 
   const shapeKind = normalizeShapeKind(element.shape?.geometry);
+  const shapePath = customGeometrySvgPath(element.shape, rect);
   const fill = fillToCss(element.shape?.fill ?? element.fill, theme) ?? "transparent";
   const line = lineToCss(element.shape?.line, theme);
-  if (!mediaId && (fill !== "transparent" || line.color || shapeKind === "line")) {
+  if (!mediaId && (fill !== "transparent" || line.color || shapeKind === "line" || shapePath)) {
     elements.push({
       fill,
       kind: "shape",
+      path: shapePath,
       radius: shapeKind === "roundRect" ? Math.min(rect.width, rect.height) * 0.12 : 0,
       shapeKind,
       stroke: line.color ?? "none",
@@ -1413,11 +1540,56 @@ function imageSourceRect(
 
 function normalizeShapeKind(geometry?: number): DirectShapeKind {
   if (geometry === 35) return "ellipse";
-  if (geometry === 1 || geometry === 96) return "line";
+  if (
+    geometry === 1 ||
+    geometry === 96 ||
+    geometry === 97 ||
+    geometry === 98 ||
+    geometry === 99 ||
+    geometry === 100 ||
+    geometry === 101 ||
+    geometry === 102 ||
+    geometry === 103 ||
+    geometry === 95
+  ) {
+    return "line";
+  }
   if (geometry === 26 || geometry === 28 || geometry === 29) return "roundRect";
-  if (geometry === 3 || geometry === 4) return "triangle";
-  if (geometry === 6) return "diamond";
+  if (geometry === 3 || geometry === 4 || geometry === 23) return "triangle";
+  if (geometry === 6 || geometry === 30 || geometry === 133) return "diamond";
   return "rect";
+}
+
+function customGeometrySvgPath(
+  shape: PresentationElement["shape"],
+  rect: { height: number; width: number },
+): string | undefined {
+  const paths = shape?.customPaths ?? [];
+  const commands: string[] = [];
+  for (const path of paths) {
+    const width = path.widthEmu || rect.width || 1;
+    const height = path.heightEmu || rect.height || 1;
+    const scaleX = rect.width / width;
+    const scaleY = rect.height / height;
+    for (const command of path.commands) {
+      if (command.moveTo) {
+        commands.push(`M ${command.moveTo.x * scaleX} ${command.moveTo.y * scaleY}`);
+      } else if (command.lineTo) {
+        commands.push(`L ${command.lineTo.x * scaleX} ${command.lineTo.y * scaleY}`);
+      } else if (command.quadBezTo) {
+        commands.push(
+          `Q ${command.quadBezTo.x1 * scaleX} ${command.quadBezTo.y1 * scaleY} ${command.quadBezTo.x * scaleX} ${command.quadBezTo.y * scaleY}`,
+        );
+      } else if (command.cubicBezTo) {
+        commands.push(
+          `C ${command.cubicBezTo.x1 * scaleX} ${command.cubicBezTo.y1 * scaleY} ${command.cubicBezTo.x2 * scaleX} ${command.cubicBezTo.y2 * scaleY} ${command.cubicBezTo.x * scaleX} ${command.cubicBezTo.y * scaleY}`,
+        );
+      } else if (command.close) {
+        commands.push("Z");
+      }
+    }
+  }
+  return commands.length > 0 ? commands.join(" ") : undefined;
 }
 
 async function renderSlideThumbnailDataUrl(
@@ -1452,34 +1624,50 @@ function renderSlideThumbnailElement(
   element: DirectCanvasElement,
   media: Map<string, DirectCanvasMedia>,
 ): string {
+  const wrap = (content: string) => wrapSlideThumbnailTransform(element, content);
   if (element.kind === "image") {
     const image = media.get(element.mediaId);
     if (!image) return "";
     const crop = element.crop ?? { height: image.height, width: image.width, x: 0, y: 0 };
-    return `<svg x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" viewBox="${crop.x} ${crop.y} ${crop.width} ${crop.height}" preserveAspectRatio="none">
+    return wrap(`<svg x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" viewBox="${crop.x} ${crop.y} ${crop.width} ${crop.height}" preserveAspectRatio="none">
 <image href="${escapeXml(image.src)}" x="0" y="0" width="${image.width}" height="${image.height}" preserveAspectRatio="none"/>
-</svg>`;
+</svg>`);
   }
   if (element.kind === "shape") {
     const shapeProps = `fill="${escapeXml(element.fill)}" stroke="${escapeXml(element.stroke)}" stroke-width="${element.strokeWidth}"`;
+    if (element.path) {
+      return wrap(`<path d="${escapeXml(element.path)}" transform="translate(${element.x} ${element.y})" ${shapeProps}/>`);
+    }
     if (element.shapeKind === "ellipse") {
-      return `<ellipse cx="${element.x + element.width / 2}" cy="${element.y + element.height / 2}" rx="${element.width / 2}" ry="${element.height / 2}" ${shapeProps}/>`;
+      return wrap(`<ellipse cx="${element.x + element.width / 2}" cy="${element.y + element.height / 2}" rx="${element.width / 2}" ry="${element.height / 2}" ${shapeProps}/>`);
     }
     if (element.shapeKind === "line") {
-      return `<line x1="${element.x}" y1="${element.y}" x2="${element.x + element.width}" y2="${element.y + element.height}" stroke="${escapeXml(element.stroke)}" stroke-width="${element.strokeWidth || 9_525}"/>`;
+      return wrap(`<line x1="${element.x}" y1="${element.y}" x2="${element.x + element.width}" y2="${element.y + element.height}" stroke="${escapeXml(element.stroke)}" stroke-width="${element.strokeWidth || 9_525}"/>`);
     }
     if (element.shapeKind === "triangle") {
-      return `<polygon points="${element.x + element.width / 2},${element.y} ${element.x + element.width},${element.y + element.height} ${element.x},${element.y + element.height}" ${shapeProps}/>`;
+      return wrap(`<polygon points="${element.x + element.width / 2},${element.y} ${element.x + element.width},${element.y + element.height} ${element.x},${element.y + element.height}" ${shapeProps}/>`);
     }
     if (element.shapeKind === "diamond") {
-      return `<polygon points="${element.x + element.width / 2},${element.y} ${element.x + element.width},${element.y + element.height / 2} ${element.x + element.width / 2},${element.y + element.height} ${element.x},${element.y + element.height / 2}" ${shapeProps}/>`;
+      return wrap(`<polygon points="${element.x + element.width / 2},${element.y} ${element.x + element.width},${element.y + element.height / 2} ${element.x + element.width / 2},${element.y + element.height} ${element.x},${element.y + element.height / 2}" ${shapeProps}/>`);
     }
-    return `<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="${element.radius}" ry="${element.radius}" ${shapeProps}/>`;
+    return wrap(`<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="${element.radius}" ry="${element.radius}" ${shapeProps}/>`);
   }
   if (element.kind === "table") {
-    return renderSlideThumbnailTable(element);
+    return wrap(renderSlideThumbnailTable(element));
   }
-  return renderSlideThumbnailText(element);
+  return wrap(renderSlideThumbnailText(element));
+}
+
+function wrapSlideThumbnailTransform(
+  element: DirectCanvasElement,
+  content: string,
+): string {
+  if (!content) return "";
+  const rotation = element.rotation ? element.rotation / 60_000 : 0;
+  if (rotation === 0) return content;
+  const cx = element.x + element.width / 2;
+  const cy = element.y + element.height / 2;
+  return `<g transform="rotate(${rotation} ${cx} ${cy})">${content}</g>`;
 }
 
 function renderSlideThumbnailText(
@@ -1558,7 +1746,7 @@ type DirectTableRow = { cells: DirectTableCell[]; height: number };
 type DirectCanvasElement =
   | { crop: DirectImageCrop | null; kind: "image"; mediaId: string; x: number; y: number; width: number; height: number }
   | { kind: "text"; paragraphs: DirectTextParagraph[]; insetBottom: number; insetLeft: number; insetRight: number; insetTop: number; verticalAlign: "bottom" | "middle" | "top"; x: number; y: number; width: number; height: number }
-  | { fill: string; kind: "shape"; radius: number; shapeKind: DirectShapeKind; stroke: string; strokeWidth: number; x: number; y: number; width: number; height: number }
+  | { fill: string; kind: "shape"; path?: string; radius: number; shapeKind: DirectShapeKind; stroke: string; strokeWidth: number; x: number; y: number; width: number; height: number }
   | { columnWidths: number[]; kind: "table"; rows: DirectTableRow[]; x: number; y: number; width: number; height: number };
 
 type DirectCanvasMedia = { height: number; src: string; width: number };
@@ -1777,6 +1965,9 @@ function SlideElement({ element }: { element: DirectCanvasElement }) {
   }
   if (element.kind === "shape") {
     const shapeProps = { fill: element.fill, stroke: element.stroke, strokeWidth: element.strokeWidth };
+    if (element.path) {
+      return <path d={element.path} transform={\`translate(\${element.x} \${element.y})\`} {...shapeProps} />;
+    }
     if (element.shapeKind === "ellipse") {
       return <ellipse cx={element.x + element.width / 2} cy={element.y + element.height / 2} rx={element.width / 2} ry={element.height / 2} {...shapeProps} />;
     }

@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 
+import AdmZip from "adm-zip";
 import { chromium, type Browser, type Page } from "playwright";
 import sharp from "sharp";
 
@@ -12,12 +13,14 @@ type ReaderMode = "routa" | "walnut";
 
 type SlideDiff = {
   averageDelta: number;
+  averageRgbDelta: number;
   changedPixelRatio: number;
   matches: boolean;
   maxDelta: number;
   referencePath: string;
-  slideIndex: number;
+  referenceSlideIndex: number;
   viewerPath: string;
+  viewerSlideIndex: number;
 };
 
 type RenderComparisonResult = {
@@ -26,10 +29,13 @@ type RenderComparisonResult = {
   parity: {
     failures: string[];
     matchingSlides: number;
-    slideCount: number;
+    referenceSlideCount: number;
+    viewerSlideCount: number;
+    visibleSlideCount: number;
   };
   reader: ReaderMode;
   slides: SlideDiff[];
+  visibleSlideIndices: number[];
 };
 
 const execFileAsync = promisify(execFile);
@@ -91,24 +97,34 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
   rmSync(fixtureOutputDir, { force: true, recursive: true });
   mkdirSync(fixtureOutputDir, { recursive: true });
 
+  const visibleSlideIndices = readVisibleSlideIndices(fixturePath);
   const referencePaths = referenceDir
     ? readReferenceSlides(referenceDir)
     : await renderPowerPointLikeReference(fixturePath, path.join(fixtureOutputDir, "reference"));
-  const viewerPaths = await renderViewerSlides(browser, fixturePath, fixtureLabel, path.join(fixtureOutputDir, "viewer"));
+  const viewerPaths = await renderViewerSlides(
+    browser,
+    fixturePath,
+    fixtureLabel,
+    path.join(fixtureOutputDir, "viewer"),
+    visibleSlideIndices,
+  );
   const slideCount = Math.min(referencePaths.length, viewerPaths.length);
   const slides: SlideDiff[] = [];
   for (let index = 0; index < slideCount; index++) {
-    slides.push(await compareSlideImages(referencePaths[index]!, viewerPaths[index]!, index + 1));
+    const viewer = viewerPaths[index]!;
+    slides.push(await compareSlideImages(referencePaths[index]!, viewer.path, index + 1, viewer.slideIndex));
   }
 
   const failures: string[] = [];
   if (referencePaths.length !== viewerPaths.length) {
-    failures.push(`slide count differs: PowerPoint-like=${referencePaths.length}, viewer=${viewerPaths.length}`);
+    failures.push(
+      `visible slide count differs: PowerPoint-like=${referencePaths.length}, viewer=${viewerPaths.length}, pptx-visible=${visibleSlideIndices.length}`,
+    );
   }
   for (const slide of slides) {
     if (!slide.matches) {
       failures.push(
-        `slide ${slide.slideIndex} changedRatio=${slide.changedPixelRatio.toFixed(4)}, averageDelta=${slide.averageDelta.toFixed(2)}, maxDelta=${slide.maxDelta}`,
+        `slide ${slide.viewerSlideIndex} changedRatio=${slide.changedPixelRatio.toFixed(4)}, averageDelta=${slide.averageDelta.toFixed(2)}, averageRgbDelta=${slide.averageRgbDelta.toFixed(2)}, maxDelta=${slide.maxDelta}`,
       );
     }
   }
@@ -119,11 +135,65 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
     parity: {
       failures,
       matchingSlides: slides.filter((slide) => slide.matches).length,
-      slideCount,
+      referenceSlideCount: referencePaths.length,
+      viewerSlideCount: viewerPaths.length,
+      visibleSlideCount: visibleSlideIndices.length,
     },
     reader,
     slides,
+    visibleSlideIndices,
   };
+}
+
+function readVisibleSlideIndices(fixturePath: string): number[] {
+  const zip = new AdmZip(fixturePath);
+  const orderedSlideTargets = orderedSlideTargetsFromPresentation(zip);
+  const slideTargets =
+    orderedSlideTargets.length > 0
+      ? orderedSlideTargets
+      : zip
+          .getEntries()
+          .map((entry) => entry.entryName)
+          .filter((entryName) => /^ppt\/slides\/slide\d+\.xml$/u.test(entryName))
+          .sort((left, right) => slideFileNumber(left) - slideFileNumber(right));
+
+  return slideTargets
+    .map((entryName, index) => {
+      const xml = zip.readAsText(entryName);
+      return isHiddenSlideXml(xml) ? null : index + 1;
+    })
+    .filter((index): index is number => index != null);
+}
+
+function orderedSlideTargetsFromPresentation(zip: AdmZip): string[] {
+  const presentationXml = zip.readAsText("ppt/presentation.xml");
+  const relsXml = zip.readAsText("ppt/_rels/presentation.xml.rels");
+  if (!presentationXml || !relsXml) return [];
+
+  const relTargets = new Map<string, string>();
+  for (const match of relsXml.matchAll(/<Relationship\b[^>]*\bId="([^"]+)"[^>]*\bTarget="([^"]+)"/gu)) {
+    const id = match[1];
+    const target = match[2];
+    if (id && target?.startsWith("slides/")) {
+      relTargets.set(id, `ppt/${target}`);
+    }
+  }
+
+  const targets: string[] = [];
+  for (const match of presentationXml.matchAll(/<p:sldId\b[^>]*\br:id="([^"]+)"/gu)) {
+    const target = relTargets.get(match[1] ?? "");
+    if (target) targets.push(target);
+  }
+  return targets;
+}
+
+function isHiddenSlideXml(xml: string): boolean {
+  return /<p:sld\b[^>]*\bshow=["']0["']/u.test(xml);
+}
+
+function slideFileNumber(entryName: string): number {
+  const match = /slide(\d+)\.xml$/u.exec(entryName);
+  return match ? Number(match[1]) : 0;
 }
 
 function readReferenceSlides(referenceDir: string): string[] {
@@ -170,7 +240,8 @@ async function renderViewerSlides(
   fixturePath: string,
   fixtureLabel: string,
   viewerDir: string,
-): Promise<string[]> {
+  visibleSlideIndices: number[],
+): Promise<Array<{ path: string; slideIndex: number }>> {
   mkdirSync(viewerDir, { recursive: true });
   const page = await browser.newPage({ deviceScaleFactor: 1, viewport: { height: 1058, width: 2048 } });
   const consoleMessages: string[] = [];
@@ -187,14 +258,22 @@ async function renderViewerSlides(
   try {
     await loadPresentation(page, fixturePath, reader);
     const slideCount = await page.getByTestId("presentation-thumbnail").count();
-    const screenshots: string[] = [];
-    for (let index = 0; index < slideCount; index++) {
-      await page.getByTestId("presentation-thumbnail").nth(index).click();
+    const selectedSlideIndices =
+      visibleSlideIndices.length > 0
+        ? visibleSlideIndices
+        : Array.from({ length: slideCount }, (_, index) => index + 1);
+    const screenshots: Array<{ path: string; slideIndex: number }> = [];
+    for (const slideIndex of selectedSlideIndices) {
+      const thumbnail = page.locator(
+        `[data-testid="presentation-thumbnail"][data-slide-index="${slideIndex}"]`,
+      );
+      if ((await thumbnail.count()) === 0) continue;
+      await thumbnail.click();
       await page.waitForTimeout(300);
       await page.getByTestId("presentation-slide-canvas").waitFor({ timeout: 15_000 });
-      const screenshotPath = path.join(viewerDir, `${fixtureLabel}-${reader}-slide-${String(index + 1).padStart(2, "0")}.png`);
+      const screenshotPath = path.join(viewerDir, `${fixtureLabel}-${reader}-slide-${String(slideIndex).padStart(2, "0")}.png`);
       await page.getByTestId("presentation-slide-canvas").screenshot({ path: screenshotPath });
-      screenshots.push(screenshotPath);
+      screenshots.push({ path: screenshotPath, slideIndex });
     }
 
     if (consoleMessages.length > 0) {
@@ -220,19 +299,27 @@ async function loadPresentation(page: Page, fixturePath: string, mode: ReaderMod
   await page.waitForTimeout(1_000);
 }
 
-async function compareSlideImages(referencePath: string, viewerPath: string, slideIndex: number): Promise<SlideDiff> {
+async function compareSlideImages(
+  referencePath: string,
+  viewerPath: string,
+  referenceSlideIndex: number,
+  viewerSlideIndex: number,
+): Promise<SlideDiff> {
   const [reference, viewer] = await Promise.all([
     normalizedPixels(referencePath),
     normalizedPixels(viewerPath),
   ]);
   let changedPixels = 0;
   let totalDelta = 0;
+  let totalRgbDelta = 0;
   let maxDelta = 0;
   const channels = reference.info.channels;
   for (let index = 0; index < reference.data.length; index += channels) {
     let pixelDelta = 0;
     for (let channel = 0; channel < 3; channel++) {
-      pixelDelta = Math.max(pixelDelta, Math.abs(reference.data[index + channel] - viewer.data[index + channel]));
+      const channelDelta = Math.abs(reference.data[index + channel] - viewer.data[index + channel]);
+      pixelDelta = Math.max(pixelDelta, channelDelta);
+      totalRgbDelta += channelDelta;
     }
     totalDelta += pixelDelta;
     if (pixelDelta > 35) {
@@ -246,12 +333,14 @@ async function compareSlideImages(referencePath: string, viewerPath: string, sli
   const changedPixelRatio = changedPixels / totalPixels;
   return {
     averageDelta,
+    averageRgbDelta: totalRgbDelta / (totalPixels * 3),
     changedPixelRatio,
     matches: changedPixelRatio <= changedPixelRatioTolerance && averageDelta <= averageDeltaTolerance,
     maxDelta,
     referencePath,
-    slideIndex,
+    referenceSlideIndex,
     viewerPath,
+    viewerSlideIndex,
   };
 }
 
