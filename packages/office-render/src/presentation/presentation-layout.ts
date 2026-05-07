@@ -63,13 +63,17 @@ export type PresentationShapeKind =
   | "extract"
   | "frame"
   | "hexagon"
+  | "leftBrace"
   | "leftArrow"
+  | "leftBracket"
   | "lightningBolt"
   | "line"
   | "parallelogram"
   | "pentagon"
   | "rect"
+  | "rightBrace"
   | "rightArrow"
+  | "rightBracket"
   | "roundRect"
   | "rtTriangle"
   | "snipRect"
@@ -288,6 +292,10 @@ export function presentationShapeKind(
   if (geometry === 75) return "lightningBolt";
   if (geometry === 42) return "donut";
   if (geometry === 84) return "frame";
+  if (geometry === 90) return "leftBracket";
+  if (geometry === 91) return "rightBracket";
+  if (geometry === 92) return "leftBrace";
+  if (geometry === 93) return "rightBrace";
   if (geometry === 95 || geometry === 111) return "bracePair";
   if (geometry === 94 || geometry === 112) return "bracketPair";
   if (geometry === 87) return "diagStripe";

@@ -313,6 +313,16 @@ export function elementPath(
     return path;
   }
 
+  if (
+    kind === "leftBrace" ||
+    kind === "rightBrace" ||
+    kind === "leftBracket" ||
+    kind === "rightBracket"
+  ) {
+    drawSingleBracketLikePath(path, rect, kind);
+    return path;
+  }
+
   path.rect(0, 0, rect.width, rect.height);
   return path;
 }
@@ -501,6 +511,33 @@ function drawBracketLikePath(
     0,
   );
   path.closePath();
+}
+
+function drawSingleBracketLikePath(
+  path: Path2D,
+  rect: PresentationRect,
+  kind: "leftBrace" | "rightBrace" | "leftBracket" | "rightBracket",
+): void {
+  if (kind === "leftBracket" || kind === "rightBracket") {
+    const x = kind === "leftBracket" ? rect.width : 0;
+    const outerX = kind === "leftBracket" ? 0 : rect.width;
+    path.moveTo(x, 0);
+    path.lineTo(outerX, 0);
+    path.lineTo(outerX, rect.height);
+    path.lineTo(x, rect.height);
+    return;
+  }
+
+  const mirror = kind === "rightBrace";
+  const x = (value: number) => (mirror ? rect.width - value : value);
+  const outer = rect.width;
+  const waist = rect.width * 0.18;
+  const inner = rect.width * 0.74;
+  path.moveTo(x(outer), 0);
+  path.bezierCurveTo(x(waist), 0, x(waist), rect.height * 0.25, x(inner), rect.height * 0.36);
+  path.bezierCurveTo(x(outer), rect.height * 0.43, x(outer), rect.height * 0.47, x(waist), rect.height * 0.5);
+  path.bezierCurveTo(x(outer), rect.height * 0.53, x(outer), rect.height * 0.57, x(inner), rect.height * 0.64);
+  path.bezierCurveTo(x(waist), rect.height * 0.75, x(waist), rect.height, x(outer), rect.height);
 }
 
 function roundedRect(

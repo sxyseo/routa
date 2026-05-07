@@ -113,6 +113,10 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 63 }, rect)).toBe("bentArrow");
     expect(presentationShapeKind({ geometry: 75 }, rect)).toBe("lightningBolt");
     expect(presentationShapeKind({ geometry: 87 }, rect)).toBe("diagStripe");
+    expect(presentationShapeKind({ geometry: 90 }, rect)).toBe("leftBracket");
+    expect(presentationShapeKind({ geometry: 91 }, rect)).toBe("rightBracket");
+    expect(presentationShapeKind({ geometry: 92 }, rect)).toBe("leftBrace");
+    expect(presentationShapeKind({ geometry: 93 }, rect)).toBe("rightBrace");
     expect(presentationShapeKind({ geometry: 95 }, rect)).toBe("bracePair");
     expect(presentationShapeKind({ geometry: 137 }, rect)).toBe("document");
     expect(presentationShapeKind({ geometry: 150 }, rect)).toBe("extract");
