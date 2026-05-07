@@ -25,6 +25,7 @@ import {
   presentationParagraphSpacingPx,
   presentationTextShouldShrinkForAutoFit,
 } from "../presentation-text-layout";
+import { drawLineEndPath } from "../presentation-line-styles";
 
 describe("presentation renderer helpers", () => {
   it("quotes source typefaces and appends Office/CJK fallbacks", () => {
@@ -315,6 +316,26 @@ describe("presentation renderer helpers", () => {
       type: 2,
       width: 7,
     });
+  });
+
+  it("draws PPT line end shapes according to their preset type", () => {
+    const context = mockCanvasContext();
+
+    drawLineEndPath(context, { length: 10, type: 4, width: 8 });
+    expect(context.paths.at(-1)).toEqual([
+      { command: "moveTo", x: 0, y: 0 },
+      { command: "lineTo", x: -5, y: -4 },
+      { command: "lineTo", x: -10, y: 0 },
+      { command: "lineTo", x: -5, y: 4 },
+    ]);
+
+    drawLineEndPath(context, { length: 10, type: 3, width: 8 });
+    expect(context.paths.at(-1)).toEqual([
+      { command: "moveTo", x: 0, y: 0 },
+      { command: "lineTo", x: -10, y: -4 },
+      { command: "lineTo", x: -6.2, y: 0 },
+      { command: "lineTo", x: -10, y: 4 },
+    ]);
   });
 
   it("normalizes PPT gradient stops and percent positions", () => {
@@ -834,7 +855,11 @@ function mockCanvasContext(): CanvasRenderingContext2D & {
     clearRect: () => {},
     clip: () => {},
     closePath: () => {},
-    fill: () => {},
+    fill: () => {
+      if (state.currentPath.length > 0) {
+        state.paths.push([...state.currentPath]);
+      }
+    },
     fillRect: () => {},
     fillText: () => {},
     lineTo: (x: number, y: number) => {

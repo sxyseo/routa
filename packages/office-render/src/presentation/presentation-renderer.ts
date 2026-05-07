@@ -27,6 +27,7 @@ import {
   applyElementShadow,
   applyLineStyle,
   drawLineEnd,
+  drawLineEndPath,
   type PresentationLineEndStyle,
   presentationElementLineStyle,
   type PresentationLineStyle,
@@ -659,24 +660,8 @@ function drawLineEndOnSegment(
   context.translate(tip.x, tip.y);
   context.rotate(angle);
   context.fillStyle = color;
-  context.beginPath();
-  if (end.type === 5) {
-    context.ellipse(
-      -end.length / 2,
-      0,
-      end.width / 2,
-      end.width / 2,
-      0,
-      0,
-      Math.PI * 2,
-    );
-  } else {
-    context.moveTo(0, 0);
-    context.lineTo(-end.length, -end.width / 2);
-    context.lineTo(-end.length, end.width / 2);
-    context.closePath();
-  }
-  context.fill();
+  context.strokeStyle = color;
+  drawLineEndPath(context, end);
   context.restore();
 }
 

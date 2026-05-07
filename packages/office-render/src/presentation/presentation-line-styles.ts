@@ -156,6 +156,15 @@ export function drawLineEnd(
   context.translate(x, y);
   context.rotate(angle);
   context.fillStyle = color;
+  context.strokeStyle = color;
+  drawLineEndPath(context, end);
+  context.restore();
+}
+
+export function drawLineEndPath(
+  context: CanvasRenderingContext2D,
+  end: PresentationLineEndStyle,
+): void {
   context.beginPath();
   if (end.type === 5) {
     context.ellipse(
@@ -167,14 +176,33 @@ export function drawLineEnd(
       0,
       Math.PI * 2,
     );
+    context.fill();
+  } else if (end.type === 4) {
+    context.moveTo(0, 0);
+    context.lineTo(-end.length / 2, -end.width / 2);
+    context.lineTo(-end.length, 0);
+    context.lineTo(-end.length / 2, end.width / 2);
+    context.closePath();
+    context.fill();
+  } else if (end.type === 3) {
+    context.moveTo(0, 0);
+    context.lineTo(-end.length, -end.width / 2);
+    context.lineTo(-end.length * 0.62, 0);
+    context.lineTo(-end.length, end.width / 2);
+    context.closePath();
+    context.fill();
+  } else if (end.type === 6) {
+    context.moveTo(-end.length, -end.width / 2);
+    context.lineTo(0, 0);
+    context.lineTo(-end.length, end.width / 2);
+    context.stroke();
   } else {
     context.moveTo(0, 0);
     context.lineTo(-end.length, -end.width / 2);
     context.lineTo(-end.length, end.width / 2);
     context.closePath();
+    context.fill();
   }
-  context.fill();
-  context.restore();
 }
 
 export function presentationShadowStyle(
