@@ -113,6 +113,7 @@ public class PptxProtoReaderBehaviorTests
         AssertShapeGeometry(slideElements, "Half Frame", 213);
         AssertShapeGeometry(slideElements, "Math Equal", 177);
         AssertShapeGeometry(slideElements, "Folded Corner", 214);
+        AssertShapeGeometry(slideElements, "Star Four", 215);
     }
 
     private static byte[] CustomGeometryEffectsAndChartPptx()
@@ -502,6 +503,10 @@ public class PptxProtoReaderBehaviorTests
     <p:sp>
       <p:nvSpPr><p:cNvPr id="12" name="Folded Corner"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
       <p:spPr><a:xfrm><a:off x="7100000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="foldedCorner"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="AAAA00"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="13" name="Star Four"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="7800000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="star4"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="00AAAA"/></a:solidFill></p:spPr>
     </p:sp>
   </p:spTree>
 </p:cSld>

@@ -105,6 +105,7 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 18 }, rect)).toBe("star6");
     expect(presentationShapeKind({ geometry: 20 }, rect)).toBe("star8");
     expect(presentationShapeKind({ geometry: 25 }, rect)).toBe("star32");
+    expect(presentationShapeKind({ geometry: 215 }, rect)).toBe("star4");
     expect(presentationShapeKind({ geometry: 28 }, rect)).toBe("roundRect");
     expect(presentationShapeKind({ geometry: 29 }, rect)).toBe("roundRect");
     expect(presentationShapeKind({ geometry: 32 }, rect)).toBe("snipRect");

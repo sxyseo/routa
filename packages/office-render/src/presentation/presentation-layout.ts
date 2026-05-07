@@ -99,6 +99,7 @@ export type PresentationShapeKind =
   | "snip1Rect"
   | "snipRect"
   | "star32"
+  | "star4"
   | "star5"
   | "star6"
   | "star8"
@@ -302,6 +303,7 @@ export function presentationShapeKind(
   if (geometry === 18) return "star6";
   if (geometry === 20) return "star8";
   if (geometry === 25) return "star32";
+  if (geometry === 215) return "star4";
   if (geometry === 207) return "snip1Rect";
   if (geometry === 32 || geometry === 33) return "snipRect";
   if (geometry === 211) return "octagon";

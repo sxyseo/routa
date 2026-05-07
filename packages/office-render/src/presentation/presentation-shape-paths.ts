@@ -102,13 +102,22 @@ export function elementPath(
   }
 
   if (
+    kind === "star4" ||
     kind === "star5" ||
     kind === "star6" ||
     kind === "star8" ||
     kind === "star32"
   ) {
     const points =
-      kind === "star32" ? 32 : kind === "star8" ? 8 : kind === "star6" ? 6 : 5;
+      kind === "star32"
+        ? 32
+        : kind === "star8"
+          ? 8
+          : kind === "star6"
+            ? 6
+            : kind === "star4"
+              ? 4
+              : 5;
     starPath(
       path,
       rect.width / 2,

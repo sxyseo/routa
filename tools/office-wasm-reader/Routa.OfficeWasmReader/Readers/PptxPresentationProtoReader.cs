@@ -2761,6 +2761,7 @@ internal static class PptxPresentationProtoReader
             "lightningbolt" => 75,
             "cube" => 73,
             "heart" => 76,
+            "star4" => 215,
             "chord" => 206,
             "snip1rect" => 207,
             "teardrop" => 208,
