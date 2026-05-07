@@ -77,6 +77,7 @@ export type PresentationShapeKind =
   | "halfFrame"
   | "heart"
   | "hexagon"
+  | "homePlate"
   | "leftBrace"
   | "leftArrow"
   | "leftRightArrowCallout"
@@ -298,7 +299,8 @@ export function presentationShapeKind(
   if (geometry === 7 || geometry === 31 || geometry === 134 || geometry === 141)
     return "parallelogram";
   if (geometry === 8 || geometry === 144) return "trapezoid";
-  if (geometry === 10 || geometry === 37 || geometry === 160) return "pentagon";
+  if (geometry === 10 || geometry === 160) return "pentagon";
+  if (geometry === 37) return "homePlate";
   if (geometry === 11 || geometry === 39 || geometry === 140) return "hexagon";
   if (geometry === 17) return "star5";
   if (geometry === 18) return "star6";

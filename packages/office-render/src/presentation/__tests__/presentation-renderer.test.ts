@@ -104,6 +104,7 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 23 }, rect)).toBe("triangle");
     expect(presentationShapeKind({ geometry: 6 }, rect)).toBe("diamond");
     expect(presentationShapeKind({ geometry: 30 }, rect)).toBe("diamond");
+    expect(presentationShapeKind({ geometry: 37 }, rect)).toBe("homePlate");
     expect(presentationShapeKind({ geometry: 11 }, rect)).toBe("hexagon");
     expect(presentationShapeKind({ geometry: 39 }, rect)).toBe("hexagon");
     expect(presentationShapeKind({ geometry: 18 }, rect)).toBe("star6");

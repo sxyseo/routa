@@ -82,6 +82,18 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "homePlate") {
+    const pointInset = rect.width * 0.22;
+    polygon(path, [
+      [0, 0],
+      [rect.width - pointInset, 0],
+      [rect.width, rect.height / 2],
+      [rect.width - pointInset, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
   if (kind === "chevron") {
     const inset = Math.min(rect.width * 0.38, rect.height * 0.5);
     polygon(path, [
