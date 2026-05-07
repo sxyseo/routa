@@ -169,9 +169,18 @@ type PresentationTheme = {
 
 type PresentationColor = {
   lastColor?: string;
-  transform?: { alpha?: number };
+  transform?: PresentationColorTransform;
   type?: number;
   value?: string;
+};
+
+type PresentationColorTransform = {
+  alpha?: number;
+  luminanceModulation?: number;
+  luminanceOffset?: number;
+  saturationModulation?: number;
+  shade?: number;
+  tint?: number;
 };
 
 type PresentationCustomGeometryPath = {
@@ -602,12 +611,17 @@ function decodeColor(bytes: Uint8Array): PresentationColor {
   return color;
 }
 
-function decodeColorTransform(bytes: Uint8Array): { alpha?: number } {
+function decodeColorTransform(bytes: Uint8Array): PresentationColorTransform {
   const reader = new ProtoReader(bytes);
-  const transform: { alpha?: number } = {};
+  const transform: PresentationColorTransform = {};
   while (!reader.eof()) {
     const tag = reader.tag();
-    if (tag.fieldNumber === 6) transform.alpha = reader.int32();
+    if (tag.fieldNumber === 1) transform.tint = reader.int32();
+    else if (tag.fieldNumber === 2) transform.shade = reader.int32();
+    else if (tag.fieldNumber === 3) transform.luminanceModulation = reader.int32();
+    else if (tag.fieldNumber === 4) transform.luminanceOffset = reader.int32();
+    else if (tag.fieldNumber === 5) transform.saturationModulation = reader.int32();
+    else if (tag.fieldNumber === 6) transform.alpha = reader.int32();
     else reader.skip(tag.wireType);
   }
   return transform;

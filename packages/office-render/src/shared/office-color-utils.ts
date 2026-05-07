@@ -11,6 +11,13 @@ function hexToRgb(value: string): { red: number; green: number; blue: number } |
   };
 }
 
+function rgbToHex({ red, green, blue }: { red: number; green: number; blue: number }): string {
+  return [red, green, blue]
+    .map((channel) => clampColorChannel(channel).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
 function colorAlpha(value: unknown): number {
   const transform = asRecord(asRecord(value)?.transform);
   const alpha = transform?.alpha;
@@ -18,23 +25,138 @@ function colorAlpha(value: unknown): number {
   return Math.max(0, Math.min(1, alpha / 100_000));
 }
 
+function transformedRgb(
+  rgb: { red: number; green: number; blue: number },
+  color: RecordValue,
+): { red: number; green: number; blue: number } {
+  const transform = asRecord(color.transform);
+  if (transform == null) return rgb;
+
+  let next = { ...rgb };
+  const tint = percentage(transform.tint);
+  if (tint != null) {
+    next = mapRgb(next, (channel) => channel + (255 - channel) * tint);
+  }
+
+  const shade = percentage(transform.shade);
+  if (shade != null) {
+    next = mapRgb(next, (channel) => channel * (1 - shade));
+  }
+
+  const luminanceModulation = percentage(transform.luminanceModulation);
+  if (luminanceModulation != null) {
+    next = mapRgb(next, (channel) => channel * luminanceModulation);
+  }
+
+  const luminanceOffset = percentage(transform.luminanceOffset);
+  if (luminanceOffset != null) {
+    next = mapRgb(next, (channel) => channel + 255 * luminanceOffset);
+  }
+
+  const saturationModulation = percentage(transform.saturationModulation);
+  if (saturationModulation != null) {
+    next = modulateSaturation(next, saturationModulation);
+  }
+
+  return mapRgb(next, clampColorChannel);
+}
+
+function percentage(value: unknown): number | null {
+  if (value == null) return null;
+  const numeric = asNumber(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Math.max(0, Math.min(1, numeric / 100_000));
+}
+
+function mapRgb(
+  rgb: { red: number; green: number; blue: number },
+  map: (channel: number) => number,
+): { red: number; green: number; blue: number } {
+  return {
+    blue: map(rgb.blue),
+    green: map(rgb.green),
+    red: map(rgb.red),
+  };
+}
+
+function modulateSaturation(
+  rgb: { red: number; green: number; blue: number },
+  factor: number,
+): { red: number; green: number; blue: number } {
+  const channels = [rgb.red / 255, rgb.green / 255, rgb.blue / 255];
+  const max = Math.max(...channels);
+  const min = Math.min(...channels);
+  const lightness = (max + min) / 2;
+  if (max === min) return rgb;
+
+  const delta = max - min;
+  const saturation = lightness > 0.5
+    ? delta / (2 - max - min)
+    : delta / (max + min);
+  let hue = 0;
+  if (max === channels[0]) {
+    hue = (channels[1]! - channels[2]!) / delta + (channels[1]! < channels[2]! ? 6 : 0);
+  } else if (max === channels[1]) {
+    hue = (channels[2]! - channels[0]!) / delta + 2;
+  } else {
+    hue = (channels[0]! - channels[1]!) / delta + 4;
+  }
+  hue /= 6;
+
+  return hslToRgb(hue, Math.max(0, Math.min(1, saturation * factor)), lightness);
+}
+
+function hslToRgb(hue: number, saturation: number, lightness: number): { red: number; green: number; blue: number } {
+  if (saturation === 0) {
+    const channel = lightness * 255;
+    return { blue: channel, green: channel, red: channel };
+  }
+
+  const q = lightness < 0.5
+    ? lightness * (1 + saturation)
+    : lightness + saturation - lightness * saturation;
+  const p = 2 * lightness - q;
+  return {
+    blue: hueToRgb(p, q, hue - 1 / 3) * 255,
+    green: hueToRgb(p, q, hue) * 255,
+    red: hueToRgb(p, q, hue + 1 / 3) * 255,
+  };
+}
+
+function hueToRgb(p: number, q: number, hue: number): number {
+  let nextHue = hue;
+  if (nextHue < 0) nextHue += 1;
+  if (nextHue > 1) nextHue -= 1;
+  if (nextHue < 1 / 6) return p + (q - p) * 6 * nextHue;
+  if (nextHue < 1 / 2) return q;
+  if (nextHue < 2 / 3) return p + (q - p) * (2 / 3 - nextHue) * 6;
+  return p;
+}
+
+function clampColorChannel(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
 export function colorToCss(value: unknown): string | undefined {
   const color = asRecord(value);
+  if (color == null) return undefined;
   const raw = asString(color?.value);
   const rgb = hexToRgb(raw);
   if (rgb) {
+    const transformed = transformedRgb(rgb, color);
     const argbAlpha = /^[0-9a-f]{8}$/i.test(raw) ? Number.parseInt(raw.slice(0, 2), 16) / 255 : 1;
     const alpha = Math.min(argbAlpha, colorAlpha(color));
-    if (alpha < 1) return `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, ${alpha})`;
-    return `#${raw.slice(-6)}`;
+    if (alpha < 1) return `rgba(${transformed.red}, ${transformed.green}, ${transformed.blue}, ${alpha})`;
+    return `#${rgbToHex(transformed)}`;
   }
 
   const lastColor = asString(color?.lastColor);
   const lastRgb = hexToRgb(lastColor);
   if (lastRgb) {
+    const transformed = transformedRgb(lastRgb, color);
     const alpha = colorAlpha(color);
-    if (alpha < 1) return `rgba(${lastRgb.red}, ${lastRgb.green}, ${lastRgb.blue}, ${alpha})`;
-    return `#${lastColor}`;
+    if (alpha < 1) return `rgba(${transformed.red}, ${transformed.green}, ${transformed.blue}, ${alpha})`;
+    return `#${rgbToHex(transformed)}`;
   }
   return undefined;
 }
