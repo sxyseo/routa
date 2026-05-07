@@ -92,13 +92,47 @@ describe("spreadsheet cell overlays", () => {
         type: "dropdown",
       }),
     ).toEqual(['Needs "review"', "Done"]);
+  });
+
+  it("resolves Excel validation list choices from sheet ranges", () => {
+    const activeSheet = {
+      name: "Validation",
+      rows: [
+        { cells: [{ address: "A1", value: "Small" }], index: 1 },
+        { cells: [{ address: "A2", value: "Medium" }], index: 2 },
+      ],
+    };
+    const configSheet = {
+      name: "Config",
+      rows: [
+        { cells: [{ address: "A1", value: "Open" }], index: 1 },
+        { cells: [{ address: "A2", value: "Closed" }], index: 2 },
+        { cells: [{ address: "A3", value: "" }], index: 3 },
+      ],
+    };
+
     expect(
-      spreadsheetValidationChoices({
-        formula: "Config!$A$1:$A$3",
-        prompt: "",
-        type: "dropdown",
-      }),
-    ).toEqual([]);
+      spreadsheetValidationChoices(
+        {
+          formula: "Config!$A$1:$A$3",
+          prompt: "",
+          type: "dropdown",
+        },
+        activeSheet,
+        [activeSheet, configSheet],
+      ),
+    ).toEqual(["Open", "Closed"]);
+    expect(
+      spreadsheetValidationChoices(
+        {
+          formula: "$A$1:$A$2",
+          prompt: "",
+          type: "dropdown",
+        },
+        activeSheet,
+        [activeSheet, configSheet],
+      ),
+    ).toEqual(["Small", "Medium"]);
   });
 
   it("opens dropdown validations through a clickable cell indicator", () => {

@@ -186,7 +186,7 @@ Routa's XLSX preview should normalize OpenXML/reader dimensions into a stable sp
   - Custom `yyyy-mm-dd` number formats now render as ISO dates, matching the task-table and validation/layout-stress sheets.
   - `5Rating` conditional-format icon sets now render through the bar-style icon renderer instead of star/circle glyphs, matching Excel's in-cell rating bars more closely.
   - Data-validation indicators now render only for the active selected cell, avoiding always-on dropdown/error badges across validation ranges.
-  - Inline list data-validation arrows now open an Excel-like option menu for quoted list formulas and commit the selected value into the preview cell.
+  - Inline and cell-range list data-validation arrows now open an Excel-like option menu and commit the selected value into the preview cell.
   - A protocol probe showed `05_Formula_Lab!B9` intentionally carries workbook number format `$#,##0`, so the observed `$0` display is workbook data/style, not a renderer bug.
 - Re-ran the Downloads workbook multi-scroll viewer comparison after these fixes; all 27 Routa-vs-Walnut samples still pass under the `0.5%` threshold, with evidence under `/tmp/routa-xlsx-viewer-align-2`.
 

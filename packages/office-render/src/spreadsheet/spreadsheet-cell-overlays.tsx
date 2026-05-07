@@ -373,15 +373,43 @@ function SpreadsheetValidationIndicator({
   );
 }
 
-export function spreadsheetValidationChoices(validation: SpreadsheetValidationVisual): string[] {
+export function spreadsheetValidationChoices(
+  validation: SpreadsheetValidationVisual,
+  activeSheet?: RecordValue,
+  sheets: RecordValue[] = [],
+): string[] {
   const formula = validation.formula.trim();
-  if (!formula.startsWith('"') || !formula.endsWith('"')) return [];
+  if (!formula) return [];
+  if (!formula.startsWith('"') || !formula.endsWith('"')) return spreadsheetValidationReferenceChoices(formula, activeSheet, sheets);
   return formula
     .slice(1, -1)
     .replaceAll('""', '"')
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+function spreadsheetValidationReferenceChoices(formula: string, activeSheet: RecordValue | undefined, sheets: RecordValue[]): string[] {
+  const normalized = formula.replace(/^=/, "").trim();
+  const sheetSeparator = normalized.lastIndexOf("!");
+  const rawSheetName = sheetSeparator >= 0 ? normalized.slice(0, sheetSeparator).replace(/^'|'$/g, "") : "";
+  const reference = sheetSeparator >= 0 ? normalized.slice(sheetSeparator + 1) : normalized;
+  const range = parseCellRange(reference);
+  if (!range) return [];
+
+  const targetSheet = rawSheetName ? sheets.find((sheet) => asString(sheet.name) === rawSheetName) : activeSheet;
+  if (!targetSheet) return [];
+  const rows = rowsByIndexForSheet(targetSheet);
+  const choices: string[] = [];
+  for (let rowIndex = range.startRow; rowIndex < range.startRow + range.rowSpan && choices.length < 200; rowIndex += 1) {
+    const row = rows.get(rowIndex);
+    if (!row) continue;
+    for (let columnIndex = range.startColumn; columnIndex < range.startColumn + range.columnSpan && choices.length < 200; columnIndex += 1) {
+      const value = cellText(row.get(columnIndex)).trim();
+      if (value) choices.push(value);
+    }
+  }
+  return choices;
 }
 
 function SpreadsheetCommentIndicator() {

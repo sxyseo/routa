@@ -377,7 +377,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   };
 
   const handleValidationClick = (selectionKey: string, validation: SpreadsheetValidationVisual, event: PointerEvent<HTMLButtonElement>) => {
-    const options = spreadsheetValidationChoices(validation);
+    const options = spreadsheetValidationChoices(validation, activeSheet, sheets);
     const hostBounds = viewportShellRef.current?.getBoundingClientRect();
     const buttonBounds = event.currentTarget.getBoundingClientRect();
     if (!hostBounds || options.length === 0) return;
