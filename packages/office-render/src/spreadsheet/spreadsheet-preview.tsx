@@ -1,36 +1,18 @@
 "use client";
 
-import {
-  type CSSProperties,
-  type KeyboardEvent,
-  type PointerEvent,
-  type UIEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type CSSProperties, type KeyboardEvent, type PointerEvent, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  asArray,
-  asRecord,
-  asString,
-  columnLabel,
-  type PreviewLabels,
-  type RecordValue,
-  useOfficeImageSources,
-} from "../shared/office-preview-utils";
-import {
-  buildSpreadsheetConditionalVisuals,
-  type SpreadsheetCellVisualLookup,
-} from "./spreadsheet-conditional-visuals";
+import { asArray, asRecord, asString, columnLabel, type PreviewLabels, type RecordValue, useOfficeImageSources } from "../shared/office-preview-utils";
+import { buildSpreadsheetConditionalVisuals, type SpreadsheetCellVisualLookup } from "./spreadsheet-conditional-visuals";
 import {
   buildSpreadsheetCommentVisuals,
   buildSpreadsheetSparklineVisuals,
   buildSpreadsheetValidationVisuals,
   SpreadsheetCellContent,
   type SpreadsheetSparklineVisual,
+  type SpreadsheetValidationVisual,
   type SpreadsheetValidationVisualLookup,
+  spreadsheetValidationChoices,
 } from "./spreadsheet-cell-overlays";
 import { spreadsheetCellStyle, spreadsheetEffectiveStyleIndex, spreadsheetShowGridLines } from "./spreadsheet-cell-styles";
 import { buildSpreadsheetCanvasCellPaints } from "./spreadsheet-canvas-paints";
@@ -67,10 +49,7 @@ import {
   spreadsheetRowTop,
 } from "./spreadsheet-layout";
 import { spreadsheetCellText } from "./spreadsheet-number-format";
-import {
-  buildSpreadsheetRenderSnapshot,
-  visibleCellIntersectsRange,
-} from "./spreadsheet-render-snapshot";
+import { buildSpreadsheetRenderSnapshot, visibleCellIntersectsRange } from "./spreadsheet-render-snapshot";
 import {
   spreadsheetResizeDragFromHit,
   spreadsheetResizeHitAtViewportPoint,
@@ -84,12 +63,7 @@ import {
   spreadsheetSelectionWorldRect,
   type SpreadsheetSelection,
 } from "./spreadsheet-selection";
-import {
-  buildSpreadsheetImages,
-  buildSpreadsheetShapes,
-  SpreadsheetImageLayer,
-  SpreadsheetShapeLayer,
-} from "./spreadsheet-shapes";
+import { buildSpreadsheetImages, buildSpreadsheetShapes, SpreadsheetImageLayer, SpreadsheetShapeLayer } from "./spreadsheet-shapes";
 import {
   buildSpreadsheetTableFilterTargets,
   mergeSpreadsheetLayoutOverrides,
@@ -102,15 +76,9 @@ import {
   type SpreadsheetTableFilterTarget,
   type SpreadsheetTableFilterValue,
 } from "./spreadsheet-table-filters";
-import {
-  SpreadsheetTableFilterMenu,
-  type SpreadsheetTableFilterMenuAnchor,
-} from "./spreadsheet-table-filter-menu";
+import { SpreadsheetTableFilterMenu, type SpreadsheetTableFilterMenuAnchor } from "./spreadsheet-table-filter-menu";
 import { useSpreadsheetViewportStore } from "./spreadsheet-viewport-store";
-import {
-  SpreadsheetFormulaBar,
-  SpreadsheetWorkbookBar,
-} from "./spreadsheet-workbook-chrome";
+import { SpreadsheetFormulaBar, SpreadsheetWorkbookBar } from "./spreadsheet-workbook-chrome";
 
 type SpreadsheetCellEditor = {
   selection: SpreadsheetSelection;
@@ -122,24 +90,41 @@ type SpreadsheetFilterMenuState = {
   anchor: SpreadsheetTableFilterMenuAnchor;
   target: SpreadsheetTableFilterTarget;
 };
+type SpreadsheetValidationMenuState = {
+  anchor: SpreadsheetTableFilterMenuAnchor;
+  options: string[];
+  selectionKey: string;
+};
 
 export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; proto: unknown }) {
   const root = useMemo(() => asRecord(proto), [proto]);
   const sheets = useMemo(
-    () => asArray(root?.sheets).map(asRecord).filter((sheet): sheet is RecordValue => sheet != null),
+    () =>
+      asArray(root?.sheets)
+        .map(asRecord)
+        .filter((sheet): sheet is RecordValue => sheet != null),
     [root],
   );
   const styles = useMemo(() => asRecord(root?.styles), [root]);
   const charts = useMemo(
-    () => asArray(root?.charts).map(asRecord).filter((chart): chart is RecordValue => chart != null),
+    () =>
+      asArray(root?.charts)
+        .map(asRecord)
+        .filter((chart): chart is RecordValue => chart != null),
     [root],
   );
   const shapes = useMemo(
-    () => asArray(root?.shapes).map(asRecord).filter((shape): shape is RecordValue => shape != null),
+    () =>
+      asArray(root?.shapes)
+        .map(asRecord)
+        .filter((shape): shape is RecordValue => shape != null),
     [root],
   );
   const slicerCaches = useMemo(
-    () => asArray(root?.slicerCaches).map(asRecord).filter((cache): cache is RecordValue => cache != null),
+    () =>
+      asArray(root?.slicerCaches)
+        .map(asRecord)
+        .filter((cache): cache is RecordValue => cache != null),
     [root],
   );
   const definedNames = useMemo(() => root?.definedNames, [root]);
@@ -152,6 +137,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const [cellEdits, setCellEdits] = useState<SpreadsheetCellEdits>({});
   const [editor, setEditor] = useState<SpreadsheetCellEditor | null>(null);
   const [filterMenu, setFilterMenu] = useState<SpreadsheetFilterMenuState | null>(null);
+  const [validationMenu, setValidationMenu] = useState<SpreadsheetValidationMenuState | null>(null);
   const [tableFilterState, setTableFilterState] = useState<SpreadsheetTableFilterState>({});
   const [selection, setSelection] = useState<SpreadsheetSelection | null>(null);
   const viewportShellRef = useRef<HTMLDivElement>(null);
@@ -161,77 +147,78 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   const viewportSize = viewportState.size;
   const activeSheetSource = sheets[Math.min(activeSheetIndex, Math.max(0, sheets.length - 1))];
   const sourceName = asString(root?.sourceName);
-  const activeSheet = useMemo(() => spreadsheetSheetWithVolatileFormulaValues(activeSheetSource, sheets, new Date(), sourceName), [activeSheetSource, sheets, sourceName]);
-  const tableFilterTargets = useMemo(() => buildSpreadsheetTableFilterTargets(activeSheet), [activeSheet]);
-  const filterRowHeightOverrides = useMemo(
-    () => spreadsheetTableFilterRowHeightOverrides(activeSheet, tableFilterState),
-    [activeSheet, tableFilterState],
+  const activeSheet = useMemo(
+    () => spreadsheetSheetWithVolatileFormulaValues(activeSheetSource, sheets, new Date(), sourceName),
+    [activeSheetSource, sheets, sourceName],
   );
+  const tableFilterTargets = useMemo(() => buildSpreadsheetTableFilterTargets(activeSheet), [activeSheet]);
+  const filterRowHeightOverrides = useMemo(() => spreadsheetTableFilterRowHeightOverrides(activeSheet, tableFilterState), [activeSheet, tableFilterState]);
   const effectiveSizeOverrides = useMemo(
-    () => mergeSpreadsheetLayoutOverrides(sizeOverrides, { rowHeights: filterRowHeightOverrides }),
+    () =>
+      mergeSpreadsheetLayoutOverrides(sizeOverrides, {
+        rowHeights: filterRowHeightOverrides,
+      }),
     [filterRowHeightOverrides, sizeOverrides],
   );
-  const activeFilterKeys = useMemo(
-    () => spreadsheetTableFilterActiveKeys(tableFilterTargets, tableFilterState),
-    [tableFilterState, tableFilterTargets],
-  );
+  const activeFilterKeys = useMemo(() => spreadsheetTableFilterActiveKeys(tableFilterTargets, tableFilterState), [tableFilterState, tableFilterTargets]);
   const layout = useMemo(() => buildSpreadsheetLayout(activeSheet, effectiveSizeOverrides), [activeSheet, effectiveSizeOverrides]);
-  const chartSpecs = useMemo(() => buildSpreadsheetCharts({
-    activeSheet,
-    charts,
-    layout,
-    sheets,
-  }), [activeSheet, charts, layout, sheets]);
-  const shapeSpecs = useMemo(() => buildSpreadsheetShapes({
-    activeSheet,
-    layout,
-    shapes,
-    slicerCaches,
-  }), [activeSheet, layout, shapes, slicerCaches]);
-  const imageSpecs = useMemo(() => buildSpreadsheetImages({
-    activeSheet,
-    imageSources,
-    layout,
-  }), [activeSheet, imageSources, layout]);
-  const visibleChartSpecs = useMemo(
-    () => visibleFloatingSpecs(chartSpecs, viewportSize, viewportScroll),
-    [chartSpecs, viewportScroll, viewportSize],
+  const chartSpecs = useMemo(
+    () =>
+      buildSpreadsheetCharts({
+        activeSheet,
+        charts,
+        layout,
+        sheets,
+      }),
+    [activeSheet, charts, layout, sheets],
   );
-  const visibleShapeSpecs = useMemo(
-    () => visibleFloatingSpecs(shapeSpecs, viewportSize, viewportScroll),
-    [shapeSpecs, viewportScroll, viewportSize],
+  const shapeSpecs = useMemo(
+    () =>
+      buildSpreadsheetShapes({
+        activeSheet,
+        layout,
+        shapes,
+        slicerCaches,
+      }),
+    [activeSheet, layout, shapes, slicerCaches],
   );
-  const visibleImageSpecs = useMemo(
-    () => visibleFloatingSpecs(imageSpecs, viewportSize, viewportScroll),
-    [imageSpecs, viewportScroll, viewportSize],
+  const imageSpecs = useMemo(
+    () =>
+      buildSpreadsheetImages({
+        activeSheet,
+        imageSources,
+        layout,
+      }),
+    [activeSheet, imageSources, layout],
   );
-  const cellVisuals = useMemo(
-    () => buildSpreadsheetConditionalVisuals(activeSheet, theme, definedNames),
-    [activeSheet, definedNames, theme],
-  );
+  const visibleChartSpecs = useMemo(() => visibleFloatingSpecs(chartSpecs, viewportSize, viewportScroll), [chartSpecs, viewportScroll, viewportSize]);
+  const visibleShapeSpecs = useMemo(() => visibleFloatingSpecs(shapeSpecs, viewportSize, viewportScroll), [shapeSpecs, viewportScroll, viewportSize]);
+  const visibleImageSpecs = useMemo(() => visibleFloatingSpecs(imageSpecs, viewportSize, viewportScroll), [imageSpecs, viewportScroll, viewportSize]);
+  const cellVisuals = useMemo(() => buildSpreadsheetConditionalVisuals(activeSheet, theme, definedNames), [activeSheet, definedNames, theme]);
   const sparklineVisuals = useMemo(() => buildSpreadsheetSparklineVisuals(activeSheet), [activeSheet]);
   const commentVisuals = useMemo(() => buildSpreadsheetCommentVisuals(root, activeSheet), [activeSheet, root]);
   const validationVisuals = useMemo(() => buildSpreadsheetValidationVisuals(activeSheet), [activeSheet]);
   const canvasCellPaints = useMemo(
-    () => buildSpreadsheetCanvasCellPaints({
-      cellEdits,
-      layout,
-      project: {
-        cellStyle: (cell, rowRecord, columnIndex, key) => {
-          const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
-          return spreadsheetCellStyle(cell, styles, cellVisuals.get(key), asString(activeSheet?.name), styleIndex);
-        },
-        cellText: (cell, rowRecord, columnIndex) => {
-          const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
-          return spreadsheetCellText(cell, styles, asString(activeSheet?.name), styleIndex);
-        },
-      },
-      visibleRange: buildSpreadsheetRenderSnapshot({
+    () =>
+      buildSpreadsheetCanvasCellPaints({
+        cellEdits,
         layout,
-        scroll: viewportScroll,
-        viewportSize,
-      }).visibleRange,
-    }),
+        project: {
+          cellStyle: (cell, rowRecord, columnIndex, key) => {
+            const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
+            return spreadsheetCellStyle(cell, styles, cellVisuals.get(key), asString(activeSheet?.name), styleIndex);
+          },
+          cellText: (cell, rowRecord, columnIndex) => {
+            const styleIndex = spreadsheetEffectiveStyleIndex(cell, rowRecord, layout, columnIndex);
+            return spreadsheetCellText(cell, styles, asString(activeSheet?.name), styleIndex);
+          },
+        },
+        visibleRange: buildSpreadsheetRenderSnapshot({
+          layout,
+          scroll: viewportScroll,
+          viewportSize,
+        }).visibleRange,
+      }),
     [activeSheet, cellEdits, cellVisuals, layout, styles, viewportScroll, viewportSize],
   );
 
@@ -276,6 +263,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     setCellEdits({});
     setEditor(null);
     setFilterMenu(null);
+    setValidationMenu(null);
     setTableFilterState({});
     setSelection(null);
     setActiveSheetIndex(index);
@@ -291,6 +279,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       event.preventDefault();
       setEditor(null);
       setFilterMenu(null);
+      setValidationMenu(null);
       viewport.setPointerCapture(event.pointerId);
       setResizeDrag(spreadsheetResizeDragFromHit(layout, resizeHit, point, scroll));
       return;
@@ -298,16 +287,16 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
 
     if (editor) commitSpreadsheetEditor(editor, setCellEdits, setEditor);
     setFilterMenu(null);
+    setValidationMenu(null);
     setSelection(spreadsheetSelectionFromViewportPoint(layout, point, scroll));
   };
 
   const handleViewportDoubleClick = (event: PointerEvent<HTMLDivElement>) => {
     const viewport = event.currentTarget;
-    const selectionFromPoint = spreadsheetSelectionFromViewportPoint(
-      layout,
-      viewportPointFromPointer(event),
-      { left: viewport.scrollLeft, top: viewport.scrollTop },
-    );
+    const selectionFromPoint = spreadsheetSelectionFromViewportPoint(layout, viewportPointFromPointer(event), {
+      left: viewport.scrollLeft,
+      top: viewport.scrollTop,
+    });
     if (!selectionFromPoint) return;
     event.preventDefault();
     setSelection(selectionFromPoint);
@@ -321,12 +310,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     if (resizeDrag) {
       event.preventDefault();
       const size = spreadsheetResizeSizeFromPoint(layout, resizeDrag, point, scroll);
-      setSizeOverrides((current) => applySpreadsheetInteractiveSizeOverride(
-        current,
-        resizeDrag.axis,
-        resizeDrag.index,
-        size,
-      ));
+      setSizeOverrides((current) => applySpreadsheetInteractiveSizeOverride(current, resizeDrag.axis, resizeDrag.index, size));
       return;
     }
 
@@ -350,12 +334,17 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       size: { height: clientHeight, width: clientWidth },
     });
     setFilterMenu(null);
+    setValidationMenu(null);
   };
 
   const handleViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "F2") {
       event.preventDefault();
-      const targetSelection = selection ?? { columnIndex: 0, rowIndex: 1, rowOffset: 0 };
+      const targetSelection = selection ?? {
+        columnIndex: 0,
+        rowIndex: 1,
+        rowOffset: 0,
+      };
       setSelection(targetSelection);
       setEditor(spreadsheetEditorForSelection(activeSheet, styles, cellEdits, targetSelection));
       return;
@@ -370,14 +359,12 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     if (viewport) scrollSpreadsheetSelectionIntoView(viewport, layout, nextSelection);
   };
 
-  const handleFilterClick = (
-    target: SpreadsheetTableFilterTarget,
-    event: PointerEvent<HTMLButtonElement>,
-  ) => {
+  const handleFilterClick = (target: SpreadsheetTableFilterTarget, event: PointerEvent<HTMLButtonElement>) => {
     const hostBounds = viewportShellRef.current?.getBoundingClientRect();
     const buttonBounds = event.currentTarget.getBoundingClientRect();
     if (!hostBounds) return;
     setEditor(null);
+    setValidationMenu(null);
     setFilterMenu({
       anchor: {
         height: buttonBounds.height,
@@ -389,11 +376,26 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
     });
   };
 
-  const handleFilterToggle = (
-    target: SpreadsheetTableFilterTarget,
-    value: string,
-    values: SpreadsheetTableFilterValue[],
-  ) => {
+  const handleValidationClick = (selectionKey: string, validation: SpreadsheetValidationVisual, event: PointerEvent<HTMLButtonElement>) => {
+    const options = spreadsheetValidationChoices(validation);
+    const hostBounds = viewportShellRef.current?.getBoundingClientRect();
+    const buttonBounds = event.currentTarget.getBoundingClientRect();
+    if (!hostBounds || options.length === 0) return;
+    setEditor(null);
+    setFilterMenu(null);
+    setValidationMenu({
+      anchor: {
+        height: buttonBounds.height,
+        left: buttonBounds.left - hostBounds.left,
+        top: buttonBounds.top - hostBounds.top,
+        width: buttonBounds.width,
+      },
+      options,
+      selectionKey,
+    });
+  };
+
+  const handleFilterToggle = (target: SpreadsheetTableFilterTarget, value: string, values: SpreadsheetTableFilterValue[]) => {
     const allValues = values.map((item) => item.value);
     setTableFilterState((current) => {
       const nextSelection = spreadsheetTableFilterSelectionForToggle(current[target.id], allValues, value);
@@ -447,12 +449,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
       <SpreadsheetWorkbookBar title={asString(root?.sourceName) || asString(root?.title) || asString(activeSheet?.name)} />
       <SpreadsheetFormulaBar address={formulaAddress} value={formulaValue} />
       <div ref={viewportShellRef} style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
-        <SpreadsheetCanvasLayer
-          cellPaints={canvasCellPaints}
-          layout={layout}
-          scroll={viewportScroll}
-          viewportSize={viewportSize}
-        />
+        <SpreadsheetCanvasLayer cellPaints={canvasCellPaints} layout={layout} scroll={viewportScroll} viewportSize={viewportSize} />
         <div
           onDoubleClick={handleViewportDoubleClick}
           onKeyDown={handleViewportKeyDown}
@@ -462,10 +459,23 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           onPointerUp={handleViewportPointerUp}
           onScroll={handleViewportScroll}
           ref={viewportRef}
-          style={{ cursor: resizeDrag ? spreadsheetResizeCursor(resizeDrag.axis) : resizeCursor, height: "100%", overflow: "auto", position: "relative", zIndex: 1 }}
+          style={{
+            cursor: resizeDrag ? spreadsheetResizeCursor(resizeDrag.axis) : resizeCursor,
+            height: "100%",
+            overflow: "auto",
+            position: "relative",
+            zIndex: 1,
+          }}
           tabIndex={0}
         >
-          <div style={{ height: layout.gridHeight, minWidth: layout.gridWidth, position: "relative", width: layout.gridWidth }}>
+          <div
+            style={{
+              height: layout.gridHeight,
+              minWidth: layout.gridWidth,
+              position: "relative",
+              width: layout.gridWidth,
+            }}
+          >
             <SpreadsheetGrid
               activeSheet={activeSheet}
               cellEdits={cellEdits}
@@ -474,6 +484,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               layout={layout}
               activeFilterKeys={activeFilterKeys}
               onFilterClick={handleFilterClick}
+              onValidationClick={handleValidationClick}
               scroll={viewportScroll}
               selection={selection}
               sparklineVisuals={sparklineVisuals}
@@ -491,7 +502,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
               layout={layout}
               onCancel={() => setEditor(null)}
               onCommit={(nextEditor) => commitSpreadsheetEditor(nextEditor, setCellEdits, setEditor)}
-              onValueChange={(value) => setEditor((current) => current ? { ...current, value } : current)}
+              onValueChange={(value) => setEditor((current) => (current ? { ...current, value } : current))}
             />
           </div>
         </div>
@@ -508,12 +519,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
           validationVisuals={validationVisuals}
           viewportSize={viewportSize}
         />
-        <SpreadsheetFrozenHeaders
-          layout={layout}
-          scrollLeft={viewportScroll.left}
-          scrollTop={viewportScroll.top}
-          viewportSize={viewportSize}
-        />
+        <SpreadsheetFrozenHeaders layout={layout} scrollLeft={viewportScroll.left} scrollTop={viewportScroll.top} viewportSize={viewportSize} />
         <SpreadsheetFrozenSelectionLayer layout={layout} scroll={viewportScroll} selection={selection} />
         {filterMenu ? (
           <SpreadsheetTableFilterMenu
@@ -524,6 +530,20 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
             selectedValues={tableFilterState[filterMenu.target.id]}
             target={filterMenu.target}
             values={spreadsheetTableFilterValues(activeSheet, filterMenu.target)}
+          />
+        ) : null}
+        {validationMenu ? (
+          <SpreadsheetValidationMenu
+            anchor={validationMenu.anchor}
+            onClose={() => setValidationMenu(null)}
+            onSelect={(value) => {
+              setCellEdits((current) => ({
+                ...current,
+                [validationMenu.selectionKey]: value,
+              }));
+              setValidationMenu(null);
+            }}
+            options={validationMenu.options}
           />
         ) : null}
       </div>
@@ -575,13 +595,7 @@ export function SpreadsheetPreview({ labels, proto }: { labels: PreviewLabels; p
   );
 }
 
-function SpreadsheetSelectionLayer({
-  layout,
-  selection,
-}: {
-  layout: SpreadsheetLayout;
-  selection: SpreadsheetSelection | null;
-}) {
+function SpreadsheetSelectionLayer({ layout, selection }: { layout: SpreadsheetLayout; selection: SpreadsheetSelection | null }) {
   if (!selection) return null;
   const rect = spreadsheetSelectionWorldRect(layout, selection);
   if (rect.width <= 0 || rect.height <= 0) return null;
@@ -612,7 +626,16 @@ function SpreadsheetFrozenSelectionLayer({
   const segments = spreadsheetFrozenSelectionSegments(layout, selection, scroll);
   if (segments.length === 0) return null;
   return (
-    <div aria-hidden="true" style={{ inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 13 }}>
+    <div
+      aria-hidden="true"
+      style={{
+        inset: 0,
+        overflow: "hidden",
+        pointerEvents: "none",
+        position: "absolute",
+        zIndex: 13,
+      }}
+    >
       {segments.map((segment, index) => (
         <div
           key={`${selection.rowIndex}:${selection.columnIndex}:${index}`}
@@ -693,6 +716,66 @@ function SpreadsheetCellEditorLayer({
   );
 }
 
+function SpreadsheetValidationMenu({
+  anchor,
+  onClose,
+  onSelect,
+  options,
+}: {
+  anchor: SpreadsheetTableFilterMenuAnchor;
+  onClose: () => void;
+  onSelect: (value: string) => void;
+  options: string[];
+}) {
+  return (
+    <div
+      onPointerDown={(event) => event.stopPropagation()}
+      style={{
+        background: "#ffffff",
+        borderColor: "#cbd5e1",
+        borderRadius: 4,
+        borderStyle: "solid",
+        borderWidth: 1,
+        boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
+        left: anchor.left,
+        maxHeight: 180,
+        minWidth: Math.max(140, anchor.width),
+        overflowY: "auto",
+        padding: "3px 0",
+        position: "absolute",
+        top: anchor.top + anchor.height + 2,
+        zIndex: 40_010,
+      }}
+    >
+      {options.map((option) => (
+        <button
+          key={option}
+          onClick={() => {
+            onSelect(option);
+            onClose();
+          }}
+          style={{
+            background: "transparent",
+            borderWidth: 0,
+            color: "#111827",
+            cursor: "pointer",
+            display: "block",
+            fontFamily: SPREADSHEET_FONT_FAMILY,
+            fontSize: 13,
+            lineHeight: 1.35,
+            padding: "5px 10px",
+            textAlign: "left",
+            width: "100%",
+          }}
+          type="button"
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SpreadsheetFrozenBodyLayer({
   activeSheet,
   cellEdits,
@@ -735,7 +818,16 @@ function SpreadsheetFrozenBodyLayer({
   });
 
   return (
-    <div aria-hidden="true" style={{ inset: 0, overflow: "hidden", pointerEvents: "none", position: "absolute", zIndex: 11 }}>
+    <div
+      aria-hidden="true"
+      style={{
+        inset: 0,
+        overflow: "hidden",
+        pointerEvents: "none",
+        position: "absolute",
+        zIndex: 11,
+      }}
+    >
       {visibleRowOffsets.map((rowOffset) => {
         const rowIndex = rowOffset + 1;
         const row = layout.rowsByIndex.get(rowIndex);
@@ -773,13 +865,7 @@ function SpreadsheetFrozenBodyLayer({
                 width: rect.width,
               }}
             >
-              <SpreadsheetCellContent
-                hasComment={hasComment}
-                sparkline={sparkline}
-                text={text}
-                validation={validation}
-                visual={visual}
-              />
+              <SpreadsheetCellContent hasComment={hasComment} sparkline={sparkline} text={text} validation={validation} visual={visual} />
             </div>
           ));
         });
@@ -796,6 +882,7 @@ function SpreadsheetGrid({
   commentVisuals,
   layout,
   onFilterClick,
+  onValidationClick,
   scroll,
   selection,
   sparklineVisuals,
@@ -811,6 +898,7 @@ function SpreadsheetGrid({
   commentVisuals: Set<string>;
   layout: SpreadsheetLayout;
   onFilterClick: (target: SpreadsheetTableFilterTarget, event: PointerEvent<HTMLButtonElement>) => void;
+  onValidationClick: (selectionKey: string, validation: SpreadsheetValidationVisual, event: PointerEvent<HTMLButtonElement>) => void;
   scroll: SpreadsheetViewportScroll;
   selection: SpreadsheetSelection | null;
   sparklineVisuals: Map<string, SpreadsheetSparklineVisual>;
@@ -822,10 +910,7 @@ function SpreadsheetGrid({
   const sheetName = asString(activeSheet?.name);
   const selectedCellKey = selection ? spreadsheetSelectionKey(selection) : "";
   const showGridLines = spreadsheetShowGridLines(activeSheet);
-  const renderSnapshot = useMemo(
-    () => buildSpreadsheetRenderSnapshot({ layout, scroll, viewportSize }),
-    [layout, scroll, viewportSize],
-  );
+  const renderSnapshot = useMemo(() => buildSpreadsheetRenderSnapshot({ layout, scroll, viewportSize }), [layout, scroll, viewportSize]);
   const { visibleColumnIndexes, visibleRange, visibleRowOffsets } = renderSnapshot;
 
   return (
@@ -905,6 +990,7 @@ function SpreadsheetGrid({
                     filterActive={activeFilterKeys.has(cellKey)}
                     hasComment={hasComment}
                     onFilterClick={filterTarget ? (event) => onFilterClick(filterTarget, event) : undefined}
+                    onValidationClick={validation ? (targetValidation, event) => onValidationClick(cellKey, targetValidation, event) : undefined}
                     sparkline={sparkline}
                     text={text}
                     validation={validation}
@@ -973,22 +1059,4 @@ const spreadsheetRowHeaderStyle: CSSProperties = {
   left: 0,
   width: SPREADSHEET_ROW_HEADER_WIDTH,
   zIndex: 3,
-};
-
-const sheetCellStyle: CSSProperties = {
-  borderBottomColor: "#e2e8f0",
-  borderBottomStyle: "solid",
-  borderBottomWidth: 1,
-  borderRightColor: "#e2e8f0",
-  borderRightStyle: "solid",
-  borderRightWidth: 1,
-  boxSizing: "border-box",
-  color: "#0f172a",
-  fontFamily: SPREADSHEET_FONT_FAMILY,
-  lineHeight: 1.35,
-  overflow: "hidden",
-  overflowWrap: "break-word",
-  padding: "7px 9px",
-  verticalAlign: "top" as const,
-  whiteSpace: "pre-wrap" as const,
 };

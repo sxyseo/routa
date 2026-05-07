@@ -44,12 +44,12 @@ export function buildSpreadsheetSparklineVisuals(sheet: RecordValue | undefined)
   const visuals = new Map<string, SpreadsheetSparklineVisual>();
   const rows = rowsByIndexForSheet(sheet);
   const groupRoot = asRecord(sheet?.sparklineGroups);
-  const groups = (groupRoot ? asArray(groupRoot.groups) : asArray(sheet?.sparklineGroups))
-    .map(asRecord)
-    .filter((group): group is RecordValue => group != null);
+  const groups = (groupRoot ? asArray(groupRoot.groups) : asArray(sheet?.sparklineGroups)).map(asRecord).filter((group): group is RecordValue => group != null);
 
   for (const group of groups) {
-    const sparklines = asArray(group.sparklines).map(asRecord).filter((sparkline): sparkline is RecordValue => sparkline != null);
+    const sparklines = asArray(group.sparklines)
+      .map(asRecord)
+      .filter((sparkline): sparkline is RecordValue => sparkline != null);
     for (const sparkline of sparklines) {
       const targetRange = parseCellRange(asString(sparkline.reference));
       if (!targetRange) continue;
@@ -113,10 +113,7 @@ export function buildSpreadsheetValidationVisuals(sheet: RecordValue | undefined
   };
 }
 
-function spreadsheetValidationVisualAt(
-  specs: SpreadsheetValidationVisualSpec[],
-  key: string,
-): SpreadsheetValidationVisual | undefined {
+function spreadsheetValidationVisualAt(specs: SpreadsheetValidationVisualSpec[], key: string): SpreadsheetValidationVisual | undefined {
   const [rowValue, columnValue] = key.split(":");
   const rowIndex = Number(rowValue);
   const columnIndex = Number(columnValue);
@@ -134,20 +131,19 @@ function spreadsheetValidationVisualAt(
   return undefined;
 }
 
-function cellRangeContains(
-  range: NonNullable<ReturnType<typeof parseCellRange>>,
-  rowIndex: number,
-  columnIndex: number,
-): boolean {
-  return rowIndex >= range.startRow &&
+function cellRangeContains(range: NonNullable<ReturnType<typeof parseCellRange>>, rowIndex: number, columnIndex: number): boolean {
+  return (
+    rowIndex >= range.startRow &&
     rowIndex < range.startRow + range.rowSpan &&
     columnIndex >= range.startColumn &&
-    columnIndex < range.startColumn + range.columnSpan;
+    columnIndex < range.startColumn + range.columnSpan
+  );
 }
 
 export function SpreadsheetCellContent({
   filterActive,
   hasComment,
+  onValidationClick,
   onFilterClick,
   sparkline,
   text,
@@ -156,6 +152,7 @@ export function SpreadsheetCellContent({
 }: {
   filterActive?: boolean;
   hasComment?: boolean;
+  onValidationClick?: (validation: SpreadsheetValidationVisual, event: PointerEvent<HTMLButtonElement>) => void;
   onFilterClick?: (event: PointerEvent<HTMLButtonElement>) => void;
   sparkline?: SpreadsheetSparklineVisual;
   text: string;
@@ -201,10 +198,10 @@ export function SpreadsheetCellContent({
         </>
       ) : null}
       {visual?.iconSet ? <SpreadsheetIconSet visual={visual.iconSet} /> : null}
-      {sparkline || visual?.iconSet?.showValue === false || visual?.dataBar?.showValue === false
-        ? null
-        : <span style={{ position: "relative", zIndex: 1 }}>{text}</span>}
-      {validation ? <SpreadsheetValidationIndicator validation={validation} /> : null}
+      {sparkline || visual?.iconSet?.showValue === false || visual?.dataBar?.showValue === false ? null : (
+        <span style={{ position: "relative", zIndex: 1 }}>{text}</span>
+      )}
+      {validation ? <SpreadsheetValidationIndicator onClick={onValidationClick} validation={validation} /> : null}
       {visual?.filter ? (
         <button
           aria-label="Open column filter"
@@ -247,7 +244,9 @@ export function SpreadsheetCellContent({
 
 function rowsByIndexForSheet(sheet: RecordValue | undefined): Map<number, Map<number, RecordValue>> {
   const rowMap = new Map<number, Map<number, RecordValue>>();
-  const rows = asArray(sheet?.rows).map(asRecord).filter((row): row is RecordValue => row != null);
+  const rows = asArray(sheet?.rows)
+    .map(asRecord)
+    .filter((row): row is RecordValue => row != null);
   for (const row of rows) {
     const rowIndex = asNumber(row.index, 1);
     const cells = new Map<number, RecordValue>();
@@ -285,7 +284,10 @@ function spreadsheetSparklineType(value: unknown): SpreadsheetSparklineVisual["t
   return "line";
 }
 
-function spreadsheetCommentTarget(record: RecordValue): { address: string; sheetName: string } {
+function spreadsheetCommentTarget(record: RecordValue): {
+  address: string;
+  sheetName: string;
+} {
   const target = asRecord(record.target);
   const cell = asRecord(target?.cell) ?? asRecord(target?.cellTarget) ?? asRecord(record.cell);
   return {
@@ -303,46 +305,83 @@ function spreadsheetDataValidationItems(sheet: RecordValue | undefined): RecordV
 function spreadsheetDataValidationReferences(validation: RecordValue): string[] {
   const ranges = asArray(validation.ranges);
   if (ranges.length > 0) {
-    return ranges.map((range) => {
-      if (typeof range === "string") return range;
-      const record = asRecord(range);
-      if (!record) return "";
-      const startAddress = asString(record.startAddress);
-      const endAddress = asString(record.endAddress);
-      return startAddress && endAddress && startAddress !== endAddress ? `${startAddress}:${endAddress}` : startAddress;
-    }).filter(Boolean);
+    return ranges
+      .map((range) => {
+        if (typeof range === "string") return range;
+        const record = asRecord(range);
+        if (!record) return "";
+        const startAddress = asString(record.startAddress);
+        const endAddress = asString(record.endAddress);
+        return startAddress && endAddress && startAddress !== endAddress ? `${startAddress}:${endAddress}` : startAddress;
+      })
+      .filter(Boolean);
   }
-  return asString(validation.range || validation.reference || validation.sqref).split(/\s+/).filter(Boolean);
+  return asString(validation.range || validation.reference || validation.sqref)
+    .split(/\s+/)
+    .filter(Boolean);
 }
 
-function SpreadsheetValidationIndicator({ validation }: { validation: SpreadsheetValidationVisual }) {
+function SpreadsheetValidationIndicator({
+  onClick,
+  validation,
+}: {
+  onClick?: (validation: SpreadsheetValidationVisual, event: PointerEvent<HTMLButtonElement>) => void;
+  validation: SpreadsheetValidationVisual;
+}) {
+  const style = {
+    alignItems: "center",
+    background: validation.type === "dropdown" ? "#f8fafc" : "#ffffff",
+    borderColor: "#cbd5e1",
+    borderRadius: 3,
+    borderStyle: "solid",
+    borderWidth: 1,
+    bottom: 4,
+    color: "#475569",
+    display: "inline-flex",
+    fontSize: 9,
+    height: 14,
+    justifyContent: "center",
+    lineHeight: 1,
+    padding: 0,
+    position: "absolute",
+    right: 4,
+    width: 14,
+    zIndex: 2,
+  } as const;
+  if (validation.type === "dropdown" && onClick) {
+    return (
+      <button
+        aria-label="Open data validation list"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClick(validation, event);
+        }}
+        style={{ ...style, cursor: "pointer" }}
+        title={validation.prompt || validation.formula}
+        type="button"
+      >
+        ▾
+      </button>
+    );
+  }
+
   return (
-    <span
-      aria-hidden="true"
-      style={{
-        alignItems: "center",
-        background: validation.type === "dropdown" ? "#f8fafc" : "#ffffff",
-        borderColor: "#cbd5e1",
-        borderRadius: 3,
-        borderStyle: "solid",
-        borderWidth: 1,
-        bottom: 4,
-        color: "#475569",
-        display: "inline-flex",
-        fontSize: 9,
-        height: 14,
-        justifyContent: "center",
-        lineHeight: 1,
-        position: "absolute",
-        right: 4,
-        width: 14,
-        zIndex: 2,
-      }}
-      title={validation.prompt || validation.formula}
-    >
+    <span aria-hidden="true" style={style} title={validation.prompt || validation.formula}>
       {validation.type === "dropdown" ? "▾" : "!"}
     </span>
   );
+}
+
+export function spreadsheetValidationChoices(validation: SpreadsheetValidationVisual): string[] {
+  const formula = validation.formula.trim();
+  if (!formula.startsWith('"') || !formula.endsWith('"')) return [];
+  return formula
+    .slice(1, -1)
+    .replaceAll('""', '"')
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 function SpreadsheetCommentIndicator() {
@@ -382,32 +421,26 @@ function SpreadsheetSparkline({ visual }: { visual: SpreadsheetSparklineVisual }
     <svg
       aria-hidden="true"
       preserveAspectRatio="none"
-      style={{ inset: "3px 5px", pointerEvents: "none", position: "absolute", zIndex: 1 }}
+      style={{
+        inset: "3px 5px",
+        pointerEvents: "none",
+        position: "absolute",
+        zIndex: 1,
+      }}
       viewBox={`0 0 ${width} ${height}`}
     >
       {visual.type === "line" ? (
         <>
           <polyline fill="none" points={points} stroke={visual.color} strokeLinejoin="round" strokeWidth={visual.lineWeight} />
-          {visual.markers ? values.map((value, index) => (
-            <circle cx={xForIndex(index)} cy={yForValue(value)} fill={visual.color} key={index} r="1.8" />
-          )) : null}
+          {visual.markers ? values.map((value, index) => <circle cx={xForIndex(index)} cy={yForValue(value)} fill={visual.color} key={index} r="1.8" />) : null}
         </>
       ) : (
         values.map((value, index) => {
-          const barWidth = Math.max(2, (width - 8) / Math.max(1, values.length) * 0.55);
+          const barWidth = Math.max(2, ((width - 8) / Math.max(1, values.length)) * 0.55);
           const x = xForIndex(index) - barWidth / 2;
           const zeroY = yForValue(0);
           const valueY = yForValue(visual.type === "stacked" ? Math.abs(value) : value);
-          return (
-            <rect
-              fill={visual.color}
-              height={Math.max(1, Math.abs(zeroY - valueY))}
-              key={index}
-              width={barWidth}
-              x={x}
-              y={Math.min(zeroY, valueY)}
-            />
-          );
+          return <rect fill={visual.color} height={Math.max(1, Math.abs(zeroY - valueY))} key={index} width={barWidth} x={x} y={Math.min(zeroY, valueY)} />;
         })
       )}
     </svg>
@@ -433,11 +466,7 @@ function SpreadsheetIconSet({ visual }: { visual: NonNullable<SpreadsheetCellVis
           zIndex: 1,
         }}
       >
-        <path
-          d="M9 2 L15 8 H11 V16 H7 V8 H3 Z"
-          fill={visual.color}
-          transform={`rotate(${rotation} 9 9)`}
-        />
+        <path d="M9 2 L15 8 H11 V16 H7 V8 H3 Z" fill={visual.color} transform={`rotate(${rotation} 9 9)`} />
       </svg>
     );
   }
