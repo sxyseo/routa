@@ -114,9 +114,16 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 46 }, rect)).toBe("upArrow");
     expect(presentationShapeKind({ geometry: 47 }, rect)).toBe("downArrow");
     expect(presentationShapeKind({ geometry: 48 }, rect)).toBe("rightArrow");
+    expect(presentationShapeKind({ geometry: 201 }, rect)).toBe("curvedLeftArrow");
+    expect(presentationShapeKind({ geometry: 202 }, rect)).toBe("curvedRightArrow");
+    expect(presentationShapeKind({ geometry: 203 }, rect)).toBe("curvedUpArrow");
+    expect(presentationShapeKind({ geometry: 204 }, rect)).toBe("curvedDownArrow");
+    expect(presentationShapeKind({ geometry: 205 }, rect)).toBe("uturnArrow");
     expect(presentationShapeKind({ geometry: 50 }, rect)).toBe("bentUpArrow");
     expect(presentationShapeKind({ geometry: 51 }, rect)).toBe("leftRightArrow");
     expect(presentationShapeKind({ geometry: 52 }, rect)).toBe("upDownArrow");
+    expect(presentationShapeKind({ geometry: 60 }, rect)).toBe("leftRightArrowCallout");
+    expect(presentationShapeKind({ geometry: 62 }, rect)).toBe("quadArrowCallout");
     expect(presentationShapeKind({ geometry: 63 }, rect)).toBe("bentArrow");
     expect(presentationShapeKind({ geometry: 40 }, rect)).toBe("pie");
     expect(presentationShapeKind({ geometry: 41 }, rect)).toBe("blockArc");

@@ -341,6 +341,25 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "leftRightArrowCallout") {
+    const head = Math.min(rect.width * 0.24, rect.height * 0.42);
+    const bodyTop = rect.height * 0.24;
+    const bodyBottom = rect.height * 0.76;
+    polygon(path, [
+      [0, rect.height / 2],
+      [head, 0],
+      [head, bodyTop],
+      [rect.width - head, bodyTop],
+      [rect.width - head, 0],
+      [rect.width, rect.height / 2],
+      [rect.width - head, rect.height],
+      [rect.width - head, bodyBottom],
+      [head, bodyBottom],
+      [head, rect.height],
+    ]);
+    return path;
+  }
+
   if (kind === "upDownArrow") {
     const head = Math.min(rect.width * 0.42, rect.height * 0.28);
     const shaftLeft = rect.width * 0.32;
@@ -356,6 +375,61 @@ export function elementPath(
       [shaftLeft, rect.height - head],
       [shaftLeft, head],
       [0, head],
+    ]);
+    return path;
+  }
+
+  if (kind === "quadArrowCallout") {
+    polygon(path, [
+      [rect.width / 2, 0],
+      [rect.width * 0.66, rect.height * 0.2],
+      [rect.width * 0.58, rect.height * 0.2],
+      [rect.width * 0.58, rect.height * 0.42],
+      [rect.width * 0.8, rect.height * 0.42],
+      [rect.width * 0.8, rect.height * 0.34],
+      [rect.width, rect.height / 2],
+      [rect.width * 0.8, rect.height * 0.66],
+      [rect.width * 0.8, rect.height * 0.58],
+      [rect.width * 0.58, rect.height * 0.58],
+      [rect.width * 0.58, rect.height * 0.8],
+      [rect.width * 0.66, rect.height * 0.8],
+      [rect.width / 2, rect.height],
+      [rect.width * 0.34, rect.height * 0.8],
+      [rect.width * 0.42, rect.height * 0.8],
+      [rect.width * 0.42, rect.height * 0.58],
+      [rect.width * 0.2, rect.height * 0.58],
+      [rect.width * 0.2, rect.height * 0.66],
+      [0, rect.height / 2],
+      [rect.width * 0.2, rect.height * 0.34],
+      [rect.width * 0.2, rect.height * 0.42],
+      [rect.width * 0.42, rect.height * 0.42],
+      [rect.width * 0.42, rect.height * 0.2],
+      [rect.width * 0.34, rect.height * 0.2],
+    ]);
+    return path;
+  }
+
+  if (
+    kind === "curvedLeftArrow" ||
+    kind === "curvedRightArrow" ||
+    kind === "curvedUpArrow" ||
+    kind === "curvedDownArrow"
+  ) {
+    curvedArrowPath(path, rect, kind);
+    return path;
+  }
+
+  if (kind === "uturnArrow") {
+    polygon(path, [
+      [0, rect.height * 0.3],
+      [rect.width * 0.28, 0],
+      [rect.width * 0.28, rect.height * 0.18],
+      [rect.width * 0.8, rect.height * 0.18],
+      [rect.width * 0.8, rect.height * 0.75],
+      [rect.width * 0.6, rect.height * 0.75],
+      [rect.width * 0.6, rect.height * 0.38],
+      [rect.width * 0.28, rect.height * 0.38],
+      [rect.width * 0.28, rect.height * 0.6],
     ]);
     return path;
   }
@@ -536,6 +610,42 @@ function polygon(path: Path2D, points: Array<[number, number]>): void {
     path.lineTo(x, y);
   }
   path.closePath();
+}
+
+function curvedArrowPath(
+  path: Path2D,
+  rect: PresentationRect,
+  kind: "curvedDownArrow" | "curvedLeftArrow" | "curvedRightArrow" | "curvedUpArrow",
+): void {
+  const points: Array<[number, number]> = [
+    [0.08, 1],
+    [0.08, 0.56],
+    [0.48, 0.56],
+    [0.48, 0.32],
+    [0.72, 0.32],
+    [0.72, 0.06],
+    [1, 0.5],
+    [0.72, 0.94],
+    [0.72, 0.68],
+    [0.24, 0.68],
+    [0.24, 1],
+  ];
+  polygon(
+    path,
+    points.map(([x, y]) => orientedPoint(rect, x, y, kind)),
+  );
+}
+
+function orientedPoint(
+  rect: PresentationRect,
+  x: number,
+  y: number,
+  kind: "curvedDownArrow" | "curvedLeftArrow" | "curvedRightArrow" | "curvedUpArrow",
+): [number, number] {
+  if (kind === "curvedLeftArrow") return [rect.width * (1 - x), rect.height * y];
+  if (kind === "curvedUpArrow") return [rect.width * y, rect.height * (1 - x)];
+  if (kind === "curvedDownArrow") return [rect.width * (1 - y), rect.height * x];
+  return [rect.width * x, rect.height * y];
 }
 
 function adjustmentValue(shape: RecordValue | null, name: string): number | null {

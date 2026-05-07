@@ -137,6 +137,46 @@ describe("buildPptxCursorCanvasPayload", () => {
     expect(payload.slides[0]?.thumbnail).toBeNull();
   });
 
+  it("preserves PPTX arrow geometry codes for Cursor renderer parity", async () => {
+    const protoBytes = message([
+      bytesField(
+        1,
+        message([
+          int32Field(1, 1),
+          bytesField(
+            3,
+            message([
+              bytesField(1, bbox(0, 0, 1_000_000, 500_000)),
+              bytesField(4, message([int32Field(1, 202)])),
+              stringField(10, "Curved Right Arrow"),
+              int32Field(11, 1),
+            ]),
+          ),
+          bytesField(
+            3,
+            message([
+              bytesField(1, bbox(1_000_000, 0, 1_000_000, 500_000)),
+              bytesField(4, message([int32Field(1, 62)])),
+              stringField(10, "Quad Arrow Callout"),
+              int32Field(11, 1),
+            ]),
+          ),
+          int64Field(5, 2_000_000),
+          int64Field(6, 500_000),
+        ]),
+      ),
+    ]);
+
+    const payload = await buildPptxCursorCanvasPayload(protoBytes, {
+      readerVersion: "test-reader",
+      sourcePath: "arrows.pptx",
+      title: "Arrows",
+    });
+    const firstSlide = payload.slides[0] as { elements?: Array<{ shape?: { geometry?: number } }> } | undefined;
+
+    expect(firstSlide?.elements?.map((element) => element.shape?.geometry)).toEqual([202, 62]);
+  });
+
   it("preserves PPTX preset geometry adjustments for renderer fidelity", async () => {
     const protoBytes = message([
       bytesField(

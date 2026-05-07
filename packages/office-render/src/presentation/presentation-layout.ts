@@ -56,6 +56,10 @@ export type PresentationShapeKind =
   | "bentUpArrow"
   | "blockArc"
   | "chevron"
+  | "curvedDownArrow"
+  | "curvedLeftArrow"
+  | "curvedRightArrow"
+  | "curvedUpArrow"
   | "delay"
   | "diamond"
   | "diagStripe"
@@ -67,6 +71,7 @@ export type PresentationShapeKind =
   | "hexagon"
   | "leftBrace"
   | "leftArrow"
+  | "leftRightArrowCallout"
   | "leftBracket"
   | "leftRightArrow"
   | "lightningBolt"
@@ -87,6 +92,8 @@ export type PresentationShapeKind =
   | "star8"
   | "trapezoid"
   | "triangle"
+  | "quadArrowCallout"
+  | "uturnArrow"
   | "downArrow"
   | "upArrow"
   | "upDownArrow";
@@ -296,9 +303,16 @@ export function presentationShapeKind(
   if (geometry === 45) return "leftArrow";
   if (geometry === 46) return "upArrow";
   if (geometry === 47) return "downArrow";
+  if (geometry === 201) return "curvedLeftArrow";
+  if (geometry === 202) return "curvedRightArrow";
+  if (geometry === 203) return "curvedUpArrow";
+  if (geometry === 204) return "curvedDownArrow";
+  if (geometry === 205) return "uturnArrow";
   if (geometry === 50) return "bentUpArrow";
   if (geometry === 51) return "leftRightArrow";
   if (geometry === 52) return "upDownArrow";
+  if (geometry === 60) return "leftRightArrowCallout";
+  if (geometry === 62) return "quadArrowCallout";
   if (geometry === 63) return "bentArrow";
   if (geometry === 75) return "lightningBolt";
   if (geometry === 42) return "donut";

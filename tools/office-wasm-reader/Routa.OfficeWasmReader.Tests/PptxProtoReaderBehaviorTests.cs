@@ -79,6 +79,22 @@ public class PptxProtoReaderBehaviorTests
         Assert.Equal(45_000, Int32Field(fill, 12)); // alphaModFix
     }
 
+    [Fact]
+    public void Read_ArrowPresetGeometry_EmitsSpecificArrowShapeCodes()
+    {
+        var protoBytes = PptxPresentationProtoReader.Read(ArrowPresetGeometryPptx());
+        var slide = Assert.Single(MessagesForField(protoBytes, 1));
+        var slideElements = MessagesForField(slide, 3);
+
+        AssertShapeGeometry(slideElements, "Curved Right", 202);
+        AssertShapeGeometry(slideElements, "Curved Left", 201);
+        AssertShapeGeometry(slideElements, "Curved Up", 203);
+        AssertShapeGeometry(slideElements, "Curved Down", 204);
+        AssertShapeGeometry(slideElements, "U Turn", 205);
+        AssertShapeGeometry(slideElements, "Left Right Callout", 60);
+        AssertShapeGeometry(slideElements, "Quad Callout", 62);
+    }
+
     private static byte[] CustomGeometryEffectsAndChartPptx()
     {
         using var ms = new MemoryStream();
@@ -98,6 +114,33 @@ public class PptxProtoReaderBehaviorTests
             {
                 chartPart.FeedData(chartStream);
             }
+
+            presentationPart.Presentation.SlideIdList!.Append(new P.SlideId
+            {
+                Id = 256U,
+                RelationshipId = "rIdSlide1"
+            });
+            presentationPart.Presentation.Save();
+            slidePart.Slide.Save();
+            document.Save();
+        }
+
+        return ms.ToArray();
+    }
+
+    private static byte[] ArrowPresetGeometryPptx()
+    {
+        using var ms = new MemoryStream();
+        using (var document = PresentationDocument.Create(ms, PresentationDocumentType.Presentation))
+        {
+            var presentationPart = document.AddPresentationPart();
+            presentationPart.Presentation = new P.Presentation(
+                new P.SlideSize { Cx = 12_192_000, Cy = 6_858_000 },
+                new P.SlideIdList());
+
+            var slidePart = presentationPart.AddNewPart<SlidePart>("rIdSlide1");
+            slidePart.Slide = new P.Slide();
+            slidePart.Slide.InnerXml = ArrowPresetSlideXml();
 
             presentationPart.Presentation.SlideIdList!.Append(new P.SlideId
             {
@@ -321,6 +364,47 @@ public class PptxProtoReaderBehaviorTests
 """;
     }
 
+    private static string ArrowPresetSlideXml()
+    {
+        return """
+<p:cSld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr/>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="2" name="Curved Right"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="800000" cy="500000"/></a:xfrm><a:prstGeom prst="curvedRightArrow"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="3" name="Curved Left"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="1000000" y="100000"/><a:ext cx="800000" cy="500000"/></a:xfrm><a:prstGeom prst="curvedLeftArrow"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="00FF00"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="4" name="Curved Up"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="1900000" y="100000"/><a:ext cx="800000" cy="500000"/></a:xfrm><a:prstGeom prst="curvedUpArrow"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="0000FF"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="5" name="Curved Down"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="2800000" y="100000"/><a:ext cx="800000" cy="500000"/></a:xfrm><a:prstGeom prst="curvedDownArrow"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFF00"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="6" name="U Turn"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="3700000" y="100000"/><a:ext cx="800000" cy="500000"/></a:xfrm><a:prstGeom prst="uturnArrow"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="00FFFF"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="7" name="Left Right Callout"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="4600000" y="100000"/><a:ext cx="800000" cy="500000"/></a:xfrm><a:prstGeom prst="leftRightArrowCallout"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FF00FF"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="8" name="Quad Callout"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="5500000" y="100000"/><a:ext cx="800000" cy="500000"/></a:xfrm><a:prstGeom prst="quadArrowCallout"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="808080"/></a:solidFill></p:spPr>
+    </p:sp>
+  </p:spTree>
+</p:cSld>
+<p:clrMapOvr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:masterClrMapping/></p:clrMapOvr>
+""";
+    }
+
     private static string ChartXml()
     {
         return """
@@ -399,6 +483,13 @@ public class PptxProtoReaderBehaviorTests
 
     private static string StringField(byte[] bytes, int targetField) =>
         StringsForField(bytes, targetField).FirstOrDefault() ?? "";
+
+    private static void AssertShapeGeometry(List<byte[]> elements, string name, int expectedGeometry)
+    {
+        var element = Assert.Single(elements, item => StringField(item, 10) == name);
+        var shape = Assert.Single(MessagesForField(element, 4));
+        Assert.Equal(expectedGeometry, Int32Field(shape, 1));
+    }
 
     private static int Int32Field(byte[] bytes, int targetField)
     {
