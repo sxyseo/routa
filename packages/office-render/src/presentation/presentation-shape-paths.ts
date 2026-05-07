@@ -86,6 +86,21 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "octagon") {
+    const inset = Math.min(rect.width, rect.height) * 0.28;
+    polygon(path, [
+      [inset, 0],
+      [rect.width - inset, 0],
+      [rect.width, inset],
+      [rect.width, rect.height - inset],
+      [rect.width - inset, rect.height],
+      [inset, rect.height],
+      [0, rect.height - inset],
+      [0, inset],
+    ]);
+    return path;
+  }
+
   if (
     kind === "star5" ||
     kind === "star6" ||
@@ -130,6 +145,22 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "chord") {
+    const chordY = rect.height * 0.7;
+    path.moveTo(rect.width * 0.08, chordY);
+    path.ellipse(
+      rect.width / 2,
+      rect.height / 2,
+      rect.width / 2,
+      rect.height / 2,
+      0,
+      Math.PI * 0.82,
+      Math.PI * 2.18,
+    );
+    path.closePath();
+    return path;
+  }
+
   if (kind === "pie") {
     const radiusX = rect.width / 2;
     const radiusY = rect.height / 2;
@@ -153,6 +184,31 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "moon") {
+    path.ellipse(
+      rect.width * 0.48,
+      rect.height / 2,
+      rect.width * 0.42,
+      rect.height * 0.5,
+      0,
+      Math.PI * 0.5,
+      Math.PI * 1.5,
+      false,
+    );
+    path.ellipse(
+      rect.width * 0.66,
+      rect.height / 2,
+      rect.width * 0.34,
+      rect.height * 0.42,
+      0,
+      Math.PI * 1.5,
+      Math.PI * 0.5,
+      true,
+    );
+    path.closePath();
+    return path;
+  }
+
   if (kind === "blockArc") {
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
@@ -165,6 +221,37 @@ export function elementPath(
     path.ellipse(centerX, centerY, outerX, outerY, 0, start, end);
     path.ellipse(centerX, centerY, innerX, innerY, 0, end, start, true);
     path.closePath();
+    return path;
+  }
+
+  if (kind === "mathPlus" || kind === "mathEqual") {
+    const bar = Math.min(rect.width, rect.height) * 0.24;
+    if (kind === "mathPlus") {
+      const x1 = (rect.width - bar) / 2;
+      const x2 = x1 + bar;
+      const y1 = (rect.height - bar) / 2;
+      const y2 = y1 + bar;
+      polygon(path, [
+        [x1, 0],
+        [x2, 0],
+        [x2, y1],
+        [rect.width, y1],
+        [rect.width, y2],
+        [x2, y2],
+        [x2, rect.height],
+        [x1, rect.height],
+        [x1, y2],
+        [0, y2],
+        [0, y1],
+        [x1, y1],
+      ]);
+      return path;
+    }
+
+    const gap = rect.height * 0.16;
+    const top = rect.height * 0.28;
+    path.rect(0, top, rect.width, bar);
+    path.rect(0, top + bar + gap, rect.width, bar);
     return path;
   }
 
@@ -184,6 +271,20 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "cube") {
+    const depthX = rect.width * 0.24;
+    const depthY = rect.height * 0.18;
+    polygon(path, [
+      [0, depthY],
+      [depthX, 0],
+      [rect.width, 0],
+      [rect.width, rect.height - depthY],
+      [rect.width - depthX, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
   if (kind === "frame") {
     const inset = Math.min(rect.width, rect.height) * 0.16;
     path.rect(0, 0, rect.width, rect.height);
@@ -194,6 +295,34 @@ export function elementPath(
     path.lineTo(inset + innerWidth, inset + innerHeight);
     path.lineTo(inset + innerWidth, inset);
     path.closePath();
+    return path;
+  }
+
+  if (kind === "halfFrame") {
+    const inset = Math.min(rect.width, rect.height) * 0.24;
+    polygon(path, [
+      [0, 0],
+      [rect.width, 0],
+      [rect.width, inset],
+      [inset, inset],
+      [inset, rect.height - inset],
+      [rect.width, rect.height - inset],
+      [rect.width, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
+  if (kind === "corner") {
+    const inset = Math.min(rect.width, rect.height) * 0.38;
+    polygon(path, [
+      [0, 0],
+      [rect.width, 0],
+      [rect.width, inset],
+      [inset, inset],
+      [inset, rect.height],
+      [0, rect.height],
+    ]);
     return path;
   }
 
@@ -208,6 +337,74 @@ export function elementPath(
       rect.width * 0.34,
       rect.height - wave * 2,
       0,
+      rect.height,
+    );
+    path.closePath();
+    return path;
+  }
+
+  if (kind === "heart") {
+    path.moveTo(rect.width / 2, rect.height);
+    path.bezierCurveTo(
+      rect.width * 0.04,
+      rect.height * 0.62,
+      0,
+      rect.height * 0.24,
+      rect.width * 0.26,
+      rect.height * 0.08,
+    );
+    path.bezierCurveTo(
+      rect.width * 0.4,
+      -rect.height * 0.02,
+      rect.width / 2,
+      rect.height * 0.12,
+      rect.width / 2,
+      rect.height * 0.24,
+    );
+    path.bezierCurveTo(
+      rect.width / 2,
+      rect.height * 0.12,
+      rect.width * 0.6,
+      -rect.height * 0.02,
+      rect.width * 0.74,
+      rect.height * 0.08,
+    );
+    path.bezierCurveTo(
+      rect.width,
+      rect.height * 0.24,
+      rect.width * 0.96,
+      rect.height * 0.62,
+      rect.width / 2,
+      rect.height,
+    );
+    path.closePath();
+    return path;
+  }
+
+  if (kind === "teardrop") {
+    path.moveTo(rect.width * 0.5, rect.height);
+    path.bezierCurveTo(
+      rect.width * 0.08,
+      rect.height * 0.72,
+      rect.width * 0.04,
+      rect.height * 0.28,
+      rect.width * 0.42,
+      rect.height * 0.06,
+    );
+    path.bezierCurveTo(
+      rect.width * 0.72,
+      -rect.height * 0.1,
+      rect.width * 1.08,
+      rect.height * 0.2,
+      rect.width * 0.88,
+      rect.height * 0.52,
+    );
+    path.bezierCurveTo(
+      rect.width * 0.78,
+      rect.height * 0.68,
+      rect.width * 0.64,
+      rect.height * 0.84,
+      rect.width * 0.5,
       rect.height,
     );
     path.closePath();
@@ -245,6 +442,18 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "snip1Rect") {
+    const snip = Math.min(rect.width, rect.height) * 0.18;
+    polygon(path, [
+      [0, 0],
+      [rect.width - snip, 0],
+      [rect.width, snip],
+      [rect.width, rect.height],
+      [0, rect.height],
+    ]);
+    return path;
+  }
+
   if (kind === "snipRect") {
     const snip = Math.min(rect.width, rect.height) * 0.18;
     polygon(path, [
@@ -255,6 +464,40 @@ export function elementPath(
       [0, rect.height],
       [0, snip],
     ]);
+    return path;
+  }
+
+  if (
+    kind === "wedgeRectCallout" ||
+    kind === "wedgeRoundRectCallout" ||
+    kind === "wedgeEllipseCallout"
+  ) {
+    calloutPath(path, rect, kind);
+    return path;
+  }
+
+  if (kind === "cloud" || kind === "cloudCallout") {
+    cloudPath(path, rect);
+    if (kind === "cloudCallout") {
+      path.ellipse(
+        rect.width * 0.22,
+        rect.height * 0.92,
+        rect.width * 0.08,
+        rect.height * 0.06,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      path.ellipse(
+        rect.width * 0.12,
+        rect.height * 0.97,
+        rect.width * 0.045,
+        rect.height * 0.035,
+        0,
+        0,
+        Math.PI * 2,
+      );
+    }
     return path;
   }
 
@@ -609,6 +852,100 @@ function polygon(path: Path2D, points: Array<[number, number]>): void {
   for (const [x, y] of rest) {
     path.lineTo(x, y);
   }
+  path.closePath();
+}
+
+function calloutPath(
+  path: Path2D,
+  rect: PresentationRect,
+  kind: "wedgeEllipseCallout" | "wedgeRectCallout" | "wedgeRoundRectCallout",
+): void {
+  const tail = [
+    [rect.width * 0.5, rect.height],
+    [rect.width * 0.32, rect.height * 0.74],
+    [rect.width * 0.62, rect.height * 0.74],
+  ] satisfies Array<[number, number]>;
+
+  if (kind === "wedgeEllipseCallout") {
+    path.ellipse(
+      rect.width / 2,
+      rect.height * 0.42,
+      rect.width / 2,
+      rect.height * 0.42,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    polygon(path, tail);
+    return;
+  }
+
+  if (kind === "wedgeRoundRectCallout") {
+    roundedRect(
+      path,
+      0,
+      0,
+      rect.width,
+      rect.height * 0.78,
+      Math.min(rect.width, rect.height) * 0.08,
+    );
+    polygon(path, tail);
+    return;
+  }
+
+  polygon(path, [
+    [0, 0],
+    [rect.width, 0],
+    [rect.width, rect.height * 0.74],
+    [tail[2][0], tail[2][1]],
+    [tail[0][0], tail[0][1]],
+    [tail[1][0], tail[1][1]],
+    [0, rect.height * 0.74],
+  ]);
+}
+
+function cloudPath(path: Path2D, rect: PresentationRect): void {
+  path.moveTo(rect.width * 0.26, rect.height * 0.82);
+  path.bezierCurveTo(
+    rect.width * 0.08,
+    rect.height * 0.82,
+    0,
+    rect.height * 0.66,
+    rect.width * 0.12,
+    rect.height * 0.52,
+  );
+  path.bezierCurveTo(
+    rect.width * 0.02,
+    rect.height * 0.32,
+    rect.width * 0.24,
+    rect.height * 0.16,
+    rect.width * 0.42,
+    rect.height * 0.24,
+  );
+  path.bezierCurveTo(
+    rect.width * 0.5,
+    0,
+    rect.width * 0.78,
+    rect.height * 0.06,
+    rect.width * 0.78,
+    rect.height * 0.3,
+  );
+  path.bezierCurveTo(
+    rect.width,
+    rect.height * 0.34,
+    rect.width,
+    rect.height * 0.66,
+    rect.width * 0.82,
+    rect.height * 0.72,
+  );
+  path.bezierCurveTo(
+    rect.width * 0.72,
+    rect.height * 0.92,
+    rect.width * 0.42,
+    rect.height * 0.96,
+    rect.width * 0.26,
+    rect.height * 0.82,
+  );
   path.closePath();
 }
 

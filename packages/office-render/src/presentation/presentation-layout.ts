@@ -56,6 +56,11 @@ export type PresentationShapeKind =
   | "bentUpArrow"
   | "blockArc"
   | "chevron"
+  | "chord"
+  | "cloud"
+  | "cloudCallout"
+  | "corner"
+  | "cube"
   | "curvedDownArrow"
   | "curvedLeftArrow"
   | "curvedRightArrow"
@@ -68,6 +73,8 @@ export type PresentationShapeKind =
   | "ellipse"
   | "extract"
   | "frame"
+  | "halfFrame"
+  | "heart"
   | "hexagon"
   | "leftBrace"
   | "leftArrow"
@@ -76,6 +83,10 @@ export type PresentationShapeKind =
   | "leftRightArrow"
   | "lightningBolt"
   | "line"
+  | "mathEqual"
+  | "mathPlus"
+  | "moon"
+  | "octagon"
   | "parallelogram"
   | "pentagon"
   | "pie"
@@ -85,6 +96,7 @@ export type PresentationShapeKind =
   | "rightBracket"
   | "roundRect"
   | "rtTriangle"
+  | "snip1Rect"
   | "snipRect"
   | "star32"
   | "star5"
@@ -93,7 +105,11 @@ export type PresentationShapeKind =
   | "trapezoid"
   | "triangle"
   | "quadArrowCallout"
+  | "teardrop"
   | "uturnArrow"
+  | "wedgeEllipseCallout"
+  | "wedgeRectCallout"
+  | "wedgeRoundRectCallout"
   | "downArrow"
   | "upArrow"
   | "upDownArrow";
@@ -286,7 +302,9 @@ export function presentationShapeKind(
   if (geometry === 18) return "star6";
   if (geometry === 20) return "star8";
   if (geometry === 25) return "star32";
+  if (geometry === 207) return "snip1Rect";
   if (geometry === 32 || geometry === 33) return "snipRect";
+  if (geometry === 211) return "octagon";
   if (
     geometry === 35 ||
     geometry === 89 ||
@@ -297,8 +315,11 @@ export function presentationShapeKind(
     return "ellipse";
   }
   if (geometry === 38) return "chevron";
+  if (geometry === 206) return "chord";
   if (geometry === 40) return "pie";
   if (geometry === 41) return "blockArc";
+  if (geometry === 176) return "mathPlus";
+  if (geometry === 177) return "mathEqual";
   if (geometry === 44 || geometry === 48) return "rightArrow";
   if (geometry === 45) return "leftArrow";
   if (geometry === 46) return "upArrow";
@@ -315,8 +336,15 @@ export function presentationShapeKind(
   if (geometry === 62) return "quadArrowCallout";
   if (geometry === 63) return "bentArrow";
   if (geometry === 75) return "lightningBolt";
+  if (geometry === 76) return "heart";
+  if (geometry === 78) return "moon";
   if (geometry === 42) return "donut";
+  if (geometry === 73) return "cube";
   if (geometry === 84) return "frame";
+  if (geometry === 210) return "corner";
+  if (geometry === 212) return "roundRect";
+  if (geometry === 213) return "halfFrame";
+  if (geometry === 214) return "snip1Rect";
   if (geometry === 90) return "leftBracket";
   if (geometry === 91) return "rightBracket";
   if (geometry === 92) return "leftBrace";
@@ -327,6 +355,12 @@ export function presentationShapeKind(
   if (geometry === 137 || geometry === 138) return "document";
   if (geometry === 150 || geometry === 151) return "extract";
   if (geometry === 158) return "delay";
+  if (geometry === 117) return "wedgeRectCallout";
+  if (geometry === 118) return "wedgeRoundRectCallout";
+  if (geometry === 119) return "wedgeEllipseCallout";
+  if (geometry === 120) return "cloudCallout";
+  if (geometry === 208) return "teardrop";
+  if (geometry === 209) return "cloud";
   return "rect";
 }
 

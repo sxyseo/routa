@@ -95,6 +95,26 @@ public class PptxProtoReaderBehaviorTests
         AssertShapeGeometry(slideElements, "Quad Callout", 62);
     }
 
+    [Fact]
+    public void Read_CommonPresetGeometry_EmitsSpecificShapeCodes()
+    {
+        var protoBytes = PptxPresentationProtoReader.Read(CommonPresetGeometryPptx());
+        var slide = Assert.Single(MessagesForField(protoBytes, 1));
+        var slideElements = MessagesForField(slide, 3);
+
+        AssertShapeGeometry(slideElements, "Chord", 206);
+        AssertShapeGeometry(slideElements, "Snip One Rect", 207);
+        AssertShapeGeometry(slideElements, "Teardrop", 208);
+        AssertShapeGeometry(slideElements, "Cloud", 209);
+        AssertShapeGeometry(slideElements, "Corner", 210);
+        AssertShapeGeometry(slideElements, "Octagon", 211);
+        AssertShapeGeometry(slideElements, "Round One Rect", 212);
+        AssertShapeGeometry(slideElements, "Plus", 176);
+        AssertShapeGeometry(slideElements, "Half Frame", 213);
+        AssertShapeGeometry(slideElements, "Math Equal", 177);
+        AssertShapeGeometry(slideElements, "Folded Corner", 214);
+    }
+
     private static byte[] CustomGeometryEffectsAndChartPptx()
     {
         using var ms = new MemoryStream();
@@ -141,6 +161,33 @@ public class PptxProtoReaderBehaviorTests
             var slidePart = presentationPart.AddNewPart<SlidePart>("rIdSlide1");
             slidePart.Slide = new P.Slide();
             slidePart.Slide.InnerXml = ArrowPresetSlideXml();
+
+            presentationPart.Presentation.SlideIdList!.Append(new P.SlideId
+            {
+                Id = 256U,
+                RelationshipId = "rIdSlide1"
+            });
+            presentationPart.Presentation.Save();
+            slidePart.Slide.Save();
+            document.Save();
+        }
+
+        return ms.ToArray();
+    }
+
+    private static byte[] CommonPresetGeometryPptx()
+    {
+        using var ms = new MemoryStream();
+        using (var document = PresentationDocument.Create(ms, PresentationDocumentType.Presentation))
+        {
+            var presentationPart = document.AddPresentationPart();
+            presentationPart.Presentation = new P.Presentation(
+                new P.SlideSize { Cx = 12_192_000, Cy = 6_858_000 },
+                new P.SlideIdList());
+
+            var slidePart = presentationPart.AddNewPart<SlidePart>("rIdSlide1");
+            slidePart.Slide = new P.Slide();
+            slidePart.Slide.InnerXml = CommonPresetSlideXml();
 
             presentationPart.Presentation.SlideIdList!.Append(new P.SlideId
             {
@@ -398,6 +445,63 @@ public class PptxProtoReaderBehaviorTests
     <p:sp>
       <p:nvSpPr><p:cNvPr id="8" name="Quad Callout"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
       <p:spPr><a:xfrm><a:off x="5500000" y="100000"/><a:ext cx="800000" cy="500000"/></a:xfrm><a:prstGeom prst="quadArrowCallout"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="808080"/></a:solidFill></p:spPr>
+    </p:sp>
+  </p:spTree>
+</p:cSld>
+<p:clrMapOvr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:masterClrMapping/></p:clrMapOvr>
+""";
+    }
+
+    private static string CommonPresetSlideXml()
+    {
+        return """
+<p:cSld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr/>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="2" name="Chord"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="chord"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="3" name="Snip One Rect"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="800000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="snip1Rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="00FF00"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="4" name="Teardrop"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="1500000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="teardrop"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="0000FF"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="5" name="Cloud"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="2200000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="cloud"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFF00"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="6" name="Corner"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="2900000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="corner"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="00FFFF"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="7" name="Octagon"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="3600000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="octagon"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FF00FF"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="8" name="Round One Rect"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="4300000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="round1Rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="808080"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="9" name="Plus"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="5000000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="plus"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="AA0000"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="10" name="Half Frame"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="5700000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="halfFrame"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="00AA00"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="11" name="Math Equal"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="6400000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="mathEqual"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="0000AA"/></a:solidFill></p:spPr>
+    </p:sp>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="12" name="Folded Corner"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="7100000" y="100000"/><a:ext cx="600000" cy="400000"/></a:xfrm><a:prstGeom prst="foldedCorner"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="AAAA00"/></a:solidFill></p:spPr>
     </p:sp>
   </p:spTree>
 </p:cSld>
