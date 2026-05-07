@@ -114,7 +114,7 @@ internal static class PptxPresentationProtoReader
 
             foreach (var chartPart in chartParts)
             {
-                WriteMessage(output, 9, PptxChartProtoWriter.WriteChart(chartPart, WriteFill));
+                WriteMessage(output, 9, WriteChart(chartPart));
             }
         });
     }
@@ -660,7 +660,7 @@ internal static class PptxPresentationProtoReader
                 var chartId = ResolveChartId(partContainer, chartReference);
                 if (!string.IsNullOrEmpty(chartId))
                 {
-                    WriteMessage(output, 18, PptxChartProtoWriter.WriteReference(chartId));
+                    WriteMessage(output, 18, WriteChartReference(chartId));
                     WriteInt32(output, 11, ElementTypeChartReference);
                 }
                 else
@@ -2154,6 +2154,12 @@ internal static class PptxPresentationProtoReader
             : relationshipId;
     }
 
+    private static byte[] WriteChartReference(string chartId) =>
+        PptxChartProtoWriter.WriteReference(chartId);
+
+    private static byte[] WriteChart(ChartPart chartPart) =>
+        PptxChartProtoWriter.WriteChart(chartPart, WriteFill);
+
     private static byte[] WriteConnector(P.ConnectionShape connectionShape, A.Outline? line)
     {
         var connectorProperties =
@@ -3053,11 +3059,6 @@ internal static class PptxPresentationProtoReader
     private static uint? ToUInt32(Int32Value? value)
     {
         return value is null ? null : (uint)Math.Max(0, value.Value);
-    }
-
-    private static double ParseDouble(string? value)
-    {
-        return double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : double.NaN;
     }
 
     private static byte[] Message(Action<CodedOutputStream> write)
