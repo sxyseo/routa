@@ -213,6 +213,41 @@ describe("presentation renderer helpers", () => {
     }
   });
 
+  it("uses PPTX rounded rectangle adjustments for corner radius", () => {
+    const previousPath2D = globalThis.Path2D;
+    globalThis.Path2D = class {
+      commands: unknown[] = [];
+      closePath() {
+        this.commands.push({ command: "closePath" });
+      }
+      lineTo(x: number, y: number) {
+        this.commands.push({ command: "lineTo", x, y });
+      }
+      moveTo(x: number, y: number) {
+        this.commands.push({ command: "moveTo", x, y });
+      }
+      quadraticCurveTo(cpx: number, cpy: number, x: number, y: number) {
+        this.commands.push({ command: "quadraticCurveTo", cpx, cpy, x, y });
+      }
+    } as unknown as typeof Path2D;
+
+    try {
+      const path = elementPath(
+        "roundRect",
+        { height: 40, left: 0, top: 0, width: 120 },
+        {
+          adjustmentList: [{ formula: "val 50000", name: "adj" }],
+        },
+      ) as unknown as { commands: Array<Record<string, number | string>> };
+
+      expect(path.commands[0]).toEqual({ command: "moveTo", x: 20, y: 0 });
+      expect(path.commands[1]).toEqual({ command: "lineTo", x: 100, y: 0 });
+      expect(path.commands[2]).toEqual({ command: "quadraticCurveTo", cpx: 120, cpy: 0, x: 120, y: 20 });
+    } finally {
+      globalThis.Path2D = previousPath2D;
+    }
+  });
+
   it("maps PPT source rectangles to image crop coordinates", () => {
     const crop = presentationImageSourceRect(
       {

@@ -38,7 +38,7 @@ export function elementPath(
   }
 
   if (kind === "roundRect") {
-    const radius = Math.min(rect.width, rect.height) * 0.08;
+    const radius = roundedRectRadius(rect, shape);
     roundedRect(path, 0, 0, rect.width, rect.height, radius);
     return path;
   }
@@ -1069,8 +1069,17 @@ function adjustmentValue(shape: RecordValue | null, name: string): number | null
   return null;
 }
 
+function roundedRectRadius(rect: PresentationRect, shape: RecordValue | null): number {
+  const adjustment = adjustmentValue(shape, "adj") ?? 16_667;
+  return Math.min(rect.width, rect.height) * clamp(adjustment, 0, 50_000) / 100_000;
+}
+
 function pptAngleToRadians(value: number): number {
   return (value / 60_000) * (Math.PI / 180);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function starPath(
