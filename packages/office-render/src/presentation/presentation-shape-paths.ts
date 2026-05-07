@@ -1,4 +1,5 @@
 import {
+  asArray,
   asNumber,
   asRecord,
   type RecordValue,
@@ -11,6 +12,7 @@ import type {
 export function elementPath(
   kind: PresentationShapeKind,
   rect: PresentationRect,
+  shape: RecordValue | null = null,
 ): Path2D {
   const path = new Path2D();
   if (kind === "ellipse") {
@@ -131,16 +133,21 @@ export function elementPath(
   if (kind === "pie") {
     const radiusX = rect.width / 2;
     const radiusY = rect.height / 2;
+    const start = pptAngleToRadians(adjustmentValue(shape, "adj1") ?? 0);
+    const end = pptAngleToRadians(adjustmentValue(shape, "adj2") ?? 90 * 60_000);
     path.moveTo(rect.width / 2, rect.height / 2);
-    path.lineTo(rect.width / 2, 0);
+    path.lineTo(
+      rect.width / 2 + Math.cos(start) * radiusX,
+      rect.height / 2 + Math.sin(start) * radiusY,
+    );
     path.ellipse(
       rect.width / 2,
       rect.height / 2,
       radiusX,
       radiusY,
       0,
-      -Math.PI / 2,
-      0,
+      start,
+      end,
     );
     path.closePath();
     return path;
@@ -529,6 +536,25 @@ function polygon(path: Path2D, points: Array<[number, number]>): void {
     path.lineTo(x, y);
   }
   path.closePath();
+}
+
+function adjustmentValue(shape: RecordValue | null, name: string): number | null {
+  const adjustments = [
+    ...asArray(shape?.adjustmentList),
+    ...asArray(shape?.adjustments),
+  ];
+  for (const rawAdjustment of adjustments) {
+    const adjustment = asRecord(rawAdjustment);
+    if (adjustment?.name !== name) continue;
+    const formula = String(adjustment.formula ?? "");
+    const match = /^val\s+(-?\d+(?:\.\d+)?)$/u.exec(formula.trim());
+    if (match?.[1]) return Number(match[1]);
+  }
+  return null;
+}
+
+function pptAngleToRadians(value: number): number {
+  return (value / 60_000) * (Math.PI / 180);
 }
 
 function starPath(

@@ -219,6 +219,11 @@ type PresentationCustomPathPoint = {
   y: number;
 };
 
+type PresentationGeometryAdjustment = {
+  formula?: string;
+  name?: string;
+};
+
 type PresentationElement = {
   bbox?: PresentationRect;
   connector?: PresentationConnector;
@@ -231,6 +236,7 @@ type PresentationElement = {
   placeholderIndex?: number;
   placeholderType?: string;
   shape?: {
+    adjustmentList?: PresentationGeometryAdjustment[];
     customPaths?: PresentationCustomGeometryPath[];
     fill?: PresentationFill;
     geometry?: number;
@@ -1030,11 +1036,25 @@ function decodeShape(bytes: Uint8Array): NonNullable<PresentationElement["shape"
       shape.fill = decodeFill(reader.bytesField());
     } else if (tag.fieldNumber === 6 && tag.wireType === 2) {
       shape.line = decodeLine(reader.bytesField());
+    } else if (tag.fieldNumber === 7 && tag.wireType === 2) {
+      (shape.adjustmentList ??= []).push(decodeGeometryAdjustment(reader.bytesField()));
     } else if (tag.fieldNumber === 9 && tag.wireType === 2) {
       (shape.customPaths ??= []).push(decodeCustomGeometryPath(reader.bytesField()));
     } else reader.skip(tag.wireType);
   }
   return shape;
+}
+
+function decodeGeometryAdjustment(bytes: Uint8Array): PresentationGeometryAdjustment {
+  const reader = new ProtoReader(bytes);
+  const adjustment: PresentationGeometryAdjustment = {};
+  while (!reader.eof()) {
+    const tag = reader.tag();
+    if (tag.fieldNumber === 1) adjustment.name = reader.string();
+    else if (tag.fieldNumber === 2) adjustment.formula = reader.string();
+    else reader.skip(tag.wireType);
+  }
+  return adjustment;
 }
 
 function decodeCustomGeometryPath(bytes: Uint8Array): PresentationCustomGeometryPath {

@@ -137,6 +137,47 @@ describe("buildPptxCursorCanvasPayload", () => {
     expect(payload.slides[0]?.thumbnail).toBeNull();
   });
 
+  it("preserves PPTX preset geometry adjustments for renderer fidelity", async () => {
+    const protoBytes = message([
+      bytesField(
+        1,
+        message([
+          int32Field(1, 1),
+          bytesField(
+            3,
+            message([
+              bytesField(1, bbox(0, 0, 1_000_000, 500_000)),
+              bytesField(
+                4,
+                message([
+                  int32Field(1, 40),
+                  bytesField(7, message([stringField(1, "adj1"), stringField(2, "val 10800000")])),
+                  bytesField(7, message([stringField(1, "adj2"), stringField(2, "val 16200000")])),
+                ]),
+              ),
+              stringField(10, "Pie"),
+              int32Field(11, 1),
+            ]),
+          ),
+          int64Field(5, 1_000_000),
+          int64Field(6, 500_000),
+        ]),
+      ),
+    ]);
+
+    const payload = await buildPptxCursorCanvasPayload(protoBytes, {
+      readerVersion: "test-reader",
+      sourcePath: "pie.pptx",
+      title: "Pie",
+    });
+    const firstSlide = payload.slides[0] as { elements?: Array<{ shape?: { adjustmentList?: unknown[] } }> } | undefined;
+
+    expect(firstSlide?.elements?.[0]?.shape?.adjustmentList).toEqual([
+      { formula: "val 10800000", name: "adj1" },
+      { formula: "val 16200000", name: "adj2" },
+    ]);
+  });
+
   it("preserves original PPTX image media by default for Cursor color fidelity", async () => {
     const pngBytes = Uint8Array.from(
       Buffer.from(

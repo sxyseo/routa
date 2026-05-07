@@ -283,7 +283,7 @@ function drawElement(
     return;
   }
 
-  const path = customGeometryPath(shape, rect) ?? elementPath(shapeKind, rect);
+  const path = customGeometryPath(shape, rect) ?? elementPath(shapeKind, rect, shape);
   const fill = shapeFillToPaint(context, shape, element, line.color, rect);
   if (fill) {
     context.fillStyle = fill;

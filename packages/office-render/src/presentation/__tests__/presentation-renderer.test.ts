@@ -27,7 +27,7 @@ import {
 } from "../presentation-text-layout";
 import { shapeFillToPaint } from "../presentation-fill-styles";
 import { drawLineEndPath } from "../presentation-line-styles";
-import { customGeometryLinePoints } from "../presentation-shape-paths";
+import { customGeometryLinePoints, elementPath } from "../presentation-shape-paths";
 
 describe("presentation renderer helpers", () => {
   it("quotes source typefaces and appends Office/CJK fallbacks", () => {
@@ -130,6 +130,56 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 95 }, rect)).toBe("bracePair");
     expect(presentationShapeKind({ geometry: 137 }, rect)).toBe("document");
     expect(presentationShapeKind({ geometry: 150 }, rect)).toBe("extract");
+  });
+
+  it("uses PPTX pie geometry adjustments for the rendered sector", () => {
+    const previousPath2D = globalThis.Path2D;
+    globalThis.Path2D = class {
+      commands: unknown[] = [];
+      closePath() {
+        this.commands.push({ command: "closePath" });
+      }
+      ellipse(
+        x: number,
+        y: number,
+        radiusX: number,
+        radiusY: number,
+        rotation: number,
+        startAngle: number,
+        endAngle: number,
+      ) {
+        this.commands.push({ command: "ellipse", endAngle, radiusX, radiusY, rotation, startAngle, x, y });
+      }
+      lineTo(x: number, y: number) {
+        this.commands.push({ command: "lineTo", x, y });
+      }
+      moveTo(x: number, y: number) {
+        this.commands.push({ command: "moveTo", x, y });
+      }
+    } as unknown as typeof Path2D;
+
+    try {
+      const path = elementPath(
+        "pie",
+        { height: 200, left: 0, top: 0, width: 400 },
+        {
+          adjustmentList: [
+            { formula: "val 10800000", name: "adj1" },
+            { formula: "val 16200000", name: "adj2" },
+          ],
+        },
+      ) as unknown as { commands: Array<Record<string, number | string>> };
+
+      expect(path.commands[0]).toEqual({ command: "moveTo", x: 200, y: 100 });
+      expect(path.commands[1]?.command).toBe("lineTo");
+      expect(path.commands[1]?.x).toBeCloseTo(0, 6);
+      expect(path.commands[1]?.y).toBeCloseTo(100, 6);
+      expect(path.commands[2]?.command).toBe("ellipse");
+      expect(path.commands[2]?.startAngle).toBeCloseTo(Math.PI, 6);
+      expect(path.commands[2]?.endAngle).toBeCloseTo(Math.PI * 1.5, 6);
+    } finally {
+      globalThis.Path2D = previousPath2D;
+    }
   });
 
   it("maps PPT source rectangles to image crop coordinates", () => {
