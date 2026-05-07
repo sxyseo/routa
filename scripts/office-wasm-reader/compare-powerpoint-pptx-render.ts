@@ -46,6 +46,7 @@ const assertMode = process.argv.includes("--assert");
 const startServer = process.argv.includes("--start-server");
 const verboseMode = process.argv.includes("--verbose");
 const referencePowerPoint = process.argv.includes("--reference-powerpoint");
+const activePowerPoint = process.argv.includes("--active-powerpoint") || process.argv.includes("--use-active-powerpoint");
 const contactSheet = process.argv.includes("--contact-sheet");
 const writeDiffs = contactSheet || process.argv.includes("--write-diffs");
 const port = numberArg("--port") ?? 3000;
@@ -278,7 +279,11 @@ async function renderPowerPointReference(
   visibleSlideIndices: number[],
 ): Promise<string[]> {
   mkdirSync(referenceDir, { recursive: true });
-  await ensurePowerPointPresentation(fixturePath);
+  if (activePowerPoint) {
+    await assertActivePowerPointPresentation(fixturePath);
+  } else {
+    await ensurePowerPointPresentation(fixturePath);
+  }
 
   const selectedSlideIndices =
     visibleSlideIndices.length > 0
@@ -292,6 +297,19 @@ async function renderPowerPointReference(
     await writePowerPointClipboardPng(path.join(referenceDir, `slide-${String(index + 1).padStart(2, "0")}.png`));
   }
   return readReferenceSlides(referenceDir);
+}
+
+async function assertActivePowerPointPresentation(fixturePath: string): Promise<void> {
+  const activePath = await activePowerPointPresentationPath();
+  if (activePath == null) {
+    throw new Error("PowerPoint has no active presentation. Open the PPTX in PowerPoint or omit --active-powerpoint.");
+  }
+
+  if (path.resolve(activePath) !== path.resolve(fixturePath)) {
+    throw new Error(
+      `PowerPoint active presentation does not match the fixture. active=${activePath}, fixture=${fixturePath}`,
+    );
+  }
 }
 
 async function ensurePowerPointPresentation(fixturePath: string): Promise<void> {
