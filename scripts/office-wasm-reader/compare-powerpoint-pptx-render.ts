@@ -15,6 +15,7 @@ type SlideDiff = {
   averageDelta: number;
   averageRgbDelta: number;
   changedPixelRatio: number;
+  diffPath?: string;
   matches: boolean;
   maxDelta: number;
   referencePath: string;
@@ -24,6 +25,7 @@ type SlideDiff = {
 };
 
 type RenderComparisonResult = {
+  contactSheetPath?: string;
   fixture: string;
   outputDir: string;
   parity: {
@@ -44,6 +46,8 @@ const assertMode = process.argv.includes("--assert");
 const startServer = process.argv.includes("--start-server");
 const verboseMode = process.argv.includes("--verbose");
 const referencePowerPoint = process.argv.includes("--reference-powerpoint");
+const contactSheet = process.argv.includes("--contact-sheet");
+const writeDiffs = contactSheet || process.argv.includes("--write-diffs");
 const port = numberArg("--port") ?? 3000;
 const baseUrl = stringArg("--base-url") ?? `http://127.0.0.1:${port}/debug/office-wasm-poc`;
 const outputDir = path.resolve(stringArg("--output-dir") ?? "/tmp/routa-office-wasm-pptx-powerpoint-render");
@@ -117,9 +121,16 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
   );
   const slideCount = Math.min(referencePaths.length, viewerPaths.length);
   const slides: SlideDiff[] = [];
+  const diffDir = path.join(fixtureOutputDir, "diff");
+  if (writeDiffs) {
+    mkdirSync(diffDir, { recursive: true });
+  }
   for (let index = 0; index < slideCount; index++) {
     const viewer = viewerPaths[index]!;
-    slides.push(await compareSlideImages(referencePaths[index]!, viewer.path, index + 1, viewer.slideIndex));
+    const diffPath = writeDiffs
+      ? path.join(diffDir, `slide-${String(index + 1).padStart(2, "0")}-vs-viewer-${String(viewer.slideIndex).padStart(2, "0")}.png`)
+      : undefined;
+    slides.push(await compareSlideImages(referencePaths[index]!, viewer.path, index + 1, viewer.slideIndex, diffPath));
   }
 
   const failures: string[] = [];
@@ -135,8 +146,14 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
       );
     }
   }
+  const failedSlides = slides.filter((slide) => !slide.matches);
+  const contactSheetPath =
+    contactSheet && slides.length > 0
+      ? await writeContactSheet(failedSlides.length > 0 ? failedSlides : slides, path.join(fixtureOutputDir, "contact-sheet.png"))
+      : undefined;
 
   return {
+    contactSheetPath,
     fixture: path.relative(repoRoot, fixturePath),
     outputDir: fixtureOutputDir,
     parity: {
@@ -410,6 +427,7 @@ async function compareSlideImages(
   viewerPath: string,
   referenceSlideIndex: number,
   viewerSlideIndex: number,
+  diffPath?: string,
 ): Promise<SlideDiff> {
   const [reference, viewer] = await Promise.all([
     normalizedPixels(referencePath),
@@ -437,10 +455,14 @@ async function compareSlideImages(
   const totalPixels = reference.info.width * reference.info.height;
   const averageDelta = totalDelta / totalPixels;
   const changedPixelRatio = changedPixels / totalPixels;
+  if (diffPath) {
+    await writeSlideDiffImage(reference, viewer, diffPath);
+  }
   return {
     averageDelta,
     averageRgbDelta: totalRgbDelta / (totalPixels * 3),
     changedPixelRatio,
+    diffPath,
     matches: changedPixelRatio <= changedPixelRatioTolerance && averageDelta <= averageDeltaTolerance,
     maxDelta,
     referencePath,
@@ -456,6 +478,90 @@ async function normalizedPixels(filePath: string) {
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
+}
+
+type NormalizedPixels = Awaited<ReturnType<typeof normalizedPixels>>;
+
+async function writeSlideDiffImage(reference: NormalizedPixels, viewer: NormalizedPixels, diffPath: string): Promise<void> {
+  const width = reference.info.width;
+  const height = reference.info.height;
+  const channels = reference.info.channels;
+  const output = Buffer.alloc(width * height * 3);
+  for (let source = 0, target = 0; source < reference.data.length; source += channels, target += 3) {
+    const redDelta = Math.abs(reference.data[source] - viewer.data[source]);
+    const greenDelta = Math.abs(reference.data[source + 1] - viewer.data[source + 1]);
+    const blueDelta = Math.abs(reference.data[source + 2] - viewer.data[source + 2]);
+    const pixelDelta = Math.max(redDelta, greenDelta, blueDelta);
+    if (pixelDelta <= 35) {
+      output[target] = 248;
+      output[target + 1] = 250;
+      output[target + 2] = 252;
+    } else {
+      output[target] = 255;
+      output[target + 1] = Math.max(0, 220 - pixelDelta);
+      output[target + 2] = Math.max(0, 220 - pixelDelta);
+    }
+  }
+  await sharp(output, { raw: { channels: 3, height, width } }).png().toFile(diffPath);
+}
+
+async function writeContactSheet(slides: SlideDiff[], outputPath: string): Promise<string> {
+  const cellWidth = 426;
+  const cellHeight = 240;
+  const labelHeight = 30;
+  const gap = 8;
+  const rowHeight = labelHeight + cellHeight;
+  const width = cellWidth * 3 + gap * 2;
+  const height = rowHeight * slides.length;
+  const composites: sharp.OverlayOptions[] = [];
+
+  for (const [index, slide] of slides.entries()) {
+    const top = index * rowHeight;
+    const referenceLabel = `PowerPoint slide ${slide.referenceSlideIndex}`;
+    const viewerLabel = `Viewer slide ${slide.viewerSlideIndex}`;
+    const diffLabel =
+      `Diff changed=${slide.changedPixelRatio.toFixed(4)} avg=${slide.averageDelta.toFixed(2)}`;
+    composites.push({ input: labelSvg(referenceLabel, cellWidth, labelHeight), left: 0, top });
+    composites.push({ input: labelSvg(viewerLabel, cellWidth, labelHeight), left: cellWidth + gap, top });
+    composites.push({ input: labelSvg(diffLabel, cellWidth, labelHeight), left: (cellWidth + gap) * 2, top });
+    composites.push({ input: await contactSheetImage(slide.referencePath, cellWidth, cellHeight), left: 0, top: top + labelHeight });
+    composites.push({ input: await contactSheetImage(slide.viewerPath, cellWidth, cellHeight), left: cellWidth + gap, top: top + labelHeight });
+    composites.push({
+      input: await contactSheetImage(slide.diffPath ?? slide.viewerPath, cellWidth, cellHeight),
+      left: (cellWidth + gap) * 2,
+      top: top + labelHeight,
+    });
+  }
+
+  await sharp({
+    create: {
+      background: "#f8fafc",
+      channels: 3,
+      height,
+      width,
+    },
+  })
+    .composite(composites)
+    .png()
+    .toFile(outputPath);
+  return outputPath;
+}
+
+async function contactSheetImage(filePath: string, width: number, height: number): Promise<Buffer> {
+  return sharp(filePath)
+    .resize({ background: "#ffffff", fit: "fill", height, width })
+    .png()
+    .toBuffer();
+}
+
+function labelSvg(label: string, width: number, height: number): Buffer {
+  const escapedLabel = label
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#111827"/><text x="8" y="20" font-family="Arial, sans-serif" font-size="14" fill="#ffffff">${escapedLabel}</text></svg>`,
+  );
 }
 
 async function ensureServer() {
