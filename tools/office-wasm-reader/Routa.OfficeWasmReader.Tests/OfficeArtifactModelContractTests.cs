@@ -57,6 +57,41 @@ public class OfficeArtifactModelContractTests
         Assert.Equal(1, fields[11]);
     }
 
+    [Fact]
+    public void OfficeArtifactProtoWriter_WritesSheetValidationAndEmptyImageFields()
+    {
+        var artifact = new OfficeArtifactModel { SourceKind = "xlsx", Title = "contracts" };
+        var sheet = new SheetModel { Name = "Rules", DefaultColWidth = 9.5, DefaultRowHeight = 15 };
+        sheet.DataValidations.Add(new DataValidationModel("whole", "between", "1", "10", ["A1:A3"]));
+        sheet.ConditionalFormats.Add(new ConditionalFormatModel(
+            "cellIs",
+            1,
+            ["A1:A3"],
+            Operator: "greaterThan",
+            Formulas: ["5"],
+            Text: "warn",
+            FillColor: "FFCC00",
+            FontColor: "FF0000",
+            Bold: true,
+            ColorScale: new ColorScaleModel(["FFFFFF", "FF0000"]),
+            DataBar: new DataBarModel("63C384"),
+            IconSet: new IconSetModel("3TrafficLights1", ShowValue: true, Reverse: false)));
+        sheet.Columns.Add(new ColumnModel(1, 3, 12.25, Hidden: true));
+        artifact.Sheets.Add(sheet);
+        artifact.Images.Add(new ImageAssetModel("empty", "/xl/media/empty.png", "image/png", []));
+
+        var protoBytes = OfficeArtifactProtoWriter.Write(artifact);
+        var fields = CountFields(protoBytes);
+        var sheetBytes = MessagesForField(protoBytes, 4).Single();
+        var sheetFields = CountFields(sheetBytes);
+
+        Assert.Equal(1, fields[4]);
+        Assert.Equal(1, fields[8]);
+        Assert.Equal(1, sheetFields[5]);
+        Assert.Equal(1, sheetFields[6]);
+        Assert.Equal(1, sheetFields[7]);
+    }
+
     private static byte[] ReadFixture(string name) =>
         File.ReadAllBytes(Path.Combine(FixtureDir, name));
 
@@ -72,5 +107,23 @@ public class OfficeArtifactModelContractTests
         }
 
         return counts;
+    }
+
+    private static List<byte[]> MessagesForField(byte[] bytes, int targetField)
+    {
+        var messages = new List<byte[]>();
+        var input = new CodedInputStream(bytes);
+        while (input.ReadTag() is var tag && tag != 0)
+        {
+            if (WireFormat.GetTagFieldNumber(tag) == targetField && WireFormat.GetTagWireType(tag) == WireFormat.WireType.LengthDelimited)
+            {
+                messages.Add(input.ReadBytes().ToByteArray());
+                continue;
+            }
+
+            input.SkipLastField();
+        }
+
+        return messages;
     }
 }
