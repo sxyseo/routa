@@ -121,7 +121,7 @@ export function presentationLineEndStyle(
 ): PresentationLineEndStyle | null {
   const record = asRecord(end);
   const type = asNumber(record?.type);
-  if (!record || type <= 0) return null;
+  if (!record || type <= 1) return null;
 
   return {
     length: lineEndScale(asNumber(record.length, 2), lineWidth),

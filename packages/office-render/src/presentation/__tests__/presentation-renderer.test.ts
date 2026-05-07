@@ -309,6 +309,7 @@ describe("presentation renderer helpers", () => {
   it("maps PPT line end records into canvas arrowhead dimensions", () => {
     expect(presentationLineEndStyle(undefined, 2)).toBeNull();
     expect(presentationLineEndStyle({ type: 0 }, 2)).toBeNull();
+    expect(presentationLineEndStyle({ length: 1, type: 1, width: 1 }, 2)).toBeNull();
     expect(presentationLineEndStyle({ length: 3, type: 2, width: 2 }, 2)).toEqual({
       length: 10,
       type: 2,
