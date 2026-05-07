@@ -43,6 +43,7 @@ const repoRoot = process.cwd();
 const assertMode = process.argv.includes("--assert");
 const startServer = process.argv.includes("--start-server");
 const verboseMode = process.argv.includes("--verbose");
+const referencePowerPoint = process.argv.includes("--reference-powerpoint");
 const port = numberArg("--port") ?? 3000;
 const baseUrl = stringArg("--base-url") ?? `http://127.0.0.1:${port}/debug/office-wasm-poc`;
 const outputDir = path.resolve(stringArg("--output-dir") ?? "/tmp/routa-office-wasm-pptx-powerpoint-render");
@@ -103,8 +104,10 @@ async function compareFixture(browser: Browser, fixturePath: string): Promise<Re
     ? await renderPdfReference(referencePdf, path.join(fixtureOutputDir, "reference"))
     : referenceDir
       ? readReferenceSlides(referenceDir)
+      : referencePowerPoint
+        ? await renderPowerPointReference(fixturePath, path.join(fixtureOutputDir, "reference"), visibleSlideIndices)
       : await renderPowerPointLikeReference(fixturePath, path.join(fixtureOutputDir, "reference"));
-  const referenceLabel = referencePdf ? "PowerPoint PDF" : "PowerPoint-like";
+  const referenceLabel = referencePdf ? "PowerPoint PDF" : referencePowerPoint ? "PowerPoint" : "PowerPoint-like";
   const viewerPaths = await renderViewerSlides(
     browser,
     fixturePath,
@@ -250,6 +253,81 @@ async function renderPdfReference(pdfPath: string, referenceDir: string): Promis
   const prefix = path.join(referenceDir, "slide");
   await execFileAsync(pdftoppmBin, ["-png", "-r", "144", absolutePdfPath, prefix], { maxBuffer: 10 * 1024 * 1024 });
   return readReferenceSlides(referenceDir);
+}
+
+async function renderPowerPointReference(
+  fixturePath: string,
+  referenceDir: string,
+  visibleSlideIndices: number[],
+): Promise<string[]> {
+  mkdirSync(referenceDir, { recursive: true });
+  await ensurePowerPointPresentation(fixturePath);
+
+  const selectedSlideIndices =
+    visibleSlideIndices.length > 0
+      ? visibleSlideIndices
+      : await activePowerPointSlideIndices();
+  for (const [index, slideIndex] of selectedSlideIndices.entries()) {
+    await execFileAsync("osascript", [
+      "-e",
+      `tell application id "com.microsoft.Powerpoint" to copy object slide ${slideIndex} of active presentation`,
+    ], { maxBuffer: 1024 * 1024 });
+    await writePowerPointClipboardPng(path.join(referenceDir, `slide-${String(index + 1).padStart(2, "0")}.png`));
+  }
+  return readReferenceSlides(referenceDir);
+}
+
+async function ensurePowerPointPresentation(fixturePath: string): Promise<void> {
+  if (await activePowerPointPresentationPath() === fixturePath) return;
+  try {
+    await execFileAsync("osascript", [
+      "-e",
+      `tell application id "com.microsoft.Powerpoint" to open POSIX file ${appleScriptString(fixturePath)}`,
+    ], { maxBuffer: 1024 * 1024 });
+  } catch (error) {
+    if (await activePowerPointPresentationPath() === fixturePath) return;
+    throw error;
+  }
+}
+
+async function activePowerPointPresentationPath(): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("osascript", [
+      "-e",
+      'tell application id "com.microsoft.Powerpoint" to get full name of active presentation',
+    ], { maxBuffer: 1024 * 1024 });
+    const filePath = stdout.trim();
+    return filePath || null;
+  } catch {
+    return null;
+  }
+}
+
+async function activePowerPointSlideIndices(): Promise<number[]> {
+  const { stdout } = await execFileAsync("osascript", [
+    "-e",
+    'tell application id "com.microsoft.Powerpoint" to count of slides of active presentation',
+  ], { maxBuffer: 1024 * 1024 });
+  const slideCount = Number(stdout.trim());
+  if (!Number.isFinite(slideCount) || slideCount <= 0) return [];
+  return Array.from({ length: slideCount }, (_, index) => index + 1);
+}
+
+async function writePowerPointClipboardPng(outputPath: string): Promise<void> {
+  await execFileAsync("osascript", [
+    "-e",
+    `set outPath to POSIX file ${appleScriptString(outputPath)}`,
+    "-e",
+    "set pngData to the clipboard as «class PNGf»",
+    "-e",
+    "set fh to open for access outPath with write permission",
+    "-e",
+    "set eof fh to 0",
+    "-e",
+    "write pngData to fh",
+    "-e",
+    "close access fh",
+  ], { maxBuffer: 1024 * 1024 });
 }
 
 async function renderViewerSlides(
@@ -506,6 +584,10 @@ function positionalArgs(): string[] {
     }
   }
   return values;
+}
+
+function appleScriptString(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 
 function safeFileLabel(filePath: string): string {
