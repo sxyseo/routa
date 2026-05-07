@@ -108,7 +108,11 @@ describe("presentation renderer helpers", () => {
     expect(presentationShapeKind({ geometry: 32 }, rect)).toBe("snipRect");
     expect(presentationShapeKind({ geometry: 44 }, rect)).toBe("rightArrow");
     expect(presentationShapeKind({ geometry: 45 }, rect)).toBe("leftArrow");
+    expect(presentationShapeKind({ geometry: 46 }, rect)).toBe("upArrow");
+    expect(presentationShapeKind({ geometry: 47 }, rect)).toBe("downArrow");
+    expect(presentationShapeKind({ geometry: 48 }, rect)).toBe("rightArrow");
     expect(presentationShapeKind({ geometry: 50 }, rect)).toBe("bentUpArrow");
+    expect(presentationShapeKind({ geometry: 51 }, rect)).toBe("leftRightArrow");
     expect(presentationShapeKind({ geometry: 52 }, rect)).toBe("upDownArrow");
     expect(presentationShapeKind({ geometry: 63 }, rect)).toBe("bentArrow");
     expect(presentationShapeKind({ geometry: 75 }, rect)).toBe("lightningBolt");

@@ -234,6 +234,57 @@ export function elementPath(
     return path;
   }
 
+  if (kind === "upArrow") {
+    const head = Math.min(rect.height * 0.42, rect.width * 0.5);
+    const shaftLeft = rect.width * 0.32;
+    const shaftRight = rect.width * 0.68;
+    polygon(path, [
+      [rect.width / 2, 0],
+      [rect.width, head],
+      [shaftRight, head],
+      [shaftRight, rect.height],
+      [shaftLeft, rect.height],
+      [shaftLeft, head],
+      [0, head],
+    ]);
+    return path;
+  }
+
+  if (kind === "downArrow") {
+    const head = Math.min(rect.height * 0.42, rect.width * 0.5);
+    const shaftLeft = rect.width * 0.32;
+    const shaftRight = rect.width * 0.68;
+    polygon(path, [
+      [shaftLeft, 0],
+      [shaftRight, 0],
+      [shaftRight, rect.height - head],
+      [rect.width, rect.height - head],
+      [rect.width / 2, rect.height],
+      [0, rect.height - head],
+      [shaftLeft, rect.height - head],
+    ]);
+    return path;
+  }
+
+  if (kind === "leftRightArrow") {
+    const head = Math.min(rect.width * 0.28, rect.height * 0.5);
+    const shaftTop = rect.height * 0.32;
+    const shaftBottom = rect.height * 0.68;
+    polygon(path, [
+      [0, rect.height / 2],
+      [head, 0],
+      [head, shaftTop],
+      [rect.width - head, shaftTop],
+      [rect.width - head, 0],
+      [rect.width, rect.height / 2],
+      [rect.width - head, rect.height],
+      [rect.width - head, shaftBottom],
+      [head, shaftBottom],
+      [head, rect.height],
+    ]);
+    return path;
+  }
+
   if (kind === "upDownArrow") {
     const head = Math.min(rect.width * 0.42, rect.height * 0.28);
     const shaftLeft = rect.width * 0.32;

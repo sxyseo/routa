@@ -66,6 +66,7 @@ export type PresentationShapeKind =
   | "leftBrace"
   | "leftArrow"
   | "leftBracket"
+  | "leftRightArrow"
   | "lightningBolt"
   | "line"
   | "parallelogram"
@@ -83,6 +84,8 @@ export type PresentationShapeKind =
   | "star8"
   | "trapezoid"
   | "triangle"
+  | "downArrow"
+  | "upArrow"
   | "upDownArrow";
 
 export function computePresentationFit(
@@ -284,9 +287,12 @@ export function presentationShapeKind(
     return "ellipse";
   }
   if (geometry === 38) return "chevron";
-  if (geometry === 44) return "rightArrow";
+  if (geometry === 44 || geometry === 48) return "rightArrow";
   if (geometry === 45) return "leftArrow";
+  if (geometry === 46) return "upArrow";
+  if (geometry === 47) return "downArrow";
   if (geometry === 50) return "bentUpArrow";
+  if (geometry === 51) return "leftRightArrow";
   if (geometry === 52) return "upDownArrow";
   if (geometry === 63) return "bentArrow";
   if (geometry === 75) return "lightningBolt";
