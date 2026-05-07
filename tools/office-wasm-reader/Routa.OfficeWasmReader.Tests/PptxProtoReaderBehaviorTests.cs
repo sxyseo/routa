@@ -45,6 +45,19 @@ public class PptxProtoReaderBehaviorTests
         Assert.Equal(4, Int32Field(chart, 5)); // bar chart
     }
 
+    [Fact]
+    public void Read_MasterNonPlaceholderText_PreservesFooterText()
+    {
+        var protoBytes = PptxPresentationProtoReader.Read(MasterFooterTextPptx());
+        var layouts = MessagesForField(protoBytes, 3);
+        var master = Assert.Single(layouts, layout => StringField(layout, 9) == "master");
+        var footer = Assert.Single(MessagesForField(master, 11), element => StringField(element, 10) == "Footer Text");
+        var paragraph = Assert.Single(MessagesForField(footer, 6));
+        var run = Assert.Single(MessagesForField(paragraph, 1));
+
+        Assert.Equal("© 2022 Thoughtworks | Confidential", StringField(run, 1));
+    }
+
     private static byte[] CustomGeometryEffectsAndChartPptx()
     {
         using var ms = new MemoryStream();
@@ -76,6 +89,98 @@ public class PptxProtoReaderBehaviorTests
         }
 
         return ms.ToArray();
+    }
+
+    private static byte[] MasterFooterTextPptx()
+    {
+        using var ms = new MemoryStream();
+        using (var document = PresentationDocument.Create(ms, PresentationDocumentType.Presentation))
+        {
+            var presentationPart = document.AddPresentationPart();
+            presentationPart.Presentation = new P.Presentation(
+                new P.SlideSize { Cx = 9_144_000, Cy = 5_143_500 },
+                new P.SlideMasterIdList(),
+                new P.SlideIdList());
+
+            var masterPart = presentationPart.AddNewPart<SlideMasterPart>("rIdMaster1");
+            masterPart.SlideMaster = new P.SlideMaster();
+            masterPart.SlideMaster.InnerXml = MasterXml();
+
+            var layoutPart = masterPart.AddNewPart<SlideLayoutPart>("rIdLayout1");
+            layoutPart.SlideLayout = new P.SlideLayout();
+            layoutPart.SlideLayout.InnerXml = LayoutXml();
+
+            var slidePart = presentationPart.AddNewPart<SlidePart>("rIdSlide1");
+            slidePart.Slide = new P.Slide();
+            slidePart.Slide.InnerXml = EmptySlideXml();
+            slidePart.AddPart(layoutPart, "rIdLayout1");
+
+            presentationPart.Presentation.SlideMasterIdList!.Append(new P.SlideMasterId
+            {
+                Id = 2_147_483_648U,
+                RelationshipId = "rIdMaster1"
+            });
+            presentationPart.Presentation.SlideIdList!.Append(new P.SlideId
+            {
+                Id = 256U,
+                RelationshipId = "rIdSlide1"
+            });
+            presentationPart.Presentation.Save();
+            masterPart.SlideMaster.Save();
+            layoutPart.SlideLayout.Save();
+            slidePart.Slide.Save();
+            document.Save();
+        }
+
+        return ms.ToArray();
+    }
+
+    private static string MasterXml()
+    {
+        return """
+<p:cSld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr/>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="2" name="Footer Text"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+      <p:spPr>
+        <a:xfrm><a:off x="368524" y="4759718"/><a:ext cx="3937800" cy="176100"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln>
+      </p:spPr>
+      <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>© 2022 Thoughtworks | Confidential</a:t></a:r></a:p></p:txBody>
+    </p:sp>
+  </p:spTree>
+</p:cSld>
+<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+<p:sldLayoutIdLst xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldLayoutId id="2147483649" r:id="rIdLayout1"/></p:sldLayoutIdLst>
+""";
+    }
+
+    private static string LayoutXml()
+    {
+        return """
+<p:cSld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Blank">
+  <p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr/>
+  </p:spTree>
+</p:cSld>
+<p:clrMapOvr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:masterClrMapping/></p:clrMapOvr>
+""";
+    }
+
+    private static string EmptySlideXml()
+    {
+        return """
+<p:cSld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr/>
+  </p:spTree>
+</p:cSld>
+<p:clrMapOvr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:masterClrMapping/></p:clrMapOvr>
+""";
     }
 
     private static string SlideXml()

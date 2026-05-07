@@ -636,6 +636,39 @@ describe("presentation renderer helpers", () => {
     expect(titleTextStyle.fill).toEqual({ color: { type: 1, value: "FFFFFF" } });
   });
 
+  it("materializes slide number placeholder text from the slide index", () => {
+    const effectiveSlide = applyPresentationLayoutInheritance(
+      {
+        elements: [
+          {
+            id: "slide-number",
+            paragraphs: [],
+            placeholderIndex: 12,
+            placeholderType: "sldNum",
+          },
+        ],
+        index: 7,
+        useLayoutId: "layout-1",
+      },
+      [
+        {
+          elements: [
+            {
+              bbox: { heightEmu: 100, widthEmu: 100, xEmu: 0, yEmu: 0 },
+              placeholderIndex: 12,
+              placeholderType: "sldNum",
+            },
+          ],
+          id: "layout-1",
+        },
+      ],
+    );
+
+    const slideNumber = (effectiveSlide.elements as Array<Record<string, unknown>>)[0];
+    const paragraph = (slideNumber.paragraphs as Array<{ runs: Array<{ text: string }> }>)[0];
+    expect(paragraph.runs[0]?.text).toBe("7");
+  });
+
   it("does not let generated decoder undefined optionals erase placeholder styles", () => {
     const slide = {
       elements: [

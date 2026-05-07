@@ -457,7 +457,7 @@ internal static class PptxPresentationProtoReader
         var shapeProperties = shape.ShapeProperties;
         var bbox = shapeProperties?.Transform2D;
         var isLayoutPlaceholder = layoutLike && placeholder is not null;
-        var paragraphs = layoutLike ? new List<byte[]>() : ExtractParagraphs(shape.TextBody).ToList();
+        var paragraphs = isLayoutPlaceholder ? new List<byte[]>() : ExtractParagraphs(shape.TextBody).ToList();
         var hasText = paragraphs.Count > 0;
 
         return Message(output =>
@@ -481,7 +481,7 @@ internal static class PptxPresentationProtoReader
             }
 
             WriteString(output, 10, nonVisual?.Name?.Value ?? $"Shape {zIndex}");
-            WriteInt32(output, 11, hasText && !layoutLike ? ElementTypeText : ElementTypeShape);
+            WriteInt32(output, 11, hasText ? ElementTypeText : ElementTypeShape);
             if (isLayoutPlaceholder)
             {
                 WriteInt32Always(output, 12, ToInt32(placeholder?.Index) ?? 0);

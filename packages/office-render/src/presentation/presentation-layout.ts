@@ -127,10 +127,20 @@ export function applyPresentationLayoutInheritance(
   const elements = asArray(slide.elements)
     .map(asRecord)
     .filter((element): element is RecordValue => element != null)
-    .map((element) => applyElementLayoutInheritance(element, layoutChain));
+    .map((element) =>
+      materializeSlidePlaceholderText(
+        applyElementLayoutInheritance(element, layoutChain),
+        slide,
+      ),
+    );
   const inheritedElements = layoutChain
     .flatMap(layoutRenderableElements)
-    .map((element) => applyElementLayoutInheritance(element, layoutChain));
+    .map((element) =>
+      materializeSlidePlaceholderText(
+        applyElementLayoutInheritance(element, layoutChain),
+        slide,
+      ),
+    );
 
   return {
     ...slide,
@@ -139,6 +149,32 @@ export function applyPresentationLayoutInheritance(
       : {}),
     elements: [...inheritedElements, ...elements],
   };
+}
+
+function materializeSlidePlaceholderText(element: RecordValue, slide: RecordValue): RecordValue {
+  if (normalizedPlaceholderType(element) !== "sldnum") return element;
+  if (paragraphsHaveText(asArray(element.paragraphs))) return element;
+
+  const slideIndex = asNumber(slide.index);
+  if (slideIndex <= 0) return element;
+  return {
+    ...element,
+    paragraphs: [
+      {
+        runs: [{ text: String(slideIndex) }],
+      },
+    ],
+  };
+}
+
+function paragraphsHaveText(paragraphs: unknown[]): boolean {
+  for (const paragraph of paragraphs) {
+    const runs = asArray(asRecord(paragraph)?.runs);
+    for (const run of runs) {
+      if (asString(asRecord(run)?.text).trim()) return true;
+    }
+  }
+  return false;
 }
 
 export function getSlideBounds(
