@@ -2,7 +2,7 @@
 title: "Office Document Viewer: WASM-based DOCX/PPTX/XLSX/CSV preview"
 date: "2026-05-01"
 kind: issue
-status: open
+status: resolved
 severity: medium
 area: ui, desktop
 tags: [artifact-viewer, wasm, office-documents, docx, xlsx, pptx, csv, protobuf]
@@ -14,6 +14,16 @@ github_url: null
 ---
 
 # Office Document Viewer: WASM-based DOCX/PPTX/XLSX/CSV preview
+
+## Resolution - 2026-05-07
+
+The parent Office viewer tracker is resolved for the current WASM reader / Office API / renderer integration scope. The child DOCX, PPTX, XLSX, Walnut workbook-layout, and XLSX viewport-performance trackers are already `resolved`; remaining unchecked items below are retained as explicit long-tail fidelity backlog rather than active blockers for exposing the Office surfaces.
+
+PPTX was the final alignment focus in this pass. `packages/office` now emits a Cursor Canvas payload with pre-rendered slide thumbnails, and `packages/office-render` uses those image thumbnails in the left rail before falling back to the canvas renderer. This matches the expected Cursor-like rail behavior more closely than repainting every thumbnail from slide JSON at runtime.
+
+Desktop validation used `/Users/phodal/Desktop/OrganizationalChart.pptx`. Microsoft PowerPoint opens it normally and renders slide 3/29 as the expected Thoughtworks organization chart with visible thumbnail navigation. Routa can generate a Canvas artifact for the same file, and the Cursor Canvas consistency check passes with thumbnail payload validation enabled.
+
+Walnut/Routa PPTX checks for the same Desktop file are usable but not byte/pixel perfect. After suppressing zero crop rectangle fields, `slideShapeStyleDigestsMatch` now passes; the protocol assertion still reports `slideTextDigestsMatch` and `slideTextStyleDigestsMatch` drift from Google Slides / PowerPoint text-style materialization. Render-contract comparison now treats "both readers have no extracted speaker-note payload" as a match; remaining differences are screenshot-pixel deltas in desktop, narrow, and slideshow views, with stats matching.
 
 ## What Happened
 
