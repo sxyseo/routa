@@ -76,6 +76,7 @@ public class PptxProtoReaderBehaviorTests
         Assert.Equal(7, Int32Field(picture, 11)); // image reference
         Assert.Equal(35, Int32Field(shape, 1)); // ellipse geometry
         Assert.Equal(4, Int32Field(fill, 1)); // picture fill
+        Assert.Equal(45_000, Int32Field(fill, 12)); // alphaModFix
     }
 
     private static byte[] CustomGeometryEffectsAndChartPptx()
@@ -246,7 +247,7 @@ public class PptxProtoReaderBehaviorTests
     <p:grpSpPr/>
     <p:pic>
       <p:nvPicPr><p:cNvPr id="2" name="Masked Picture"/><p:cNvPicPr preferRelativeResize="0"/><p:nvPr/></p:nvPicPr>
-      <p:blipFill rotWithShape="1"><a:blip r:embed="rIdImage1"/><a:stretch/></p:blipFill>
+      <p:blipFill rotWithShape="1"><a:blip r:embed="rIdImage1"><a:alphaModFix amt="45000"/></a:blip><a:stretch/></p:blipFill>
       <p:spPr>
         <a:xfrm><a:off x="914400" y="914400"/><a:ext cx="914400" cy="914400"/></a:xfrm>
         <a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>

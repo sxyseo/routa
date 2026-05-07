@@ -699,6 +699,10 @@ function drawElementImage(
   element: RecordValue,
   rect: PresentationRect,
 ): void {
+  const alpha = elementImageAlphaModFix(element);
+  if (alpha != null) {
+    context.globalAlpha *= alpha;
+  }
   const naturalSize = imageNaturalSize(image);
   const sourceRect = elementImageSourceRect(element);
   if (!sourceRect || naturalSize.width <= 0 || naturalSize.height <= 0) {
@@ -754,6 +758,14 @@ function elementImageSourceRect(element: RecordValue): RecordValue | null {
     asRecord(fill?.stretchFillRect) ??
     asRecord(element.imageMask)
   );
+}
+
+function elementImageAlphaModFix(element: RecordValue): number | null {
+  const shapeFill = asRecord(asRecord(element.shape)?.fill);
+  const fill = asRecord(element.fill) ?? shapeFill;
+  const raw = asNumber(fill?.alphaModFix, Number.NaN);
+  if (!Number.isFinite(raw)) return null;
+  return clamp(raw / 100_000, 0, 1);
 }
 
 function cropRatio(value: unknown): number {

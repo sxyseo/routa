@@ -178,6 +178,44 @@ describe("buildPptxCursorCanvasPayload", () => {
     ]);
   });
 
+  it("preserves PPTX picture alpha modulation for color fidelity", async () => {
+    const protoBytes = message([
+      bytesField(
+        1,
+        message([
+          int32Field(1, 1),
+          bytesField(
+            3,
+            message([
+              bytesField(1, bbox(0, 0, 1_000_000, 500_000)),
+              bytesField(
+                19,
+                message([
+                  int32Field(1, 4),
+                  bytesField(11, message([stringField(1, "/ppt/media/image.jpg")])),
+                  int32Field(12, 45_000),
+                ]),
+              ),
+              stringField(10, "Picture"),
+              int32Field(11, 7),
+            ]),
+          ),
+          int64Field(5, 1_000_000),
+          int64Field(6, 500_000),
+        ]),
+      ),
+    ]);
+
+    const payload = await buildPptxCursorCanvasPayload(protoBytes, {
+      readerVersion: "test-reader",
+      sourcePath: "picture.pptx",
+      title: "Picture",
+    });
+    const firstSlide = payload.slides[0] as { elements?: Array<{ fill?: { alphaModFix?: number } }> } | undefined;
+
+    expect(firstSlide?.elements?.[0]?.fill?.alphaModFix).toBe(45_000);
+  });
+
   it("preserves original PPTX image media by default for Cursor color fidelity", async () => {
     const pngBytes = Uint8Array.from(
       Buffer.from(

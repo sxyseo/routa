@@ -1642,14 +1642,16 @@ internal static class PptxPresentationProtoReader
             relationshipId,
             imageId,
             picture.BlipFill?.SourceRectangle,
-            picture.BlipFill?.GetFirstChild<A.Stretch>()?.GetFirstChild<A.FillRectangle>());
+            picture.BlipFill?.GetFirstChild<A.Stretch>()?.GetFirstChild<A.FillRectangle>(),
+            ToInt32(picture.BlipFill?.Blip?.GetFirstChild<A.AlphaModulationFixed>()?.Amount));
     }
 
     private static byte[] WriteImageFill(
         string relationshipId,
         string imageId,
         A.SourceRectangle? sourceRectangle,
-        OpenXmlElement? fillRectangle)
+        OpenXmlElement? fillRectangle,
+        int? alphaModFix = null)
     {
         var hasSourceRectangle = HasExplicitRectangleAttributes(sourceRectangle);
         var hasFillRectangle = HasExplicitRectangleAttributes(fillRectangle);
@@ -1658,6 +1660,7 @@ internal static class PptxPresentationProtoReader
             WriteInt32(output, 1, FillTypePicture);
             WriteString(output, 4, relationshipId);
             WriteMessage(output, 11, WriteImageReference(imageId));
+            WriteInt32(output, 12, alphaModFix);
             if (hasSourceRectangle)
             {
                 WriteMessage(output, 14, WriteRectangleAttributes(sourceRectangle));

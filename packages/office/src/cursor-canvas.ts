@@ -284,6 +284,7 @@ type PresentationTableCellBorders = {
 };
 
 type PresentationFill = {
+  alphaModFix?: number;
   color?: PresentationColor;
   gradientKind?: number;
   gradientStops?: PresentationGradientStop[];
@@ -790,6 +791,8 @@ function decodeFill(bytes: Uint8Array): PresentationFill {
       fill.gradientScaled = reader.bool();
     } else if (tag.fieldNumber === 11 && tag.wireType === 2) {
       fill.imageReference = decodeImageReference(reader.bytesField());
+    } else if (tag.fieldNumber === 12) {
+      fill.alphaModFix = reader.int32();
     } else if (tag.fieldNumber === 14 && tag.wireType === 2) {
       fill.srcRect = decodeCropPercent(reader.bytesField());
     } else if (tag.fieldNumber === 15 && tag.wireType === 2) {
