@@ -9,11 +9,13 @@ import {
 } from "../shared/office-preview-utils";
 import {
   drawPresentationTextBox,
+  measurePresentationTextBoxHeight,
   type PresentationRect,
   type PresentationSize,
 } from "./presentation-text-layout";
 
 const EMU_PER_CSS_PIXEL = 9_525;
+const TABLE_TEXT_ROW_HEIGHT_FACTOR = 1.12;
 
 type TableLineStyle = {
   color: string;
@@ -70,9 +72,18 @@ export function drawPresentationTable(
   }
 
   const grid = presentationTableGrid(table, rect);
+  const rowHeights = expandedPresentationTableRowHeights(
+    context,
+    element,
+    rows,
+    grid,
+    bounds,
+    canvas,
+    slideScale,
+  );
   let y = 0;
   for (const [rowIndex, row] of rows.entries()) {
-    const rowHeight = grid.rows[rowIndex] ?? 0;
+    const rowHeight = rowHeights[rowIndex] ?? 0;
     const cells = asArray(row.cells)
       .map(asRecord)
       .filter((cell): cell is RecordValue => cell != null);
@@ -83,7 +94,7 @@ export function drawPresentationTable(
       const columnSpan = Math.max(1, asNumber(cell.gridSpan, 1));
       const rowSpan = Math.max(1, asNumber(cell.rowSpan, 1));
       const cellWidth = sumLengths(grid.columns, columnIndex, columnSpan);
-      const cellHeight = sumLengths(grid.rows, rowIndex, rowSpan);
+      const cellHeight = sumLengths(rowHeights, rowIndex, rowSpan);
       const horizontalMerge = cell.horizontalMerge === true || cell.hMerge === true;
       const verticalMerge = cell.verticalMerge === true || cell.vMerge === true;
 
@@ -107,6 +118,54 @@ export function drawPresentationTable(
 
     y += rowHeight;
   }
+}
+
+function expandedPresentationTableRowHeights(
+  context: CanvasRenderingContext2D,
+  element: RecordValue,
+  rows: RecordValue[],
+  grid: { columns: number[]; rows: number[] },
+  bounds: PresentationSize,
+  canvas: PresentationSize,
+  slideScale: number,
+): number[] {
+  const nextRows = [...grid.rows];
+
+  for (const [rowIndex, row] of rows.entries()) {
+    const cells = asArray(row.cells)
+      .map(asRecord)
+      .filter((cell): cell is RecordValue => cell != null);
+    let columnIndex = 0;
+
+    for (const cell of cells) {
+      const columnSpan = Math.max(1, asNumber(cell.gridSpan, 1));
+      const rowSpan = Math.max(1, asNumber(cell.rowSpan, 1));
+      const cellWidth = sumLengths(grid.columns, columnIndex, columnSpan);
+      const currentHeight = sumLengths(nextRows, rowIndex, rowSpan);
+      const paragraphs = tableCellParagraphs(cell);
+
+      if (paragraphs.length > 0 && rowSpan === 1 && cellWidth > 0 && currentHeight > 0) {
+        const textHeight = measurePresentationTextBoxHeight({
+          canvas,
+          context,
+          element: tableCellTextElement(element, cell, paragraphs),
+          rect: {
+            height: currentHeight,
+            left: 0,
+            top: 0,
+            width: cellWidth,
+          },
+          slideBounds: bounds,
+          slideScale,
+        });
+        nextRows[rowIndex] = Math.max(nextRows[rowIndex] ?? 0, textHeight * TABLE_TEXT_ROW_HEIGHT_FACTOR);
+      }
+
+      columnIndex += columnSpan;
+    }
+  }
+
+  return nextRows;
 }
 
 function drawPresentationTableCellBackground(
@@ -146,26 +205,12 @@ function drawPresentationTableCellText(
   const paragraphs = tableCellParagraphs(cell);
   if (paragraphs.length === 0) return;
 
-  const textStyle = {
-    ...(asRecord(element.textStyle) ?? {}),
-    ...(asRecord(cell.textStyle) ?? {}),
-    anchor: tableCellAnchor(asString(cell.anchor), asNumber(asRecord(cell.textStyle)?.anchor)),
-    ...definedInset("bottomInset", cell.bottomMargin),
-    ...definedInset("leftInset", cell.leftMargin),
-    ...definedInset("rightInset", cell.rightMargin),
-    ...definedInset("topInset", cell.topMargin),
-  };
-
   context.save();
   context.translate(options.left, options.top);
   drawPresentationTextBox({
     canvas: options.canvas,
     context,
-    element: {
-      ...element,
-      paragraphs,
-      textStyle,
-    },
+    element: tableCellTextElement(element, cell, paragraphs),
     rect: {
       height: options.height,
       left: 0,
@@ -177,6 +222,22 @@ function drawPresentationTableCellText(
     textOverflow: "clip",
   });
   context.restore();
+}
+
+function tableCellTextElement(element: RecordValue, cell: RecordValue, paragraphs: unknown[]): RecordValue {
+  return {
+    ...element,
+    paragraphs,
+    textStyle: {
+      ...(asRecord(element.textStyle) ?? {}),
+      ...(asRecord(cell.textStyle) ?? {}),
+      anchor: tableCellAnchor(asString(cell.anchor), asNumber(asRecord(cell.textStyle)?.anchor)),
+      ...definedInset("bottomInset", cell.bottomMargin),
+      ...definedInset("leftInset", cell.leftMargin),
+      ...definedInset("rightInset", cell.rightMargin),
+      ...definedInset("topInset", cell.topMargin),
+    },
+  };
 }
 
 function tableCellParagraphs(cell: RecordValue): unknown[] {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { presentationTableGrid } from "../presentation-table-renderer";
+import { drawPresentationTable, presentationTableGrid } from "../presentation-table-renderer";
 
 describe("presentationTableGrid", () => {
   const rect = { height: 200, left: 0, top: 0, width: 400 };
@@ -57,4 +57,79 @@ describe("presentationTableGrid", () => {
     expect(grid.columns).toHaveLength(1);
     expect(grid.rows).toHaveLength(0);
   });
+
+  it("expands rendered row backgrounds when table text needs more height", () => {
+    const context = mockCanvasContext();
+
+    drawPresentationTable(
+      context,
+      {},
+      {
+        columns: [1_000],
+        rows: [
+          {
+            cells: [
+              {
+                fill: { color: { type: 1, value: "003D4F" }, type: 1 },
+                paragraphs: [
+                  {
+                    runs: [
+                      {
+                        text: "A long table cell value that wraps across several lines in a narrow PowerPoint table.",
+                        textStyle: { fontSize: 1200 },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            height: 1_000,
+          },
+        ],
+      },
+      { height: 28, left: 0, top: 0, width: 120 },
+      { height: 1_000, width: 1_000 },
+      { height: 1_000, width: 1_000 },
+      1,
+    );
+
+    expect(context.fillRects.some((rect) => rect.fillStyle === "#003D4F" && rect.height > 28)).toBe(true);
+  });
 });
+
+function mockCanvasContext(): CanvasRenderingContext2D & {
+  fillRects: Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>;
+} {
+  const state = {
+    fillStyle: "",
+    fillRects: [] as Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>,
+  };
+  return ({
+    get fillStyle() {
+      return state.fillStyle;
+    },
+    set fillStyle(value: string | CanvasGradient | CanvasPattern) {
+      state.fillStyle = String(value);
+    },
+    get fillRects() {
+      return state.fillRects;
+    },
+    beginPath: () => {},
+    clip: () => {},
+    fillRect: (x: number, y: number, width: number, height: number) => {
+      state.fillRects.push({ fillStyle: state.fillStyle, height, width, x, y });
+    },
+    fillText: () => {},
+    lineTo: () => {},
+    measureText: (text: string) => ({ width: text.length * 6 }) as TextMetrics,
+    moveTo: () => {},
+    rect: () => {},
+    restore: () => {},
+    save: () => {},
+    setLineDash: () => {},
+    stroke: () => {},
+    translate: () => {},
+  } as unknown) as CanvasRenderingContext2D & {
+    fillRects: Array<{ fillStyle: string; height: number; width: number; x: number; y: number }>;
+  };
+}

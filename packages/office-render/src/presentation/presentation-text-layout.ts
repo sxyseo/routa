@@ -149,6 +149,42 @@ export function drawPresentationTextBox({
   context.restore();
 }
 
+export function measurePresentationTextBoxHeight({
+  canvas,
+  context,
+  element,
+  rect,
+  slideBounds,
+  slideScale,
+}: {
+  canvas: PresentationSize;
+  context: CanvasRenderingContext2D;
+  element: RecordValue;
+  rect: PresentationRect;
+  slideBounds: PresentationSize;
+  slideScale: number;
+}): number {
+  const paragraphs = trimPresentationFrameParagraphs(
+    asArray(element.paragraphs).map(presentationParagraphView),
+  );
+  if (paragraphs.length === 0) return 0;
+
+  const textStyle = asRecord(element.textStyle);
+  const insets = textInsets(textStyle, rect, canvas.width / slideBounds.width, canvas.height / slideBounds.height);
+  const maxWidth = Math.max(1, rect.width - insets.left - insets.right);
+  const layout = layoutTextFrame(context, paragraphs, {
+    autoFit: presentationTextShouldShrinkForAutoFit(textStyle?.autoFit),
+    emuScaleX: canvas.width / slideBounds.width,
+    maxHeight: Math.max(1, rect.height - insets.top - insets.bottom),
+    maxWidth: presentationEffectiveTextMaxWidth(maxWidth, asNumber(textStyle?.wrap, 2) !== 1),
+    slideScale,
+    useParagraphSpacing: textStyle?.useParagraphSpacing !== false && paragraphs.length > 1,
+    wrap: asNumber(textStyle?.wrap, 2) !== 1,
+  });
+
+  return insets.top + layout.height + insets.bottom;
+}
+
 function presentationRunHighlight(scheme: unknown): string | undefined {
   for (const part of asString(scheme).split(";")) {
     if (
