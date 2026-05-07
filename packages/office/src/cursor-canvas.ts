@@ -1169,27 +1169,8 @@ async function buildPresentationPayload(
   const sharp = await loadSharp();
   const mediaIndex = await buildMediaIndex(presentation.images, sharp, options);
   const layouts = rendererLayouts(presentation);
-  const thumbnails =
-    options.includeThumbnails === false
-      ? []
-      : await Promise.all(
-          presentation.slides.map((slide, index) =>
-            renderSlideThumbnailDataUrl(
-              buildSlide(
-                slide,
-                index,
-                presentation.layouts,
-                presentation.masters,
-                mediaIndex,
-                presentation.theme,
-              ),
-              mediaIndex.media,
-              sharp,
-            ),
-          ),
-        );
   const slides = presentation.slides.map((slide, index) =>
-    rendererSlide(slide, index, layouts, thumbnails[index] ?? null),
+    rendererSlide(slide, index, layouts, null),
   );
   return {
     artifact: {

@@ -104,6 +104,38 @@ describe("buildPptxCursorCanvasPayload", () => {
       topMargin: 3_456,
     });
   });
+
+  it("uses the presentation renderer for Cursor thumbnails instead of legacy raster thumbnails", async () => {
+    const protoBytes = message([
+      bytesField(
+        1,
+        message([
+          int32Field(1, 1),
+          bytesField(
+            3,
+            message([
+              bytesField(1, bbox(0, 0, 1_000_000, 500_000)),
+              bytesField(4, message([int32Field(1, 5)])),
+              stringField(10, "Shape"),
+              int32Field(11, 1),
+            ]),
+          ),
+          int64Field(5, 1_000_000),
+          int64Field(6, 500_000),
+        ]),
+      ),
+    ]);
+
+    const payload = await buildPptxCursorCanvasPayload(protoBytes, {
+      includeThumbnails: true,
+      readerVersion: "test-reader",
+      sourcePath: "shape.pptx",
+      title: "Shape",
+    });
+
+    expect(payload.artifact.mode).toBe("presentation-renderer");
+    expect(payload.slides[0]?.thumbnail).toBeNull();
+  });
 });
 
 function gradientStop(position: number, color: string): Uint8Array {
