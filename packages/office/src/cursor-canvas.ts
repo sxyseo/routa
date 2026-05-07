@@ -1319,6 +1319,9 @@ async function encodeMediaImage(
   sharp: SharpFactory | null,
   options: RenderPptxCursorCanvasOptions,
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
+  if (shouldPreserveOriginalMedia(image, options)) {
+    return { bytes: image.data, contentType: image.contentType };
+  }
   if (!sharp) {
     return { bytes: image.data, contentType: image.contentType };
   }
@@ -1338,6 +1341,18 @@ async function encodeMediaImage(
     .jpeg({ mozjpeg: true, quality: clampQuality(options.mediaQuality ?? 70) })
     .toBuffer();
   return { bytes: new Uint8Array(buffer), contentType: "image/jpeg" };
+}
+
+function shouldPreserveOriginalMedia(
+  image: PresentationImage,
+  options: RenderPptxCursorCanvasOptions,
+): boolean {
+  if (options.mediaWidth != null || options.mediaQuality != null) return false;
+  return isBrowserImageContentType(image.contentType);
+}
+
+function isBrowserImageContentType(contentType: string): boolean {
+  return /^(image\/(?:png|jpe?g|gif|webp|svg\+xml))$/iu.test(contentType);
 }
 
 function buildSlide(

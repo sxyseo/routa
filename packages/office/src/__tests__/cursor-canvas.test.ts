@@ -136,6 +136,43 @@ describe("buildPptxCursorCanvasPayload", () => {
     expect(payload.artifact.mode).toBe("presentation-renderer");
     expect(payload.slides[0]?.thumbnail).toBeNull();
   });
+
+  it("preserves original PPTX image media by default for Cursor color fidelity", async () => {
+    const pngBytes = Uint8Array.from(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l8WU7wAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    );
+    const protoBytes = message([
+      bytesField(
+        1,
+        message([
+          int32Field(1, 1),
+          int64Field(5, 1_000_000),
+          int64Field(6, 500_000),
+        ]),
+      ),
+      bytesField(
+        4,
+        message([
+          stringField(1, "image/png"),
+          bytesField(2, pngBytes),
+          stringField(3, "/ppt/media/red.png"),
+        ]),
+      ),
+    ]);
+
+    const payload = await buildPptxCursorCanvasPayload(protoBytes, {
+      readerVersion: "test-reader",
+      sourcePath: "image.pptx",
+      title: "Image",
+    });
+
+    expect(payload.media["/ppt/media/red.png"]?.src).toBe(
+      `data:image/png;base64,${Buffer.from(pngBytes).toString("base64")}`,
+    );
+  });
 });
 
 function gradientStop(position: number, color: string): Uint8Array {
