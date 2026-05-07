@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { drawPresentationChart } from "../../shared/office-chart-renderer";
 import { EMPTY_OFFICE_TEXT_STYLE_MAPS, officeFontFamily, paragraphView } from "../../shared/office-preview-utils";
 import {
   applyPresentationLayoutInheritance,
@@ -144,6 +145,32 @@ describe("presentation renderer helpers", () => {
     expect(presentationChartReferenceId({ relationshipId: "rId9" })).toBe("rId9");
     expect(presentationChartById(charts, "/ppt/charts/chart2.xml")?.title).toBe("Two");
     expect(presentationChartById(charts, "missing")).toBeNull();
+  });
+
+  it("renders protocol trendline and error bar hints in shared Office charts", () => {
+    const context = mockCanvasContext();
+
+    drawPresentationChart(
+      context,
+      {
+        series: [
+          {
+            errorBars: { amount: 2, color: { value: "334155" }, direction: "both" },
+            fill: { color: { value: "156082" } },
+            name: "Forecast",
+            trendlines: [{ color: { value: "FF0000" }, type: "linear" }],
+            values: [2, 5, 8],
+          },
+        ],
+        type: 13,
+      },
+      { height: 180, left: 0, top: 0, width: 320 },
+      1,
+    );
+
+    expect(context.strokeStyles).toContain("#334155");
+    expect(context.strokeStyles).toContain("#FF0000");
+    expect(context.lineDashes).toContainEqual([6, 4]);
   });
 
   it("normalizes PPT table rows, columns, and spans into fitted cells", () => {
@@ -550,3 +577,50 @@ describe("presentation renderer helpers", () => {
     expect(shadow?.offsetY).toBeCloseTo(1);
   });
 });
+
+function mockCanvasContext(): CanvasRenderingContext2D & { lineDashes: number[][]; strokeStyles: string[] } {
+  const state = {
+    fillStyle: "",
+    lineDashes: [] as number[][],
+    strokeStyle: "",
+    strokeStyles: [] as string[],
+  };
+  return ({
+    get fillStyle() {
+      return state.fillStyle;
+    },
+    set fillStyle(value: string | CanvasGradient | CanvasPattern) {
+      state.fillStyle = String(value);
+    },
+    get lineDashes() {
+      return state.lineDashes;
+    },
+    get strokeStyle() {
+      return state.strokeStyle;
+    },
+    set strokeStyle(value: string | CanvasGradient | CanvasPattern) {
+      state.strokeStyle = String(value);
+    },
+    get strokeStyles() {
+      return state.strokeStyles;
+    },
+    arc: () => {},
+    beginPath: () => {},
+    clip: () => {},
+    closePath: () => {},
+    fill: () => {},
+    fillRect: () => {},
+    fillText: () => {},
+    lineTo: () => {},
+    measureText: (text: string) => ({ width: text.length * 6 }) as TextMetrics,
+    moveTo: () => {},
+    rect: () => {},
+    restore: () => {},
+    rotate: () => {},
+    save: () => {},
+    setLineDash: (segments: number[]) => state.lineDashes.push([...segments]),
+    stroke: () => state.strokeStyles.push(state.strokeStyle),
+    strokeRect: () => {},
+    translate: () => {},
+  } as unknown) as CanvasRenderingContext2D & { lineDashes: number[][]; strokeStyles: string[] };
+}

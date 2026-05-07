@@ -3,6 +3,7 @@ import {
   asNumber,
   asRecord,
   asString,
+  colorToCss,
   fillToCss,
   type RecordValue,
 } from "./office-preview-utils";
@@ -19,8 +20,21 @@ const PRESENTATION_CHART_COLORS = ["#156082", "#E97132", "#196B24", "#0F9ED5", "
 type ChartSeries = {
   categories: string[];
   color: string;
+  errorBars?: ChartErrorBars;
   name: string;
+  trendlines: ChartTrendline[];
   values: number[];
+};
+
+type ChartErrorBars = {
+  amount: number;
+  color: string;
+  direction: "both" | "minus" | "plus";
+};
+
+type ChartTrendline = {
+  color: string;
+  type: string;
 };
 
 type ChartPlot = {
@@ -144,14 +158,51 @@ function presentationChartSeries(chart: RecordValue): ChartSeries[] {
         .map((value) => asNumber(value, Number.NaN))
         .filter(Number.isFinite);
       const seriesCategories = asArray(series.categories).map(asString).filter(Boolean);
+      const color = fillToCss(series.fill) ?? PRESENTATION_CHART_COLORS[index % PRESENTATION_CHART_COLORS.length] ?? "#156082";
       return {
         categories: seriesCategories.length > 0 ? seriesCategories : chartCategories,
-        color: fillToCss(series.fill) ?? PRESENTATION_CHART_COLORS[index % PRESENTATION_CHART_COLORS.length] ?? "#156082",
+        color,
+        errorBars: chartSeriesErrorBars(series, color),
         name: asString(series.name) || `Series ${index + 1}`,
+        trendlines: chartSeriesTrendlines(series, color),
         values,
       };
     })
     .filter((series) => series.values.length > 0);
+}
+
+function chartSeriesErrorBars(series: RecordValue, color: string): ChartErrorBars | undefined {
+  const record = asRecord(series.errorBars) ?? asRecord(series.yErrorBars);
+  if (!record) return undefined;
+
+  const amount = asNumber(record.amount ?? record.value ?? record.fixedValue ?? record.val, Number.NaN);
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+
+  const direction = asString(record.direction || record.type).toLowerCase();
+  return {
+    amount,
+    color: chartProtocolColor(record.color, color),
+    direction: direction.includes("plus") ? "plus" : direction.includes("minus") ? "minus" : "both",
+  };
+}
+
+function chartSeriesTrendlines(series: RecordValue, color: string): ChartTrendline[] {
+  return chartRecordList(series.trendlines ?? series.trendline)
+    .map((record) => ({
+      color: chartProtocolColor(record.color, color),
+      type: asString(record.type || record.name) || "linear",
+    }));
+}
+
+function chartRecordList(value: unknown): RecordValue[] {
+  const records = asArray(value).map(asRecord).filter((record): record is RecordValue => record != null);
+  const single = asRecord(value);
+  return records.length > 0 ? records : single ? [single] : [];
+}
+
+function chartProtocolColor(value: unknown, fallback: string): string {
+  const record = asRecord(value);
+  return fillToCss(record) ?? colorToCss(record) ?? fallback;
 }
 
 function drawBarChart(
@@ -231,8 +282,69 @@ function drawLineChart(
       }
     });
     context.stroke();
+    drawLineChartErrorBars(context, item, plot, range, xStep, slideScale);
+    drawLineChartTrendlines(context, item, plot, range, xStep, slideScale);
   }
   drawChartCategoryLabels(context, series[0]?.categories ?? [], plot, false, slideScale);
+}
+
+function drawLineChartErrorBars(
+  context: CanvasRenderingContext2D,
+  series: ChartSeries,
+  plot: ChartPlot,
+  range: { max: number; min: number },
+  xStep: number,
+  slideScale: number,
+): void {
+  const errorBars = series.errorBars;
+  if (!errorBars) return;
+
+  context.save();
+  context.strokeStyle = errorBars.color;
+  context.lineWidth = Math.max(1, slideScale);
+  const cap = Math.max(3, 4 * slideScale);
+  series.values.forEach((value, index) => {
+    const x = plot.left + index * xStep;
+    const y = chartValueY(value, plot, range);
+    const top = errorBars.direction === "minus" ? y : chartValueY(value + errorBars.amount, plot, range);
+    const bottom = errorBars.direction === "plus" ? y : chartValueY(value - errorBars.amount, plot, range);
+    context.beginPath();
+    context.moveTo(x, top);
+    context.lineTo(x, bottom);
+    context.moveTo(x - cap, top);
+    context.lineTo(x + cap, top);
+    context.moveTo(x - cap, bottom);
+    context.lineTo(x + cap, bottom);
+    context.stroke();
+  });
+  context.restore();
+}
+
+function drawLineChartTrendlines(
+  context: CanvasRenderingContext2D,
+  series: ChartSeries,
+  plot: ChartPlot,
+  range: { max: number; min: number },
+  xStep: number,
+  slideScale: number,
+): void {
+  if (series.trendlines.length === 0 || series.values.length < 2) return;
+  const regression = linearRegression(series.values);
+  if (!regression) return;
+
+  const firstIndex = 0;
+  const lastIndex = series.values.length - 1;
+  context.save();
+  context.lineWidth = Math.max(1, 1.25 * slideScale);
+  context.setLineDash([Math.max(3, 6 * slideScale), Math.max(2, 4 * slideScale)]);
+  for (const trendline of series.trendlines) {
+    context.strokeStyle = trendline.color;
+    context.beginPath();
+    context.moveTo(plot.left + firstIndex * xStep, chartValueY(regression.intercept, plot, range));
+    context.lineTo(plot.left + lastIndex * xStep, chartValueY(regression.slope * lastIndex + regression.intercept, plot, range));
+    context.stroke();
+  }
+  context.restore();
 }
 
 function drawPieChart(
@@ -431,6 +543,30 @@ function chartAxisRange(values: number[], includeZero: boolean): { max: number; 
   }
   const padding = (max - min) * 0.08;
   return { max: max + padding, min: min - padding };
+}
+
+function chartValueY(value: number, plot: ChartPlot, range: { max: number; min: number }): number {
+  return plot.top + plot.height - ((value - range.min) / Math.max(1, range.max - range.min)) * plot.height;
+}
+
+function linearRegression(values: number[]): { intercept: number; slope: number } | null {
+  const points = values
+    .map((value, index) => ({ value, x: index }))
+    .filter((point) => Number.isFinite(point.value));
+  if (points.length < 2) return null;
+
+  const count = points.length;
+  const sumX = points.reduce((sum, point) => sum + point.x, 0);
+  const sumY = points.reduce((sum, point) => sum + point.value, 0);
+  const sumXY = points.reduce((sum, point) => sum + point.x * point.value, 0);
+  const sumXX = points.reduce((sum, point) => sum + point.x * point.x, 0);
+  const denominator = count * sumXX - sumX * sumX;
+  if (denominator === 0) return null;
+  const slope = (count * sumXY - sumX * sumY) / denominator;
+  return {
+    intercept: (sumY - slope * sumX) / count,
+    slope,
+  };
 }
 
 function formatChartTick(value: number): string {
