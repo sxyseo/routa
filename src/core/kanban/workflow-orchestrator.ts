@@ -1288,35 +1288,47 @@ export class KanbanWorkflowOrchestrator {
         }
       }
 
-      // Done-lane auto-merger failure: spawn standalone conflict-resolver session.
-      // Conflict resolution is decoupled from the pipeline — it runs as an independent
-      // agent session, not subject to the pipeline's repeat limit.
+      // Done-lane auto-merger failure: only spawn standalone conflict-resolver
+      // when a merge conflict is explicitly detected. Other failures (timeout,
+      // tool unavailability) are handled by DoneLaneRecovery tick's webhook_missed
+      // path, which re-checks PR state before deciding the next action.
       if (automation.status === "failed" && task && automation.stage === "done"
           && this.triggerStandaloneConflictResolver) {
         const currentSpecialist = automation.steps[automation.currentStepIndex]?.specialistId;
         if (currentSpecialist === "kanban-auto-merger" && task.pullRequestUrl
             && task.pullRequestUrl !== "manual" && task.pullRequestUrl !== "already-merged"
             && !task.pullRequestMergedAt) {
-          try {
-            console.log(
-              `[WorkflowOrchestrator] Auto-merger failed for card ${cardId}. ` +
-              `Spawning standalone conflict-resolver session.`,
-            );
-            const result = await this.triggerStandaloneConflictResolver({ cardId });
-            if (result.sessionId) {
+          const hasConflict = task.lastSyncError?.toLowerCase().includes("conflict");
+          if (hasConflict) {
+            try {
               console.log(
-                `[WorkflowOrchestrator] Standalone conflict-resolver session ${result.sessionId} started for card ${cardId}.`,
+                `[WorkflowOrchestrator] Auto-merger failed with conflicts for card ${cardId}. ` +
+                `Spawning standalone conflict-resolver session.`,
               );
-            } else {
+              const result = await this.triggerStandaloneConflictResolver({ cardId });
+              if (result.sessionId) {
+                console.log(
+                  `[WorkflowOrchestrator] Standalone conflict-resolver session ${result.sessionId} started for card ${cardId}.`,
+                );
+              } else {
+                console.warn(
+                  `[WorkflowOrchestrator] Failed to start standalone conflict-resolver for card ${cardId}: ${result.error}`,
+                );
+              }
+            } catch (triggerErr) {
               console.warn(
-                `[WorkflowOrchestrator] Failed to start standalone conflict-resolver for card ${cardId}: ${result.error}`,
+                `[WorkflowOrchestrator] Error triggering standalone conflict-resolver for ${cardId}:`,
+                triggerErr instanceof Error ? triggerErr.message : triggerErr,
               );
             }
-          } catch (triggerErr) {
-            console.warn(
-              `[WorkflowOrchestrator] Error triggering standalone conflict-resolver for ${cardId}:`,
-              triggerErr instanceof Error ? triggerErr.message : triggerErr,
+          } else {
+            console.log(
+              `[WorkflowOrchestrator] Auto-merger failed for card ${cardId} without explicit conflict. ` +
+              `Delegating to DoneLaneRecovery tick for re-evaluation.`,
             );
+            task.lastSyncError = `[done-lane-stuck] Auto-merger failed but no conflict detected. Will retry via recovery tick.`;
+            task.updatedAt = new Date();
+            await this.taskStore.save(task);
           }
         }
       }

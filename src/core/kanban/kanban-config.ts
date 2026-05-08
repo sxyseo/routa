@@ -82,7 +82,7 @@ const DEFAULTS: KanbanSystemConfig = {
   staleQueuedThresholdMs: 60_000,
   worktreeCleanupDelayMs: 60_000,
   flowFailureThreshold: 0.7,
-  defaultSessionConcurrencyLimit: 1,
+  defaultSessionConcurrencyLimit: 2,
   prRetryLimit: 3,
   conflictResolverMaxRetries: 3,
 };

@@ -751,13 +751,12 @@ async function resolveCompletedSpecialistSessions(
       );
     } else if (!isSuccess && specialistId === "kanban-auto-merger") {
       console.log(
-        `[DoneLaneRecovery] Auto-merger failed for card ${task.id}. Triggering conflict-resolver upgrade.`,
+        `[DoneLaneRecovery] Auto-merger failed for card ${task.id}. Marking stuck for next tick recovery.`,
       );
       freshTask.triggerSessionId = undefined;
-      freshTask.lastSyncError = `[conflict-resolver-pending] Triggered at ${new Date().toISOString()}. Auto-merger failed (session ${specialistSession.sessionId}).`;
+      freshTask.lastSyncError = `[done-lane-stuck] Auto-merger failed (session ${specialistSession.sessionId}). Will retry on next tick via webhook_missed recovery.`;
       freshTask.updatedAt = new Date();
       await system.taskStore.save(freshTask);
-      await triggerConflictResolver(freshTask, system);
       resolved++;
     } else if (isSuccess && specialistId === "kanban-conflict-resolver") {
       freshTask.lastSyncError = undefined;

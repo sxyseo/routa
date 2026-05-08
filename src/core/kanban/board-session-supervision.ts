@@ -6,7 +6,7 @@ import type {
 
 const DEFAULT_KANBAN_DEV_SESSION_SUPERVISION: KanbanDevSessionSupervision = {
   mode: "watchdog_retry",
-  inactivityTimeoutMinutes: 10,
+  inactivityTimeoutMinutes: 30,
   maxRecoveryAttempts: 1,
   completionRequirement: "turn_complete",
 };

@@ -228,9 +228,12 @@ export class SqliteTaskStore implements TaskStore {
     const result = this.db
       .update(sqliteSchema.tasks)
       .set({
-        ...updates,
+        ...sanitized,
         version: sql`${sqliteSchema.tasks.version} + 1`,
-        updatedAt: new Date(),
+        // Only bump updatedAt if the caller did not explicitly provide one.
+        // This preserves the caller's intent (e.g. clearStaleTriggerSession's
+        // skipUpdatedAtBump for COMPLETED+PR tasks).
+        ...("updatedAt" in sanitized ? {} : { updatedAt: new Date() }),
       })
       .where(and(eq(sqliteSchema.tasks.id, taskId), eq(sqliteSchema.tasks.version, expectedVersion)))
       .run();
