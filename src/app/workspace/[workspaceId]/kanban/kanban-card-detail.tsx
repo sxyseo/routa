@@ -96,7 +96,7 @@ function resolveTaskCommentEntries(task: TaskInfo): Array<{
   id: string;
   body: string;
   createdAt?: string;
-  source?: "legacy_import" | "update_card";
+  source?: "legacy_import" | "update_card" | "graph-refiner";
   agentId?: string;
   sessionId?: string;
 }> {
@@ -121,7 +121,7 @@ function formatCommentTimestamp(value?: string): string | null {
 }
 
 function formatCommentSource(
-  source: "legacy_import" | "update_card" | undefined,
+  source: "legacy_import" | "update_card" | "graph-refiner" | undefined,
   t: ReturnType<typeof useTranslation>["t"],
 ): string | null {
   if (source === "legacy_import") {
@@ -154,7 +154,7 @@ function ProgressNoteEntry({
   index,
   t,
 }: {
-  entry: { id: string; body: string; createdAt?: string; source?: "legacy_import" | "update_card"; agentId?: string; sessionId?: string };
+  entry: { id: string; body: string; createdAt?: string; source?: "legacy_import" | "update_card" | "graph-refiner"; agentId?: string; sessionId?: string };
   index: number;
   t: ReturnType<typeof useTranslation>["t"];
 }) {

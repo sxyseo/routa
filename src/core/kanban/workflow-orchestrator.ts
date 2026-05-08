@@ -25,7 +25,8 @@ import type { ColumnTransitionData, ColumnTransitionSource } from "./column-tran
 import { resolveTransitionAutomation } from "./column-transition";
 import { getDefaultKanbanDevSessionSupervision } from "./board-session-supervision";
 import { markTaskLaneSessionStatus, upsertTaskLaneSession } from "./task-lane-history";
-import { checkDependencyGate } from "./dependency-gate";
+import { checkDependencyGate, dependencyUnblockFields } from "./dependency-gate";
+import { checkWipLimit } from "./wip-limit-gate";
 import { type KanbanBranchRules } from "./board-branch-rules";
 import { PR_FAILURE_PREFIX } from "./pr-auto-create";
 import { getTaskDevServerRegistry } from "./task-dev-server-registry";
@@ -354,6 +355,9 @@ export type ResolveBranchRules = (params: {
   boardId: string;
 }) => Promise<KanbanBranchRules>;
 
+/** Callback to notify Graph Refiner of Backlog changes */
+export type NotifyBacklogChange = (boardId: string, workspaceId: string) => void;
+
 /** Callback to scan persisted tasks for stale triggerSessionIds */
 export type ScanStaleTaskTriggers = () => Promise<number>;
 
@@ -381,6 +385,7 @@ export class KanbanWorkflowOrchestrator {
   private sessionFailureCounts = new Map<string, number>();
   private circuitBreakerLastLogAt = new Map<string, number>();
   private worktreeStore?: WorktreeStore;
+  private notifyBacklogChange?: NotifyBacklogChange;
 
   constructor(
     private eventBus: EventBus,
@@ -476,6 +481,11 @@ export class KanbanWorkflowOrchestrator {
     this.worktreeStore = store;
   }
 
+  /** Set the callback to notify Graph Refiner of Backlog changes */
+  setNotifyBacklogChange(fn: NotifyBacklogChange): void {
+    this.notifyBacklogChange = fn;
+  }
+
   /** Callback to spawn a standalone conflict-resolver session (independent of the pipeline) */
   private triggerStandaloneConflictResolver?: (params: { cardId: string }) => Promise<{ sessionId?: string; error?: string }>;
 
@@ -555,6 +565,11 @@ export class KanbanWorkflowOrchestrator {
     const targetColumn = resolved.column;
     const automation = resolved.automation;
     const steps = getKanbanAutomationSteps(automation);
+
+    // Notify Graph Refiner when a card enters Backlog (non-blocking)
+    if (targetColumn.stage === "backlog") {
+      this.notifyBacklogChange?.(data.boardId, data.workspaceId);
+    }
 
     // Done-lane pre-automation: synchronous PR creation and optional Auto Merger injection.
     if (targetColumn.stage === "done" && this.resolveBranchRules) {
@@ -699,6 +714,23 @@ export class KanbanWorkflowOrchestrator {
         }
         task.lastSyncError = newError;
         task.dependencyStatus = "blocked";
+        task.updatedAt = new Date();
+        await this.taskStore.save(task);
+        return;
+      }
+    }
+
+    // WIP gate: block automation if the target column has reached its WIP limit.
+    if (task && targetColumn.automation?.wipLimit && targetColumn.automation.wipLimit > 0) {
+      const wipResult = await checkWipLimit(task, targetColumn.id, board, this.taskStore);
+      if (!wipResult.allowed) {
+        const newError = `[wip-limited] ${wipResult.message}`;
+        if (task.lastSyncError !== newError) {
+          console.warn(
+            `[WorkflowOrchestrator] Card ${data.cardId} blocked by WIP limit: ${wipResult.currentCount}/${wipResult.limit}`,
+          );
+        }
+        task.lastSyncError = newError;
         task.updatedAt = new Date();
         await this.taskStore.save(task);
         return;
@@ -1634,7 +1666,7 @@ export class KanbanWorkflowOrchestrator {
 
       const depCheck = await checkDependencyGate(t, board.columns, this.taskStore);
       if (!depCheck.blocked && getErrorType(t.lastSyncError) === "dependency_blocked") {
-        const fields = { lastSyncError: undefined as string | undefined, updatedAt: new Date() };
+        const fields = dependencyUnblockFields();
         // Use atomicUpdate to avoid overwriting concurrent changes
         if (t.version !== undefined && this.taskStore.atomicUpdate) {
           const ok = await this.taskStore.atomicUpdate(t.id, t.version, fields);
@@ -1645,8 +1677,7 @@ export class KanbanWorkflowOrchestrator {
             }
           }
         } else {
-          t.lastSyncError = undefined;
-          t.updatedAt = new Date();
+          Object.assign(t, fields);
           await this.taskStore.save(t);
         }
         newlyUnblocked.push(t.id);

@@ -98,6 +98,8 @@ export interface KanbanColumnAutomation {
   deliveryRules?: KanbanDeliveryRules;
   /** Automatically advance card to next column on agent success */
   autoAdvanceOnSuccess?: boolean;
+  /** Maximum concurrent tasks allowed in this column (WIP limit). 0 or undefined = no limit. */
+  wipLimit?: number;
 }
 
 export interface KanbanColumn {

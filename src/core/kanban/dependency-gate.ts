@@ -219,6 +219,25 @@ export function applyDependencyStatus(
   }
 }
 
+/**
+ * Prepare a canonical dependency-unblock update payload.
+ *
+ * All dependency-unblock code paths (overseer, lane-scanner, pr-merge-listener,
+ * orchestrator) must apply the same mutations. This function returns the
+ * minimal, consistent set of field changes required.
+ */
+export function dependencyUnblockFields(): {
+  dependencyStatus: "clear";
+  lastSyncError: undefined;
+  updatedAt: Date;
+} {
+  return {
+    dependencyStatus: "clear",
+    lastSyncError: undefined,
+    updatedAt: new Date(),
+  };
+}
+
 // ─── Parent-child hierarchy ─────────────────────────────────────
 
 const MAX_PARENT_DEPTH = 8;

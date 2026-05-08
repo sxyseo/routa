@@ -36,7 +36,9 @@ export type ColumnTransitionSource =
   | { type: "watchdog_retry"; staleRetryCount: number }
   | { type: "advance_only" }
   | { type: "restart_recovery" }
-  | { type: "dependency_unblock" };
+  | { type: "dependency_unblock" }
+  | { type: "graph_refiner" }
+  | { type: "pr_recreate" };
 
 /**
  * Emit a COLUMN_TRANSITION event on the event bus.

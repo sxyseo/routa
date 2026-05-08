@@ -43,6 +43,7 @@ import type { ColumnTransitionData } from "./column-transition";
 import { isTriggerSessionStale, clearStaleTriggerSession } from "./task-trigger-session";
 import { startWorktreeCleanupListener } from "./worktree-cleanup";
 import { startPrMergeListener } from "./pr-merge-listener";
+import { notifyBacklogChange, startGraphRefinerTrigger, stopGraphRefinerTrigger } from "./graph-refiner-trigger";
 import { startPrAutoCreateListener, executeAutoPrCreation } from "./pr-auto-create";
 import { checkDependencyGate } from "./dependency-gate";
 import { getTaskDevServerRegistry } from "./task-dev-server-registry";
@@ -690,6 +691,10 @@ export function startWorkflowOrchestrator(system: RoutaSystem): void {
   startWorktreeCleanupListener(system);
   startPrMergeListener(system);
   startPrAutoCreateListener(system);
+  orchestrator.setNotifyBacklogChange((boardId, workspaceId) => {
+    notifyBacklogChange(system, boardId, workspaceId);
+  });
+  startGraphRefinerTrigger(system);
   g[STARTED_KEY] = true;
 }
 
@@ -707,7 +712,7 @@ export async function processKanbanColumnTransition(
  */
 export function resetWorkflowOrchestrator(): void {
   const g = globalThis as Record<string, unknown>;
-  
+
   const orchestrator = g[GLOBAL_KEY] as KanbanWorkflowOrchestrator | undefined;
   if (orchestrator) {
     orchestrator.stop();
@@ -717,7 +722,9 @@ export function resetWorkflowOrchestrator(): void {
   if (queue) {
     queue.stop();
   }
-  
+
+  stopGraphRefinerTrigger();
+
   delete g[GLOBAL_KEY];
   delete g[QUEUE_KEY];
   delete g[STARTED_KEY];

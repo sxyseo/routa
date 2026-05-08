@@ -19,6 +19,7 @@ import { fetchRemote, fetchAndFastForward } from "../git/git-utils";
 import type { RoutaSystem } from "../routa-system";
 import { getKanbanBranchRules, DEFAULT_BRANCH_RULES } from "./board-branch-rules";
 import { getErrorType } from "./sync-error-writer";
+import { dependencyUnblockFields } from "./dependency-gate";
 import { onChildTaskStatusChanged } from "./parent-child-lifecycle";
 import { parsePrUrl } from "./pr-status-verifier";
 import { getServerBridge } from "../platform";
@@ -212,8 +213,7 @@ async function handleDownstreamTasks(
 
     // Re-check dependency gate — if all deps now satisfied, clear the block
     if (getErrorType(depTask.lastSyncError) === "dependency_blocked") {
-      depTask.lastSyncError = undefined;
-      depTask.updatedAt = new Date();
+      Object.assign(depTask, dependencyUnblockFields());
       await system.taskStore.save(depTask);
       console.log(
         `[PrMergeListener] Cleared dependency block for task ${depTask.id}.`,
@@ -312,7 +312,7 @@ async function resolveBranchNameFromPR(prUrl: string): Promise<string | undefine
   }
 }
 
-async function deleteRemoteBranch(prUrl: string, branchName: string): Promise<void> {
+export async function deleteRemoteBranch(prUrl: string, branchName: string): Promise<void> {
   if (PROTECTED_BRANCHES.has(branchName)) return;
   const parsed = parsePrUrl(prUrl);
   if (!parsed) return;

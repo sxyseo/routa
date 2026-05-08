@@ -137,6 +137,7 @@ export function buildTaskPrompt(
   });
   const laneAutomationState = resolveCurrentLaneAutomationState(task, boardColumns, options);
   const canAdvanceToNextColumn = !isBacklogPlanning && !laneAutomationState.hasRemainingSteps;
+  const isCodeAwareReplan = laneAutomationState.currentStep?.specialistId === "kanban-code-aware-replan";
   const summaryContext = options?.summaryContext;
 
   // Determine the next column for move_card guidance
@@ -196,6 +197,7 @@ export function buildTaskPrompt(
         "6. Report what backlog story or stories were created or refined",
         `7. ${moveInstruction}`,
         "8. If the next transition is artifact-gated, create the required artifacts before calling `move_card`.",
+        "9. After refinement, apply a quality label via update_card: use `refinement-complete` if the task has scope + acceptanceCriteria + verificationCommands, `needs-detail` if scope or acceptanceCriteria are missing, or `needs-splitting` if the scope seems too broad for a single task.",
       ]
     : [
         "1. Complete the work assigned to this column stage",
@@ -221,6 +223,13 @@ export function buildTaskPrompt(
           "11. If the project has a lint, type-check, or test command documented in its configuration files, run it in the task worktree before calling move_card. Fix any failures before advancing the card.",
           "12. Follow project-level instruction files (e.g., CLAUDE.md, AGENTS.md, .cursorrules) for project-specific coding standards and conventions.",
           "13. When a tool call invokes an external service (e.g., shell commands that call remote APIs such as gh, git push, npm publish), do not batch it with other tool calls in the same response — execute such calls one at a time. Read-only file operations (Read, Grep, Glob) may be batched freely.",
+          ...(isCodeAwareReplan ? [
+            "14. This is the Code-Aware Re-plan step. Your job is to review the codebase and refine the task's plan — not to implement.",
+            "15. Read the worktree code to verify whether Layer 1 inferred dependencies match the actual code structure.",
+            "16. Based on code analysis, adjust scope, acceptanceCriteria, and verificationCommands via update_task if they need refinement.",
+            "17. If the codebase is empty (0-to-1 early stage), downgrade to text-only analysis — do not fail on missing files.",
+            "18. Do not call move_card. End your turn when done; the dev-executor step will start automatically.",
+          ] : []),
         ] : []),
         ...(currentColumnId === "review" ? [
           "9. Do not modify implementation code during review. If a bug is found, report it in update_card but do not fix it — describe the issue so the dev specialist can address it.",

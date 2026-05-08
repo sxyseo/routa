@@ -129,3 +129,42 @@ export async function verifyPrMergeStatus(
     return fallback;
   }
 }
+
+// ── PR close ──────────────────────────────────────────────────────────────────
+
+/**
+ * Close a GitHub PR and return the head branch name.
+ *
+ * Used by the "Close + Recreate" strategy when conflict-resolver fails
+ * and the PR needs to be closed so the task can be re-developed from
+ * the latest main branch.
+ *
+ * Returns `{ closed: false }` on any error (never throws).
+ */
+export async function closePullRequest(
+  prUrl: string,
+): Promise<{ closed: boolean; branchName?: string }> {
+  const parsed = parsePrUrl(prUrl);
+  if (!parsed) return { closed: false };
+
+  try {
+    const { owner, repo, prNumber } = parsed;
+
+    // 1. Get head branch name before closing
+    const { stdout } = await execCommand(
+      `gh pr view ${prNumber} --repo ${owner}/${repo} --json headRefName --jq ".headRefName"`,
+      process.cwd(),
+    );
+    const branchName = stdout.trim();
+
+    // 2. Close PR with explanatory comment
+    await execCommand(
+      `gh pr close ${prNumber} --repo ${owner}/${repo} --comment "Closed by routa: recreating from latest main due to persistent merge conflicts."`,
+      process.cwd(),
+    );
+
+    return { closed: true, branchName: branchName || undefined };
+  } catch {
+    return { closed: false };
+  }
+}

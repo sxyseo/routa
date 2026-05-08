@@ -44,14 +44,23 @@ const RECOMMENDED_AUTOMATION_BY_STAGE: Partial<Record<KanbanColumnStage, KanbanC
   },
   dev: {
     enabled: true,
-    steps: [{
-      id: "dev-executor",
-      role: "CRAFTER",
-      specialistId: "kanban-dev-executor",
-      specialistName: "Dev Crafter",
-    }],
+    steps: [
+      {
+        id: "code-aware-replan",
+        role: "CRAFTER",
+        specialistId: "kanban-code-aware-replan",
+        specialistName: "Code-Aware Re-plan",
+      },
+      {
+        id: "dev-executor",
+        role: "CRAFTER",
+        specialistId: "kanban-dev-executor",
+        specialistName: "Dev Crafter",
+      },
+    ],
     transitionType: "entry",
     autoAdvanceOnSuccess: false,
+    wipLimit: 2,
   },
   review: {
     enabled: true,

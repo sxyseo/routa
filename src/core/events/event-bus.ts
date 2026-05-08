@@ -50,6 +50,8 @@ export enum AgentEventType {
   PR_CREATE_REQUESTED = "pr_create_requested",
   /** Emitted by the overseer when an automated or escalation decision is made */
   OVERSEER_ALERT = "OVERSEER_ALERT",
+  /** Emitted when the graph refiner completes analysis of a board's backlog */
+  GRAPH_REFINER_COMPLETED = "graph_refiner_completed",
 }
 
 export interface AgentEvent {

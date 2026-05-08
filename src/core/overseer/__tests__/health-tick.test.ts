@@ -114,4 +114,112 @@ describe("runOverseerHealthTick", () => {
     const savedTask = system.taskStore.save.mock.calls[0][0];
     expect(savedTask.worktreeId).toBeUndefined();
   });
+
+  it("should unblock dependency: clear lastSyncError and emit COLUMN_TRANSITION", async () => {
+    const store = createInMemoryOverseerStateStore();
+    const cb = new OverseerCircuitBreaker(store);
+    const ctx: OverseerContext = { stateStore: store, circuitBreaker: cb };
+
+    const tasks = [
+      {
+        id: "task-blocked",
+        title: "Blocked Task",
+        workspaceId: "default",
+        boardId: "board-1",
+        columnId: "backlog",
+        status: "IN_PROGRESS",
+        dependencyStatus: "blocked",
+        lastSyncError: '{"type":"dependency_blocked","message":"Blocked by unfinished dependencies: dep-1"}',
+        updatedAt: new Date(),
+        comment: "",
+        comments: [] as Array<{ id: string; body: string; createdAt: string }>,
+        dependencies: ["dep-1"],
+      },
+      {
+        id: "dep-1",
+        title: "Dep Task",
+        workspaceId: "default",
+        boardId: "board-1",
+        columnId: "done",
+        status: "COMPLETED",
+        pullRequestUrl: "https://github.com/test/pr/1",
+        pullRequestMergedAt: new Date(),
+        updatedAt: new Date(),
+        comment: "",
+        comments: [] as Array<{ id: string; body: string; createdAt: string }>,
+        dependencies: [] as string[],
+      },
+    ];
+    const system = createMockSystem(tasks);
+
+    const result = await runOverseerHealthTick(system as any, ctx);
+    expect(result.autoFixed).toBeGreaterThanOrEqual(1);
+
+    // Find the save call for the blocked task
+    const blockedSave = system.taskStore.save.mock.calls.find(
+      (c: any[]) => c[0].id === "task-blocked",
+    );
+    expect(blockedSave).toBeDefined();
+    const savedTask = blockedSave![0];
+    expect(savedTask.dependencyStatus).toBe("clear");
+    expect(savedTask.lastSyncError).toBeUndefined();
+
+    // Verify COLUMN_TRANSITION was emitted
+    const transitionEmit = system.eventBus.emit.mock.calls.find(
+      (c: any[]) => c[0].type === "COLUMN_TRANSITION",
+    );
+    expect(transitionEmit).toBeDefined();
+    expect(transitionEmit![0].data.cardId).toBe("task-blocked");
+    expect(transitionEmit![0].data.source).toEqual({ type: "dependency_unblock" });
+  });
+
+  it("should detect dependency block via lastSyncError even when dependencyStatus is clear", async () => {
+    const store = createInMemoryOverseerStateStore();
+    const cb = new OverseerCircuitBreaker(store);
+    const ctx: OverseerContext = { stateStore: store, circuitBreaker: cb };
+
+    // Simulate the inconsistent state: overseer previously set dependencyStatus="clear"
+    // but didn't clear lastSyncError (the old buggy behavior)
+    const tasks = [
+      {
+        id: "task-stuck",
+        title: "Stuck Task",
+        workspaceId: "default",
+        boardId: "board-1",
+        columnId: "backlog",
+        status: "IN_PROGRESS",
+        dependencyStatus: "clear",
+        lastSyncError: "Blocked by unfinished dependencies: dep-done",
+        updatedAt: new Date(),
+        comment: "",
+        comments: [] as Array<{ id: string; body: string; createdAt: string }>,
+        dependencies: ["dep-done"],
+      },
+      {
+        id: "dep-done",
+        title: "Done Dep",
+        workspaceId: "default",
+        boardId: "board-1",
+        columnId: "done",
+        status: "COMPLETED",
+        pullRequestUrl: "https://github.com/test/pr/2",
+        pullRequestMergedAt: new Date(),
+        updatedAt: new Date(),
+        comment: "",
+        comments: [] as Array<{ id: string; body: string; createdAt: string }>,
+        dependencies: [] as string[],
+      },
+    ];
+    const system = createMockSystem(tasks);
+
+    const result = await runOverseerHealthTick(system as any, ctx);
+    expect(result.autoFixed).toBeGreaterThanOrEqual(1);
+
+    const stuckSave = system.taskStore.save.mock.calls.find(
+      (c: any[]) => c[0].id === "task-stuck",
+    );
+    expect(stuckSave).toBeDefined();
+    expect(stuckSave![0].lastSyncError).toBeUndefined();
+    expect(stuckSave![0].dependencyStatus).toBe("clear");
+  });
 });

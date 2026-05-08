@@ -177,7 +177,7 @@ export interface TaskCommentEntry {
   id: string;
   body: string;
   createdAt: string;
-  source?: "legacy_import" | "update_card";
+  source?: "legacy_import" | "update_card" | "graph-refiner";
   agentId?: string;
   sessionId?: string;
 }

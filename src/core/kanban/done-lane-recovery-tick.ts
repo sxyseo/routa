@@ -13,12 +13,13 @@
 import type { RoutaSystem } from "../routa-system";
 import type { Task, TaskLaneSession } from "../models/task";
 import type { KanbanBoard } from "../models/kanban";
+import { resolveTaskStatusForBoardColumn } from "../models/kanban";
 import { shouldSkipTickForMemory } from "./memory-guard";
 import { verifyPrMergeStatus } from "./pr-status-verifier";
 import { parseCbResetCount } from "./workflow-orchestrator";
 import { AgentEventType } from "../events/event-bus";
 import { enqueueKanbanTaskSession } from "./workflow-orchestrator-singleton";
-import { clearStuckMarker, parseDoneStuckRetryCount } from "./sync-error-writer";
+import { clearStuckMarker, buildDoneStuckError, parseDoneStuckRetryCount } from "./sync-error-writer";
 import { getKanbanConfig } from "./kanban-config";
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { markTaskLaneSessionStatus } from "./task-lane-history";
@@ -372,6 +373,111 @@ async function recoverCbExhausted(
   task.updatedAt = new Date();
   await system.taskStore.save(task);
   return "unmerged";
+}
+
+/**
+ * Close + Recreate: close a stuck PR, delete the branch, and move the card
+ * from done back to dev so it gets re-developed from the latest main.
+ * Returns true if the card was successfully moved back to dev.
+ */
+async function attemptPrRecreate(task: Task, system: RecoverySystem): Promise<boolean> {
+  if (!task.pullRequestUrl || task.pullRequestUrl === "manual" || task.pullRequestUrl === "already-merged") {
+    return false;
+  }
+
+  try {
+    // 1. Close the PR
+    const { closePullRequest } = await import("./pr-status-verifier");
+    const closeResult = await closePullRequest(task.pullRequestUrl);
+    if (!closeResult.closed) {
+      console.warn(`[DoneLaneRecovery] Failed to close PR for card ${task.id}.`);
+      return false;
+    }
+    console.log(`[DoneLaneRecovery] Closed PR for card ${task.id}.`);
+
+    // 2. Delete remote branch
+    if (closeResult.branchName) {
+      const { deleteRemoteBranch } = await import("./pr-merge-listener");
+      await deleteRemoteBranch(task.pullRequestUrl, closeResult.branchName);
+    }
+
+    // 3. Schedule worktree cleanup via event bus (avoids direct GitWorktreeService dependency)
+    if (task.worktreeId) {
+      system.eventBus.emit({
+        type: AgentEventType.WORKTREE_CLEANUP,
+        agentId: "done-lane-recovery",
+        workspaceId: task.workspaceId,
+        data: {
+          worktreeId: task.worktreeId,
+          taskId: task.id,
+          boardId: task.boardId,
+          deleteBranch: false,
+        },
+        timestamp: new Date(),
+      });
+    }
+
+    // 4. Find dev column on the board
+    const board = task.boardId ? await system.kanbanBoardStore.get(task.boardId) : undefined;
+    const devColumn = board?.columns.find(c => c.stage === "dev");
+    if (!devColumn) {
+      console.warn(`[DoneLaneRecovery] No dev column found for card ${task.id}. Cannot recreate.`);
+      return false;
+    }
+
+    // 5. Resolve correct status for dev column
+    const devStatus = resolveTaskStatusForBoardColumn(board!.columns, devColumn.id);
+
+    // 6. Full reset — clear all automation state and move back to dev
+    const cleared = clearStuckMarker(task, "full");
+    const previousColumnId = task.columnId;
+    const updateFields = {
+      columnId: devColumn.id,
+      status: devStatus,
+      worktreeId: undefined as string | undefined,
+      pullRequestUrl: undefined as string | undefined,
+      pullRequestMergedAt: undefined as Date | undefined,
+      triggerSessionId: undefined as string | undefined,
+      lastSyncError: undefined as string | undefined,
+      laneSessions: cleared.laneSessions,
+      updatedAt: new Date(),
+    };
+
+    if (task.version !== undefined && system.taskStore.atomicUpdate) {
+      await system.taskStore.atomicUpdate(task.id, task.version, updateFields);
+    } else {
+      Object.assign(task, updateFields);
+      await system.taskStore.save(task);
+    }
+
+    // 7. Emit COLUMN_TRANSITION to trigger dev automation
+    system.eventBus.emit({
+      type: AgentEventType.COLUMN_TRANSITION,
+      agentId: "done-lane-recovery",
+      workspaceId: task.workspaceId,
+      data: {
+        cardId: task.id,
+        cardTitle: task.title,
+        boardId: task.boardId ?? "",
+        workspaceId: task.workspaceId,
+        fromColumnId: previousColumnId ?? "",
+        toColumnId: devColumn.id,
+        fromColumnName: "",
+        toColumnName: devColumn.name,
+        source: { type: "pr_recreate" as const },
+      },
+      timestamp: new Date(),
+    });
+
+    console.log(
+      `[DoneLaneRecovery] PR recreate for card ${task.id}: moved from ${previousColumnId} → ${devColumn.id}. ` +
+      `Dev session will start from latest main.`,
+    );
+    return true;
+  } catch (err) {
+    console.error(`[DoneLaneRecovery] PR recreate failed for card ${task.id}:`, err);
+    return false;
+  }
 }
 
 /**
@@ -771,12 +877,17 @@ async function resolveCompletedSpecialistSessions(
       const retryCount = countSpecialistRetries(freshTask, "kanban-conflict-resolver") + 1;
       if (retryCount >= recoveryCfg.conflictResolverMaxRetries) {
         console.warn(
-          `[DoneLaneRecovery] Conflict-resolver failed ${retryCount} times for card ${task.id}. Marking permanently stuck.`,
+          `[DoneLaneRecovery] Conflict-resolver exhausted for card ${task.id}. Attempting PR close + recreate.`,
         );
-        freshTask.lastSyncError = `[done-lane-stuck] Conflict resolver failed ${retryCount} times. Manual intervention required.`;
-        freshTask.triggerSessionId = undefined;
-        freshTask.updatedAt = new Date();
-        await system.taskStore.save(freshTask);
+        const recreated = await attemptPrRecreate(freshTask, system);
+        if (!recreated) {
+          freshTask.lastSyncError = buildDoneStuckError(
+            `Conflict resolver failed ${retryCount} times and PR recreate failed. Manual intervention required.`,
+          );
+          freshTask.triggerSessionId = undefined;
+          freshTask.updatedAt = new Date();
+          await system.taskStore.save(freshTask);
+        }
       } else {
         console.log(
           `[DoneLaneRecovery] Conflict-resolver failed for card ${task.id} (retry ${retryCount}/${recoveryCfg.conflictResolverMaxRetries}). Retrying.`,

@@ -12,6 +12,7 @@
 
 import type { RoutaSystem } from "../routa-system";
 import type { OverseerTickResult } from "./diagnostics";
+import { dependencyUnblockFields } from "../kanban/dependency-gate";
 import { collectSystemDiagnostics } from "./diagnostics";
 import { classifyDiagnostics, toOverseerDecision } from "./decision-classifier";
 import type { OverseerStateStore } from "./overseer-state-store";
@@ -172,9 +173,26 @@ async function executeAutoDecision(
     case "unblock-dependency": {
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
-        task.dependencyStatus = "clear";
+        Object.assign(task, dependencyUnblockFields());
         await system.taskStore.save(task);
         console.log(`[Overseer] AUTO: Unblocked dependencies for task ${decision.taskId}`);
+        system.eventBus.emit({
+          type: AgentEventType.COLUMN_TRANSITION,
+          agentId: "overseer",
+          workspaceId: task.workspaceId,
+          data: {
+            cardId: task.id,
+            cardTitle: task.title,
+            boardId: task.boardId ?? "",
+            workspaceId: task.workspaceId,
+            fromColumnId: task.columnId ?? "",
+            toColumnId: task.columnId ?? "",
+            fromColumnName: "",
+            toColumnName: "",
+            source: { type: "dependency_unblock" },
+          },
+          timestamp: new Date(),
+        });
       }
       break;
     }

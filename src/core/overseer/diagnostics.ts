@@ -190,22 +190,29 @@ function checkDependencyBlockResolved(
   allTasks: Task[],
   diagnostics: OverseerDiagnostic[],
 ): void {
-  if (task.status !== "PENDING" && task.dependencyStatus !== "blocked") return;
+  const hasBlockedError = task.lastSyncError?.includes("dependency_blocked")
+    || task.lastSyncError?.includes("Blocked by unfinished dependencies");
+  if (task.status !== "PENDING" && task.dependencyStatus !== "blocked" && !hasBlockedError) return;
 
   const deps = task.dependencies ?? [];
   if (deps.length === 0) return;
 
-  const allCompleted = deps.every((depId) => {
+  // Align with dependency-gate.ts isDependencySatisfied: check terminal status + PR merge
+  const allSatisfied = deps.every((depId) => {
     const dep = allTasks.find((t) => t.id === depId);
-    return dep && (dep.status === "COMPLETED" || dep.status === "CANCELLED");
+    if (!dep) return false;
+    const isTerminal = dep.status === "COMPLETED" || dep.status === "ARCHIVED"
+      || dep.columnId === "done" || dep.columnId === "archived";
+    const prMerged = !dep.pullRequestUrl || Boolean(dep.pullRequestMergedAt);
+    return isTerminal && prMerged;
   });
 
-  if (allCompleted) {
+  if (allSatisfied) {
     diagnostics.push({
       pattern: "dependency-block-resolved",
       category: "AUTO",
       taskId: task.id,
-      description: `Task "${task.title}" is still blocked but all dependencies are completed`,
+      description: `Task "${task.title}" is still blocked but all dependencies are satisfied`,
       details: { dependencies: deps, taskStatus: task.status },
     });
   }

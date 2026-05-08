@@ -61,6 +61,16 @@ export interface KanbanSystemConfig {
   // ── Recovery Specialists ──
   /** Max retry attempts for conflict-resolver before permanent stuck marking. */
   conflictResolverMaxRetries: number;
+
+  // ── Graph Refiner ──
+  /** Whether the Graph Refiner is enabled. */
+  graphRefinerEnabled: boolean;
+  /** Minimum backlog tasks to trigger graph analysis. */
+  graphRefinerMinTasks: number;
+  /** Debounce interval (ms) after last backlog change before running refiner. */
+  graphRefinerDebounceMs: number;
+  /** Maximum tasks to analyze in a single refiner run. */
+  graphRefinerMaxTasks: number;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -85,6 +95,10 @@ const DEFAULTS: KanbanSystemConfig = {
   defaultSessionConcurrencyLimit: 2,
   prRetryLimit: 3,
   conflictResolverMaxRetries: 3,
+  graphRefinerEnabled: true,
+  graphRefinerMinTasks: 3,
+  graphRefinerDebounceMs: 30_000,
+  graphRefinerMaxTasks: 50,
 };
 
 // ─── Resolver ────────────────────────────────────────────────────────────────
@@ -129,5 +143,9 @@ export function getKanbanConfig(): KanbanSystemConfig {
     defaultSessionConcurrencyLimit: envInt("ROUTA_SESSION_CONCURRENCY_LIMIT", DEFAULTS.defaultSessionConcurrencyLimit),
     prRetryLimit: envInt("ROUTA_PR_RETRY_LIMIT", DEFAULTS.prRetryLimit),
     conflictResolverMaxRetries: envInt("ROUTA_CONFLICT_RESOLVER_MAX_RETRIES", DEFAULTS.conflictResolverMaxRetries),
+    graphRefinerEnabled: process.env.ROUTA_GRAPH_REFINER_ENABLED !== "false",
+    graphRefinerMinTasks: envInt("ROUTA_GRAPH_REFINER_MIN_TASKS", DEFAULTS.graphRefinerMinTasks),
+    graphRefinerDebounceMs: envInt("ROUTA_GRAPH_REFINER_DEBOUNCE_MS", DEFAULTS.graphRefinerDebounceMs),
+    graphRefinerMaxTasks: envInt("ROUTA_GRAPH_REFINER_MAX_TASKS", DEFAULTS.graphRefinerMaxTasks),
   };
 }

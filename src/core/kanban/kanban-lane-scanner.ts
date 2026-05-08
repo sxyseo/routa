@@ -18,6 +18,7 @@ import { getKanbanAutomationSteps, type KanbanColumnStage } from "../models/kanb
 import { AgentEventType } from "../events/event-bus";
 import { PR_FAILURE_PREFIX } from "./pr-auto-create";
 import { verifyPrMergeStatus } from "./pr-status-verifier";
+import { checkPeriodicRefiner } from "./graph-refiner-trigger";
 import { shouldSkipTickForMemory } from "./memory-guard";
 import {
   isCircuitBreaker,
@@ -28,7 +29,7 @@ import {
   buildAdvanceRecoveryError,
   getErrorType,
 } from "./sync-error-writer";
-import { checkDependencyGate } from "./dependency-gate";
+import { checkDependencyGate, dependencyUnblockFields } from "./dependency-gate";
 import type { ColumnTransitionData } from "./column-transition";
 import { analyzeFlowForTasks, getTopFailureColumns } from "./flow-ledger";
 import { withHeartbeat } from "../scheduling/system-heartbeat-registry";
@@ -437,10 +438,7 @@ async function runLaneScannerTickInner(system: RoutaSystem): Promise<LaneScanner
                 if (board) {
                   const depCheck = await checkDependencyGate(task, board.columns, system.taskStore);
                   if (!depCheck.blocked) {
-                    const unblockSaved = await safeAtomicSave(task, system.taskStore, {
-                      lastSyncError: undefined,
-                      updatedAt: new Date(),
-                    }, "dependency unblock");
+                    const unblockSaved = await safeAtomicSave(task, system.taskStore, dependencyUnblockFields(), "dependency unblock");
                     if (unblockSaved) {
                       console.log(
                         `[LaneScanner] Dependency unblocked for card ${task.id}. Will re-trigger on next scan.`,
@@ -537,6 +535,9 @@ async function runLaneScannerTickInner(system: RoutaSystem): Promise<LaneScanner
     triggeredTasks,
     errors,
   };
+
+  // Periodic Graph Refiner fallback
+  await checkPeriodicRefiner(system);
 
   return state.stats;
 }
