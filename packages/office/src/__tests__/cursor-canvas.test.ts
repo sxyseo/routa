@@ -105,7 +105,8 @@ describe("buildPptxCursorCanvasPayload", () => {
     });
   });
 
-  it("uses the presentation renderer for Cursor thumbnails instead of legacy raster thumbnails", async () => {
+  it("emits pre-rendered Cursor rail thumbnails while using the presentation renderer payload", async () => {
+    const fill = solidFill("FF3366");
     const protoBytes = message([
       bytesField(
         1,
@@ -115,7 +116,7 @@ describe("buildPptxCursorCanvasPayload", () => {
             3,
             message([
               bytesField(1, bbox(0, 0, 1_000_000, 500_000)),
-              bytesField(4, message([int32Field(1, 5)])),
+              bytesField(4, message([int32Field(1, 5), bytesField(5, fill)])),
               stringField(10, "Shape"),
               int32Field(11, 1),
             ]),
@@ -134,7 +135,9 @@ describe("buildPptxCursorCanvasPayload", () => {
     });
 
     expect(payload.artifact.mode).toBe("presentation-renderer");
-    expect(payload.slides[0]?.thumbnail).toBeNull();
+    const thumbnail = payload.slides[0]?.thumbnail;
+    expect(thumbnail).not.toBeNull();
+    expect(String(thumbnail)).toMatch(/^data:image\/(?:jpeg|svg\+xml);base64,/u);
   });
 
   it("preserves PPTX arrow geometry codes for Cursor renderer parity", async () => {
@@ -297,6 +300,13 @@ describe("buildPptxCursorCanvasPayload", () => {
 function gradientStop(position: number, color: string): Uint8Array {
   return message([
     int32Field(1, position),
+    bytesField(2, message([int32Field(1, 1), stringField(2, color)])),
+  ]);
+}
+
+function solidFill(color: string): Uint8Array {
+  return message([
+    int32Field(1, 1),
     bytesField(2, message([int32Field(1, 1), stringField(2, color)])),
   ]);
 }

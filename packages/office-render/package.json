@@ -1,6 +1,6 @@
 {
   "name": "@autodev/office-render",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Standalone React components for DOCX, PPTX, and XLSX document preview — framework-agnostic, no Next.js required.",
   "type": "module",
   "license": "MIT",

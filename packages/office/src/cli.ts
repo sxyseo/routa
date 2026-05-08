@@ -79,6 +79,7 @@ async function main(): Promise<void> {
   const outputPath = resolveOutputPath(inputPath, options, outputFormat);
   const sourceLabel = path.basename(inputPath);
   const output = await renderOutput(inputPath, inputFormat, outputFormat, kind, {
+    includeThumbnails: options.includeThumbnails,
     maxColumns: options.maxColumns,
     maxRows: options.maxRows,
     mediaQuality: options.mediaQuality,

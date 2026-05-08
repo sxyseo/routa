@@ -290,10 +290,7 @@ async function renderPowerPointReference(
       ? visibleSlideIndices
       : await activePowerPointSlideIndices();
   for (const [index, slideIndex] of selectedSlideIndices.entries()) {
-    await execFileAsync("osascript", [
-      "-e",
-      `tell application id "com.microsoft.Powerpoint" to copy object slide ${slideIndex} of active presentation`,
-    ], { maxBuffer: 1024 * 1024 });
+    await copyPowerPointSlide(fixturePath, slideIndex);
     await writePowerPointClipboardPng(path.join(referenceDir, `slide-${String(index + 1).padStart(2, "0")}.png`));
   }
   return readReferenceSlides(referenceDir);
@@ -313,15 +310,18 @@ async function assertActivePowerPointPresentation(fixturePath: string): Promise<
 }
 
 async function ensurePowerPointPresentation(fixturePath: string): Promise<void> {
-  if (await activePowerPointPresentationPath() === fixturePath) return;
+  if (await powerPointHasPresentation(fixturePath)) return;
   try {
     await execFileAsync("osascript", [
       "-e",
       `tell application id "com.microsoft.Powerpoint" to open POSIX file ${appleScriptString(fixturePath)}`,
     ], { maxBuffer: 1024 * 1024 });
   } catch (error) {
-    if (await activePowerPointPresentationPath() === fixturePath) return;
+    if (await powerPointHasPresentation(fixturePath)) return;
     throw error;
+  }
+  if (!(await powerPointHasPresentation(fixturePath))) {
+    throw new Error(`PowerPoint did not open the requested fixture: ${fixturePath}`);
   }
 }
 
@@ -346,6 +346,44 @@ async function activePowerPointSlideIndices(): Promise<number[]> {
   const slideCount = Number(stdout.trim());
   if (!Number.isFinite(slideCount) || slideCount <= 0) return [];
   return Array.from({ length: slideCount }, (_, index) => index + 1);
+}
+
+async function powerPointHasPresentation(fixturePath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("osascript", [
+      "-e",
+      powerPointPresentationLookupScript(fixturePath, "return \"1\""),
+    ], { maxBuffer: 1024 * 1024 });
+    return stdout.trim() === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function copyPowerPointSlide(fixturePath: string, slideIndex: number): Promise<void> {
+  const script = activePowerPoint
+    ? `tell application id "com.microsoft.Powerpoint" to copy object slide ${slideIndex} of active presentation`
+    : powerPointPresentationLookupScript(
+        fixturePath,
+        `copy object slide ${slideIndex} of targetPresentation`,
+      );
+  await execFileAsync("osascript", ["-e", script], { maxBuffer: 1024 * 1024 });
+}
+
+function powerPointPresentationLookupScript(fixturePath: string, body: string): string {
+  return [
+    'tell application id "com.microsoft.Powerpoint"',
+    "set targetPresentation to missing value",
+    "repeat with candidatePresentation in presentations",
+    `if (full name of candidatePresentation as string) is ${appleScriptString(fixturePath)} then`,
+    "set targetPresentation to candidatePresentation",
+    "exit repeat",
+    "end if",
+    "end repeat",
+    "if targetPresentation is missing value then error \"PowerPoint target presentation is not open\"",
+    body,
+    "end tell",
+  ].join("\n");
 }
 
 async function writePowerPointClipboardPng(outputPath: string): Promise<void> {

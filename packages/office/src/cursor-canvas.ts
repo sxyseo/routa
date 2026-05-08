@@ -1192,8 +1192,26 @@ async function buildPresentationPayload(
   const sharp = await loadSharp();
   const mediaIndex = await buildMediaIndex(presentation.images, sharp, options);
   const layouts = rendererLayouts(presentation);
+  const thumbnails = options.includeThumbnails
+    ? await Promise.all(
+        presentation.slides.map((slide, index) =>
+          renderSlideThumbnailDataUrl(
+            buildSlide(
+              slide,
+              index,
+              presentation.layouts,
+              presentation.masters,
+              mediaIndex,
+              presentation.theme,
+            ),
+            mediaIndex.media,
+            sharp,
+          ),
+        ),
+      )
+    : [];
   const slides = presentation.slides.map((slide, index) =>
-    rendererSlide(slide, index, layouts, null),
+    rendererSlide(slide, index, layouts, thumbnails[index] ?? null),
   );
   return {
     artifact: {
@@ -1775,14 +1793,16 @@ async function renderSlideThumbnailDataUrl(
   media: Map<string, DirectCanvasMedia>,
   sharp: SharpFactory | null,
 ): Promise<string | null> {
-  if (!sharp) return null;
+  const svg = renderSlideThumbnailSvg(slide, media);
+  const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+  if (!sharp) return svgDataUrl;
   try {
-    const buffer = await sharp(Buffer.from(renderSlideThumbnailSvg(slide, media)))
+    const buffer = await sharp(Buffer.from(svg))
       .jpeg({ mozjpeg: true, quality: 50 })
       .toBuffer();
     return `data:image/jpeg;base64,${buffer.toString("base64")}`;
   } catch {
-    return null;
+    return svgDataUrl;
   }
 }
 
