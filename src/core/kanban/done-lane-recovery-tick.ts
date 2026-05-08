@@ -20,8 +20,16 @@ import { AgentEventType } from "../events/event-bus";
 import { enqueueKanbanTaskSession } from "./workflow-orchestrator-singleton";
 import { clearStuckMarker, parseDoneStuckRetryCount } from "./sync-error-writer";
 import { getKanbanConfig } from "./kanban-config";
+import { getHttpSessionStore } from "../acp/http-session-store";
+import { markTaskLaneSessionStatus } from "./task-lane-history";
 
 const recoveryCfg = getKanbanConfig();
+
+const RECOVERY_SPECIALIST_IDS = [
+  "kanban-auto-merger",
+  "kanban-conflict-resolver",
+  "kanban-rebase-resolver",
+] as const;
 
 /** Minimum age (ms) before a done-lane card is considered for recovery. */
 const PR_VERIFICATION_MIN_AGE_MS = recoveryCfg.prVerificationMinAgeMs;
@@ -38,6 +46,8 @@ export interface DoneLaneRecoverySummary {
   completed: number;
   /** Number of tasks whose permanent automation-limit markers were cleared. */
   limitSwept: number;
+  /** Number of specialist sessions resolved (completed/failed) by this tick. */
+  specialistResolved: number;
   errors: number;
 }
 
@@ -124,6 +134,19 @@ export function detectStuckPatterns(
     }
   }
 
+  // Skip if the most recent lane session is a recovery specialist still active
+  // in HttpSessionStore. Prevents re-detection while the specialist is in-flight.
+  const sessions = task.laneSessions ?? [];
+  const recentSession = sessions[sessions.length - 1];
+  if (recentSession?.status === "running" && recentSession.specialistId
+      && (RECOVERY_SPECIALIST_IDS as readonly string[]).includes(recentSession.specialistId)
+      && recentSession.sessionId) {
+    const activity = getHttpSessionStore().getSessionActivity(recentSession.sessionId);
+    if (activity && !activity.terminalState) {
+      return patterns; // Session still running, skip.
+    }
+  }
+
   // Pattern: circuit-breaker exhausted + PR actually merged on GitHub
   if (cbExhausted && hasPR && !prMerged) {
     patterns.push({ pattern: "cb_exhausted_pr_unmerged", task });
@@ -186,11 +209,13 @@ export function detectStuckPatterns(
 
 // ── Recovery actions ───────────────────────────────────────────────────────
 
+type WebhookRecoveryResult = "merged" | "auto_merger" | "conflict" | "unknown" | "no_action";
+
 async function recoverWebhookMissed(
   task: Task,
   system: RecoverySystem,
-): Promise<boolean> {
-  if (!task.pullRequestUrl) return false;
+): Promise<WebhookRecoveryResult> {
+  if (!task.pullRequestUrl) return "no_action";
 
   const verification = await verifyPrMergeStatus(task.pullRequestUrl);
 
@@ -217,7 +242,7 @@ async function recoverWebhookMissed(
       timestamp: new Date(),
     });
 
-    return true;
+    return "merged";
   }
 
   // PR not merged on GitHub — route by state
@@ -234,7 +259,7 @@ async function recoverWebhookMissed(
       task.updatedAt = new Date();
       await system.taskStore.save(task);
       await triggerRebaseResolver(task, system);
-      return false;
+      return "conflict";
     }
 
     if (verification.mergeable === false) {
@@ -247,6 +272,7 @@ async function recoverWebhookMissed(
       task.updatedAt = new Date();
       await system.taskStore.save(task);
       await triggerConflictResolver(task, system);
+      return "conflict";
     } else if (verification.mergeable === true) {
       // Open PR, mergeable — trigger independent auto-merger session
       console.log(
@@ -257,6 +283,7 @@ async function recoverWebhookMissed(
       task.updatedAt = new Date();
       await system.taskStore.save(task);
       await triggerAutoMerger(task, system);
+      return "auto_merger";
     } else {
       // mergeable=UNKNOWN or undefined — GitHub still calculating, set diagnostic with retry counter
       const prevRetries = parseDoneStuckRetryCount(task.lastSyncError ?? "");
@@ -271,10 +298,11 @@ async function recoverWebhookMissed(
       }
       task.updatedAt = new Date();
       await system.taskStore.save(task);
+      return "unknown";
     }
   }
 
-  return false;
+  return "no_action";
 }
 
 async function recoverCbExhausted(
@@ -392,6 +420,7 @@ async function triggerConflictResolver(
       task: freshTask,
       ignoreExistingTrigger: true,
       bypassDependencyGate: true,
+      bypassQueue: true,
       step: {
         id: "conflict-resolver",
         role: "DEVELOPER",
@@ -400,6 +429,10 @@ async function triggerConflictResolver(
       },
       stepIndex: 0,
     });
+    console.log(
+      `[DoneLaneRecovery] enqueueKanbanTaskSession result for card ${task.id}: ` +
+      `sessionId=${result.sessionId}, queued=${result.queued}, error=${result.error}`,
+    );
     if (result.sessionId) {
       console.log(
         `[DoneLaneRecovery] Conflict-resolver session ${result.sessionId} started for card ${task.id}.`,
@@ -635,6 +668,163 @@ function areDepsMerged(task: Task, taskMap: Map<string, Task>): boolean {
   return true;
 }
 
+// ── Specialist session resolution ──────────────────────────────────────────
+
+/**
+ * Resolve done-lane tasks whose independent specialist sessions (auto-merger,
+ * conflict-resolver, rebase-resolver) have completed or failed. These sessions
+ * are NOT tracked in WorkflowOrchestrator.activeAutomations, so their outcomes
+ * are only detected here by checking HttpSessionStore for terminal states.
+ */
+async function resolveCompletedSpecialistSessions(
+  tasks: Task[],
+  system: RecoverySystem,
+): Promise<number> {
+  const sessionStore = getHttpSessionStore();
+  let resolved = 0;
+
+  for (const task of tasks) {
+    const sessions = task.laneSessions ?? [];
+    let specialistSession: TaskLaneSession | undefined;
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const s = sessions[i];
+      if (s.status === "running" && s.specialistId
+          && (RECOVERY_SPECIALIST_IDS as readonly string[]).includes(s.specialistId)) {
+        specialistSession = s;
+        break;
+      }
+    }
+    if (!specialistSession?.sessionId) continue;
+
+    const activity = sessionStore.getSessionActivity(specialistSession.sessionId);
+    // If the session has a terminal state, process it immediately.
+    // If there's activity but no terminal state, check for silent death:
+    //   if the last meaningful activity was > orphanAgeMs ago, treat as timed_out.
+    // If there's NO activity record at all (e.g. server restart cleared HttpSessionStore),
+    //   check startedAt — if the session started > orphanAgeMs ago, treat as timed_out.
+    if (!activity?.terminalState) {
+      if (activity?.lastMeaningfulActivityAt) {
+        const lastActive = new Date(activity.lastMeaningfulActivityAt).getTime();
+        const staleThresholdMs = recoveryCfg.orphanAgeMs;
+        if (Date.now() - lastActive < staleThresholdMs) {
+          continue; // Session still active (within threshold)
+        }
+        console.warn(
+          `[DoneLaneRecovery] Specialist session ${specialistSession.sessionId} for card ${task.id} ` +
+          `has no terminalState but last activity was ${Math.round((Date.now() - lastActive) / 60_000)}m ago. ` +
+          `Treating as timed_out.`,
+        );
+      } else if (specialistSession.startedAt) {
+        const startedAt = new Date(specialistSession.startedAt).getTime();
+        if (Date.now() - startedAt < recoveryCfg.orphanAgeMs) {
+          continue; // Session started recently — may still be initializing
+        }
+        console.warn(
+          `[DoneLaneRecovery] Specialist session ${specialistSession.sessionId} for card ${task.id} ` +
+          `has no HttpSessionStore record (server restart?). Session started ${Math.round((Date.now() - startedAt) / 60_000)}m ago. ` +
+          `Treating as timed_out.`,
+        );
+      } else {
+        continue; // No activity record and no startedAt — skip
+      }
+    }
+
+    const effectiveTerminalState = activity?.terminalState ?? "timed_out";
+
+    const freshTask = await system.taskStore.get(task.id);
+    if (!freshTask) continue;
+
+    const specialistId = specialistSession.specialistId;
+    const isSuccess = effectiveTerminalState === "completed";
+
+    markTaskLaneSessionStatus(freshTask, specialistSession.sessionId,
+      isSuccess ? "completed" : "failed");
+
+    if (isSuccess && specialistId === "kanban-auto-merger") {
+      freshTask.lastSyncError = undefined;
+      freshTask.triggerSessionId = undefined;
+      freshTask.updatedAt = new Date();
+      await system.taskStore.save(freshTask);
+      resolved++;
+      console.log(
+        `[DoneLaneRecovery] Auto-merger completed for card ${task.id}. Clearing marker.`,
+      );
+    } else if (!isSuccess && specialistId === "kanban-auto-merger") {
+      console.log(
+        `[DoneLaneRecovery] Auto-merger failed for card ${task.id}. Triggering conflict-resolver upgrade.`,
+      );
+      freshTask.triggerSessionId = undefined;
+      freshTask.lastSyncError = `[conflict-resolver-pending] Triggered at ${new Date().toISOString()}. Auto-merger failed (session ${specialistSession.sessionId}).`;
+      freshTask.updatedAt = new Date();
+      await system.taskStore.save(freshTask);
+      await triggerConflictResolver(freshTask, system);
+      resolved++;
+    } else if (isSuccess && specialistId === "kanban-conflict-resolver") {
+      freshTask.lastSyncError = undefined;
+      freshTask.triggerSessionId = undefined;
+      freshTask.updatedAt = new Date();
+      await system.taskStore.save(freshTask);
+      resolved++;
+      console.log(
+        `[DoneLaneRecovery] Conflict-resolver completed for card ${task.id}. Will re-verify PR status.`,
+      );
+    } else if (!isSuccess && specialistId === "kanban-conflict-resolver") {
+      const retryCount = countSpecialistRetries(freshTask, "kanban-conflict-resolver") + 1;
+      if (retryCount >= recoveryCfg.conflictResolverMaxRetries) {
+        console.warn(
+          `[DoneLaneRecovery] Conflict-resolver failed ${retryCount} times for card ${task.id}. Marking permanently stuck.`,
+        );
+        freshTask.lastSyncError = `[done-lane-stuck] Conflict resolver failed ${retryCount} times. Manual intervention required.`;
+        freshTask.triggerSessionId = undefined;
+        freshTask.updatedAt = new Date();
+        await system.taskStore.save(freshTask);
+      } else {
+        console.log(
+          `[DoneLaneRecovery] Conflict-resolver failed for card ${task.id} (retry ${retryCount}/${recoveryCfg.conflictResolverMaxRetries}). Retrying.`,
+        );
+        freshTask.lastSyncError = `[conflict-resolver-pending] Triggered at ${new Date().toISOString()}. Retry #${retryCount}.`;
+        freshTask.triggerSessionId = undefined;
+        freshTask.updatedAt = new Date();
+        await system.taskStore.save(freshTask);
+        await triggerConflictResolver(freshTask, system);
+      }
+      resolved++;
+    } else if (isSuccess && specialistId === "kanban-rebase-resolver") {
+      freshTask.lastSyncError = undefined;
+      freshTask.triggerSessionId = undefined;
+      freshTask.updatedAt = new Date();
+      await system.taskStore.save(freshTask);
+      resolved++;
+    } else if (!isSuccess && specialistId === "kanban-rebase-resolver") {
+      const retryCount = countSpecialistRetries(freshTask, "kanban-rebase-resolver") + 1;
+      if (retryCount >= recoveryCfg.conflictResolverMaxRetries) {
+        freshTask.lastSyncError = `[done-lane-stuck] Rebase resolver failed ${retryCount} times. Manual intervention required.`;
+        freshTask.triggerSessionId = undefined;
+        freshTask.updatedAt = new Date();
+        await system.taskStore.save(freshTask);
+      } else {
+        freshTask.lastSyncError = `[rebase-resolver-pending] Triggered at ${new Date().toISOString()}. Retry #${retryCount}.`;
+        freshTask.triggerSessionId = undefined;
+        freshTask.updatedAt = new Date();
+        await system.taskStore.save(freshTask);
+        await triggerRebaseResolver(freshTask, system);
+      }
+      resolved++;
+    }
+  }
+
+  return resolved;
+}
+
+function countSpecialistRetries(task: Task, specialistId: string): number {
+  const sessions = task.laneSessions ?? [];
+  let count = 0;
+  for (const s of sessions) {
+    if (s.specialistId === specialistId && s.status === "failed") count++;
+  }
+  return count;
+}
+
 // ── Main tick ──────────────────────────────────────────────────────────────
 
 /**
@@ -654,6 +844,7 @@ export async function runDoneLaneRecoveryTick(
     stuckMarked: 0,
     completed: 0,
     limitSwept: 0,
+    specialistResolved: 0,
     errors: 0,
   };
 
@@ -682,6 +873,10 @@ export async function runDoneLaneRecoveryTick(
           (t) => t.columnId && doneColumnIds.has(t.columnId),
         );
 
+        // Phase 0: Resolve specialist sessions that have completed/failed since last tick.
+        const specialistResolved = await resolveCompletedSpecialistSessions(doneTasks, system);
+        summary.specialistResolved += specialistResolved;
+
         // Collect all stuck items across done tasks
         const allStuckItems: DetectedStuck[] = [];
         for (const task of doneTasks) {
@@ -700,17 +895,22 @@ export async function runDoneLaneRecoveryTick(
             switch (stuck.pattern) {
               case "webhook_missed": {
                 if (autoMergerTriggered) {
-                  // Only one auto-merger per tick to prevent cascading conflicts
                   console.log(
                     `[DoneLaneRecovery] Deferring auto-merger for card ${stuck.task.id}: ` +
                     `already triggered one this tick.`,
                   );
                   break;
                 }
-                const ok = await recoverWebhookMissed(stuck.task, system);
-                if (ok) {
+                const result = await recoverWebhookMissed(stuck.task, system);
+                if (result === "merged") {
+                  summary.recovered++;
+                  // Webhook-lost merge doesn't consume the auto-merger slot.
+                  // Other cards can still trigger auto-merger in this tick.
+                } else if (result === "auto_merger") {
                   summary.recovered++;
                   autoMergerTriggered = true;
+                } else if (result === "conflict") {
+                  summary.conflictResolved++;
                 }
                 break;
               }
@@ -784,6 +984,7 @@ export async function runDoneLaneRecoveryTick(
     `[DoneLaneRecovery] Tick complete: examined=${summary.examined}, ` +
     `recovered=${summary.recovered}, conflicts=${summary.conflictResolved}, ` +
     `stuck=${summary.stuckMarked}, completed=${summary.completed}, ` +
+    `specialistResolved=${summary.specialistResolved}, ` +
     `limitSwept=${summary.limitSwept}, errors=${summary.errors}`,
   );
 

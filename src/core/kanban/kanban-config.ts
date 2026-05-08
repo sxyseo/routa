@@ -57,6 +57,10 @@ export interface KanbanSystemConfig {
   // ── PR Auto-Create ──
   /** Max retry attempts for PR creation. */
   prRetryLimit: number;
+
+  // ── Recovery Specialists ──
+  /** Max retry attempts for conflict-resolver before permanent stuck marking. */
+  conflictResolverMaxRetries: number;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -80,6 +84,7 @@ const DEFAULTS: KanbanSystemConfig = {
   flowFailureThreshold: 0.7,
   defaultSessionConcurrencyLimit: 1,
   prRetryLimit: 3,
+  conflictResolverMaxRetries: 3,
 };
 
 // ─── Resolver ────────────────────────────────────────────────────────────────
@@ -123,5 +128,6 @@ export function getKanbanConfig(): KanbanSystemConfig {
     flowFailureThreshold: envFloat("ROUTA_FLOW_FAILURE_THRESHOLD", DEFAULTS.flowFailureThreshold),
     defaultSessionConcurrencyLimit: envInt("ROUTA_SESSION_CONCURRENCY_LIMIT", DEFAULTS.defaultSessionConcurrencyLimit),
     prRetryLimit: envInt("ROUTA_PR_RETRY_LIMIT", DEFAULTS.prRetryLimit),
+    conflictResolverMaxRetries: envInt("ROUTA_CONFLICT_RESOLVER_MAX_RETRIES", DEFAULTS.conflictResolverMaxRetries),
   };
 }

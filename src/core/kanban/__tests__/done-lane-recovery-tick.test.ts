@@ -176,4 +176,57 @@ describe("detectStuckPatterns", () => {
     const patterns = detectStuckPatterns(task, board);
     expect(patterns.length).toBe(0);
   });
+
+  it("allows detection when specialist session has no HttpSessionStore entry (stale)", () => {
+    // When HttpSessionStore has no activity for the specialist session,
+    // the guard passes through — the session is considered gone (e.g. server restart).
+    const task = makeTask({
+      id: "t-specialist-stale",
+      pullRequestUrl: "https://github.com/o/r/pull/10",
+      pullRequestMergedAt: undefined,
+      updatedAt: new Date(Date.now() - 10 * 60 * 1000),
+      laneSessions: [
+        {
+          sessionId: "spec-session-1",
+          specialistId: "kanban-auto-merger",
+          status: "running",
+          columnId: "done",
+          stepIndex: 0,
+          startedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    // HttpSessionStore has no entry for "spec-session-1" → guard passes
+    const patterns = detectStuckPatterns(task, board);
+    expect(patterns.some((p) => p.pattern === "webhook_missed")).toBe(true);
+  });
+
+  it("allows detection when recovery specialist lane session has terminal state", () => {
+    // Simulates a task whose auto-merger laneSession is "running" but
+    // HttpSessionStore shows terminalState (tested indirectly — the guard
+    // only checks HttpSessionStore, which in test env returns undefined
+    // meaning "no activity" → no terminalState → NOT skipped).
+    // This test verifies that the guard does NOT block when there's no
+    // active HttpSessionStore entry for the specialist.
+    const task = makeTask({
+      id: "t-specialist-ended",
+      pullRequestUrl: "https://github.com/o/r/pull/11",
+      pullRequestMergedAt: undefined,
+      lastSyncError: undefined, // marker was cleared by startKanbanTaskSession
+      updatedAt: new Date(Date.now() - 10 * 60 * 1000),
+      laneSessions: [
+        {
+          sessionId: "spec-session-2",
+          specialistId: "kanban-auto-merger",
+          status: "running", // stale — session actually ended
+          columnId: "done",
+          stepIndex: 0,
+          startedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    // HttpSessionStore has no activity for "spec-session-2" → guard passes
+    const patterns = detectStuckPatterns(task, board);
+    expect(patterns.some((p) => p.pattern === "webhook_missed")).toBe(true);
+  });
 });

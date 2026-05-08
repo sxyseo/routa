@@ -70,9 +70,14 @@ export function startPrMergeListener(system: RoutaSystem): void {
     if (!task.pullRequestMergedAt) {
       task.pullRequestMergedAt = mergedAt ? new Date(mergedAt) : new Date();
       task.updatedAt = new Date();
-      // Clear lastSyncError if it was caused by a PR creation failure —
-      // the PR is now merged so the error is no longer relevant.
-      if (task.lastSyncError?.includes("pr create") || task.lastSyncError?.includes("Auto PR creation failed")) {
+      // Clear lastSyncError if it was caused by a PR creation failure or a
+      // specialist pending marker — the PR is now merged so these are irrelevant.
+      if (task.lastSyncError?.includes("pr create")
+          || task.lastSyncError?.includes("Auto PR creation failed")
+          || task.lastSyncError?.startsWith("[auto-merger-pending]")
+          || task.lastSyncError?.startsWith("[conflict-resolver-pending]")
+          || task.lastSyncError?.startsWith("[rebase-resolver-pending]")
+          || task.lastSyncError?.startsWith("[done-lane-stuck]")) {
         task.lastSyncError = undefined;
       }
       await system.taskStore.save(task);

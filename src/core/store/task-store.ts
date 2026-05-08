@@ -114,7 +114,8 @@ export class InMemoryTaskStore implements TaskStore {
     if (!task || (task.version ?? 1) !== expectedVersion) return false;
     Object.assign(task, updates);
     task.version = (task.version ?? 1) + 1;
-    task.updatedAt = new Date();
+    // Only bump updatedAt if the caller did not explicitly omit it.
+    if (!("updatedAt" in updates)) task.updatedAt = new Date();
     return true;
   }
 

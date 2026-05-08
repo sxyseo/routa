@@ -70,7 +70,12 @@ export async function clearStaleTriggerSession(
   const updateFields = {
     triggerSessionId: undefined as string | undefined,
     laneSessions: task.laneSessions,
-    ...(skipUpdatedAtBump ? {} : { updatedAt: new Date() }),
+    // When skipUpdatedAtBump, preserve original updatedAt to avoid resetting
+    // done-lane recovery's age gate. Pass it explicitly so atomicUpdate
+    // won't overwrite with new Date().
+    updatedAt: skipUpdatedAtBump
+      ? (task.updatedAt instanceof Date ? task.updatedAt : new Date(task.updatedAt as string | number))
+      : new Date(),
   };
   if (task.version !== undefined && taskStore.atomicUpdate) {
     const ok = await taskStore.atomicUpdate(task.id, task.version, updateFields);
@@ -86,7 +91,9 @@ export async function clearStaleTriggerSession(
       const retryFields = {
         triggerSessionId: undefined as string | undefined,
         laneSessions: fresh.laneSessions,
-        ...(skipUpdatedAtBump ? {} : { updatedAt: new Date() }),
+        updatedAt: skipUpdatedAtBump
+          ? (fresh.updatedAt instanceof Date ? fresh.updatedAt : new Date(fresh.updatedAt as string | number))
+          : new Date(),
       };
       if (fresh.version !== undefined && taskStore.atomicUpdate) {
         const retryOk = await taskStore.atomicUpdate(fresh.id, fresh.version, retryFields);
