@@ -24,6 +24,8 @@ export interface UvxDistribution {
 /** Binary distribution for a specific platform */
 export interface BinaryPlatformConfig {
   archive: string;
+  /** Differential patch URL (optional — client attempts incremental update first if present) */
+  diffUrl?: string;
   cmd: string;
   args?: string[];
   env?: Record<string, string>;

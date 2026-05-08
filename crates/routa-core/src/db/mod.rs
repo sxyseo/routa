@@ -350,6 +350,126 @@ impl Database {
                     ON worktrees(codebase_id, branch);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
                     ON worktrees(worktree_path);
+
+                CREATE TABLE IF NOT EXISTS ab_experiments (
+                    id              TEXT PRIMARY KEY,
+                    workspace_id    TEXT NOT NULL,
+                    name            TEXT NOT NULL,
+                    description     TEXT,
+                    status          TEXT NOT NULL DEFAULT 'inactive',
+                    created_at      INTEGER NOT NULL,
+                    updated_at      INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_ab_experiments_workspace ON ab_experiments(workspace_id);
+
+                CREATE TABLE IF NOT EXISTS ab_variants (
+                    id              TEXT PRIMARY KEY,
+                    experiment_id   TEXT NOT NULL REFERENCES ab_experiments(id) ON DELETE CASCADE,
+                    name            TEXT NOT NULL,
+                    description     TEXT,
+                    traffic_percent REAL NOT NULL,
+                    created_at      INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_ab_variants_experiment ON ab_variants(experiment_id);
+
+                CREATE TABLE IF NOT EXISTS ab_events (
+                    id              TEXT PRIMARY KEY,
+                    workspace_id    TEXT NOT NULL,
+                    experiment_id   TEXT NOT NULL,
+                    variant_id      TEXT NOT NULL,
+                    user_id         TEXT NOT NULL,
+                    event_name      TEXT NOT NULL,
+                    event_value     REAL,
+                    timestamp       INTEGER NOT NULL,
+                    created_at      INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_ab_events_experiment ON ab_events(experiment_id);
+                CREATE INDEX IF NOT EXISTS idx_ab_events_variant ON ab_events(variant_id);
+                CREATE INDEX IF NOT EXISTS idx_ab_events_user ON ab_events(user_id);
+                CREATE INDEX IF NOT EXISTS idx_ab_events_timestamp ON ab_events(timestamp);
+
+                -- Daily Sign-in Tables
+                CREATE TABLE IF NOT EXISTS daily_signins (
+                    id                  TEXT PRIMARY KEY,
+                    workspace_id        TEXT NOT NULL,
+                    user_id             TEXT NOT NULL,
+                    signin_date         TEXT NOT NULL,
+                    signin_at           INTEGER NOT NULL,
+                    status              TEXT NOT NULL DEFAULT 'normal',
+                    is_consecutive      INTEGER NOT NULL DEFAULT 0,
+                    consecutive_days    INTEGER NOT NULL DEFAULT 0,
+                    reward_item_id      TEXT,
+                    reward_amount       INTEGER NOT NULL DEFAULT 0,
+                    created_at          INTEGER NOT NULL,
+                    updated_at          INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_daily_signins_user_date ON daily_signins(workspace_id, user_id, signin_date);
+
+                CREATE TABLE IF NOT EXISTS signin_rewards (
+                    id                  TEXT PRIMARY KEY,
+                    workspace_id        TEXT NOT NULL,
+                    name                TEXT NOT NULL,
+                    reward_type         TEXT NOT NULL,
+                    item_id             TEXT NOT NULL,
+                    amount              INTEGER NOT NULL,
+                    icon_url            TEXT,
+                    status              TEXT NOT NULL DEFAULT 'active',
+                    created_at          INTEGER NOT NULL,
+                    updated_at          INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS signin_stats (
+                    workspace_id        TEXT NOT NULL,
+                    user_id             TEXT NOT NULL,
+                    total_days          INTEGER NOT NULL DEFAULT 0,
+                    current_streak      INTEGER NOT NULL DEFAULT 0,
+                    longest_streak      INTEGER NOT NULL DEFAULT 0,
+                    monthly_days        INTEGER NOT NULL DEFAULT 0,
+                    ad_claim_count      INTEGER NOT NULL DEFAULT 0,
+                    last_signin_date    TEXT,
+                    last_signin_at      INTEGER,
+                    created_at          INTEGER NOT NULL,
+                    updated_at          INTEGER NOT NULL,
+                    PRIMARY KEY (workspace_id, user_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS consecutive_rewards (
+                    id                  TEXT PRIMARY KEY,
+                    workspace_id        TEXT NOT NULL,
+                    threshold_days      INTEGER NOT NULL,
+                    name                TEXT NOT NULL,
+                    reward_type         TEXT NOT NULL,
+                    item_id             TEXT NOT NULL,
+                    amount              INTEGER NOT NULL,
+                    icon_url            TEXT,
+                    is_claimed          INTEGER NOT NULL DEFAULT 0,
+                    status              TEXT NOT NULL DEFAULT 'active',
+                    created_at          INTEGER NOT NULL,
+                    updated_at          INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS reward_claim_records (
+                    id                  TEXT PRIMARY KEY,
+                    workspace_id        TEXT NOT NULL,
+                    user_id             TEXT NOT NULL,
+                    reward_id           TEXT NOT NULL,
+                    reward_name         TEXT NOT NULL,
+                    claimed_at          INTEGER NOT NULL,
+                    created_at          INTEGER NOT NULL,
+                    updated_at          INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_reward_claim_records_user ON reward_claim_records(user_id);
+
+                CREATE TABLE IF NOT EXISTS makeup_check_in_records (
+                    id                  TEXT PRIMARY KEY,
+                    workspace_id        TEXT NOT NULL,
+                    user_id             TEXT NOT NULL,
+                    makeup_date         TEXT NOT NULL,
+                    ad_watched_at       INTEGER NOT NULL,
+                    created_at          INTEGER NOT NULL,
+                    updated_at          INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_makeup_records_user_date ON makeup_check_in_records(workspace_id, user_id, makeup_date);
                 "
             )
         })?;

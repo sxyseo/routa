@@ -115,6 +115,67 @@ pub struct InstalledAgentInfo {
     pub package: Option<String>,
 }
 
+/// A single entry in the version history for an agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionHistoryEntry {
+    pub version: String,
+    /// When this version was installed.
+    pub installed_at: String,
+    /// SHA256 checksum of the installed binary (recomputed on rollback).
+    #[serde(default)]
+    pub sha256: Option<String>,
+    /// Original size in bytes of the installed binary.
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+    /// How long the installation took in milliseconds.
+    #[serde(default)]
+    pub install_duration_ms: Option<u64>,
+    /// Whether this version was installed via incremental (diff) or full download.
+    #[serde(default)]
+    pub download_method: Option<String>,
+}
+
+/// Version history for an agent — tracks the last N installed versions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentVersionHistory {
+    /// Sorted by installed_at descending (newest first).
+    #[serde(default)]
+    pub entries: Vec<VersionHistoryEntry>,
+}
+
+impl AgentVersionHistory {
+    /// Maximum number of historical versions to retain.
+    pub const MAX_HISTORY: usize = 3;
+
+    /// Remove the oldest entry. Returns it if one existed.
+    pub fn evict_oldest(&mut self) -> Option<VersionHistoryEntry> {
+        if self.entries.len() > Self::MAX_HISTORY {
+            self.entries.pop()
+        } else {
+            None
+        }
+    }
+
+    /// Add a new entry, evicting the oldest if over capacity.
+    /// Returns the evicted entry, if any.
+    pub fn push_and_evict(&mut self, entry: VersionHistoryEntry) -> Option<VersionHistoryEntry> {
+        // Avoid duplicates — replace if same version already present
+        if let Some(pos) = self.entries.iter().position(|e| e.version == entry.version) {
+            self.entries[pos] = entry;
+            return None;
+        }
+        self.entries.insert(0, entry);
+        // Evict oldest if over capacity
+        if self.entries.len() > Self::MAX_HISTORY {
+            self.entries.pop()
+        } else {
+            None
+        }
+    }
+}
+
 /// State of all installed agents.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

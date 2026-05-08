@@ -14,6 +14,9 @@ use crate::skills::SkillRegistry;
 use crate::store::{
     AcpSessionStore, AgentStore, ArtifactStore, CodebaseStore, ConversationStore, KanbanStore,
     NoteStore, ScheduleStore, TaskStore, WorkspaceStore, WorktreeStore,
+    AbEventStore, AbExperimentStore, AbVariantStore, AcpSessionStore, AgentStore, ArtifactStore, CodebaseStore,
+    ConversationStore, DailySigninStore, ConsecutiveRewardStore, KanbanStore, NoteStore, ScheduleStore,
+    TaskStore, WorkspaceStore, WorktreeStore,
 };
 
 /// Docker state for managing Docker-based agent execution.
@@ -37,6 +40,8 @@ pub struct AppStateInner {
     pub schedule_store: ScheduleStore,
     pub conversation_store: ConversationStore,
     pub acp_session_store: AcpSessionStore,
+    pub daily_signin_store: DailySigninStore,
+    pub consecutive_reward_store: ConsecutiveRewardStore,
     pub skill_registry: SkillRegistry,
     pub acp_manager: AcpManager,
     pub event_bus: EventBus,
@@ -70,6 +75,8 @@ impl AppStateInner {
             schedule_store: ScheduleStore::new(db.clone()),
             conversation_store: ConversationStore::new(db.clone()),
             acp_session_store: AcpSessionStore::new(db.clone()),
+            daily_signin_store: DailySigninStore::new(db.clone()),
+            consecutive_reward_store: ConsecutiveRewardStore::new(db.clone()),
             skill_registry: SkillRegistry::new(),
             acp_manager: AcpManager::new(),
             event_bus: EventBus::new(),

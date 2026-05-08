@@ -14,6 +14,7 @@ pub mod clone_progress;
 pub mod codebases;
 pub mod debug;
 pub mod feature_explorer;
+// gift_packages removed - replaced by check_in module
 pub mod files;
 pub mod fitness;
 pub mod git;
@@ -90,6 +91,10 @@ pub fn api_router(state: AppState) -> Router<AppState> {
         .nest("/api/mcp-servers", mcp_servers::router())
         .nest("/api/github", github::router())
         .nest("/api/graph", graph::router())
+        .nest("/api/game", check_in::router())
+        .nest("/api/ab-experiments", ab_experiments::router())
+        .nest("/api/ab", ab_assignments::router())
+        .nest("/api/ab/events", ab_events::router())
         .nest("/api/harness", harness::router())
         .nest("/api/harness/templates", harness_templates::router())
         .nest("/api/feature-explorer", feature_explorer::router())

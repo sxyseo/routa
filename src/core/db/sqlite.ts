@@ -466,6 +466,92 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     )
   `);
 
+  // ── Daily Sign-in Tables ─────────────────────────────────────────────
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS daily_signins (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      signin_date TEXT NOT NULL,
+      signin_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'normal',
+      is_consecutive INTEGER NOT NULL DEFAULT 0,
+      consecutive_days INTEGER NOT NULL DEFAULT 0,
+      reward_item_id TEXT,
+      reward_amount INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_daily_signins_user_date
+    ON daily_signins (workspace_id, user_id, signin_date)
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS signin_rewards (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      reward_type TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      icon_url TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS signin_stats (
+      workspace_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      total_days INTEGER NOT NULL DEFAULT 0,
+      current_streak INTEGER NOT NULL DEFAULT 0,
+      longest_streak INTEGER NOT NULL DEFAULT 0,
+      monthly_days INTEGER NOT NULL DEFAULT 0,
+      ad_claim_count INTEGER NOT NULL DEFAULT 0,
+      last_signin_date TEXT,
+      last_signin_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      PRIMARY KEY (workspace_id, user_id)
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS consecutive_rewards (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      threshold_days INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      reward_type TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      icon_url TEXT,
+      is_claimed INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS reward_claim_records (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      reward_id TEXT NOT NULL,
+      reward_name TEXT NOT NULL,
+      claimed_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
   try { db.run(sql`ALTER TABLE kanban_boards ADD COLUMN github_token TEXT`); } catch { /* column already exists */ }
   db.run(sql`DROP INDEX IF EXISTS kanban_boards_workspace_default_idx`);
 

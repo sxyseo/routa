@@ -62,5 +62,8 @@ flate2 = "1"
 tar = "0.4"
 bzip2 = "0.5"
 
+# Differential patching (for incremental binary updates)
+rustbsdiff = "0.2"
+
 [dev-dependencies]
 tempfile = "3.26.0"

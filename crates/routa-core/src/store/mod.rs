@@ -15,6 +15,7 @@ pub use agent_store::AgentStore;
 pub use artifact_store::ArtifactStore;
 pub use codebase_store::CodebaseStore;
 pub use conversation_store::ConversationStore;
+pub use gift_package_store::{ConsecutiveRewardStore, DailySigninStore, DailySignin, SigninReward, SigninStats, ConsecutiveReward, RewardClaimRecord};
 pub use kanban_store::KanbanStore;
 pub use note_store::NoteStore;
 pub use schedule_store::ScheduleStore;
