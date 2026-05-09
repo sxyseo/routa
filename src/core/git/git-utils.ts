@@ -490,7 +490,8 @@ export function getBranchInfo(repoPath: string): RepoBranchInfo {
 }
 
 /**
- * Checkout a branch. Creates it if it doesn't exist locally.
+ * Checkout a branch. Returns false if the branch doesn't exist locally.
+ * Use createAndCheckoutBranch() if you need to create a new branch.
  */
 export function checkoutBranch(repoPath: string, branch: string): boolean {
   if (!supportsGitWorktreeOperations(repoPath)) {
@@ -501,12 +502,30 @@ export function checkoutBranch(repoPath: string, branch: string): boolean {
     gitExecSync(["checkout", branch], repoPath);
     return true;
   } catch {
-    try {
-      gitExecSync(["checkout", "-b", branch], repoPath);
-      return true;
-    } catch {
-      return false;
-    }
+    return false;
+  }
+}
+
+/**
+ * Create and checkout a new branch from the specified start point.
+ * Callers must explicitly opt-in to branch creation — no implicit fallback.
+ */
+export function createAndCheckoutBranch(
+  repoPath: string,
+  branch: string,
+  startPoint?: string,
+): boolean {
+  if (!supportsGitWorktreeOperations(repoPath)) {
+    return false;
+  }
+  try {
+    const args = startPoint
+      ? ["checkout", "-b", branch, startPoint]
+      : ["checkout", "-b", branch];
+    gitExecSync(args, repoPath);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1306,41 +1325,101 @@ export function fetchAndFastForward(
   const forced: string[] = [];
   const skipped: string[] = [];
   const branches = listBranches(repoPath);
-  const isBare = isBareGitRepository(repoPath);
 
   for (const branch of branches) {
-    if (isBare) {
-      try {
-        gitExecSync(
-          ["update-ref", `refs/heads/${branch}`, `refs/remotes/origin/${branch}`],
-          repoPath,
-        );
-        synced.push(branch);
-      } catch {
-        skipped.push(branch);
-      }
-    } else {
-      try {
-        gitExecSync(["merge", "--ff-only", `origin/${branch}`], repoPath);
-        synced.push(branch);
-      } catch {
-        if (options?.forceReset) {
-          try {
-            gitExecSync(["checkout", branch], repoPath);
-            gitExecSync(["reset", "--hard", `origin/${branch}`], repoPath);
-            gitExecSync(["clean", "-fd"], repoPath);
-            forced.push(branch);
-          } catch {
-            skipped.push(branch);
-          }
+    if (isGhostBranchPattern(branch)) {
+      skipped.push(branch);
+      continue;
+    }
+
+    const remoteRef = `refs/remotes/origin/${branch}`;
+    const localRef = `refs/heads/${branch}`;
+
+    if (!hasGitRef(repoPath, remoteRef)) {
+      skipped.push(branch);
+      continue;
+    }
+
+    try {
+      if (options?.forceReset) {
+        gitExecSync(["update-ref", localRef, remoteRef], repoPath);
+        forced.push(branch);
+      } else {
+        const localSha = gitExecSync(["rev-parse", localRef], repoPath);
+        const remoteSha = gitExecSync(["rev-parse", remoteRef], repoPath);
+        if (isAncestorOf(repoPath, localSha, remoteSha)) {
+          gitExecSync(["update-ref", localRef, remoteRef], repoPath);
+          synced.push(branch);
         } else {
           skipped.push(branch);
         }
       }
+    } catch {
+      skipped.push(branch);
     }
   }
 
+  normalizeHeadToDefault(repoPath);
+
   return { fetched, synced, forced, skipped };
+}
+
+function isAncestorOf(repoPath: string, ancestor: string, descendant: string): boolean {
+  try {
+    gitExecSync(["merge-base", "--is-ancestor", ancestor, descendant], repoPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isGhostBranchPattern(branch: string): boolean {
+  const ghostPatterns = [
+    /^remote-/,
+    /^origin\//,
+    /-origin$/,
+    /^main-(?!$)/,
+  ];
+  return ghostPatterns.some((p) => p.test(branch));
+}
+
+function normalizeHeadToDefault(repoPath: string): void {
+  try {
+    const current = gitExecSync(["rev-parse", "--abbrev-ref", "HEAD"], repoPath);
+    if (current !== "main") {
+      gitExecSync(["checkout", "main"], repoPath);
+    }
+  } catch {
+    try {
+      gitExecSync(["checkout", "main"], repoPath);
+    } catch { /* best-effort */ }
+  }
+}
+
+export function cleanupGhostBranches(repoPath: string): string[] {
+  const deleted: string[] = [];
+  const localBranches = listBranches(repoPath);
+
+  for (const branch of localBranches) {
+    if (!isGhostBranchPattern(branch)) continue;
+
+    const remoteRef = `refs/remotes/origin/${branch}`;
+    if (hasGitRef(repoPath, remoteRef)) continue;
+
+    try {
+      const current = gitExecSync(["rev-parse", "--abbrev-ref", "HEAD"], repoPath);
+      if (current === branch) {
+        gitExecSync(["checkout", "main"], repoPath);
+      }
+    } catch { /* HEAD detached */ }
+
+    try {
+      gitExecSync(["branch", "-D", branch], repoPath);
+      deleted.push(branch);
+    } catch { /* skip */ }
+  }
+
+  return deleted;
 }
 
 /**

@@ -310,12 +310,26 @@ export class GitWorktreeService {
           try { await fs.access(worktree.worktreePath); stillExists = true; } catch { /* gone */ }
 
           if (stillExists) {
-            await this.worktreeStore.updateStatus(
-              worktreeId,
-              "error",
-              removeErr instanceof Error ? removeErr.message : "Failed to remove worktree directory",
-            );
-            return; // Keep DB record — worktree is still on disk
+            // Fallback: if git can't recognize the worktree (e.g. .git file missing),
+            // remove the directory directly and continue cleanup.
+            const errMsg = removeErr instanceof Error ? removeErr.message : String(removeErr);
+            if (errMsg.includes("not a working tree") || errMsg.includes("Directory not empty") || errMsg.includes("Invalid argument")) {
+              try {
+                await fs.rm(worktree.worktreePath, { recursive: true, force: true });
+                stillExists = false;
+              } catch {
+                // rm fallback also failed — keep error status
+              }
+            }
+
+            if (stillExists) {
+              await this.worktreeStore.updateStatus(
+                worktreeId,
+                "error",
+                errMsg,
+              );
+              return; // Keep DB record — worktree is still on disk
+            }
           }
         }
       }

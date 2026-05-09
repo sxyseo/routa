@@ -15,7 +15,7 @@
 
 import { AgentEvent, AgentEventType } from "../events/event-bus";
 import { rebaseBranchSafe } from "../git/git-operations";
-import { fetchRemote, fetchAndFastForward } from "../git/git-utils";
+import { fetchRemote, fetchAndFastForward, cleanupGhostBranches } from "../git/git-utils";
 import type { RoutaSystem } from "../routa-system";
 import { getKanbanBranchRules, DEFAULT_BRANCH_RULES } from "./board-branch-rules";
 import { getErrorType } from "./sync-error-writer";
@@ -155,6 +155,10 @@ async function fetchMainCodebase(
     const codebases = await system.codebaseStore.listByWorkspace(workspaceId);
     for (const cb of codebases) {
       if (cb.repoPath) {
+        const ghosts = cleanupGhostBranches(cb.repoPath);
+        if (ghosts.length > 0) {
+          console.log(`[PrMergeListener] Cleaned ${ghosts.length} ghost branches: ${ghosts.join(", ")}`);
+        }
         const result = fetchAndFastForward(cb.repoPath, { forceReset: true });
         if (result.fetched) {
           console.log(
