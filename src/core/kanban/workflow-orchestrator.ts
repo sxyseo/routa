@@ -882,9 +882,11 @@ export class KanbanWorkflowOrchestrator {
           automationEntry.status = "running";
           automationEntry.sessionId = sessionId;
           this.sessionFailureCounts.delete(data.cardId);
-          // Clear circuit breaker marker on success — reload to avoid overwriting
+          // Clear stale lastSyncError on success — reload to avoid overwriting
           // fields (triggerSessionId, laneSessions) modified by startKanbanTaskSession.
-          if (task?.lastSyncError && isCircuitBreaker(task.lastSyncError)) {
+          // Any persisted error (circuit_breaker, dependency_blocked, wip_limited, etc.)
+          // is now stale since the session started successfully.
+          if (task?.lastSyncError) {
             const freshTask = await this.taskStore.get(data.cardId);
             if (freshTask) {
               freshTask.lastSyncError = undefined;

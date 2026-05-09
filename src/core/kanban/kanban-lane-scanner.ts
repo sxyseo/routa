@@ -307,6 +307,28 @@ async function runLaneScannerTickInner(system: RoutaSystem): Promise<LaneScanner
         }
         // Skip creation-source sessions (auto-generated from agent runs)
         if (task.creationSource === "session") continue;
+        // Early dependency-blocked recovery: re-check whether dependencies are now
+        // satisfied even when no lane sessions exist for the current column.
+        // Without this, cards blocked before any session started in this column
+        // would never be re-evaluated (the original recovery path inside
+        // allStepsCompleted requires completed lane sessions).
+        if (getErrorType(task.lastSyncError) === "dependency_blocked") {
+          if (task.dependencies.length > 0 && task.boardId) {
+            const board = await system.kanbanBoardStore.get(task.boardId);
+            if (board) {
+              const depCheck = await checkDependencyGate(task, board.columns, system.taskStore);
+              if (!depCheck.blocked) {
+                const unblockSaved = await safeAtomicSave(task, system.taskStore, dependencyUnblockFields(), "early dependency unblock");
+                if (unblockSaved) {
+                  console.log(
+                    `[LaneScanner] Early dependency unblocked for card ${task.id}. Will re-trigger on next scan.`,
+                  );
+                }
+              }
+            }
+          }
+          continue;
+        }
         // Skip tasks whose lane automation already completed successfully —
         // re-triggering would cause an infinite loop when the card has nowhere
         // to advance (e.g. done is the last column).

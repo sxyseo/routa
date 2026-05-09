@@ -29,7 +29,12 @@ export function isDependencySatisfied(depTask: Task): boolean {
     || depTask.status === TaskStatus.ARCHIVED
     || depTask.columnId === "done"
     || depTask.columnId === "archived";
-  const prMerged = !depTask.pullRequestUrl || Boolean(depTask.pullRequestMergedAt);
+  // A PR is considered merged when: no PR URL, has a merge timestamp,
+  // or the URL is a non-HTTP sentinel value (e.g. "already-merged").
+  const prUrl = depTask.pullRequestUrl?.trim();
+  const prMerged = !prUrl
+    || Boolean(depTask.pullRequestMergedAt)
+    || !prUrl.startsWith("http");
   return isCompleted && prMerged;
 }
 

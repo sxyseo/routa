@@ -15,17 +15,19 @@ export interface WipLimitResult {
   message?: string;
 }
 
-/** Count non-completed tasks currently in a given column. */
+/** Count non-completed tasks currently in a given column, optionally excluding a specific task. */
 async function countActiveTasksInColumn(
   columnId: string,
   workspaceId: string,
   taskStore: { listByWorkspace(wsId: string): Promise<Task[]> },
+  excludeTaskId?: string,
 ): Promise<number> {
   const tasks = await taskStore.listByWorkspace(workspaceId);
   return tasks.filter((t) =>
     t.columnId === columnId
     && t.status !== "COMPLETED"
-    && t.status !== "ARCHIVED",
+    && t.status !== "ARCHIVED"
+    && t.id !== excludeTaskId,
   ).length;
 }
 
@@ -46,10 +48,16 @@ export async function checkWipLimit(
     return { allowed: true, currentCount: 0, limit: 0 };
   }
 
+  // Exclude the task itself when it is already in the target column (re-trigger/recovery).
+  // This prevents a deadlock where a timed-out task cannot be recovered because
+  // it counts against its own WIP limit.
+  const excludeId = task.columnId === targetColumnId ? task.id : undefined;
+
   const currentCount = await countActiveTasksInColumn(
     targetColumnId,
     task.workspaceId,
     taskStore,
+    excludeId,
   );
 
   if (currentCount >= wipLimit) {
