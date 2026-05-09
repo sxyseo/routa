@@ -7,6 +7,8 @@ export interface KanbanSessionQueueJob {
   boardId: string;
   workspaceId: string;
   columnId?: string;
+  /** Specialist ID for per-specialist concurrency limits (e.g. "kanban-auto-merger"). */
+  specialistId?: string;
   start: () => Promise<{ sessionId?: string | null; error?: string }>;
 }
 
@@ -111,6 +113,16 @@ export class KanbanSessionQueue {
     if (runningCount >= limit) {
       this.pushQueuedEntry(entry);
       return { queued: true };
+    }
+
+    // Per-specialist concurrency: serialize auto-merger to 1 per board
+    // to prevent concurrent merges causing cascading PR conflicts.
+    if (entry.specialistId === "kanban-auto-merger") {
+      const runningMergers = this.countRunningBySpecialist(job.boardId, "kanban-auto-merger");
+      if (runningMergers >= 1) {
+        this.pushQueuedEntry(entry);
+        return { queued: true };
+      }
     }
 
     return this.startEntry(entry);
@@ -254,6 +266,17 @@ export class KanbanSessionQueue {
     return runningCount;
   }
 
+  /** Count running entries for a specific specialist within a board. */
+  private countRunningBySpecialist(boardId: string, specialistId: string): number {
+    let count = 0;
+    for (const entry of this.jobsByCardId.values()) {
+      if (entry.boardId === boardId && entry.status === "running" && entry.specialistId === specialistId) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   /** Mirrors the Rust-side `task_has_running_lane_session` logic (kanban.rs:389-403). */
   private taskHasRunningLaneSession(task: {
     triggerSessionId?: string;
@@ -389,6 +412,12 @@ export class KanbanSessionQueue {
       const task = await this.taskStore.get(nextEntry.cardId);
       if (!task || task.boardId !== boardId || (nextEntry.columnId && task.columnId !== nextEntry.columnId)) {
         this.jobsByCardId.delete(nextEntry.cardId);
+        continue;
+      }
+
+      // Per-specialist concurrency: skip auto-merger if one is already running
+      if (nextEntry.specialistId === "kanban-auto-merger"
+        && this.countRunningBySpecialist(boardId, "kanban-auto-merger") >= 1) {
         continue;
       }
 

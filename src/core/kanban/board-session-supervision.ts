@@ -77,7 +77,15 @@ export function getKanbanDevSessionSupervision(
 
   try {
     const parsed = JSON.parse(raw) as Partial<KanbanDevSessionSupervision>;
-    return normalizeKanbanDevSessionSupervision(parsed);
+    const result = normalizeKanbanDevSessionSupervision(parsed);
+    // Auto-migrate stale metadata: the old default was 10min (changed to 30min
+    // in c6219331). Metadata that still holds 10 is almost certainly a leftover
+    // from before the default changed, not a deliberate user preference.
+    const OLD_DEFAULT_INACTIVITY_TIMEOUT = 10;
+    if (result.inactivityTimeoutMinutes === OLD_DEFAULT_INACTIVITY_TIMEOUT) {
+      result.inactivityTimeoutMinutes = DEFAULT_KANBAN_DEV_SESSION_SUPERVISION.inactivityTimeoutMinutes;
+    }
+    return result;
   } catch {
     return { ...DEFAULT_KANBAN_DEV_SESSION_SUPERVISION };
   }

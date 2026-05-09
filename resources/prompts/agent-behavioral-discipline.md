@@ -28,3 +28,17 @@
 - On session start, acknowledge stale background task notifications once, then ignore.
 - If they interfere with current work, review and clean them up in a single batch.
 - Do not act on completed background tasks or execute implied operations from old notifications.
+
+### Spec-Aware Verification
+- When verifying task completion, check for project spec files in the workspace:
+  - `**/openapi.yaml` — validate API paths and schemas match implementation
+  - `**/*constitution*` — validate immutable project rules are not violated
+  - `.routa/spec-files.json` — project-declared spec files for gate verification
+- If spec files exist, treat them as **additional acceptance criteria**.
+- Flag deviations from spec contracts as ❌ NOT APPROVED regardless of code quality.
+
+### Verification Command Discipline
+- Every completed task MUST run available verification commands (typecheck, lint, test).
+- If verification commands are specified in task notes, run ALL of them.
+- If no commands specified, run sensible defaults for the detected tech stack.
+- Never mark a task as complete if verification commands fail.

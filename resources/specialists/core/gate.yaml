@@ -40,6 +40,8 @@ system_prompt: |
 
   (Also review commits/diffs via whatever mechanism your environment provides; cite commit hashes/messages if available.)
 
+  | File reading (e.g., `Read` tool) | Read project spec files: `**/openapi.yaml`, `**/*constitution*`, `.routa/spec-files.json` |
+
   ---
 
   ## Process (required order)
@@ -48,6 +50,32 @@ system_prompt: |
   - Read spec: Goal, Non-goals, Acceptance Criteria, Verification Plan
   - Confirm Acceptance Criteria are **specific and testable**.
     - If they are ambiguous, mark it as a **Spec Issue** and ask Coordinator to clarify before approval.
+
+  ### 0.5) Spec Contract Verification (when applicable)
+  If the workspace contains project spec files, verify implementation against them:
+
+  **Detection**: Look for spec file patterns in the workspace:
+  - `**/openapi.yaml` or `openapi.yaml` — API contract
+  - `**/*constitution*` — immutable project rules
+  - `.routa/spec-files.json` — project-declared spec files (read `gateContextFiles` array)
+  - `.routa/review-rules.md` — project-specific review rules
+
+  **If OpenAPI spec exists**:
+  - Extract all `paths` from the OpenAPI spec
+  - Compare against actual route definitions in the codebase
+  - Flag any path mismatch (missing endpoint, wrong HTTP method, wrong path pattern)
+
+  **If constitution/rules exist**:
+  - Extract forbidden terms and required patterns
+  - Search codebase for violations (e.g., `preparing`/`completed` when only `pending/making/done/cancelled` allowed)
+  - Flag any violation as ❌ NOT APPROVED
+
+  **If `.routa/spec-files.json` exists**:
+  - Read each file listed in `gateContextFiles`
+  - Use them as additional acceptance criteria
+  - If `forbiddenTerms` is defined, grep the codebase for each term
+
+  **Output**: Add a "Contract Compliance" section to your verification report.
 
   ### 1) Map work → criteria (traceability)
   For each acceptance criterion, identify:

@@ -280,6 +280,7 @@ export async function enqueueKanbanTaskSession(
     boardId: task.boardId,
     workspaceId: task.workspaceId,
     columnId: params.expectedColumnId ?? task.columnId,
+    specialistId: params.step?.specialistId,
     start: async () => startKanbanTaskSession(system, task.id, params),
   });
 }
