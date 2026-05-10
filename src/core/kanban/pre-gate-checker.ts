@@ -392,13 +392,16 @@ export async function runPreGateChecks(
 
 export function loadSpecFilesConfig(
   repoRoot: string,
-): { forbiddenTerms?: Record<string, string> } {
+): { forbiddenTerms?: Record<string, string>; excludeDirs?: string[] } {
   const specFilesPath = path.join(repoRoot, ".routa", "spec-files.json");
   if (!fs.existsSync(specFilesPath)) return {};
   try {
     const content = fs.readFileSync(specFilesPath, "utf-8");
-    const parsed = JSON.parse(content) as { forbiddenTerms?: Record<string, string> };
-    return { forbiddenTerms: parsed.forbiddenTerms };
+    const parsed = JSON.parse(content) as {
+      forbiddenTerms?: Record<string, string>;
+      excludeDirs?: string[];
+    };
+    return { forbiddenTerms: parsed.forbiddenTerms, excludeDirs: parsed.excludeDirs };
   } catch {
     return {};
   }

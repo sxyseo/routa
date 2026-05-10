@@ -807,6 +807,7 @@ export class KanbanWorkflowOrchestrator {
           const preGateResult = await runPreGateChecks(task, {
             repoRoot,
             forbiddenTerms: specConfig.forbiddenTerms,
+            excludeDirs: specConfig.excludeDirs,
             skipTsc: false,
           });
           if (!preGateResult.passed) {
