@@ -11,15 +11,23 @@
  *  4. Report conflicts for manual resolution
  */
 
-import { exec as execCallback } from "node:child_process";
-import { promisify } from "node:util";
 import { TaskStatus, type Task } from "../models/task";
 import type { TaskStore } from "../store/task-store";
 import type { WorktreeStore } from "../db/pg-worktree-store";
+import { getServerBridge } from "../platform";
 import { getChildTasks } from "./parent-child-lifecycle";
 import type { MergeStrategy } from "./task-split-topology";
 
-const exec = promisify(execCallback);
+async function execCommand(
+  command: string,
+  options: { cwd: string; timeout?: number },
+): Promise<{ stdout: string; stderr: string }> {
+  const bridge = getServerBridge();
+  if (!bridge.process.isAvailable()) {
+    throw new Error("Process API is not available in this environment.");
+  }
+  return bridge.process.exec(command, { cwd: options.cwd, timeout: options.timeout ?? 30_000 });
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -146,10 +154,10 @@ async function mergeBranch(
 
   try {
     // Fetch the source branch to ensure it's available
-    await exec(`git fetch origin ${sourceBranch}`, { cwd, timeout: 30_000 }).catch(() => {});
+    await execCommand(`git fetch origin ${sourceBranch}`, { cwd, timeout: 30_000 }).catch(() => {});
 
     // Attempt merge with --no-ff to preserve branch history
-    await exec(`git merge --no-ff ${sourceBranch} -m "Merge branch ${sourceBranch} (fan-in)"`, {
+    await execCommand(`git merge --no-ff ${sourceBranch} -m "Merge branch ${sourceBranch} (fan-in)"`, {
       cwd,
       timeout: 60_000,
     });
@@ -157,7 +165,7 @@ async function mergeBranch(
   } catch {
     // Extract conflict file list
     try {
-      const { stdout } = await exec("git diff --name-only --diff-filter=U", {
+      const { stdout } = await execCommand("git diff --name-only --diff-filter=U", {
         cwd,
         timeout: 10_000,
       });
@@ -168,7 +176,7 @@ async function mergeBranch(
     }
 
     // Abort the failed merge to leave the repo clean
-    await exec("git merge --abort", { cwd, timeout: 10_000 }).catch(() => {});
+    await execCommand("git merge --abort", { cwd, timeout: 10_000 }).catch(() => {});
 
     return { success: false, conflictFiles };
   }

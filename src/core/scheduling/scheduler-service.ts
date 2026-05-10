@@ -80,9 +80,9 @@ export function startSchedulerService(): void {
     });
   });
 
-  // Done-lane recovery tick runs every 10 minutes to detect and recover
+  // Done-lane recovery tick runs every 3 minutes to detect and recover
   // stuck tasks (webhook-lost merges, CB-exhausted PRs, orphan sessions).
-  doneLaneRecoveryTask = nodeCron.schedule("*/10 * * * *", () => {
+  doneLaneRecoveryTask = nodeCron.schedule("*/3 * * * *", () => {
     void runWithSpan(
       "routa.scheduler.done_lane_recovery_tick",
       {},

@@ -67,6 +67,7 @@ export class SqliteTaskStore implements TaskStore {
         completionSummary: task.completionSummary,
         verificationVerdict: task.verificationVerdict,
         verificationReport: task.verificationReport,
+        preGateBlockers: task.preGateBlockers,
         version,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
@@ -124,6 +125,7 @@ export class SqliteTaskStore implements TaskStore {
           completionSummary: task.completionSummary,
           verificationVerdict: task.verificationVerdict,
           verificationReport: task.verificationReport,
+          preGateBlockers: task.preGateBlockers ?? null,
           version: sql`${sqliteSchema.tasks.version} + 1`,
           updatedAt: new Date(),
         },
@@ -213,6 +215,7 @@ export class SqliteTaskStore implements TaskStore {
         | "verificationReport"
         | "assignedTo"
         | "lastSyncError"
+        | "preGateBlockers"
         | "pullRequestUrl"
         | "pullRequestMergedAt"
         | "laneSessions"
@@ -302,6 +305,7 @@ export class SqliteTaskStore implements TaskStore {
       completionSummary: row.completionSummary ?? undefined,
       verificationVerdict: row.verificationVerdict as import("../models/task").VerificationVerdict | undefined,
       verificationReport: row.verificationReport ?? undefined,
+      preGateBlockers: row.preGateBlockers ?? undefined,
       version: row.version ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

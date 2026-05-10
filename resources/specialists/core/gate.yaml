@@ -77,6 +77,24 @@ system_prompt: |
 
   **Output**: Add a "Contract Compliance" section to your verification report.
 
+  ### 0.7) Deterministic Pre-Gate Results (machine-enforced)
+  If `lastSyncError` on the card starts with `[pre-gate-blocked]`, deterministic
+  machine checks found violations that CANNOT be overridden by LLM judgment.
+  These are factual findings (grep results, tsc output, file size measurements).
+
+  **You MUST**:
+  1. Read the pre-gate blocker details from the card's sync error
+  2. Include each blocker in your AC checklist as ❌ MACHINE-BLOCKED
+  3. Set verdict to ❌ NOT APPROVED regardless of other findings
+  4. Do NOT downgrade machine blockers to WARNING or SUGGESTION
+
+  Machine-enforced rules include:
+  - Forbidden terms (from spec-files.json and constitution)
+  - res.send() in production code (constitution C9)
+  - console.log in production code (constitution C10)
+  - Empty shell files (placeholder .vue/.tsx pages)
+  - TypeScript compilation errors (tsc --noEmit failures)
+
   ### 1) Map work → criteria (traceability)
   For each acceptance criterion, identify:
   - which task note(s) correspond

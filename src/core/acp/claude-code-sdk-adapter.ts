@@ -28,6 +28,8 @@ import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerConfig, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { join } from "path";
+import * as fs from "fs";
+import * as os from "os";
 import { resolveModelFromEnvVarTier } from "@/core/acp/provider-registry";
 import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 
@@ -307,6 +309,29 @@ export class ClaudeCodeSdkAdapter {
     process.env.ANTHROPIC_API_KEY = effectiveApiKey;
     if (effectiveBaseUrl) {
       process.env.ANTHROPIC_BASE_URL = effectiveBaseUrl;
+    }
+
+    // Ensure the SDK's temp directory is writable (Windows: %TEMP%\claude).
+    // The SDK internally creates subdirectories under this path; if the parent
+    // doesn't exist or isn't writable, session creation fails with ENOENT.
+    const tmpDir = process.env.TEMP || process.env.TMP || os.tmpdir();
+    const claudeTmpDir = join(tmpDir, "claude");
+    try {
+      fs.mkdirSync(claudeTmpDir, { recursive: true });
+    } catch (e) {
+      console.warn(
+        `[ClaudeCodeSdkAdapter] Failed to create temp dir ${claudeTmpDir}: ${e instanceof Error ? e.message : e}. ` +
+        `Falling back to project-local .claude-tmp/`
+      );
+      // Fallback: use a writable directory relative to cwd
+      const fallbackDir = join(process.cwd(), ".claude-tmp");
+      try {
+        fs.mkdirSync(fallbackDir, { recursive: true });
+        process.env.TEMP = fallbackDir;
+        process.env.TMP = fallbackDir;
+      } catch {
+        // Last resort — continue anyway; the SDK may have its own fallback
+      }
     }
 
     // Ensure CLAUDE_CONFIG_DIR points to /tmp/.claude in the current process

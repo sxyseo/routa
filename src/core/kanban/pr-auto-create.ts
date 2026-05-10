@@ -25,6 +25,7 @@ import type { CodebaseStore } from "../db/pg-codebase-store";
 import { shellQuote, isGitLabUrl, isGitHubUrl } from "../git/git-utils";
 import { getVCSProvider, getPlatform } from "../vcs";
 import { getKanbanConfig } from "./kanban-config";
+import { safeAtomicSave } from "./atomic-task-update";
 import { resolveEffectiveBaseBranch } from "./branch-plan";
 import { GIT_DEFAULT_BRANCH } from "../git/git-defaults";
 
@@ -152,9 +153,10 @@ export async function executeAutoPrCreation(
           ? ((task.lastSyncError ?? "").match(/\(attempt (\d+)\/\d+\)/)?.[1] ?? "0")
           : "0";
         const attempt = parseInt(prevAttempts, 10) + 1;
-        task.lastSyncError = `${PR_FAILURE_PREFIX}: git push failed — ${msg} (attempt ${attempt}/${PR_RETRY_LIMIT})`;
-        task.updatedAt = new Date();
-        await taskStore.save(task);
+        await safeAtomicSave(task, taskStore, {
+          lastSyncError: `${PR_FAILURE_PREFIX}: git push failed — ${msg} (attempt ${attempt}/${PR_RETRY_LIMIT})`,
+          updatedAt: new Date(),
+        }, "PR push failure");
       }
       return undefined;
     }
@@ -173,9 +175,10 @@ export async function executeAutoPrCreation(
         );
         const task = await taskStore.get(cardId);
         if (task) {
-          task.lastSyncError = `Auto PR creation failed: branch ${branch} not found on remote after push.`;
-          task.updatedAt = new Date();
-          await taskStore.save(task);
+          await safeAtomicSave(task, taskStore, {
+            lastSyncError: `Auto PR creation failed: branch ${branch} not found on remote after push.`,
+            updatedAt: new Date(),
+          }, "PR remote verify");
         }
         return undefined;
       }
@@ -204,31 +207,37 @@ export async function executeAutoPrCreation(
     const prTitle = task?.title ?? cardTitle;
     const prBody = task?.objective ?? "Auto-created PR/MR from kanban done-lane.";
 
-    // Resolve base branch with remote-verified fallback chain:
-    // worktree.baseBranch → codebase.branch → GIT_DEFAULT_BRANCH
-    let baseBranch = worktree.baseBranch ?? GIT_DEFAULT_BRANCH;
+    // Resolve base branch for PR target — always use the repository's main
+    // branch, NOT the worktree's baseBranch. worktree.baseBranch is for code
+    // inheritance (worktree creation), but PRs should always target main to
+    // ensure code lands on the correct branch for downstream tasks.
+    let baseBranch = GIT_DEFAULT_BRANCH;
     try {
       const codebase = worktree.codebaseId
         ? await codebaseStore.get(worktree.codebaseId)
         : undefined;
       if (codebase) {
         baseBranch = await resolveEffectiveBaseBranch({
-          worktree: { baseBranch: worktree.baseBranch },
+          worktree: { baseBranch: undefined },
           codebase: { branch: codebase.branch, repoPath: codebase.repoPath },
         });
       }
     } catch (resolveErr) {
       console.warn(
-        `[PrAutoCreate] Base branch resolution failed for task ${cardId}, using worktree base:`,
+        `[PrAutoCreate] Base branch resolution failed for task ${cardId}, using default:`,
         resolveErr instanceof Error ? resolveErr.message : resolveErr,
       );
     }
 
     // Use --body-file to avoid shell injection and multi-line issues.
+    // Create a random temp directory to prevent predictable path attacks.
+    const crypto = await import("crypto");
     const fs = await import("fs/promises");
     const os = await import("os");
     const path = await import("path");
-    const tmpFile = path.join(os.tmpdir(), `routa-pr-body-${cardId}.md`);
+    const tmpDir = path.join(os.tmpdir().replace(/[\r\n]+$/g, ''), `routa-pr-${crypto.randomUUID()}`);
+    await fs.mkdir(tmpDir, { recursive: true });
+    const tmpFile = path.join(tmpDir, "body.md");
     await fs.writeFile(tmpFile, prBody, "utf-8");
 
     try {
@@ -252,11 +261,12 @@ export async function executeAutoPrCreation(
 
       // 5. Update the task with the PR URL
       if (task) {
-        task.pullRequestUrl = prUrl;
-        task.isPullRequest = true;
-        task.lastSyncError = undefined;
-        task.updatedAt = new Date();
-        await taskStore.save(task);
+        await safeAtomicSave(task, taskStore, {
+          pullRequestUrl: prUrl,
+          isPullRequest: true,
+          lastSyncError: undefined,
+          updatedAt: new Date(),
+        }, "PR creation success");
       }
 
       console.log(
@@ -264,7 +274,7 @@ export async function executeAutoPrCreation(
       );
       return prUrl;
     } finally {
-      await fs.unlink(tmpFile).catch(() => {});
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   } catch (err) {
     console.error(
@@ -280,11 +290,12 @@ export async function executeAutoPrCreation(
           ? ((task.lastSyncError ?? "").match(/\(attempt (\d+)\/\d+\)/)?.[1] ?? "0")
           : "0";
         const attempt = parseInt(prevAttempts, 10) + 1;
-        task.lastSyncError = `${PR_FAILURE_PREFIX}: ${
-          err instanceof Error ? err.message : String(err)
-        } (attempt ${attempt}/${PR_RETRY_LIMIT})`;
-        task.updatedAt = new Date();
-        await taskStore.save(task);
+        await safeAtomicSave(task, taskStore, {
+          lastSyncError: `${PR_FAILURE_PREFIX}: ${
+            err instanceof Error ? err.message : String(err)
+          } (attempt ${attempt}/${PR_RETRY_LIMIT})`,
+          updatedAt: new Date(),
+        }, "PR creation failure");
       }
     } catch {
       // Best-effort error recording
@@ -352,11 +363,12 @@ async function createGitHubPR(ctx: PrCreationContext): Promise<string | undefine
       const existingUrl = existingUrlMatch[1].trim();
       console.log(`[PrAutoCreate] PR already exists for task ${cardId}: ${existingUrl}.`);
       if (task) {
-        task.pullRequestUrl = existingUrl;
-        task.isPullRequest = true;
-        task.lastSyncError = undefined;
-        task.updatedAt = new Date();
-        await taskStore.save(task);
+        await safeAtomicSave(task, taskStore, {
+          pullRequestUrl: existingUrl,
+          isPullRequest: true,
+          lastSyncError: undefined,
+          updatedAt: new Date(),
+        }, "PR already exists");
       }
       return existingUrl;
     }
@@ -367,20 +379,22 @@ async function createGitHubPR(ctx: PrCreationContext): Promise<string | undefine
   if (!prUrl || !prUrl.startsWith("http")) {
     console.error(`[PrAutoCreate] Unexpected gh output for task ${cardId}:`, ghResult.stdout, ghResult.stderr);
     if (task) {
-      task.lastSyncError = `${PR_FAILURE_PREFIX}: ${ghResult.stderr?.trim() || "unexpected output"}`;
-      task.updatedAt = new Date();
-      await taskStore.save(task);
+      await safeAtomicSave(task, taskStore, {
+        lastSyncError: `${PR_FAILURE_PREFIX}: ${ghResult.stderr?.trim() || "unexpected output"}`,
+        updatedAt: new Date(),
+      }, "PR gh output");
     }
     return undefined;
   }
 
   // Update task with PR URL
   if (task) {
-    task.pullRequestUrl = prUrl;
-    task.isPullRequest = true;
-    task.lastSyncError = undefined;
-    task.updatedAt = new Date();
-    await taskStore.save(task);
+    await safeAtomicSave(task, taskStore, {
+      pullRequestUrl: prUrl,
+      isPullRequest: true,
+      lastSyncError: undefined,
+      updatedAt: new Date(),
+    }, "PR gh success");
   }
   return prUrl;
 }
@@ -407,11 +421,12 @@ async function createGitLabMR(ctx: PrCreationContext): Promise<string | undefine
     const mrUrl = glabResult.stdout.trim().split("\n").pop()?.trim();
     if (mrUrl && mrUrl.startsWith("http")) {
       if (task) {
-        task.pullRequestUrl = mrUrl;
-        task.isPullRequest = true;
-        task.lastSyncError = undefined;
-        task.updatedAt = new Date();
-        await taskStore.save(task);
+        await safeAtomicSave(task, taskStore, {
+          pullRequestUrl: mrUrl,
+          isPullRequest: true,
+          lastSyncError: undefined,
+          updatedAt: new Date(),
+        }, "MR glab success");
       }
       return mrUrl;
     }
@@ -424,11 +439,12 @@ async function createGitLabMR(ctx: PrCreationContext): Promise<string | undefine
       const existingUrl = existingUrlMatch[1].trim();
       console.log(`[PrAutoCreate] MR already exists for task ${cardId}: ${existingUrl}.`);
       if (task) {
-        task.pullRequestUrl = existingUrl;
-        task.isPullRequest = true;
-        task.lastSyncError = undefined;
-        task.updatedAt = new Date();
-        await taskStore.save(task);
+        await safeAtomicSave(task, taskStore, {
+          pullRequestUrl: existingUrl,
+          isPullRequest: true,
+          lastSyncError: undefined,
+          updatedAt: new Date(),
+        }, "MR already exists");
       }
       return existingUrl;
     }
@@ -459,11 +475,12 @@ async function createGitLabMR(ctx: PrCreationContext): Promise<string | undefine
 
     const mrUrl = mr.html_url;
     if (task) {
-      task.pullRequestUrl = mrUrl;
-      task.isPullRequest = true;
-      task.lastSyncError = undefined;
-      task.updatedAt = new Date();
-      await taskStore.save(task);
+      await safeAtomicSave(task, taskStore, {
+        pullRequestUrl: mrUrl,
+        isPullRequest: true,
+        lastSyncError: undefined,
+        updatedAt: new Date(),
+      }, "MR API success");
     }
 
     console.log(`[PrAutoCreate] Created MR via API for task ${cardId}: ${mrUrl}`);
@@ -472,9 +489,10 @@ async function createGitLabMR(ctx: PrCreationContext): Promise<string | undefine
     const errMsg = apiErr instanceof Error ? apiErr.message : String(apiErr);
     console.error(`[PrAutoCreate] Both glab CLI and VCS API failed for task ${cardId}:`, errMsg);
     if (task) {
-      task.lastSyncError = `${PR_FAILURE_PREFIX}: ${errMsg}`;
-      task.updatedAt = new Date();
-      await taskStore.save(task);
+      await safeAtomicSave(task, taskStore, {
+        lastSyncError: `${PR_FAILURE_PREFIX}: ${errMsg}`,
+        updatedAt: new Date(),
+      }, "MR API failure");
     }
     return undefined;
   }

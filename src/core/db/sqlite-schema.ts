@@ -124,6 +124,7 @@ export const tasks = sqliteTable("tasks", {
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),
+  preGateBlockers: text("pre_gate_blockers"),
   version: integer("version").notNull().default(1),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),

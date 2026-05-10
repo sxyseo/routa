@@ -109,6 +109,7 @@ export type TaskLaneSessionCompletionRequirement =
   | "verification_report";
 export type TaskLaneSessionRecoveryReason =
   | "watchdog_inactivity"
+  | "lease_expired"
   | "agent_failed"
   | "completion_criteria_not_met";
 
@@ -310,6 +311,8 @@ export interface Task {
   completionSummary?: string;
   verificationVerdict?: VerificationVerdict;
   verificationReport?: string;
+  /** Deterministic pre-gate violations — set by pre-gate-checker, NOT cleared by lastSyncError cleanup */
+  preGateBlockers?: string;
 }
 
 export function createTask(params: {
@@ -471,6 +474,8 @@ export function resetTaskExecutionState(task: Task, full: boolean): void {
   task.verificationVerdict = undefined;
   task.verificationReport = undefined;
   task.completionSummary = undefined;
+
+  task.preGateBlockers = undefined;
 
   if (full) {
     task.worktreeId = undefined;

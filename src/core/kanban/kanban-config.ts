@@ -61,6 +61,8 @@ export interface KanbanSystemConfig {
   // ── Recovery Specialists ──
   /** Max retry attempts for conflict-resolver before permanent stuck marking. */
   conflictResolverMaxRetries: number;
+  /** Max duration (ms) for an auto-merger session before forced termination. */
+  autoMergerTimeoutMs: number;
 
   // ── Graph Refiner ──
   /** Whether the Graph Refiner is enabled. */
@@ -86,8 +88,8 @@ const DEFAULTS: KanbanSystemConfig = {
   maxAutomationDurationMs: 12 * 60 * 60 * 1000,
   repeatLimitTimeWindowMs: 30 * 60 * 1000,
   postMergeArchiveMs: 60 * 60 * 1000,
-  prVerificationMinAgeMs: 5 * 60 * 1000,
-  orphanAgeMs: 10 * 60 * 1000,
+  prVerificationMinAgeMs: 1 * 60 * 1000,
+  orphanAgeMs: 3 * 60 * 1000,
   completedCleanupDelayMs: 30_000,
   staleQueuedThresholdMs: 60_000,
   worktreeCleanupDelayMs: 60_000,
@@ -95,6 +97,7 @@ const DEFAULTS: KanbanSystemConfig = {
   defaultSessionConcurrencyLimit: 2,
   prRetryLimit: 3,
   conflictResolverMaxRetries: 3,
+  autoMergerTimeoutMs: 10 * 60 * 1000,
   graphRefinerEnabled: true,
   graphRefinerMinTasks: 3,
   graphRefinerDebounceMs: 30_000,
@@ -143,6 +146,7 @@ export function getKanbanConfig(): KanbanSystemConfig {
     defaultSessionConcurrencyLimit: envInt("ROUTA_SESSION_CONCURRENCY_LIMIT", DEFAULTS.defaultSessionConcurrencyLimit),
     prRetryLimit: envInt("ROUTA_PR_RETRY_LIMIT", DEFAULTS.prRetryLimit),
     conflictResolverMaxRetries: envInt("ROUTA_CONFLICT_RESOLVER_MAX_RETRIES", DEFAULTS.conflictResolverMaxRetries),
+    autoMergerTimeoutMs: envInt("ROUTA_AUTO_MERGER_TIMEOUT_MS", DEFAULTS.autoMergerTimeoutMs),
     graphRefinerEnabled: process.env.ROUTA_GRAPH_REFINER_ENABLED !== "false",
     graphRefinerMinTasks: envInt("ROUTA_GRAPH_REFINER_MIN_TASKS", DEFAULTS.graphRefinerMinTasks),
     graphRefinerDebounceMs: envInt("ROUTA_GRAPH_REFINER_DEBOUNCE_MS", DEFAULTS.graphRefinerDebounceMs),

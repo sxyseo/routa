@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { getProviderAdapter } from "./provider-adapter";
 import { TraceRecorder } from "./provider-adapter/trace-recorder";
 import { appendSessionNotificationEvent, hydrateSessionsFromDb, updateSessionExecutionBindingInDb } from "./session-db-persister";
-import { getAcpInstanceId, isExecutionLeaseActive } from "./execution-backend";
+import { getAcpInstanceId, isExecutionLeaseActive, refreshExecutionBinding } from "./execution-backend";
 import { AgentEventBridge, makeStartedEvent } from "./agent-event-bridge";
 import type { WorkspaceAgentEvent } from "./agent-event-bridge";
 import type { NormalizedSessionUpdate } from "./provider-adapter/types";
@@ -776,6 +776,13 @@ class HttpSessionStore {
       terminalReason: existing?.terminalReason,
       terminalAt: existing?.terminalAt,
     });
+    // Renew execution lease on activity — prevents watchdog from killing
+    // sessions that are actively producing output but whose lease was set
+    // at creation time with a short DEFAULT_LEASE_SECONDS (5 min).
+    const session = this.sessions.get(sessionId);
+    if (session && session.leaseExpiresAt) {
+      this.sessions.set(sessionId, refreshExecutionBinding(session));
+    }
   }
 
   private setSessionAcpStatus(

@@ -18,7 +18,7 @@ import type {
   KanbanDevSessionSupervisionMode,
 } from "../models/kanban";
 import { getKanbanAutomationSteps, resolveTaskStatusForBoardColumn } from "../models/kanban";
-import { type Task, type TaskLaneSession, type TaskLaneSessionRecoveryReason, type TaskStatus } from "../models/task";
+import { type Task, type TaskLaneSession, type TaskLaneSessionRecoveryReason, type TaskStatus, createTask } from "../models/task";
 import type { KanbanBoardStore } from "../store/kanban-board-store";
 import type { TaskStore } from "../store/task-store";
 import type { ColumnTransitionData, ColumnTransitionSource } from "./column-transition";
@@ -46,6 +46,8 @@ import {
   buildDependencyBlockedError,
 } from "./sync-error-writer";
 import { getKanbanConfig } from "./kanban-config";
+import { runPreGateChecks, loadSpecFilesConfig } from "./pre-gate-checker";
+import { scanFrontendCoverage, generateTaskDescription } from "./frontend-coverage-scanner";
 
 const cfg = getKanbanConfig();
 const WATCHDOG_SCAN_INTERVAL_MS = cfg.watchdogScanIntervalMs;
@@ -94,6 +96,7 @@ export interface RecoverySessionContext {
 }
 
 function translateRecoveryReason(reason: string): string {
+  if (reason.includes("lease_expired")) return "Execution lease expired (session inactive)";
   if (reason.includes("watchdog_inactivity")) return "Agent was inactive for too long (watchdog timeout)";
   if (reason.includes("completion_criteria_not_met")) return "Agent stopped before completion criteria were met";
   if (reason.includes("agent_failed")) return "Agent session failed";
@@ -147,10 +150,14 @@ function getRecoveryReason(event: AgentEvent, completionSatisfied: boolean, maxT
   if (event.type === AgentEventType.AGENT_TIMEOUT) {
     return "watchdog_inactivity";
   }
-  if (maxTurnsHit) {
+  if (event.type === AgentEventType.AGENT_FAILED) {
+    const errMsg = typeof event.data?.error === "string" ? event.data.error : "";
+    if (errMsg.includes("lease expired") || errMsg.includes("Execution lease")) {
+      return "lease_expired";
+    }
     return "agent_failed";
   }
-  if (event.type === AgentEventType.AGENT_FAILED) {
+  if (maxTurnsHit) {
     return "agent_failed";
   }
   if (event.type === AgentEventType.AGENT_COMPLETED && !completionSatisfied) {
@@ -734,6 +741,108 @@ export class KanbanWorkflowOrchestrator {
         task.updatedAt = new Date();
         await this.taskStore.save(task);
         return;
+      }
+    }
+
+    // Frontend coverage gate: auto-create backlog tasks for empty shell pages.
+    // Runs on every dev→review transition to catch pages created by skeleton tasks.
+    if (task && targetColumn.stage === "review" && task.worktreeId) {
+      try {
+        const taskWorktree = await this.worktreeStore?.get(task.worktreeId);
+        const repoRoot = taskWorktree?.worktreePath;
+        if (repoRoot) {
+          const coverage = scanFrontendCoverage(repoRoot);
+          if (coverage.emptyPages.length > 0) {
+            // Check existing tasks to avoid duplicates
+            const existingTasks = await this.taskStore.listByWorkspace(task.workspaceId);
+            const existingTitles = new Set(existingTasks.map((t) => t.title));
+            let created = 0;
+            for (const page of coverage.emptyPages) {
+              const desc = generateTaskDescription(page);
+              if (existingTitles.has(desc.title)) continue;
+
+              // Find the backlog column for this board
+              const board = task.boardId
+                ? await this.kanbanBoardStore.get(task.boardId)
+                : undefined;
+              const backlogColumn = board?.columns.find((c) => c.stage === "backlog");
+
+              const newTask = createTask({
+                id: `fe-${Date.now()}-${created}`,
+                title: desc.title,
+                objective: desc.objective,
+                workspaceId: task.workspaceId,
+                boardId: task.boardId,
+                columnId: backlogColumn?.id ?? "backlog",
+                dependencies: [task.id],
+              });
+              await this.taskStore.save(newTask);
+              created++;
+            }
+            if (created > 0) {
+              console.info(
+                `[WorkflowOrchestrator] Auto-created ${created} frontend task(s) for empty pages in ${repoRoot}`,
+              );
+            }
+          }
+        }
+      } catch (feError) {
+        // Frontend coverage check failure should not block the pipeline
+        console.warn(
+          `[WorkflowOrchestrator] Frontend coverage scan error: ${feError instanceof Error ? feError.message : feError}`,
+        );
+      }
+    }
+
+    // Pre-gate deterministic check: block if hard violations found before LLM review.
+    // Only runs when the target column is the review stage.
+    if (task && (targetColumn.stage === "review" || targetColumn.stage === "done")) {
+      try {
+        const taskWorktree = task.worktreeId
+          ? await this.worktreeStore?.get(task.worktreeId)
+          : undefined;
+        const repoRoot = taskWorktree?.worktreePath;
+        if (repoRoot) {
+          const specConfig = loadSpecFilesConfig(repoRoot);
+          const preGateResult = await runPreGateChecks(task, {
+            repoRoot,
+            forbiddenTerms: specConfig.forbiddenTerms,
+            skipTsc: false,
+          });
+          if (!preGateResult.passed) {
+            const blockerSummary = preGateResult.blockers
+              .map((b) => `[${b.rule}] ${b.file}${b.line ? `:${b.line}` : ""}: ${b.message}`)
+              .join("; ");
+            const newError = `[pre-gate-blocked] ${blockerSummary}`;
+            if (task.lastSyncError !== newError) {
+              console.warn(
+                `[WorkflowOrchestrator] Card ${data.cardId} blocked by pre-gate checks: ${preGateResult.blockers.length} blocker(s)`,
+              );
+            }
+            task.lastSyncError = newError;
+            // Persistent field — survives lastSyncError cleanup on session start
+            task.preGateBlockers = blockerSummary;
+            task.updatedAt = new Date();
+            await this.taskStore.save(task);
+            return;
+          }
+          // Warnings are logged but don't block. Clear stale blockers from prior runs.
+          if (task.preGateBlockers) {
+            task.preGateBlockers = undefined;
+            task.updatedAt = new Date();
+            await this.taskStore.save(task);
+          }
+          if (preGateResult.warnings.length > 0) {
+            console.info(
+              `[WorkflowOrchestrator] Card ${data.cardId} pre-gate warnings: ${preGateResult.warnings.length}`,
+            );
+          }
+        }
+      } catch (preGateError) {
+        // Pre-gate check failure should not block the pipeline — log and continue
+        console.warn(
+          `[WorkflowOrchestrator] Pre-gate check error for card ${data.cardId}: ${preGateError instanceof Error ? preGateError.message : preGateError}`,
+        );
       }
     }
 
@@ -1471,7 +1580,7 @@ export class KanbanWorkflowOrchestrator {
           mode: automation.supervision.mode,
         });
         this.eventBus.emit({
-          type: AgentEventType.AGENT_TIMEOUT,
+          type: AgentEventType.AGENT_FAILED,
           agentId: sessionId,
           workspaceId: automation.workspaceId,
           data: {

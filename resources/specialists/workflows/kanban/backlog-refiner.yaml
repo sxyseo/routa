@@ -91,6 +91,16 @@ system_prompt: |
       - If the feature touches a layer that exists in the codebase (settings UI, API routes, i18n files, database tables), mark it `covered` AND add a corresponding AC.
       - If the layer genuinely does not apply (e.g., a CLI-only change needs no i18n), mark it `not_applicable` with a brief inline reason like `not_applicable  # no user-facing strings`.
       - **Never mark a layer `not_applicable` just because it is "phase 2" or "can be done later".** If it is needed for the feature to be usable, it must be `covered` now.
+  13. **Frontend Task Generation (MANDATORY)** — Before finalizing the card:
+      - Scan the project for frontend page files (.vue, .tsx, .jsx, .svelte) using file listing tools.
+      - For each frontend page that exists as an empty shell (placeholder text like "待实现", "placeholder", or ≤ 15 lines total), generate a corresponding implementation task using `create_card`.
+      - Each frontend task must:
+        1. Reference the API endpoint it consumes (from openapi.yaml or API contract)
+        2. Include AC items that verify the page renders actual data (not placeholders)
+        3. Have `surface_coverage.frontend_ui: covered`
+        4. Depend on the corresponding backend task if the API is not yet implemented
+      - If a backend task is being planned but no corresponding frontend task exists for a page that should display its data, create the frontend task explicitly.
+      - **Rule of thumb**: If the project has a `miniapp/`, `frontend/`, `src/pages/`, or `src/views/` directory with more than 5 files, the backlog refinement step MUST produce both backend and frontend tasks. Backend-only task plans are incomplete.
   13. Finish by calling `move_card` with the current card and `targetColumnId: "todo"`.
 
   ## Exit Gate — Pre-Flight Check Against Todo's Entry Gate

@@ -15,7 +15,7 @@
 
 import { AgentEvent, AgentEventType } from "../events/event-bus";
 import { rebaseBranchSafe } from "../git/git-operations";
-import { fetchRemote, fetchAndFastForward, cleanupGhostBranches } from "../git/git-utils";
+import { fetchRemote, fetchAndFastForward, cleanupGhostBranches, shellQuote } from "../git/git-utils";
 import type { RoutaSystem } from "../routa-system";
 import { getKanbanBranchRules, DEFAULT_BRANCH_RULES } from "./board-branch-rules";
 import { getErrorType } from "./sync-error-writer";
@@ -222,8 +222,12 @@ async function handleDownstreamTasks(
       console.log(
         `[PrMergeListener] Cleared dependency block for task ${depTask.id}.`,
       );
+    }
 
-      // Re-trigger automation for this task
+    // Re-trigger automation for any dependent task that is in an actionable column
+    // (backlog/todo/dev) and waiting for this merge. Only emit if the task was
+    // previously blocked or has no active session.
+    if (depTask.columnId && !depTask.triggerSessionId) {
       system.eventBus.emit({
         type: AgentEventType.COLUMN_TRANSITION,
         agentId: "kanban-pr-merge-listener",
@@ -251,7 +255,7 @@ function shareCodebase(
   a: NonNullable<Awaited<ReturnType<RoutaSystem["taskStore"]["get"]>>>,
   b: NonNullable<Awaited<ReturnType<RoutaSystem["taskStore"]["get"]>>>,
 ): boolean {
-  if (!a.codebaseIds || !b.codebaseIds) return true; // conservatively assume shared
+  if (!a.codebaseIds || !b.codebaseIds) return false; // conservatively assume not shared
   return a.codebaseIds.some((id) => b.codebaseIds!.includes(id));
 }
 
@@ -273,6 +277,32 @@ async function attemptDownstreamRebase(
       console.log(
         `[PrMergeListener] Rebased downstream task ${taskId} onto ${baseBranch}.`,
       );
+
+      // Force-push the rebased branch to remote so the PR reflects the new base
+      try {
+        const bridge = getServerBridge();
+        if (bridge.process.isAvailable() && worktree.branch) {
+          await bridge.process.exec(
+            `git push --force-with-lease origin ${shellQuote(worktree.branch)}`,
+            { cwd: worktree.worktreePath, timeout: 60_000 },
+          );
+          console.log(
+            `[PrMergeListener] Force-pushed rebased branch for task ${taskId}.`,
+          );
+        }
+      } catch (pushErr) {
+        console.warn(
+          `[PrMergeListener] Force-push rebased branch failed for task ${taskId}:`,
+          pushErr instanceof Error ? pushErr.message : pushErr,
+        );
+        // Mark the task so recovery tick can retry later
+        const t = await system.taskStore.get(taskId);
+        if (t) {
+          t.lastSyncError = `Rebase push failed after upstream merge. Retry on next recovery tick.`;
+          t.updatedAt = new Date();
+          await system.taskStore.save(t);
+        }
+      }
     } else {
       const task = await system.taskStore.get(taskId);
       if (task) {

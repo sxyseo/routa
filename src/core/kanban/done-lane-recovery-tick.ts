@@ -137,6 +137,8 @@ export function detectStuckPatterns(
 
   // Skip if the most recent lane session is a recovery specialist still active
   // in HttpSessionStore. Prevents re-detection while the specialist is in-flight.
+  // However, if the session has exceeded the auto-merger timeout, treat it as
+  // stuck and proceed with recovery (fixes auto-merger deadlock self-lockout).
   const sessions = task.laneSessions ?? [];
   const recentSession = sessions[sessions.length - 1];
   if (recentSession?.status === "running" && recentSession.specialistId
@@ -144,7 +146,16 @@ export function detectStuckPatterns(
       && recentSession.sessionId) {
     const activity = getHttpSessionStore().getSessionActivity(recentSession.sessionId);
     if (activity && !activity.terminalState) {
-      return patterns; // Session still running, skip.
+      const sessionAge = Date.now() - new Date(recentSession.startedAt).getTime();
+      const mergerTimeout = recoveryCfg.autoMergerTimeoutMs;
+      if (sessionAge < mergerTimeout) {
+        return patterns; // Session still running normally, skip.
+      }
+      // Session exceeded timeout but still shows as active — treat as stuck.
+      console.warn(
+        `[DoneLaneRecovery] Specialist session ${recentSession.sessionId} for card ${task.id} ` +
+        `exceeded timeout (${Math.round(sessionAge / 60000)}min > ${Math.round(mergerTimeout / 60000)}min). Proceeding with recovery.`,
+      );
     }
   }
 
@@ -577,10 +588,10 @@ async function triggerAutoMerger(
       return;
     }
     if (freshTask.lastSyncError?.startsWith("[auto-merger-pending]")) {
-      const match = freshTask.lastSyncError.match(/Triggered at (.+)\./);
+      const match = freshTask.lastSyncError.match(/Triggered at (\d{4}-\d{2}-\d{2}T[^\s.]+)/);
       if (match) {
         const pendingAt = new Date(match[1]).getTime();
-        if (Date.now() - pendingAt < 30 * 60 * 1000) {
+        if (!isNaN(pendingAt) && Date.now() - pendingAt < 30 * 60 * 1000) {
           console.log(
             `[DoneLaneRecovery] Skipping auto-merger for card ${task.id}: already pending.`,
           );
@@ -589,6 +600,20 @@ async function triggerAutoMerger(
         console.log(
           `[DoneLaneRecovery] Stale auto-merger-pending marker for card ${task.id}. Re-triggering.`,
         );
+      }
+    }
+
+    // Timeout guard: skip if previously timed out within cooldown period
+    if (freshTask.lastSyncError?.startsWith("[auto-merger-timeout]")) {
+      const match = freshTask.lastSyncError.match(/at (\d{4}-\d{2}-\d{2}T[^\s.]+)/);
+      if (match) {
+        const timeoutAt = new Date(match[1]).getTime();
+        if (!isNaN(timeoutAt) && Date.now() - timeoutAt < 30 * 60 * 1000) {
+          console.log(
+            `[DoneLaneRecovery] Skipping auto-merger for card ${task.id}: previously timed out within cooldown.`,
+          );
+          return;
+        }
       }
     }
 
@@ -614,6 +639,32 @@ async function triggerAutoMerger(
       console.log(
         `[DoneLaneRecovery] Auto-merger session ${result.sessionId} started for card ${task.id}.`,
       );
+
+      // Schedule timeout watchdog for the auto-merger session
+      const mergerTimeout = recoveryCfg.autoMergerTimeoutMs;
+      setTimeout(async () => {
+        try {
+          const currentTask = await system.taskStore.get(task.id);
+          if (!currentTask) return;
+          // Check if the auto-merger is still pending (not yet merged)
+          if (currentTask.lastSyncError?.startsWith("[auto-merger-pending]")
+              || currentTask.triggerSessionId === result.sessionId) {
+            console.warn(
+              `[DoneLaneRecovery] Auto-merger session ${result.sessionId} for card ${task.id} ` +
+              `exceeded timeout (${Math.round(mergerTimeout / 60000)}min). Marking as timed out.`,
+            );
+            currentTask.lastSyncError = `[auto-merger-timeout] Session ${result.sessionId} exceeded ${Math.round(mergerTimeout / 60000)}min at ${new Date().toISOString()}. Manual merge required.`;
+            currentTask.triggerSessionId = undefined;
+            currentTask.updatedAt = new Date();
+            await system.taskStore.save(currentTask);
+          }
+        } catch (timeoutErr) {
+          console.error(
+            `[DoneLaneRecovery] Error in auto-merger timeout handler for card ${task.id}:`,
+            timeoutErr,
+          );
+        }
+      }, mergerTimeout);
     } else {
       console.warn(
         `[DoneLaneRecovery] Failed to start auto-merger for card ${task.id}: ${result.error}`,
@@ -701,11 +752,14 @@ async function recoverOrphanInProgress(
   console.log(
     `[DoneLaneRecovery] Orphan IN_PROGRESS in done lane: ${task.id}. Marking COMPLETED.`,
   );
-  task.status = "COMPLETED" as typeof task.status;
-  task.triggerSessionId = undefined;
-  task.lastSyncError = undefined;
-  task.updatedAt = new Date();
-  await system.taskStore.save(task);
+  // Re-read to avoid stale reference before updating
+  const fresh = await system.taskStore.get(task.id);
+  if (!fresh) return false;
+  fresh.status = "COMPLETED" as typeof fresh.status;
+  fresh.triggerSessionId = undefined;
+  fresh.lastSyncError = undefined;
+  fresh.updatedAt = new Date();
+  await system.taskStore.save(fresh);
   return true;
 }
 
@@ -717,13 +771,16 @@ async function recoverAutomationLimitExhausted(
     `[DoneLaneRecovery] Automation limit exhausted for card ${task.id} ` +
     `(error: ${(task.lastSyncError ?? "").slice(0, 80)}). Clearing marker.`,
   );
-  const cleaned = clearStuckMarker(task, "deep");
+  // Re-read to avoid stale reference before updating
+  const fresh = await system.taskStore.get(task.id);
+  if (!fresh) return false;
+  const cleaned = clearStuckMarker(fresh, "deep");
 
-  task.lastSyncError = cleaned.lastSyncError;
-  task.laneSessions = cleaned.laneSessions;
-  task.triggerSessionId = undefined;
-  task.updatedAt = new Date();
-  await system.taskStore.save(task);
+  fresh.lastSyncError = cleaned.lastSyncError;
+  fresh.laneSessions = cleaned.laneSessions;
+  fresh.triggerSessionId = undefined;
+  fresh.updatedAt = new Date();
+  await system.taskStore.save(fresh);
   return true;
 }
 
@@ -998,37 +1055,38 @@ export async function runDoneLaneRecoveryTick(
         // Sort: conflict-resolvers first, then merge candidates by dependency readiness
         const sorted = sortMergeCandidates(allStuckItems, taskMap);
 
-        let autoMergerTriggered = false;
+        // Track auto-merger triggers per codebase to allow parallelism across repos.
+        const autoMergerTriggeredBranches = new Set<string>();
 
         for (const stuck of sorted) {
           try {
             switch (stuck.pattern) {
               case "webhook_missed": {
-                if (autoMergerTriggered) {
+                const branchKey = stuck.task.codebaseIds?.[0] ?? stuck.task.id;
+                if (autoMergerTriggeredBranches.has(branchKey)) {
                   console.log(
                     `[DoneLaneRecovery] Deferring auto-merger for card ${stuck.task.id}: ` +
-                    `already triggered one this tick.`,
+                    `already triggered one this tick for this codebase.`,
                   );
                   break;
                 }
                 const result = await recoverWebhookMissed(stuck.task, system);
                 if (result === "merged") {
                   summary.recovered++;
-                  // Webhook-lost merge doesn't consume the auto-merger slot.
-                  // Other cards can still trigger auto-merger in this tick.
                 } else if (result === "auto_merger") {
                   summary.recovered++;
-                  autoMergerTriggered = true;
+                  autoMergerTriggeredBranches.add(branchKey);
                 } else if (result === "conflict") {
                   summary.conflictResolved++;
                 }
                 break;
               }
               case "cb_exhausted_pr_unmerged": {
-                if (autoMergerTriggered) {
+                const branchKey = stuck.task.codebaseIds?.[0] ?? stuck.task.id;
+                if (autoMergerTriggeredBranches.has(branchKey)) {
                   console.log(
                     `[DoneLaneRecovery] Deferring CB-exhausted merge for card ${stuck.task.id}: ` +
-                    `already triggered one this tick.`,
+                    `already triggered one this tick for this codebase.`,
                   );
                   summary.stuckMarked++;
                   break;
@@ -1036,7 +1094,7 @@ export async function runDoneLaneRecoveryTick(
                 const result = await recoverCbExhausted(stuck.task, system);
                 if (result === "merged") {
                   summary.recovered++;
-                  autoMergerTriggered = true;
+                  autoMergerTriggeredBranches.add(branchKey);
                 } else if (result === "conflict") {
                   summary.conflictResolved++;
                 } else {

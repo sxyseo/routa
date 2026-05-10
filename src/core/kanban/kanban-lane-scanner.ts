@@ -34,6 +34,7 @@ import type { ColumnTransitionData } from "./column-transition";
 import { analyzeFlowForTasks, getTopFailureColumns } from "./flow-ledger";
 import { withHeartbeat } from "../scheduling/system-heartbeat-registry";
 import { getKanbanConfig } from "./kanban-config";
+import { safeAtomicSave } from "./atomic-task-update";
 
 const scannerCfg = getKanbanConfig();
 
@@ -56,51 +57,6 @@ let scanTimer: ReturnType<typeof setInterval> | null = null;
 let initialScanTimer: ReturnType<typeof setTimeout> | null = null;
 let isScanning = false;
 const GLOBAL_KEY = "__routa_kanban_lane_scanner__";
-
-type AtomicUpdateFields = Parameters<NonNullable<TaskStore["atomicUpdate"]>>[2];
-
-/** Use atomicUpdate with optimistic locking; fallback to save() for stores that lack it. */
-async function safeAtomicSave(
-  task: import("../models/task").Task,
-  taskStore: TaskStore,
-  fields: AtomicUpdateFields,
-  logLabel: string,
-): Promise<boolean> {
-  // Drizzle ORM treats `undefined` as "skip this field" rather than "set to NULL".
-  // Convert undefined values to null so clearing fields (e.g. lastSyncError) works.
-  const sanitizedFields = Object.fromEntries(
-    Object.entries(fields).map(([k, v]) => [k, v === undefined ? null : v]),
-  ) as AtomicUpdateFields;
-  if (task.version !== undefined && taskStore.atomicUpdate) {
-    const ok = await taskStore.atomicUpdate(task.id, task.version, sanitizedFields);
-    if (!ok) {
-      // Version conflict — re-read the task and retry once with the fresh version.
-      const fresh = await taskStore.get(task.id);
-      if (!fresh) {
-        console.log(`[LaneScanner] Card ${task.id} deleted during ${logLabel}. Skipping.`);
-        return false;
-      }
-      if (fresh.version !== undefined && taskStore.atomicUpdate) {
-        const retryOk = await taskStore.atomicUpdate(fresh.id, fresh.version, sanitizedFields);
-        if (!retryOk) {
-          console.warn(
-            `[LaneScanner] Version conflict persisted after retry for card ${task.id} during ${logLabel}. Skipping.`,
-          );
-          return false;
-        }
-        // Sync version so downstream code sees the correct value
-        task.version = fresh.version;
-        return true;
-      }
-      // Fresh task has no version — fallback to save
-      await taskStore.save({ ...fresh, ...fields });
-      return true;
-    }
-    return true;
-  }
-  await taskStore.save({ ...task, ...fields });
-  return true;
-}
 
 export interface LaneScannerStats {
   lastScanAt: Date | null;

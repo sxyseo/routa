@@ -17,8 +17,15 @@ export interface OrphanBranchCleanupResult {
 /**
  * Delete remote feature branches that have no open PR.
  * Called once at startup, before periodic ticks begin.
+ *
+ * @param branchPrefixes Optional list of branch prefixes to consider.
+ *   Defaults to ["issue/"] if not provided. Collect these from all boards'
+ *   KanbanBranchRules.naming.prefix values.
  */
-export async function cleanupOrphanBranchesOnStartup(): Promise<OrphanBranchCleanupResult> {
+export async function cleanupOrphanBranchesOnStartup(
+  branchPrefixes?: string[],
+): Promise<OrphanBranchCleanupResult> {
+  const prefixes = branchPrefixes?.length ? branchPrefixes : ["issue/"];
   const result: OrphanBranchCleanupResult = { deleted: 0, skipped: 0, errors: 0 };
 
   const bridge = getServerBridge();
@@ -53,7 +60,7 @@ export async function cleanupOrphanBranchesOnStartup(): Promise<OrphanBranchClea
     for (const branch of allBranches) {
       if (PROTECTED_BRANCHES.has(branch)) continue;
       if (openPrBranches.has(branch)) continue;
-      if (!branch.startsWith("issue/")) continue;
+      if (!prefixes.some((p) => branch.startsWith(p))) continue;
 
       try {
         await bridge.process.exec(
