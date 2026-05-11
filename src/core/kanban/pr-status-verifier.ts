@@ -1,12 +1,14 @@
 /**
  * PR Status Verifier
  *
- * Verifies the merge status of a GitHub Pull Request via the `gh` CLI.
+ * Verifies the merge status of a GitHub Pull Request.
+ * Strategy: REST API first (no CLI dependency), `gh` CLI fallback.
+ *
  * Used by the lane scanner, workflow orchestrator, and done-lane recovery tick
  * to detect webhook-lost merges and merge conflicts.
  *
- * Designed to never throw — returns `{ verified: false }` when `gh` is
- * unavailable so callers can fall back gracefully.
+ * Designed to never throw — returns `{ verified: false }` when both
+ * REST API and `gh` CLI are unavailable so callers can fall back gracefully.
  */
 
 import { getServerBridge } from "../platform";
@@ -30,7 +32,7 @@ export interface PrMergeVerification {
   mergeable?: boolean;
   /** Conflict files reported by GitHub (if any). */
   conflictFiles?: string[];
-  /** `true` if we actually queried GitHub. `false` means gh CLI was unavailable. */
+  /** `true` if we actually queried GitHub. `false` means both REST API and gh CLI were unavailable. */
   verified: boolean;
 }
 
@@ -57,7 +59,7 @@ export function parsePrUrl(url: string): ParsedPrUrl | undefined {
   return { owner: match[1], repo: match[2], prNumber: parseInt(match[3], 10) };
 }
 
-// ── Command execution ──────────────────────────────────────────────────────
+// ── Command execution (fallback) ──────────────────────────────────────────
 
 async function execCommand(
   command: string,
@@ -74,8 +76,9 @@ async function execCommand(
 // ── Merge status verification ──────────────────────────────────────────────
 
 /**
- * Verify the merge status of a PR via `gh pr view --json`.
+ * Verify the merge status of a PR.
  *
+ * Strategy: REST API first (no CLI dependency), `gh pr view` fallback.
  * Never throws — returns `{ verified: false }` on any error.
  */
 export async function verifyPrMergeStatus(
@@ -84,6 +87,30 @@ export async function verifyPrMergeStatus(
 ): Promise<PrMergeVerification> {
   const fallback: PrMergeVerification = { merged: false, verified: false };
 
+  // Strategy 1: GitHub REST API (preferred — no CLI dependency)
+  const token = process.env.GH_TOKEN;
+  if (token) {
+    try {
+      const { getPullRequestStatus } = await import("../github/github-merge");
+      const status = await getPullRequestStatus({ prUrl: pullRequestUrl, token });
+      if (status.verified) {
+        return {
+          merged: status.merged,
+          mergedAt: status.mergedAt,
+          closedAt: status.closedAt,
+          state: status.state,
+          baseRefName: status.baseRefName,
+          headRefName: status.headRefName,
+          mergeable: status.mergeable,
+          verified: true,
+        };
+      }
+    } catch {
+      // REST API failed — fall through to CLI
+    }
+  }
+
+  // Strategy 2: gh CLI fallback
   const parsed = parsePrUrl(pullRequestUrl);
   if (!parsed) return fallback;
 
@@ -135,15 +162,29 @@ export async function verifyPrMergeStatus(
 /**
  * Close a GitHub PR and return the head branch name.
  *
- * Used by the "Close + Recreate" strategy when conflict-resolver fails
- * and the PR needs to be closed so the task can be re-developed from
- * the latest main branch.
- *
- * Returns `{ closed: false }` on any error (never throws).
+ * Strategy: REST API first, `gh pr close` fallback.
+ * Never throws — returns `{ closed: false }` on any error.
  */
 export async function closePullRequest(
   prUrl: string,
 ): Promise<{ closed: boolean; branchName?: string }> {
+  // Strategy 1: REST API
+  const token = process.env.GH_TOKEN;
+  if (token) {
+    try {
+      const { closePullRequestViaApi } = await import("../github/github-merge");
+      const result = await closePullRequestViaApi({
+        prUrl,
+        token,
+        comment: "Closed by routa: recreating from latest main due to persistent merge conflicts.",
+      });
+      if (result.closed) return result;
+    } catch {
+      // REST API failed — fall through to CLI
+    }
+  }
+
+  // Strategy 2: gh CLI fallback
   const parsed = parsePrUrl(prUrl);
   if (!parsed) return { closed: false };
 

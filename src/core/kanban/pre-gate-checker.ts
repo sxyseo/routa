@@ -101,6 +101,8 @@ function scanForPattern(
     severity: "BLOCKER" | "WARNING";
     ruleId: string;
     messageFn: (filePath: string, lineNum: number, lineContent: string, match: RegExpExecArray) => string;
+    /** Skip lines that are single-line comments (// or #). Default false. */
+    skipComments?: boolean;
   },
   excludeDirs?: ReadonlySet<string>,
 ): PreGateViolation[] {
@@ -124,6 +126,13 @@ function scanForPattern(
     const lines = content.split("\n");
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+
+      // Skip single-line comments when option is enabled
+      if (options.skipComments) {
+        const trimmed = line.trimStart();
+        if (trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
+      }
+
       const match = pattern.exec(line);
       if (match) {
         violations.push({
@@ -153,6 +162,7 @@ function checkForbiddenTerms(
       fileFilter: (fp) => isSourceFile(fp) && !isTestOrConfig(fp),
       severity: "BLOCKER",
       ruleId: "forbidden-term",
+      skipComments: true,
       messageFn: (fp, ln, line, _m) =>
         `Forbidden term "${term}" at line ${ln}: ${reason}. Content: ${line.trim()}`,
     }, excludeDirs);

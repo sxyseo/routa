@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as sqliteSchema from "./sqlite-schema";
 import { normalizeTaskCreationSource } from "../kanban/task-creation-policy";
@@ -199,6 +199,18 @@ export class SqliteTaskStore implements TaskStore {
       .where(eq(sqliteSchema.tasks.workspaceId, workspaceId))
       .run();
     return Number(result.changes ?? 0);
+  }
+
+  async findByPullRequestUrl(url: string): Promise<Task | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.tasks)
+      .where(or(
+        eq(sqliteSchema.tasks.pullRequestUrl, url),
+        eq(sqliteSchema.tasks.vcsUrl, url),
+      ))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
   async atomicUpdate(

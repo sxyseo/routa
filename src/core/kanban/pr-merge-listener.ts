@@ -212,6 +212,7 @@ async function handleDownstreamTasks(
   }
 
   // ── B) Unblock explicit dependents ──
+  let unblockedCount = 0;
   for (const depTask of allTasks) {
     if (!depTask.dependencies.includes(mergedTask.id)) continue;
 
@@ -219,6 +220,7 @@ async function handleDownstreamTasks(
     if (getErrorType(depTask.lastSyncError) === "dependency_blocked") {
       Object.assign(depTask, dependencyUnblockFields());
       await system.taskStore.save(depTask);
+      unblockedCount++;
       console.log(
         `[PrMergeListener] Cleared dependency block for task ${depTask.id}.`,
       );
@@ -245,6 +247,14 @@ async function handleDownstreamTasks(
         timestamp: new Date(),
       });
     }
+  }
+
+  // ── C) Trigger immediate lane scan to pick up unblocked dependents ──
+  if (unblockedCount > 0) {
+    const { runLaneScannerTick } = await import("./kanban-lane-scanner");
+    runLaneScannerTick(system).catch((err) => {
+      console.warn("[PrMergeListener] Immediate lane scan failed (non-critical):", err);
+    });
   }
 }
 

@@ -4,7 +4,7 @@
  * Supports optimistic-locking via a `version` column for atomic updates.
  */
 
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import type { Database } from "./index";
 import { tasks } from "./schema";
 import { normalizeTaskCreationSource } from "../kanban/task-creation-policy";
@@ -194,6 +194,18 @@ export class PgTaskStore implements TaskStore {
   async deleteByWorkspace(workspaceId: string): Promise<number> {
     const result = await this.db.delete(tasks).where(eq(tasks.workspaceId, workspaceId));
     return result.rowCount;
+  }
+
+  async findByPullRequestUrl(url: string): Promise<Task | undefined> {
+    const rows = await this.db
+      .select()
+      .from(tasks)
+      .where(or(
+        eq(tasks.pullRequestUrl, url),
+        eq(tasks.vcsUrl, url),
+      ))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
   /**

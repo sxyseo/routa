@@ -12,6 +12,7 @@
 
 import type { RoutaSystem } from "../routa-system";
 import type { Task, TaskLaneSession } from "../models/task";
+import { TaskStatus } from "../models/task";
 import type { KanbanBoard } from "../models/kanban";
 import { resolveTaskStatusForBoardColumn } from "../models/kanban";
 import { shouldSkipTickForMemory } from "./memory-guard";
@@ -60,6 +61,7 @@ type StuckPattern =
   | "pr_closed_unmerged"
   | "orphan_in_progress"
   | "no_pr_completed"
+  | "review_degraded"
   | "automation_limit_exhausted";
 
 interface DetectedStuck {
@@ -106,15 +108,23 @@ function getMaxResets(): number {
 /**
  * Detect stuck patterns for a task in the done lane.
  */
-export function detectStuckPatterns(
+export async function detectStuckPatterns(
   task: Task,
   board: KanbanBoard,
-): DetectedStuck[] {
+): Promise<DetectedStuck[]> {
   const patterns: DetectedStuck[] = [];
   const colId = task.columnId ?? "";
+  const ageMs = getTaskAgeMs(task);
+
+  // Blocked column: if PR is merged, treat as recoverable (auto-pass to unblock)
+  const col = board.columns.find((c) => c.id === colId);
+  if (col?.stage === "blocked" && isRealPR(task) && task.pullRequestMergedAt && ageMs > ORPHAN_AGE_MS) {
+    patterns.push({ pattern: "review_degraded", task });
+    return patterns;
+  }
+
   if (!isDoneColumn(colId, board)) return patterns;
 
-  const ageMs = getTaskAgeMs(task);
   const cbExhausted = getCbResetCount(task) >= getMaxResets();
   const hasPR = isRealPR(task);
   const prMerged = Boolean(task.pullRequestMergedAt);
@@ -149,7 +159,27 @@ export function detectStuckPatterns(
       const sessionAge = Date.now() - new Date(recentSession.startedAt).getTime();
       const mergerTimeout = recoveryCfg.autoMergerTimeoutMs;
       if (sessionAge < mergerTimeout) {
-        return patterns; // Session still running normally, skip.
+        // Before skipping, check if PR is already merged on GitHub.
+        // Prevents self-lockout when PR was manually merged while auto-merger is "running".
+        if (isRealPR(task) && !task.pullRequestMergedAt) {
+          try {
+            const prCheck = await verifyPrMergeStatus(task.pullRequestUrl!);
+            if (prCheck.verified && prCheck.merged) {
+              console.log(
+                `[DoneLaneRecovery] Card ${task.id} PR already merged on GitHub ` +
+                `while specialist session ${recentSession.sessionId} is still active. ` +
+                `Overriding skip to proceed with recovery.`,
+              );
+              // Fall through to pattern detection
+            } else {
+              return patterns; // PR not merged or check failed -- session still useful
+            }
+          } catch {
+            return patterns; // Safety fallback
+          }
+        } else {
+          return patterns; // No real PR or already merged -- skip
+        }
       }
       // Session exceeded timeout but still shows as active — treat as stuck.
       console.warn(
@@ -203,6 +233,11 @@ export function detectStuckPatterns(
       // "mergeability unknown" or other transient state → re-verify via webhook_missed
       patterns.push({ pattern: "webhook_missed", task });
     }
+  }
+
+  // Pattern: review-degraded — stale retry exhausted, auto-pass with warning
+  if (task.lastSyncError?.startsWith("[review-degraded]") && ageMs > ORPHAN_AGE_MS) {
+    patterns.push({ pattern: "review_degraded", task });
   }
 
   // Pattern: automation limit exhausted (repeat-limit, step-resume-limit, or advance-recovery)
@@ -603,72 +638,88 @@ async function triggerAutoMerger(
       }
     }
 
-    // Timeout guard: skip if previously timed out within cooldown period
-    if (freshTask.lastSyncError?.startsWith("[auto-merger-timeout]")) {
+    // Cooldown: skip if previously failed within cooldown window
+    if (freshTask.lastSyncError?.startsWith("[auto-merger-failed]")) {
       const match = freshTask.lastSyncError.match(/at (\d{4}-\d{2}-\d{2}T[^\s.]+)/);
       if (match) {
-        const timeoutAt = new Date(match[1]).getTime();
-        if (!isNaN(timeoutAt) && Date.now() - timeoutAt < 30 * 60 * 1000) {
+        const failedAt = new Date(match[1]).getTime();
+        if (!isNaN(failedAt) && Date.now() - failedAt < 10 * 60 * 1000) {
           console.log(
-            `[DoneLaneRecovery] Skipping auto-merger for card ${task.id}: previously timed out within cooldown.`,
+            `[DoneLaneRecovery] Skipping auto-merger for card ${task.id}: recently failed, in cooldown.`,
           );
           return;
         }
       }
     }
 
-    // Set pending marker before triggering
-    freshTask.lastSyncError = `[auto-merger-pending] Triggered at ${new Date().toISOString()}. PR: ${freshTask.pullRequestUrl}`;
-    freshTask.updatedAt = new Date();
-    await system.taskStore.save(freshTask);
-
-    const result = await enqueueKanbanTaskSession(system as RoutaSystem, {
-      task: freshTask,
-      ignoreExistingTrigger: true,
-      bypassDependencyGate: true,
-      bypassQueue: true,
-      step: {
-        id: "auto-merger",
-        role: "DEVELOPER",
-        specialistId: "kanban-auto-merger",
-        specialistName: "Auto Merger",
-      },
-      stepIndex: 0,
-    });
-    if (result.sessionId) {
-      console.log(
-        `[DoneLaneRecovery] Auto-merger session ${result.sessionId} started for card ${task.id}.`,
-      );
-
-      // Schedule timeout watchdog for the auto-merger session
-      const mergerTimeout = recoveryCfg.autoMergerTimeoutMs;
-      setTimeout(async () => {
-        try {
-          const currentTask = await system.taskStore.get(task.id);
-          if (!currentTask) return;
-          // Check if the auto-merger is still pending (not yet merged)
-          if (currentTask.lastSyncError?.startsWith("[auto-merger-pending]")
-              || currentTask.triggerSessionId === result.sessionId) {
-            console.warn(
-              `[DoneLaneRecovery] Auto-merger session ${result.sessionId} for card ${task.id} ` +
-              `exceeded timeout (${Math.round(mergerTimeout / 60000)}min). Marking as timed out.`,
-            );
-            currentTask.lastSyncError = `[auto-merger-timeout] Session ${result.sessionId} exceeded ${Math.round(mergerTimeout / 60000)}min at ${new Date().toISOString()}. Manual merge required.`;
-            currentTask.triggerSessionId = undefined;
-            currentTask.updatedAt = new Date();
-            await system.taskStore.save(currentTask);
-          }
-        } catch (timeoutErr) {
-          console.error(
-            `[DoneLaneRecovery] Error in auto-merger timeout handler for card ${task.id}:`,
-            timeoutErr,
-          );
-        }
-      }, mergerTimeout);
-    } else {
+    // Merge directly via GitHub REST API (no LLM session needed)
+    const { mergePullRequest } = await import("../github/github-merge");
+    const token = process.env.GH_TOKEN;
+    if (!token) {
       console.warn(
-        `[DoneLaneRecovery] Failed to start auto-merger for card ${task.id}: ${result.error}`,
+        `[DoneLaneRecovery] Cannot auto-merge for card ${task.id}: GH_TOKEN not set.`,
       );
+      freshTask.lastSyncError = `[auto-merger-failed] GH_TOKEN not configured at ${new Date().toISOString()}.`;
+      freshTask.updatedAt = new Date();
+      await system.taskStore.save(freshTask);
+      return;
+    }
+
+    console.log(
+      `[DoneLaneRecovery] Auto-merging PR for card ${task.id} via GitHub API: ${freshTask.pullRequestUrl}`,
+    );
+
+    const mergeResult = await mergePullRequest({
+      prUrl: freshTask.pullRequestUrl!,
+      token,
+      mergeMethod: "merge",
+    });
+
+    if (mergeResult.ok) {
+      // Merge succeeded — sync state immediately
+      freshTask.pullRequestMergedAt = new Date();
+      freshTask.lastSyncError = undefined;
+      freshTask.triggerSessionId = undefined;
+      freshTask.updatedAt = new Date();
+      await system.taskStore.save(freshTask);
+
+      console.log(
+        `[DoneLaneRecovery] Auto-merged PR for card ${task.id} via GitHub API (sha: ${mergeResult.sha}).`,
+      );
+
+      // Emit PR_MERGED so downstream dependencies unblock immediately
+      system.eventBus.emit({
+        type: AgentEventType.PR_MERGED,
+        agentId: "kanban-done-lane-recovery",
+        workspaceId: freshTask.workspaceId,
+        data: {
+          pullRequestUrl: freshTask.pullRequestUrl,
+          mergedAt: freshTask.pullRequestMergedAt.toISOString(),
+        },
+        timestamp: new Date(),
+      });
+    } else {
+      // Merge failed — mark with reason for recovery routing
+      const reason = mergeResult.status === 405
+        ? "not_mergeable"
+        : mergeResult.status === 409
+          ? "conflict"
+          : "unknown";
+
+      console.warn(
+        `[DoneLaneRecovery] Auto-merge failed for card ${task.id} (${reason}): ${mergeResult.message}`,
+      );
+
+      if (reason === "conflict") {
+        freshTask.lastSyncError = `[done-lane-stuck] Merge conflicts detected via API. Conflict resolver triggered.`;
+        freshTask.updatedAt = new Date();
+        await system.taskStore.save(freshTask);
+        await triggerConflictResolver(freshTask, system);
+      } else {
+        freshTask.lastSyncError = `[auto-merger-failed] ${reason}: ${mergeResult.message} at ${new Date().toISOString()}.`;
+        freshTask.updatedAt = new Date();
+        await system.taskStore.save(freshTask);
+      }
     }
   } catch (err) {
     console.error(
@@ -1036,8 +1087,14 @@ export async function runDoneLaneRecoveryTick(
         );
         const doneColumnIds = new Set(doneColumns.map((c) => c.id));
 
+        // Also scan blocked column for tasks with merged PRs (Issue 19 fix)
+        const blockedColumns = board.columns.filter((col) => col.stage === "blocked");
+        const blockedColumnIds = new Set(blockedColumns.map((c) => c.id));
+
         const doneTasks = allTasks.filter(
-          (t) => t.columnId && doneColumnIds.has(t.columnId),
+          (t) => t.columnId && (doneColumnIds.has(t.columnId)
+            // Include blocked tasks with merged PRs for recovery
+            || (blockedColumnIds.has(t.columnId) && t.pullRequestMergedAt)),
         );
 
         // Phase 0: Resolve specialist sessions that have completed/failed since last tick.
@@ -1048,7 +1105,7 @@ export async function runDoneLaneRecoveryTick(
         const allStuckItems: DetectedStuck[] = [];
         for (const task of doneTasks) {
           summary.examined++;
-          const stuckItems = detectStuckPatterns(task, board);
+          const stuckItems = await detectStuckPatterns(task, board);
           allStuckItems.push(...stuckItems);
         }
 
@@ -1126,6 +1183,21 @@ export async function runDoneLaneRecoveryTick(
               case "automation_limit_exhausted": {
                 const ok = await recoverAutomationLimitExhausted(stuck.task, system);
                 if (ok) summary.limitSwept++;
+                break;
+              }
+              case "review_degraded": {
+                // Auto-pass: clear the marker so LaneScanner can advance the task
+                const freshDegraded = await system.taskStore.get(stuck.task.id);
+                if (freshDegraded) {
+                  freshDegraded.lastSyncError = undefined;
+                  freshDegraded.status = TaskStatus.COMPLETED;
+                  freshDegraded.updatedAt = new Date();
+                  await system.taskStore.save(freshDegraded);
+                  console.log(
+                    `[DoneLaneRecovery] Auto-passed review-degraded task ${stuck.task.id}.`,
+                  );
+                  summary.completed++;
+                }
                 break;
               }
             }

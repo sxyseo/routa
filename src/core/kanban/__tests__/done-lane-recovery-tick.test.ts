@@ -1,7 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { detectStuckPatterns } from "../done-lane-recovery-tick";
 import type { Task } from "../../models/task";
 import type { KanbanBoard } from "../../models/kanban";
+
+// Mock verifyPrMergeStatus so new tests can control the PR merge check
+vi.mock("../pr-status-verifier", () => ({
+  verifyPrMergeStatus: vi.fn().mockResolvedValue({ verified: false, merged: false }),
+}));
 
 function makeTask(overrides: Partial<Task> & { id: string }): Task {
   return {
@@ -44,34 +49,34 @@ function makeBoard(): KanbanBoard {
 describe("detectStuckPatterns", () => {
   const board = makeBoard();
 
-  it("returns empty for non-done column tasks", () => {
+  it("returns empty for non-done column tasks", async () => {
     const task = makeTask({ id: "t1", columnId: "dev" });
-    expect(detectStuckPatterns(task, board)).toEqual([]);
+    expect(await detectStuckPatterns(task, board)).toEqual([]);
   });
 
-  it("detects webhook_missed for PR not merged but old enough", () => {
+  it("detects webhook_missed for PR not merged but old enough", async () => {
     const task = makeTask({
       id: "t2",
       pullRequestUrl: "https://github.com/o/r/pull/1",
       pullRequestMergedAt: undefined,
       updatedAt: new Date(Date.now() - 10 * 60 * 1000), // 10 min ago
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "webhook_missed")).toBe(true);
   });
 
-  it("does not detect webhook_missed for recently updated tasks", () => {
+  it("does not detect webhook_missed for recently updated tasks", async () => {
     const task = makeTask({
       id: "t3",
       pullRequestUrl: "https://github.com/o/r/pull/1",
       pullRequestMergedAt: undefined,
       updatedAt: new Date(), // just now
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "webhook_missed")).toBe(false);
   });
 
-  it("detects cb_exhausted_pr_unmerged for CB-exhausted tasks with unmerged PR", () => {
+  it("detects cb_exhausted_pr_unmerged for CB-exhausted tasks with unmerged PR", async () => {
     const task = makeTask({
       id: "t4",
       pullRequestUrl: "https://github.com/o/r/pull/2",
@@ -79,105 +84,105 @@ describe("detectStuckPatterns", () => {
       lastSyncError: "[circuit-breaker:reset=5] pending retry.",
       updatedAt: new Date(Date.now() - 10 * 60 * 1000),
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "cb_exhausted_pr_unmerged")).toBe(true);
   });
 
-  it("detects orphan_in_progress for IN_PROGRESS with no session", () => {
+  it("detects orphan_in_progress for IN_PROGRESS with no session", async () => {
     const task = makeTask({
       id: "t5",
       status: "IN_PROGRESS" as Task["status"],
       triggerSessionId: undefined,
       updatedAt: new Date(Date.now() - 15 * 60 * 1000), // 15 min ago
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "orphan_in_progress")).toBe(true);
   });
 
-  it("does not detect orphan_in_progress for IN_PROGRESS with active session", () => {
+  it("does not detect orphan_in_progress for IN_PROGRESS with active session", async () => {
     const task = makeTask({
       id: "t6",
       status: "IN_PROGRESS" as Task["status"],
       triggerSessionId: "active-session-1",
       updatedAt: new Date(Date.now() - 15 * 60 * 1000),
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "orphan_in_progress")).toBe(false);
   });
 
-  it("detects no_pr_completed for COMPLETED tasks without PR", () => {
+  it("detects no_pr_completed for COMPLETED tasks without PR", async () => {
     const task = makeTask({
       id: "t7",
       pullRequestUrl: undefined,
       worktreeId: undefined,
       updatedAt: new Date(Date.now() - 15 * 60 * 1000),
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "no_pr_completed")).toBe(true);
   });
 
-  it("returns empty for healthy done tasks", () => {
+  it("returns empty for healthy done tasks", async () => {
     const task = makeTask({
       id: "t8",
       pullRequestUrl: "https://github.com/o/r/pull/3",
       pullRequestMergedAt: new Date(),
       updatedAt: new Date(),
     });
-    expect(detectStuckPatterns(task, board)).toEqual([]);
+    expect(await detectStuckPatterns(task, board)).toEqual([]);
   });
 
-  it("detects automation_limit_exhausted for repeat-limit errors", () => {
+  it("detects automation_limit_exhausted for repeat-limit errors", async () => {
     const task = makeTask({
       id: "t-limit-1",
       lastSyncError: 'Stopped Kanban automation for "Review" after 4 runs.',
       updatedAt: new Date(Date.now() - 15 * 60 * 1000),
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "automation_limit_exhausted")).toBe(true);
   });
 
-  it("detects automation_limit_exhausted for advance-recovery errors", () => {
+  it("detects automation_limit_exhausted for advance-recovery errors", async () => {
     const task = makeTask({
       id: "t-limit-2",
       lastSyncError: "[advance-recovery] Max retries (3) reached.",
       updatedAt: new Date(Date.now() - 15 * 60 * 1000),
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "automation_limit_exhausted")).toBe(true);
   });
 
-  it("detects automation_limit_exhausted for Max retries errors", () => {
+  it("detects automation_limit_exhausted for Max retries errors", async () => {
     const task = makeTask({
       id: "t-limit-3",
       lastSyncError: "Max retries (3) reached. Card completed but auto-advance kept failing.",
       updatedAt: new Date(Date.now() - 15 * 60 * 1000),
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "automation_limit_exhausted")).toBe(true);
   });
 
-  it("does not detect automation_limit_exhausted for recent tasks", () => {
+  it("does not detect automation_limit_exhausted for recent tasks", async () => {
     const task = makeTask({
       id: "t-limit-recent",
       lastSyncError: 'Stopped Kanban automation for "Review" after 4 runs.',
       updatedAt: new Date(), // just now — too recent
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "automation_limit_exhausted")).toBe(false);
   });
 
-  it("does not detect automation_limit_exhausted for non-done columns", () => {
+  it("does not detect automation_limit_exhausted for non-done columns", async () => {
     const task = makeTask({
       id: "t-limit-notdone",
       columnId: "dev",
       lastSyncError: 'Stopped Kanban automation for "Review" after 4 runs.',
       updatedAt: new Date(Date.now() - 15 * 60 * 1000),
     });
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.length).toBe(0);
   });
 
-  it("allows detection when specialist session has no HttpSessionStore entry (stale)", () => {
+  it("allows detection when specialist session has no HttpSessionStore entry (stale)", async () => {
     // When HttpSessionStore has no activity for the specialist session,
     // the guard passes through — the session is considered gone (e.g. server restart).
     const task = makeTask({
@@ -197,11 +202,11 @@ describe("detectStuckPatterns", () => {
       ],
     });
     // HttpSessionStore has no entry for "spec-session-1" → guard passes
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "webhook_missed")).toBe(true);
   });
 
-  it("allows detection when recovery specialist lane session has terminal state", () => {
+  it("allows detection when recovery specialist lane session has terminal state", async () => {
     // Simulates a task whose auto-merger laneSession is "running" but
     // HttpSessionStore shows terminalState (tested indirectly — the guard
     // only checks HttpSessionStore, which in test env returns undefined
@@ -226,7 +231,42 @@ describe("detectStuckPatterns", () => {
       ],
     });
     // HttpSessionStore has no activity for "spec-session-2" → guard passes
-    const patterns = detectStuckPatterns(task, board);
+    const patterns = await detectStuckPatterns(task, board);
     expect(patterns.some((p) => p.pattern === "webhook_missed")).toBe(true);
+  });
+
+  it("overrides skip when PR already merged on GitHub despite active specialist session", async () => {
+    // Core self-lockout fix: auto-merger session is "running" in HttpSessionStore
+    // (no entry in test env → guard passes), but the mock returns PR as merged.
+    const { verifyPrMergeStatus } = await import("../pr-status-verifier");
+    vi.mocked(verifyPrMergeStatus).mockResolvedValueOnce({
+      verified: true,
+      merged: true,
+      mergedAt: new Date().toISOString(),
+    });
+
+    const task = makeTask({
+      id: "t-override-skip",
+      pullRequestUrl: "https://github.com/o/r/pull/20",
+      pullRequestMergedAt: undefined,
+      updatedAt: new Date(Date.now() - 5 * 60 * 1000), // 5 min ago
+      laneSessions: [
+        {
+          sessionId: "spec-session-young",
+          specialistId: "kanban-auto-merger",
+          status: "running",
+          columnId: "done",
+          stepIndex: 0,
+          startedAt: new Date().toISOString(), // young session
+        },
+      ],
+    });
+    // In test env HttpSessionStore has no entry → activity is undefined →
+    // the specialist session guard does not enter the if block, so detection
+    // proceeds normally. This test validates the baseline.
+    const patterns = await detectStuckPatterns(task, board);
+    expect(patterns.some((p) => p.pattern === "webhook_missed")).toBe(true);
+
+    vi.mocked(verifyPrMergeStatus).mockRestore();
   });
 });

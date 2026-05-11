@@ -1,3 +1,5 @@
+# NOTE: triggerAutoMerger() now merges via GitHub REST API directly (github-merge.ts).
+# This specialist is retained as a fallback for complex merge scenarios (conflict-resolver, rebase).
 id: "kanban-auto-merger"
 name: "Auto Merger"
 description: "Optionally merges the PR/MR after CI passes, with fallback to manual merge on failure"

@@ -1683,11 +1683,41 @@ export class KanbanWorkflowOrchestrator {
       // Check stale retry limit (separate from session circuit breaker)
       if (retryCount >= STALE_MAX_RETRIES) {
         console.warn(
-          `[WorkflowOrchestrator] Stale retry limit reached for card ${cardId}. Giving up.`,
+          `[WorkflowOrchestrator] Stale retry limit reached for card ${cardId} ` +
+          `in column ${automation.columnId}. Marking as review-degraded.`,
         );
         automation.status = "failed";
         this.cleanupCardSession?.(cardId);
         this.activeAutomations.delete(cardId);
+
+        // Degradation: mark task so DoneLaneRecovery can advance it
+        const degradedTask = await this.taskStore.get(cardId);
+        if (degradedTask) {
+          degradedTask.lastSyncError =
+            `[review-degraded] Stale retry limit (${STALE_MAX_RETRIES}) reached in column "${automation.columnName || automation.columnId}". ` +
+            `Auto-passed at ${new Date().toISOString()}.`;
+          degradedTask.updatedAt = new Date();
+          await this.taskStore.save(degradedTask);
+
+          // Emit transition to trigger advancement via DoneLaneRecovery
+          this.eventBus.emit({
+            type: AgentEventType.COLUMN_TRANSITION,
+            agentId: "kanban-workflow-orchestrator-degradation",
+            workspaceId: automation.workspaceId,
+            data: {
+              cardId,
+              cardTitle: automation.cardTitle,
+              boardId: automation.boardId,
+              workspaceId: automation.workspaceId,
+              fromColumnId: automation.columnId,
+              toColumnId: automation.columnId,
+              fromColumnName: automation.columnName ?? "",
+              toColumnName: automation.columnName ?? "",
+              source: { type: "review_degraded" },
+            } as unknown as Record<string, unknown>,
+            timestamp: new Date(),
+          });
+        }
         continue;
       }
       automation.status = "failed";
