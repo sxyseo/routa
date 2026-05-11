@@ -1200,7 +1200,6 @@ const CLONE_BASE_DIR = ".routa/repos";
  */
 export function getCloneBaseDir(): string {
   const pathMod = require("path");
-  const os = require("os");
 
   // Check if we're in a serverless environment (Vercel sets VERCEL env var)
   const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
@@ -1208,7 +1207,8 @@ export function getCloneBaseDir(): string {
   if (isServerless) {
     // On serverless, use /tmp which is the only writable location
     // Note: This is ephemeral and won't persist across invocations
-    return pathMod.join(os.tmpdir(), CLONE_BASE_DIR);
+    const { safeTmpdir } = require("@/core/utils/safe-tmpdir") as { safeTmpdir: () => string };
+    return pathMod.join(safeTmpdir(), CLONE_BASE_DIR);
   }
 
   // On local/traditional servers, use the current directory

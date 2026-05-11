@@ -27,6 +27,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { safeTmpdir } from "@/core/utils/safe-tmpdir";
 import { getDatabase, getDatabaseDriver } from "@/core/db";
 import { PgSkillStore } from "@/core/db/pg-skill-store";
 import type { SkillFileEntry } from "@/core/db/schema";
@@ -131,7 +132,7 @@ function getSkillsDestDir(): string {
   if (isServerless) {
     // On serverless, use /tmp which is the only writable location
     // Note: This is ephemeral and won't persist across invocations
-    return resolveFsPath(os.tmpdir(), ".codex/skills");
+    return resolveFsPath(safeTmpdir(), ".codex/skills");
   }
 
   // On local/traditional servers, use the home directory
@@ -565,7 +566,7 @@ async function handleSkillsShInstall(body: {
     }
     const [owner, repoName] = parts;
 
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-catalog-"));
+    const tmpDir = fs.mkdtempSync(path.join(safeTmpdir(), "routa-catalog-"));
 
     try {
       const zipUrl = `https://codeload.github.com/${owner}/${repoName}/zip/main`;
@@ -681,7 +682,7 @@ async function handleGithubInstall(body: {
   }
 
   const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-catalog-"));
+  const tmpDir = fs.mkdtempSync(path.join(safeTmpdir(), "routa-catalog-"));
 
   try {
     const AdmZip = (await import("adm-zip")).default;
@@ -862,7 +863,7 @@ async function handleSkillsShInstallToDb(body: {
     }
     const [owner, repoName] = parts;
 
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-catalog-db-"));
+    const tmpDir = fs.mkdtempSync(path.join(safeTmpdir(), "routa-catalog-db-"));
 
     try {
       const zipUrl = `https://codeload.github.com/${owner}/${repoName}/zip/main`;
@@ -973,7 +974,7 @@ async function handleGithubInstallToDb(body: {
   }
 
   const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-catalog-db-"));
+  const tmpDir = fs.mkdtempSync(path.join(safeTmpdir(), "routa-catalog-db-"));
 
   try {
     const AdmZip = (await import("adm-zip")).default;
@@ -1062,7 +1063,7 @@ async function handleGitlabInstall(body: {
 
   try {
     const zipBuffer = await gitlabDownloadArchive(repo, ref);
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-catalog-"));
+    const tmpDir = fs.mkdtempSync(path.join(safeTmpdir(), "routa-catalog-"));
 
     try {
       const AdmZip = (await import("adm-zip")).default;
@@ -1156,7 +1157,7 @@ async function handleGitlabInstallToDb(body: {
 
   try {
     const zipBuffer = await gitlabDownloadArchive(repo, ref);
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-catalog-db-"));
+    const tmpDir = fs.mkdtempSync(path.join(safeTmpdir(), "routa-catalog-db-"));
 
     try {
       const AdmZip = (await import("adm-zip")).default;

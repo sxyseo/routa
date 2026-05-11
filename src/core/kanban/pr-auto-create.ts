@@ -233,9 +233,9 @@ export async function executeAutoPrCreation(
     // Create a random temp directory to prevent predictable path attacks.
     const crypto = await import("crypto");
     const fs = await import("fs/promises");
-    const os = await import("os");
     const path = await import("path");
-    const tmpDir = path.join(os.tmpdir().replace(/[\r\n]+$/g, ''), `routa-pr-${crypto.randomUUID()}`);
+    const { safeTmpdir } = await import("@/core/utils/safe-tmpdir");
+    const tmpDir = path.join(safeTmpdir(), `routa-pr-${crypto.randomUUID()}`);
     await fs.mkdir(tmpDir, { recursive: true });
     const tmpFile = path.join(tmpDir, "body.md");
     await fs.writeFile(tmpFile, prBody, "utf-8");

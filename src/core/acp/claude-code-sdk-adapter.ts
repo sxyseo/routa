@@ -29,7 +29,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerConfig, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { join } from "path";
 import * as fs from "fs";
-import * as os from "os";
+import { safeTmpdir } from "@/core/utils/safe-tmpdir";
 import { resolveModelFromEnvVarTier } from "@/core/acp/provider-registry";
 import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 
@@ -312,9 +312,9 @@ export class ClaudeCodeSdkAdapter {
     }
 
     // Ensure the SDK's temp directory is writable (Windows: %TEMP%\claude).
-    // The SDK internally creates subdirectories under this path; if the parent
-    // doesn't exist or isn't writable, session creation fails with ENOENT.
-    const tmpDir = process.env.TEMP || process.env.TMP || os.tmpdir();
+    // safeTmpdir() strips trailing \r from os.tmpdir() and syncs the clean
+    // value back to process.env so ALL child processes inherit a valid path.
+    const tmpDir = safeTmpdir();
     const claudeTmpDir = join(tmpDir, "claude");
     try {
       fs.mkdirSync(claudeTmpDir, { recursive: true });

@@ -14,6 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { safeTmpdir } from "@/core/utils/safe-tmpdir";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export interface GitHubWorkspace {
 
 const DEFAULT_MAX_SIZE_MB = 200;
 const WORKSPACE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const EXTRACT_BASE = path.join(os.tmpdir(), "routa-gh");
+const EXTRACT_BASE = path.join(safeTmpdir(), "routa-gh");
 
 const IGNORE_PATTERNS = new Set([
   "node_modules", ".git", ".next", "dist", "build", ".cache",
@@ -247,7 +248,7 @@ async function extractZip(zipBuffer: Buffer, owner: string, repo: string): Promi
   }
 
   // Extract to a temp dir first, then find the repo root
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-gh-extract-"));
+  const tmpDir = fs.mkdtempSync(path.join(safeTmpdir(), "routa-gh-extract-"));
   try {
     zip.extractAllTo(tmpDir, true);
 

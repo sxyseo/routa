@@ -2,6 +2,7 @@ import { getServerBridge } from "@/core/platform";
 import type { NotificationHandler } from "@/core/acp/protocol-types";
 import os from "os";
 import path from "path";
+import { safeTmpdir } from "@/core/utils/safe-tmpdir";
 import fsSync from "fs";
 import {
   DEFAULT_DOCKER_AGENT_IMAGE,
@@ -13,7 +14,7 @@ import {
 import type { DockerContainerConfig, DockerContainerInfo } from "./types";
 
 // Temporary directory for storing auth.json files
-const DOCKER_OPENCODE_TMP_DIR = path.join(os.tmpdir(), "routa-opencode-auth");
+const DOCKER_OPENCODE_TMP_DIR = path.join(safeTmpdir(), "routa-opencode-auth");
 
 const DEFAULT_CONTAINER_PORT = 4321;
 const DEFAULT_HEALTH_TIMEOUT_MS = 30_000;

@@ -3,6 +3,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { safeTmpdir } from "@/core/utils/safe-tmpdir";
 import { promisify } from "node:util";
 
 import type {
@@ -118,7 +119,7 @@ export async function commitFeatureTreeViaCli(options: {
   let tempDir: string | null = null;
   try {
     if (options.metadata != null) {
-      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "feature-tree-cli-"));
+      tempDir = await fs.mkdtemp(path.join(safeTmpdir(), "feature-tree-cli-"));
       const metadataPath = path.join(tempDir, "metadata.json");
       await fs.writeFile(metadataPath, JSON.stringify(options.metadata), "utf8");
       args.push("--metadata-file", metadataPath);

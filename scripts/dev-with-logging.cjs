@@ -47,6 +47,15 @@ function cleanOldLogs() {
 
 // ---------- main ----------
 
+// Windows TEMP \r fix: sanitize once at startup before any tmpdir usage.
+// Some Windows machines have process.env.TEMP with a trailing \r,
+// which causes os.tmpdir() → mkdtemp → ENOENT in all child processes.
+if (process.platform === "win32") {
+  const clean = (v) => typeof v === "string" ? v.replace(/[\r\n]+$/g, "") : v;
+  process.env.TEMP = clean(process.env.TEMP);
+  process.env.TMP  = clean(process.env.TMP);
+}
+
 ensureLogDir();
 cleanOldLogs();
 
