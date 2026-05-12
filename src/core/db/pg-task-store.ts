@@ -215,14 +215,20 @@ export class PgTaskStore implements TaskStore {
   async atomicUpdate(
     taskId: string,
     expectedVersion: number,
-    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "pullRequestUrl" | "pullRequestMergedAt" | "laneSessions" | "updatedAt">>
+    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "pullRequestUrl" | "pullRequestMergedAt" | "laneSessions" | "updatedAt" | "worktreeId" | "comment" | "dependencyStatus" | "isPullRequest">>
   ): Promise<boolean> {
+    // Drizzle ORM treats `undefined` as "skip this field" rather than "set to NULL".
+    // Convert undefined values to null so clearing fields (e.g. lastSyncError) works.
+    const sanitized = Object.fromEntries(
+      Object.entries(updates).map(([k, v]) => [k, v === undefined ? null : v]),
+    ) as typeof updates;
     const result = await this.db
       .update(tasks)
       .set({
-        ...updates,
+        ...sanitized,
         version: sql`${tasks.version} + 1`,
-        updatedAt: new Date(),
+        // Only bump updatedAt if the caller did not explicitly provide one.
+        ...("updatedAt" in sanitized ? {} : { updatedAt: new Date() }),
       })
       .where(and(eq(tasks.id, taskId), eq(tasks.version, expectedVersion)));
 

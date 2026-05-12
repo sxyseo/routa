@@ -16,6 +16,16 @@ import type { TaskStore } from "../store/task-store";
 type AtomicUpdateFields = Parameters<NonNullable<TaskStore["atomicUpdate"]>>[2];
 
 /**
+ * Extends AtomicUpdateFields to accept `null` for clearing fields.
+ * Drizzle ORM requires `null` (not `undefined`) to actually clear a column,
+ * but Task's type signature uses `undefined` for optional fields.
+ * This type bridges the gap so callers can pass `null` naturally.
+ */
+type NullSafeUpdateFields = {
+  [K in keyof AtomicUpdateFields]?: AtomicUpdateFields[K] | null;
+};
+
+/**
  * Atomically save task fields using optimistic locking.
  *
  * @param task    The task snapshot (must include `.id` and optionally `.version`).
@@ -28,7 +38,7 @@ type AtomicUpdateFields = Parameters<NonNullable<TaskStore["atomicUpdate"]>>[2];
 export async function safeAtomicSave(
   task: Task,
   store: TaskStore,
-  fields: AtomicUpdateFields,
+  fields: NullSafeUpdateFields,
   logLabel: string,
 ): Promise<boolean> {
   // Drizzle ORM treats `undefined` as "skip this field" rather than "set to NULL".

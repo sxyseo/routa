@@ -25,7 +25,7 @@ export interface TaskStore {
   atomicUpdate?(
     taskId: string,
     expectedVersion: number,
-    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "laneSessions" | "updatedAt" | "pullRequestMergedAt" | "pullRequestUrl" | "isPullRequest">>,
+    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "laneSessions" | "updatedAt" | "pullRequestMergedAt" | "pullRequestUrl" | "isPullRequest" | "worktreeId" | "comment" | "dependencyStatus">>,
   ): Promise<boolean>;
 }
 
@@ -108,7 +108,7 @@ export class InMemoryTaskStore implements TaskStore {
   async atomicUpdate(
     taskId: string,
     expectedVersion: number,
-    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "laneSessions" | "updatedAt" | "pullRequestMergedAt" | "pullRequestUrl" | "isPullRequest">>,
+    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "laneSessions" | "updatedAt" | "pullRequestMergedAt" | "pullRequestUrl" | "isPullRequest" | "worktreeId" | "comment" | "dependencyStatus">>,
   ): Promise<boolean> {
     const task = this.tasks.get(taskId);
     if (!task || (task.version ?? 1) !== expectedVersion) return false;

@@ -232,6 +232,10 @@ export class SqliteTaskStore implements TaskStore {
         | "pullRequestMergedAt"
         | "laneSessions"
         | "updatedAt"
+        | "worktreeId"
+        | "comment"
+        | "dependencyStatus"
+        | "isPullRequest"
       >
     >,
   ): Promise<boolean> {
