@@ -255,7 +255,7 @@ function checkOrphanInProgress(
   if (Date.now() - updatedAt > TWO_HOURS && !task.triggerSessionId) {
     diagnostics.push({
       pattern: "orphan-in-progress",
-      category: "NOTIFY",
+      category: "AUTO",
       taskId: task.id,
       description: `Task "${task.title}" has been IN_PROGRESS for >2h with no active session`,
       details: { taskStatus: task.status },

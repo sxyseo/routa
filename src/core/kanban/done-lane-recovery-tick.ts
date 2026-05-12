@@ -24,6 +24,7 @@ import { clearStuckMarker, buildDoneStuckError, parseDoneStuckRetryCount } from 
 import { getKanbanConfig } from "./kanban-config";
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { markTaskLaneSessionStatus } from "./task-lane-history";
+import { executeAutoPrCreation } from "./pr-auto-create";
 
 const recoveryCfg = getKanbanConfig();
 
@@ -69,7 +70,7 @@ interface DetectedStuck {
   task: Task;
 }
 
-type RecoverySystem = Pick<RoutaSystem, "taskStore" | "kanbanBoardStore" | "workspaceStore" | "eventBus">;
+type RecoverySystem = Pick<RoutaSystem, "taskStore" | "kanbanBoardStore" | "workspaceStore" | "eventBus" | "worktreeStore" | "codebaseStore">;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1177,7 +1178,35 @@ export async function runDoneLaneRecoveryTick(
                 break;
               }
               case "no_pr_completed": {
-                // Already COMPLETED — no action needed
+                // COMPLETED but no PR — push code and create PR
+                if (stuck.task.worktreeId && stuck.task.boardId) {
+                  // Clear placeholder PR URLs ("manual", "already-merged") so PrAutoCreate can proceed
+                  if (stuck.task.pullRequestUrl && !isRealPR(stuck.task)) {
+                    stuck.task.pullRequestUrl = undefined;
+                    await system.taskStore.save(stuck.task);
+                  }
+                  const prUrl = await executeAutoPrCreation(
+                    system.worktreeStore,
+                    system.taskStore,
+                    system.codebaseStore,
+                    {
+                      cardId: stuck.task.id,
+                      cardTitle: stuck.task.title ?? stuck.task.id,
+                      boardId: stuck.task.boardId,
+                      worktreeId: stuck.task.worktreeId,
+                    },
+                  );
+                  if (prUrl) {
+                    console.log(
+                      `[DoneLaneRecovery] Created PR for no-pr-completed task ${stuck.task.id}: ${prUrl}`,
+                    );
+                    summary.recovered++;
+                  } else {
+                    console.warn(
+                      `[DoneLaneRecovery] PR creation returned no URL for task ${stuck.task.id}`,
+                    );
+                  }
+                }
                 break;
               }
               case "automation_limit_exhausted": {
@@ -1186,15 +1215,39 @@ export async function runDoneLaneRecoveryTick(
                 break;
               }
               case "review_degraded": {
-                // Auto-pass: clear the marker so LaneScanner can advance the task
+                // Auto-pass, but first ensure PR exists if task has a worktree
                 const freshDegraded = await system.taskStore.get(stuck.task.id);
                 if (freshDegraded) {
+                  if (!isRealPR(freshDegraded) && freshDegraded.worktreeId && freshDegraded.boardId) {
+                    // Clear placeholder PR URLs so PrAutoCreate can proceed
+                    if (freshDegraded.pullRequestUrl) {
+                      freshDegraded.pullRequestUrl = undefined;
+                      await system.taskStore.save(freshDegraded);
+                    }
+                    const prUrl = await executeAutoPrCreation(
+                      system.worktreeStore,
+                      system.taskStore,
+                      system.codebaseStore,
+                      {
+                        cardId: freshDegraded.id,
+                        cardTitle: freshDegraded.title ?? freshDegraded.id,
+                        boardId: freshDegraded.boardId,
+                        worktreeId: freshDegraded.worktreeId,
+                      },
+                    );
+                    if (prUrl) {
+                      console.log(
+                        `[DoneLaneRecovery] Created PR for review-degraded task ${freshDegraded.id}: ${prUrl}`,
+                      );
+                      summary.recovered++;
+                    }
+                  }
                   freshDegraded.lastSyncError = undefined;
                   freshDegraded.status = TaskStatus.COMPLETED;
                   freshDegraded.updatedAt = new Date();
                   await system.taskStore.save(freshDegraded);
                   console.log(
-                    `[DoneLaneRecovery] Auto-passed review-degraded task ${stuck.task.id}.`,
+                    `[DoneLaneRecovery] Auto-passed review-degraded task ${freshDegraded.id}.`,
                   );
                   summary.completed++;
                 }

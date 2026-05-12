@@ -14,6 +14,7 @@ export type DecisionAction =
   | "clear-worktree-ref"
   | "unblock-dependency"
   | "retry-version-conflict"
+  | "reset-orphan-session"
   | "log-only"
   | "notify-human"
   | "escalate";
@@ -37,14 +38,14 @@ const PATTERN_ACTION_MAP: Record<DiagnosticPattern, DecisionAction> = {
   "dependency-block-resolved": "unblock-dependency",
   "version-conflict-retry": "retry-version-conflict",
   "webhook-lost-pr-merge": "log-only",
-  "orphan-in-progress": "log-only",
+  "orphan-in-progress": "reset-orphan-session",
   "automation-limit-marker": "clear-pending-marker",
   "cb-cooldown-expired": "log-only",
 };
 
 // ─── Resource Limits per tick ───────────────────────────────────────
 
-const MAX_AUTO = 10;
+const MAX_AUTO = 20;
 const MAX_NOTIFY = 5;
 const MAX_ESCALATE = 3;
 
@@ -65,7 +66,14 @@ export async function classifyDiagnostics(
   const decisions: ClassifiedDecision[] = [];
   const counts = { AUTO: 0, NOTIFY: 0, ESCALATE: 0 };
 
-  for (const diag of diagnostics) {
+  // Prioritize orphan-in-progress over other AUTO patterns so recovery
+  // actions are not crowded out by lower-impact orphan-worktree cleanups.
+  const prioritized = [...diagnostics].sort((a, b) => {
+    const prio = (p: string) => p === "orphan-in-progress" ? 0 : 1;
+    return prio(a.pattern) - prio(b.pattern);
+  });
+
+  for (const diag of prioritized) {
     // Dedup check
     const isDeduped = await stateStore.isDeduped(diag.pattern, diag.taskId);
     if (isDeduped) continue;

@@ -38,7 +38,8 @@ export type ColumnTransitionSource =
   | { type: "restart_recovery" }
   | { type: "dependency_unblock" }
   | { type: "graph_refiner" }
-  | { type: "pr_recreate" };
+  | { type: "pr_recreate" }
+  | { type: "review_degraded" };
 
 /**
  * Emit a COLUMN_TRANSITION event on the event bus.

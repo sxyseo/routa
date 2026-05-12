@@ -530,6 +530,11 @@ export class KanbanWorkflowOrchestrator {
       return;
     }
 
+    // review-degraded: let DoneLaneRecovery handle it instead of re-queuing.
+    if (source?.type === "review_degraded") {
+      return;
+    }
+
     // Advance-only: LaneScanner detected a stuck card (all steps completed but
     // auto-advance failed). Skip full automation and only retry the card move.
     const isAdvanceOnly = source?.type === "advance_only"

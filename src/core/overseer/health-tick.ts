@@ -209,6 +209,29 @@ async function executeAutoDecision(
       break;
     }
 
+    case "reset-orphan-session": {
+      const task = await system.taskStore.get(decision.taskId);
+      if (task) {
+        task.triggerSessionId = undefined;
+        // Clear laneSessions for the current column so LaneScanner sees
+        // the card as not-yet-completed and re-triggers automation.
+        if (task.columnId && task.laneSessions) {
+          task.laneSessions = task.laneSessions.filter(
+            (s: { columnId?: string }) => s.columnId !== task.columnId,
+          );
+        }
+        task.comment = (task.comment ?? "")
+          .replace(/\[automation-limit\]/g, "")
+          .replace(/\[auto-merger-pending\]/g, "")
+          .replace(/\[pending-review\]/g, "")
+          .trim();
+        task.updatedAt = new Date();
+        await system.taskStore.save(task);
+        console.log(`[Overseer] AUTO: Reset orphan session for task ${decision.taskId} — LaneScanner will re-pickup`);
+      }
+      break;
+    }
+
     default:
       console.log(`[Overseer] AUTO: No-op for action ${decision.action}`);
   }
