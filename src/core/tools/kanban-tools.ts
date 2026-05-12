@@ -325,6 +325,26 @@ export class KanbanTools {
       }
     }
 
+    // Split parent guard: block move to done/archived if child tasks are not completed
+    if (
+      task.splitPlan?.childTaskIds?.length
+      && (resolvedTargetColumn.stage === "archived" || resolvedTargetColumn.stage === "done")
+    ) {
+      const pendingChildren: string[] = [];
+      for (const childId of task.splitPlan.childTaskIds) {
+        const child = await this.taskStore.get(childId);
+        if (child && child.status !== "COMPLETED" && child.status !== "ARCHIVED") {
+          pendingChildren.push(child.title ?? childId);
+        }
+      }
+      if (pendingChildren.length > 0) {
+        return errorResult(
+          `Cannot move "${task.title}" to ${resolvedTargetColumn.name ?? params.targetColumnId}: ` +
+          `${pendingChildren.length} child task(s) not completed: ${pendingChildren.slice(0, 3).join(", ")}`,
+        );
+      }
+    }
+
     // Check required artifacts before allowing transition
     const requiredArtifacts = resolvedTargetColumn.automation?.requiredArtifacts;
     if (requiredArtifacts && requiredArtifacts.length > 0 && this.artifactStore) {

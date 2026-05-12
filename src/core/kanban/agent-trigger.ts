@@ -187,6 +187,14 @@ export function buildTaskPrompt(
     ? `When your work for this column is complete, call \`move_card\` with cardId: "${task.id}" and targetColumnId: "${nextColumnId}" to advance the card. The next column's specialist will pick it up automatically.`
     : "This card is in the final column. Update the card with your completion summary.";
 
+  // Split-aware warning for terminal columns
+  const splitWarning = task.splitPlan?.childTaskIds?.length
+    ? `\n\nIMPORTANT: This task has been split into ${task.splitPlan.childTaskIds.length} child tasks. ` +
+      `Do NOT mark this task as complete or archive it. ` +
+      `The parent task will auto-advance when all children complete. ` +
+      `Current progress: check child task statuses.`
+    : "";
+
   const instructions = isBacklogPlanning
     ? [
         "1. Treat backlog as planning and refinement, not implementation",
@@ -485,6 +493,7 @@ export function buildTaskPrompt(
     "",
     ...availableTools,
     "",
+    ...(splitWarning ? [splitWarning, ""] : []),
     "## Instructions",
     "",
     ...instructions,

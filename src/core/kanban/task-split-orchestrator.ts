@@ -247,8 +247,29 @@ export async function executeSplit(
     splitAt: new Date(),
   };
   parentTask.splitPlan = splitPlan;
+  parentTask.lastSyncError =
+    `[Split] Waiting for ${childTaskIds.length} child tasks to complete.`;
   parentTask.updatedAt = new Date();
   await deps.taskStore.save(parentTask);
+
+  // 10. Inherit parent's external dependencies for root sub-tasks
+  // Root sub-tasks (no incoming dependency edges) should carry the parent's
+  // external dependencies so they are not picked up before the parent's
+  // own prerequisites are met.
+  const parentDeps = parentTask.dependencies ?? [];
+  if (parentDeps.length > 0) {
+    for (const subDef of sorted) {
+      if (!rootRefs.has(subDef.ref)) continue;
+      const childId = refToId.get(subDef.ref);
+      if (!childId) continue;
+      await updateDependencyRelations(childId, [...parentDeps], deps.taskStore);
+      const saved = await deps.taskStore.get(childId);
+      if (saved) {
+        saved.dependencies = [...parentDeps];
+        await deps.taskStore.save(saved);
+      }
+    }
+  }
 
   return {
     parentTaskId: parentTask.id,

@@ -61,6 +61,27 @@ export async function archiveTask(
     return { success: true, taskId: task.id, taskTitle: task.title, worktreeCleanupScheduled: false };
   }
 
+  // Split parent guard: refuse to archive if child tasks are not completed
+  if (task.splitPlan?.childTaskIds?.length) {
+    let allChildrenDone = true;
+    for (const childId of task.splitPlan.childTaskIds) {
+      const child = await system.taskStore.get(childId);
+      if (child && child.status !== "COMPLETED" && child.status !== "ARCHIVED") {
+        allChildrenDone = false;
+        break;
+      }
+    }
+    if (!allChildrenDone) {
+      return {
+        success: false,
+        taskId: task.id,
+        taskTitle: task.title,
+        error: "Cannot archive: has pending child tasks in splitPlan.",
+        worktreeCleanupScheduled: false,
+      };
+    }
+  }
+
   // 1. Finalize active sessions (clear triggerSessionId, mark laneSessions)
   finalizeActiveTaskSession(task, "transitioned");
 
@@ -157,6 +178,25 @@ export async function archiveDoneTasks(
     if (hasOpenPR(task)) {
       result.skipped.push({ cardId: task.id, title: task.title, reason: "存在未合并的 PR" });
       continue;
+    }
+
+    // Split parent guard: skip if child tasks are not completed
+    if (task.splitPlan?.childTaskIds?.length) {
+      const pendingChildren: string[] = [];
+      for (const childId of task.splitPlan.childTaskIds) {
+        const child = await system.taskStore.get(childId);
+        if (child && child.status !== "COMPLETED" && child.status !== "ARCHIVED") {
+          pendingChildren.push(child.title ?? childId);
+        }
+      }
+      if (pendingChildren.length > 0) {
+        result.skipped.push({
+          cardId: task.id,
+          title: task.title,
+          reason: `存在 ${pendingChildren.length} 个未完成的子任务: ${pendingChildren.slice(0, 3).join(", ")}${pendingChildren.length > 3 ? "..." : ""}`,
+        });
+        continue;
+      }
     }
 
     try {
