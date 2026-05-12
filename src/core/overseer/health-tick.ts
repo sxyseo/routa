@@ -13,6 +13,7 @@
 import type { RoutaSystem } from "../routa-system";
 import type { OverseerTickResult } from "./diagnostics";
 import { dependencyUnblockFields } from "../kanban/dependency-gate";
+import { safeAtomicSave } from "../kanban/atomic-task-update";
 import { collectSystemDiagnostics } from "./diagnostics";
 import { classifyDiagnostics, toOverseerDecision } from "./decision-classifier";
 import type { OverseerStateStore } from "./overseer-state-store";
@@ -139,8 +140,10 @@ async function executeAutoDecision(
     case "clear-trigger-session": {
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
-        task.triggerSessionId = undefined;
-        await system.taskStore.save(task);
+        await safeAtomicSave(task, system.taskStore, {
+          triggerSessionId: null,
+          updatedAt: new Date(),
+        }, "Overseer clear-trigger-session");
         console.log(`[Overseer] AUTO: Cleared stale triggerSessionId for task ${decision.taskId}`);
       }
       break;
@@ -149,12 +152,15 @@ async function executeAutoDecision(
     case "clear-pending-marker": {
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
-        task.comment = (task.comment ?? "")
+        const cleanedComment = (task.comment ?? "")
           .replace(/\[auto-merger-pending\]/g, "")
           .replace(/\[automation-limit\]/g, "")
           .replace(/\[pending-review\]/g, "")
           .trim();
-        await system.taskStore.save(task);
+        await safeAtomicSave(task, system.taskStore, {
+          comment: cleanedComment || null,
+          updatedAt: new Date(),
+        }, "Overseer clear-pending-marker");
         console.log(`[Overseer] AUTO: Cleared pending marker for task ${decision.taskId}`);
       }
       break;
@@ -163,8 +169,10 @@ async function executeAutoDecision(
     case "clear-worktree-ref": {
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
-        task.worktreeId = undefined;
-        await system.taskStore.save(task);
+        await safeAtomicSave(task, system.taskStore, {
+          worktreeId: null,
+          updatedAt: new Date(),
+        }, "Overseer clear-worktree-ref");
         console.log(`[Overseer] AUTO: Cleared orphan worktree ref for task ${decision.taskId}`);
       }
       break;
@@ -173,8 +181,10 @@ async function executeAutoDecision(
     case "unblock-dependency": {
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
-        Object.assign(task, dependencyUnblockFields());
-        await system.taskStore.save(task);
+        const fields = dependencyUnblockFields();
+        await safeAtomicSave(task, system.taskStore, {
+          ...fields,
+        }, "Overseer unblock-dependency");
         console.log(`[Overseer] AUTO: Unblocked dependencies for task ${decision.taskId}`);
         system.eventBus.emit({
           type: AgentEventType.COLUMN_TRANSITION,
@@ -200,11 +210,13 @@ async function executeAutoDecision(
     case "retry-version-conflict": {
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
-        const newVersion = (task.version ?? 1) + 1;
-        task.version = newVersion;
-        task.lastSyncError = undefined;
-        await system.taskStore.save(task);
-        console.log(`[Overseer] AUTO: Retried version conflict for task ${decision.taskId} (v${newVersion})`);
+        // safeAtomicSave handles version increment internally via atomicUpdate.
+        // No need to manually bump version — the optimistic lock will retry on conflict.
+        await safeAtomicSave(task, system.taskStore, {
+          lastSyncError: null,
+          updatedAt: new Date(),
+        }, "Overseer retry-version-conflict");
+        console.log(`[Overseer] AUTO: Retried version conflict for task ${decision.taskId}`);
       }
       break;
     }
@@ -212,21 +224,22 @@ async function executeAutoDecision(
     case "reset-orphan-session": {
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
-        task.triggerSessionId = undefined;
-        // Clear laneSessions for the current column so LaneScanner sees
-        // the card as not-yet-completed and re-triggers automation.
-        if (task.columnId && task.laneSessions) {
-          task.laneSessions = task.laneSessions.filter(
-            (s: { columnId?: string }) => s.columnId !== task.columnId,
-          );
-        }
-        task.comment = (task.comment ?? "")
+        const filteredSessions = task.columnId && task.laneSessions
+          ? task.laneSessions.filter(
+              (s: { columnId?: string }) => s.columnId !== task.columnId,
+            )
+          : task.laneSessions;
+        const cleanedComment = (task.comment ?? "")
           .replace(/\[automation-limit\]/g, "")
           .replace(/\[auto-merger-pending\]/g, "")
           .replace(/\[pending-review\]/g, "")
           .trim();
-        task.updatedAt = new Date();
-        await system.taskStore.save(task);
+        await safeAtomicSave(task, system.taskStore, {
+          triggerSessionId: null,
+          laneSessions: filteredSessions,
+          comment: cleanedComment || null,
+          updatedAt: new Date(),
+        }, "Overseer reset-orphan-session");
         console.log(`[Overseer] AUTO: Reset orphan session for task ${decision.taskId} — LaneScanner will re-pickup`);
       }
       break;

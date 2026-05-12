@@ -25,6 +25,7 @@ import { getKanbanConfig } from "./kanban-config";
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { markTaskLaneSessionStatus } from "./task-lane-history";
 import { executeAutoPrCreation } from "./pr-auto-create";
+import { safeAtomicSave } from "./atomic-task-update";
 
 const recoveryCfg = getKanbanConfig();
 
@@ -274,10 +275,12 @@ async function recoverWebhookMissed(
       `Syncing pullRequestMergedAt.`,
     );
 
-    task.pullRequestMergedAt = verification.mergedAt ? new Date(verification.mergedAt) : new Date();
-    task.lastSyncError = undefined;
-    task.updatedAt = new Date();
-    await system.taskStore.save(task);
+    const mergedAt = verification.mergedAt ? new Date(verification.mergedAt) : new Date();
+    await safeAtomicSave(task, system.taskStore, {
+      pullRequestMergedAt: mergedAt,
+      lastSyncError: null,
+      updatedAt: new Date(),
+    }, "DoneLaneRecovery webhook-merged");
 
     system.eventBus.emit({
       type: AgentEventType.PR_MERGED,
@@ -285,7 +288,7 @@ async function recoverWebhookMissed(
       workspaceId: task.workspaceId,
       data: {
         pullRequestUrl: task.pullRequestUrl,
-        mergedAt: task.pullRequestMergedAt.toISOString(),
+        mergedAt: mergedAt.toISOString(),
       },
       timestamp: new Date(),
     });
@@ -303,9 +306,11 @@ async function recoverWebhookMissed(
         `Triggering rebase-resolver to rebase onto base branch.`,
       );
       task.lastSyncError = `[rebase-resolver-pending] Triggered at ${new Date().toISOString()}. Closed PR: ${task.pullRequestUrl}`;
-      task.triggerSessionId = undefined;
-      task.updatedAt = new Date();
-      await system.taskStore.save(task);
+      await safeAtomicSave(task, system.taskStore, {
+        lastSyncError: task.lastSyncError,
+        triggerSessionId: null,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery rebase-resolver-pending");
       await triggerRebaseResolver(task, system);
       return "conflict";
     }
@@ -316,9 +321,11 @@ async function recoverWebhookMissed(
         `[DoneLaneRecovery] Card ${task.id} PR has conflicts. Triggering conflict-resolver.`,
       );
       task.lastSyncError = `[done-lane-stuck] Merge conflicts detected. Conflict resolver triggered.`;
-      task.triggerSessionId = undefined;
-      task.updatedAt = new Date();
-      await system.taskStore.save(task);
+      await safeAtomicSave(task, system.taskStore, {
+        lastSyncError: task.lastSyncError,
+        triggerSessionId: null,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery conflict-detected");
       await triggerConflictResolver(task, system);
       return "conflict";
     } else if (verification.mergeable === true) {
@@ -327,9 +334,11 @@ async function recoverWebhookMissed(
         `[DoneLaneRecovery] Card ${task.id} PR mergeable but not merged. Triggering auto-merger.`,
       );
       task.lastSyncError = `[auto-merger-pending] Triggered at ${new Date().toISOString()}. PR: ${task.pullRequestUrl}`;
-      task.triggerSessionId = undefined;
-      task.updatedAt = new Date();
-      await system.taskStore.save(task);
+      await safeAtomicSave(task, system.taskStore, {
+        lastSyncError: task.lastSyncError,
+        triggerSessionId: null,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery auto-merger-pending");
       await triggerAutoMerger(task, system);
       return "auto_merger";
     } else {
@@ -344,8 +353,10 @@ async function recoverWebhookMissed(
       } else {
         task.lastSyncError = `[done-lane-stuck] PR mergeability unknown after 3 retries. Manual check required: ${task.pullRequestUrl}`;
       }
-      task.updatedAt = new Date();
-      await system.taskStore.save(task);
+      await safeAtomicSave(task, system.taskStore, {
+        lastSyncError: task.lastSyncError,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery mergeability-unknown");
       return "unknown";
     }
   }
@@ -366,10 +377,12 @@ async function recoverCbExhausted(
     console.log(
       `[DoneLaneRecovery] CB-exhausted card ${task.id} PR actually merged on GitHub. Recovering.`,
     );
-    task.pullRequestMergedAt = verification.mergedAt ? new Date(verification.mergedAt) : new Date();
-    task.lastSyncError = undefined;
-    task.updatedAt = new Date();
-    await system.taskStore.save(task);
+    const mergedAt = verification.mergedAt ? new Date(verification.mergedAt) : new Date();
+    await safeAtomicSave(task, system.taskStore, {
+      pullRequestMergedAt: mergedAt,
+      lastSyncError: null,
+      updatedAt: new Date(),
+    }, "DoneLaneRecovery cb-exhausted-merged");
 
     system.eventBus.emit({
       type: AgentEventType.PR_MERGED,
@@ -377,7 +390,7 @@ async function recoverCbExhausted(
       workspaceId: task.workspaceId,
       data: {
         pullRequestUrl: task.pullRequestUrl,
-        mergedAt: task.pullRequestMergedAt.toISOString(),
+        mergedAt: mergedAt.toISOString(),
       },
       timestamp: new Date(),
     });
@@ -391,10 +404,11 @@ async function recoverCbExhausted(
       `[DoneLaneRecovery] CB-exhausted card ${task.id} has merge conflicts. ` +
       `Triggering conflict-resolver as independent phase.`,
     );
-    task.lastSyncError = `[done-lane-stuck] Merge conflicts detected. Conflict resolver triggered.`;
-    task.triggerSessionId = undefined;
-    task.updatedAt = new Date();
-    await system.taskStore.save(task);
+    await safeAtomicSave(task, system.taskStore, {
+      lastSyncError: `[done-lane-stuck] Merge conflicts detected. Conflict resolver triggered.`,
+      triggerSessionId: null,
+      updatedAt: new Date(),
+    }, "DoneLaneRecovery cb-exhausted-conflict");
     await triggerConflictResolver(task, system);
     return "conflict";
   }
@@ -404,10 +418,11 @@ async function recoverCbExhausted(
     console.log(
       `[DoneLaneRecovery] CB-exhausted card ${task.id} PR mergeable. Triggering auto-merger.`,
     );
-    task.lastSyncError = `[auto-merger-pending] Triggered at ${new Date().toISOString()}. PR: ${task.pullRequestUrl}`;
-    task.triggerSessionId = undefined;
-    task.updatedAt = new Date();
-    await system.taskStore.save(task);
+    await safeAtomicSave(task, system.taskStore, {
+      lastSyncError: `[auto-merger-pending] Triggered at ${new Date().toISOString()}. PR: ${task.pullRequestUrl}`,
+      triggerSessionId: null,
+      updatedAt: new Date(),
+    }, "DoneLaneRecovery cb-exhausted-auto-merger");
     await triggerAutoMerger(task, system);
     return "unmerged";
   }
@@ -416,9 +431,10 @@ async function recoverCbExhausted(
     `[DoneLaneRecovery] CB-exhausted card ${task.id} PR still unmerged. ` +
     `Setting diagnostic.`,
   );
-  task.lastSyncError = `[done-lane-stuck] PR not merged, retries exhausted. PR: ${task.pullRequestUrl}. Manual merge required.`;
-  task.updatedAt = new Date();
-  await system.taskStore.save(task);
+  await safeAtomicSave(task, system.taskStore, {
+    lastSyncError: `[done-lane-stuck] PR not merged, retries exhausted. PR: ${task.pullRequestUrl}. Manual merge required.`,
+    updatedAt: new Date(),
+  }, "DoneLaneRecovery cb-exhausted-stuck");
   return "unmerged";
 }
 
@@ -478,24 +494,18 @@ async function attemptPrRecreate(task: Task, system: RecoverySystem): Promise<bo
     // 6. Full reset — clear all automation state and move back to dev
     const cleared = clearStuckMarker(task, "full");
     const previousColumnId = task.columnId;
-    const updateFields = {
+
+    await safeAtomicSave(task, system.taskStore, {
       columnId: devColumn.id,
       status: devStatus,
-      worktreeId: undefined as string | undefined,
-      pullRequestUrl: undefined as string | undefined,
-      pullRequestMergedAt: undefined as Date | undefined,
-      triggerSessionId: undefined as string | undefined,
-      lastSyncError: undefined as string | undefined,
+      worktreeId: null,
+      pullRequestUrl: null,
+      pullRequestMergedAt: null,
+      triggerSessionId: null,
+      lastSyncError: null,
       laneSessions: cleared.laneSessions,
       updatedAt: new Date(),
-    };
-
-    if (task.version !== undefined && system.taskStore.atomicUpdate) {
-      await system.taskStore.atomicUpdate(task.id, task.version, updateFields);
-    } else {
-      Object.assign(task, updateFields);
-      await system.taskStore.save(task);
-    }
+    }, "DoneLaneRecovery pr-recreate");
 
     // 7. Emit COLUMN_TRANSITION to trigger dev automation
     system.eventBus.emit({
@@ -565,9 +575,10 @@ async function triggerConflictResolver(
     }
 
     // Set pending marker before triggering to prevent duplicates
-    freshTask.lastSyncError = `[conflict-resolver-pending] Triggered at ${new Date().toISOString()}. PR: ${freshTask.pullRequestUrl}`;
-    freshTask.updatedAt = new Date();
-    await system.taskStore.save(freshTask);
+    await safeAtomicSave(freshTask, system.taskStore, {
+      lastSyncError: `[conflict-resolver-pending] Triggered at ${new Date().toISOString()}. PR: ${freshTask.pullRequestUrl}`,
+      updatedAt: new Date(),
+    }, "DoneLaneRecovery conflict-resolver-pending");
 
     const result = await enqueueKanbanTaskSession(system as RoutaSystem, {
       task: freshTask,
@@ -660,9 +671,10 @@ async function triggerAutoMerger(
       console.warn(
         `[DoneLaneRecovery] Cannot auto-merge for card ${task.id}: GH_TOKEN not set.`,
       );
-      freshTask.lastSyncError = `[auto-merger-failed] GH_TOKEN not configured at ${new Date().toISOString()}.`;
-      freshTask.updatedAt = new Date();
-      await system.taskStore.save(freshTask);
+      await safeAtomicSave(freshTask, system.taskStore, {
+        lastSyncError: `[auto-merger-failed] GH_TOKEN not configured at ${new Date().toISOString()}.`,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery auto-merger-no-token");
       return;
     }
 
@@ -678,11 +690,13 @@ async function triggerAutoMerger(
 
     if (mergeResult.ok) {
       // Merge succeeded — sync state immediately
-      freshTask.pullRequestMergedAt = new Date();
-      freshTask.lastSyncError = undefined;
-      freshTask.triggerSessionId = undefined;
-      freshTask.updatedAt = new Date();
-      await system.taskStore.save(freshTask);
+      const mergedAt = new Date();
+      await safeAtomicSave(freshTask, system.taskStore, {
+        pullRequestMergedAt: mergedAt,
+        lastSyncError: null,
+        triggerSessionId: null,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery auto-merger-success");
 
       console.log(
         `[DoneLaneRecovery] Auto-merged PR for card ${task.id} via GitHub API (sha: ${mergeResult.sha}).`,
@@ -695,7 +709,7 @@ async function triggerAutoMerger(
         workspaceId: freshTask.workspaceId,
         data: {
           pullRequestUrl: freshTask.pullRequestUrl,
-          mergedAt: freshTask.pullRequestMergedAt.toISOString(),
+          mergedAt: mergedAt.toISOString(),
         },
         timestamp: new Date(),
       });
@@ -712,14 +726,16 @@ async function triggerAutoMerger(
       );
 
       if (reason === "conflict") {
-        freshTask.lastSyncError = `[done-lane-stuck] Merge conflicts detected via API. Conflict resolver triggered.`;
-        freshTask.updatedAt = new Date();
-        await system.taskStore.save(freshTask);
+        await safeAtomicSave(freshTask, system.taskStore, {
+          lastSyncError: `[done-lane-stuck] Merge conflicts detected via API. Conflict resolver triggered.`,
+          updatedAt: new Date(),
+        }, "DoneLaneRecovery auto-merger-conflict");
         await triggerConflictResolver(freshTask, system);
       } else {
-        freshTask.lastSyncError = `[auto-merger-failed] ${reason}: ${mergeResult.message} at ${new Date().toISOString()}.`;
-        freshTask.updatedAt = new Date();
-        await system.taskStore.save(freshTask);
+        await safeAtomicSave(freshTask, system.taskStore, {
+          lastSyncError: `[auto-merger-failed] ${reason}: ${mergeResult.message} at ${new Date().toISOString()}.`,
+          updatedAt: new Date(),
+        }, "DoneLaneRecovery auto-merger-failed");
       }
     }
   } catch (err) {
@@ -764,9 +780,10 @@ async function triggerRebaseResolver(
     }
 
     // Set pending marker before triggering
-    freshTask.lastSyncError = `[rebase-resolver-pending] Triggered at ${new Date().toISOString()}. Closed PR: ${freshTask.pullRequestUrl}`;
-    freshTask.updatedAt = new Date();
-    await system.taskStore.save(freshTask);
+    await safeAtomicSave(freshTask, system.taskStore, {
+      lastSyncError: `[rebase-resolver-pending] Triggered at ${new Date().toISOString()}. Closed PR: ${freshTask.pullRequestUrl}`,
+      updatedAt: new Date(),
+    }, "DoneLaneRecovery rebase-resolver-pending");
 
     const result = await enqueueKanbanTaskSession(system as RoutaSystem, {
       task: freshTask,
@@ -807,11 +824,12 @@ async function recoverOrphanInProgress(
   // Re-read to avoid stale reference before updating
   const fresh = await system.taskStore.get(task.id);
   if (!fresh) return false;
-  fresh.status = "COMPLETED" as typeof fresh.status;
-  fresh.triggerSessionId = undefined;
-  fresh.lastSyncError = undefined;
-  fresh.updatedAt = new Date();
-  await system.taskStore.save(fresh);
+  await safeAtomicSave(fresh, system.taskStore, {
+    status: "COMPLETED" as TaskStatus,
+    triggerSessionId: null,
+    lastSyncError: null,
+    updatedAt: new Date(),
+  }, "DoneLaneRecovery orphan-in-progress");
   return true;
 }
 
@@ -828,11 +846,12 @@ async function recoverAutomationLimitExhausted(
   if (!fresh) return false;
   const cleaned = clearStuckMarker(fresh, "deep");
 
-  fresh.lastSyncError = cleaned.lastSyncError;
-  fresh.laneSessions = cleaned.laneSessions;
-  fresh.triggerSessionId = undefined;
-  fresh.updatedAt = new Date();
-  await system.taskStore.save(fresh);
+  await safeAtomicSave(fresh, system.taskStore, {
+    lastSyncError: cleaned.lastSyncError,
+    laneSessions: cleaned.laneSessions,
+    triggerSessionId: null,
+    updatedAt: new Date(),
+  }, "DoneLaneRecovery automation-limit-clear");
   return true;
 }
 
@@ -956,10 +975,12 @@ async function resolveCompletedSpecialistSessions(
       isSuccess ? "completed" : "failed");
 
     if (isSuccess && specialistId === "kanban-auto-merger") {
-      freshTask.lastSyncError = undefined;
-      freshTask.triggerSessionId = undefined;
-      freshTask.updatedAt = new Date();
-      await system.taskStore.save(freshTask);
+      await safeAtomicSave(freshTask, system.taskStore, {
+        lastSyncError: null,
+        triggerSessionId: null,
+        laneSessions: freshTask.laneSessions,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery specialist-auto-merger-success");
       resolved++;
       console.log(
         `[DoneLaneRecovery] Auto-merger completed for card ${task.id}. Clearing marker.`,
@@ -968,16 +989,20 @@ async function resolveCompletedSpecialistSessions(
       console.log(
         `[DoneLaneRecovery] Auto-merger failed for card ${task.id}. Marking stuck for next tick recovery.`,
       );
-      freshTask.triggerSessionId = undefined;
-      freshTask.lastSyncError = `[done-lane-stuck] Auto-merger failed (session ${specialistSession.sessionId}). Will retry on next tick via webhook_missed recovery.`;
-      freshTask.updatedAt = new Date();
-      await system.taskStore.save(freshTask);
+      await safeAtomicSave(freshTask, system.taskStore, {
+        triggerSessionId: null,
+        lastSyncError: `[done-lane-stuck] Auto-merger failed (session ${specialistSession.sessionId}). Will retry on next tick via webhook_missed recovery.`,
+        laneSessions: freshTask.laneSessions,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery specialist-auto-merger-failed");
       resolved++;
     } else if (isSuccess && specialistId === "kanban-conflict-resolver") {
-      freshTask.lastSyncError = undefined;
-      freshTask.triggerSessionId = undefined;
-      freshTask.updatedAt = new Date();
-      await system.taskStore.save(freshTask);
+      await safeAtomicSave(freshTask, system.taskStore, {
+        lastSyncError: null,
+        triggerSessionId: null,
+        laneSessions: freshTask.laneSessions,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery specialist-conflict-resolver-success");
       resolved++;
       console.log(
         `[DoneLaneRecovery] Conflict-resolver completed for card ${task.id}. Will re-verify PR status.`,
@@ -990,42 +1015,52 @@ async function resolveCompletedSpecialistSessions(
         );
         const recreated = await attemptPrRecreate(freshTask, system);
         if (!recreated) {
-          freshTask.lastSyncError = buildDoneStuckError(
-            `Conflict resolver failed ${retryCount} times and PR recreate failed. Manual intervention required.`,
-          );
-          freshTask.triggerSessionId = undefined;
-          freshTask.updatedAt = new Date();
-          await system.taskStore.save(freshTask);
+          await safeAtomicSave(freshTask, system.taskStore, {
+            lastSyncError: buildDoneStuckError(
+              `Conflict resolver failed ${retryCount} times and PR recreate failed. Manual intervention required.`,
+            ),
+            triggerSessionId: null,
+            laneSessions: freshTask.laneSessions,
+            updatedAt: new Date(),
+          }, "DoneLaneRecovery specialist-conflict-exhausted");
         }
       } else {
         console.log(
           `[DoneLaneRecovery] Conflict-resolver failed for card ${task.id} (retry ${retryCount}/${recoveryCfg.conflictResolverMaxRetries}). Retrying.`,
         );
-        freshTask.lastSyncError = `[conflict-resolver-pending] Triggered at ${new Date().toISOString()}. Retry #${retryCount}.`;
-        freshTask.triggerSessionId = undefined;
-        freshTask.updatedAt = new Date();
-        await system.taskStore.save(freshTask);
+        await safeAtomicSave(freshTask, system.taskStore, {
+          lastSyncError: `[conflict-resolver-pending] Triggered at ${new Date().toISOString()}. Retry #${retryCount}.`,
+          triggerSessionId: null,
+          laneSessions: freshTask.laneSessions,
+          updatedAt: new Date(),
+        }, "DoneLaneRecovery specialist-conflict-retry");
         await triggerConflictResolver(freshTask, system);
       }
       resolved++;
     } else if (isSuccess && specialistId === "kanban-rebase-resolver") {
-      freshTask.lastSyncError = undefined;
-      freshTask.triggerSessionId = undefined;
-      freshTask.updatedAt = new Date();
-      await system.taskStore.save(freshTask);
+      await safeAtomicSave(freshTask, system.taskStore, {
+        lastSyncError: null,
+        triggerSessionId: null,
+        laneSessions: freshTask.laneSessions,
+        updatedAt: new Date(),
+      }, "DoneLaneRecovery specialist-rebase-success");
       resolved++;
     } else if (!isSuccess && specialistId === "kanban-rebase-resolver") {
       const retryCount = countSpecialistRetries(freshTask, "kanban-rebase-resolver") + 1;
       if (retryCount >= recoveryCfg.conflictResolverMaxRetries) {
-        freshTask.lastSyncError = `[done-lane-stuck] Rebase resolver failed ${retryCount} times. Manual intervention required.`;
-        freshTask.triggerSessionId = undefined;
-        freshTask.updatedAt = new Date();
-        await system.taskStore.save(freshTask);
+        await safeAtomicSave(freshTask, system.taskStore, {
+          lastSyncError: `[done-lane-stuck] Rebase resolver failed ${retryCount} times. Manual intervention required.`,
+          triggerSessionId: null,
+          laneSessions: freshTask.laneSessions,
+          updatedAt: new Date(),
+        }, "DoneLaneRecovery specialist-rebase-exhausted");
       } else {
-        freshTask.lastSyncError = `[rebase-resolver-pending] Triggered at ${new Date().toISOString()}. Retry #${retryCount}.`;
-        freshTask.triggerSessionId = undefined;
-        freshTask.updatedAt = new Date();
-        await system.taskStore.save(freshTask);
+        await safeAtomicSave(freshTask, system.taskStore, {
+          lastSyncError: `[rebase-resolver-pending] Triggered at ${new Date().toISOString()}. Retry #${retryCount}.`,
+          triggerSessionId: null,
+          laneSessions: freshTask.laneSessions,
+          updatedAt: new Date(),
+        }, "DoneLaneRecovery specialist-rebase-retry");
         await triggerRebaseResolver(freshTask, system);
       }
       resolved++;
@@ -1182,8 +1217,10 @@ export async function runDoneLaneRecoveryTick(
                 if (stuck.task.worktreeId && stuck.task.boardId) {
                   // Clear placeholder PR URLs ("manual", "already-merged") so PrAutoCreate can proceed
                   if (stuck.task.pullRequestUrl && !isRealPR(stuck.task)) {
-                    stuck.task.pullRequestUrl = undefined;
-                    await system.taskStore.save(stuck.task);
+                    await safeAtomicSave(stuck.task, system.taskStore, {
+                      pullRequestUrl: null,
+                      updatedAt: new Date(),
+                    }, "DoneLaneRecovery no-pr-clear-placeholder");
                   }
                   const prUrl = await executeAutoPrCreation(
                     system.worktreeStore,
@@ -1221,8 +1258,10 @@ export async function runDoneLaneRecoveryTick(
                   if (!isRealPR(freshDegraded) && freshDegraded.worktreeId && freshDegraded.boardId) {
                     // Clear placeholder PR URLs so PrAutoCreate can proceed
                     if (freshDegraded.pullRequestUrl) {
-                      freshDegraded.pullRequestUrl = undefined;
-                      await system.taskStore.save(freshDegraded);
+                      await safeAtomicSave(freshDegraded, system.taskStore, {
+                        pullRequestUrl: null,
+                        updatedAt: new Date(),
+                      }, "DoneLaneRecovery review-degraded-clear-pr");
                     }
                     const prUrl = await executeAutoPrCreation(
                       system.worktreeStore,
@@ -1242,10 +1281,11 @@ export async function runDoneLaneRecoveryTick(
                       summary.recovered++;
                     }
                   }
-                  freshDegraded.lastSyncError = undefined;
-                  freshDegraded.status = TaskStatus.COMPLETED;
-                  freshDegraded.updatedAt = new Date();
-                  await system.taskStore.save(freshDegraded);
+                  await safeAtomicSave(freshDegraded, system.taskStore, {
+                    lastSyncError: null,
+                    status: TaskStatus.COMPLETED,
+                    updatedAt: new Date(),
+                  }, "DoneLaneRecovery review-degraded-complete");
                   console.log(
                     `[DoneLaneRecovery] Auto-passed review-degraded task ${freshDegraded.id}.`,
                   );
@@ -1316,15 +1356,11 @@ export async function cleanupOrphanPendingMarkers(
         console.log(
           `[DoneLaneRecovery] Cleaning orphan marker for card ${task.id}: ${err.slice(0, 40)}...`,
         );
-        task.lastSyncError = undefined;
-        task.updatedAt = new Date();
-        // Drizzle's onConflictDoUpdate skips undefined fields, so
-        // setting lastSyncError = undefined won't actually NULL the column.
-        // Use atomicUpdate when available — it still skips undefined, so
-        // we must pass an explicit marker. The save() below is kept as
-        // the authoritative write; any concurrent lane scanner write
-        // that re-sets the error will be re-cleared on next startup.
-        await system.taskStore.save(task);
+        // Startup cleanup uses safeAtomicSave for consistency
+        await safeAtomicSave(task, system.taskStore, {
+          lastSyncError: null,
+          updatedAt: new Date(),
+        }, "DoneLaneRecovery startup-cleanup");
         cleaned++;
       }
     }

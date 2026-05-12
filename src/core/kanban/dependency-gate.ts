@@ -25,6 +25,15 @@ export interface CanMoveResult {
  *   - AND its PR (if any) has been merged
  */
 export function isDependencySatisfied(depTask: Task): boolean {
+  // Split parent with pending children is never satisfied based on column alone.
+  // Only COMPLETED/ARCHIVED status counts — which is set by advanceParentToReview
+  // after all children complete.
+  if (depTask.splitPlan?.childTaskIds?.length) {
+    const isTerminalStatus = depTask.status === TaskStatus.COMPLETED
+      || depTask.status === TaskStatus.ARCHIVED;
+    if (!isTerminalStatus) return false;
+  }
+
   const isCompleted = depTask.status === TaskStatus.COMPLETED
     || depTask.status === TaskStatus.ARCHIVED
     || depTask.columnId === "done"
@@ -233,12 +242,12 @@ export function applyDependencyStatus(
  */
 export function dependencyUnblockFields(): {
   dependencyStatus: "clear";
-  lastSyncError: undefined;
+  lastSyncError: null;
   updatedAt: Date;
 } {
   return {
     dependencyStatus: "clear",
-    lastSyncError: undefined,
+    lastSyncError: null,
     updatedAt: new Date(),
   };
 }
@@ -311,4 +320,33 @@ export async function computeParentProgress(
     total: children.length,
     label: `${completed}/${children.length} sub-tasks completed`,
   };
+}
+
+// ─── Split parent child-check helper ────────────────────────────────
+
+export interface SplitChildCheckResult {
+  pending: boolean;
+  pendingNames: string[];
+}
+
+/**
+ * Check whether a split parent task has any non-COMPLETED child tasks.
+ * Used by archive, moveCard, and terminal-lane guards to prevent premature
+ * archival or completion of a parent whose children are still in progress.
+ */
+export async function hasPendingSplitChildren(
+  task: Task,
+  taskStore: { get(id: string): Promise<Task | undefined | null> },
+): Promise<SplitChildCheckResult> {
+  if (!task.splitPlan?.childTaskIds?.length) {
+    return { pending: false, pendingNames: [] };
+  }
+  const pendingNames: string[] = [];
+  for (const childId of task.splitPlan.childTaskIds) {
+    const child = await taskStore.get(childId);
+    if (child && child.status !== TaskStatus.COMPLETED && child.status !== TaskStatus.ARCHIVED) {
+      pendingNames.push(child.title ?? childId);
+    }
+  }
+  return { pending: pendingNames.length > 0, pendingNames };
 }

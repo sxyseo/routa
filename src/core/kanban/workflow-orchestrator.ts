@@ -26,6 +26,7 @@ import { resolveTransitionAutomation } from "./column-transition";
 import { getDefaultKanbanDevSessionSupervision } from "./board-session-supervision";
 import { markTaskLaneSessionStatus, upsertTaskLaneSession } from "./task-lane-history";
 import { checkDependencyGate, dependencyUnblockFields } from "./dependency-gate";
+import { safeAtomicSave } from "./atomic-task-update";
 import { checkWipLimit } from "./wip-limit-gate";
 import { type KanbanBranchRules } from "./board-branch-rules";
 import { PR_FAILURE_PREFIX } from "./pr-auto-create";
@@ -573,6 +574,28 @@ export class KanbanWorkflowOrchestrator {
     const resolved = resolveTransitionAutomation(board, data);
     if (!resolved) return;
     const task = await this.taskStore.get(data.cardId);
+
+    // Backward transition (rework) detection: when a card moves to an
+    // earlier column (e.g. review→dev after rejection), clear the
+    // destination column's laneSession entries so the automation system
+    // treats it as a fresh start rather than a completed step.
+    const fromIdx = board.columns.findIndex((c) => c.id === data.fromColumnId);
+    const toIdx = board.columns.findIndex((c) => c.id === data.toColumnId);
+    if (fromIdx >= 0 && toIdx >= 0 && toIdx < fromIdx && task?.laneSessions) {
+      const cleared = task.laneSessions.filter(
+        (s: { columnId?: string }) => s.columnId !== data.toColumnId,
+      );
+      if (cleared.length !== task.laneSessions.length) {
+        task.laneSessions = cleared;
+        task.updatedAt = new Date();
+        await this.taskStore.save(task);
+        console.log(
+          `[WorkflowOrchestrator] Backward transition (${data.fromColumnId}→${data.toColumnId}). ` +
+          `Cleared destination laneSessions for card ${data.cardId}.`,
+        );
+      }
+    }
+
     const laneObjective = task?.objective?.trim() || data.cardTitle;
     const targetColumn = resolved.column;
     const automation = resolved.automation;
@@ -1343,6 +1366,36 @@ export class KanbanWorkflowOrchestrator {
             // (blocked/archived come after it in position order).
             const isTerminalStage = doneCol?.stage === "done" || doneCol?.stage === "archived";
             if (isTerminalStage && freshTask.status !== "COMPLETED") {
+              // Split parent guard: skip COMPLETED marking if child tasks are still pending.
+              // The parent should only reach COMPLETED after advanceParentToReview fires
+              // (when all children complete).
+              const splitPlan = freshTask.splitPlan;
+              if (splitPlan?.childTaskIds?.length) {
+                let allChildrenDone = true;
+                for (const childId of splitPlan.childTaskIds) {
+                  const child = await this.taskStore.get(childId);
+                  if (child && child.status !== "COMPLETED" && child.status !== "ARCHIVED") {
+                    allChildrenDone = false;
+                    break;
+                  }
+                }
+                if (!allChildrenDone) {
+                  console.log(
+                    `[WorkflowOrchestrator] Card ${cardId} has ${splitPlan.childTaskIds.length} child tasks, ` +
+                    `not all completed. Skipping COMPLETED marking.`,
+                  );
+                  // Clear triggerSessionId to prevent re-trigger loops, keep the [Split] marker
+                  if (freshTask.version !== undefined && this.taskStore.atomicUpdate) {
+                    await this.taskStore.atomicUpdate(cardId, freshTask.version, {
+                      triggerSessionId: undefined,
+                      lastSyncError: `[Split] Waiting for ${splitPlan.childTaskIds.length} child tasks to complete.`,
+                    });
+                  }
+                  // Skip to next automation entry — do NOT mark COMPLETED
+                  continue;
+                }
+              }
+
               console.log(
                 `[WorkflowOrchestrator] Card ${cardId} completed done-lane (terminal column). ` +
                 `Setting status to COMPLETED to prevent re-trigger loops.`,
@@ -1814,19 +1867,7 @@ export class KanbanWorkflowOrchestrator {
       const depCheck = await checkDependencyGate(t, board.columns, this.taskStore);
       if (!depCheck.blocked && getErrorType(t.lastSyncError) === "dependency_blocked") {
         const fields = dependencyUnblockFields();
-        // Use atomicUpdate to avoid overwriting concurrent changes
-        if (t.version !== undefined && this.taskStore.atomicUpdate) {
-          const ok = await this.taskStore.atomicUpdate(t.id, t.version, fields);
-          if (!ok) {
-            const fresh = await this.taskStore.get(t.id);
-            if (fresh && fresh.version !== undefined && this.taskStore.atomicUpdate) {
-              await this.taskStore.atomicUpdate(fresh.id, fresh.version, fields);
-            }
-          }
-        } else {
-          Object.assign(t, fields);
-          await this.taskStore.save(t);
-        }
+        await safeAtomicSave(t, this.taskStore, fields, "WorkflowOrchestrator dependency-unblock");
         newlyUnblocked.push(t.id);
 
         this.eventBus.emit({

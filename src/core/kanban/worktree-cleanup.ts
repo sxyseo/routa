@@ -9,6 +9,7 @@
 import { AgentEvent, AgentEventType } from "../events/event-bus";
 import { GitWorktreeService } from "../git/git-worktree-service";
 import type { RoutaSystem } from "../routa-system";
+import { safeAtomicSave } from "./atomic-task-update";
 
 const HANDLER_KEY = "kanban-worktree-cleanup";
 
@@ -49,9 +50,10 @@ export function startWorktreeCleanupListener(system: RoutaSystem): void {
       try {
         const task = await system.taskStore.get(taskId);
         if (task && task.worktreeId === worktreeId) {
-          task.worktreeId = undefined;
-          task.updatedAt = new Date();
-          await system.taskStore.save(task);
+          await safeAtomicSave(task, system.taskStore, {
+            worktreeId: null,
+            updatedAt: new Date(),
+          }, "WorktreeCleanup");
         }
       } catch { /* task may be gone */ }
     }
