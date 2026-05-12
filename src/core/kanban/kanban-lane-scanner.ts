@@ -543,11 +543,18 @@ function scheduleNextTick(system: RoutaSystem): void {
   const interval = computeScanInterval(getScannerState().stats);
   scanTimer = setTimeout(() => {
     scanTimer = null;
-    void runLaneScannerTick(system).then(() => {
-      if ((globalThis as Record<string, unknown>)[`${GLOBAL_KEY}_started`]) {
-        scheduleNextTick(system);
-      }
-    });
+    void runLaneScannerTick(system)
+      .then(() => {
+        if ((globalThis as Record<string, unknown>)[`${GLOBAL_KEY}_started`]) {
+          scheduleNextTick(system);
+        }
+      })
+      .catch((err) => {
+        console.error("[LaneScanner] Tick failed, will retry:", err);
+        if ((globalThis as Record<string, unknown>)[`${GLOBAL_KEY}_started`]) {
+          scheduleNextTick(system);
+        }
+      });
   }, interval);
 }
 

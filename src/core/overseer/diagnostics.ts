@@ -190,6 +190,10 @@ function checkDependencyBlockResolved(
   allTasks: Task[],
   diagnostics: OverseerDiagnostic[],
 ): void {
+  // Don't interfere with split parent markers — they indicate child task
+  // dependency, not dependency-block issues that unblock-dependency should clear.
+  if (task.lastSyncError?.startsWith("[Split]")) return;
+
   const hasBlockedError = task.lastSyncError?.includes("dependency_blocked")
     || task.lastSyncError?.includes("Blocked by unfinished dependencies");
   if (task.status !== "PENDING" && task.dependencyStatus !== "blocked" && !hasBlockedError) return;
@@ -249,15 +253,15 @@ function checkOrphanInProgress(
 ): void {
   if (task.status !== "IN_PROGRESS") return;
 
-  // Check if task has been IN_PROGRESS for a very long time without session activity
+  // Check if task has been IN_PROGRESS for a long time without session activity
   const updatedAt = task.updatedAt?.getTime() ?? 0;
-  const TWO_HOURS = 2 * 60 * 60 * 1000;
-  if (Date.now() - updatedAt > TWO_HOURS && !task.triggerSessionId) {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  if (Date.now() - updatedAt > THIRTY_MINUTES && !task.triggerSessionId) {
     diagnostics.push({
       pattern: "orphan-in-progress",
       category: "AUTO",
       taskId: task.id,
-      description: `Task "${task.title}" has been IN_PROGRESS for >2h with no active session`,
+      description: `Task "${task.title}" has been IN_PROGRESS for >30min with no active session`,
       details: { taskStatus: task.status },
     });
   }
