@@ -408,6 +408,11 @@ async function runLaneScannerTickInner(system: RoutaSystem): Promise<LaneScanner
             // "transitioned"/"completed" means the card was returned to this column
             // after a downstream failure (e.g. worktree creation failed). Re-trigger
             // from step 0 with bounded retries.
+            // For split parents waiting for children, skip re-triggering entirely —
+            // the parent will auto-advance when all children complete.
+            if (task.lastSyncError?.startsWith("[Split]")) {
+              continue;
+            }
             // For dependency-blocked errors, re-check whether dependencies are now
             // satisfied — the prerequisite task may have completed since last scan.
             if (getErrorType(task.lastSyncError) === "dependency_blocked") {

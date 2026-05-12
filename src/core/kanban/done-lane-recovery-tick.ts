@@ -818,12 +818,31 @@ async function recoverOrphanInProgress(
   task: Task,
   system: RecoverySystem,
 ): Promise<boolean> {
-  console.log(
-    `[DoneLaneRecovery] Orphan IN_PROGRESS in done lane: ${task.id}. Marking COMPLETED.`,
-  );
   // Re-read to avoid stale reference before updating
   const fresh = await system.taskStore.get(task.id);
   if (!fresh) return false;
+
+  // Split parent guard: don't mark COMPLETED if child tasks are pending
+  if (fresh.splitPlan?.childTaskIds?.length) {
+    let allChildrenDone = true;
+    for (const childId of fresh.splitPlan.childTaskIds) {
+      const child = await system.taskStore.get(childId);
+      if (child && child.status !== "COMPLETED" && child.status !== "ARCHIVED") {
+        allChildrenDone = false;
+        break;
+      }
+    }
+    if (!allChildrenDone) {
+      console.log(
+        `[DoneLaneRecovery] Orphan IN_PROGRESS ${task.id} is a split parent with pending children. Skipping.`,
+      );
+      return false;
+    }
+  }
+
+  console.log(
+    `[DoneLaneRecovery] Orphan IN_PROGRESS in done lane: ${task.id}. Marking COMPLETED.`,
+  );
   await safeAtomicSave(fresh, system.taskStore, {
     status: "COMPLETED" as TaskStatus,
     triggerSessionId: null,
