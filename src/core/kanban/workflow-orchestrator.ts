@@ -518,7 +518,12 @@ export class KanbanWorkflowOrchestrator {
   }
 
   private async handleColumnTransition(event: AgentEvent): Promise<void> {
-    await this.handleColumnTransitionData(event.data as unknown as ColumnTransitionData);
+    const data = event.data as unknown as ColumnTransitionData;
+    console.log(
+      `[WorkflowOrchestrator] COLUMN_TRANSITION: card=${data.cardId} ` +
+      `${data.fromColumnId}→${data.toColumnId} (source: ${data.source?.type ?? "unknown"})`,
+    );
+    await this.handleColumnTransitionData(data);
   }
 
   private async handleColumnTransitionData(data: ColumnTransitionData): Promise<void> {
@@ -528,11 +533,17 @@ export class KanbanWorkflowOrchestrator {
     const isWatchdogRetry = source?.type === "watchdog_retry"
       || (source === undefined && (data as unknown as Record<string, unknown>)._source === "watchdog_stale_retry");
     if (isWatchdogRetry && this.activeAutomations.has(data.cardId)) {
+      console.log(
+        `[WorkflowOrchestrator] Skipping watchdog retry: automation already active for card=${data.cardId}`,
+      );
       return;
     }
 
     // review-degraded: let DoneLaneRecovery handle it instead of re-queuing.
     if (source?.type === "review_degraded") {
+      console.log(
+        `[WorkflowOrchestrator] Skipping review_degraded for card=${data.cardId}: handled by DoneLaneRecovery`,
+      );
       return;
     }
 
@@ -570,9 +581,18 @@ export class KanbanWorkflowOrchestrator {
     }
 
     const board = await this.kanbanBoardStore.get(data.boardId);
-    if (!board) return;
+    if (!board) {
+      console.warn(`[WorkflowOrchestrator] COLUMN_TRANSITION: board not found for id=${data.boardId}`);
+      return;
+    }
     const resolved = resolveTransitionAutomation(board, data);
-    if (!resolved) return;
+    if (!resolved) {
+      console.log(
+        `[WorkflowOrchestrator] No automation resolved for card=${data.cardId} ` +
+        `${data.fromColumnId}→${data.toColumnId}`,
+      );
+      return;
+    }
     const task = await this.taskStore.get(data.cardId);
 
     // Backward transition (rework) detection: when a card moves to an
@@ -582,16 +602,23 @@ export class KanbanWorkflowOrchestrator {
     const fromIdx = board.columns.findIndex((c) => c.id === data.fromColumnId);
     const toIdx = board.columns.findIndex((c) => c.id === data.toColumnId);
     if (fromIdx >= 0 && toIdx >= 0 && toIdx < fromIdx && task?.laneSessions) {
+      // Clear BOTH source and destination column sessions on backward transition.
+      // The card is getting a fresh start — stale sessions from either column
+      // would cause LaneScanner to incorrectly believe steps are already completed
+      // when the card later returns to the source column.
+      const prevCount = task.laneSessions.length;
       const cleared = task.laneSessions.filter(
-        (s: { columnId?: string }) => s.columnId !== data.toColumnId,
+        (s: { columnId?: string }) =>
+          s.columnId !== data.toColumnId && s.columnId !== data.fromColumnId,
       );
-      if (cleared.length !== task.laneSessions.length) {
+      if (cleared.length !== prevCount) {
         task.laneSessions = cleared;
         task.updatedAt = new Date();
         await this.taskStore.save(task);
         console.log(
           `[WorkflowOrchestrator] Backward transition (${data.fromColumnId}→${data.toColumnId}). ` +
-          `Cleared destination laneSessions for card ${data.cardId}.`,
+          `Cleared ${prevCount - cleared.length} laneSession(s) for card ${data.cardId} ` +
+          `(source=${data.fromColumnId}, dest=${data.toColumnId}).`,
         );
       }
     }
@@ -1130,6 +1157,10 @@ export class KanbanWorkflowOrchestrator {
   }
 
   private async handleAgentCompletion(event: AgentEvent): Promise<void> {
+    const eventSessionId = typeof event.data?.sessionId === "string" ? event.data.sessionId : undefined;
+    console.log(
+      `[WorkflowOrchestrator] handleAgentCompletion: type=${event.type} sessionId=${eventSessionId ?? "none"} activeAutomations=${this.activeAutomations.size}`,
+    );
     for (const [cardId, automation] of this.activeAutomations.entries()) {
       if (automation.status === "completed" || automation.status === "failed") continue;
 
