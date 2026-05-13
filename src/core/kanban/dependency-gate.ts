@@ -38,13 +38,11 @@ export function isDependencySatisfied(depTask: Task): boolean {
     || depTask.status === TaskStatus.ARCHIVED
     || depTask.columnId === "done"
     || depTask.columnId === "archived";
-  // A PR is considered merged when: no PR URL, has a merge timestamp,
-  // or the URL is a non-HTTP sentinel value (e.g. "already-merged").
-  const prUrl = depTask.pullRequestUrl?.trim();
-  const prMerged = !prUrl
-    || Boolean(depTask.pullRequestMergedAt)
-    || !prUrl.startsWith("http");
-  return isCompleted && prMerged;
+  // Terminal status alone is sufficient — PR merge tracking can be stale
+  // (duplicate PRs merged, webhook lost, etc.). Don't let bad metadata
+  // block downstream tasks that depend on completed work.
+  if (isCompleted) return true;
+  return false;
 }
 
 export async function checkDependencyGate(
