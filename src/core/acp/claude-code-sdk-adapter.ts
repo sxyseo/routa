@@ -568,9 +568,11 @@ export class ClaudeCodeSdkAdapter {
       this.onNotification(completeNotification);
       yield formatSseEvent(completeNotification);
 
-      // Auto-notify lifecycle: agent is idle after completing its turn
+      // Auto-notify lifecycle: agent completed its single-prompt turn.
+      // Kanban specialists are one-shot — stream end means work is done,
+      // so emit COMPLETED (not IDLE) so WorkflowOrchestrator processes the result.
       if (this.lifecycleNotifier) {
-        await this.lifecycleNotifier.notifyIdle();
+        await this.lifecycleNotifier.notifyCompleted();
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
