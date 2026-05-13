@@ -198,13 +198,9 @@ export async function detectStuckPatterns(
 
   // Pattern: PR merged on GitHub but pullRequestMergedAt not set (webhook lost)
   // Also covers the most common case: has PR + not merged + no error
-  // Skip COMPLETED tasks in done column — they've already passed all automation steps.
-  // Rebase-resolver on a completed task is wasteful (code may already be merged via
-  // child tasks or a replacement PR). The rebase-resolver "succeeds" (LLM exits 0),
-  // clearing lastSyncError, which removes the dedup marker and causes this check
-  // to re-fire every tick — an infinite loop.
-  if (hasPR && !prMerged && !cbExhausted && ageMs > PR_VERIFICATION_MIN_AGE_MS
-      && task.status !== "COMPLETED") {
+  // COMPLETED tasks with open PRs still need auto-merge; the rebase-resolver
+  // path inside recoverWebhookMissed is gated by task.status for COMPLETED tasks.
+  if (hasPR && !prMerged && !cbExhausted && ageMs > PR_VERIFICATION_MIN_AGE_MS) {
     patterns.push({ pattern: "webhook_missed", task });
   }
 
@@ -306,7 +302,16 @@ async function recoverWebhookMissed(
   if (verification.verified) {
     // PR CLOSED without merging — base branch likely deleted.
     // Trigger rebase-resolver to rebase onto workspace baseBranch and open a new PR.
+    // Skip for COMPLETED tasks — rebase-resolver on a completed task creates an
+    // infinite loop (LLM "succeeds", clears lastSyncError, re-fires every tick).
     if (verification.state === "closed" && !verification.merged) {
+      if (task.status === "COMPLETED") {
+        console.log(
+          `[DoneLaneRecovery] Card ${task.id} PR closed without merging, but task is COMPLETED. ` +
+          `Skipping rebase-resolver to avoid infinite loop.`,
+        );
+        return "no_action";
+      }
       console.log(
         `[DoneLaneRecovery] Card ${task.id} PR closed without merging. ` +
         `Triggering rebase-resolver to rebase onto base branch.`,
@@ -322,7 +327,15 @@ async function recoverWebhookMissed(
     }
 
     if (verification.mergeable === false) {
-      // Has conflicts — trigger conflict-resolver
+      // Has conflicts — trigger conflict-resolver.
+      // Skip for COMPLETED tasks — same rationale as rebase-resolver above.
+      if (task.status === "COMPLETED") {
+        console.log(
+          `[DoneLaneRecovery] Card ${task.id} PR has conflicts, but task is COMPLETED. ` +
+          `Skipping conflict-resolver.`,
+        );
+        return "no_action";
+      }
       console.log(
         `[DoneLaneRecovery] Card ${task.id} PR has conflicts. Triggering conflict-resolver.`,
       );
