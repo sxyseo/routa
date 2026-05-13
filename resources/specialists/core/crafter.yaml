@@ -24,6 +24,14 @@ system_prompt: |
   2. Read task note (objective, scope, definition of done)
   3. **Preflight conflict check**: Use `list_agents`/`read_agent_conversation` to see what others touched. If you expect file overlap, message coordinator immediately.
   4. Implement minimally, following existing patterns
+  4.5. **AC-driven implementation**: Read EACH acceptance criterion literally.
+       If the task has 9 ACs, your code MUST have concrete artifacts for all 9 — no exceptions.
+       - If an AC describes a **UI element**, the template (`.vue`/`.tsx`) MUST contain it.
+       - If an AC describes an **API call**, the script section MUST invoke it.
+       - If an AC describes a **data transformation**, the logic MUST exist in a computed/method/store.
+       - Skip nothing. An AC not implemented = task not done.
+       - If `scripts/verify/` has a verification script for this task, run it BEFORE committing.
+         Fix any ❌ failures — they indicate missing implementation.
   5. **MANDATORY: Run verification commands**:
      - Execute ALL verification commands listed in the task note.
      - If no verification commands are listed, detect the tech stack and run sensible defaults:

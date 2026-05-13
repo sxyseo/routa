@@ -340,6 +340,74 @@ function runEntrixChecks(repoRoot: string): PreGateViolation[] {
   return violations;
 }
 
+// ─── AC Coverage Checks (scripts/verify/*.js) ───────────────────────────────
+
+/**
+ * Run project-defined AC verification scripts from `scripts/verify/`.
+ * Each script outputs lines like "❌ AC2: ... — FAIL" for failures.
+ * Failures are mapped to BLOCKER violations so Gate cannot override them.
+ */
+function runAcCoverageChecks(
+  repoRoot: string,
+  config: PreGateConfig,
+): PreGateViolation[] {
+  const violations: PreGateViolation[] = [];
+  const verifyDir = path.join(repoRoot, "scripts", "verify");
+  if (!fs.existsSync(verifyDir)) return violations;
+
+  let scriptFiles: string[];
+  try {
+    scriptFiles = fs.readdirSync(verifyDir).filter(
+      (f) => f.startsWith("verify-") && f.endsWith(".js"),
+    );
+  } catch {
+    return violations;
+  }
+
+  if (scriptFiles.length === 0) return violations;
+
+  for (const script of scriptFiles) {
+    const scriptPath = path.join(verifyDir, script);
+    try {
+      execSync(`node "${scriptPath}"`, {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        timeout: 30_000,
+        maxBuffer: 2 * 1024 * 1024,
+      });
+      // exit code 0 = all passed, no violations
+    } catch (err) {
+      const output = (err as any).stdout ?? "";
+      const failLines = output
+        .split("\n")
+        .filter((line: string) => line.includes("❌") && line.includes("FAIL"));
+
+      for (const line of failLines) {
+        const acMatch = line.match(/AC\d+/);
+        const descMatch = line.match(/AC\d+:\s*(.+?)\s*—/);
+        violations.push({
+          rule: "ac-coverage",
+          severity: "BLOCKER",
+          file: script,
+          message: `AC Coverage: ${acMatch?.[0] ?? "unknown"} — ${descMatch?.[1] ?? line.trim()}`,
+        });
+      }
+
+      // If no specific AC lines parsed but script failed, add a generic blocker
+      if (failLines.length === 0 && (err as any).status > 0) {
+        violations.push({
+          rule: "ac-coverage",
+          severity: "BLOCKER",
+          file: script,
+          message: `AC Coverage script ${script} exited with code ${(err as any).status}. Some acceptance criteria are not met.`,
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 export async function runPreGateChecks(
@@ -389,6 +457,9 @@ export async function runPreGateChecks(
 
   // 5. Entrix (optional, graceful no-op if not installed)
   violations.push(...runEntrixChecks(repoRoot));
+
+  // 6. AC Coverage Check (optional, runs scripts/verify/*.js if present)
+  violations.push(...runAcCoverageChecks(repoRoot, config));
 
   const blockers = violations.filter((v) => v.severity === "BLOCKER");
   const warnings = violations.filter((v) => v.severity === "WARNING");
