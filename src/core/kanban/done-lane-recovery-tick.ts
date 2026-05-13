@@ -197,8 +197,14 @@ export async function detectStuckPatterns(
   }
 
   // Pattern: PR merged on GitHub but pullRequestMergedAt not set (webhook lost)
-  // Also covers the most common case: COMPLETED + has PR + not merged + no error
-  if (hasPR && !prMerged && !cbExhausted && ageMs > PR_VERIFICATION_MIN_AGE_MS) {
+  // Also covers the most common case: has PR + not merged + no error
+  // Skip COMPLETED tasks in done column — they've already passed all automation steps.
+  // Rebase-resolver on a completed task is wasteful (code may already be merged via
+  // child tasks or a replacement PR). The rebase-resolver "succeeds" (LLM exits 0),
+  // clearing lastSyncError, which removes the dedup marker and causes this check
+  // to re-fire every tick — an infinite loop.
+  if (hasPR && !prMerged && !cbExhausted && ageMs > PR_VERIFICATION_MIN_AGE_MS
+      && task.status !== "COMPLETED") {
     patterns.push({ pattern: "webhook_missed", task });
   }
 
