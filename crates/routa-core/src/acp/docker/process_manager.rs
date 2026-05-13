@@ -2,6 +2,7 @@
 //!
 //! Mirrors the TypeScript `DockerProcessManager` in `src/core/acp/docker/process-manager.ts`.
 
+use super::detector::resolve_docker_bin;
 use super::types::{DockerContainerConfig, DockerContainerInfo};
 use super::utils::{
     find_available_port, generate_container_name, sanitize_env_for_logging, shell_escape,
@@ -410,10 +411,18 @@ impl DockerProcessManager {
             return Err("Empty command".to_string());
         }
 
+        // Use resolved docker binary (handles macOS GUI app PATH issue)
+        let docker_bin = resolve_docker_bin();
+        let program = if args[0] == "docker" {
+            docker_bin.as_str()
+        } else {
+            args[0]
+        };
+
         let result = tokio::time::timeout(
             Duration::from_secs(30),
             #[allow(clippy::needless_borrows_for_generic_args)]
-            Command::new(&args[0])
+            Command::new(program)
                 .args(&args[1..])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())

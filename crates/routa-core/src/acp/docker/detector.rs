@@ -4,8 +4,9 @@
 
 use super::types::{DockerPullResult, DockerStatus};
 use chrono::Utc;
+use std::env;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::process::Command;
 use tokio::sync::{Mutex, RwLock};
@@ -253,9 +254,59 @@ impl DockerDetector {
     }
 }
 
+/// Resolve the docker binary to an absolute path.
+///
+/// macOS GUI apps (launched from Dock/Finder) inherit a minimal launchd PATH
+/// that typically lacks `/usr/local/bin` where Docker / OrbStack / Colima
+/// install their symlinks.  We probe several well-known locations and fall
+/// back to `"docker"` so the OS can still resolve it on systems with a
+/// proper PATH (Linux, or when launched from a terminal).
+pub fn resolve_docker_bin() -> String {
+    let candidates: &[&str] = &[
+        "/usr/local/bin/docker",       // Docker Desktop, OrbStack (macOS)
+        "/opt/homebrew/bin/docker",    // Homebrew (Apple Silicon)
+        "/usr/bin/docker",             // Linux system install
+    ];
+
+    for path in candidates {
+        if std::path::Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+
+    // Fall back to bare name and let the OS resolve via PATH
+    "docker".to_string()
+}
+
+/// Expanded PATH directories that should be searched for docker.
+const EXTRA_PATH_DIRS: &[&str] = &[
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+];
+
+/// Pre-resolved docker binary path (computed once at first use).
+static DOCKER_BIN: OnceLock<String> = OnceLock::new();
+
 fn docker_command() -> Command {
-    let mut command = Command::new("docker");
+    let bin = DOCKER_BIN.get_or_init(resolve_docker_bin);
+    let mut command = Command::new(bin.as_str());
     command.kill_on_drop(true);
+
+    // Inject common Docker paths into the child process PATH so that the
+    // docker CLI itself (and any helpers it shells out to) can be found,
+    // even when the parent process was launched with a minimal launchd PATH.
+    if let Ok(current_path) = env::var("PATH") {
+        let extra: String = EXTRA_PATH_DIRS
+            .iter()
+            .filter(|d| !current_path.contains(*d))
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(":");
+        if !extra.is_empty() {
+            let expanded = format!("{extra}:{current_path}");
+            command.env("PATH", &expanded);
+        }
+    }
 
     #[cfg(windows)]
     {

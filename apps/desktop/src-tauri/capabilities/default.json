@@ -27,7 +27,8 @@
         { "name": "codex-acp", "cmd": "codex-acp", "args": true },
         { "name": "gemini", "cmd": "gemini", "args": true },
         { "name": "claude", "cmd": "claude", "args": true },
-        { "name": "copilot", "cmd": "copilot", "args": true }
+        { "name": "copilot", "cmd": "copilot", "args": true },
+        { "name": "docker", "cmd": "docker", "args": true }
       ]
     },
     {
@@ -42,7 +43,8 @@
         { "name": "codex-acp", "cmd": "codex-acp", "args": true },
         { "name": "gemini", "cmd": "gemini", "args": true },
         { "name": "claude", "cmd": "claude", "args": true },
-        { "name": "copilot", "cmd": "copilot", "args": true }
+        { "name": "copilot", "cmd": "copilot", "args": true },
+        { "name": "docker", "cmd": "docker", "args": true }
       ]
     },
 
