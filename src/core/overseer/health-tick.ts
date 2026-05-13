@@ -13,6 +13,7 @@
 import type { RoutaSystem } from "../routa-system";
 import type { OverseerTickResult } from "./diagnostics";
 import { dependencyUnblockFields } from "../kanban/dependency-gate";
+import { TaskStatus } from "../models/task";
 import { safeAtomicSave } from "../kanban/atomic-task-update";
 import { collectSystemDiagnostics } from "./diagnostics";
 import { classifyDiagnostics, toOverseerDecision } from "./decision-classifier";
@@ -182,8 +183,12 @@ async function executeAutoDecision(
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
         const fields = dependencyUnblockFields();
+        // If task is stuck in non-standard "blocked" column, move it back to backlog
+        // so LaneScanner can pick it up.
+        const columnOverride = task.columnId === "blocked" ? { columnId: "backlog" } : {};
         await safeAtomicSave(task, system.taskStore, {
           ...fields,
+          ...columnOverride,
         }, "Overseer unblock-dependency");
         console.log(`[Overseer] AUTO: Unblocked dependencies for task ${decision.taskId}`);
         system.eventBus.emit({
@@ -203,6 +208,20 @@ async function executeAutoDecision(
           },
           timestamp: new Date(),
         });
+      }
+      break;
+    }
+
+    case "mark-completed": {
+      const task = await system.taskStore.get(decision.taskId);
+      if (task) {
+        await safeAtomicSave(task, system.taskStore, {
+          status: TaskStatus.COMPLETED,
+          columnId: "done",
+          lastSyncError: null,
+          updatedAt: new Date(),
+        }, "Overseer mark-completed (webhook-lost-pr-merge)");
+        console.log(`[Overseer] AUTO: Marked task ${decision.taskId} as COMPLETED (merged PR but wrong status)`);
       }
       break;
     }

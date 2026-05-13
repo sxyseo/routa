@@ -96,8 +96,11 @@ export async function collectSystemDiagnostics(
     // AUTO: version conflict retry
     checkVersionConflictRetry(task, diagnostics);
 
-    // NOTIFY: orphan IN_PROGRESS status
+    // AUTO: orphan IN_PROGRESS / PENDING in non-kanban column
     checkOrphanInProgress(task, diagnostics);
+
+    // AUTO: task with merged PR but wrong status
+    checkWebhookLostPrMerge(task, diagnostics);
   }
 
   return diagnostics;
@@ -193,6 +196,8 @@ function checkDependencyBlockResolved(
   // Don't interfere with split parent markers — they indicate child task
   // dependency, not dependency-block issues that unblock-dependency should clear.
   if (task.lastSyncError?.startsWith("[Split]")) return;
+  // Skip tasks with merged PRs — webhook-lost-pr-merge will handle them.
+  if (task.pullRequestMergedAt) return;
 
   const hasBlockedError = task.lastSyncError?.includes("dependency_blocked")
     || task.lastSyncError?.includes("Blocked by unfinished dependencies");
@@ -201,14 +206,14 @@ function checkDependencyBlockResolved(
   const deps = task.dependencies ?? [];
   if (deps.length === 0) return;
 
-  // Align with dependency-gate.ts isDependencySatisfied: check terminal status + PR merge
+  // Align with dependency-gate.ts: terminal status alone satisfies the dependency.
+  // PR merge tracking can be stale (duplicate PRs, webhook lost).
   const allSatisfied = deps.every((depId) => {
     const dep = allTasks.find((t) => t.id === depId);
     if (!dep) return false;
     const isTerminal = dep.status === "COMPLETED" || dep.status === "ARCHIVED"
       || dep.columnId === "done" || dep.columnId === "archived";
-    const prMerged = !dep.pullRequestUrl || Boolean(dep.pullRequestMergedAt);
-    return isTerminal && prMerged;
+    return isTerminal;
   });
 
   if (allSatisfied) {
@@ -251,18 +256,50 @@ function checkOrphanInProgress(
   task: Task,
   diagnostics: OverseerDiagnostic[],
 ): void {
-  if (task.status !== "IN_PROGRESS") return;
+  if (task.status === "IN_PROGRESS") {
+    // Check if task has been IN_PROGRESS for a long time without session activity
+    const updatedAt = task.updatedAt?.getTime() ?? 0;
+    const THIRTY_MINUTES = 30 * 60 * 1000;
+    if (Date.now() - updatedAt > THIRTY_MINUTES && !task.triggerSessionId) {
+      diagnostics.push({
+        pattern: "orphan-in-progress",
+        category: "AUTO",
+        taskId: task.id,
+        description: `Task "${task.title}" has been IN_PROGRESS for >30min with no active session`,
+        details: { taskStatus: task.status },
+      });
+    }
+  }
 
-  // Check if task has been IN_PROGRESS for a long time without session activity
-  const updatedAt = task.updatedAt?.getTime() ?? 0;
-  const THIRTY_MINUTES = 30 * 60 * 1000;
-  if (Date.now() - updatedAt > THIRTY_MINUTES && !task.triggerSessionId) {
+  // Detect PENDING tasks stuck in non-kanban columns (e.g. "blocked").
+  // These columns aren't scanned by LaneScanner so tasks can never progress.
+  const nonKanbanColumns = new Set(["blocked"]);
+  if (task.status === "PENDING" && nonKanbanColumns.has(task.columnId ?? "")) {
     diagnostics.push({
-      pattern: "orphan-in-progress",
+      pattern: "dependency-block-resolved",
       category: "AUTO",
       taskId: task.id,
-      description: `Task "${task.title}" has been IN_PROGRESS for >30min with no active session`,
-      details: { taskStatus: task.status },
+      description: `Task "${task.title}" is PENDING in non-kanban column "${task.columnId}" — needs move to backlog`,
+      details: { columnId: task.columnId, taskStatus: task.status },
     });
   }
+}
+
+function checkWebhookLostPrMerge(
+  task: Task,
+  diagnostics: OverseerDiagnostic[],
+): void {
+  // Detect tasks that have a merged PR but are not in a terminal status.
+  // This happens when the PR merge webhook is lost or the task was moved
+  // to a non-standard column before the merge event could update its status.
+  if (task.status === "COMPLETED" || task.status === "ARCHIVED") return;
+  if (!task.pullRequestMergedAt) return;
+
+  diagnostics.push({
+    pattern: "webhook-lost-pr-merge",
+    category: "AUTO",
+    taskId: task.id,
+    description: `Task "${task.title}" has merged PR but status is ${task.status} in column ${task.columnId}`,
+    details: { pullRequestMergedAt: task.pullRequestMergedAt, taskStatus: task.status, columnId: task.columnId },
+  });
 }

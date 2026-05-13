@@ -15,6 +15,7 @@ export type DecisionAction =
   | "unblock-dependency"
   | "retry-version-conflict"
   | "reset-orphan-session"
+  | "mark-completed"
   | "log-only"
   | "notify-human"
   | "escalate";
@@ -37,7 +38,7 @@ const PATTERN_ACTION_MAP: Record<DiagnosticPattern, DecisionAction> = {
   "orphan-worktree": "clear-worktree-ref",
   "dependency-block-resolved": "unblock-dependency",
   "version-conflict-retry": "retry-version-conflict",
-  "webhook-lost-pr-merge": "log-only",
+  "webhook-lost-pr-merge": "mark-completed",
   "orphan-in-progress": "reset-orphan-session",
   "automation-limit-marker": "clear-pending-marker",
   "cb-cooldown-expired": "log-only",
@@ -69,7 +70,12 @@ export async function classifyDiagnostics(
   // Prioritize orphan-in-progress over other AUTO patterns so recovery
   // actions are not crowded out by lower-impact orphan-worktree cleanups.
   const prioritized = [...diagnostics].sort((a, b) => {
-    const prio = (p: string) => p === "orphan-in-progress" ? 0 : 1;
+    // Higher-priority patterns processed first to avoid write-write races
+    const prio = (p: string) => {
+      if (p === "webhook-lost-pr-merge") return 0;
+      if (p === "orphan-in-progress") return 1;
+      return 2;
+    };
     return prio(a.pattern) - prio(b.pattern);
   });
 
