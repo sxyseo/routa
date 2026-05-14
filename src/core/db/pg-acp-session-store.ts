@@ -2,7 +2,7 @@
  * PgAcpSessionStore — Postgres-backed ACP session store using Drizzle ORM.
  */
 
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, gt } from "drizzle-orm";
 import type { Database } from "./index";
 import { acpSessions, sessionMessages } from "./schema";
 import type { AcpSessionStore, AcpSession, AcpSessionNotification } from "../store/acp-session-store";
@@ -66,11 +66,14 @@ export class PgAcpSessionStore implements AcpSessionStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
-  async list(): Promise<AcpSession[]> {
-    const rows = await this.db
+  async list(options?: { createdAfter?: Date }): Promise<AcpSession[]> {
+    const base = this.db
       .select()
-      .from(acpSessions)
-      .orderBy(desc(acpSessions.createdAt));
+      .from(acpSessions);
+    const rows = options?.createdAfter
+      ? await base.where(gte(acpSessions.createdAt, options.createdAfter))
+          .orderBy(desc(acpSessions.createdAt))
+      : await base.orderBy(desc(acpSessions.createdAt));
     return rows.map(this.toModel);
   }
 

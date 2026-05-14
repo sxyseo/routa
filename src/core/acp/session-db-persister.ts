@@ -190,13 +190,14 @@ export async function hydrateSessionsFromDb(): Promise<Array<{
   if (driver === "memory") return [];
 
   try {
+    const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000); // only hydrate recent sessions
     if (driver === "postgres") {
       const db = getPostgresDatabase();
-      return await new PgAcpSessionStore(db).list();
+      return await new PgAcpSessionStore(db).list({ createdAfter: cutoff });
     } else {
       const { getSqliteDatabase } = await loadSqliteDatabaseModule();
       const db = getSqliteDatabase();
-      return await new SqliteAcpSessionStore(db).list();
+      return await new SqliteAcpSessionStore(db).list({ createdAfter: cutoff });
     }
   } catch (err) {
     console.error(`[SessionDB] Failed to load sessions from ${driver}:`, err);

@@ -799,11 +799,14 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
-  async list(): Promise<AcpSession[]> {
-    const rows = await this.db
+  async list(options?: { createdAfter?: Date }): Promise<AcpSession[]> {
+    const base = this.db
       .select()
-      .from(sqliteSchema.acpSessions)
-      .orderBy(desc(sqliteSchema.acpSessions.createdAt));
+      .from(sqliteSchema.acpSessions);
+    const rows = options?.createdAfter
+      ? await base.where(gte(sqliteSchema.acpSessions.createdAt, options.createdAfter))
+          .orderBy(desc(sqliteSchema.acpSessions.createdAt))
+      : await base.orderBy(desc(sqliteSchema.acpSessions.createdAt));
     return rows.map(this.toModel);
   }
 
