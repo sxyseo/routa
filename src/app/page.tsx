@@ -280,10 +280,10 @@ function HomePageContent() {
       .slice(0, 3),
     [acp.providers],
   );
-  const needsInlineOnboarding =
-    hasWorkspace &&
-    !onboardingCompleted &&
-    (!hasProviderConfig || !hasCodebase || preferredMode === null);
+  // Show onboarding until the user explicitly dismisses it.
+  // Individual step completion (provider, codebase, mode) is rendered
+  // inside OnboardingCard — no need to auto-hide based on step status.
+  const needsInlineOnboarding = hasWorkspace && !onboardingCompleted;
 
   useEffect(() => {
     if (!activeWorkspaceId || !requestedSurfaceId) return;

@@ -63,7 +63,7 @@ export type {
   SettingsPanelProps,
 } from "./settings-panel-shared";
 
-function OnboardingSettingsSection({ onResetOnboarding }: { onResetOnboarding?: () => void }) {
+function OnboardingSettingsSection({ onResetOnboarding, onClose }: { onResetOnboarding?: () => void; onClose?: () => void }) {
   const { t } = useTranslation();
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(() => {
     if (typeof window === "undefined") {
@@ -78,7 +78,8 @@ function OnboardingSettingsSection({ onResetOnboarding }: { onResetOnboarding?: 
     }
     setHasCompletedOnboarding(false);
     onResetOnboarding?.();
-  }, [onResetOnboarding]);
+    onClose?.();
+  }, [onResetOnboarding, onClose]);
 
   return (
     <div className={settingsCardCls}>
@@ -872,7 +873,7 @@ function SettingsPanelContent({ onClose, providers, initialTab, onResetOnboardin
             </p>
           </div>
 
-          <OnboardingSettingsSection onResetOnboarding={onResetOnboarding} />
+          <OnboardingSettingsSection onResetOnboarding={onResetOnboarding} onClose={onClose} />
 
           <ProviderCatalogSection allProviders={providers} />
 
