@@ -1011,9 +1011,8 @@ class HttpSessionStore {
           continue;
         }
 
-        // Protect ROUTA orchestrator sessions while they have active child sessions.
-        // Once all children are gone, allow ROUTA sessions to expire with a 3x timeout
-        // extension, and only trim heavy data rather than deleting the session entirely.
+        // ROUTA orchestrator sessions: release from memory once all children are done.
+        // DB records are preserved so UI history remains intact.
         if (session?.role === "ROUTA") {
           const hasActiveChildren = Array.from(this.sessions.values())
             .some(s => s.parentSessionId === _sessionId
@@ -1022,13 +1021,10 @@ class HttpSessionStore {
             this.lastAccessTime.set(_sessionId, now);
             continue;
           }
-          // No active children — allow expiry with 3x timeout, but only trim data
-          const routeStaleThreshold = staleThreshold * 3;
-          if (now - lastAccess <= routeStaleThreshold) {
-            continue;
-          }
-          this.trimSessionData(_sessionId);
-          this.lastAccessTime.set(_sessionId, now);
+          // No active children + stale → release from memory (DB kept)
+          this.deleteSession(_sessionId);
+          this.lastAccessTime.delete(_sessionId);
+          removedCount++;
           continue;
         }
 
