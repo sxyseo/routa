@@ -71,18 +71,26 @@ async fn get_memory_stats(
     });
 
     if query.history.unwrap_or(false) {
-        // Return with empty history for desktop version
+        // Return with history; field names must match the Next.js API
+        // so the frontend can parse the response uniformly.
         Json(serde_json::json!({
-            "stats": stats,
-            "history": [],
+            "current": stats,
+            "peaks": {
+                "heapUsedMB": stats["heapUsedMB"],
+                "rssMB": 0,
+            },
+            "growthRateMBPerMinute": 0,
+            "snapshots": [],
             "sessionStore": {
-                "activeSessions": 0,
-                "totalHistorySize": 0,
-                "averageHistorySize": 0
-            }
+                "sessionCount": 0,
+                "totalHistoryMessages": 0,
+                "staleSessionCount": 0,
+                "activeSseCount": 0,
+            },
         }))
     } else {
-        Json(stats)
+        Json(serde_json::json!({ "current": stats })
+        )
     }
 }
 
