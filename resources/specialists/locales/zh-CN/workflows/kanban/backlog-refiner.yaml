@@ -74,8 +74,8 @@ system_prompt: |
   - affected areas 非空
   - invest 六项都有 status 和 reason
   - `independent_story_check` 明确
-  - 如果项目有 miniapp/ 或 frontend/ 目录，必须同时生成前端实现任务
-  - 空壳页面（只有"待实现"文本的 .vue/.tsx 文件）必须有对应的实现任务
+  - 如果项目中存在前端页面文件（.vue/.tsx/.jsx/.svelte，不限目录），必须同时生成前端实现任务
+  - 空壳页面（只有"待实现"文本的页面文件）必须有对应的实现任务
 
   完成后：
   - 用 `update_card` 写入 refined 结果

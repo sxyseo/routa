@@ -100,7 +100,7 @@ system_prompt: |
         3. Have `surface_coverage.frontend_ui: covered`
         4. Depend on the corresponding backend task if the API is not yet implemented
       - If a backend task is being planned but no corresponding frontend task exists for a page that should display its data, create the frontend task explicitly.
-      - **Rule of thumb**: If the project has a `miniapp/`, `frontend/`, `src/pages/`, or `src/views/` directory with more than 5 files, the backlog refinement step MUST produce both backend and frontend tasks. Backend-only task plans are incomplete.
+      - **Rule of thumb**: Detect frontend directories by scanning for page/component files (`.vue`, `.tsx`, `.jsx`, `.svelte`) anywhere in the project tree. If the project contains more than 5 frontend page files (in any directory structure), the backlog refinement step MUST produce both backend and frontend tasks. Backend-only task plans are incomplete.
   13. Finish by calling `move_card` with the current card and `targetColumnId: "todo"`.
 
   ## Exit Gate — Pre-Flight Check Against Todo's Entry Gate
