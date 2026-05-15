@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { resolveApiPath } from "@/client/config/backend";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> },
-) {
-  const { workspaceId } = await params;
+export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
+  const workspaceId = searchParams.get("workspaceId");
   const userId = searchParams.get("userId");
   const format = searchParams.get("format") ?? "csv";
   const fromDate = searchParams.get("fromDate");
   const toDate = searchParams.get("toDate");
+
+  if (!workspaceId) {
+    return NextResponse.json(
+      { error: "Missing required parameter: workspaceId" },
+      { status: 400 }
+    );
+  }
 
   if (!userId) {
     return NextResponse.json(

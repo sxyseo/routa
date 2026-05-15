@@ -103,10 +103,10 @@ export function CheckInClient({ workspaceId }: CheckInClientProps) {
     setCheckInResult(null);
 
     try {
-      const response = await fetch(`/api/check-in/${workspaceId}`, {
+      const response = await fetch("/api/check-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ workspaceId, userId }),
       });
 
       const data: CheckInResponse = await response.json();

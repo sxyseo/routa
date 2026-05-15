@@ -53,19 +53,22 @@ export interface CheckInResponse {
   error?: string;
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> },
-) {
-  const { workspaceId } = await params;
+export async function POST(request: NextRequest) {
   const body: CheckInRequest = await request.json();
+
+  if (!body.workspaceId) {
+    return NextResponse.json(
+      { error: "Missing required parameter: workspaceId" },
+      { status: 400 }
+    );
+  }
 
   const path = resolveApiPath("/game/daily-signin/signin");
   const response = await desktopAwareFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      workspace_id: workspaceId,
+      workspace_id: body.workspaceId,
       user_id: body.userId,
     }),
   });

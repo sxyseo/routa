@@ -26,16 +26,20 @@ export interface CheckInHistoryResponse {
   pagination: PaginationInfo;
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> },
-) {
-  const { workspaceId } = await params;
+export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
+  const workspaceId = searchParams.get("workspaceId");
   const userId = searchParams.get("userId");
   const month = searchParams.get("month");
   const page = searchParams.get("page") ?? "1";
   const pageSize = searchParams.get("pageSize") ?? "30";
+
+  if (!workspaceId) {
+    return NextResponse.json(
+      { error: "Missing required parameter: workspaceId" },
+      { status: 400 }
+    );
+  }
 
   if (!userId) {
     return NextResponse.json(

@@ -167,7 +167,7 @@ export function CheckInStatsPage({ workspaceId }: StatsPageProps) {
           value={stats?.currentStreak ?? 0}
           suffix="天"
           description="连续签到天数"
-          highlight={stats?.currentStreak && stats.currentStreak >= 7}
+          highlight={!!(stats?.currentStreak && stats.currentStreak >= 7)}
         />
         <StatCard
           icon={<Award className="w-6 h-6 text-purple-500" />}

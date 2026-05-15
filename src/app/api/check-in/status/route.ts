@@ -14,18 +14,22 @@ export interface CheckInStatusResponse {
   lastSigninAt?: number;
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> },
-) {
-  const { workspaceId } = await params;
+export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
+  const workspaceId = searchParams.get("workspaceId");
   const userId = searchParams.get("userId");
+
+  if (!workspaceId) {
+    return NextResponse.json(
+      { error: "Missing required parameter: workspaceId" },
+      { status: 400 },
+    );
+  }
 
   if (!userId) {
     return NextResponse.json(
       { error: "Missing required parameter: userId" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -34,9 +38,9 @@ export async function GET(
     `${path}?workspace_id=${workspaceId}&user_id=${userId}`,
     {
       headers: { "Content-Type": "application/json" },
-    }
+    },
   );
 
   const data = await response.json();
-  return NextResponse.json(data);
+  return NextResponse.json(data as CheckInStatusResponse);
 }

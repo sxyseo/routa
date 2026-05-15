@@ -100,7 +100,8 @@
       "Bash(ln -s ../../.agents/skills/slide /Users/phodal/ai/routa-js/.claude/skills/slide)",
       "Bash(ln -s ../../.agents/skills/spreadsheets /Users/phodal/ai/routa-js/.claude/skills/spreadsheets)",
       "mcp__Claude_Preview__preview_start",
-      "Bash(kill 50364)"
+      "Bash(kill 50364)",
+      "Bash(npx eslint:*)"
     ]
   },
   "hooks": {
