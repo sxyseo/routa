@@ -14,7 +14,7 @@ import type { TaskStore } from "../store/task-store";
 import { hasExceededNonDevAutomationRepeatLimit } from "./workflow-orchestrator";
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { clearStaleTriggerSession } from "./task-trigger-session";
-import { getKanbanAutomationSteps, type KanbanColumnStage } from "../models/kanban";
+import { getKanbanAutomationSteps, type KanbanColumnStage, inferStageFromColumnId } from "../models/kanban";
 import { AgentEventType } from "../events/event-bus";
 import { PR_FAILURE_PREFIX } from "./pr-auto-create";
 import { verifyPrMergeStatus } from "./pr-status-verifier";
@@ -317,7 +317,9 @@ async function runLaneScannerTickInner(system: RoutaSystem): Promise<LaneScanner
             // This can happen when autoAdvanceCard loses a version-conflict race or
             // the server restarts between session completion and the advance.
             const shouldAutoAdvance = currentColumn?.automation?.autoAdvanceOnSuccess === true;
-            const stuckInColumn = shouldAutoAdvance;
+            const columnStage = currentColumn?.stage ?? (currentColumn?.id ? inferStageFromColumnId(currentColumn.id) : undefined);
+            // Terminal stages (done/archived) have nowhere to advance to — skip advance-only logic.
+            const stuckInColumn = shouldAutoAdvance && columnStage !== "done" && columnStage !== "archived";
 
             if (!hasFailedAdvance && !stuckInColumn) {
               continue; // No error, no cross-column failures, no pending advance — genuinely done
