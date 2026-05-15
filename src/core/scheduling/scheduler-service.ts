@@ -27,6 +27,7 @@ let schedulerTask: ScheduledTask | null = null;
 let autoArchiveTask: ScheduledTask | null = null;
 let doneLaneRecoveryTask: ScheduledTask | null = null;
 let overseerHealthTask: ScheduledTask | null = null;
+let historyCompactTask: ScheduledTask | null = null;
 let isStarted = false;
 
 export function startSchedulerService(): void {
@@ -144,6 +145,45 @@ export function startSchedulerService(): void {
     });
   });
 
+  // History compaction runs every 6 hours to merge old streaming chunks
+  // in the DB and archive stale trace records.
+  historyCompactTask = nodeCron.schedule("7 */6 * * *", () => {
+    void runWithSpan(
+      "routa.scheduler.history_compact_tick",
+      {},
+      async (span) => {
+        await withHeartbeat("history-compact-tick", async () => {
+          const driver = process.env.DATABASE_DRIVER;
+          if (!driver || driver === "memory") return;
+
+          if (driver === "postgres") {
+            // PgStore compaction not yet implemented — skip
+            return;
+          }
+
+          const { getSqliteDatabase } = await import("../db/sqlite");
+          const db = getSqliteDatabase();
+          const { HistoryCompactor } = await import("../storage/history-compactor");
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SqliteDatabase satisfies the compactor's query interface
+          const compactor = new HistoryCompactor(db as any);
+          const result = await compactor.compact();
+          span.setAttribute("routa.compact.sessions", result.compressedSessions);
+          span.setAttribute("routa.compact.chunks_merged", result.mergedChunks);
+          span.setAttribute("routa.compact.traces_archived", result.archivedTraces);
+          span.setAttribute("routa.compact.traces_deleted", result.deletedTraces);
+          if (result.mergedChunks > 0 || result.deletedTraces > 0) {
+            console.log(
+              `[Scheduler] History compact: sessions=${result.compressedSessions} ` +
+              `chunks_merged=${result.mergedChunks} traces_deleted=${result.deletedTraces}`,
+            );
+          }
+        });
+      },
+    ).catch((error) => {
+      console.error("[Scheduler] History compact tick failed:", error);
+    });
+  });
+
   isStarted = true;
 }
 
@@ -152,9 +192,11 @@ export function stopSchedulerService(): void {
   autoArchiveTask?.stop();
   doneLaneRecoveryTask?.stop();
   overseerHealthTask?.stop();
+  historyCompactTask?.stop();
   schedulerTask = null;
   autoArchiveTask = null;
   doneLaneRecoveryTask = null;
   overseerHealthTask = null;
+  historyCompactTask = null;
   isStarted = false;
 }

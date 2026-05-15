@@ -48,6 +48,7 @@ export class HistoryCompactor {
     cutoff.setDate(cutoff.getDate() - 7);
 
     // Find session_messages with event_type = 'agent_message_chunk' older than cutoff
+    // Limit to 5000 per run to avoid locking the DB for too long on first run
     const oldChunks = await this.db
       .select()
       .from(sessionMessages)
@@ -60,7 +61,8 @@ export class HistoryCompactor {
       .orderBy(
         asc(sessionMessages.sessionId),
         asc(sessionMessages.messageIndex)
-      );
+      )
+      .limit(5000);
 
     if (oldChunks.length === 0) {
       return { sessionsProcessed: 0, chunksMerged: 0 };
