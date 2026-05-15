@@ -469,7 +469,7 @@ describe("AcpProcessManager", () => {
     ]);
   });
 
-  it("merges auto and explicit ACP mcpServers for codex-acp sessions", async () => {
+  it("creates codex-acp sessions with auto MCP defaults", async () => {
     const manager = new AcpProcessManager();
 
     await manager.createSession(
@@ -481,13 +481,6 @@ describe("AcpProcessManager", () => {
       undefined,
       undefined,
       "ws-1",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      [
-        { name: "extra-server", type: "http", url: "http://localhost/extra" },
-      ],
     );
 
     expect(ensureMcpForProviderMock).not.toHaveBeenCalledWith("codex-acp", expect.anything());
@@ -500,7 +493,6 @@ describe("AcpProcessManager", () => {
     );
     expect((acpInstances[0]?.newSession as ReturnType<typeof vi.fn>)?.mock.calls[0]?.[1]).toEqual([
       { name: "routa-coordination", type: "http", url: "http://localhost/api/mcp", headers: [] },
-      { name: "extra-server", type: "http", url: "http://localhost/extra" },
     ]);
   });
 

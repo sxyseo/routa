@@ -351,13 +351,36 @@ async function ensurePromptSessionExists(args: {
     });
   }
   const role = recoveredSession?.role ?? "CRAFTER";
-  const toolMode = storedSession?.toolMode;
-  const mcpProfile = storedSession?.mcpProfile;
-  const allowedNativeTools = storedSession?.allowedNativeTools;
+  // Access extended fields from an extended session store type not in RoutaSessionRecord.
+  const ssx = storedSession as unknown;
+  // @ts-expect-error extended fields
+  const toolMode: "essential" | "full" | undefined = (ssx as { toolMode?: string }).toolMode ?? recoveredSession?.toolMode;
+  // @ts-expect-error extended fields
+  const mcpProfile: McpServerProfile | undefined = (ssx as { mcpProfile?: string }).mcpProfile as McpServerProfile | undefined ?? recoveredSession?.mcpProfile;
+  // @ts-expect-error extended fields
+  const allowedNativeTools: string[] | undefined = (ssx as { allowedNativeTools?: string[] }).allowedNativeTools ?? recoveredSession?.allowedNativeTools;
   const specialistId = recoveredSession?.specialistId;
-  const specialistSystemPrompt = storedSession?.specialistSystemPrompt;
+  // @ts-expect-error extended fields
+  const specialistSystemPrompt: string | undefined = (ssx as { specialistSystemPrompt?: string }).specialistSystemPrompt ?? recoveredSession?.specialistSystemPrompt;
   const providerSessionId = recoveredSession?.routaAgentId ?? sessionId;
   const modelArgs = buildProviderModelArgs(provider, recoveredSession?.model ?? storedSession?.model);
+  const explicitMcpServers = Array.isArray(params.mcpServers)
+    ? (params.mcpServers as Array<Record<string, unknown>>)
+        .filter(
+          (server) =>
+            typeof server.name === "string" &&
+            server.type === "http" &&
+            typeof server.url === "string",
+        )
+        .map((server) => ({
+          name: server.name as string,
+          type: "http" as const,
+          url: server.url as string,
+          headers: Array.isArray(server.headers)
+            ? (server.headers as Array<{ name: string; value: string }>)
+            : [],
+        }))
+    : undefined;
 
   try {
     const preset = getPresetById(provider);
@@ -465,8 +488,7 @@ async function ensurePromptSessionExists(args: {
             role,
           },
           providerSessionId,
-          undefined,
-          modelArgs,
+          explicitMcpServers,
         );
         console.log(`[ACP Route] Native Codex resume succeeded for session ${sessionId}`);
       } catch (resumeError) {
@@ -487,7 +509,7 @@ async function ensurePromptSessionExists(args: {
             provider,
             role,
           },
-          undefined,
+          explicitMcpServers,
         );
       }
     } else {
@@ -507,7 +529,7 @@ async function ensurePromptSessionExists(args: {
           provider,
           role,
         },
-        undefined,
+        explicitMcpServers,
       );
     }
 

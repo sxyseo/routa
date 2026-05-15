@@ -597,6 +597,7 @@ export async function POST(request: NextRequest) {
             workspaceId,
             storedSession?.toolMode,
             storedSession?.mcpProfile,
+            undefined,
             {
               provider,
               role,
@@ -621,6 +622,7 @@ export async function POST(request: NextRequest) {
           workspaceId,
           storedSession?.toolMode,
           storedSession?.mcpProfile,
+          undefined,
           {
             provider,
             role,

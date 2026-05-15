@@ -271,9 +271,9 @@ describe("executeMcpTool", () => {
       .find((tool) => tool.name === "load_feature_tree_context");
     const confirmFeatureTreeTool = getMcpToolDefinitions("essential", "kanban-planning")
       .find((tool) => tool.name === "confirm_feature_tree_story_context");
-    expect((loadFeatureTreeTool?.inputSchema as { properties?: Record<string, { type?: string }> }).properties?.maxFeatures?.type)
+    expect(((loadFeatureTreeTool?.inputSchema as unknown) as { properties?: Record<string, { type?: string }> }).properties?.maxFeatures?.type)
       .toBe("integer");
-    expect((confirmFeatureTreeTool?.inputSchema as { properties?: Record<string, { type?: string }> }).properties?.maxFeatures?.type)
+    expect(((confirmFeatureTreeTool?.inputSchema as unknown) as { properties?: Record<string, { type?: string }> }).properties?.maxFeatures?.type)
       .toBe("integer");
   });
 

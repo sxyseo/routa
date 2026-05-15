@@ -21,7 +21,7 @@ export async function persistSessionHistorySnapshot(
   // incremental session_messages rows are committed before we do a
   // full snapshot replace below.  This prevents a race where the
   // snapshot overwrites data that the writeBuffer hasn't persisted yet.
-  await store.flushWriteBuffer(sessionId);
+  await store.flushWriteBuffer?.(sessionId);
   const buffer = getSessionWriteBuffer();
   buffer.replace(sessionId, store.getConsolidatedHistory(sessionId));
   await buffer.flush(sessionId);

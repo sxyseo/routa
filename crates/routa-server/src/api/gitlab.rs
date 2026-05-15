@@ -22,7 +22,7 @@ use serde::Deserialize;
 
 use crate::api::tasks_gitlab::{
     gitlab_access_status, list_gitlab_issues, list_gitlab_merge_requests,
-    resolve_gitlab_project_for_codebase, resolve_gitlab_token,
+    resolve_gitlab_project_for_codebase,
 };
 use crate::error::ServerError;
 use crate::state::AppState;

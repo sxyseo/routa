@@ -5,7 +5,6 @@
 //! (defaults to `https://gitlab.com`).
 
 use reqwest::header::{ACCEPT, CONTENT_TYPE, USER_AGENT};
-use std::process::Command;
 
 // ─── Data types ──────────────────────────────────────────────────────────────
 

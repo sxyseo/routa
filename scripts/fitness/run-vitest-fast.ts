@@ -1,4 +1,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import path from "node:path";
+
+function vitestCliPath(): string {
+  return path.join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
+}
 
 const DEFAULT_BASE_REF_CANDIDATES = ["origin/main", "main", "origin/master", "master"] as const;
 const RELEVANT_PREFIXES = ["src/", "scripts/", "tests/"] as const;
@@ -92,7 +98,7 @@ function run(): number {
 
   if (!baseRef) {
     console.log("No upstream/main ref found for incremental Vitest; falling back to full suite.");
-    const fallback = spawnSync("npx", ["vitest", "run"], {
+    const fallback = spawnSync(process.execPath, [vitestCliPath(), "run"], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: "inherit",
@@ -116,7 +122,7 @@ function run(): number {
     `Running incremental Vitest against ${baseRef} for ${relevantChanges.length} relevant changed files.`,
   );
 
-  const result = spawnSync("npx", ["vitest", "run", "--changed", baseRef, "--passWithNoTests"], {
+  const result = spawnSync(process.execPath, [vitestCliPath(), "run", "--changed", baseRef, "--passWithNoTests"], {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: "pipe",
@@ -145,6 +151,6 @@ function run(): number {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exit(run());
 }

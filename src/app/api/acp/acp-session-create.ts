@@ -509,6 +509,7 @@ export async function handleSessionNew({
           workspaceId,
           toolMode,
           mcpProfile,
+          undefined,
           {
             provider,
             role,

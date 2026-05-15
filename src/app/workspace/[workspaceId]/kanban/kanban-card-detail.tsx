@@ -64,6 +64,7 @@ export interface KanbanCardDetailProps {
   onProviderChange?: (providerId: string | null) => void;
   onRepositoryChange?: (codebaseIds: string[]) => void;
   onSelectSession?: (sessionId: string) => void;
+  onOpenJitContextHistoryAnalysis?: (task: TaskInfo) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: (next: boolean) => void;
   onClose?: () => void;

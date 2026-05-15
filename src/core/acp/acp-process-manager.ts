@@ -14,7 +14,7 @@ import {
     parseMcpServersFromConfigs,
     providerSupportsMcp,
 } from "@/core/acp/mcp-setup";
-import {getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
+import {buildAcpHttpMcpServers, getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import {OpencodeSdkAdapter, OpencodeSdkDirectAdapter, shouldUseOpencodeAdapter, getOpencodeServerUrl, isOpencodeServerConfigured, isOpencodeDirectApiConfigured} from "@/core/acp/opencode-sdk-adapter";
 import {ClaudeCodeSdkAdapter, shouldUseClaudeCodeSdkAdapter} from "@/core/acp/claude-code-sdk-adapter";
@@ -29,6 +29,7 @@ import {getDatabaseDriver, getPostgresDatabase} from "@/core/db/index";
 import {PgAcpSessionStore} from "@/core/db/pg-acp-session-store";
 import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import type { AcpHttpMcpServerConfig } from "@/core/acp/mcp-config-generator";
 
 const ACP_DEBUG = process.env.ROUTA_DEBUG_ACP === "1";
 
@@ -125,12 +126,13 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
+        serverUrlOverride?: string,
     ): Promise<{ mcpConfigs?: string[]; providerArgs?: string[] } | undefined> {
         if (!providerSupportsMcp(presetId)) {
             return undefined;
         }
 
-        const baseConfig = getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile);
+        const baseConfig = getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile, serverUrlOverride);
         const mcpConfig = cwd ? { ...baseConfig, cwd } : baseConfig;
         const mcpResult = await ensureMcpForProvider(presetId, mcpConfig);
         if (mcpResult.cleanup) {
@@ -156,6 +158,23 @@ export class AcpProcessManager {
         this.mcpSessionCleanups.delete(sessionId);
         const summary = await cleanupMcpForProvider(cleanup);
         logAcpDebug(`[AcpProcessManager] MCP cleanup for ${sessionId}: ${summary}`);
+    }
+
+    private mergeMcpServers(
+        autoServers: AcpHttpMcpServerConfig[],
+        explicitServers?: AcpHttpMcpServerConfig[],
+    ): AcpHttpMcpServerConfig[] {
+        if (!explicitServers?.length) {
+            return autoServers;
+        }
+        const mergedByName = new Map<string, AcpHttpMcpServerConfig>();
+        for (const server of autoServers) {
+            mergedByName.set(server.name, server);
+        }
+        for (const server of explicitServers) {
+            mergedByName.set(server.name, server);
+        }
+        return [...mergedByName.values()];
     }
 
     hasActiveSession(sessionId: string): boolean {
@@ -192,7 +211,9 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
+        serverUrlOverride?: string,
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
+        explicitMcpServers?: AcpHttpMcpServerConfig[],
     ): Promise<string> {
         // Check if we should use OpenCode SDK adapter (serverless + configured)
         if (presetId === "opencode" && shouldUseOpencodeAdapter()) {
@@ -207,6 +228,7 @@ export class AcpProcessManager {
                 workspaceId,
                 toolMode,
                 mcpProfile,
+                serverUrlOverride,
             );
             const agentPort = await getAgentPortPool().allocate(sessionId);
             const envWithPort: Record<string, string> = { ...extraEnv, PORT: String(agentPort) };
@@ -218,10 +240,14 @@ export class AcpProcessManager {
                 mcpSetup?.mcpConfigs,
             );
             const proc = new AcpProcess(config, onNotification);
+            const acpMcpServers = this.mergeMcpServers(
+                buildAcpHttpMcpServers(getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile, serverUrlOverride)),
+                explicitMcpServers,
+            );
 
             await proc.start();
             await proc.initialize();
-            const acpSessionId = await proc.newSession(cwd);
+            const acpSessionId = await proc.newSession(cwd, acpMcpServers as unknown as Array<Record<string, unknown>>);
             proc.setSessionContext({
                 sessionId,
                 provider: sessionContext?.provider ?? presetId,
@@ -265,8 +291,10 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
+        serverUrlOverride?: string,
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
         providerSessionId?: string,
+        explicitMcpServers?: AcpHttpMcpServerConfig[],
     ): Promise<string> {
         try {
             const mcpSetup = await this.prepareMcpForSession(
@@ -276,6 +304,7 @@ export class AcpProcessManager {
                 workspaceId,
                 toolMode,
                 mcpProfile,
+                serverUrlOverride,
             );
             const agentPort = await getAgentPortPool().allocate(sessionId);
             const config = await buildConfigFromPreset(
@@ -286,11 +315,15 @@ export class AcpProcessManager {
                 mcpSetup?.mcpConfigs,
             );
             const proc = new AcpProcess(config, onNotification);
+            const acpMcpServers = this.mergeMcpServers(
+                buildAcpHttpMcpServers(getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile, serverUrlOverride)),
+                explicitMcpServers,
+            );
 
             await proc.start();
             await proc.initialize();
             const resolvedProviderSessionId = providerSessionId ?? sessionId;
-            await proc.loadSession(resolvedProviderSessionId, cwd);
+            await proc.loadSession(resolvedProviderSessionId, cwd, acpMcpServers as unknown as Array<Record<string, unknown>>);
             proc.setSessionContext({
                 sessionId,
                 provider: sessionContext?.provider ?? presetId,

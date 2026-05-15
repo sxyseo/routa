@@ -221,7 +221,7 @@ pub(crate) fn find_command_in_path(command: &str) -> Option<PathBuf> {
         #[cfg(windows)]
         {
             for ext in ["exe", "cmd", "bat"] {
-                let windows_candidate = dir.join(format!("{}.{}", command, ext));
+                let windows_candidate = dir.join(format!("{command}.{ext}"));
                 if windows_candidate.is_file() {
                     return Some(windows_candidate);
                 }

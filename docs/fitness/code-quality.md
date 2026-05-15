@@ -161,16 +161,7 @@ metrics:
   # ══════════════════════════════════════════════════════════════
 
   - name: dependency_cruiser_dependency_health
-    command: |
-      changed_files=$(git diff --name-only --diff-filter=ACMR HEAD -- src apps crates 2>/dev/null | \
-        grep -E '\.(ts|tsx|js|jsx)$' | \
-        grep -vE '(^|/)(node_modules|target|\\.next|_next|bundled)/' || true)
-
-      if [ -z "$changed_files" ]; then
-        echo "No changed TS/JS files"
-      else
-        npx --yes dependency-cruiser --config .dependency-cruiser.cjs src --validate
-      fi
+    command: node --import tsx scripts/fitness/run-depcruise-changed.ts 2>&1
     hard_gate: true
     tier: fast
     description: "基于 dependency-cruiser 检测变更范围内循环依赖与依赖规则违规"
@@ -180,16 +171,7 @@ metrics:
   # ══════════════════════════════════════════════════════════════
 
   - name: eslint_pass
-    command: |
-      changed_files=$(git diff --name-only --diff-filter=ACMR "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" -- src apps crates 2>/dev/null | \
-        grep -E '\.(ts|tsx|js|jsx|cjs|mjs)$' | \
-        grep -vE '(^|/)(node_modules|target|\.next|_next|bundled)/' || true)
-
-      if [ -z "$changed_files" ]; then
-        echo "No changed lintable files"
-      else
-        printf '%s\n' "$changed_files" | xargs npx eslint 2>&1
-      fi
+    command: node --import tsx scripts/fitness/run-eslint-changed.ts 2>&1
     hard_gate: true
     tier: fast
     description: "ESLint 必须通过；fast 模式优先只检查本地变更文件"

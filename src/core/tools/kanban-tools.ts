@@ -24,6 +24,7 @@ import type { RoutaSystem } from "../routa-system";
 import {
   createTask,
   Task,
+  TaskContextSearchSpec,
   TaskLaneHandoffRequestType,
   TaskLaneHandoffStatus,
   TaskPriority,
@@ -181,6 +182,8 @@ export class KanbanTools {
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
     assignedProvider?: string;
+    contextSearchSpec?: TaskContextSearchSpec;
+    sessionId?: string;
     workspaceId: string;
   }): Promise<ToolResult> {
     const board = await this.resolveBoard(params.workspaceId, params.boardId);
@@ -216,6 +219,8 @@ export class KanbanTools {
       priority: params.priority as TaskPriority | undefined,
       labels: params.labels,
       assignedProvider: params.assignedProvider,
+      contextSearchSpec: params.contextSearchSpec,
+      sessionId: params.sessionId,
     });
 
     await this.taskStore.save(task);
@@ -862,6 +867,7 @@ export class KanbanTools {
       priority?: "low" | "medium" | "high" | "urgent";
       labels?: string[];
       assignedProvider?: string;
+      contextSearchSpec?: TaskContextSearchSpec;
       scope?: string;
       acceptanceCriteria?: string[];
       verificationCommands?: string[];
@@ -876,6 +882,7 @@ export class KanbanTools {
     columnId?: string;
     /** Link all created cards to this parent task */
     parentTaskId?: string;
+    sessionId?: string;
   }): Promise<ToolResult> {
     const board = await this.resolveBoard(params.workspaceId, params.boardId);
     if (!board) {
@@ -932,12 +939,14 @@ export class KanbanTools {
         priority: item.priority as TaskPriority | undefined,
         labels: item.labels,
         assignedProvider: item.assignedProvider,
+        contextSearchSpec: item.contextSearchSpec,
         scope: item.scope,
         acceptanceCriteria: item.acceptanceCriteria,
         verificationCommands: item.verificationCommands,
         testCases: item.testCases,
         parentTaskId: params.parentTaskId,
         dependencies: depIds,
+        sessionId: params.sessionId,
         codebaseIds: parentTask?.codebaseIds,
       });
       await this.taskStore.save(task);

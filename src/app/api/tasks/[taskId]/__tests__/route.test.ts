@@ -244,8 +244,8 @@ describe("/api/tasks/[taskId]", () => {
       boardId: "board-1",
       columnId: "backlog",
       status: TaskStatus.PENDING,
-      githubRepo: "acme/platform",
-      githubNumber: 42,
+      vcsRepo: "acme/platform",
+      vcsNumber: 42,
       jitContextSnapshot: {
         generatedAt: "2026-04-22T07:37:30.509Z",
         summary: "Speculative feature-explorer history memory.",
