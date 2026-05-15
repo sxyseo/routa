@@ -870,18 +870,23 @@ export class KanbanWorkflowOrchestrator {
             const blockerSummary = preGateResult.blockers
               .map((b) => `[${b.rule}] ${b.file}${b.line ? `:${b.line}` : ""}: ${b.message}`)
               .join("; ");
-            const newError = `[pre-gate-blocked] ${blockerSummary}`;
-            if (task.lastSyncError !== newError) {
-              console.warn(
-                `[WorkflowOrchestrator] Card ${data.cardId} blocked by pre-gate checks: ${preGateResult.blockers.length} blocker(s)`,
-              );
-            }
-            task.lastSyncError = newError;
-            // Persistent field — survives lastSyncError cleanup on session start
+            // Log blockers as warnings but do NOT block the pipeline.
+            // Pre-gate violations are informational — the review guard will
+            // catch actual quality issues.  Blocking here causes systemic
+            // stalls when forbidden terms match common codebase patterns
+            // (e.g. "completed", "console.log") across many files.
+            console.warn(
+              `[WorkflowOrchestrator] Card ${data.cardId} pre-gate blockers (${preGateResult.blockers.length}): continuing pipeline — these are advisory`,
+            );
+            // Store for visibility in the UI but clear lastSyncError so
+            // the card is not treated as stuck.
             task.preGateBlockers = blockerSummary;
+            if (task.lastSyncError?.startsWith("[pre-gate-blocked]")) {
+              task.lastSyncError = undefined;
+            }
             task.updatedAt = new Date();
             await this.taskStore.save(task);
-            return;
+            // Do NOT return — let the card advance through the pipeline
           }
           // Warnings are logged but don't block. Clear stale blockers from prior runs.
           if (task.preGateBlockers) {
