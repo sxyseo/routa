@@ -337,6 +337,7 @@ impl Database {
                     worktree_path   TEXT NOT NULL,
                     branch          TEXT NOT NULL,
                     base_branch     TEXT NOT NULL,
+                    base_commit_sha TEXT,
                     status          TEXT NOT NULL DEFAULT 'creating',
                     session_id      TEXT,
                     label           TEXT,
@@ -442,6 +443,9 @@ impl Database {
                 "CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
                  CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(session_id);
                  CREATE INDEX IF NOT EXISTS idx_acp_sessions_parent ON acp_sessions(parent_session_id);"
+            )?;
+            Self::ignore_duplicate_column(
+                conn.execute("ALTER TABLE worktrees ADD COLUMN base_commit_sha TEXT", []),
             )
         })
     }

@@ -16,8 +16,8 @@ export type SpecIssue = {
   reportedBy: string;
   relatedIssues: string[];
   githubIssue: number | null;
-  githubState: string | null;
-  githubUrl: string | null;
+  vcsState: string | null;
+  vcsUrl: string | null;
   body: string;
 };
 
@@ -87,7 +87,7 @@ export type ResolvedRelation = {
   raw: string;
   key: string;
   label: string;
-  kind: "local" | "github" | "external";
+  kind: "local" | "github" | "gitlab" | "external";
   href: string | null;
   targetFilename: string | null;
 };
@@ -333,27 +333,81 @@ function normalizeDocsIssueFilename(value: string): string | null {
   return null;
 }
 
-function normalizeGitHubIssueUrl(value: string): string | null {
+type VcsIssueRef = {
+  platform: "github" | "gitlab";
+  owner: string;
+  repo: string;
+  number: string;
+  url: string;
+};
+
+function normalizeVcsIssueUrl(value: string): VcsIssueRef | null {
   try {
     const parsed = new URL(value.trim());
-    const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/u);
-    if (!match) {
-      return null;
+
+    // GitHub: github.com/owner/repo/issues/N
+    if (parsed.hostname === "github.com" || parsed.hostname === "www.github.com") {
+      const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/u);
+      if (match) {
+        return {
+          platform: "github",
+          owner: match[1],
+          repo: match[2],
+          number: match[3],
+          url: `https://github.com/${match[1]}/${match[2]}/issues/${match[3]}`,
+        };
+      }
     }
-    return `https://github.com/${match[1]}/${match[2]}/issues/${match[3]}`;
+
+    // GitLab: gitlab.com/owner/repo/-/issues/N
+    if (parsed.hostname === "gitlab.com" || parsed.hostname === "www.gitlab.com") {
+      const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/-\/issues\/(\d+)\/?$/u);
+      if (match) {
+        return {
+          platform: "gitlab",
+          owner: match[1],
+          repo: match[2],
+          number: match[3],
+          url: `https://gitlab.com/${match[1]}/${match[2]}/-/issues/${match[3]}`,
+        };
+      }
+    }
+
+    // Self-hosted GitLab: custom host with /owner/repo/-/issues/N pattern
+    const gitlabUrl = process.env.GITLAB_URL?.trim().replace(/\/+$/, "");
+    if (gitlabUrl) {
+      try {
+        const customParsed = new URL(gitlabUrl);
+        const customHost = customParsed.hostname;
+        const customPort = customParsed.port;
+        const matchesHost = customPort
+          ? parsed.host === `${customHost}:${customPort}`
+          : parsed.hostname === customHost;
+        if (matchesHost) {
+          const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/-\/issues\/(\d+)\/?$/u);
+          if (match) {
+            return {
+              platform: "gitlab",
+              owner: match[1],
+              repo: match[2],
+              number: match[3],
+              url: `${gitlabUrl}/${match[1]}/${match[2]}/-/issues/${match[3]}`,
+            };
+          }
+        }
+      } catch {
+        // Invalid GITLAB_URL, skip
+      }
+    }
+
+    return null;
   } catch {
     return null;
   }
 }
 
-function formatGitHubIssueLabel(value: string): string {
-  const normalizedUrl = normalizeGitHubIssueUrl(value);
-  if (!normalizedUrl) {
-    return value;
-  }
-
-  const match = normalizedUrl.match(/\/issues\/(\d+)$/u);
-  return match ? `#${match[1]}` : normalizedUrl;
+function formatVcsIssueLabel(ref: VcsIssueRef): string {
+  return `${ref.platform}:${ref.owner}/${ref.repo}#${ref.number}`;
 }
 
 function formatExternalLabel(value: string): string {
@@ -394,15 +448,15 @@ function resolveIssueRelation(
     };
   }
 
-  const githubUrl = normalizeGitHubIssueUrl(raw);
-  if (githubUrl) {
-    const targetIssue = issueByGitHubUrl.get(githubUrl);
+  const vcsRef = normalizeVcsIssueUrl(raw);
+  if (vcsRef) {
+    const targetIssue = issueByGitHubUrl.get(vcsRef.url);
     return {
       raw,
-      key: targetIssue ? `local:${targetIssue.filename}` : `github:${githubUrl}`,
-      label: targetIssue?.title || formatGitHubIssueLabel(githubUrl),
-      kind: "github",
-      href: githubUrl,
+      key: targetIssue ? `local:${targetIssue.filename}` : `${vcsRef.platform}:${vcsRef.url}`,
+      label: targetIssue?.title || formatVcsIssueLabel(vcsRef),
+      kind: targetIssue ? "local" : vcsRef.platform,
+      href: vcsRef.url,
       targetFilename: targetIssue?.filename ?? null,
     };
   }
@@ -692,7 +746,7 @@ export function buildSpecBoardModel(
   const issueByGitHubUrl = new Map<string, SpecIssue>();
 
   for (const issue of sortedIssues) {
-    const normalizedUrl = issue.githubUrl ? normalizeGitHubIssueUrl(issue.githubUrl) : null;
+    const normalizedUrl = issue.vcsUrl ? normalizeVcsIssueUrl(issue.vcsUrl)?.url ?? null : null;
     if (normalizedUrl) {
       issueByGitHubUrl.set(normalizedUrl, issue);
     }

@@ -29,6 +29,7 @@ import { resolveMcpServerProfile, type McpServerProfile } from "@/core/mcp/mcp-s
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
 import { AcpError } from "@/core/acp/acp-process";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 import {
   loadHistorySinceEventIdFromDb,
   loadSessionFromDb,
@@ -54,9 +55,7 @@ import {
   proxyRequestToRunner,
   runnerUnavailableResponse,
 } from "@/core/acp/runner-routing";
-import { buildProviderModelArgs } from "@/core/acp/provider-model-args";
-import { handleSessionNew, parseRequestedAcpMcpServers } from "./acp-session-create";
-import { getSessionWriteBuffer } from "./acp-session-history";
+import { handleSessionNew } from "./acp-session-create";
 import { handleSessionPrompt } from "./acp-session-prompt";
 
 export const dynamic = "force-dynamic";
@@ -113,10 +112,10 @@ function pushAndPersistForwardedNotification(
 
   store.pushNotification(notification);
 
-  const buffer = getSessionWriteBuffer();
-  buffer.add(sessionId, notification);
+  // writeBuffer is now managed inside HttpSessionStore.pushNotification.
+  // Only flush on turn boundaries so the buffer has a chance to batch.
   if (shouldFlushForwardedSessionUpdate(notification)) {
-    void buffer.flush(sessionId);
+    void store.flushWriteBuffer(sessionId);
   }
 }
 
@@ -215,9 +214,16 @@ export async function GET(request: NextRequest) {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let isCleanedUp = false;
 
+  let abortHandler: (() => void) | null = null;
+
   const cleanup = (reason: string) => {
     if (isCleanedUp) return;
     isCleanedUp = true;
+
+    if (abortHandler) {
+      request.signal.removeEventListener("abort", abortHandler);
+      abortHandler = null;
+    }
 
     console.log(`[ACP Route] SSE cleanup for session ${sessionId}: ${reason}`);
 
@@ -267,20 +273,25 @@ export async function GET(request: NextRequest) {
 
       // ─── Heartbeat mechanism ─────────────────────────────────────────────
       // Send a comment every 30 seconds to keep the connection alive
-      // and detect dead connections. If the write fails, cleanup is triggered.
+      // and detect dead connections. Allow up to 3 consecutive failures
+      // before giving up — transient backpressure should not kill the SSE.
+      let heartbeatFailCount = 0;
       heartbeatTimer = setInterval(() => {
         try {
           const encoder = new TextEncoder();
           const heartbeat = ": heartbeat\n\n";
           controller.enqueue(encoder.encode(heartbeat));
+          heartbeatFailCount = 0;
         } catch {
-          // Write failed - connection is dead
-          cleanup("heartbeat write failed");
+          heartbeatFailCount++;
+          if (heartbeatFailCount >= 3) {
+            cleanup("heartbeat write failed after 3 retries");
+          }
         }
       }, 30000); // 30 second heartbeat
 
       // ─── Cleanup on request abort (client disconnect) ───────────────────
-      const abortHandler = () => {
+      abortHandler = () => {
         cleanup("client aborted");
         try {
           controller.close();
@@ -302,7 +313,8 @@ export async function GET(request: NextRequest) {
   });
 
   // ─── Return response with proper headers ─────────────────────────────────────
-  const response = new Response(stream, {
+  const monitoredStream = monitorSSEConnection(request, "/api/acp", stream);
+  const response = new Response(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -456,7 +468,6 @@ export async function POST(request: NextRequest) {
     // For `claude` provider: spawns Claude Code with stream-json + MCP.
     // Supports idempotencyKey to prevent duplicate session creation.
     if (method === "session/new") {
-      const requestServerUrl = resolveRequestServerUrl(request);
       const resolvedMcpProfile = resolveMcpServerProfile(
         typeof (params as Record<string, unknown> | undefined)?.mcpProfile === "string"
           ? ((params as Record<string, unknown>).mcpProfile as string)
@@ -472,11 +483,9 @@ export async function POST(request: NextRequest) {
         },
         jsonrpcResponse,
         createSessionUpdateForwarder,
-        buildMcpConfigForClaude: (workspaceId, sessionId, toolMode, mcpProfile) =>
-          buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile, requestServerUrl),
+        buildMcpConfigForClaude,
         requireWorkspaceId,
         pushAndPersistForwardedNotification,
-        serverUrlOverride: requestServerUrl,
       });
     }
 
@@ -484,17 +493,14 @@ export async function POST(request: NextRequest) {
     // Forward prompt to the ACP agent process (or Claude Code).
     // If session doesn't exist, auto-create one with default settings.
     if (method === "session/prompt") {
-      const requestServerUrl = resolveRequestServerUrl(request);
       return handleSessionPrompt({
         id: id ?? null,
         params: (params ?? {}) as Record<string, unknown>,
         jsonrpcResponse,
         createSessionUpdateForwarder,
-        buildMcpConfigForClaude: (workspaceId, sessionId, toolMode, mcpProfile) =>
-          buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile, requestServerUrl),
+        buildMcpConfigForClaude,
         requireWorkspaceId,
         encodeSsePayload,
-        serverUrlOverride: requestServerUrl,
       });
     }
 
@@ -540,14 +546,6 @@ export async function POST(request: NextRequest) {
       const workspaceId = recoveredSession.workspaceId;
       const role = recoveredSession.role ?? "CRAFTER";
       const providerSessionId = recoveredSession.routaAgentId ?? sessionId;
-      const requestedAcpMcpServers = parseRequestedAcpMcpServers(p.mcpServers);
-
-      if (requestedAcpMcpServers.error) {
-        return jsonrpcResponse(id ?? null, null, {
-          code: -32602,
-          message: requestedAcpMcpServers.error,
-        });
-      }
 
       if (existingSession) {
         store.upsertSession({
@@ -559,12 +557,6 @@ export async function POST(request: NextRequest) {
           routaAgentId: manager.getAcpSessionId(sessionId) ?? recoveredSession.routaAgentId,
           provider,
           role,
-          toolMode: "toolMode" in recoveredSession
-            ? (recoveredSession as { toolMode?: "essential" | "full" }).toolMode
-            : undefined,
-          mcpProfile: "mcpProfile" in recoveredSession
-            ? (recoveredSession as { mcpProfile?: McpServerProfile }).mcpProfile
-            : undefined,
           modeId: recoveredSession.modeId,
           model: recoveredSession.model,
           parentSessionId: recoveredSession.parentSessionId,
@@ -587,11 +579,9 @@ export async function POST(request: NextRequest) {
       }
 
       const forwardSessionUpdate = createSessionUpdateForwarder(store, sessionId);
-      const requestServerUrl = resolveRequestServerUrl(request);
       let acpSessionId: string;
       let resumeMode: "native" | "recreated" = "recreated";
       let nativeResumeError: string | undefined;
-      const modelArgs = buildProviderModelArgs(provider, recoveredSession.model);
 
       // Determine whether native resume should be attempted based on provider capabilities
       const preset = getPresetById(provider);
@@ -605,20 +595,13 @@ export async function POST(request: NextRequest) {
             forwardSessionUpdate,
             provider,
             workspaceId,
-            "toolMode" in recoveredSession
-              ? (recoveredSession as { toolMode?: "essential" | "full" }).toolMode
-              : undefined,
-            "mcpProfile" in recoveredSession
-              ? (recoveredSession as { mcpProfile?: McpServerProfile }).mcpProfile
-              : undefined,
-            requestServerUrl,
+            storedSession?.toolMode,
+            storedSession?.mcpProfile,
             {
               provider,
               role,
             },
             providerSessionId,
-            requestedAcpMcpServers.servers,
-            modelArgs,
           );
           resumeMode = "native";
         } else {
@@ -632,22 +615,16 @@ export async function POST(request: NextRequest) {
           cwd,
           forwardSessionUpdate,
           provider,
-          recoveredSession.modeId,
-          modelArgs,
+          storedSession?.modeId,
+          undefined,
           undefined,
           workspaceId,
-          "toolMode" in recoveredSession
-            ? (recoveredSession as { toolMode?: "essential" | "full" }).toolMode
-            : undefined,
-          "mcpProfile" in recoveredSession
-            ? (recoveredSession as { mcpProfile?: McpServerProfile }).mcpProfile
-            : undefined,
-          requestServerUrl,
+          storedSession?.toolMode,
+          storedSession?.mcpProfile,
           {
             provider,
             role,
           },
-          requestedAcpMcpServers.servers,
         );
       }
 
@@ -662,12 +639,6 @@ export async function POST(request: NextRequest) {
         routaAgentId: acpSessionId,
         provider,
         role,
-        toolMode: "toolMode" in recoveredSession
-          ? (recoveredSession as { toolMode?: "essential" | "full" }).toolMode
-          : undefined,
-        mcpProfile: "mcpProfile" in recoveredSession
-          ? (recoveredSession as { mcpProfile?: McpServerProfile }).mcpProfile
-          : undefined,
         modeId: recoveredSession.modeId,
         model: recoveredSession.model,
         parentSessionId: recoveredSession.parentSessionId,
@@ -1215,10 +1186,6 @@ function jsonrpcResponse(
   return NextResponse.json({ jsonrpc: "2.0", id, result });
 }
 
-function resolveRequestServerUrl(request: NextRequest): string {
-  return request.nextUrl.origin;
-}
-
 /**
  * Build MCP configuration JSON for Claude Code.
  * Injects the routa-mcp server so Claude Code can use Routa coordination tools.
@@ -1231,13 +1198,12 @@ async function buildMcpConfigForClaude(
   sessionId?: string,
   toolMode?: "essential" | "full",
   mcpProfile?: McpServerProfile,
-  serverUrlOverride?: string,
 ): Promise<string[]> {
   // Keep Claude MCP setup consistent with all other providers.
   // Pass workspace ID and session ID so they're embedded in the MCP endpoint URL
   // (?wsId=...&sid=...) allowing the MCP server to scope notes to the correct session.
   const config = workspaceId
-    ? getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile, serverUrlOverride)
+    ? getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile)
     : undefined;
   const result = await ensureMcpForProvider("claude", config);
   console.log(`[ACP Route] MCP config for Claude Code: ${result.summary}`);

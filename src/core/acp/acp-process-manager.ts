@@ -5,6 +5,7 @@ import {
     type AcpSessionContext,
 } from "@/core/acp/process-config";
 import type { NotificationHandler } from "@/core/acp/protocol-types";
+import {getAgentPortPool} from "@/core/acp/agent-port-pool";
 import {ClaudeCodeProcess, buildClaudeCodeConfig, mapClaudeModeToPermissionMode} from "@/core/acp/claude-code-process";
 import {
     cleanupMcpForProvider,
@@ -13,7 +14,7 @@ import {
     parseMcpServersFromConfigs,
     providerSupportsMcp,
 } from "@/core/acp/mcp-setup";
-import {buildAcpHttpMcpServers, getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
+import {getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import {OpencodeSdkAdapter, OpencodeSdkDirectAdapter, shouldUseOpencodeAdapter, getOpencodeServerUrl, isOpencodeServerConfigured, isOpencodeDirectApiConfigured} from "@/core/acp/opencode-sdk-adapter";
 import {ClaudeCodeSdkAdapter, shouldUseClaudeCodeSdkAdapter} from "@/core/acp/claude-code-sdk-adapter";
@@ -31,17 +32,17 @@ import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 
 const ACP_DEBUG = process.env.ROUTA_DEBUG_ACP === "1";
 
-function logAcpDebug(message: string): void {
-    if (ACP_DEBUG) {
-        console.info(message);
-    }
-}
-
 interface ManagedProcess {
     process: AcpProcess;
     acpSessionId: string;
     presetId: string;
     createdAt: Date;
+}
+
+function logAcpDebug(message: string): void {
+    if (ACP_DEBUG) {
+        console.info(message);
+    }
 }
 
 /**
@@ -117,37 +118,6 @@ export class AcpProcessManager {
         return combined.length > 0 ? combined : undefined;
     }
 
-    private combineAcpMcpServers(
-        autoMcpServers?: Array<Record<string, unknown>>,
-        requestedMcpServers?: Array<Record<string, unknown>>,
-    ): Array<Record<string, unknown>> | undefined {
-        const combined = [...(autoMcpServers ?? []), ...(requestedMcpServers ?? [])];
-        if (combined.length === 0) {
-            return undefined;
-        }
-
-        const deduped = new Map<string, Record<string, unknown>>();
-        const anonymousServers: Array<Record<string, unknown>> = [];
-
-        for (const server of combined) {
-            const name = typeof server.name === "string" ? server.name.trim() : "";
-            if (!name) {
-                anonymousServers.push(server);
-                continue;
-            }
-
-            if (deduped.has(name)) {
-                deduped.delete(name);
-            }
-            deduped.set(name, {
-                ...server,
-                name,
-            });
-        }
-
-        return [...anonymousServers, ...deduped.values()];
-    }
-
     private async prepareMcpForSession(
         sessionId: string,
         presetId: string,
@@ -155,20 +125,12 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
-        serverUrlOverride?: string,
-    ): Promise<{ mcpConfigs?: string[]; providerArgs?: string[]; acpMcpServers?: Array<Record<string, unknown>> } | undefined> {
+    ): Promise<{ mcpConfigs?: string[]; providerArgs?: string[] } | undefined> {
         if (!providerSupportsMcp(presetId)) {
             return undefined;
         }
 
-        const baseConfig = getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile, serverUrlOverride);
-        if (presetId === "codex-acp") {
-            this.mcpSessionCleanups.delete(sessionId);
-            return {
-                acpMcpServers: buildAcpHttpMcpServers(baseConfig) as unknown as Array<Record<string, unknown>>,
-            };
-        }
-
+        const baseConfig = getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile);
         const mcpConfig = cwd ? { ...baseConfig, cwd } : baseConfig;
         const mcpResult = await ensureMcpForProvider(presetId, mcpConfig);
         if (mcpResult.cleanup) {
@@ -176,13 +138,11 @@ export class AcpProcessManager {
         } else {
             this.mcpSessionCleanups.delete(sessionId);
         }
+        logAcpDebug(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
         return {
             mcpConfigs: mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined,
             providerArgs: mcpResult.providerArgs && mcpResult.providerArgs.length > 0
                 ? mcpResult.providerArgs
-                : undefined,
-            acpMcpServers: presetId === "codex" || presetId === "codex-acp"
-                ? buildAcpHttpMcpServers(baseConfig) as unknown as Array<Record<string, unknown>>
                 : undefined,
         };
     }
@@ -194,7 +154,8 @@ export class AcpProcessManager {
         }
 
         this.mcpSessionCleanups.delete(sessionId);
-        await cleanupMcpForProvider(cleanup);
+        const summary = await cleanupMcpForProvider(cleanup);
+        logAcpDebug(`[AcpProcessManager] MCP cleanup for ${sessionId}: ${summary}`);
     }
 
     hasActiveSession(sessionId: string): boolean {
@@ -231,9 +192,7 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
-        serverUrlOverride?: string,
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
-        requestedAcpMcpServers?: Array<Record<string, unknown>>,
     ): Promise<string> {
         // Check if we should use OpenCode SDK adapter (serverless + configured)
         if (presetId === "opencode" && shouldUseOpencodeAdapter()) {
@@ -248,23 +207,21 @@ export class AcpProcessManager {
                 workspaceId,
                 toolMode,
                 mcpProfile,
-                serverUrlOverride,
             );
+            const agentPort = await getAgentPortPool().allocate(sessionId);
+            const envWithPort: Record<string, string> = { ...extraEnv, PORT: String(agentPort) };
             const config = await buildConfigFromPreset(
                 presetId,
                 cwd,
                 this.combineProviderArgs(mcpSetup?.providerArgs, extraArgs),
-                extraEnv,
+                envWithPort,
                 mcpSetup?.mcpConfigs,
             );
             const proc = new AcpProcess(config, onNotification);
 
             await proc.start();
             await proc.initialize();
-            const acpSessionId = await proc.newSession(
-                cwd,
-                this.combineAcpMcpServers(mcpSetup?.acpMcpServers, requestedAcpMcpServers),
-            );
+            const acpSessionId = await proc.newSession(cwd);
             proc.setSessionContext({
                 sessionId,
                 provider: sessionContext?.provider ?? presetId,
@@ -308,11 +265,8 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
-        serverUrlOverride?: string,
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
         providerSessionId?: string,
-        requestedAcpMcpServers?: Array<Record<string, unknown>>,
-        extraArgs?: string[],
     ): Promise<string> {
         try {
             const mcpSetup = await this.prepareMcpForSession(
@@ -322,13 +276,13 @@ export class AcpProcessManager {
                 workspaceId,
                 toolMode,
                 mcpProfile,
-                serverUrlOverride,
             );
+            const agentPort = await getAgentPortPool().allocate(sessionId);
             const config = await buildConfigFromPreset(
                 presetId,
                 cwd,
-                this.combineProviderArgs(mcpSetup?.providerArgs, extraArgs),
-                undefined,
+                this.combineProviderArgs(mcpSetup?.providerArgs),
+                { PORT: String(agentPort) },
                 mcpSetup?.mcpConfigs,
             );
             const proc = new AcpProcess(config, onNotification);
@@ -336,11 +290,7 @@ export class AcpProcessManager {
             await proc.start();
             await proc.initialize();
             const resolvedProviderSessionId = providerSessionId ?? sessionId;
-            await proc.loadSession(
-                resolvedProviderSessionId,
-                cwd,
-                this.combineAcpMcpServers(mcpSetup?.acpMcpServers, requestedAcpMcpServers),
-            );
+            await proc.loadSession(resolvedProviderSessionId, cwd);
             proc.setSessionContext({
                 sessionId,
                 provider: sessionContext?.provider ?? presetId,
@@ -384,7 +334,9 @@ export class AcpProcessManager {
         onNotification: NotificationHandler,
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
     ): Promise<string> {
+        const agentPort = await getAgentPortPool().allocate(sessionId);
         const config = buildConfigFromInline(command, args, cwd, displayName);
+        config.env = { ...config.env, PORT: String(agentPort) };
         const proc = new AcpProcess(config, onNotification);
 
         await proc.start();
@@ -416,6 +368,7 @@ export class AcpProcessManager {
         sessionId: string,
         onNotification: NotificationHandler
     ): Promise<string> {
+        await getAgentPortPool().allocate(sessionId);
         const serverUrl = getOpencodeServerUrl();
 
         if (serverUrl) {
@@ -472,12 +425,14 @@ export class AcpProcessManager {
         authJson?: string,
     ): Promise<string> {
         const dockerManager = getDockerProcessManager();
+        const agentPort = await getAgentPortPool().allocate(sessionId);
+        const envWithPort: Record<string, string> = { ...extraEnv, PORT: String(agentPort) };
         // Use acquireContainer for container reuse support
         const container = await dockerManager.acquireContainer({
             sessionId,
             image: image ?? DEFAULT_DOCKER_AGENT_IMAGE,
             workspacePath: cwd,
-            env: extraEnv,
+            env: envWithPort,
             authJson,
         });
 
@@ -561,6 +516,7 @@ export class AcpProcessManager {
                 cwd,
                 onNotification,
                 {
+                    role,
                     allowedNativeTools,
                     mcpServers: parseMcpServersFromConfigs(mcpConfigs),
                 },
@@ -574,7 +530,9 @@ export class AcpProcessManager {
         const permissionMode = role === "ROUTA"
             ? "bypassPermissions"
             : mapClaudeModeToPermissionMode(modeId);
-        const config = buildClaudeCodeConfig(cwd, mcpConfigs, permissionMode, extraEnv, allowedNativeTools);
+        const agentPort = await getAgentPortPool().allocate(sessionId);
+        const envWithPort: Record<string, string> = { ...extraEnv, PORT: String(agentPort) };
+        const config = buildClaudeCodeConfig(cwd, mcpConfigs, permissionMode, envWithPort, allowedNativeTools);
         const proc = new ClaudeCodeProcess(config, onNotification);
 
         await proc.start();
@@ -610,6 +568,7 @@ export class AcpProcessManager {
         lifecycleNotifier?: LifecycleNotifier,
     ): Promise<string> {
         logAcpDebug(`[AcpProcessManager] Using Claude Code SDK adapter for serverless environment`);
+        await getAgentPortPool().allocate(sessionId);
 
         const { adapter, resolved } = AgentInstanceFactory.createClaudeCodeSdkAdapter(
             cwd,
@@ -650,6 +609,7 @@ export class AcpProcessManager {
         options?: Omit<WorkspaceAgentAdapterOptions, never>,
     ): Promise<string> {
         logAcpDebug(`[AcpProcessManager] Creating Workspace Agent session`);
+        await getAgentPortPool().allocate(sessionId);
 
         const adapter = new WorkspaceAgentAdapter(cwd, onNotification, options);
         await adapter.connect();
@@ -761,6 +721,9 @@ export class AcpProcessManager {
         return this.workspaceAgents.get(sessionId)?.adapter;
     }
 
+    /** In-flight recreation promises to prevent concurrent double-creation. */
+    private pendingSdkRecreations = new Map<string, Promise<ClaudeCodeSdkAdapter | undefined>>();
+
     /**
      * Get or recreate a Claude Code SDK adapter for serverless environments.
      * If the session exists in HTTP store or database with provider 'claude-code-sdk' but
@@ -776,11 +739,42 @@ export class AcpProcessManager {
             return existing;
         }
 
+        // Deduplicate concurrent recreation attempts
+        const pending = this.pendingSdkRecreations.get(sessionId);
+        if (pending) {
+            return pending;
+        }
+
+        const recreationPromise = this._recreateClaudeCodeSdkAdapter(sessionId, onNotification);
+        this.pendingSdkRecreations.set(sessionId, recreationPromise);
+
+        try {
+            return await recreationPromise;
+        } finally {
+            this.pendingSdkRecreations.delete(sessionId);
+        }
+    }
+
+    private async _recreateClaudeCodeSdkAdapter(
+        sessionId: string,
+        onNotification: NotificationHandler
+    ): Promise<ClaudeCodeSdkAdapter | undefined> {
+        // Double-check after acquiring dedup lock
+        const existing = this.claudeCodeSdkAdapters.get(sessionId)?.adapter;
+        if (existing) {
+            return existing;
+        }
+
         // Check HTTP session store for session metadata
         const store = getHttpSessionStore();
         const sessionRecord = store.getSession(sessionId);
         let cwd = sessionRecord?.cwd;
         let provider = sessionRecord?.provider;
+        let model = sessionRecord?.model;
+        let role = sessionRecord?.role;
+        let specialistId = sessionRecord?.specialistId;
+        const allowedNativeTools = sessionRecord?.allowedNativeTools;
+        const specialistSystemPrompt = sessionRecord?.specialistSystemPrompt;
 
         // If not in HTTP store (serverless cold start), try to recover from database
         if (!sessionRecord && isServerlessEnvironment() && getDatabaseDriver() === "postgres") {
@@ -792,7 +786,10 @@ export class AcpProcessManager {
                 if (dbSession) {
                     cwd = dbSession.cwd;
                     provider = dbSession.provider;
-                    logAcpDebug(`[AcpProcessManager] Found session in database: provider=${provider}, cwd=${cwd}`);
+                    model = dbSession.model ?? model;
+                    role = dbSession.role ?? role;
+                    specialistId = dbSession.specialistId ?? specialistId;
+                    logAcpDebug(`[AcpProcessManager] Found session in database: provider=${provider}, model=${model}, cwd=${cwd}`);
 
                     // Restore to HTTP session store for future requests in this instance
                     store.upsertSession({
@@ -802,6 +799,7 @@ export class AcpProcessManager {
                         routaAgentId: dbSession.routaAgentId,
                         provider: dbSession.provider,
                         role: dbSession.role,
+                        model: dbSession.model,
                         modeId: dbSession.modeId,
                         createdAt: dbSession.createdAt.toISOString(),
                         firstPromptSent: dbSession.firstPromptSent,
@@ -835,13 +833,21 @@ export class AcpProcessManager {
             console.warn(`[AcpProcessManager] Failed to rebuild MCP config for ${sessionId}:`, err);
         }
 
-        const adapter = new ClaudeCodeSdkAdapter(cwd, onNotification, {
-            allowedNativeTools: sessionRecord?.allowedNativeTools,
-            mcpServers,
-            systemPromptAppend: sessionRecord?.specialistSystemPrompt,
-        });
+        // Use AgentInstanceFactory to properly resolve model via specialist/role/tier chain
+        const { adapter, resolved } = AgentInstanceFactory.createClaudeCodeSdkAdapter(
+            cwd,
+            onNotification,
+            {
+                provider: "claude-code-sdk",
+                model,
+                role,
+                specialistId,
+                allowedNativeTools,
+                mcpServers,
+                systemPromptAppend: specialistSystemPrompt,
+            },
+        );
         await adapter.connect();
-        // Use existing session ID instead of creating new one
         const acpSessionId = await adapter.createSession(`Routa Session ${sessionId}`);
 
         this.claudeCodeSdkAdapters.set(sessionId, {
@@ -851,7 +857,10 @@ export class AcpProcessManager {
             createdAt: new Date(),
         });
 
-        logAcpDebug(`[AcpProcessManager] Claude Code SDK adapter recreated: ${acpSessionId}`);
+        // Track instance config for observability (parity with createClaudeCodeSdkSession)
+        getAgentInstanceManager().register(sessionId, resolved);
+
+        logAcpDebug(`[AcpProcessManager] Claude Code SDK adapter recreated: ${acpSessionId} (model: ${resolved.resolvedModel ?? "default"})`);
         return adapter;
     }
 
@@ -1152,6 +1161,8 @@ export class AcpProcessManager {
      * Kill a session's agent process or adapter.
      */
     async killSession(sessionId: string): Promise<void> {
+        getAgentPortPool().release(sessionId);
+
         const managed = this.processes.get(sessionId);
         if (managed) {
             managed.process.kill();
@@ -1238,5 +1249,7 @@ export class AcpProcessManager {
 
         const sessionIds = Array.from(this.mcpSessionCleanups.keys());
         await Promise.all(sessionIds.map((sessionId) => this.cleanupSessionMcp(sessionId)));
+
+        getAgentPortPool().releaseAll();
     }
 }

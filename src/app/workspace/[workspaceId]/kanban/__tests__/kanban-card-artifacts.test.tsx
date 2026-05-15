@@ -83,8 +83,7 @@ describe("KanbanCardArtifacts", () => {
 
     expect(await screen.findByText("Review proof")).toBeTruthy();
     expect(screen.getByText(/Missing for next move/i)).toBeTruthy();
-    expect(screen.getByText(/Ready Screenshot/i)).toBeTruthy();
-    expect(screen.getByText(/Missing Test Results/i)).toBeTruthy();
+    expect(screen.getByText(/Missing: Test Results/i)).toBeTruthy();
     expect(screen.getByText(/by agent-1/i)).toBeTruthy();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);

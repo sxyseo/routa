@@ -56,6 +56,12 @@ export interface GithubCatalogSkill {
   installed: boolean;
 }
 
+/** A skill from a GitLab directory catalog */
+export interface GitlabCatalogSkill {
+  name: string;
+  installed: boolean;
+}
+
 export interface SkillsShSearchResult {
   type: "skillssh";
   skills: SkillsShSkill[];
@@ -71,7 +77,15 @@ export interface GithubCatalogResult {
   ref: string;
 }
 
-export type CatalogResult = SkillsShSearchResult | GithubCatalogResult;
+export interface GitlabCatalogResult {
+  type: "gitlab";
+  skills: GitlabCatalogSkill[];
+  repo: string;
+  path: string;
+  ref: string;
+}
+
+export type CatalogResult = SkillsShSearchResult | GithubCatalogResult | GitlabCatalogResult;
 
 export interface CatalogInstallResult {
   success: boolean;
@@ -262,6 +276,49 @@ export class SkillClient {
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || "Failed to install from catalog");
+    }
+
+    this.cache.clear();
+    return data as CatalogInstallResult;
+  }
+
+  /**
+   * Browse a GitLab directory catalog.
+   */
+  async listGitlabCatalog(
+    repo: string,
+    catalogPath: string = "skills",
+    ref: string = "main"
+  ): Promise<GitlabCatalogResult> {
+    const params = new URLSearchParams({ type: "gitlab", repo, path: catalogPath, ref });
+    const response = await fetch(resolveApiPath(`api/skills/catalog?${params}`, this.baseUrl));
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to list GitLab catalog: HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Install skills from a GitLab directory catalog.
+   */
+  async installFromGitlabCatalog(
+    skills: string[],
+    repo: string,
+    catalogPath: string = "skills",
+    ref: string = "main"
+  ): Promise<CatalogInstallResult> {
+    const response = await fetch(resolveApiPath("api/skills/catalog", this.baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "gitlab", repo, path: catalogPath, ref, skills }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to install from GitLab catalog");
     }
 
     this.cache.clear();

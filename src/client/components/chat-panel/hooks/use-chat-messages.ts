@@ -57,6 +57,8 @@ export function useChatMessages({
   const loadedHistoryRef = useRef<Set<string>>(new Set());
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
   const transcriptRetryCountRef = useRef<Record<string, number>>({});
+  // In-flight dedup: prevent concurrent transcript fetches for the same session
+  const inflightHistoryRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const resetStreamingRefs = useCallback((sessionId: string) => {
     streamingMsgIdRef.current[sessionId] = null;
@@ -82,7 +84,7 @@ export function useChatMessages({
     }
   }, []);
 
-  // Fetch session history
+  // Fetch session history (with in-flight dedup to prevent duplicate requests)
   const fetchSessionHistory = useCallback(async (
     sessionId: string,
     options?: { force?: boolean },
@@ -91,55 +93,68 @@ export function useChatMessages({
     if (!force && loadedHistoryRef.current.has(sessionId)) return;
     if (sessionId === "__placeholder__") return;
 
-    try {
-      const response = await desktopAwareFetch(`/api/sessions/${sessionId}/transcript`, { cache: "no-store" });
-      const data = await response.json().catch(() => ({})) as Partial<SessionTranscriptPayload>;
-      const history = Array.isArray(data?.history) ? data.history as AcpSessionNotification[] : [];
-      const serializedMessages = Array.isArray(data?.messages) ? data.messages : [];
-      const messages = hydrateTranscriptMessages(serializedMessages);
+    // In-flight dedup: reuse pending Promise for the same session
+    if (!force) {
+      const existing = inflightHistoryRef.current.get(sessionId);
+      if (existing) return existing;
+    }
 
-      if (history.length === 0 && messages.length === 0) {
-        return;
-      }
-      loadedHistoryRef.current.add(sessionId);
-      delete transcriptRetryCountRef.current[sessionId];
+    const promise = (async () => {
+      try {
+        const response = await desktopAwareFetch(`/api/sessions/${sessionId}/transcript`, { cache: "no-store" });
+        const data = await response.json().catch(() => ({})) as Partial<SessionTranscriptPayload>;
+        const history = Array.isArray(data?.history) ? data.history as AcpSessionNotification[] : [];
+        const serializedMessages = Array.isArray(data?.messages) ? data.messages : [];
+        const messages = hydrateTranscriptMessages(serializedMessages);
 
-      // Check if session is still running
-      if (history.length > 0 || typeof data?.latestEventKind === "string") {
-        const lastKind = data?.latestEventKind
-          ?? (((history.at(-1)?.update ?? history.at(-1)) as Record<string, unknown> | undefined)?.sessionUpdate as string | undefined);
-        const isRunning = lastKind !== "turn_complete" && lastKind !== "acp_status";
-        setIsSessionRunning(isRunning);
-      }
+        if (history.length === 0 && messages.length === 0) {
+          return;
+        }
+        loadedHistoryRef.current.add(sessionId);
+        delete transcriptRetryCountRef.current[sessionId];
 
-      if (messages.length > 0) {
-        // Extract tasks from loaded history
-        let detectedTasks: ParsedTask[] = [];
-        const processedMessages = [...messages];
+        // Check if session is still running
+        if (history.length > 0 || typeof data?.latestEventKind === "string") {
+          const lastKind = data?.latestEventKind
+            ?? (((history.at(-1)?.update ?? history.at(-1)) as Record<string, unknown> | undefined)?.sessionUpdate as string | undefined);
+          const isRunning = lastKind !== "turn_complete" && lastKind !== "acp_status";
+          setIsSessionRunning(isRunning);
+        }
 
-        for (let i = 0; i < processedMessages.length; i++) {
-          const msg = processedMessages[i];
-          if (msg.role === "assistant" && hasTaskBlocks(msg.content)) {
-            const { tasks, cleanedContent } = extractTaskBlocks(msg.content);
-            if (tasks.length > 0) {
-              processedMessages[i] = { ...msg, content: cleanedContent };
-              detectedTasks = tasks;
+        if (messages.length > 0) {
+          // Extract tasks from loaded history
+          let detectedTasks: ParsedTask[] = [];
+          const processedMessages = [...messages];
+
+          for (let i = 0; i < processedMessages.length; i++) {
+            const msg = processedMessages[i];
+            if (msg.role === "assistant" && hasTaskBlocks(msg.content)) {
+              const { tasks, cleanedContent } = extractTaskBlocks(msg.content);
+              if (tasks.length > 0) {
+                processedMessages[i] = { ...msg, content: cleanedContent };
+                detectedTasks = tasks;
+              }
             }
           }
-        }
 
-        setMessagesBySession((prev) => ({
-          ...prev,
-          [sessionId]: processedMessages,
-        }));
+          setMessagesBySession((prev) => ({
+            ...prev,
+            [sessionId]: processedMessages,
+          }));
 
-        if (detectedTasks.length > 0 && onTasksDetected) {
-          onTasksDetected(detectedTasks);
+          if (detectedTasks.length > 0 && onTasksDetected) {
+            onTasksDetected(detectedTasks);
+          }
         }
+      } catch {
+        // ignore errors
+      } finally {
+        inflightHistoryRef.current.delete(sessionId);
       }
-    } catch {
-      // ignore errors
-    }
+    })();
+
+    inflightHistoryRef.current.set(sessionId, promise);
+    return promise;
   }, [onTasksDetected]);
 
   // When active session changes, swap visible transcript and load history
@@ -248,6 +263,7 @@ export function useChatMessages({
       if (completedSessionIds.size > 0) {
         for (const sid of completedSessionIds) {
           loadedHistoryRef.current.delete(sid);
+          inflightHistoryRef.current.delete(sid);
           transcriptRetryCountRef.current[sid] = 0;
         }
       }

@@ -17,6 +17,7 @@ const CONFIG_CANDIDATES = [
   "next.config.ts",
   "Cargo.toml",
   ".routa/review-rules.md",
+  ".routa/spec-files.json",
 ] as const;
 
 export interface ReviewAnalyzeOptions {
@@ -113,7 +114,7 @@ function resolveRepoRoot(repoPath?: string): string {
 }
 
 function loadConfigSnippets(repoRoot: string): Array<{ path: string; content: string }> {
-  return CONFIG_CANDIDATES.flatMap((relativePath) => {
+  const baseSnippets = CONFIG_CANDIDATES.flatMap((relativePath) => {
     const filePath = path.join(repoRoot, relativePath);
     if (!fs.existsSync(filePath)) return [];
     return [{
@@ -121,6 +122,31 @@ function loadConfigSnippets(repoRoot: string): Array<{ path: string; content: st
       content: truncate(fs.readFileSync(filePath, "utf-8"), 4_000),
     }];
   });
+
+  const specFilesEntry = baseSnippets.find((s) => s.path === ".routa/spec-files.json");
+  if (specFilesEntry) {
+    try {
+      const specConfig = JSON.parse(specFilesEntry.content) as {
+        gateContextFiles?: string[];
+        forbiddenTerms?: Record<string, string>;
+      };
+      if (specConfig.gateContextFiles && Array.isArray(specConfig.gateContextFiles)) {
+        for (const relPath of specConfig.gateContextFiles) {
+          const filePath = path.join(repoRoot, relPath);
+          if (fs.existsSync(filePath) && !baseSnippets.some((s) => s.path === relPath)) {
+            baseSnippets.push({
+              path: relPath as (typeof CONFIG_CANDIDATES)[number],
+              content: truncate(fs.readFileSync(filePath, "utf-8"), 8_000),
+            });
+          }
+        }
+      }
+    } catch {
+      // spec-files.json parse failure — ignore, base snippets already include the raw JSON
+    }
+  }
+
+  return baseSnippets;
 }
 
 function loadReviewRules(repoRoot: string, rulesFile?: string): string | undefined {
@@ -156,7 +182,7 @@ async function runReviewSpecialist(params: {
   }
 
   const baseUrl = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "");
-  const model = params.modelOverride || process.env.ANTHROPIC_MODEL || "GLM-4.7";
+  const model = params.modelOverride || process.env.ANTHROPIC_MODEL || "glm-5.1";
   const prompt = buildSpecialistFirstPrompt({
     specialist,
     userRequest: [

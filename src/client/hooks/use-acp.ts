@@ -256,6 +256,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   const sessionIdRef = useRef<string | null>(null);
   const tearingDownRef = useRef(false);
   const connectingRef = useRef(false);
+  const unsubHandlersRef = useRef<{ update?: () => void; issue?: () => void }>({});
   // Track if user manually cancelled the session (to suppress "process exited" errors)
   const userCancelledRef = useRef(false);
 
@@ -348,20 +349,26 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         )
       );
 
-      client.onUpdate((update) => {
-        setState((s) => ({
-          ...s,
-          updates: [...s.updates, update],
-          error: null,
-        }));
+      unsubHandlersRef.current.update = client.onUpdate((update) => {
+        setState((s) => {
+          const MAX_UPDATES = 500;
+          const next = s.updates.length >= MAX_UPDATES
+            ? [...s.updates.slice(-MAX_UPDATES + 1), update]
+            : [...s.updates, update];
+          return { ...s, updates: next, error: null };
+        });
       });
-      client.onConnectionIssue((issue) => {
+      unsubHandlersRef.current.issue = client.onConnectionIssue((issue) => {
         if (tearingDownRef.current) return;
         logRuntime("warn", "useAcp.sse", "Session stream issue", issue);
         const isRecoverableOwnershipConflict = issue.status === 409 && issue.retryable;
+        const isExpiredOwnershipLease = issue.status === 409 && !issue.retryable
+          && issue.message?.includes("lease expired");
         setState((s) => ({
           ...s,
-          error: isRecoverableOwnershipConflict ? null : formatConnectionIssue(issue),
+          error: (isRecoverableOwnershipConflict || isExpiredOwnershipLease)
+            ? null
+            : formatConnectionIssue(issue),
         }));
       });
 
@@ -386,12 +393,11 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         })(),
       }));
 
-      // Background task: Load registry providers (with timeout protection)
-      // This runs in parallel and adds registry providers when ready
-      client.loadRegistryProviders().then((allProviders) => {
+      // Background task: Load registry providers with status check in one call
+      // Previously this was split into loadRegistryProviders() + listProviders(true, true)
+      // which caused 2 requests. Now we do a single request with both check and registry.
+      client.listProviders(true, true).then((allProviders) => {
         if (tearingDownRef.current) return;
-        // loadRegistryProviders returns ALL providers (local + registry)
-        // Filter to get only registry providers to avoid duplicates
         const disabledProvs = loadHiddenProviders();
         const registryProviders = sortProvidersByPreference(
           allProviders
@@ -400,46 +406,18 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         );
         if (registryProviders.length > 0) {
           setState((s) => {
-            // Keep only local providers from current state, add new registry providers
             const localProviders = s.providers.filter((p) => p.source === "static");
             return {
               ...s,
               providers: sortProvidersByPreference([...localProviders, ...registryProviders]),
             };
           });
-
-          // Background task 3: Check registry provider availability (slower)
-          // This updates the status from "checking" to "available" or "unavailable"
-          client.listProviders(true, true).then((checkedAllProviders) => {
-            if (tearingDownRef.current) return;
-            const disabledProvs = loadHiddenProviders();
-            const checkedRegistry = sortProvidersByPreference(
-              checkedAllProviders
-                .filter((p) => p.source === "registry")
-                .filter((p) => !disabledProvs.includes(p.id))
-            );
-            if (checkedRegistry.length > 0) {
-              setState((s) => {
-                const localProviders = s.providers.filter((p) => p.source === "static");
-                return {
-                  ...s,
-                  providers: sortProvidersByPreference([...localProviders, ...checkedRegistry]),
-                };
-              });
-            }
-          }).catch((err) => {
-            if (tearingDownRef.current || shouldSuppressTeardownError(err)) {
-              return;
-            }
-            logRuntime("info", "useAcp.connect", "Failed to check registry provider status", err);
-          });
         }
       }).catch((err) => {
         if (tearingDownRef.current || shouldSuppressTeardownError(err)) {
           return;
         }
-        // Registry load failed (timeout or network error) - not critical
-        logRuntime("info", "useAcp.connect", "Registry providers unavailable (network/timeout)", err);
+        logRuntime("info", "useAcp.connect", "Failed to load registry providers", err);
       });
     } catch (err) {
       if (tearingDownRef.current || shouldSuppressTeardownError(err)) {
@@ -747,11 +725,17 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     try {
       await client.respondToUserInput(sessionId, toolCallId, response);
     } catch (err) {
-      logRuntime("error", "useAcp.respondToUserInput", "Failed to send AskUserQuestion response", err);
-      setState((s) => ({
-        ...s,
-        error: toErrorMessage(err) || "Failed to submit question response",
-      }));
+      const isMissingRequest = err instanceof Error &&
+        err.message.includes("No pending interactive request found for this session");
+      if (isMissingRequest) {
+        logRuntime("warn", "useAcp.respondToUserInput", "Pending interactive request no longer available", err);
+      } else {
+        logRuntime("error", "useAcp.respondToUserInput", "Failed to send AskUserQuestion response", err);
+        setState((s) => ({
+          ...s,
+          error: toErrorMessage(err) || "Failed to submit question response",
+        }));
+      }
       throw err;
     }
   }, []);
@@ -767,16 +751,25 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     try {
       await client.respondToUserInput(targetSessionId, toolCallId, response);
     } catch (err) {
-      logRuntime("error", "useAcp.respondToUserInputForSession", "Failed to send AskUserQuestion response", err);
-      setState((s) => ({
-        ...s,
-        error: toErrorMessage(err) || "Failed to submit question response",
-      }));
+      const isMissingRequest = err instanceof Error &&
+        err.message.includes("No pending interactive request found for this session");
+      if (isMissingRequest) {
+        logRuntime("warn", "useAcp.respondToUserInputForSession", "Pending interactive request no longer available", err);
+      } else {
+        logRuntime("error", "useAcp.respondToUserInputForSession", "Failed to send AskUserQuestion response", err);
+        setState((s) => ({
+          ...s,
+          error: toErrorMessage(err) || "Failed to submit question response",
+        }));
+      }
       throw err;
     }
   }, []);
 
   const disconnect = useCallback(() => {
+    unsubHandlersRef.current.update?.();
+    unsubHandlersRef.current.issue?.();
+    unsubHandlersRef.current = {};
     clientRef.current?.disconnect();
     clientRef.current = null;
     sessionIdRef.current = null;

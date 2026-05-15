@@ -1,11 +1,12 @@
 /**
- * GitHub PR Comment API
+ * PR/MR Comment API
  *
- * POST /api/github/pr-comment - Post a comment or review on a GitHub PR
+ * POST /api/github/pr-comment - Post a comment or review on a PR/MR
+ * Routes through VCS abstraction layer (GitHub or GitLab based on PLATFORM env).
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { postPRComment, postPRReview, getPRFiles, getPRDetails } from "@/core/github";
+import { getVCSProvider } from "@/core/vcs";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,15 +20,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const provider = getVCSProvider();
+
     // Action: get-files - Get PR files for review
     if (action === "get-files") {
-      const files = await getPRFiles({ token, repo, prNumber });
+      const files = await provider.getPRFiles({ repo, prNumber, token });
       return NextResponse.json({ files });
     }
 
     // Action: get-details - Get PR details
     if (action === "get-details") {
-      const details = await getPRDetails({ token, repo, prNumber });
+      const details = await provider.getPR({ repo, prNumber, token });
       return NextResponse.json({ details });
     }
 
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = await postPRComment({
+      const result = await provider.postPRComment({
         token,
         repo,
         prNumber,
@@ -70,7 +73,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = await postPRReview({
+      const result = await provider.postPRReview({
         token,
         repo,
         prNumber,
@@ -91,11 +94,10 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
-    console.error("[GitHubPRCommentAPI] POST error:", error);
+    console.error("[PRCommentAPI] POST error:", error);
     return NextResponse.json(
       { error: "Failed to process PR comment request", details: String(error) },
       { status: 500 }
     );
   }
 }
-

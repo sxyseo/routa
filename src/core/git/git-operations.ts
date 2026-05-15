@@ -84,8 +84,14 @@ async function gitExec(command: string, repoPath: string): Promise<string> {
 
   try {
     const { stdout, stderr } = await exec(command, { cwd: repoPath });
-    if (stderr && !stderr.includes("warning")) {
-      console.warn(`Git warning in ${repoPath}:`, stderr);
+    if (stderr) {
+      const GIT_NORMAL_STDERR_PATTERNS = ["warning", "INFO:"];
+      const abnormal = stderr.split("\n").filter(
+        (l) => l.trim() && !GIT_NORMAL_STDERR_PATTERNS.some(p => l.includes(p)),
+      );
+      if (abnormal.length > 0) {
+        console.warn(`Git warning in ${repoPath}:`, abnormal.join("\n"));
+      }
     }
     return stdout.trim();
   } catch (error) {
@@ -201,6 +207,30 @@ export async function pullCommits(
  */
 export async function rebaseBranch(repoPath: string, onto: string): Promise<void> {
   await gitExec(`git rebase ${shellQuote(onto)}`, repoPath);
+}
+
+/**
+ * Safe rebase that detects conflicts and auto-aborts, leaving the repo clean.
+ * Returns conflict file list on failure for caller to report.
+ */
+export async function rebaseBranchSafe(
+  repoPath: string,
+  onto: string,
+): Promise<{ success: boolean; conflictFiles?: string[] }> {
+  try {
+    await gitExec(`git rebase ${shellQuote(onto)}`, repoPath);
+    return { success: true };
+  } catch {
+    let conflictFiles: string[] | undefined;
+    try {
+      const diffOutput = await gitExec("git diff --name-only --diff-filter=U", repoPath);
+      conflictFiles = diffOutput.trim().split("\n").filter(Boolean);
+    } catch {
+      // Could not read conflict files
+    }
+    await gitExec("git rebase --abort", repoPath).catch(() => {});
+    return { success: false, conflictFiles };
+  }
 }
 
 /**

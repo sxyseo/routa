@@ -1,6 +1,12 @@
+/**
+ * GET /api/github/pulls — List PRs/MRs for a workspace codebase.
+ * Routes through VCS abstraction layer (GitHub or GitLab based on PLATFORM env).
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
-import { listGitHubPulls, resolveGitHubRepo } from "@/core/kanban/github-issues";
+import { getVCSProviderForSource } from "@/core/vcs";
+import { resolveGitHubRepo } from "@/core/kanban/github-issues";
 
 export const dynamic = "force-dynamic";
 
@@ -40,13 +46,15 @@ export async function GET(request: NextRequest) {
   const repo = resolveGitHubRepo(codebase.sourceUrl, codebase.repoPath);
   if (!repo) {
     return NextResponse.json(
-      { error: "Selected codebase is not linked to a GitHub repository." },
+      { error: "Selected codebase is not linked to a VCS repository." },
       { status: 400 },
     );
   }
 
   try {
-    const pulls = await listGitHubPulls(repo, {
+    const provider = getVCSProviderForSource(codebase.sourceType);
+    const pulls = await provider.listPRs({
+      repo,
       state,
       token: board?.githubToken,
     });
@@ -60,7 +68,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load GitHub pull requests" },
+      { error: error instanceof Error ? error.message : "Failed to load pull requests" },
       { status: 502 },
     );
   }

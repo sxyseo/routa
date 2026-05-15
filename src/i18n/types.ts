@@ -93,6 +93,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     concurrency: string;
     crafters: string;
     routaModeToast: string;
+    archive: string;
   };
 
   // Home page
@@ -192,6 +193,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     advancedGroupOther: string;
     records: string;
     spec: string;
+    archive: string;
   };
 
   canvas: {
@@ -591,6 +593,27 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
         hooks: string;
         cicd: string;
       };
+      gitlabCi: {
+        loading: string;
+        retry: string;
+        noCiFile: string;
+        noStages: string;
+        unsupported: string;
+        fetchError: string;
+        noRepo: string;
+        loadingWorkflows: string;
+        dependencyGraph: string;
+        noExplicitDeps: string;
+        upstream: string;
+        downstream: string;
+        depChainEmpty: string;
+        depChainEmptyHint: string;
+        hoverHighlight: string;
+        selectedJob: string;
+        pipelineDetail: string;
+        jobDetail: string;
+        depCount: string;
+      };
     };
     backToHome: string;
     fluencyDescription: string;
@@ -654,6 +677,8 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     selectCloneOrLoad: string;
     repositories: string;
     cloneFromGitHub: string;
+    cloneFromGitLab: string;
+    cloneFromUrl: string;
     localProject: string;
     searchPlaceholder: string;
     noRepositoriesYet: string;
@@ -852,6 +877,21 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     updatingRepository: string;
     defaultLabel: string;
     saving: string;
+    // Workspace title & danger zone
+    workspaceSettings: string;
+    workspaceTitle: string;
+    titleSaved: string;
+    dangerZone: string;
+    dangerZoneDescription: string;
+    archiveWorkspace: string;
+    deleteWorkspace: string;
+    cannotDeleteLast: string;
+    confirmDeleteTitle: string;
+    confirmDeleteMessage: string;
+    cascadeInfo: string;
+    cascadeNote: string;
+    confirmDelete: string;
+    deleting: string;
   };
 
   // Notifications
@@ -995,7 +1035,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     selectIssueBody: string;
     noIssues: string;
     failedToLoad: string;
-    githubStateUnknown: string;
+    vcsStateUnknown: string;
     families: string;
     members: string;
     relations: string;

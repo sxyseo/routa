@@ -40,9 +40,9 @@ area: ui
 tags: [spec, board]
 reported_by: codex
 related_issues: ["https://github.com/phodal/routa/issues/410"]
-github_issue: "410"
-github_state: closed
-github_url: https://github.com/phodal/routa/issues/410
+vcs_issue: "410"
+vcs_state: closed
+vcs_url: https://github.com/phodal/routa/issues/410
 ---
 
 # Spec board
@@ -92,8 +92,8 @@ Older body.
         area: "ui",
         reportedBy: "codex",
         githubIssue: 410,
-        githubState: "closed",
-        githubUrl: "https://github.com/phodal/routa/issues/410",
+        vcsState: "closed",
+        vcsUrl: "https://github.com/phodal/routa/issues/410",
         relatedIssues: ["https://github.com/phodal/routa/issues/410"],
       });
     } finally {

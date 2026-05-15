@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getA2ATaskBridge, A2ATask } from "@/core/a2a";
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export const dynamic = "force-dynamic";
 
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
     const updatedTask = bridge.getTask(a2aTask.id) ?? a2aTask;
 
     if (action === "stream") {
-      return handleStreamResponse(updatedTask);
+      return handleStreamResponse(request, updatedTask);
     }
 
     // Non-streaming: return the task
@@ -139,8 +140,11 @@ export async function POST(request: NextRequest) {
 /**
  * Handle streaming response via SSE
  */
-function handleStreamResponse(task: A2ATask) {
+function handleStreamResponse(request: NextRequest, task: A2ATask) {
   const encoder = new TextEncoder();
+  let timer1: ReturnType<typeof setTimeout> | null = null;
+  let timer2: ReturnType<typeof setTimeout> | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
       const sendEvent = (data: unknown) => {
@@ -152,7 +156,7 @@ function handleStreamResponse(task: A2ATask) {
       sendEvent({ task });
 
       // Simulate a working status update after brief delay
-      setTimeout(() => {
+      timer1 = setTimeout(() => {
         sendEvent({
           statusUpdate: {
             taskId: task.id,
@@ -170,7 +174,7 @@ function handleStreamResponse(task: A2ATask) {
         });
 
         // Close the stream
-        setTimeout(() => {
+        timer2 = setTimeout(() => {
           try {
             controller.close();
           } catch {
@@ -178,10 +182,22 @@ function handleStreamResponse(task: A2ATask) {
           }
         }, 500);
       }, 200);
+
+      // Clean up timers on client disconnect
+      request.signal.addEventListener("abort", () => {
+        if (timer1) { clearTimeout(timer1); timer1 = null; }
+        if (timer2) { clearTimeout(timer2); timer2 = null; }
+        try { controller.close(); } catch { /* ignore */ }
+      });
+    },
+    cancel() {
+      if (timer1) { clearTimeout(timer1); timer1 = null; }
+      if (timer2) { clearTimeout(timer2); timer2 = null; }
     },
   });
 
-  return new NextResponse(stream, {
+  const monitoredStream = monitorSSEConnection(request, "/api/a2a/message", stream);
+  return new NextResponse(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",

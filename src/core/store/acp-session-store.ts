@@ -47,8 +47,8 @@ export interface AcpSessionStore {
   /** Get a session by ID */
   get(sessionId: string): Promise<AcpSession | undefined>;
   
-  /** List all sessions, sorted by most recent first */
-  list(): Promise<AcpSession[]>;
+  /** List sessions, sorted by most recent first. Optionally filter by creation time. */
+  list(options?: { createdAfter?: Date }): Promise<AcpSession[]>;
   
   /** Delete a session */
   delete(sessionId: string): Promise<void>;

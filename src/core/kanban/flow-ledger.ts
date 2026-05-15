@@ -61,6 +61,34 @@ export function analyzeFlowForTasks(
 }
 
 // ---------------------------------------------------------------------------
+// Top Failure Columns (cached, for Lane Scanner consumption)
+// ---------------------------------------------------------------------------
+
+let cachedTopFailures: { columns: string[]; computedAt: number } | null = null;
+const TOP_FAILURE_CACHE_MS = 5 * 60 * 1000;
+
+/**
+ * Return column IDs whose failure rate >= threshold.
+ * Result is cached for 5 minutes to avoid recomputation on every scan.
+ * @param metrics Lane metrics from a recent flow analysis.
+ * @param threshold Failure rate threshold (0–1). Default 0.7.
+ */
+export function getTopFailureColumns(
+  metrics: LaneMetrics[],
+  threshold = 0.7,
+): string[] {
+  const now = Date.now();
+  if (cachedTopFailures && now - cachedTopFailures.computedAt < TOP_FAILURE_CACHE_MS) {
+    return cachedTopFailures.columns;
+  }
+  const columns = metrics
+    .filter((m) => m.totalSessions >= 3 && m.failureRate >= threshold)
+    .map((m) => m.columnId);
+  cachedTopFailures = { columns, computedAt: now };
+  return columns;
+}
+
+// ---------------------------------------------------------------------------
 // Bounce Pattern Detection
 // ---------------------------------------------------------------------------
 

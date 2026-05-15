@@ -143,8 +143,22 @@ async fn create_worktree(
 
     let worktree_path_str = worktree_path.to_string_lossy().to_string();
 
+    // Capture the current HEAD commit SHA as base_commit_sha
+    let base_commit_sha = git::git_command()
+        .current_dir(std::path::Path::new(repo_path))
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string())
+            } else {
+                None
+            }
+        });
+
     // Create DB record
-    let worktree = Worktree::new(
+    let mut worktree = Worktree::new(
         uuid::Uuid::new_v4().to_string(),
         codebase_id.clone(),
         codebase.workspace_id.clone(),
@@ -153,6 +167,7 @@ async fn create_worktree(
         base_branch.clone(),
         body.label,
     );
+    worktree.base_commit_sha = base_commit_sha;
     state.worktree_store.save(&worktree).await?;
 
     // Prune stale references
@@ -251,6 +266,17 @@ async fn delete_worktree(
     }
 
     state.worktree_store.delete(&id).await?;
+
+    // Clear worktree_id on any tasks that referenced this worktree
+    let tasks = state.task_store.list_by_workspace(&worktree.workspace_id).await?;
+    for mut task in tasks {
+        if task.worktree_id.as_deref() == Some(id.as_str()) {
+            task.worktree_id = None;
+            task.updated_at = chrono::Utc::now();
+            state.task_store.save(&task).await?;
+        }
+    }
+
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
 

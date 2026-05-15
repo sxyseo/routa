@@ -10,10 +10,10 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { useMemo, useState, type Dispatch, type SetStateAction, type ReactNode, type RefObject } from "react";
+import React, { useCallback, useMemo, useState, type Dispatch, type SetStateAction, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "@/i18n";
-import type { AcpProviderInfo, AcpTaskAdaptiveHarnessOptions } from "@/client/acp-client";
+import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 import { ChatPanel } from "@/client/components/chat-panel";
@@ -27,6 +27,7 @@ import type { KanbanTaskAgentCopy } from "./i18n/kanban-task-agent";
 import { KanbanCreateModal, type TaskDraft } from "../kanban-create-modal";
 import { KanbanCardActivityPanel, KanbanEmptySessionPane } from "./kanban-card-activity";
 import { formatSessionTimestamp } from "./kanban-card-session-utils";
+import { useColumnVirtualScroll } from "./hooks/use-column-virtual-scroll";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
@@ -41,8 +42,7 @@ import {
 import type { ColumnAutomationConfig } from "./kanban-settings-modal";
 import type { KanbanBoardInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import type { KanbanRepoChanges } from "./kanban-file-changes-types";
-import { buildKanbanTaskAdaptiveHarnessOptions } from "./kanban-task-adaptive";
-import { ChevronRight as _ChevronRight, GitBranch as _GitBranch } from "lucide-react";
+import { ChevronRight as _ChevronRight, GitBranch as _GitBranch, Archive } from "lucide-react";
 import { GitLogPanel, RealGitAdapter, MockGitAdapter } from "./git-log";
 
 interface SessionRestoreTranscriptMessage {
@@ -150,112 +150,6 @@ export function buildKanbanSessionRestorePrompt(
   ].filter(Boolean).join("\n");
 }
 
-function buildKanbanHistoryAnalysisSessionName(
-  task: TaskInfo,
-  specialistLanguage: KanbanSpecialistLanguage,
-): string {
-  return specialistLanguage === "zh-CN"
-    ? `历史分析 · ${task.title}`
-    : `History Analysis · ${task.title}`;
-}
-
-function buildKanbanHistoryAnalysisCreationError(
-  payload: { error?: { message?: string } } | null,
-  fallbackMessage: string,
-): string {
-  return payload?.error?.message || fallbackMessage;
-}
-
-function buildKanbanHistoryAnalysisSessionUrl(workspaceId: string, sessionId: string): string {
-  return `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`;
-}
-
-async function startKanbanHistoryAnalysisSession(params: {
-  workspaceId: string;
-  task: TaskInfo;
-  repoPath?: string;
-  branch?: string;
-  provider?: string;
-  specialistLanguage: KanbanSpecialistLanguage;
-  taskAdaptiveHarness: AcpTaskAdaptiveHarnessOptions;
-  prompt: string;
-  targetWindow: Window | null;
-  fallbackErrorMessage: string;
-}): Promise<string> {
-  if (!params.targetWindow) {
-    throw new Error(params.fallbackErrorMessage);
-  }
-
-  const response = await desktopAwareFetch("/api/acp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: `kanban-history-analysis:${Date.now()}`,
-      method: "session/new",
-      params: {
-        workspaceId: params.workspaceId,
-        cwd: params.repoPath,
-        branch: params.branch,
-        role: "ROUTA",
-        name: buildKanbanHistoryAnalysisSessionName(params.task, params.specialistLanguage),
-        provider: params.provider,
-        specialistId: "history-summary-analyst",
-        specialistLocale: params.specialistLanguage,
-        toolMode: "full",
-        mcpProfile: "kanban-planning",
-        allowedNativeTools: ["Skill", "Read", "Glob", "Grep"],
-        taskAdaptiveHarness: params.taskAdaptiveHarness,
-      },
-    }),
-  });
-
-  const payload = await response.json().catch(() => null) as {
-    result?: { sessionId?: string };
-    error?: { message?: string };
-  } | null;
-
-  if (!response.ok) {
-    throw new Error(buildKanbanHistoryAnalysisCreationError(payload, params.fallbackErrorMessage));
-  }
-  if (payload?.error?.message) {
-    throw new Error(payload.error.message);
-  }
-
-  const sessionId = payload?.result?.sessionId;
-  if (!sessionId) {
-    throw new Error(params.fallbackErrorMessage);
-  }
-
-  params.targetWindow.location.href = buildKanbanHistoryAnalysisSessionUrl(params.workspaceId, sessionId);
-
-  const promptResponse = await desktopAwareFetch("/api/acp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: `kanban-history-analysis-prompt:${Date.now()}`,
-      method: "session/prompt",
-      params: {
-        sessionId,
-        prompt: [{ type: "text", text: params.prompt }],
-      },
-    }),
-  });
-
-  const promptPayload = await promptResponse.json().catch(() => null) as {
-    error?: { message?: string };
-  } | null;
-  if (!promptResponse.ok) {
-    throw new Error(buildKanbanHistoryAnalysisCreationError(promptPayload, params.fallbackErrorMessage));
-  }
-  if (promptPayload?.error?.message) {
-    throw new Error(promptPayload.error.message);
-  }
-
-  return sessionId;
-}
-
 async function fetchSessionTranscriptForRestore(sessionId: string): Promise<SessionRestoreTranscriptMessage[]> {
   const response = await desktopAwareFetch(`/api/sessions/${encodeURIComponent(sessionId)}/transcript`, { cache: "no-store" });
   if (!response.ok) return [];
@@ -302,7 +196,46 @@ function KanbanDropColumn({
   );
 }
 
-export function KanbanBoardSurface({
+function ArchiveColumnButton({ boardId, onRefresh }: { boardId: string; onRefresh: () => void }) {
+  const [archiving, setArchiving] = useState(false);
+  const { t } = useTranslation();
+
+  const handleClick = useCallback(async () => {
+    if (archiving) return;
+    setArchiving(true);
+    try {
+      const response = await desktopAwareFetch(`/api/kanban/boards/${boardId}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (response.ok) {
+        onRefresh();
+      } else {
+        console.error("[Kanban] Archive failed:", response.status);
+      }
+    } catch (err) {
+      console.error("[Kanban] Archive failed:", err);
+    } finally {
+      setArchiving(false);
+    }
+  }, [boardId, archiving, onRefresh]);
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={archiving}
+      className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300 disabled:opacity-50"
+      title={t.common.archive}
+    >
+      {archiving
+        ? <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+        : <Archive className="h-3 w-3" />}
+    </button>
+  );
+}
+
+export const KanbanBoardSurface = React.memo(function KanbanBoardSurface({
   moveError,
   onDismissMoveError,
   codebases,
@@ -404,6 +337,7 @@ export function KanbanBoardSurface({
   const [gitLogRepoPath, setGitLogRepoPath] = useState<string | null>(null);
   const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
   const [activeDragCardWidth, setActiveDragCardWidth] = useState<number | null>(null);
+  const { getVisibleCount, loadMore } = useColumnVirtualScroll();
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: { distance: 3 },
@@ -518,6 +452,9 @@ export function KanbanBoardSurface({
                     const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
                     const laneAutomation = columnAutomation[column.id] ?? column.automation;
                     const widthClass = column.width === "compact" ? "w-[14rem]" : column.width === "wide" ? "w-[24rem]" : "w-[18rem]";
+                    const visibleCount = getVisibleCount(column.id, columnTasks.length, column.stage);
+                    const visibleTasks = columnTasks.slice(0, visibleCount);
+                    const hasMore = visibleCount < columnTasks.length;
 
                     return (
                       <KanbanDropColumn
@@ -527,10 +464,15 @@ export function KanbanBoardSurface({
                         widthClass={widthClass}
                       >
                         <div className="mb-3 space-y-1.5">
-                          <div className="flex items-baseline justify-between gap-3">
+                          <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{column.name}</div>
-                            <div className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
-                              {columnTasks.length} {t.kanbanBoard.cards}
+                            <div className="flex items-center gap-1.5">
+                              {column.stage === "done" && columnTasks.length > 0 && (
+                                <ArchiveColumnButton boardId={board.id} onRefresh={onRefresh} />
+                              )}
+                              <div className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
+                                {columnTasks.length} {t.kanbanBoard.cards}
+                              </div>
                             </div>
                           </div>
                           <div
@@ -553,7 +495,7 @@ export function KanbanBoardSurface({
                         </div>
 
                         <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
-                          {columnTasks.map((task) => (
+                          {visibleTasks.map((task) => (
                             <KanbanCard
                               key={task.id}
                               task={task}
@@ -575,6 +517,15 @@ export function KanbanBoardSurface({
                               onRefresh={onRefresh}
                             />
                           ))}
+                          {hasMore && (
+                            <button
+                              type="button"
+                              onClick={() => loadMore(column.id, visibleCount, columnTasks.length)}
+                              className="w-full rounded border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-600 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                            >
+                              {t.kanbanBoard.loadMore} ({columnTasks.length - visibleCount} {t.kanbanBoard.cards})
+                            </button>
+                          )}
                         </div>
                       </KanbanDropColumn>
                     );
@@ -662,7 +613,7 @@ export function KanbanBoardSurface({
       </div>
     </>
   );
-}
+});
 
 export function KanbanCreateTaskModal({
   showCreateModal,
@@ -670,18 +621,22 @@ export function KanbanCreateTaskModal({
   setDraft,
   onClose,
   onCreate,
-  githubAvailable,
+  githubAvailable: _githubAvailable,
+  vcsAvailable,
   codebases,
   allCodebaseIds,
+  boardTasks,
 }: {
   showCreateModal: boolean;
   draft: TaskDraft;
   setDraft: Dispatch<SetStateAction<TaskDraft>>;
   onClose: () => void;
   onCreate: () => void;
-  githubAvailable: boolean;
+  githubAvailable?: boolean;
+  vcsAvailable: boolean;
   codebases: CodebaseData[];
   allCodebaseIds: string[];
+  boardTasks?: Array<{ id: string; title: string }>;
 }) {
   if (!showCreateModal) return null;
 
@@ -691,9 +646,10 @@ export function KanbanCreateTaskModal({
       setDraft={setDraft}
       onClose={onClose}
       onCreate={onCreate}
-      githubAvailable={githubAvailable}
+      vcsAvailable={vcsAvailable}
       codebases={codebases}
       allCodebaseIds={allCodebaseIds}
+      boardTasks={boardTasks}
     />
   );
 }
@@ -785,11 +741,12 @@ function A2ASessionPane({
   );
 }
 
-export function KanbanTaskDetailOverlay({
+export const KanbanTaskDetailOverlay = React.memo(function KanbanTaskDetailOverlay({
   activeSessionId,
   activeTaskId,
   activeTask,
   board,
+  boardTasks,
   resolveSpecialist,
   acp,
   boardAutoProviderId,
@@ -821,6 +778,7 @@ export function KanbanTaskDetailOverlay({
   activeTaskId: string | null;
   activeTask: TaskInfo | null;
   board: KanbanBoardInfo | null;
+  boardTasks?: TaskInfo[];
   resolveSpecialist: ReturnType<typeof import("./kanban-card-session-utils").createKanbanSpecialistResolver>;
   acp?: UseAcpState & UseAcpActions;
   boardAutoProviderId?: string;
@@ -841,14 +799,13 @@ export function KanbanTaskDetailOverlay({
   runTaskPullRequest: (taskId: string) => Promise<string | null>;
   confirmDeleteTask: (task: TaskInfo) => void;
   onRefresh: () => void;
-  setActiveSessionId: Dispatch<SetStateAction<string | null>>;
+  setActiveSessionId: (id: string | null) => void;
   sessionMap: Map<string, SessionInfo>;
   workspaceId: string;
   isTaskDetailFullscreen?: boolean;
   onToggleTaskDetailFullscreen?: (nextFullscreen: boolean) => void;
   closeTaskDetail: () => void;
 }) {
-  const { t } = useTranslation();
   const isOverlayOpen = Boolean(activeSessionId || activeTaskId);
   const showEmptySessionPane = Boolean(
     activeTask &&
@@ -879,6 +836,7 @@ export function KanbanTaskDetailOverlay({
     const targetSessionInfo = sessionMap.get(activeSessionId);
     if (!targetSessionInfo?.cwd) return;
 
+    // Fast path: try resuming the existing session first
     try {
       const resumed = await acp.resumeSession(activeSessionId, targetSessionInfo.cwd, { throwOnError: true });
       if (resumed?.sessionId) {
@@ -893,21 +851,24 @@ export function KanbanTaskDetailOverlay({
       }
     }
 
-    const transcript = await fetchSessionTranscriptForRestore(activeSessionId);
-    const replacement = await acp.createSession(
-      targetSessionInfo.cwd,
-      targetSessionInfo.provider ?? boardAutoProviderId ?? acp.selectedProvider,
-      targetSessionInfo.modeId,
-      targetSessionInfo.role,
-      targetSessionInfo.workspaceId || workspaceId,
-      targetSessionInfo.model,
-      undefined,
-      targetSessionInfo.specialistId,
-      undefined,
-      undefined,
-      undefined,
-      targetSessionInfo.branch,
-    );
+    // Slow path: fetch transcript and create new session in parallel
+    const [transcript, replacement] = await Promise.all([
+      fetchSessionTranscriptForRestore(activeSessionId),
+      acp.createSession(
+        targetSessionInfo.cwd,
+        targetSessionInfo.provider ?? boardAutoProviderId ?? acp.selectedProvider,
+        targetSessionInfo.modeId,
+        targetSessionInfo.role,
+        targetSessionInfo.workspaceId || workspaceId,
+        targetSessionInfo.model,
+        undefined,
+        targetSessionInfo.specialistId,
+        undefined,
+        undefined,
+        undefined,
+        targetSessionInfo.branch,
+      ),
+    ]);
 
     if (!replacement?.sessionId) return;
 
@@ -955,6 +916,7 @@ export function KanbanTaskDetailOverlay({
                   task={task}
                   refreshSignal={refreshSignal}
                   boardColumns={board?.columns ?? []}
+                  boardTasks={boardTasks}
                   availableProviders={availableProviders}
                   specialists={specialists}
                   specialistLanguage={specialistLanguage}
@@ -981,56 +943,6 @@ export function KanbanTaskDetailOverlay({
                   onSelectSession={(sessionId) => {
                     selectTaskSession(task, sessionId);
                   }}
-                  jitContextSessionId={activeSessionId}
-                  onLoadJitContextIntoSession={acp && activeSessionId
-                    ? async (sessionId, prompt) => {
-                      setHiddenSessionPaneTaskId(null);
-                      setActiveSessionId(sessionId);
-                      acp.selectSession(sessionId);
-                      await acp.promptSession(sessionId, prompt);
-                    }
-                    : undefined}
-                  onOpenJitContextHistoryAnalysis={acp
-                    ? async (prompt, targetWindow) => {
-                      const taskCodebaseIds = task.codebaseIds && task.codebaseIds.length > 0
-                        ? task.codebaseIds
-                        : allCodebaseIds;
-                      const primaryCodebase = taskCodebaseIds.length > 0
-                        ? codebases.find((codebase) => codebase.id === taskCodebaseIds[0])
-                        : null;
-                      const taskWorktree = task.worktreeId
-                        ? worktreeCache[task.worktreeId] ?? null
-                        : null;
-                      const taskRepoPath = primaryCodebase?.repoPath
-                        ?? taskWorktree?.worktreePath
-                        ?? sessionInfo?.cwd;
-                      const taskBranch = sessionInfo?.branch
-                        ?? taskWorktree?.branch
-                        ?? primaryCodebase?.branch
-                        ?? undefined;
-                      const taskAdaptiveHarness = buildKanbanTaskAdaptiveHarnessOptions(task.title, {
-                        locale: specialistLanguage,
-                        role: task.assignedRole,
-                        task,
-                      });
-                      if (!taskAdaptiveHarness) {
-                        throw new Error(t.kanbanDetail.jitContextNeedsRefinement);
-                      }
-
-                      await startKanbanHistoryAnalysisSession({
-                        workspaceId,
-                        task,
-                        repoPath: taskRepoPath ?? undefined,
-                        branch: taskBranch,
-                        provider: sessionInfo?.provider ?? resolveKanbanBoardAutoProviderId(board, boardAutoProviderId) ?? acp.selectedProvider,
-                        specialistLanguage,
-                        taskAdaptiveHarness,
-                        prompt,
-                        targetWindow,
-                        fallbackErrorMessage: t.kanbanDetail.jitContextHistoryAnalysisFailed,
-                      });
-                    }
-                    : undefined}
                   isFullscreen={isTaskDetailFullscreen}
                   onToggleFullscreen={onToggleTaskDetailFullscreen}
                   onClose={closeTaskDetail}
@@ -1150,4 +1062,4 @@ export function KanbanTaskDetailOverlay({
       </div>
     </div>
   );
-}
+});

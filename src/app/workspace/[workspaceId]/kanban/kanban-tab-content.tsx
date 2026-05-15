@@ -1,15 +1,16 @@
 "use client";
 
-import { type ComponentProps } from "react";
+import React, { type ComponentProps } from "react";
 import { ArrowRight } from "lucide-react";
 import { AcpProviderDropdown } from "@/client/components/acp-provider-dropdown";
 import type { KanbanAgentPromptHandler, KanbanBoardInfo } from "../types";
 import { KanbanTabHeader } from "./kanban-tab-header";
 import { KanbanStatusBar } from "./kanban-status-bar";
-import { KanbanGitHubImportModal } from "./kanban-github-import-modal";
+import { KanbanVCSImportModal } from "./kanban-vcs-import-modal";
 import { KanbanBoardSurface, KanbanCreateTaskModal, KanbanTaskDetailOverlay } from "./kanban-tab-panels";
 import { KanbanSettingsModal } from "./kanban-settings-modal";
 import { KanbanFitnessWorkbenchModal } from "./kanban-fitness-workbench-modal";
+import { KanbanArchiveView } from "./kanban-archive-view";
 import {
   KanbanCodebaseModal,
   KanbanDeleteCodebaseModal,
@@ -24,7 +25,7 @@ import type { KanbanTaskAgentCopy } from "./i18n/kanban-task-agent";
 type KanbanTabHeaderProps = Omit<ComponentProps<typeof KanbanTabHeader>, "actionSlot">;
 type BoardSurfaceProps = ComponentProps<typeof KanbanBoardSurface>;
 type CreateTaskModalProps = ComponentProps<typeof KanbanCreateTaskModal>;
-type GitHubImportModalProps = ComponentProps<typeof KanbanGitHubImportModal>;
+type VCSImportModalProps = ComponentProps<typeof KanbanVCSImportModal>;
 type TaskDetailOverlayProps = ComponentProps<typeof KanbanTaskDetailOverlay>;
 type SettingsModalProps = ComponentProps<typeof KanbanSettingsModal>;
 type DeleteCodebaseModalProps = ComponentProps<typeof KanbanDeleteCodebaseModal> & { show: boolean };
@@ -56,7 +57,7 @@ export interface KanbanTabContentProps {
   headerActionProps: KanbanTabHeaderActionProps;
   boardSurfaceProps?: BoardSurfaceProps;
   createTaskModalProps: CreateTaskModalProps;
-  githubImportModalProps: GitHubImportModalProps;
+  githubImportModalProps: VCSImportModalProps;
   taskDetailOverlayProps?: TaskDetailOverlayProps;
   showSettingsModal?: boolean;
   settingsModalProps?: SettingsModalProps;
@@ -67,6 +68,8 @@ export interface KanbanTabContentProps {
   moveBlockedModalProps: MoveBlockedModalProps;
   statusBarProps: StatusBarProps;
   fitnessWorkbenchModalProps: FitnessWorkbenchModalProps;
+  archiveOpen?: boolean;
+  onCloseArchive?: () => void;
 }
 
 function KanbanTabHeaderActionSlot({
@@ -152,6 +155,8 @@ function KanbanTabHeaderActionSlot({
   );
 }
 
+const KanbanTabHeaderActionSlotMemo = React.memo(KanbanTabHeaderActionSlot);
+
 export function KanbanTabContent({
   headerProps,
   headerActionProps,
@@ -168,13 +173,15 @@ export function KanbanTabContent({
   moveBlockedModalProps,
   statusBarProps,
   fitnessWorkbenchModalProps,
+  archiveOpen = false,
+  onCloseArchive,
 }: KanbanTabContentProps) {
   const { key: codebaseModalKey, ...codebaseModalRestProps } = codebaseModalProps as KanbanCodebaseModalProps & {
     key?: string;
   };
 
   const headerActionSlot = (
-    <KanbanTabHeaderActionSlot
+    <KanbanTabHeaderActionSlotMemo
       board={headerProps.board}
       onAgentPrompt={headerActionProps.onAgentPrompt}
       availableProviders={headerActionProps.availableProviders}
@@ -208,7 +215,7 @@ export function KanbanTabContent({
       <KanbanTabHeader {...headerProps} actionSlot={headerActionSlot}/>
       <KanbanBoardSurface {...boardSurfaceProps}/>
       <KanbanCreateTaskModal {...createTaskModalProps}/>
-      <KanbanGitHubImportModal {...githubImportModalProps}/>
+      <KanbanVCSImportModal {...githubImportModalProps}/>
       <KanbanTaskDetailOverlay {...taskDetailOverlayProps}/>
 
       {/* Settings Modal */}
@@ -226,6 +233,13 @@ export function KanbanTabContent({
       <KanbanMoveBlockedModal {...moveBlockedModalProps}/>
       <KanbanStatusBar {...statusBarProps}/>
       <KanbanFitnessWorkbenchModal {...fitnessWorkbenchModalProps}/>
+      {headerProps.board && (
+        <KanbanArchiveView
+          workspaceId={headerProps.board.workspaceId}
+          open={archiveOpen}
+          onClose={onCloseArchive ?? (() => {})}
+        />
+      )}
     </div>
   );
 }

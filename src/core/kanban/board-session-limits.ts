@@ -1,4 +1,6 @@
-const DEFAULT_KANBAN_SESSION_CONCURRENCY_LIMIT = 1;
+import { getKanbanConfig } from "./kanban-config";
+
+const DEFAULT_KANBAN_SESSION_CONCURRENCY_LIMIT = getKanbanConfig().defaultSessionConcurrencyLimit;
 
 function metadataKey(boardId: string): string {
   return `kanbanSessionConcurrencyLimit:${boardId}`;

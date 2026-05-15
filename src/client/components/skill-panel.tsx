@@ -14,7 +14,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { useSkills, type UseSkillsState, type UseSkillsActions, type CatalogType } from "../hooks/use-skills";
-import type { SkillsShSkill, GithubCatalogSkill } from "../skill-client";
+import type { SkillsShSkill, GithubCatalogSkill, GitlabCatalogSkill } from "../skill-client";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
 import { useTranslation } from "@/i18n";
 import { ChevronRight, Download, PieChart, Search, X, CircleCheck, Lightbulb, Upload } from "lucide-react";
@@ -41,8 +41,11 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
     listGithubCatalog,
     installFromCatalog,
     installFromGithubCatalog,
+    listGitlabCatalog,
+    installFromGitlabCatalog,
     catalogSkills,
     githubCatalogSkills,
+    gitlabCatalogSkills,
     catalogLoading,
     catalogInstalling,
     clearCatalog,
@@ -176,12 +179,15 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
               onInstalled={reloadFromDisk}
               catalogSkills={catalogSkills}
               githubCatalogSkills={githubCatalogSkills}
+              gitlabCatalogSkills={gitlabCatalogSkills}
               catalogLoading={catalogLoading}
               catalogInstalling={catalogInstalling}
               searchCatalog={searchCatalog}
               listGithubCatalog={listGithubCatalog}
+              listGitlabCatalog={listGitlabCatalog}
               installFromCatalog={installFromCatalog}
               installFromGithubCatalog={installFromGithubCatalog}
+              installFromGitlabCatalog={installFromGitlabCatalog}
             />
           )}
 
@@ -218,31 +224,40 @@ function SkillCatalogModal({
   onInstalled,
   catalogSkills,
   githubCatalogSkills,
+  gitlabCatalogSkills,
   catalogLoading,
   catalogInstalling,
   searchCatalog,
   listGithubCatalog,
+  listGitlabCatalog,
   installFromCatalog,
   installFromGithubCatalog,
+  installFromGitlabCatalog,
 }: {
   onClose: () => void;
   onInstalled: () => void;
   catalogSkills: SkillsShSkill[];
   githubCatalogSkills: GithubCatalogSkill[];
+  gitlabCatalogSkills: GitlabCatalogSkill[];
   catalogLoading: boolean;
   catalogInstalling: boolean;
   searchCatalog: (query: string) => Promise<SkillsShSkill[]>;
   listGithubCatalog: (repo?: string, catalogPath?: string) => Promise<GithubCatalogSkill[]>;
+  listGitlabCatalog: (repo: string, catalogPath?: string) => Promise<GitlabCatalogSkill[]>;
   installFromCatalog: (skills: Array<{ name: string; source: string }>) => Promise<unknown>;
   installFromGithubCatalog: (skills: string[], repo?: string, catalogPath?: string) => Promise<unknown>;
+  installFromGitlabCatalog: (skills: string[], repo: string, catalogPath?: string) => Promise<unknown>;
 }) {
   const { t } = useTranslation();
   const [catalogType, setCatalogType] = useState<CatalogType>("skillssh");
   const [query, setQuery] = useState("");
-  const [githubRepo, setGithubRepo] = useState("openai/skills");
+  const [catalogRepo, setCatalogRepo] = useState("openai/skills");
   const [githubPath, setGithubPath] = useState("skills/.curated");
+  const [gitlabRepo, setGitlabRepo] = useState("");
+  const [gitlabPath, setGitlabPath] = useState("skills");
   const [selected, setSelected] = useState<Map<string, { name: string; source: string }>>(new Map());
   const [githubSelected, setGithubSelected] = useState<Set<string>>(new Set());
+  const [gitlabSelected, setGitlabSelected] = useState<Set<string>>(new Set());
   const [installResult, setInstallResult] = useState<{
     installed: string[];
     errors: string[];
@@ -255,16 +270,21 @@ function SkillCatalogModal({
     inputRef.current?.focus();
   }, []);
 
-  // Load GitHub catalog when switching to github tab
+  // Load catalog when switching tabs
   const handleSwitchCatalog = useCallback((type: CatalogType) => {
     setCatalogType(type);
     setInstallResult(null);
     setSelected(new Map());
     setGithubSelected(new Set());
+    setGitlabSelected(new Set());
     if (type === "github") {
-      listGithubCatalog(githubRepo, githubPath);
+      listGithubCatalog(catalogRepo, githubPath);
+    } else if (type === "gitlab") {
+      if (gitlabRepo.trim()) {
+        listGitlabCatalog(gitlabRepo, gitlabPath);
+      }
     }
-  }, [listGithubCatalog, githubRepo, githubPath]);
+  }, [listGithubCatalog, listGitlabCatalog, catalogRepo, githubPath, gitlabRepo, gitlabPath]);
 
   const handleSearch = useCallback(
     (value: string) => {
@@ -300,10 +320,10 @@ function SkillCatalogModal({
         setSelected(new Map());
         if (result.installed.length > 0) onInstalled();
       }
-    } else {
+    } else if (catalogType === "github") {
       if (githubSelected.size === 0) return;
       const skills = Array.from(githubSelected);
-      const result = (await installFromGithubCatalog(skills, githubRepo, githubPath)) as {
+      const result = (await installFromGithubCatalog(skills, catalogRepo, githubPath)) as {
         installed: string[];
         errors: string[];
       } | null;
@@ -313,8 +333,21 @@ function SkillCatalogModal({
         setGithubSelected(new Set());
         if (result.installed.length > 0) onInstalled();
       }
+    } else if (catalogType === "gitlab") {
+      if (gitlabSelected.size === 0) return;
+      const skills = Array.from(gitlabSelected);
+      const result = (await installFromGitlabCatalog(skills, gitlabRepo, gitlabPath)) as {
+        installed: string[];
+        errors: string[];
+      } | null;
+
+      if (result) {
+        setInstallResult(result);
+        setGitlabSelected(new Set());
+        if (result.installed.length > 0) onInstalled();
+      }
     }
-  }, [catalogType, selected, githubSelected, installFromCatalog, installFromGithubCatalog, githubRepo, githubPath, onInstalled]);
+  }, [catalogType, selected, githubSelected, gitlabSelected, installFromCatalog, installFromGithubCatalog, installFromGitlabCatalog, catalogRepo, githubPath, gitlabRepo, gitlabPath, onInstalled]);
 
   const toggleSkill = useCallback((skill: SkillsShSkill) => {
     setSelected((prev) => {
@@ -338,13 +371,22 @@ function SkillCatalogModal({
     });
   }, []);
 
+  const toggleGitlabSkill = useCallback((name: string) => {
+    setGitlabSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
   const isSelected = useCallback(
     (skill: SkillsShSkill) => selected.has(`${skill.source}/${skill.name}`),
     [selected]
   );
 
-  const totalSelected = catalogType === "skillssh" ? selected.size : githubSelected.size;
-  const totalResults = catalogType === "skillssh" ? catalogSkills.length : githubCatalogSkills.length;
+  const totalSelected = catalogType === "skillssh" ? selected.size : catalogType === "github" ? githubSelected.size : gitlabSelected.size;
+  const totalResults = catalogType === "skillssh" ? catalogSkills.length : catalogType === "github" ? githubCatalogSkills.length : gitlabCatalogSkills.length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -396,6 +438,20 @@ function SkillCatalogModal({
                 GitHub
               </span>
             </button>
+            <button
+              onClick={() => handleSwitchCatalog("gitlab")}
+              className={`flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${catalogType === "gitlab"
+                ? "bg-white dark:bg-[#1e2130] text-orange-700 dark:text-orange-400 shadow-sm"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22.602 9.314l-1.084-3.336a1.403 1.403 0 00-.518-.69 1.41 1.41 0 00-.808-.254 1.39 1.39 0 00-.806.254 1.4 1.4 0 00-.517.69L17.96 9.05H6.04L4.73 5.978a1.4 1.4 0 00-.517-.69 1.39 1.39 0 00-.806-.254 1.41 1.41 0 00-.808.254 1.403 1.403 0 00-.518.69L.998 9.314a1.885 1.885 0 00.686 2.108l9.688 7.035a1.03 1.03 0 001.256 0l9.688-7.035a1.885 1.885 0 00.686-2.108z" />
+                </svg>
+                GitLab
+              </span>
+            </button>
           </div>
         </div>
 
@@ -419,26 +475,26 @@ function SkillCatalogModal({
                 <PieChart className="w-3.5 h-3.5 mr-3 animate-spin text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24"/>
               )}
             </div>
-          ) : (
+          ) : catalogType === "github" ? (
             <div className="space-y-2">
               <div className="flex gap-2">
                 <div className="flex-1 flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] overflow-hidden">
                   <span className="pl-2.5 text-[10px] text-slate-400 font-mono shrink-0">repo:</span>
                   <input
                     type="text"
-                    value={githubRepo}
-                    onChange={(e) => setGithubRepo(e.target.value)}
+                    value={catalogRepo}
+                    onChange={(e) => setCatalogRepo(e.target.value)}
                     placeholder="owner/repo"
                     className="flex-1 px-1.5 py-2 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none font-mono"
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") listGithubCatalog(githubRepo, githubPath);
+                      if (e.key === "Enter") listGithubCatalog(catalogRepo, githubPath);
                       if (e.key === "Escape") onClose();
                     }}
                   />
                 </div>
                 <button
-                  onClick={() => listGithubCatalog(githubRepo, githubPath)}
-                  disabled={catalogLoading || !githubRepo.trim()}
+                  onClick={() => listGithubCatalog(catalogRepo, githubPath)}
+                  disabled={catalogLoading || !catalogRepo.trim()}
                   className="px-3 py-2 text-xs font-medium text-white bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
                 >
                   {catalogLoading ? (
@@ -458,11 +514,11 @@ function SkillCatalogModal({
                   <button
                     key={`${preset.repo}/${preset.path}`}
                     onClick={() => {
-                      setGithubRepo(preset.repo);
+                      setCatalogRepo(preset.repo);
                       setGithubPath(preset.path);
                       listGithubCatalog(preset.repo, preset.path);
                     }}
-                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${githubRepo === preset.repo && githubPath === preset.path
+                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${catalogRepo === preset.repo && githubPath === preset.path
                       ? "text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/30"
                       : "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
                       }`}
@@ -470,6 +526,52 @@ function SkillCatalogModal({
                     {preset.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          ) : (
+            /* GitLab repo input */
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="flex-1 flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] overflow-hidden">
+                  <span className="pl-2.5 text-[10px] text-slate-400 font-mono shrink-0">repo:</span>
+                  <input
+                    type="text"
+                    value={gitlabRepo}
+                    onChange={(e) => setGitlabRepo(e.target.value)}
+                    placeholder="owner/repo"
+                    className="flex-1 px-1.5 py-2 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none font-mono"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && gitlabRepo.trim()) listGitlabCatalog(gitlabRepo, gitlabPath);
+                      if (e.key === "Escape") onClose();
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => listGitlabCatalog(gitlabRepo, gitlabPath)}
+                  disabled={catalogLoading || !gitlabRepo.trim()}
+                  className="px-3 py-2 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                >
+                  {catalogLoading ? (
+                    <PieChart className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"/>
+                  ) : (
+                    t.skills.load
+                  )}
+                </button>
+              </div>
+              {/* Path input */}
+              <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] overflow-hidden">
+                <span className="pl-2.5 text-[10px] text-slate-400 font-mono shrink-0">path:</span>
+                <input
+                  type="text"
+                  value={gitlabPath}
+                  onChange={(e) => setGitlabPath(e.target.value)}
+                  placeholder="skills"
+                  className="flex-1 px-1.5 py-2 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none font-mono"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && gitlabRepo.trim()) listGitlabCatalog(gitlabRepo, gitlabPath);
+                    if (e.key === "Escape") onClose();
+                  }}
+                />
               </div>
             </div>
           )}
@@ -537,7 +639,7 @@ function SkillCatalogModal({
                 })}
               </div>
             )
-          ) : (
+          ) : catalogType === "github" ? (
             /* GitHub catalog results */
             githubCatalogSkills.length === 0 && !catalogLoading ? (
               <div className="text-center py-6 text-xs text-slate-400 dark:text-slate-500">
@@ -561,6 +663,46 @@ function SkillCatalogModal({
                       disabled={skill.installed}
                       onChange={() => toggleGithubSkill(skill.name)}
                       className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-50 shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className={`text-xs font-medium ${skill.installed ? "text-slate-400" : "text-slate-800 dark:text-slate-200"
+                        }`}>
+                        {skill.name}
+                      </span>
+                    </div>
+                    {skill.installed && (
+                      <span className="shrink-0 px-1 py-0.5 text-[8px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded">
+                        {t.skills.installedLabel}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            )
+          ) : (
+            /* GitLab catalog results */
+            gitlabCatalogSkills.length === 0 && !catalogLoading ? (
+              <div className="text-center py-6 text-xs text-slate-400 dark:text-slate-500">
+                {gitlabRepo.trim() ? t.skills.selectRepoOrLoad : t.skills.selectRepoOrLoad}
+              </div>
+            ) : (
+              <div className="space-y-0.5 max-h-72 overflow-y-auto">
+                {gitlabCatalogSkills.map((skill) => (
+                  <label
+                    key={skill.name}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors ${skill.installed
+                      ? "bg-emerald-50/50 dark:bg-emerald-900/10 opacity-60"
+                      : gitlabSelected.has(skill.name)
+                        ? "bg-orange-50 dark:bg-orange-900/20"
+                        : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={skill.installed || gitlabSelected.has(skill.name)}
+                      disabled={skill.installed}
+                      onChange={() => toggleGitlabSkill(skill.name)}
+                      className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-orange-600 focus:ring-orange-500 disabled:opacity-50 shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <span className={`text-xs font-medium ${skill.installed ? "text-slate-400" : "text-slate-800 dark:text-slate-200"
@@ -635,7 +777,9 @@ function SkillCatalogModal({
                 disabled={catalogInstalling}
                 className={`px-4 py-1.5 text-xs font-medium text-white rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 ${catalogType === "skillssh"
                   ? "bg-amber-600 hover:bg-amber-700"
-                  : "bg-blue-600 hover:bg-blue-700"
+                  : catalogType === "github"
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "bg-orange-600 hover:bg-orange-700"
                   }`}
               >
                 {catalogInstalling ? (

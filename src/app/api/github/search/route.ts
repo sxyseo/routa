@@ -1,11 +1,12 @@
 /**
- * GET /api/github/search?owner=X&repo=Y&q=Z&ref=R&limit=20 — Search files in an imported GitHub repo.
+ * GET /api/github/search?owner=X&repo=Y&q=Z&ref=R&limit=20 — Search files in an imported VCS repo.
+ * Routes through VCS abstraction layer.
  *
  * Returns: { files: Array<{ path, name, score }>, total: number, query: string }
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCachedWorkspace } from "@/core/github";
+import { getCachedWorkspace } from "@/core/vcs/vcs-workspace";
 
 export const dynamic = "force-dynamic";
 

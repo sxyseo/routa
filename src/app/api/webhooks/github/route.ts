@@ -50,11 +50,12 @@ export async function POST(request: NextRequest) {
       eventType,
       signature,
       rawBody,
-       
+
       payload: payload as any,
       webhookStore,
       backgroundTaskStore: system.backgroundTaskStore,
       workflowRunStore: system.workflowRunStore,
+      eventBus: system.eventBus,
     });
 
     console.log(

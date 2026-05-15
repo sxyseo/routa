@@ -13,6 +13,7 @@ const KANBAN_PLANNING_TOOL_NAMES = [
   "save_reasoning_memory",
   "create_card",
   "decompose_tasks",
+  "split_task",
   "search_cards",
   "list_cards_by_column",
   "save_history_memory_context",

@@ -411,6 +411,18 @@ async function ensurePromptSessionExists(args: {
         });
       }
 
+      // Build MCP config for SDK adapter (parity with acp-session-create.ts)
+      let sdkMcpServers: Record<string, import("@anthropic-ai/claude-agent-sdk").McpServerConfig> | undefined;
+      try {
+        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile);
+        if (mcpConfigs.length > 0) {
+          const { parseMcpServersFromConfigs } = await import("@/core/acp/mcp-setup");
+          sdkMcpServers = parseMcpServersFromConfigs(mcpConfigs);
+        }
+      } catch (err) {
+        console.warn("[ACP Route] Failed to build MCP config for SDK session auto-creation:", err);
+      }
+
       acpSessionId = await manager.createClaudeCodeSdkSession(
         sessionId,
         cwd,
@@ -421,6 +433,7 @@ async function ensurePromptSessionExists(args: {
           specialistId,
           model: storedSession?.model,
           allowedNativeTools,
+          mcpServers: sdkMcpServers,
           systemPromptAppend: specialistSystemPrompt,
         },
       );
@@ -500,6 +513,8 @@ async function ensurePromptSessionExists(args: {
 
     const now = new Date();
     const executionBinding = buildExecutionBinding("embedded");
+    const model = storedSession?.model ?? recoveredSession?.model;
+
     store.upsertSession({
       sessionId,
       cwd,
@@ -507,6 +522,7 @@ async function ensurePromptSessionExists(args: {
       routaAgentId: acpSessionId,
       provider,
       role,
+      model,
       toolMode,
       mcpProfile,
       allowedNativeTools,
@@ -523,6 +539,7 @@ async function ensurePromptSessionExists(args: {
       routaAgentId: acpSessionId,
       provider,
       role,
+      model,
       specialistId: specialistId ?? undefined,
       ...executionBinding,
     });

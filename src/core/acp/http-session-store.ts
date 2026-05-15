@@ -15,11 +15,15 @@
 import { randomUUID } from "node:crypto";
 import { getProviderAdapter } from "./provider-adapter";
 import { TraceRecorder } from "./provider-adapter/trace-recorder";
-import { appendSessionNotificationEvent, hydrateSessionsFromDb } from "./session-db-persister";
+import { appendSessionNotificationEvent, appendSessionNotificationBatch, hydrateSessionsFromDb, updateSessionExecutionBindingInDb } from "./session-db-persister";
+import { getAcpInstanceId, isExecutionLeaseActive, refreshExecutionBinding } from "./execution-backend";
 import { AgentEventBridge, makeStartedEvent } from "./agent-event-bridge";
 import type { WorkspaceAgentEvent } from "./agent-event-bridge";
 import type { NormalizedSessionUpdate } from "./provider-adapter/types";
 import { getRoutaSystem } from "../routa-system";
+import type { BackgroundTaskStore } from "../store/background-task-store";
+import { BackgroundTaskProgressBuffer } from "./background-task-progress-buffer";
+import { SessionWriteBuffer } from "./session-write-buffer";
 import { EventBus, AgentEventType } from "../events/event-bus";
 import type { McpServerProfile } from "../mcp/mcp-server-profiles";
 
@@ -192,6 +196,13 @@ class HttpSessionStore {
   /** Capture assistant output per session for workflow step chaining */
   private sessionAssistantOutput = new Map<string, string>();
   /**
+   * Accumulates streaming text chunks per session so they don't fill up
+   * messageHistory with hundreds of tiny entries.  Flushed as a single
+   * consolidated `agent_message` when a non-chunk event arrives, streaming
+   * ends, or the session is cleaned up.
+   */
+  private chunkAccumulator = new Map<string, { chunks: string[]; firstEventId: string }>();
+  /**
    * Sessions currently streaming a prompt response via their own SSE body.
    * While in streaming mode, pushNotification() stores to history/trace but
    * does NOT forward to the persistent EventSource SSE controller — that would
@@ -201,12 +212,43 @@ class HttpSessionStore {
   private streamingSessionIds = new Set<string>();
 
   // ─── Memory-aware limits ─────────────────────────────────────────────────
-  private static readonly MAX_HISTORY_PER_SESSION = 500; // Max messages per session
+  // After chunk consolidation (P0-1), each session stores ~50 effective messages.
+  // 200 per session gives 4x headroom; 10000 global supports 50 concurrent sessions.
+  private static readonly MAX_HISTORY_PER_SESSION = 200;
+  private static readonly MAX_TOTAL_HISTORY_MESSAGES = 10000;
   private static readonly MAX_PENDING_NOTIFICATIONS = 100; // Max buffered notifications
   private static readonly STALE_SESSION_MS = 60 * 60 * 1000; // 1 hour
   private static readonly CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   private lastCleanupTime = 0;
   private lastAccessTime = new Map<string, number>();
+  /** Sessions confirmed not linked to any BackgroundTask — skip future lookups. */
+  private nonBackgroundSessions = new Set<string>();
+  /** Cache: sessionId → BackgroundTask for progress updates (avoids repeated DB lookups). */
+  private backgroundTaskCache = new Map<string, NonNullable<Awaited<ReturnType<BackgroundTaskStore["findBySessionId"]>>>>();
+  /** In-flight findBySessionId promises to prevent cache stampede. */
+  private backgroundTaskPending = new Map<string, Promise<NonNullable<Awaited<ReturnType<BackgroundTaskStore["findBySessionId"]>>> | undefined>>();
+  private progressBuffer = new BackgroundTaskProgressBuffer();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Batched write buffer for DB persistence.  Notifications accumulate here
+   * and are flushed in consolidated batches via `appendHistoryBatch` instead
+   * of writing every chunk individually.
+   */
+  private writeBuffer: SessionWriteBuffer;
+
+  constructor() {
+    this.writeBuffer = new SessionWriteBuffer({
+      maxBufferSize: 50,
+      debounceMs: 5000,
+      persistFn: async (sessionId, notifications) => {
+        await appendSessionNotificationBatch(sessionId, notifications, this.sessions.get(sessionId)?.cwd);
+      },
+    });
+    // Start periodic cleanup (every 5 minutes)
+    this.cleanupTimer = setInterval(() => {
+      this.maybeCleanup();
+    }, HttpSessionStore.CLEANUP_INTERVAL_MS);
+  }
 
   enterStreamingMode(sessionId: string): void {
     this.streamingSessionIds.add(sessionId);
@@ -215,6 +257,8 @@ class HttpSessionStore {
 
   exitStreamingMode(sessionId: string): void {
     this.streamingSessionIds.delete(sessionId);
+    this.flushChunkAccumulator(sessionId);
+    void this.writeBuffer.flush(sessionId);
     this.updateAccessTime(sessionId);
   }
 
@@ -278,18 +322,32 @@ class HttpSessionStore {
   }
 
   deleteSession(sessionId: string): boolean {
+    // Flush pending progress before cleanup
+    void this.progressBuffer.flush(sessionId);
+    this.progressBuffer.dispose(sessionId);
     // Clean up TraceRecorder buffers for this session
     this.traceRecorder.cleanupSession(sessionId);
+    this.flushChunkAccumulator(sessionId);
+    this.writeBuffer.disposeSession(sessionId);
     this.messageHistory.delete(sessionId);
     this.sessionActivities.delete(sessionId);
     this.pendingNotifications.delete(sessionId);
     this.sessionAssistantOutput.delete(sessionId);
+    this.chunkAccumulator.delete(sessionId);
+    this.nonBackgroundSessions.delete(sessionId);
+    this.backgroundTaskCache.delete(sessionId);
+    this.backgroundTaskPending.delete(sessionId);
     // Clean up AgentEventBridge
     this.agentEventBridges.get(sessionId)?.cleanup();
     this.agentEventBridges.delete(sessionId);
     this.agentEventSubscribers.delete(sessionId);
     // Detach SSE if connected
     this.sseControllers.delete(sessionId);
+    // Clean up EventBus state for this agent
+    const session = this.sessions.get(sessionId);
+    if (this.eventBus && session) {
+      this.eventBus.removeAgent(session.routaAgentId ?? sessionId);
+    }
     return this.sessions.delete(sessionId);
   }
 
@@ -360,10 +418,20 @@ class HttpSessionStore {
    * Call this when a prompt completes or session ends.
    */
   flushAgentBuffer(sessionId: string): void {
+    this.flushChunkAccumulator(sessionId);
+    void this.writeBuffer.flush(sessionId);
     const sessionRecord = this.sessions.get(sessionId);
     const cwd = sessionRecord?.cwd ?? process.cwd();
     const provider = sessionRecord?.provider ?? "unknown";
     this.traceRecorder.flushSession(sessionId, cwd, provider);
+  }
+
+  /**
+   * Flush the write buffer for a session (DB persistence).
+   * Returns a promise so callers can await completion if needed.
+   */
+  flushWriteBuffer(sessionId: string): Promise<void> {
+    return this.writeBuffer.flush(sessionId);
   }
 
   renameSession(sessionId: string, name: string): boolean {
@@ -490,12 +558,30 @@ class HttpSessionStore {
     const isChildAgentNotification = !!(notification as Record<string, unknown>).childAgentId;
 
     if (!isChildAgentNotification) {
-      // Only store non-child-agent notifications in history
-      const history = this.messageHistory.get(sessionId) ?? [];
-      history.push(enriched);
-      this.messageHistory.set(sessionId, history);
-      this.limitHistorySize(sessionId); // Apply memory limit
-      void appendSessionNotificationEvent(sessionId, enriched, this.sessions.get(sessionId)?.cwd);
+      // Accumulate streaming chunks separately; flush as a single
+      // consolidated agent_message when a non-chunk event arrives.
+      const sessionUpdate = (enriched.update as Record<string, unknown> | undefined)?.sessionUpdate;
+      if (sessionUpdate === "agent_message_chunk") {
+        const content = (enriched.update as Record<string, unknown> | undefined)?.content as
+          | { type?: string; text?: string }
+          | undefined;
+        if (content?.text) {
+          let acc = this.chunkAccumulator.get(sessionId);
+          if (!acc) {
+            acc = { chunks: [], firstEventId: enriched.eventId as string };
+            this.chunkAccumulator.set(sessionId, acc);
+          }
+          acc.chunks.push(content.text);
+        }
+      } else {
+        // Non-chunk event — flush any pending chunks first
+        this.flushChunkAccumulator(sessionId);
+        const history = this.messageHistory.get(sessionId) ?? [];
+        history.push(enriched);
+        this.messageHistory.set(sessionId, history);
+        this.limitHistorySize(sessionId);
+      }
+      this.writeBuffer.add(sessionId, enriched);
     }
 
     // ── Notify AG-UI interceptors (protocol bridging) ──
@@ -559,7 +645,7 @@ class HttpSessionStore {
         jsonrpc: "2.0",
         method: "session/update",
         params: enriched,
-      });
+      }, sessionId);
       return;
     }
 
@@ -609,7 +695,7 @@ class HttpSessionStore {
           content: { type: "text", text: "Connected to ACP session." },
         },
       },
-    });
+    }, sessionId);
   }
 
   private flushPending(sessionId: string) {
@@ -624,7 +710,7 @@ class HttpSessionStore {
         jsonrpc: "2.0",
         method: "session/update",
         params: n,
-      });
+      }, sessionId);
     }
     this.pendingNotifications.delete(sessionId);
   }
@@ -708,14 +794,17 @@ class HttpSessionStore {
     }
   }
 
-  private writeSse(controller: Controller, payload: unknown) {
+  private writeSse(controller: Controller, payload: unknown, sessionId?: string) {
     const encoder = new TextEncoder();
     const id = this.extractSseEventId(payload);
     const event = `${id ? `id: ${id}\n` : ""}data: ${JSON.stringify(payload)}\n\n`;
     try {
       controller.enqueue(encoder.encode(event));
     } catch {
-      // controller closed - drop silently
+      // controller closed - detach if sessionId is known
+      if (sessionId) {
+        this.detachSse(sessionId);
+      }
     }
   }
 
@@ -743,6 +832,13 @@ class HttpSessionStore {
       terminalReason: existing?.terminalReason,
       terminalAt: existing?.terminalAt,
     });
+    // Renew execution lease on activity — prevents watchdog from killing
+    // sessions that are actively producing output but whose lease was set
+    // at creation time with a short DEFAULT_LEASE_SECONDS (5 min).
+    const session = this.sessions.get(sessionId);
+    if (session && session.leaseExpiresAt) {
+      this.sessions.set(sessionId, refreshExecutionBinding(session));
+    }
   }
 
   private setSessionAcpStatus(
@@ -822,6 +918,29 @@ class HttpSessionStore {
   // ─── Memory-aware cleanup methods ─────────────────────────────────────────
 
   /**
+   * Flush any accumulated streaming chunks for a session into messageHistory
+   * as a single consolidated `agent_message`.  Safe to call when no chunks
+   * are pending (no-op).
+   */
+  private flushChunkAccumulator(sessionId: string): void {
+    const acc = this.chunkAccumulator.get(sessionId);
+    if (!acc || acc.chunks.length === 0) return;
+    const merged: SessionUpdateNotification = {
+      sessionId,
+      eventId: acc.firstEventId,
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: acc.chunks.join("") },
+      },
+    };
+    const history = this.messageHistory.get(sessionId) ?? [];
+    history.push(merged);
+    this.messageHistory.set(sessionId, history);
+    this.limitHistorySize(sessionId);
+    this.chunkAccumulator.delete(sessionId);
+  }
+
+  /**
    * Limit message history size for a session.
    * Removes oldest entries if limit is exceeded.
    */
@@ -830,6 +949,11 @@ class HttpSessionStore {
     if (history && history.length > HttpSessionStore.MAX_HISTORY_PER_SESSION) {
       const removed = history.length - HttpSessionStore.MAX_HISTORY_PER_SESSION;
       this.messageHistory.set(sessionId, history.slice(removed));
+      // Flush writeBuffer before trimming so buffered notifications are
+      // persisted before the in-memory history they reference is discarded.
+      if (removed > 50) {
+        void this.writeBuffer.flush(sessionId);
+      }
       if (removed > 10) {
         console.log(`[HttpSessionStore] Trimmed ${removed} messages from session ${sessionId}`);
       }
@@ -852,6 +976,58 @@ class HttpSessionStore {
   }
 
   /**
+   * Enforce a global budget on total history messages across all sessions.
+   * When total exceeds MAX_TOTAL_HISTORY_MESSAGES, trims the oldest sessions'
+   * history first (LRU by lastAccessTime), keeping at least 50 recent entries per session.
+   */
+  private enforceGlobalHistoryBudget(): void {
+    let total = 0;
+    for (const history of this.messageHistory.values()) {
+      total += history.length;
+    }
+    if (total <= HttpSessionStore.MAX_TOTAL_HISTORY_MESSAGES) return;
+
+    console.warn(
+      `[HttpSessionStore] Global history budget exceeded: ${total}/${HttpSessionStore.MAX_TOTAL_HISTORY_MESSAGES} — trimming oldest sessions`
+    );
+
+    const sorted = Array.from(this.lastAccessTime.entries())
+      .sort(([, a], [, b]) => a - b);
+
+    for (const [sessionId] of sorted) {
+      if (total <= HttpSessionStore.MAX_TOTAL_HISTORY_MESSAGES) break;
+      const history = this.messageHistory.get(sessionId);
+      if (history && history.length > 50) {
+        const removed = history.length - 50;
+        this.messageHistory.set(sessionId, history.slice(removed));
+        total -= removed;
+      }
+    }
+  }
+
+  /**
+   * Trim heavy data (history, pending, assistant output) for a session
+   * without removing the session record itself.
+   */
+  private trimSessionData(sessionId: string): void {
+    const history = this.messageHistory.get(sessionId);
+    if (history && history.length > 50) {
+      this.messageHistory.set(sessionId, history.slice(history.length - 50));
+    }
+    this.pendingNotifications.delete(sessionId);
+    this.sessionAssistantOutput.delete(sessionId);
+    this.backgroundTaskCache.delete(sessionId);
+    this.backgroundTaskPending.delete(sessionId);
+    this.traceRecorder.cleanupSession(sessionId);
+  }
+
+  /** Check if a session has reached a terminal state. */
+  private isSessionTerminal(sessionId: string): boolean {
+    const activity = this.sessionActivities.get(sessionId);
+    return activity?.terminalState != null;
+  }
+
+  /**
    * Periodic cleanup check. Runs automatically every 5 minutes.
    * - Removes stale sessions (inactive for > 1 hour)
    * - Limits history and pending notification sizes
@@ -866,6 +1042,22 @@ class HttpSessionStore {
     const removed = this.forceCleanup();
     if (removed > 0) {
       console.log(`[HttpSessionStore] Periodic cleanup: removed ${removed} stale sessions`);
+    }
+
+    this.enforceGlobalHistoryBudget();
+
+    // Proactive high-memory detection
+    const mem = process.memoryUsage();
+    const heapUsedMb = mem.heapUsed / (1024 * 1024);
+    const stats = this.getMemoryUsage();
+    if (heapUsedMb > 2000 && stats.totalHistoryMessages > 3000) {
+      console.warn(
+        `[HttpSessionStore] High memory: heap=${heapUsedMb.toFixed(0)}MB, ` +
+        `historyMessages=${stats.totalHistoryMessages}, sessions=${stats.sessionCount} — ` +
+        `triggering aggressive cleanup`
+      );
+      this.forceCleanup({ aggressive: true });
+      this.enforceGlobalHistoryBudget();
     }
   }
 
@@ -903,10 +1095,20 @@ class HttpSessionStore {
           continue;
         }
 
-        // Protect ROUTA orchestrator sessions — they are long-running and must not
-        // be evicted while child CRAFTERs / GATEs could still be running.
+        // ROUTA orchestrator sessions: release from memory once all children are done.
+        // DB records are preserved so UI history remains intact.
         if (session?.role === "ROUTA") {
-          this.lastAccessTime.set(_sessionId, now);
+          const hasActiveChildren = Array.from(this.sessions.values())
+            .some(s => s.parentSessionId === _sessionId
+              && !this.isSessionTerminal(s.sessionId));
+          if (hasActiveChildren) {
+            this.lastAccessTime.set(_sessionId, now);
+            continue;
+          }
+          // No active children + stale → release from memory (DB kept)
+          this.deleteSession(_sessionId);
+          this.lastAccessTime.delete(_sessionId);
+          removedCount++;
           continue;
         }
 
@@ -922,7 +1124,45 @@ class HttpSessionStore {
       this.limitPendingSize(sessionId);
     }
 
+    // Aggressive mode: clear transient caches under memory pressure
+    if (options?.aggressive) {
+      this.backgroundTaskCache.clear();
+      this.backgroundTaskPending.clear();
+      this.sessionAssistantOutput.clear();
+    }
+
     return removedCount;
+  }
+
+  /**
+   * Dispose all state. Call during graceful shutdown.
+   */
+  dispose(): void {
+    // Stop periodic cleanup timer
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    // Flush all buffered DB writes before shutdown
+    void this.writeBuffer.flushAll();
+    // Flush all pending progress
+    this.progressBuffer.flushAll();
+    // Close all SSE controllers
+    for (const controller of this.sseControllers.values()) {
+      try { controller.close(); } catch {}
+    }
+    this.sseControllers.clear();
+    // Delete all sessions
+    for (const sessionId of Array.from(this.sessions.keys())) {
+      this.deleteSession(sessionId);
+    }
+    // Dispose trace recorder
+    this.traceRecorder.dispose();
+    // Clear remaining caches
+    this.nonBackgroundSessions.clear();
+    this.backgroundTaskCache.clear();
+    this.backgroundTaskPending.clear();
+    this.lastAccessTime.clear();
   }
 
   /**
@@ -970,8 +1210,13 @@ class HttpSessionStore {
     };
   }
 
-  /** Whether DB hydration has been performed */
+  /** Whether DB hydration has completed (not just started) */
   private hydrated = false;
+
+  /** Returns true if the initial DB hydration has completed. */
+  isHydrated(): boolean {
+    return this.hydrated;
+  }
 
   /**
    * Load sessions from the database into the in-memory store.
@@ -979,31 +1224,85 @@ class HttpSessionStore {
    */
   async hydrateFromDb(): Promise<void> {
     if (this.hydrated) return;
-    this.hydrated = true;
 
+    const currentInstance = getAcpInstanceId();
     const dbSessions = await hydrateSessionsFromDb();
+    const staleSessionIds: string[] = [];
+
     for (const s of dbSessions) {
       if (!this.sessions.has(s.id)) {
-        this.upsertSession({
-          sessionId: s.id,
-          name: s.name,
-          cwd: s.cwd,
-          branch: s.branch,
-          workspaceId: s.workspaceId,
-          routaAgentId: s.routaAgentId,
-          provider: s.provider,
-          role: s.role,
-          modeId: s.modeId,
-          parentSessionId: s.parentSessionId,
-          executionMode: s.executionMode,
-          ownerInstanceId: s.ownerInstanceId,
-          leaseExpiresAt: s.leaseExpiresAt,
-          createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
-        });
+        const isStaleBinding = s.executionMode === "embedded"
+          && !!s.ownerInstanceId
+          && s.ownerInstanceId !== currentInstance
+          && !isExecutionLeaseActive(s.leaseExpiresAt);
+
+        if (isStaleBinding) {
+          staleSessionIds.push(s.id);
+          this.upsertSession({
+            sessionId: s.id,
+            name: s.name,
+            cwd: s.cwd,
+            branch: s.branch,
+            workspaceId: s.workspaceId,
+            routaAgentId: s.routaAgentId,
+            provider: s.provider,
+            role: s.role,
+            modeId: s.modeId,
+            parentSessionId: s.parentSessionId,
+            executionMode: undefined,
+            ownerInstanceId: undefined,
+            leaseExpiresAt: undefined,
+            createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
+          });
+          // Mark as terminated in sessionActivities so isTriggerSessionStale
+          // returns the correct stale state without relying on !activity.
+          this.setSessionTerminalState(s.id, "failed", `orphaned by instance ${s.ownerInstanceId}, cleaned up on startup by ${currentInstance}`);
+        } else {
+          this.upsertSession({
+            sessionId: s.id,
+            name: s.name,
+            cwd: s.cwd,
+            branch: s.branch,
+            workspaceId: s.workspaceId,
+            routaAgentId: s.routaAgentId,
+            provider: s.provider,
+            role: s.role,
+            modeId: s.modeId,
+            parentSessionId: s.parentSessionId,
+            executionMode: s.executionMode,
+            ownerInstanceId: s.ownerInstanceId,
+            leaseExpiresAt: s.leaseExpiresAt,
+            createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
+          });
+          // Embedded sessions from a different instance are non-resumable —
+          // mark as terminated immediately so stale-trigger detection works
+          // without waiting for the lease to expire.
+          if (s.executionMode === "embedded" && s.ownerInstanceId && s.ownerInstanceId !== currentInstance) {
+            this.setSessionTerminalState(s.id, "failed", `embedded session from instance ${s.ownerInstanceId}, non-resumable on ${currentInstance}`);
+          }
+        }
       }
     }
     if (dbSessions.length > 0) {
       console.log(`[HttpSessionStore] Hydrated ${dbSessions.length} sessions from database`);
+    }
+    if (staleSessionIds.length > 0) {
+      console.log(
+        `[HttpSessionStore] Cleared stale execution bindings for ${staleSessionIds.length} sessions from previous instances`,
+      );
+      void this.clearStaleBindingsInDb(staleSessionIds);
+    }
+    this.hydrated = true;
+  }
+
+  private async clearStaleBindingsInDb(sessionIds: string[]): Promise<void> {
+    const clearBinding = { executionMode: undefined, ownerInstanceId: undefined, leaseExpiresAt: undefined };
+    for (const id of sessionIds) {
+      try {
+        await updateSessionExecutionBindingInDb(id, clearBinding);
+      } catch {
+        // Non-critical: in-memory state is already correct
+      }
     }
   }
 
@@ -1016,9 +1315,29 @@ class HttpSessionStore {
     updates: NormalizedSessionUpdate[]
   ): Promise<void> {
     try {
+      if (this.nonBackgroundSessions.has(sessionId)) return;
       const system = getRoutaSystem();
-      const task = await system.backgroundTaskStore.findBySessionId(sessionId);
-      if (!task) return; // Not a background task session
+      // First call hits DB; subsequent calls use in-memory cache.
+      // The cached task fields (toolCallCount, inputTokens, outputTokens) serve
+      // as initial values — they get overwritten by accumulated deltas from `updates`.
+      let task = this.backgroundTaskCache.get(sessionId);
+      if (!task) {
+        // Dedup in-flight lookups to prevent cache stampede: concurrent pushNotification
+        // calls for the same session share one DB query instead of each firing its own.
+        let pending = this.backgroundTaskPending.get(sessionId);
+        if (!pending) {
+          pending = system.backgroundTaskStore.findBySessionId(sessionId);
+          this.backgroundTaskPending.set(sessionId, pending);
+        }
+        const found = await pending;
+        this.backgroundTaskPending.delete(sessionId);
+        if (!found) {
+          this.nonBackgroundSessions.add(sessionId);
+          return;
+        }
+        this.backgroundTaskCache.set(sessionId, found);
+        task = found;
+      }
 
       let latestOutput = task.taskOutput ?? "";
 
@@ -1094,18 +1413,35 @@ class HttpSessionStore {
         }
       }
 
-      if (latestOutput !== (task.taskOutput ?? "")) {
-        await system.backgroundTaskStore.updateTaskOutput(task.id, latestOutput);
+      if (didComplete) {
+        // Task completion: flush any pending progress then clean up buffer.
+        // Mark session as non-background first to prevent any new accumulate()
+        // calls from writing stale data during the async flush window.
+        this.nonBackgroundSessions.add(sessionId);
+        await this.progressBuffer.flush(sessionId);
+        this.progressBuffer.dispose(sessionId);
+        this.backgroundTaskCache.delete(sessionId);
+      } else {
+        // In-progress: defer DB writes via progress buffer (debounced)
+        // Cache updates happen immediately for UI responsiveness
+        const outputChanged = latestOutput !== (task.taskOutput ?? "");
+        this.progressBuffer.accumulate(sessionId, task.id, {
+          taskOutput: latestOutput,
+          outputDirty: outputChanged,
+          currentActivity,
+          toolCallCount,
+          inputTokens,
+          outputTokens,
+        });
+        this.backgroundTaskCache.set(sessionId, {
+          ...task,
+          taskOutput: latestOutput,
+          toolCallCount,
+          inputTokens,
+          outputTokens,
+          currentActivity,
+        });
       }
-
-      // Update progress in the store
-      await system.backgroundTaskStore.updateProgress(task.id, {
-        lastActivity: new Date(),
-        currentActivity,
-        toolCallCount,
-        inputTokens,
-        outputTokens,
-      });
     } catch {
       // Ignore errors - progress tracking is best-effort
     }

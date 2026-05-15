@@ -7,6 +7,8 @@ export interface KanbanSessionQueueJob {
   boardId: string;
   workspaceId: string;
   columnId?: string;
+  /** Specialist ID for per-specialist concurrency limits (e.g. "kanban-auto-merger"). */
+  specialistId?: string;
   start: () => Promise<{ sessionId?: string | null; error?: string }>;
 }
 
@@ -24,6 +26,8 @@ interface QueueEntry extends KanbanSessionQueueJob {
   status: "queued" | "running";
   enqueuedAt: Date;
   sessionId?: string;
+  dependencies?: string[];
+  pullRequestUrl?: string;
 }
 
 export class KanbanSessionQueue {
@@ -94,11 +98,15 @@ export class KanbanSessionQueue {
     }
 
     const limit = await this.getConcurrencyLimit(job.workspaceId, job.boardId);
-    const runningCount = this.countRunning(job.boardId);
+    const runningCount = await this.countRunning(job.boardId, job.workspaceId);
+    // Capture dependencies for topological ordering
+    const task = await this.taskStore.get(job.cardId);
     const entry: QueueEntry = {
       ...job,
       status: "queued",
       enqueuedAt: new Date(),
+      dependencies: task?.dependencies ?? [],
+      pullRequestUrl: task?.pullRequestUrl,
     };
     this.jobsByCardId.set(job.cardId, entry);
 
@@ -107,10 +115,29 @@ export class KanbanSessionQueue {
       return { queued: true };
     }
 
+    // Per-specialist concurrency: serialize auto-merger to 1 per board
+    // to prevent concurrent merges causing cascading PR conflicts.
+    if (entry.specialistId === "kanban-auto-merger") {
+      const runningMergers = this.countRunningBySpecialist(job.boardId, "kanban-auto-merger");
+      if (runningMergers >= 1) {
+        this.pushQueuedEntry(entry);
+        return { queued: true };
+      }
+    }
+
     return this.startEntry(entry);
   }
 
-  async getBoardSnapshot(boardId: string): Promise<KanbanBoardQueueSnapshot> {
+  /**
+   * Snapshot of queue state for a board.
+   * @param boardId Board to snapshot
+   * @param tasks Optional pre-loaded workspace tasks to reconcile orphaned running sessions.
+   *   Tasks with triggerSessionId set but no queue entry are counted as running.
+   */
+  async getBoardSnapshot(
+    boardId: string,
+    tasks?: Array<{ id: string; boardId?: string; triggerSessionId?: string; title: string }>,
+  ): Promise<KanbanBoardQueueSnapshot> {
     await this.reconcileBoardEntries(boardId);
 
     const queuedEntries = this.queuedByBoard.get(boardId) ?? [];
@@ -118,17 +145,34 @@ export class KanbanSessionQueue {
       queuedEntries.map((entry, index) => [entry.cardId, index + 1]),
     );
 
+    const queueRunning = Array.from(this.jobsByCardId.values())
+      .filter((entry) => entry.boardId === boardId && entry.status === "running")
+      .map((entry) => ({ cardId: entry.cardId, cardTitle: entry.cardTitle }));
+
+    const orphanedRunning = this.findOrphanedRunning(boardId, queueRunning, tasks);
+
     return {
       boardId,
-      runningCount: this.countRunning(boardId),
-      runningCards: Array.from(this.jobsByCardId.values())
-        .filter((entry) => entry.boardId === boardId && entry.status === "running")
-        .map((entry) => ({ cardId: entry.cardId, cardTitle: entry.cardTitle })),
+      runningCount: queueRunning.length + orphanedRunning.length,
+      runningCards: [...queueRunning, ...orphanedRunning],
       queuedCount: queuedEntries.length,
       queuedCardIds: queuedEntries.map((entry) => entry.cardId),
       queuedCards: queuedEntries.map((entry) => ({ cardId: entry.cardId, cardTitle: entry.cardTitle })),
       queuedPositions,
     };
+  }
+
+  /** Find tasks with triggerSessionId set but no queue entry (orphaned running sessions). */
+  private findOrphanedRunning(
+    boardId: string,
+    queueRunning: Array<{ cardId: string }>,
+    tasks?: Array<{ id: string; boardId?: string; triggerSessionId?: string; title: string }>,
+  ): Array<{ cardId: string; cardTitle: string }> {
+    if (!tasks || tasks.length === 0) return [];
+    const queueRunningIds = new Set(queueRunning.map((e) => e.cardId));
+    return tasks
+      .filter((t) => t.boardId === boardId && t.triggerSessionId && !queueRunningIds.has(t.id))
+      .map((t) => ({ cardId: t.id, cardTitle: t.title }));
   }
 
   private async reconcileBoardEntries(boardId: string): Promise<void> {
@@ -193,19 +237,87 @@ export class KanbanSessionQueue {
     this.queuedByBoard.set(boardId, nextEntries);
   }
 
-  private countRunning(boardId: string): number {
+  private async countRunning(boardId: string, workspaceId?: string): Promise<number> {
     let runningCount = 0;
+    const knownRunningIds = new Set<string>();
     for (const entry of this.jobsByCardId.values()) {
       if (entry.boardId === boardId && entry.status === "running") {
         runningCount += 1;
+        knownRunningIds.add(entry.cardId);
       }
     }
+
+    // Count orphaned running sessions from the task store — tasks that have
+    // triggerSessionId set or a running lane session but are not tracked by
+    // the queue (e.g. recovery sessions started during an async race window).
+    if (workspaceId) {
+      try {
+        const tasks = await this.taskStore.listByWorkspace(workspaceId);
+        for (const task of tasks) {
+          if (task.boardId === boardId && !knownRunningIds.has(task.id) && this.taskHasRunningLaneSession(task)) {
+            runningCount += 1;
+          }
+        }
+      } catch {
+        // Query failure must not block queue operations — fall back to in-memory count.
+      }
+    }
+
     return runningCount;
+  }
+
+  /** Count running entries for a specific specialist within a board. */
+  private countRunningBySpecialist(boardId: string, specialistId: string): number {
+    let count = 0;
+    for (const entry of this.jobsByCardId.values()) {
+      if (entry.boardId === boardId && entry.status === "running" && entry.specialistId === specialistId) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /** Mirrors the Rust-side `task_has_running_lane_session` logic (kanban.rs:389-403). */
+  private taskHasRunningLaneSession(task: {
+    triggerSessionId?: string;
+    status?: string;
+    laneSessions?: Array<{ status: string; startedAt?: string }>;
+  }): boolean {
+    if (task.laneSessions?.some((session) => {
+      if (session.status !== "running") return false;
+      // Stale guard: a running session that started over 2 hours ago is almost
+      // certainly dead (agent process exited, HMR restarted, etc.).  Treating
+      // it as running would permanently block the queue for this board because
+      // the concurrency limit would never drop below the limit.
+      if (session.startedAt) {
+        const startedAtMs = new Date(session.startedAt).getTime();
+        if (Date.now() - startedAtMs > 2 * 60 * 60 * 1000) {
+          return false;
+        }
+      }
+      return true;
+    })) {
+      return true;
+    }
+    return (
+      !!task.triggerSessionId
+      && (task.status === "IN_PROGRESS" || task.status === "REVIEW_REQUIRED")
+    );
   }
 
   private pushQueuedEntry(entry: QueueEntry): void {
     const queue = this.queuedByBoard.get(entry.boardId) ?? [];
     queue.push(entry);
+    // Sort: cards without a PR URL take priority (they still need real work).
+    // Cards that already have a PR are likely done/review and retrying
+    // non-essential steps — deprioritise them to avoid starving dev cards.
+    queue.sort((a, b) => {
+      const aHasPr = a.pullRequestUrl ? 1 : 0;
+      const bHasPr = b.pullRequestUrl ? 1 : 0;
+      if (aHasPr !== bHasPr) return aHasPr - bHasPr;
+      // Tie-break: FIFO within same priority
+      return a.enqueuedAt.getTime() - b.enqueuedAt.getTime();
+    });
     this.queuedByBoard.set(entry.boardId, queue);
   }
 
@@ -222,6 +334,18 @@ export class KanbanSessionQueue {
 
   private async startEntry(entry: QueueEntry): Promise<{ sessionId?: string; queued: boolean; error?: string }> {
     this.removeQueuedEntry(entry.boardId, entry.cardId);
+
+    // Pre-flight check: verify the task is still in the expected column
+    // before starting an expensive agent session.
+    if (entry.columnId) {
+      const task = await this.taskStore.get(entry.cardId);
+      if (!task || task.columnId !== entry.columnId) {
+        this.jobsByCardId.delete(entry.cardId);
+        void this.drainQueue(entry.boardId, entry.workspaceId);
+        return { queued: false, error: "Task moved to a different column before session could start." };
+      }
+    }
+
     entry.status = "running";
 
     try {
@@ -264,14 +388,25 @@ export class KanbanSessionQueue {
     await this.reconcileBoardEntries(boardId);
 
     const limit = await this.getConcurrencyLimit(workspaceId, boardId);
-    let runningCount = this.countRunning(boardId);
+    let runningCount = await this.countRunning(boardId, workspaceId);
     if (runningCount >= limit) return;
 
     const queue = this.queuedByBoard.get(boardId);
     if (!queue || queue.length === 0) return;
 
-    while (queue.length > 0 && runningCount < limit) {
-      const nextEntry = queue.shift();
+    // Build set of currently-running card IDs (used as "resolved" nodes in topological sort)
+    const runningCardIds = new Set<string>();
+    for (const entry of this.jobsByCardId.values()) {
+      if (entry.boardId === boardId && entry.status === "running") {
+        runningCardIds.add(entry.cardId);
+      }
+    }
+
+    // Topological sort: prefer entries whose dependencies are all resolved (running or completed)
+    const sortedQueue = this.topologicalSort(queue, runningCardIds);
+
+    while (sortedQueue.length > 0 && runningCount < limit) {
+      const nextEntry = sortedQueue.shift();
       if (!nextEntry) break;
 
       const task = await this.taskStore.get(nextEntry.cardId);
@@ -280,16 +415,85 @@ export class KanbanSessionQueue {
         continue;
       }
 
+      // Per-specialist concurrency: skip auto-merger if one is already running
+      if (nextEntry.specialistId === "kanban-auto-merger"
+        && this.countRunningBySpecialist(boardId, "kanban-auto-merger") >= 1) {
+        continue;
+      }
+
       const result = await this.startEntry(nextEntry);
       if (result.sessionId) {
         runningCount += 1;
+        // Newly running task may unblock other queued entries
+        runningCardIds.add(nextEntry.cardId);
       }
     }
 
-    if (queue.length === 0) {
+    // Update queue with remaining entries (preserving original order for non-topological fields)
+    const remainingCardIds = new Set(sortedQueue.map((e) => e.cardId));
+    const remainingQueue = queue.filter((e) => remainingCardIds.has(e.cardId));
+
+    if (remainingQueue.length === 0) {
       this.queuedByBoard.delete(boardId);
     } else {
-      this.queuedByBoard.set(boardId, queue);
+      this.queuedByBoard.set(boardId, remainingQueue);
     }
+  }
+
+  /**
+   * Topological sort of queued entries based on their dependencies.
+   * Entries with all dependencies resolved (running or absent) come first.
+   */
+  private topologicalSort(entries: QueueEntry[], _resolvedIds: Set<string>): QueueEntry[] {
+    const entryMap = new Map(entries.map((e) => [e.cardId, e]));
+    const inDegree = new Map<string, number>();
+    const adjacency = new Map<string, Set<string>>();
+
+    for (const entry of entries) {
+      inDegree.set(entry.cardId, 0);
+      adjacency.set(entry.cardId, new Set());
+    }
+
+    // Build adjacency: dep → dependent (dep must complete before dependent can run)
+    for (const entry of entries) {
+      const deps = entry.dependencies ?? [];
+      let degree = 0;
+      for (const depId of deps) {
+        if (entryMap.has(depId)) {
+          // Dependency is also in queue — add edge
+          adjacency.get(depId)!.add(entry.cardId);
+          degree++;
+        }
+        // If dependency is resolved (running or not in queue), no edge needed
+      }
+      inDegree.set(entry.cardId, degree);
+    }
+
+    // Kahn's algorithm
+    const result: QueueEntry[] = [];
+    const zeroDegree = entries.filter((e) => inDegree.get(e.cardId) === 0);
+
+    while (zeroDegree.length > 0) {
+      const next = zeroDegree.shift()!;
+      result.push(next);
+
+      for (const dependentId of adjacency.get(next.cardId) ?? []) {
+        const newDegree = (inDegree.get(dependentId) ?? 1) - 1;
+        inDegree.set(dependentId, newDegree);
+        if (newDegree === 0) {
+          const dependent = entryMap.get(dependentId);
+          if (dependent) zeroDegree.push(dependent);
+        }
+      }
+    }
+
+    // Append any remaining entries (circular deps or unresolvable) at the end
+    for (const entry of entries) {
+      if (!result.includes(entry)) {
+        result.push(entry);
+      }
+    }
+
+    return result;
   }
 }

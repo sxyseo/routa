@@ -106,7 +106,9 @@ describe("/api/tasks/[taskId]", () => {
       hasCommitsSinceBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: false,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
       reason: "Task has no linked repository or worktree.",
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(null);
@@ -576,12 +578,6 @@ describe("/api/tasks/[taskId]", () => {
             enabled: true,
             steps: [
               {
-                id: "qa-frontend",
-                role: "GATE",
-                specialistId: "kanban-qa-frontend",
-                specialistName: "QA Frontend",
-              },
-              {
                 id: "review-guard",
                 role: "GATE",
                 specialistId: "kanban-review-guard",
@@ -1019,7 +1015,9 @@ describe("/api/tasks/[taskId]", () => {
       hasCommitsSinceBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Review": no committed changes detected on branch "issue/task-1" relative to "origin/main". Commit your implementation before requesting review.',
@@ -1088,7 +1086,9 @@ describe("/api/tasks/[taskId]", () => {
       hasCommitsSinceBase: true,
       hasUncommittedChanges: true,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Review": branch "issue/task-1" still has uncommitted changes (2 modified, 1 untracked). Commit the current card\'s work, then stash or restore unrelated leftovers before requesting review.',
@@ -1160,7 +1160,9 @@ describe("/api/tasks/[taskId]", () => {
       hasCommitsSinceBase: true,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Done": GitHub repo is not PR-ready yet. Use a feature branch instead of "main" so this task can open a pull request cleanly.',
@@ -1183,6 +1185,7 @@ describe("/api/tasks/[taskId]", () => {
       checked: true,
       branch: "main",
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     expect(taskStore.save).not.toHaveBeenCalled();
   });
@@ -1380,12 +1383,6 @@ describe("/api/tasks/[taskId]", () => {
           automation: {
             enabled: true,
             steps: [
-              {
-                id: "qa-frontend",
-                role: "GATE",
-                specialistId: "kanban-qa-frontend",
-                specialistName: "QA Frontend",
-              },
               {
                 id: "review-guard",
                 role: "GATE",

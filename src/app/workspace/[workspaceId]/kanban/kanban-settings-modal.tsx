@@ -4,17 +4,12 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { AcpProviderInfo } from "@/client/acp-client";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { getSpecialistCategory, type SpecialistCategory } from "@/client/utils/specialist-categories";
-import {
-  getDefaultKanbanHistoryMemoryPolicy,
-  normalizeKanbanHistoryMemoryPolicy,
-} from "@/core/kanban/board-history-memory-policy";
 import { resolveSpecialistSelection, type KanbanSpecialistLanguage } from "./kanban-specialist-language";
-import type {
-  KanbanBoardInfo,
-  KanbanDevSessionSupervisionInfo,
-  KanbanHistoryMemoryPolicyInfo,
-} from "../types";
+import type { KanbanBoardInfo, KanbanDevSessionSupervisionInfo } from "../types";
 import { useTranslation } from "@/i18n";
+import type { UseWorkspacesReturn } from "@/client/hooks/use-workspaces";
+import type { CodebaseData } from "@/client/hooks/use-workspaces";
+import { WorkspaceSettingsTab } from "../workspace-settings-tab";
 import {
   ColumnAutomationWorkspace,
   DEFAULT_DEV_SESSION_SUPERVISION,
@@ -38,6 +33,7 @@ import {
 export type { ColumnAutomationConfig } from "./kanban-settings-modal-parts";
 
 const BOARD_VIEW_ID = "__kanban_board__";
+const WORKSPACE_VIEW_ID = "__workspace_settings__";
 
 export interface KanbanSettingsModalProps {
   board: KanbanBoardInfo;
@@ -54,9 +50,17 @@ export interface KanbanSettingsModalProps {
     columnAutomation: Record<string, ColumnAutomationConfig>,
     sessionConcurrencyLimit: number,
     devSessionSupervision: KanbanDevSessionSupervisionInfo,
-    historyMemoryPolicy: KanbanHistoryMemoryPolicyInfo,
     githubTokenUpdate?: { token?: string; clear?: boolean },
+    branchRules?: KanbanBoardInfo["branchRules"],
   ) => Promise<void>;
+  /** Workspace settings panel props (optional — when provided, a "Workspace" tab appears) */
+  workspacePanelProps?: {
+    workspaceId: string;
+    workspaceTitle: string;
+    codebases: CodebaseData[];
+    fetchCodebases: () => Promise<void>;
+    useWorkspacesHook: UseWorkspacesReturn;
+  };
 }
 
 export function KanbanSettingsModal({
@@ -70,6 +74,7 @@ export function KanbanSettingsModal({
   onClose,
   onClearAll,
   onSave,
+  workspacePanelProps,
 }: KanbanSettingsModalProps) {
   const { t } = useTranslation();
   const stageTypeOptions = useMemo(() => getStageTypeOptions(t), [t]);
@@ -86,8 +91,18 @@ export function KanbanSettingsModal({
   const [devSessionSupervision, setDevSessionSupervision] = useState<KanbanDevSessionSupervisionInfo>(
     board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION,
   );
-  const [historyMemoryPolicy, setHistoryMemoryPolicy] = useState<KanbanHistoryMemoryPolicyInfo>(
-    board.historyMemoryPolicy ?? getDefaultKanbanHistoryMemoryPolicy(),
+  const [branchRules, setBranchRules] = useState<NonNullable<KanbanBoardInfo["branchRules"]>>(
+    board.branchRules ?? {
+      lifecycle: {
+        deleteBranchOnMerge: true,
+        removeWorktreeOnMerge: true,
+        rebaseDownstream: true,
+        autoCreatePullRequest: true,
+      },
+      baseBranch: {
+        strategy: "dependency_inherit",
+      },
+    },
   );
   const [selectedViewId, setSelectedViewId] = useState<string>(() => board.columns[0]?.id ?? BOARD_VIEW_ID);
   const [saving, setSaving] = useState(false);
@@ -103,6 +118,9 @@ export function KanbanSettingsModal({
   const [showUnsavedChangesPrompt, setShowUnsavedChangesPrompt] = useState(false);
   const [githubTokenInput, setGitHubTokenInput] = useState("");
   const [removeConfiguredGitHubToken, setRemoveConfiguredGitHubToken] = useState(false);
+  const [gitlabTokenInput, setGitLabTokenInput] = useState("");
+  const [gitlabServerUrl, setGitLabServerUrl] = useState("https://gitlab.com");
+  const [gitlabProjectId, setGitLabProjectId] = useState("");
   const kanbanImportInputRef = useRef<HTMLInputElement>(null);
 
   const sortedColumns = useMemo(
@@ -121,33 +139,24 @@ export function KanbanSettingsModal({
     automation: normalizeAutomationForDirtyCheck(initialColumnAutomation, initialEditableColumns),
     sessionConcurrencyLimit: Math.max(1, Math.floor(board.sessionConcurrencyLimit ?? 1)),
     devSessionSupervision: normalizeDevSessionSupervision(board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION),
-    historyMemoryPolicy: normalizeKanbanHistoryMemoryPolicy(
-      board.historyMemoryPolicy ?? getDefaultKanbanHistoryMemoryPolicy(),
-    ),
+    branchRules: board.branchRules ?? branchRules,
     githubTokenConfigured: Boolean(board.githubTokenConfigured),
-  }), [
-    board.devSessionSupervision,
-    board.githubTokenConfigured,
-    board.historyMemoryPolicy,
-    board.sessionConcurrencyLimit,
-    initialColumnAutomation,
-    initialEditableColumns,
-  ]);
+  }), [board.branchRules, board.devSessionSupervision, board.githubTokenConfigured, board.sessionConcurrencyLimit, branchRules, initialColumnAutomation, initialEditableColumns]);
 
   const currentSnapshot = useMemo(() => JSON.stringify({
     columns: normalizeColumns(editableColumns),
     automation: normalizeAutomationForDirtyCheck(columnAutomation, editableColumns),
     sessionConcurrencyLimit: Math.max(1, Math.floor(sessionConcurrencyLimit)),
     devSessionSupervision: normalizeDevSessionSupervision(devSessionSupervision),
-    historyMemoryPolicy: normalizeKanbanHistoryMemoryPolicy(historyMemoryPolicy),
+    branchRules,
     githubTokenConfigured: removeConfiguredGitHubToken ? false : Boolean(board.githubTokenConfigured || githubTokenInput.trim()),
   }), [
     board.githubTokenConfigured,
+    branchRules,
     columnAutomation,
     devSessionSupervision,
     editableColumns,
     githubTokenInput,
-    historyMemoryPolicy,
     removeConfiguredGitHubToken,
     sessionConcurrencyLimit,
   ]);
@@ -172,10 +181,6 @@ export function KanbanSettingsModal({
     setGitHubTokenInput("");
     setRemoveConfiguredGitHubToken(false);
   }, [board.githubTokenConfigured, board.id]);
-
-  useEffect(() => {
-    setHistoryMemoryPolicy(board.historyMemoryPolicy ?? getDefaultKanbanHistoryMemoryPolicy());
-  }, [board.historyMemoryPolicy, board.id]);
 
   useEffect(() => {
     setKanbanExportWorkspaceId((current) => current || board.workspaceId || "default");
@@ -372,12 +377,12 @@ export function KanbanSettingsModal({
         sanitizedColumnAutomation,
         Math.max(1, Math.floor(sessionConcurrencyLimit)),
         normalizeDevSessionSupervision(devSessionSupervision),
-        normalizeKanbanHistoryMemoryPolicy(historyMemoryPolicy),
         removeConfiguredGitHubToken
           ? { clear: true }
           : githubTokenInput.trim()
             ? { token: githubTokenInput.trim() }
             : undefined,
+        branchRules,
       );
       if (closeAfterSave) {
         setShowUnsavedChangesPrompt(false);
@@ -534,6 +539,19 @@ export function KanbanSettingsModal({
                 >
                   {t.kanban.boardOverview}
                 </button>
+                {workspacePanelProps && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedViewId(WORKSPACE_VIEW_ID)}
+                    className={`w-full min-w-0 rounded-[10px] border px-2.5 py-2 text-left text-[13px] font-semibold transition ${
+                      selectedViewId === WORKSPACE_VIEW_ID
+                        ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10 dark:border-amber-400/40 dark:bg-slate-900"
+                        : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 dark:border-slate-800 dark:bg-[#111722] dark:text-slate-100 dark:hover:border-slate-700"
+                    }`}
+                  >
+                    {t.workspace.workspaceLabel ?? "Workspace"}
+                  </button>
+                )}
                 <div className="space-y-1">
                   {sortedColumns.map((column) => {
                       const automation = columnAutomation[column.id] ?? { enabled: false };
@@ -583,7 +601,23 @@ export function KanbanSettingsModal({
             </aside>
 
             <main className="min-h-0 overflow-y-auto bg-white p-2 dark:bg-[#0d1118] sm:p-2.5 xl:p-3">
-              {selectedViewId === BOARD_VIEW_ID ? (
+              {selectedViewId === WORKSPACE_VIEW_ID && workspacePanelProps ? (
+                <div className="mx-auto max-w-2xl p-2">
+                  <WorkspaceSettingsTab
+                    workspaceId={workspacePanelProps.workspaceId}
+                    workspaceTitle={workspacePanelProps.workspaceTitle}
+                    codebases={workspacePanelProps.codebases}
+                    fetchCodebases={workspacePanelProps.fetchCodebases}
+                    worktreeRootDraft=""
+                    setWorktreeRootDraft={() => {}}
+                    worktreeRootState={{ saving: false, message: null, error: null }}
+                    displayedWorktreeRoot=""
+                    defaultWorktreeRootHint=""
+                    onSaveWorktreeRoot={async () => {}}
+                    useWorkspacesHook={workspacePanelProps.useWorkspacesHook}
+                  />
+                </div>
+              ) : selectedViewId === BOARD_VIEW_ID ? (
                 <div className="mx-auto max-w-4xl space-y-3">
                   <SectionCard eyebrow={t.kanban.runtime} title={t.kanban.runtimeSettings} description={t.kanban.runtimeSettingsHint}>
                     <div className="space-y-3">
@@ -664,81 +698,119 @@ export function KanbanSettingsModal({
                           />
                         </div>
                       </div>
-                      <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-                          {t.kanban.historyMemoryPolicy}
-                        </div>
-                        <div className="mt-1.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                          <LabeledSelect
-                            label={t.kanban.mode}
-                            ariaLabel="History memory policy mode"
-                            value={historyMemoryPolicy.mode}
-                            options={[
-                              { value: "off", label: t.kanban.off },
-                              { value: "auto", label: t.kanban.autoMode },
-                              { value: "force", label: t.kanban.forceMode },
-                            ]}
-                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
+                    </div>
+                  </SectionCard>
+
+                  <SectionCard eyebrow={t.kanban.branchLifecycle} title={t.kanban.branchLifecycleSettings} description={t.kanban.branchLifecycleHint}>
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                        <input
+                          type="checkbox"
+                          checked={branchRules?.lifecycle.deleteBranchOnMerge ?? true}
+                          onChange={(event) => setBranchRules((current) => ({
+                            ...current,
+                            lifecycle: { ...current.lifecycle, deleteBranchOnMerge: event.target.checked },
+                          }))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>
+                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.deleteBranchOnMerge}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.deleteBranchOnMergeHint}</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                        <input
+                          type="checkbox"
+                          checked={branchRules?.lifecycle.removeWorktreeOnMerge ?? true}
+                          onChange={(event) => setBranchRules((current) => ({
+                            ...current,
+                            lifecycle: { ...current.lifecycle, removeWorktreeOnMerge: event.target.checked },
+                          }))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>
+                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.removeWorktreeOnMerge}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.removeWorktreeOnMergeHint}</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                        <input
+                          type="checkbox"
+                          checked={branchRules?.lifecycle.rebaseDownstream ?? true}
+                          onChange={(event) => setBranchRules((current) => ({
+                            ...current,
+                            lifecycle: { ...current.lifecycle, rebaseDownstream: event.target.checked },
+                          }))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>
+                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.rebaseDownstream}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.rebaseDownstreamHint}</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                        <input
+                          type="checkbox"
+                          checked={branchRules?.lifecycle.autoCreatePullRequest ?? true}
+                          onChange={(event) => setBranchRules((current) => ({
+                            ...current,
+                            lifecycle: { ...current.lifecycle, autoCreatePullRequest: event.target.checked },
+                          }))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>
+                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.autoCreatePullRequest}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.autoCreatePullRequestHint}</span>
+                        </span>
+                      </label>
+                    </div>
+                  </SectionCard>
+
+                  <SectionCard eyebrow={t.kanban.prTargetBranchEyebrow} title={t.kanban.prTargetBranchTitle} description={t.kanban.prTargetBranchHint}>
+                    <div className="space-y-3">
+                      <label className="block space-y-1.5">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.kanban.prTargetStrategy}
+                        </span>
+                        <select
+                          value={branchRules?.baseBranch?.strategy ?? "dependency_inherit"}
+                          onChange={(event) => {
+                            const strategy = event.target.value as "codebase_default" | "fixed" | "dependency_inherit";
+                            setBranchRules((current) => ({
                               ...current,
-                              mode: value as KanbanHistoryMemoryPolicyInfo["mode"],
-                            }))}
-                          />
-                          <LabeledNumberInput
-                            label={t.kanban.historyMemoryMinSessions}
-                            ariaLabel="History memory minimum matched sessions"
-                            min={0}
-                            max={20}
-                            disabled={historyMemoryPolicy.mode !== "auto"}
-                            value={historyMemoryPolicy.minMatchedSessions}
-                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
+                              baseBranch: { strategy, fixedBranch: current.baseBranch?.fixedBranch },
+                            }));
+                          }}
+                          className="block w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-[#111722] dark:text-slate-100"
+                        >
+                          <option value="dependency_inherit">{t.kanban.prStrategyDependencyInherit}</option>
+                          <option value="codebase_default">{t.kanban.prStrategyCodebaseDefault}</option>
+                          <option value="fixed">{t.kanban.prStrategyFixed}</option>
+                        </select>
+                        <span className="block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          {t.kanban.prTargetStrategyHint}
+                        </span>
+                      </label>
+                      {(branchRules?.baseBranch?.strategy ?? "dependency_inherit") === "fixed" ? (
+                        <label className="block space-y-1.5">
+                          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                            {t.kanban.prFixedBranch}
+                          </span>
+                          <input
+                            type="text"
+                            value={branchRules?.baseBranch?.fixedBranch ?? ""}
+                            onChange={(event) => setBranchRules((current) => ({
                               ...current,
-                              minMatchedSessions: Math.max(0, value || 0),
+                              baseBranch: { strategy: "fixed", fixedBranch: event.target.value },
                             }))}
+                            placeholder="main"
+                            className="block w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 dark:border-slate-800 dark:bg-[#111722] dark:text-slate-100 dark:placeholder-slate-500"
                           />
-                          <LabeledNumberInput
-                            label={t.kanban.historyMemoryMinFiles}
-                            ariaLabel="History memory minimum matched files"
-                            min={0}
-                            max={50}
-                            disabled={historyMemoryPolicy.mode !== "auto"}
-                            value={historyMemoryPolicy.minMatchedFiles}
-                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
-                              ...current,
-                              minMatchedFiles: Math.max(0, value || 0),
-                            }))}
-                          />
-                          <LabeledNumberInput
-                            label={t.kanban.historyMemoryMinFeatures}
-                            ariaLabel="History memory minimum feature candidates"
-                            min={0}
-                            max={20}
-                            disabled={historyMemoryPolicy.mode !== "auto"}
-                            value={historyMemoryPolicy.minFeatureCandidates}
-                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
-                              ...current,
-                              minFeatureCandidates: Math.max(0, value || 0),
-                            }))}
-                          />
-                          <LabeledSelect
-                            label={t.kanban.historyMemoryMinConfidence}
-                            ariaLabel="History memory minimum confidence"
-                            disabled={historyMemoryPolicy.mode !== "auto"}
-                            value={historyMemoryPolicy.minConfidence}
-                            options={[
-                              { value: "low", label: t.kanban.matchConfidenceLow },
-                              { value: "medium", label: t.kanban.matchConfidenceMedium },
-                              { value: "high", label: t.kanban.matchConfidenceHigh },
-                            ]}
-                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
-                              ...current,
-                              minConfidence: value as KanbanHistoryMemoryPolicyInfo["minConfidence"],
-                            }))}
-                          />
-                        </div>
-                        <p className="mt-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                          {t.kanban.historyMemoryPolicyHint}
-                        </p>
-                      </div>
+                          <span className="block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                            {t.kanban.prFixedBranchHint}
+                          </span>
+                        </label>
+                      ) : null}
                     </div>
                   </SectionCard>
 
@@ -819,6 +891,55 @@ export function KanbanSettingsModal({
                     <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
                       {githubImportAvailable ? t.kanban.githubImportEnabledHint : t.kanban.githubImportDisabledHint}
                     </p>
+                  </SectionCard>
+
+                  <SectionCard eyebrow={t.webhook.platformGitlab} title={t.webhook.platformGitlab + " Webhook"} description={t.webhook.gitlabEmptyDescription}>
+                    <div className="space-y-2">
+                      <label className="block space-y-1">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.webhook.gitlabServerUrl}
+                        </span>
+                        <input
+                          type="text"
+                          value={gitlabServerUrl}
+                          onChange={(event) => setGitLabServerUrl(event.target.value)}
+                          placeholder="https://gitlab.com"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-orange-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          aria-label="GitLab server URL"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.webhook.gitlabProjectId}
+                        </span>
+                        <input
+                          type="text"
+                          value={gitlabProjectId}
+                          onChange={(event) => setGitLabProjectId(event.target.value)}
+                          placeholder="namespace/project or 12345"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-orange-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          aria-label="GitLab project ID"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.webhook.gitlabToken}
+                        </span>
+                        <input
+                          type="password"
+                          value={gitlabTokenInput}
+                          onChange={(event) => setGitLabTokenInput(event.target.value)}
+                          placeholder="glpat-..."
+                          autoComplete="off"
+                          spellCheck={false}
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-orange-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          aria-label="GitLab personal access token"
+                        />
+                      </label>
+                      <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                        {t.webhook.gitlabServerUrlHint}
+                      </p>
+                    </div>
                   </SectionCard>
 
                   <SectionCard eyebrow={t.common.import} title={t.kanban.boardTransfer} description={t.kanban.boardTransferHint}>
@@ -1108,7 +1229,6 @@ function LabeledNumberInput({
   ariaLabel,
   min,
   max,
-  disabled = false,
   value,
   onChange,
 }: {
@@ -1116,7 +1236,6 @@ function LabeledNumberInput({
   ariaLabel: string;
   min: number;
   max: number;
-  disabled?: boolean;
   value: number;
   onChange: (value: number) => void;
 }) {
@@ -1128,10 +1247,9 @@ function LabeledNumberInput({
         type="number"
         min={min}
         max={max}
-        disabled={disabled}
         value={value}
         onChange={(event) => onChange(Number.parseInt(event.target.value || String(min), 10) || min)}
-        className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+        className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
       />
     </label>
   );

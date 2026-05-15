@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { FitnessAnalysisPanel } from "@/client/components/fitness-analysis-panel";
@@ -17,6 +17,7 @@ type FluencySettingsPageClientProps = {
 
 export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPageClientProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const workspacesHook = useWorkspaces();
   const requestedWorkspaceId = searchParams.get("workspaceId") ?? "";
@@ -123,11 +124,17 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
             setSelectedCodebaseId("");
             setInitialRepoPath("");
             setSelectedRepoOverrideState({ workspaceId: nextWorkspaceId, selection: null });
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("workspaceId", nextWorkspaceId);
+            router.replace(`/settings/fluency?${params.toString()}`);
           }}
           onCreate={async (title) => {
             const workspace = await workspacesHook.createWorkspace(title);
             if (workspace) {
               setSelectedWorkspaceId(workspace.id);
+              const params = new URLSearchParams(searchParams.toString());
+              params.set("workspaceId", workspace.id);
+              router.replace(`/settings/fluency?${params.toString()}`);
             }
           }}
           loading={workspacesHook.loading}

@@ -23,9 +23,7 @@ import {
 import type { RoutaSystem } from "../routa-system";
 import {
   createTask,
-  normalizeTaskContextSearchSpec,
   Task,
-  TaskContextSearchSpec,
   TaskLaneHandoffRequestType,
   TaskLaneHandoffStatus,
   TaskPriority,
@@ -74,50 +72,9 @@ import {
   resolveCurrentOrNextContractGate,
 } from "../kanban/task-contract-readiness";
 import { resolveTaskWorktreeTruth } from "../kanban/task-worktree-truth";
-import { filterBacklogContextSearchSpec } from "../kanban/backlog-context-confirmation";
+import { checkCanMoveToNextColumn, updateDependencyRelations } from "../kanban/dependency-gate";
 
-const DESCRIPTION_FROZEN_STAGES = new Set<KanbanColumnStage>(["dev", "review", "blocked", "done"]);
-
-type WorkflowOrchestratorSingletonModule =
-  typeof import("../kanban/workflow-orchestrator-singleton");
-
-function resolveWorkflowOrchestratorSingletonModule(
-  value: unknown,
-): WorkflowOrchestratorSingletonModule {
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if (
-      typeof record.startWorkflowOrchestrator === "function"
-      && typeof record.enqueueKanbanTaskSession === "function"
-    ) {
-      return record as WorkflowOrchestratorSingletonModule;
-    }
-
-    const defaultExport = record.default;
-    if (defaultExport && typeof defaultExport === "object") {
-      const defaultRecord = defaultExport as Record<string, unknown>;
-      if (
-        typeof defaultRecord.startWorkflowOrchestrator === "function"
-        && typeof defaultRecord.enqueueKanbanTaskSession === "function"
-      ) {
-        return defaultRecord as WorkflowOrchestratorSingletonModule;
-      }
-    }
-
-    const moduleExports = record["module.exports"];
-    if (moduleExports && typeof moduleExports === "object") {
-      const moduleExportsRecord = moduleExports as Record<string, unknown>;
-      if (
-        typeof moduleExportsRecord.startWorkflowOrchestrator === "function"
-        && typeof moduleExportsRecord.enqueueKanbanTaskSession === "function"
-      ) {
-        return moduleExportsRecord as WorkflowOrchestratorSingletonModule;
-      }
-    }
-  }
-
-  throw new TypeError("workflow-orchestrator-singleton module exports are incompatible");
-}
+const DESCRIPTION_FROZEN_STAGES = new Set<KanbanColumnStage>(["dev", "review", "blocked", "done", "archived"]);
 
 export class KanbanTools {
   private eventBus?: EventBus;
@@ -221,8 +178,6 @@ export class KanbanTools {
     columnId?: string;
     title: string;
     description?: string;
-    contextSearchSpec?: TaskContextSearchSpec;
-    sessionId?: string;
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
     assignedProvider?: string;
@@ -248,11 +203,6 @@ export class KanbanTools {
       (t) => t.boardId === board.id && (t.columnId ?? "backlog") === targetColumnId,
     );
     const position = columnTasks.length;
-    const filteredContextSearchSpec = await filterBacklogContextSearchSpec({
-      contextSearchSpec: normalizeTaskContextSearchSpec(params.contextSearchSpec),
-      columnId: targetColumnId,
-      sessionId: params.sessionId,
-    });
 
     const task = createTask({
       id: uuidv4(),
@@ -266,17 +216,13 @@ export class KanbanTools {
       priority: params.priority as TaskPriority | undefined,
       labels: params.labels,
       assignedProvider: params.assignedProvider,
-      contextSearchSpec: filteredContextSearchSpec.contextSearchSpec,
     });
 
     await this.taskStore.save(task);
     await this.triggerCreatedCardAutomation(board, column, task);
     this.notifyWorkspaceChanged(task.workspaceId, "task", "created", task.id);
 
-    return successResult({
-      ...this.taskToCard(task),
-      warnings: filteredContextSearchSpec.warning ? [filteredContextSearchSpec.warning] : [],
-    });
+    return successResult(this.taskToCard(task));
   }
 
   async moveCard(params: {
@@ -299,12 +245,38 @@ export class KanbanTools {
     }
 
     const targetColumn = board.columns.find((c) => c.id === params.targetColumnId);
-    if (!targetColumn) {
+    // Allow "archived" as a virtual column even if not present on the board
+    const isArchivedVirtualColumn = params.targetColumnId === "archived" && !targetColumn;
+    if (!targetColumn && !isArchivedVirtualColumn) {
       return errorResult(`Column not found: ${params.targetColumnId}`);
     }
+    const resolvedTargetColumn = targetColumn ?? {
+      id: "archived",
+      name: "Archived",
+      position: board.columns.length,
+      stage: "archived" as KanbanColumnStage,
+    };
 
     const fromColumnId = task.columnId ?? "backlog";
+    // Archived cards cannot be moved out via moveCard; use a dedicated unarchive endpoint instead
+    if (fromColumnId === "archived") {
+      return errorResult(`Cannot move card "${task.title}" out of Archived. Use a dedicated unarchive action to restore it.`);
+    }
     const fromColumn = board.columns.find((c) => c.id === fromColumnId);
+    // Done-to-blocked guard: reject moves of APPROVED cards from done to blocked.
+    // An approved card should not be re-blocked — if there is a post-approval
+    // infrastructure issue, clear the verdict first or create a separate follow-up.
+    if (
+      fromColumn?.stage === "done"
+      && resolvedTargetColumn.stage === "blocked"
+      && task.verificationVerdict === "APPROVED"
+    ) {
+      return errorResult(
+        `Cannot move card "${task.title}" to Blocked: this card has verificationVerdict=APPROVED. ` +
+        "Approved cards should remain in Done. If there is a post-approval issue, " +
+        "clear the verificationVerdict first or create a separate follow-up card.",
+      );
+    }
     const allowReviewFallbackToDev = fromColumnId === "review"
       && params.targetColumnId === "dev"
       && task.verificationVerdict === "NOT_APPROVED";
@@ -318,8 +290,63 @@ export class KanbanTools {
       }
     }
 
+    // Cross-column active automation guard: reject if another column has an active automation on this card
+    if (this.automationSystem && fromColumnId !== params.targetColumnId) {
+      try {
+        const { getWorkflowOrchestrator } = await import("../kanban/workflow-orchestrator-singleton");
+        const orchestrator = getWorkflowOrchestrator(this.automationSystem);
+        const activeAutomation = orchestrator.getAutomationForCard(task.id);
+        if (
+          activeAutomation
+          && (activeAutomation.status === "queued" || activeAutomation.status === "running")
+          && activeAutomation.columnId !== fromColumnId
+        ) {
+          return errorResult(
+            `Cannot move "${task.title}" to "${resolvedTargetColumn.name}": an active automation is still running ` +
+            `in column "${activeAutomation.columnName ?? activeAutomation.columnId}" (status: ${activeAutomation.status}). ` +
+            "Wait for it to complete before moving the card.",
+          );
+        }
+      } catch {
+        // Orchestrator may not be initialized in all contexts; skip cross-column check
+      }
+    }
+
+    // AC3: Check dependency gate before allowing transition
+    if (task.dependencies && task.dependencies.length > 0 && fromColumnId !== params.targetColumnId) {
+      const depCheck = await checkCanMoveToNextColumn(
+        task,
+        params.targetColumnId,
+        board.columns,
+        this.taskStore,
+      );
+      if (!depCheck.canMove) {
+        return errorResult(depCheck.message ?? `Cannot move card to "${targetColumn?.name ?? params.targetColumnId}": blocked by unfinished dependencies: ${depCheck.blockedBy.join(", ")}`);
+      }
+    }
+
+    // Split parent guard: block move to done/archived if child tasks are not completed
+    if (
+      task.splitPlan?.childTaskIds?.length
+      && (resolvedTargetColumn.stage === "archived" || resolvedTargetColumn.stage === "done")
+    ) {
+      const pendingChildren: string[] = [];
+      for (const childId of task.splitPlan.childTaskIds) {
+        const child = await this.taskStore.get(childId);
+        if (child && child.status !== "COMPLETED" && child.status !== "ARCHIVED") {
+          pendingChildren.push(child.title ?? childId);
+        }
+      }
+      if (pendingChildren.length > 0) {
+        return errorResult(
+          `Cannot move "${task.title}" to ${resolvedTargetColumn.name ?? params.targetColumnId}: ` +
+          `${pendingChildren.length} child task(s) not completed: ${pendingChildren.slice(0, 3).join(", ")}`,
+        );
+      }
+    }
+
     // Check required artifacts before allowing transition
-    const requiredArtifacts = targetColumn.automation?.requiredArtifacts;
+    const requiredArtifacts = resolvedTargetColumn.automation?.requiredArtifacts;
     if (requiredArtifacts && requiredArtifacts.length > 0 && this.artifactStore) {
       const missingArtifacts: string[] = [];
       for (const artifactType of requiredArtifacts) {
@@ -333,35 +360,35 @@ export class KanbanTools {
       }
       if (missingArtifacts.length > 0) {
         return errorResult(
-          `Cannot move card to "${targetColumn.name}": missing required artifacts: ${missingArtifacts.join(", ")}. ` +
+          `Cannot move card to "${resolvedTargetColumn.name}": missing required artifacts: ${missingArtifacts.join(", ")}. ` +
           `Please provide these artifacts before moving the card.`
         );
       }
     }
 
-    const requiredTaskFields = resolveTargetRequiredTaskFields(board.columns, targetColumn.id);
+    const requiredTaskFields = resolveTargetRequiredTaskFields(board.columns, resolvedTargetColumn.id);
     if (requiredTaskFields.length > 0) {
       const readiness = validateTaskReadiness(task, requiredTaskFields);
       if (!readiness.ready) {
         const missingTaskFields = readiness.missing.map(formatRequiredTaskFieldLabel);
         return errorResult(
-          `Cannot move card to "${targetColumn.name}": missing required task fields: ${missingTaskFields.join(", ")}. `
+          `Cannot move card to "${resolvedTargetColumn.name}": missing required task fields: ${missingTaskFields.join(", ")}. `
           + "Please complete this story definition before moving the card.",
         );
       }
     }
 
-    const contractReadiness = buildTaskContractReadiness(task, targetColumn.automation?.contractRules);
+    const contractReadiness = buildTaskContractReadiness(task, resolvedTargetColumn.automation?.contractRules);
     const contractError = buildTaskContractTransitionErrorFromRules(
       contractReadiness,
-      targetColumn.name,
-      targetColumn.automation?.contractRules,
+      resolvedTargetColumn.name,
+      resolvedTargetColumn.automation?.contractRules,
     );
     if (contractError) {
       await this.recordTaskContractGateFailure(
         task,
         contractError,
-        targetColumn.name,
+        resolvedTargetColumn.name,
         contractReadiness.loopBreakerThreshold,
         task.triggerSessionId,
       );
@@ -373,8 +400,9 @@ export class KanbanTools {
       deliveryReadiness = await buildTaskDeliveryReadiness(task, this.automationSystem!);
       const deliveryError = buildTaskDeliveryTransitionErrorFromRules(
         deliveryReadiness,
-        targetColumn.name,
-        targetColumn.automation?.deliveryRules,
+        resolvedTargetColumn.name,
+        resolvedTargetColumn.automation?.deliveryRules,
+        task,
       );
       if (deliveryError) {
         await this.recordTaskMoveBlockComment(task, deliveryError, task.triggerSessionId);
@@ -403,7 +431,17 @@ export class KanbanTools {
     task.updatedAt = new Date();
 
     await this.taskStore.save(task);
-    this.notifyWorkspaceChanged(task.workspaceId, "task", fromColumnId !== params.targetColumnId ? "moved" : "updated", task.id);
+
+    // Use lightweight kanban:archived event for archived cards instead of kanban:changed
+    if (params.targetColumnId === "archived") {
+      this.kanbanBroadcaster.notifyArchived({
+        cardId: task.id,
+        newStage: "archived",
+        workspaceId: task.workspaceId,
+      });
+    } else {
+      this.notifyWorkspaceChanged(task.workspaceId, "task", fromColumnId !== params.targetColumnId ? "moved" : "updated", task.id);
+    }
 
     // Emit column transition event if column actually changed
     if (this.eventBus && fromColumnId !== params.targetColumnId) {
@@ -415,7 +453,7 @@ export class KanbanTools {
         fromColumnId,
         toColumnId: params.targetColumnId,
         fromColumnName: fromColumn?.name,
-        toColumnName: targetColumn.name,
+        toColumnName: resolvedTargetColumn.name,
       });
     }
 
@@ -431,6 +469,7 @@ export class KanbanTools {
     sessionId?: string;
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
+    pullRequestUrl?: string;
   }): Promise<ToolResult> {
     const task = await this.taskStore.get(params.cardId);
     if (!task) {
@@ -484,6 +523,7 @@ export class KanbanTools {
     }
     if (params.priority !== undefined) task.priority = params.priority as TaskPriority;
     if (params.labels !== undefined) task.labels = params.labels;
+    if (params.pullRequestUrl !== undefined) task.pullRequestUrl = params.pullRequestUrl;
     task.updatedAt = new Date();
 
     await this.taskStore.save(task);
@@ -809,6 +849,9 @@ export class KanbanTools {
   /**
    * Decompose a natural language input into multiple Kanban cards.
    * Returns the created tasks as card objects.
+   *
+   * Supports optional parentTaskId to link sub-tasks to a parent,
+   * and per-task `dependencies` (as sibling refs) for ordering.
    */
   async decomposeTasks(params: {
     boardId?: string;
@@ -816,13 +859,23 @@ export class KanbanTools {
     tasks: {
       title: string;
       description?: string;
-      contextSearchSpec?: TaskContextSearchSpec;
       priority?: "low" | "medium" | "high" | "urgent";
       labels?: string[];
       assignedProvider?: string;
+      scope?: string;
+      acceptanceCriteria?: string[];
+      verificationCommands?: string[];
+      testCases?: string[];
+      /** Sibling ref for cross-task dependency linkage */
+      ref?: string;
+      /** Refs of sibling tasks this one depends on */
+      dependsOn?: string[];
+      /** File paths this task is expected to touch (conflict pre-detection) */
+      estimatedFilePaths?: string[];
     }[];
     columnId?: string;
-    sessionId?: string;
+    /** Link all created cards to this parent task */
+    parentTaskId?: string;
   }): Promise<ToolResult> {
     const board = await this.resolveBoard(params.workspaceId, params.boardId);
     if (!board) {
@@ -845,19 +898,30 @@ export class KanbanTools {
     );
     let position = columnTasks.length;
 
-    const createdCards = [];
-    const warnings = new Set<string>();
-    for (const item of params.tasks) {
-      const filteredContextSearchSpec = await filterBacklogContextSearchSpec({
-        contextSearchSpec: normalizeTaskContextSearchSpec(item.contextSearchSpec),
-        columnId: targetColumnId,
-        sessionId: params.sessionId,
-      });
-      if (filteredContextSearchSpec.warning) {
-        warnings.add(filteredContextSearchSpec.warning);
+    // Resolve parent task for codebaseIds inheritance
+    let parentTask: Task | undefined;
+    if (params.parentTaskId) {
+      parentTask = await this.taskStore.get(params.parentTaskId);
+      if (!parentTask) {
+        return errorResult(`Parent task not found: ${params.parentTaskId}`);
       }
+    }
+
+    // Map ref → real taskId for cross-task dependency resolution
+    const refToId = new Map<string, string>();
+
+    const createdCards = [];
+    for (const item of params.tasks) {
+      const taskId = uuidv4();
+      if (item.ref) refToId.set(item.ref, taskId);
+
+      // Resolve dependsOn refs → actual task IDs
+      const depIds = (item.dependsOn ?? [])
+        .map((ref) => refToId.get(ref))
+        .filter((id): id is string => id !== undefined);
+
       const task = createTask({
-        id: uuidv4(),
+        id: taskId,
         title: item.title,
         objective: item.description ?? "",
         workspaceId: params.workspaceId,
@@ -868,19 +932,96 @@ export class KanbanTools {
         priority: item.priority as TaskPriority | undefined,
         labels: item.labels,
         assignedProvider: item.assignedProvider,
-        contextSearchSpec: filteredContextSearchSpec.contextSearchSpec,
+        scope: item.scope,
+        acceptanceCriteria: item.acceptanceCriteria,
+        verificationCommands: item.verificationCommands,
+        testCases: item.testCases,
+        parentTaskId: params.parentTaskId,
+        dependencies: depIds,
+        codebaseIds: parentTask?.codebaseIds,
       });
       await this.taskStore.save(task);
+
+      // Maintain bidirectional blocking relations for declared dependencies
+      if (depIds.length > 0) {
+        await updateDependencyRelations(taskId, depIds, this.taskStore);
+      }
+
       await this.triggerCreatedCardAutomation(board, column, task);
       createdCards.push(this.taskToCard(task));
     }
     this.notifyWorkspaceChanged(board.workspaceId, "task", "created");
 
-    return successResult({
-      count: createdCards.length,
-      cards: createdCards,
-      warnings: [...warnings],
-    });
+    return successResult({ count: createdCards.length, cards: createdCards });
+  }
+
+  /**
+   * Split an existing task into multiple sub-tasks with dependency ordering.
+   * Delegates to executeSplit() for topological validation and creation.
+   */
+  async splitTask(params: {
+    parentTaskId: string;
+    subTasks: {
+      ref: string;
+      title: string;
+      description?: string;
+      scope?: string;
+      acceptanceCriteria?: string[];
+      verificationCommands?: string[];
+      testCases?: string[];
+      dependsOn?: string[];
+      estimatedFilePaths?: string[];
+    }[];
+    mergeStrategy?: "cascade" | "fan_in" | "cascade_fan_in";
+    boardId?: string;
+  }): Promise<ToolResult> {
+    const parentTask = await this.taskStore.get(params.parentTaskId);
+    if (!parentTask) {
+      return errorResult(`Parent task not found: ${params.parentTaskId}`);
+    }
+
+    // Build dependency edges from per-task dependsOn
+    const dependencyEdges: Array<[string, string]> = [];
+    for (const sub of params.subTasks) {
+      for (const depRef of sub.dependsOn ?? []) {
+        dependencyEdges.push([depRef, sub.ref]);
+      }
+    }
+
+    const { executeSplit } = await import("../kanban/task-split-orchestrator");
+    try {
+      const result = await executeSplit(
+        parentTask,
+        params.subTasks.map((s) => ({
+          ref: s.ref,
+          title: s.title,
+          objective: s.description ?? "",
+          scope: s.scope,
+          acceptanceCriteria: s.acceptanceCriteria,
+          verificationCommands: s.verificationCommands,
+          testCases: s.testCases,
+          estimatedFilePaths: s.estimatedFilePaths,
+        })),
+        dependencyEdges,
+        { taskStore: this.taskStore, kanbanBoardStore: this.kanbanBoardStore },
+        {
+          mergeStrategy: params.mergeStrategy,
+          boardId: params.boardId ?? parentTask.boardId,
+        },
+      );
+
+      this.notifyWorkspaceChanged(parentTask.workspaceId, "task", "created");
+
+      return successResult({
+        parentTaskId: result.parentTaskId,
+        childTaskIds: result.childTaskIds,
+        mergeStrategy: result.plan.mergeStrategy,
+        warnings: result.warnings,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return errorResult(message);
+    }
   }
 
   private notifyWorkspaceChanged(
@@ -911,9 +1052,10 @@ export class KanbanTools {
       priority: task.priority,
       labels: task.labels,
       assignee: task.assignee,
-      contextSearchSpec: task.contextSearchSpec,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
+      dependencies: task.dependencies,
+      dependencyStatus: task.dependencyStatus,
     };
   }
 
@@ -1048,9 +1190,7 @@ export class KanbanTools {
     }
 
     if (this.automationSystem && this.isAutomationSystemCompatible()) {
-      const orchestratorModule = resolveWorkflowOrchestratorSingletonModule(
-        await import("../kanban/workflow-orchestrator-singleton"),
-      );
+      const orchestratorModule = await import("../kanban/workflow-orchestrator-singleton");
       orchestratorModule.startWorkflowOrchestrator(this.automationSystem);
       const result = await orchestratorModule.enqueueKanbanTaskSession(this.automationSystem, {
         task,
@@ -1154,6 +1294,7 @@ function normalizeColumnStage(columnId?: string): KanbanColumnStage | undefined 
     case "review":
     case "blocked":
     case "done":
+    case "archived":
       return (columnId ?? "backlog").toLowerCase() as KanbanColumnStage;
     default:
       return undefined;

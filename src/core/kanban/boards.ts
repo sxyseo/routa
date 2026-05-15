@@ -10,6 +10,7 @@ import {
   normalizeDefaultKanbanColumnPositions,
   normalizeKanbanAutomation,
   type KanbanColumnStage,
+  ensureColumnStages,
 } from "../models/kanban";
 import type { RoutaSystem } from "../routa-system";
 
@@ -44,31 +45,32 @@ const RECOMMENDED_AUTOMATION_BY_STAGE: Partial<Record<KanbanColumnStage, KanbanC
   },
   dev: {
     enabled: true,
-    steps: [{
-      id: "dev-executor",
-      role: "CRAFTER",
-      specialistId: "kanban-dev-executor",
-      specialistName: "Dev Crafter",
-    }],
+    steps: [
+      {
+        id: "code-aware-replan",
+        role: "CRAFTER",
+        specialistId: "kanban-code-aware-replan",
+        specialistName: "Code-Aware Re-plan",
+      },
+      {
+        id: "dev-executor",
+        role: "CRAFTER",
+        specialistId: "kanban-dev-executor",
+        specialistName: "Dev Crafter",
+      },
+    ],
     transitionType: "entry",
     autoAdvanceOnSuccess: false,
+    wipLimit: 2,
   },
   review: {
     enabled: true,
-    steps: [
-      {
-        id: "qa-frontend",
-        role: "GATE",
-        specialistId: "kanban-qa-frontend",
-        specialistName: "QA Frontend",
-      },
-      {
-        id: "review-guard",
-        role: "GATE",
-        specialistId: "kanban-review-guard",
-        specialistName: "Review Guard",
-      },
-    ],
+    steps: [{
+      id: "review-guard",
+      role: "GATE",
+      specialistId: "kanban-review-guard",
+      specialistName: "Review Guard",
+    }],
     transitionType: "entry",
     requiredArtifacts: ["screenshot", "test_results"],
     deliveryRules: {
@@ -79,18 +81,26 @@ const RECOMMENDED_AUTOMATION_BY_STAGE: Partial<Record<KanbanColumnStage, KanbanC
   },
   done: {
     enabled: true,
-    steps: [{
-      id: "done-reporter",
-      role: "GATE",
-      specialistId: "kanban-done-reporter",
-      specialistName: "Done Reporter",
-    }],
+    steps: [
+      {
+        id: "done-finalizer",
+        role: "DEVELOPER",
+        specialistId: "kanban-done-finalizer",
+        specialistName: "Done Finalizer",
+      },
+    ],
     transitionType: "entry",
     deliveryRules: {
       requireCommittedChanges: true,
       requireCleanWorktree: true,
       requirePullRequestReady: true,
     },
+    autoAdvanceOnSuccess: false,
+  },
+  archived: {
+    enabled: false,
+    steps: [],
+    transitionType: "entry",
     autoAdvanceOnSuccess: false,
   },
 };
@@ -101,9 +111,9 @@ const LEGACY_SPECIALIST_IDS_BY_STAGE: Partial<Record<KanbanColumnStage, string[]
   backlog: ["issue-enricher", "kanban-workflow", "kanban-agent"],
   todo: ["routa", "developer", "kanban-workflow"],
   dev: ["pr-reviewer", "developer", "claude-code", "kanban-workflow"],
-  review: ["desk-check", "gate", "pr-reviewer", "kanban-workflow", "kanban-review-guard"],
+  review: ["desk-check", "gate", "pr-reviewer", "kanban-workflow", "kanban-qa-frontend", "kanban-review-guard"],
   blocked: ["claude-code", "developer", "routa", "kanban-workflow"],
-  done: ["gate", "verifier", "claude-code", "kanban-workflow"],
+  done: ["gate", "verifier", "claude-code", "kanban-workflow", "kanban-done-finalizer", "kanban-auto-merger", "kanban-conflict-resolver"],
 };
 
 function getStepIdentity(step: ReturnType<typeof getKanbanAutomationSteps>[number]): string {
@@ -166,6 +176,13 @@ export function applyRecommendedAutomationToColumns(columns: KanbanColumn[]): Ka
       }
       return false;
     });
+    const allStepsAreLegacyOrRecommended = currentSteps.every((step) => {
+      if (step.specialistId) {
+        return legacySpecialists.includes(step.specialistId)
+          || recommendedStepSpecialistIds.includes(step.specialistId);
+      }
+      return true;
+    });
     const matchesRecommendedStepSequence = currentSteps.length === recommendedSteps.length
       && currentSteps.every((step, index) => getStepIdentity(step) === getStepIdentity(recommendedSteps[index]!));
     const shouldMigrateLegacySpecialist = Boolean(
@@ -185,7 +202,7 @@ export function applyRecommendedAutomationToColumns(columns: KanbanColumn[]): Ka
 
     if (
       hasCustomSteps
-      || ((column.automation.steps?.length ?? 0) > 0 && !matchesRecommendedStepSequence)
+      || ((column.automation.steps?.length ?? 0) > 0 && !matchesRecommendedStepSequence && !allStepsAreLegacyOrRecommended)
       || (
         (currentAutomation.specialistId || currentAutomation.specialistName)
         && !shouldMigrateLegacySpecialist
@@ -230,7 +247,7 @@ export function applyRecommendedAutomationToColumns(columns: KanbanColumn[]): Ka
           : (currentAutomation.requiredArtifacts ?? recommended.requiredArtifacts),
         contractRules: currentAutomation.contractRules ?? recommended.contractRules,
         deliveryRules: currentAutomation.deliveryRules ?? recommended.deliveryRules,
-        autoAdvanceOnSuccess: recommended.autoAdvanceOnSuccess,
+        autoAdvanceOnSuccess: currentAutomation.autoAdvanceOnSuccess ?? recommended.autoAdvanceOnSuccess,
       }),
     });
   });
@@ -256,8 +273,9 @@ function createRecommendedDefaultColumns(): KanbanColumn[] {
 export async function ensureDefaultBoard(system: RoutaSystem, workspaceId: string): Promise<ReturnType<typeof createKanbanBoard>> {
   const existing = await system.kanbanBoardStore.getDefault(workspaceId);
   if (existing) {
+    const stageFixed = ensureColumnStages(existing.columns);
     const normalizedColumns = normalizeDefaultKanbanColumnPositions(
-      applyRecommendedAutomationToColumns(existing.columns),
+      applyRecommendedAutomationToColumns(stageFixed),
     );
     if (JSON.stringify(normalizedColumns) !== JSON.stringify(existing.columns)) {
       const updated = {

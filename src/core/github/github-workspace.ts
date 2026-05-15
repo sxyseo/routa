@@ -14,6 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { safeTmpdir } from "@/core/utils/safe-tmpdir";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export interface GitHubWorkspace {
 
 const DEFAULT_MAX_SIZE_MB = 200;
 const WORKSPACE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const EXTRACT_BASE = path.join(os.tmpdir(), "routa-gh");
+const EXTRACT_BASE = path.join(safeTmpdir(), "routa-gh");
 
 const IGNORE_PATTERNS = new Set([
   "node_modules", ".git", ".next", "dist", "build", ".cache",
@@ -77,6 +78,7 @@ interface WorkspaceEntry {
  * but in dev each route bundle compiles its own copy of this file.
  */
 const REGISTRY_KEY = "__routa_gh_registry__";
+const CLEANUP_TIMER_KEY = "__routa_gh_cleanup_timer__";
 if (!(globalThis as Record<string, unknown>)[REGISTRY_KEY]) {
   (globalThis as Record<string, unknown>)[REGISTRY_KEY] = new Map<string, WorkspaceEntry>();
 }
@@ -110,6 +112,23 @@ export function cleanupExpired(): number {
     }
   }
   return cleaned;
+}
+
+/** Start periodic cleanup (every 30 minutes) */
+export function startGithubWorkspaceCleanup(): void {
+  const g = globalThis as Record<string, unknown>;
+  if (g[CLEANUP_TIMER_KEY]) return;
+  g[CLEANUP_TIMER_KEY] = setInterval(() => { cleanupExpired(); }, 30 * 60 * 1000);
+}
+
+/** Stop periodic cleanup */
+export function stopGithubWorkspaceCleanup(): void {
+  const g = globalThis as Record<string, unknown>;
+  const timer = g[CLEANUP_TIMER_KEY] as ReturnType<typeof setInterval> | undefined;
+  if (timer) {
+    clearInterval(timer);
+    g[CLEANUP_TIMER_KEY] = undefined;
+  }
 }
 
 
@@ -229,7 +248,7 @@ async function extractZip(zipBuffer: Buffer, owner: string, repo: string): Promi
   }
 
   // Extract to a temp dir first, then find the repo root
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-gh-extract-"));
+  const tmpDir = fs.mkdtempSync(path.join(safeTmpdir(), "routa-gh-extract-"));
   try {
     zip.extractAllTo(tmpDir, true);
 

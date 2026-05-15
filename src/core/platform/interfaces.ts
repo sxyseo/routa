@@ -40,6 +40,8 @@ export interface IProcessHandle {
   kill(signal?: string): void;
   on(event: "exit", handler: (code: number | null, signal: string | null) => void): void;
   on(event: "error", handler: (err: Error) => void): void;
+  /** Remove all event listeners. Called during process cleanup to prevent leaks. */
+  removeAllListeners(): void;
 }
 
 export interface WritableStreamLike {

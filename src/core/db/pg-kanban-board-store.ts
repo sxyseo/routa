@@ -2,12 +2,14 @@ import { and, eq } from "drizzle-orm";
 import type { Database } from "./index";
 import { kanbanBoards } from "./schema";
 import type { KanbanBoard } from "../models/kanban";
+import { ensureColumnStages } from "../models/kanban";
 import type { KanbanBoardStore } from "../store/kanban-board-store";
 
 export class PgKanbanBoardStore implements KanbanBoardStore {
   constructor(private db: Database) {}
 
   async save(board: KanbanBoard): Promise<void> {
+    const columns = ensureColumnStages(board.columns);
     await this.db
       .insert(kanbanBoards)
       .values({
@@ -16,7 +18,7 @@ export class PgKanbanBoardStore implements KanbanBoardStore {
         name: board.name,
         isDefault: board.isDefault,
         githubToken: board.githubToken ?? null,
-        columns: board.columns,
+        columns,
         createdAt: board.createdAt,
         updatedAt: board.updatedAt,
       })
@@ -26,7 +28,7 @@ export class PgKanbanBoardStore implements KanbanBoardStore {
           name: board.name,
           isDefault: board.isDefault,
           githubToken: board.githubToken ?? null,
-          columns: board.columns,
+          columns,
           updatedAt: new Date(),
         },
       });
@@ -74,7 +76,7 @@ export class PgKanbanBoardStore implements KanbanBoardStore {
       name: row.name,
       isDefault: row.isDefault,
       githubToken: row.githubToken ?? undefined,
-      columns: row.columns,
+      columns: ensureColumnStages(row.columns),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

@@ -2,7 +2,7 @@
  * PgAcpSessionStore — Postgres-backed ACP session store using Drizzle ORM.
  */
 
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, gt } from "drizzle-orm";
 import type { Database } from "./index";
 import { acpSessions, sessionMessages } from "./schema";
 import type { AcpSessionStore, AcpSession, AcpSessionNotification } from "../store/acp-session-store";
@@ -66,11 +66,14 @@ export class PgAcpSessionStore implements AcpSessionStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
-  async list(): Promise<AcpSession[]> {
-    const rows = await this.db
+  async list(options?: { createdAfter?: Date }): Promise<AcpSession[]> {
+    const base = this.db
       .select()
-      .from(acpSessions)
-      .orderBy(desc(acpSessions.createdAt));
+      .from(acpSessions);
+    const rows = options?.createdAfter
+      ? await base.where(gte(acpSessions.createdAt, options.createdAfter))
+          .orderBy(desc(acpSessions.createdAt))
+      : await base.orderBy(desc(acpSessions.createdAt));
     return rows.map(this.toModel);
   }
 
@@ -189,6 +192,55 @@ export class PgAcpSessionStore implements AcpSessionStore {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
+  }
+
+  async appendHistoryBatch(
+    sessionId: string,
+    notifications: AcpSessionNotification[],
+  ): Promise<void> {
+    if (notifications.length === 0) return;
+
+    await this.db.transaction(async (tx) => {
+      const topRows = await tx
+        .select({ messageIndex: sessionMessages.messageIndex })
+        .from(sessionMessages)
+        .where(eq(sessionMessages.sessionId, sessionId))
+        .orderBy(desc(sessionMessages.messageIndex))
+        .limit(1);
+
+      let nextIndex = topRows.length > 0 ? topRows[0].messageIndex + 1 : 0;
+
+      // One-time full save when session_messages was empty (cold-start compat).
+      if (topRows.length === 0) {
+        const session = await this.get(sessionId);
+        if (!session) return;
+        await this.save({ ...session, messageHistory: notifications, updatedAt: new Date() });
+        return;
+      }
+
+      const values = notifications.map((n) => {
+        const eventType = String(
+          (n.update as Record<string, unknown> | undefined)?.sessionUpdate ?? "notification",
+        );
+        const eventId = typeof n.eventId === "string" && n.eventId.length > 0
+          ? n.eventId
+          : `${sessionId}-${nextIndex}`;
+        return {
+          id: eventId,
+          sessionId,
+          messageIndex: nextIndex++,
+          eventType,
+          payload: n as typeof sessionMessages.$inferInsert.payload,
+        };
+      });
+
+      await tx.insert(sessionMessages).values(values);
+
+      await tx
+        .update(acpSessions)
+        .set({ updatedAt: new Date() })
+        .where(eq(acpSessions.id, sessionId));
+    });
   }
 
   private async getNextMessageIndex(sessionId: string): Promise<number> {

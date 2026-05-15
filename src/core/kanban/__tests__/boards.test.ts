@@ -13,8 +13,9 @@ describe("applyRecommendedAutomationToColumns", () => {
       "kanban-backlog-refiner",
       "kanban-todo-orchestrator",
       "kanban-dev-executor",
-      "kanban-qa-frontend",
-      "kanban-done-reporter",
+      "kanban-review-guard",
+      "kanban-done-finalizer",
+      undefined,
       undefined,
     ]);
     expect(columns.map((column) => column.automation?.steps?.[0]?.role)).toEqual([
@@ -23,6 +24,8 @@ describe("applyRecommendedAutomationToColumns", () => {
       "CRAFTER",
       "GATE",
       "GATE",
+      "DEVELOPER",
+      undefined,
       undefined,
     ]);
     expect(columns[0].automation?.autoAdvanceOnSuccess).toBe(true);
@@ -41,9 +44,13 @@ describe("applyRecommendedAutomationToColumns", () => {
       requireCommittedChanges: true,
       requireCleanWorktree: true,
       requirePullRequestReady: true,
+      autoMergeAfterPR: undefined,
+      mergeStrategy: undefined,
     });
+    expect(columns[4]?.automation?.steps?.map((step) => step.specialistId)).toEqual([
+      "kanban-done-finalizer",
+    ]);
     expect(columns[3]?.automation?.steps?.map((step) => step.specialistId)).toEqual([
-      "kanban-qa-frontend",
       "kanban-review-guard",
     ]);
   });
@@ -71,7 +78,7 @@ describe("applyRecommendedAutomationToColumns", () => {
     }));
   });
 
-  it("normalizes the default board layout to keep blocked after done", () => {
+  it("normalizes the default board layout to keep blocked after done and archived last", () => {
     const columns = normalizeDefaultKanbanColumnPositions([
       { ...DEFAULT_KANBAN_COLUMNS.find((column) => column.id === "blocked")!, position: 4 },
       { ...DEFAULT_KANBAN_COLUMNS.find((column) => column.id === "done")!, position: 5 },
@@ -85,8 +92,9 @@ describe("applyRecommendedAutomationToColumns", () => {
       "review",
       "done",
       "blocked",
+      "archived",
     ]);
-    expect(columns.map((column) => column.position)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(columns.map((column) => column.position)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
   it("backfills legacy backlog automation with system auto-advance", () => {
@@ -183,7 +191,7 @@ describe("applyRecommendedAutomationToColumns", () => {
     expect(columns[0].automation?.requiredArtifacts).toEqual(["screenshot", "test_results"]);
   });
 
-  it("preserves a customized review lane that uses review guard directly", () => {
+  it("refreshes a review lane that matches the recommended review-guard-only step", () => {
     const columns = applyRecommendedAutomationToColumns([
       {
         ...DEFAULT_KANBAN_COLUMNS[3],
@@ -206,10 +214,11 @@ describe("applyRecommendedAutomationToColumns", () => {
     expect(columns[0].automation?.steps?.map((step) => step.specialistId)).toEqual([
       "kanban-review-guard",
     ]);
-    expect(columns[0].automation?.requiredArtifacts).toEqual(["screenshot"]);
+    // Artifact policy is refreshed to the recommended value when steps match
+    expect(columns[0].automation?.requiredArtifacts).toEqual(["screenshot", "test_results"]);
   });
 
-  it("preserves a review lane whose first step was changed from qa to review guard", () => {
+  it("migrates a legacy dual review-guard lane to the recommended single step", () => {
     const columns = applyRecommendedAutomationToColumns([
       {
         ...DEFAULT_KANBAN_COLUMNS[3],
@@ -238,7 +247,6 @@ describe("applyRecommendedAutomationToColumns", () => {
     ]);
 
     expect(columns[0].automation?.steps?.map((step) => step.specialistId)).toEqual([
-      "kanban-review-guard",
       "kanban-review-guard",
     ]);
   });

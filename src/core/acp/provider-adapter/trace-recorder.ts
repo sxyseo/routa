@@ -46,6 +46,8 @@ export class TraceRecorder {
   private thoughtBuffer = new Map<string, string>();
   /** Per-cwd context writers */
   private contextWriters = new Map<string, ToolCallContextWriter>();
+  /** Maximum number of context writers to keep (LRU eviction threshold) */
+  private static MAX_CONTEXT_WRITERS = 50;
 
   /**
    * Get or create a ToolCallContextWriter for the given cwd.
@@ -53,6 +55,13 @@ export class TraceRecorder {
   private getContextWriter(cwd: string): ToolCallContextWriter {
     let writer = this.contextWriters.get(cwd);
     if (!writer) {
+      // Evict oldest entry if over capacity
+      if (this.contextWriters.size >= TraceRecorder.MAX_CONTEXT_WRITERS) {
+        const oldestKey = this.contextWriters.keys().next().value;
+        if (oldestKey !== undefined) {
+          this.contextWriters.delete(oldestKey);
+        }
+      }
       writer = new ToolCallContextWriter(cwd);
       this.contextWriters.set(cwd, writer);
     }
@@ -157,7 +166,7 @@ export class TraceRecorder {
       // Trace when buffer reaches threshold
       if (accumulated.length >= 100) {
         this.recordAgentMessageTrace(sessionId, provider, accumulated, cwd);
-        this.messageBuffer.set(sessionId, "");
+        this.messageBuffer.delete(sessionId);
       }
     } else {
       // Complete message, trace immediately
@@ -176,7 +185,7 @@ export class TraceRecorder {
 
       if (accumulated.length >= 100) {
         this.recordAgentThoughtTrace(sessionId, provider, accumulated, cwd);
-        this.thoughtBuffer.set(sessionId, "");
+        this.thoughtBuffer.delete(sessionId);
       }
     } else {
       this.recordAgentThoughtTrace(sessionId, provider, message.content, cwd);
@@ -201,14 +210,14 @@ export class TraceRecorder {
     const message = this.messageBuffer.get(sessionId);
     if (message && message.length > 0) {
       this.recordAgentMessageTrace(sessionId, provider, message, cwd);
-      this.messageBuffer.set(sessionId, "");
+      this.messageBuffer.delete(sessionId);
     }
 
     // Flush thought buffer
     const thought = this.thoughtBuffer.get(sessionId);
     if (thought && thought.length > 0) {
       this.recordAgentThoughtTrace(sessionId, provider, thought, cwd);
-      this.thoughtBuffer.set(sessionId, "");
+      this.thoughtBuffer.delete(sessionId);
     }
   }
 
@@ -348,5 +357,14 @@ export class TraceRecorder {
         this.pendingToolCalls.delete(toolCallId);
       }
     }
+  }
+  /**
+   * Dispose all internal state. Call on shutdown.
+   */
+  dispose(): void {
+    this.pendingToolCalls.clear();
+    this.messageBuffer.clear();
+    this.thoughtBuffer.clear();
+    this.contextWriters.clear();
   }
 }

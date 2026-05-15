@@ -19,6 +19,7 @@ import {
   CloneSkillsResult,
   SkillsShSkill,
   GithubCatalogSkill,
+  GitlabCatalogSkill,
   CatalogInstallResult,
 } from "../skill-client";
 import {
@@ -27,7 +28,7 @@ import {
   toErrorMessage,
 } from "../utils/diagnostics";
 
-export type CatalogType = "skillssh" | "github";
+export type CatalogType = "skillssh" | "github" | "gitlab";
 
 export interface UseSkillsState {
   skills: SkillSummary[];
@@ -40,6 +41,8 @@ export interface UseSkillsState {
   catalogSkills: SkillsShSkill[];
   /** GitHub catalog results */
   githubCatalogSkills: GithubCatalogSkill[];
+  /** GitLab catalog results */
+  gitlabCatalogSkills: GitlabCatalogSkill[];
   catalogLoading: boolean;
   catalogInstalling: boolean;
 }
@@ -62,6 +65,10 @@ export interface UseSkillsActions {
   installFromCatalog: (skills: Array<{ name: string; source: string }>) => Promise<CatalogInstallResult | null>;
   /** Install skills from GitHub catalog */
   installFromGithubCatalog: (skills: string[], repo?: string, catalogPath?: string) => Promise<CatalogInstallResult | null>;
+  /** List GitLab catalog skills */
+  listGitlabCatalog: (repo: string, catalogPath?: string) => Promise<GitlabCatalogSkill[]>;
+  /** Install skills from GitLab catalog */
+  installFromGitlabCatalog: (skills: string[], repo: string, catalogPath?: string) => Promise<CatalogInstallResult | null>;
   clearCatalog: () => void;
 }
 
@@ -80,6 +87,7 @@ export function useSkills(
     error: null,
     catalogSkills: [],
     githubCatalogSkills: [],
+    gitlabCatalogSkills: [],
     catalogLoading: false,
     catalogInstalling: false,
   });
@@ -286,8 +294,60 @@ export function useSkills(
     }
   }, []);
 
+  const listGitlabCatalog = useCallback(async (repo: string, catalogPath?: string) => {
+    try {
+      setState((s) => ({ ...s, catalogLoading: true, error: null }));
+      const result = await clientRef.current.listGitlabCatalog(repo, catalogPath);
+      setState((s) => ({ ...s, gitlabCatalogSkills: result.skills, catalogLoading: false }));
+      return result.skills;
+    } catch (err) {
+      logRuntime("warn", "useSkills.listGitlabCatalog", "Failed to list GitLab catalog", err);
+      setState((s) => ({
+        ...s,
+        catalogLoading: false,
+        error: toErrorMessage(err) || "Failed to list GitLab catalog",
+      }));
+      return [];
+    }
+  }, []);
+
+  const installFromGitlabCatalog = useCallback(async (
+    skills: string[],
+    repo: string,
+    catalogPath?: string,
+  ) => {
+    try {
+      setState((s) => ({ ...s, catalogInstalling: true, error: null }));
+      const result = await clientRef.current.installFromGitlabCatalog(skills, repo, catalogPath);
+
+      if (result.installed.length > 0) {
+        const localSkills = await clientRef.current.list();
+        setState((s) => ({
+          ...s,
+          skills: localSkills,
+          catalogInstalling: false,
+          gitlabCatalogSkills: s.gitlabCatalogSkills.map((cs) =>
+            result.installed.includes(cs.name) ? { ...cs, installed: true } : cs
+          ),
+        }));
+      } else {
+        setState((s) => ({ ...s, catalogInstalling: false }));
+      }
+
+      return result;
+    } catch (err) {
+      logRuntime("error", "useSkills.installFromGitlabCatalog", "Failed to install from GitLab catalog", err);
+      setState((s) => ({
+        ...s,
+        catalogInstalling: false,
+        error: toErrorMessage(err) || "Failed to install from GitLab catalog",
+      }));
+      return null;
+    }
+  }, []);
+
   const clearCatalog = useCallback(() => {
-    setState((s) => ({ ...s, catalogSkills: [], githubCatalogSkills: [], error: null }));
+    setState((s) => ({ ...s, catalogSkills: [], githubCatalogSkills: [], gitlabCatalogSkills: [], error: null }));
   }, []);
 
   // Auto-load on mount
@@ -327,6 +387,8 @@ export function useSkills(
     listGithubCatalog,
     installFromCatalog,
     installFromGithubCatalog,
+    listGitlabCatalog,
+    installFromGitlabCatalog,
     clearCatalog,
   };
 }

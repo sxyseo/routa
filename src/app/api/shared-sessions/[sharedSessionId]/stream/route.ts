@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSharedSessionService } from "@/core/shared-session";
 import { toErrorResponse } from "../../_helpers";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +72,8 @@ export async function GET(request: NextRequest, { params }: Params) {
       },
     });
 
-    return new NextResponse(stream, {
+    const monitoredStream = monitorSSEConnection(request, "/api/shared-sessions/stream", stream);
+    return new NextResponse(monitoredStream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",

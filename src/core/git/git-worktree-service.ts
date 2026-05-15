@@ -13,6 +13,7 @@ import type { WorktreeStore } from "../db/pg-worktree-store";
 import type { CodebaseStore } from "../db/pg-codebase-store";
 import type { Worktree } from "../models/worktree";
 import { createWorktree } from "../models/worktree";
+import { GIT_DEFAULT_BRANCH } from "./git-defaults";
 
 /**
  * Shell-escape a single argument for safe interpolation.
@@ -65,6 +66,39 @@ export class GitWorktreeService {
   ) {}
 
   /**
+   * Verify a base branch exists on remote, falling back through
+   * codebase.branch → GIT_DEFAULT_BRANCH if not found.
+   */
+  private async resolveBaseBranchWithFallback(
+    preferredBase: string,
+    codebase: { branch?: string; repoPath: string },
+  ): Promise<string> {
+    const { remoteBranchExists } = await import("./git-defaults");
+    const candidates = [
+      preferredBase,
+      codebase.branch,
+      GIT_DEFAULT_BRANCH,
+    ].filter((b): b is string => Boolean(b?.trim()));
+    const seen = new Set<string>();
+    const unique = candidates.filter((c) => {
+      if (seen.has(c)) return false;
+      seen.add(c);
+      return true;
+    });
+    for (const candidate of unique) {
+      if (await remoteBranchExists(codebase.repoPath, candidate)) {
+        if (candidate !== preferredBase) {
+          console.warn(
+            `[GitWorktreeService] Base branch "${preferredBase}" not on remote, fell back to "${candidate}".`,
+          );
+        }
+        return candidate;
+      }
+    }
+    return unique[0] ?? GIT_DEFAULT_BRANCH;
+  }
+
+  /**
    * Acquire a per-repo lock. Operations on the same repo are serialized
    * to prevent .git/worktrees directory corruption.
    */
@@ -110,14 +144,28 @@ export class GitWorktreeService {
     }
 
     const repoPath = codebase.repoPath;
-    const baseBranch = options.baseBranch ?? codebase.branch ?? "main";
+    const baseBranch = options.baseBranch ?? codebase.branch ?? GIT_DEFAULT_BRANCH;
+
+    // Fetch base branch ref before creating worktree to ensure up-to-date baseline
+    await execGit(["fetch", "origin", baseBranch], repoPath).catch(() => {});
+
+    // Capture the current HEAD commit SHA as baseCommitSha
+    let baseCommitSha: string | undefined;
+    try {
+      const { stdout } = await execGit(["rev-parse", "HEAD"], repoPath);
+      baseCommitSha = stdout.trim();
+    } catch {
+      // Capture failure should not block worktree creation
+    }
 
     // Generate branch name if not provided
     const shortId = crypto.randomUUID().slice(0, 8);
     const branch =
       options.branch ??
       `wt/${options.label ? branchToSafeDirName(options.label) : shortId}`;
-    const directoryName = branchToSafeDirName(options.label?.trim() || branch);
+    // Use branch (guaranteed unique) as directory name source, not label.
+    // Label is for display only and may collide across tasks with similar titles.
+    const directoryName = branchToSafeDirName(branch);
 
     return this.withRepoLock(repoPath, async () => {
       // Fail fast if no process bridge (serverless environments)
@@ -138,10 +186,20 @@ export class GitWorktreeService {
       const worktreeRoot = options.worktreeRoot?.trim() || getWorktreeBaseDir();
       const worktreePath = path.join(
         worktreeRoot,
-        codebase.workspaceId,
         codebaseId,
         directoryName
       );
+
+      // Clean up stale error-status worktree at the same path before creating a new one.
+      // A previous attempt may have failed (e.g. Windows filename length) leaving an
+      // error record that blocks the unique constraint on worktree_path.
+      const codebaseWorktrees = await this.worktreeStore.listByCodebase(codebaseId);
+      const staleAtSamePath = codebaseWorktrees.find(
+        (wt) => wt.worktreePath === worktreePath && wt.status === "error"
+      );
+      if (staleAtSamePath) {
+        await this.worktreeStore.remove(staleAtSamePath.id);
+      }
 
       // Create DB record
       const worktree = createWorktree({
@@ -151,6 +209,7 @@ export class GitWorktreeService {
         worktreePath,
         branch,
         baseBranch,
+        baseCommitSha,
         label: options.label,
       });
       await this.worktreeStore.add(worktree);
@@ -158,6 +217,14 @@ export class GitWorktreeService {
       try {
         // Ensure parent directory exists
         await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+
+        // Enable long paths on Windows to avoid MAX_PATH (260) failures.
+        // Set both local (repo-level) and global (--global) so the worktree
+        // checkout respects the setting even before the worktree gitconfig exists.
+        if (process.platform === "win32") {
+          await execGit(["config", "core.longPaths", "true"], repoPath).catch(() => {});
+          await execGit(["config", "--global", "core.longPaths", "true"], repoPath).catch(() => {});
+        }
 
         // Prune stale worktree references
         await execGit(["worktree", "prune"], repoPath).catch(() => {});
@@ -226,13 +293,45 @@ export class GitWorktreeService {
     await this.withRepoLock(repoPath, async () => {
       await this.worktreeStore.updateStatus(worktreeId, "removing");
 
-      try {
-        await execGit(
-          ["worktree", "remove", "--force", worktree.worktreePath],
-          repoPath
-        );
-      } catch {
-        // Path may already be gone
+      // Remove worktree directory if it still exists on disk.
+      // Only proceed to DB cleanup when git confirms removal (or path is already gone).
+      let pathExists = false;
+      try { await fs.access(worktree.worktreePath); pathExists = true; } catch { /* already gone */ }
+
+      if (pathExists) {
+        try {
+          await execGit(
+            ["worktree", "remove", "--force", worktree.worktreePath],
+            repoPath,
+          );
+        } catch (removeErr) {
+          // Verify whether the path is actually gone despite the error
+          let stillExists = false;
+          try { await fs.access(worktree.worktreePath); stillExists = true; } catch { /* gone */ }
+
+          if (stillExists) {
+            // Fallback: if git can't recognize the worktree (e.g. .git file missing),
+            // remove the directory directly and continue cleanup.
+            const errMsg = removeErr instanceof Error ? removeErr.message : String(removeErr);
+            if (errMsg.includes("not a working tree") || errMsg.includes("Directory not empty") || errMsg.includes("Invalid argument")) {
+              try {
+                await fs.rm(worktree.worktreePath, { recursive: true, force: true });
+                stillExists = false;
+              } catch {
+                // rm fallback also failed — keep error status
+              }
+            }
+
+            if (stillExists) {
+              await this.worktreeStore.updateStatus(
+                worktreeId,
+                "error",
+                errMsg,
+              );
+              return; // Keep DB record — worktree is still on disk
+            }
+          }
+        }
       }
 
       // Prune stale references
@@ -245,8 +344,19 @@ export class GitWorktreeService {
         } catch {
           // Branch may already be gone or is checked out elsewhere
         }
+
+        // Also delete the remote branch if it was pushed.
+        try {
+          await execGit(
+            ["push", "origin", "--delete", worktree.branch],
+            repoPath,
+          );
+        } catch {
+          // Remote branch may not exist, or push access is denied — ignore
+        }
       }
 
+      // DB record is only removed after worktree directory is confirmed gone
       await this.worktreeStore.remove(worktreeId);
     });
   }
@@ -304,6 +414,43 @@ export class GitWorktreeService {
     }
 
     return { healthy: true };
+  }
+
+  /**
+   * Reset a worktree's working tree to match a base branch.
+   * Keeps the worktree and branch intact, but discards all local commits/changes.
+   */
+  async resetWorktree(
+    worktreeId: string,
+    options: { baseBranch?: string } = {},
+  ): Promise<void> {
+    const worktree = await this.worktreeStore.get(worktreeId);
+    if (!worktree) {
+      throw new Error(`Worktree not found: ${worktreeId}`);
+    }
+
+    const codebase = await this.codebaseStore.get(worktree.codebaseId);
+    if (!codebase) {
+      throw new Error(`Codebase not found for worktree ${worktreeId}`);
+    }
+
+    const base = options.baseBranch ?? worktree.baseBranch ?? codebase.branch ?? GIT_DEFAULT_BRANCH;
+    const cwd = worktree.worktreePath;
+    const repoPath = codebase.repoPath;
+
+    // Verify the base branch exists on remote; fall back if stale
+    const resolvedBase = await this.resolveBaseBranchWithFallback(base, codebase);
+
+    await this.withRepoLock(repoPath, async () => {
+      // Fetch latest from remote
+      await execGit(["fetch", "origin"], cwd).catch(() => {});
+
+      // Clean untracked files and directories
+      await execGit(["clean", "-fd"], cwd).catch(() => {});
+
+      // Hard reset to base branch
+      await execGit(["reset", "--hard", `origin/${resolvedBase}`], cwd);
+    });
   }
 
   /**

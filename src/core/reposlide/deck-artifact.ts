@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { safeTmpdir } from "@/core/utils/safe-tmpdir";
 
 export const REPOSLIDE_PPTX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
@@ -34,7 +35,7 @@ export async function resolveRepoSlideDeckArtifact(
 
   const allowedRoots = (await Promise.all([
     realpathIfExists(sessionCwd),
-    realpathIfExists(os.tmpdir()),
+    realpathIfExists(safeTmpdir()),
   ])).filter((value): value is string => Boolean(value));
 
   if (!allowedRoots.some((root) => isWithinRoot(absolutePath, root))) {

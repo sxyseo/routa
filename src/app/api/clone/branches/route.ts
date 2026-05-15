@@ -21,18 +21,37 @@ import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs";
 import {
   getCurrentBranch,
+  getHeadCommitInfo,
+  getRefCommitInfo,
   listBranches,
   listRemoteBranches,
-  fetchRemote,
+
   getBranchStatus,
   checkoutBranch,
   deleteBranch,
-  pullBranch,
+  fetchAndFastForward,
+  stashPullPop,
   getBranchInfo,
   getRepoStatus,
   resetLocalChanges,
   isBareGitRepository,
 } from "@/core/git";
+
+const BRANCH_CACHE_TTL_MS = 30_000;
+const branchCache = new Map<string, { data: Record<string, unknown>; expiresAt: number }>();
+
+function buildBranchPayload(repoPath: string, _fetched = false) {
+  const current = getCurrentBranch(repoPath) ?? "unknown";
+  const local = listBranches(repoPath);
+  const remote = listRemoteBranches(repoPath);
+  const status = getBranchStatus(repoPath, current);
+  const headCommit = getHeadCommitInfo(repoPath);
+  const remoteCommit = current !== "unknown"
+    ? getRefCommitInfo(repoPath, `origin/${current}`)
+    : null;
+
+  return { current, local, remote, status, headCommit, remoteCommit };
+}
 
 export async function GET(request: NextRequest) {
   const repoPath = request.nextUrl.searchParams.get("repoPath");
@@ -43,12 +62,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const current = getCurrentBranch(repoPath) ?? "unknown";
-  const local = listBranches(repoPath);
-  const remote = listRemoteBranches(repoPath);
-  const status = getBranchStatus(repoPath, current);
+  const cached = branchCache.get(repoPath);
+  if (cached && Date.now() < cached.expiresAt) {
+    return NextResponse.json(cached.data);
+  }
 
-  return NextResponse.json({ current, local, remote, status });
+  const data = buildBranchPayload(repoPath);
+  branchCache.set(repoPath, { data, expiresAt: Date.now() + BRANCH_CACHE_TTL_MS });
+  return NextResponse.json(data);
 }
 
 export async function POST(request: NextRequest) {
@@ -62,19 +83,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Fetch remote, then return all branches
-  fetchRemote(repoPath);
+  // Fetch remote refs and fast-forward local branches to match origin
+  // forceReset: base repos should always match remote, local changes have no value
+  fetchAndFastForward(repoPath, { forceReset: true });
+  branchCache.delete(repoPath);
 
-  const current = getCurrentBranch(repoPath) ?? "unknown";
-  const local = listBranches(repoPath);
-  const remote = listRemoteBranches(repoPath);
-  const status = getBranchStatus(repoPath, current);
-
-  return NextResponse.json({ current, local, remote, status });
+  return NextResponse.json(buildBranchPayload(repoPath, true));
 }
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
+  branchCache.delete((body as { repoPath?: string }).repoPath ?? "");
   const { repoPath, branch, pull: doPull, action } = body as {
     repoPath?: string;
     branch?: string;
@@ -142,24 +161,40 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  // Optionally pull after checkout
+  // Optionally pull after checkout (stash + pull + pop for dirty trees)
   if (doPull) {
-    pullBranch(repoPath);
+    const pullResult = stashPullPop(repoPath);
+    if (!pullResult.success) {
+      const branchInfo = getBranchInfo(repoPath);
+      const status = getBranchStatus(repoPath, branchInfo.current);
+      const headCommit = getHeadCommitInfo(repoPath);
+      return NextResponse.json({
+        success: false,
+        error: pullResult.error ?? "Pull failed",
+        branch: branchInfo.current,
+        branches: branchInfo.branches,
+        status,
+        headCommit,
+      }, { status: 500 });
+    }
   }
 
   const branchInfo = getBranchInfo(repoPath);
   const status = getBranchStatus(repoPath, branchInfo.current);
+  const headCommit = getHeadCommitInfo(repoPath);
 
   return NextResponse.json({
     success: true,
     branch: branchInfo.current,
     branches: branchInfo.branches,
     status,
+    headCommit,
   });
 }
 
 export async function DELETE(request: NextRequest) {
   const body = await request.json();
+  branchCache.delete((body as { repoPath?: string }).repoPath ?? "");
   const { repoPath, branch } = body as {
     repoPath?: string;
     branch?: string;
@@ -183,16 +218,6 @@ export async function DELETE(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (isBareGitRepository(repoPath)) {
-    return NextResponse.json(
-      {
-        error: "This repository is a bare git repository (no working directory)",
-        suggestion: "Bare repos can't be used for branch operations. Use a worktree or regular working copy instead."
-      },
-      { status: 400 }
-    );
-  }
-
   const result = deleteBranch(repoPath, branch);
   if (!result.success) {
     const status = result.error?.includes("current branch")

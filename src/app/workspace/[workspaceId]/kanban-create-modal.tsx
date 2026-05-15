@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -13,9 +13,13 @@ export type TaskDraft = {
   testCases: string;
   priority: string;
   labels: string;
-  createGitHubIssue: boolean;
+  createVcsIssue: boolean;
   codebaseIds: string[];
+  dependencies: string[];
 };
+
+/** @deprecated Use TaskDraft with createVcsIssue instead */
+export type TaskDraftLegacy = TaskDraft & { createGitHubIssue?: boolean };
 
 export const EMPTY_DRAFT: TaskDraft = {
   title: "",
@@ -23,8 +27,9 @@ export const EMPTY_DRAFT: TaskDraft = {
   testCases: "",
   priority: "medium",
   labels: "",
-  createGitHubIssue: false,
+  createVcsIssue: false,
   codebaseIds: [],
+  dependencies: [],
 };
 
 interface KanbanCreateModalProps {
@@ -32,9 +37,10 @@ interface KanbanCreateModalProps {
   setDraft: React.Dispatch<React.SetStateAction<TaskDraft>>;
   onClose: () => void;
   onCreate: () => void;
-  githubAvailable: boolean;
+  vcsAvailable: boolean;
   codebases: CodebaseData[];
   allCodebaseIds: string[];
+  boardTasks?: Array<{ id: string; title: string }>;
 }
 
 function TipTapObjectiveEditor({
@@ -121,12 +127,19 @@ export function KanbanCreateModal({
   setDraft,
   onClose,
   onCreate,
-  githubAvailable,
+  vcsAvailable,
   codebases,
   allCodebaseIds: _allCodebaseIds,
+  boardTasks = [],
 }: KanbanCreateModalProps) {
   const { t } = useTranslation();
   const canCreate = Boolean(draft.title.trim()) && Boolean(draft.objectiveHtml.replace(/<[^>]*>/g, "").trim());
+  const [depSearch, setDepSearch] = useState("");
+  const filteredDepTasks = useMemo(() => {
+    if (!depSearch.trim()) return boardTasks.slice(0, 20);
+    const q = depSearch.toLowerCase();
+    return boardTasks.filter((task) => task.title.toLowerCase().includes(q)).slice(0, 20);
+  }, [boardTasks, depSearch]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -190,15 +203,15 @@ export function KanbanCreateModal({
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
-              checked={draft.createGitHubIssue}
-              disabled={!githubAvailable}
-              onChange={(e) => setDraft((d) => ({ ...d, createGitHubIssue: e.target.checked }))}
+              checked={draft.createVcsIssue}
+              disabled={!vcsAvailable}
+              onChange={(e) => setDraft((d) => ({ ...d, createVcsIssue: e.target.checked }))}
             />
-            {t.kanbanCreate.createLinkedGithubIssue}
+            {t.kanbanCreate.createLinkedVcsIssue}
           </label>
-          {!githubAvailable && (
+          {!vcsAvailable && (
             <div className="text-xs text-slate-400 dark:text-slate-500">
-              {t.kanbanCreate.noGithubLinked}
+              {t.kanbanCreate.noVcsLinked}
             </div>
           )}
 
@@ -226,7 +239,7 @@ export function KanbanCreateModal({
                         }`}
                     >
                       <span
-                        className={`h-1.5 w-1.5 rounded-full ${cb.sourceType === "github" ? "bg-blue-500" : "bg-emerald-500"}`}
+                        className={`h-1.5 w-1.5 rounded-full ${cb.sourceType === "github" ? "bg-blue-500" : cb.sourceType === "gitlab" ? "bg-orange-500" : "bg-emerald-500"}`}
                       />
                       {cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}
                       {cb.isDefault && !selected && <span className="text-[10px] text-slate-400">(default)</span>}
@@ -240,6 +253,78 @@ export function KanbanCreateModal({
                   {t.kanbanCreate.noSelectionHint}
                 </div>
               )}
+            </div>
+          )}
+
+          {boardTasks.length > 0 && (
+            <div>
+              <div className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">{t.kanbanCreate.dependencies}</div>
+              {draft.dependencies.length > 0 && (
+                <div className="mb-1.5 flex flex-wrap gap-1.5">
+                  {draft.dependencies.map((depId) => {
+                    const depTask = boardTasks.find((t) => t.id === depId);
+                    return (
+                      <span
+                        key={depId}
+                        className="inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-2 py-0.5 text-xs text-violet-700 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
+                      >
+                        {depTask?.title ?? depId.slice(0, 8)}
+                        <button
+                          type="button"
+                          onClick={() => setDraft((d) => ({ ...d, dependencies: d.dependencies.filter((id) => id !== depId) }))}
+                          className="ml-0.5 text-violet-400 hover:text-violet-600 dark:hover:text-violet-200"
+                          title={t.kanbanDetail.removeDependency}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="relative">
+                <input
+                  value={depSearch}
+                  onChange={(e) => setDepSearch(e.target.value)}
+                  placeholder={t.kanbanCreate.dependenciesPlaceholder}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/40 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-100"
+                />
+                {depSearch.trim() && (
+                  <div className="absolute left-0 top-full z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-[#12141c]">
+                    {filteredDepTasks.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-slate-400">{t.kanbanDetail.noDependencies}</div>
+                    )}
+                    {filteredDepTasks.map((task) => {
+                      const isSelected = draft.dependencies.includes(task.id);
+                      return (
+                        <button
+                          key={task.id}
+                          type="button"
+                          disabled={isSelected}
+                          onClick={() => {
+                            setDraft((d) => ({
+                              ...d,
+                              dependencies: [...d.dependencies, task.id],
+                            }));
+                            setDepSearch("");
+                          }}
+                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                            isSelected
+                              ? "cursor-not-allowed text-slate-400 dark:text-slate-500"
+                              : "text-slate-700 hover:bg-amber-50 dark:text-slate-200 dark:hover:bg-amber-900/10"
+                          }`}
+                        >
+                          <span className="min-w-0 truncate">{task.title}</span>
+                          {isSelected && <span className="shrink-0 text-[10px] text-slate-400">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                {t.kanbanCreate.dependenciesHint}
+              </div>
             </div>
           )}
         </div>

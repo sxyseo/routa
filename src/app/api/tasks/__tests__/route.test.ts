@@ -325,10 +325,10 @@ describe("/api/tasks GET", () => {
       body: "Track the task in GitHub too",
     }));
     expect(data.task).toMatchObject({
-      githubNumber: 42,
-      githubRepo: "acme/platform",
-      githubUrl: "https://github.com/acme/platform/issues/42",
-      githubState: "open",
+      vcsNumber: 42,
+      vcsRepo: "acme/platform",
+      vcsUrl: "https://github.com/acme/platform/issues/42",
+      vcsState: "open",
     });
   });
 
@@ -355,8 +355,8 @@ describe("/api/tasks GET", () => {
 
     expect(response.status).toBe(201);
     expect(createGitHubIssue).not.toHaveBeenCalled();
-    expect(data.task.githubNumber).toBeUndefined();
-    expect(data.task.githubRepo).toBeUndefined();
+    expect(data.task.vcsNumber).toBeUndefined();
+    expect(data.task.vcsRepo).toBeUndefined();
   });
 
   it("persists contextSearchSpec on created tasks", async () => {
@@ -441,11 +441,11 @@ describe("/api/tasks GET", () => {
         objective: "Imported from GitHub",
         workspaceId: "workspace-1",
         codebaseIds: ["codebase-1"],
-        githubId: "issue-77",
-        githubNumber: 77,
-        githubUrl: "https://github.com/acme/platform/issues/77",
-        githubRepo: "acme/platform",
-        githubState: "open",
+        vcsId: "issue-77",
+        vcsNumber: 77,
+        vcsUrl: "https://github.com/acme/platform/issues/77",
+        vcsRepo: "acme/platform",
+        vcsState: "open",
       }),
       headers: { "Content-Type": "application/json" },
     }));
@@ -454,11 +454,11 @@ describe("/api/tasks GET", () => {
     expect(response.status).toBe(201);
     expect(createGitHubIssue).not.toHaveBeenCalled();
     expect(data.task).toMatchObject({
-      githubId: "issue-77",
-      githubNumber: 77,
-      githubRepo: "acme/platform",
-      githubUrl: "https://github.com/acme/platform/issues/77",
-      githubState: "open",
+      vcsId: "issue-77",
+      vcsNumber: 77,
+      vcsRepo: "acme/platform",
+      vcsUrl: "https://github.com/acme/platform/issues/77",
+      vcsState: "open",
       codebaseIds: ["codebase-1"],
     });
   });
@@ -478,11 +478,11 @@ describe("/api/tasks GET", () => {
         objective: "Imported from GitHub pull requests",
         workspaceId: "workspace-1",
         codebaseIds: ["codebase-1"],
-        githubId: "pr-289",
-        githubNumber: 289,
-        githubUrl: "https://github.com/acme/platform/pull/289",
-        githubRepo: "acme/platform",
-        githubState: "open",
+        vcsId: "pr-289",
+        vcsNumber: 289,
+        vcsUrl: "https://github.com/acme/platform/pull/289",
+        vcsRepo: "acme/platform",
+        vcsState: "open",
         isPullRequest: true,
       }),
       headers: { "Content-Type": "application/json" },
@@ -492,17 +492,17 @@ describe("/api/tasks GET", () => {
     expect(response.status).toBe(201);
     expect(createGitHubIssue).not.toHaveBeenCalled();
     expect(data.task).toMatchObject({
-      githubId: "pr-289",
-      githubNumber: 289,
-      githubRepo: "acme/platform",
-      githubUrl: "https://github.com/acme/platform/pull/289",
-      githubState: "open",
+      vcsId: "pr-289",
+      vcsNumber: 289,
+      vcsRepo: "acme/platform",
+      vcsUrl: "https://github.com/acme/platform/pull/289",
+      vcsState: "open",
       isPullRequest: true,
       codebaseIds: ["codebase-1"],
     });
     expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
-      githubNumber: 289,
-      githubRepo: "acme/platform",
+      vcsNumber: 289,
+      vcsRepo: "acme/platform",
       isPullRequest: true,
     }));
   });
@@ -514,8 +514,8 @@ describe("/api/tasks GET", () => {
         title: "Existing task",
         objective: "Already imported",
         workspaceId: "workspace-1",
-        githubRepo: "acme/platform",
-        githubNumber: 77,
+        vcsRepo: "acme/platform",
+        vcsNumber: 77,
       }),
     ]);
 
@@ -525,8 +525,8 @@ describe("/api/tasks GET", () => {
         title: "Duplicate import",
         objective: "Should fail",
         workspaceId: "workspace-1",
-        githubNumber: 77,
-        githubRepo: "acme/platform",
+        vcsNumber: 77,
+        vcsRepo: "acme/platform",
       }),
       headers: { "Content-Type": "application/json" },
     }));

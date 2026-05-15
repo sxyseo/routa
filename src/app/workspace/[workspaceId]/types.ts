@@ -1,13 +1,9 @@
 // Shared types for workspace dashboard components
 
-import type { AcpTaskAdaptiveHarnessOptions } from "@/client/acp-client";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
-import type { KanbanHistoryMemoryPolicy, KanbanRequiredTaskField } from "@/core/models/kanban";
-import type {
-  TaskAnalysisStatus,
-  TaskContextSearchSpec,
-  TaskJitContextSnapshot,
-} from "@/core/models/task";
+import type { KanbanRequiredTaskField } from "@/core/models/kanban";
+import type { TaskAnalysisStatus } from "@/core/models/task";
+import type { TaskDiagnostic } from "@/core/kanban/task-diagnostic";
 import type { TaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
 
 export interface SessionInfo {
@@ -50,14 +46,12 @@ export interface TaskRunInfo {
 }
 
 export interface KanbanAgentPromptOptions {
-  boardId?: string;
   provider?: string;
   role?: string;
   toolMode?: "essential" | "full";
   allowedNativeTools?: string[];
   mcpProfile?: McpServerProfile;
   systemPrompt?: string;
-  taskAdaptiveHarness?: AcpTaskAdaptiveHarnessOptions;
 }
 
 export type KanbanAgentPromptHandler = (
@@ -71,7 +65,6 @@ export type KanbanDevSessionCompletionRequirement =
   | "completion_summary"
   | "verification_report";
 export type KanbanTransportInfo = "acp" | "a2a";
-export type KanbanHistoryMemoryPolicyInfo = KanbanHistoryMemoryPolicy;
 
 export interface KanbanDevSessionSupervisionInfo {
   mode: KanbanDevSessionSupervisionMode;
@@ -192,22 +185,42 @@ export interface TaskInfo {
     respondedAt?: string;
     responseSummary?: string;
   }>;
-  githubId?: string;
-  githubNumber?: number;
-  githubUrl?: string;
-  githubRepo?: string;
-  githubState?: string;
-  githubSyncedAt?: string;
+  vcsId?: string;
+  vcsNumber?: number;
+  vcsUrl?: string;
+  vcsRepo?: string;
+  vcsState?: string;
+  vcsSyncedAt?: string;
   lastSyncError?: string;
+  diagnostic?: TaskDiagnostic;
   isPullRequest?: boolean;
+  pullRequestUrl?: string;
+  pullRequestMergedAt?: string;
   sessionId?: string;
   dependencies?: string[];
+  dependencyStatus?: "clear" | "blocked";
+  blocking?: string[];
   parallelGroup?: string;
+  /** Parent task ID for sub-task hierarchy */
+  parentTaskId?: string;
+  /** Child tasks referencing this task as parent */
+  childTasks?: Array<{
+    id: string;
+    title: string;
+    status: string;
+    columnId?: string;
+  }>;
+  /** Split plan — only present on parent tasks that have been split */
+  splitPlan?: {
+    mergeStrategy: "cascade" | "fan_in" | "cascade_fan_in";
+    childTaskIds: string[];
+    dependencyEdges: [string, string][];
+    warnings: string[];
+    splitAt: string;
+  };
   creationSource?: "manual" | "agent" | "api" | "session";
   /** Associated codebase IDs for this task */
   codebaseIds?: string[];
-  contextSearchSpec?: TaskContextSearchSpec;
-  jitContextSnapshot?: TaskJitContextSnapshot;
   /** Git worktree ID for this task */
   worktreeId?: string;
   completionSummary?: string;
@@ -227,6 +240,7 @@ export interface TaskInfo {
       testCases: boolean;
       verificationPlan: boolean;
       dependenciesDeclared: boolean;
+      dependenciesDeclaredHint?: string;
     };
   };
   investValidation?: {
@@ -246,33 +260,17 @@ export interface TaskInfo {
   updatedAt?: string;
 }
 
-export interface GitHubIssueListItemInfo {
-  id: string;
-  number: number;
-  title: string;
-  body?: string;
-  url: string;
-  state: "open" | "closed";
-  labels: string[];
-  assignees: string[];
-  updatedAt?: string;
-}
+/**
+ * VCS-agnostic list item types for the Kanban import flow.
+ * Aliased from the canonical IVCSProvider types in @/core/vcs.
+ */
+export type { VCSIssueListItem as VCSIssueListItemInfo, VCSPullRequestListItem as VCSPullRequestListItemInfo } from "@/core/vcs";
 
-export interface GitHubPRListItemInfo {
-  id: string;
-  number: number;
-  title: string;
-  body?: string;
-  url: string;
-  state: "open" | "closed";
-  labels: string[];
-  assignees: string[];
-  updatedAt?: string;
-  draft: boolean;
-  mergedAt?: string;
-  headRef: string;
-  baseRef: string;
-}
+/** @deprecated Use VCSIssueListItemInfo instead. */
+export type GitHubIssueListItemInfo = import("@/core/vcs").VCSIssueListItem;
+
+/** @deprecated Use VCSPullRequestListItemInfo instead. */
+export type GitHubPRListItemInfo = import("@/core/vcs").VCSPullRequestListItem;
 
 export interface KanbanColumnAutomationInfo {
   enabled: boolean;
@@ -304,6 +302,13 @@ export interface KanbanColumnAutomationInfo {
     requireCanonicalStory?: boolean;
     loopBreakerThreshold?: number;
   };
+  deliveryRules?: {
+    requireCommittedChanges?: boolean;
+    requireCleanWorktree?: boolean;
+    requirePullRequestReady?: boolean;
+    autoMergeAfterPR?: boolean;
+    mergeStrategy?: "merge_commit" | "squash" | "rebase";
+  };
   autoAdvanceOnSuccess?: boolean;
 }
 
@@ -334,9 +339,20 @@ export interface KanbanBoardInfo {
   isDefault: boolean;
   githubTokenConfigured?: boolean;
   autoProviderId?: string;
-  historyMemoryPolicy?: KanbanHistoryMemoryPolicy;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: KanbanDevSessionSupervisionInfo;
+  branchRules?: {
+    lifecycle: {
+      deleteBranchOnMerge: boolean;
+      removeWorktreeOnMerge: boolean;
+      rebaseDownstream: boolean;
+      autoCreatePullRequest: boolean;
+    };
+    baseBranch?: {
+      strategy: "codebase_default" | "fixed" | "dependency_inherit";
+      fixedBranch?: string;
+    };
+  };
   queue?: KanbanBoardQueueInfo;
   columns: KanbanColumnInfo[];
   createdAt: string;
@@ -383,6 +399,7 @@ export interface WorktreeInfo {
   worktreePath: string;
   branch: string;
   baseBranch: string;
+  baseCommitSha?: string;
   status: "creating" | "active" | "error" | "removing";
   sessionId?: string;
   label?: string;

@@ -10,6 +10,8 @@ import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { useTranslation } from "@/i18n";
 import { KanbanTab } from "./kanban-tab";
+import { WorkspaceSettingsTab } from "../workspace-settings-tab";
+import { Settings, X } from "lucide-react";
 import {
   localizeSpecialists,
   mapLocaleToKanbanSpecialistLanguage,
@@ -65,8 +67,54 @@ export function KanbanPageClient() {
     error: null,
   });
   const refreshBurstCleanupRef = useRef<(() => void) | null>(null);
+  const sseRefreshRafRef = useRef<number | null>(null);
   const warmedupProvidersRef = useRef<Set<string>>(new Set());
   const autoSyncedWorkspaceRef = useRef<string | null>(null);
+  const syncInProgressRef = useRef(false);
+  const codebasesRef = useRef<CodebaseData[]>(codebases);
+  codebasesRef.current = codebases;
+
+  // ── Workspace Settings Panel ──
+  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false);
+  const [worktreeRootDraft, setWorktreeRootDraft] = useState("");
+  const [worktreeRootState, setWorktreeRootState] = useState<{ saving: boolean; message: string | null; error: string | null }>({
+    saving: false, message: null, error: null,
+  });
+
+  // Initialize worktreeRootDraft from workspace metadata
+  useEffect(() => {
+    const ws = workspacesHook.workspaces.find((w) => w.id === workspaceId);
+    if (ws?.metadata?.worktreeRoot) {
+      setWorktreeRootDraft(ws.metadata.worktreeRoot);
+    }
+  }, [workspacesHook.workspaces, workspaceId]);
+
+  const displayedWorktreeRoot = useMemo(() => {
+    const ws = workspacesHook.workspaces.find((w) => w.id === workspaceId);
+    return ws?.metadata?.worktreeRoot ?? "";
+  }, [workspacesHook.workspaces, workspaceId]);
+
+  const defaultWorktreeRootHint = "~/.routa/workspace";
+
+  const handleSaveWorktreeRoot = useCallback(async () => {
+    setWorktreeRootState({ saving: true, message: null, error: null });
+    try {
+      const res = await desktopAwareFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata: { worktreeRoot: worktreeRootDraft } }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to save");
+      }
+      await workspacesHook.fetchWorkspaces();
+      setWorktreeRootState({ saving: false, message: "Saved", error: null });
+      setTimeout(() => setWorktreeRootState((s) => ({ ...s, message: null })), 2000);
+    } catch (err) {
+      setWorktreeRootState({ saving: false, message: null, error: err instanceof Error ? err.message : "Failed to save" });
+    }
+  }, [workspaceId, worktreeRootDraft, workspacesHook]);
 
   // Auto-connect ACP
   useEffect(() => {
@@ -76,21 +124,49 @@ export function KanbanPageClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acp.connected, acp.loading]);
 
-  // Fetch boards
+  // Fetch boards, tasks, sessions, codebases in a single batch
   useEffect(() => {
     const controller = new AbortController();
     (async () => {
       try {
-        const res = await desktopAwareFetch(`/api/kanban/boards?workspaceId=${encodeURIComponent(workspaceId)}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const data = await res.json();
+        const [boardsRes, tasksRes, sessionsRes] = await Promise.all([
+          desktopAwareFetch(`/api/kanban/boards?workspaceId=${encodeURIComponent(workspaceId)}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+          desktopAwareFetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+          desktopAwareFetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, {
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+        ]);
         if (controller.signal.aborted) return;
-        setBoards(Array.isArray(data?.boards) ? data.boards : []);
+
+        const [boardsData, tasksData, sessionsData] = await Promise.all([
+          boardsRes.json(),
+          tasksRes.json(),
+          sessionsRes.json(),
+        ]);
+        if (controller.signal.aborted) return;
+
+        // React 18 auto-batches these setState calls.
+        // Only update when data actually changed to avoid unnecessary re-renders.
+        const newBoards = Array.isArray(boardsData?.boards) ? boardsData.boards : [];
+        const newTasks = Array.isArray(tasksData?.tasks) ? tasksData.tasks : [];
+        const newSessions = Array.isArray(sessionsData?.sessions) ? sessionsData.sessions : [];
+        setBoards((prev) => prev.length === newBoards.length && prev === newBoards ? prev : newBoards);
+        setTasks((prev) => prev.length === newTasks.length && prev === newTasks ? prev : newTasks);
+        setSessions((prev) => prev.length === newSessions.length && prev === newSessions ? prev : newSessions);
+
+        // Fetch codebases as part of the same refresh cycle to avoid a cascading re-render.
+        void fetchCodebases();
       } catch { /* ignore */ }
     })();
     return () => controller.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, refreshKey]);
 
   // Warm up registry providers configured in column automations when the board is opened.
@@ -155,46 +231,25 @@ export function KanbanPageClient() {
     [locale],
   );
 
-  // Fetch tasks
+  // Fetch specialists — skip the initial SSR locale and wait for the client-side
+  // locale to stabilize to avoid double-fetching (e.g. en→zh-CN).
+  const stableSpecialistLanguageRef = useRef<KanbanSpecialistLanguage | null>(null);
   useEffect(() => {
+    if (stableSpecialistLanguageRef.current === specialistLanguage) return;
+    stableSpecialistLanguageRef.current = specialistLanguage;
     const controller = new AbortController();
-    (async () => {
-      try {
-        const res = await desktopAwareFetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const data = await res.json();
-        if (controller.signal.aborted) return;
-        setTasks(Array.isArray(data?.tasks) ? data.tasks : []);
-      } catch { /* ignore */ }
-    })();
-    return () => controller.abort();
-  }, [workspaceId, refreshKey]);
-
-  // Fetch sessions
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await desktopAwareFetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, { cache: "no-store" });
-        const data = await res.json();
-        setSessions(Array.isArray(data?.sessions) ? data.sessions : []);
-      } catch { /* ignore */ }
-    })();
-  }, [workspaceId, refreshKey]);
-
-  // Fetch specialists
-  useEffect(() => {
     (async () => {
       try {
         const res = await desktopAwareFetch(
           `/api/specialists?workspaceId=${encodeURIComponent(workspaceId)}&locale=${encodeURIComponent(specialistLanguage)}`,
-          { cache: "no-store" },
+          { cache: "no-store", signal: controller.signal },
         );
         const data = await res.json();
+        if (controller.signal.aborted) return;
         setSpecialists(Array.isArray(data?.specialists) ? data.specialists : []);
       } catch { /* ignore */ }
     })();
+    return () => controller.abort();
   }, [workspaceId, specialistLanguage]);
 
   useEffect(() => {
@@ -228,7 +283,7 @@ export function KanbanPageClient() {
     })();
 
     return () => controller.abort();
-  }, [workspaceId, codebases, refreshKey]);
+  }, [workspaceId, codebases]);
 
   const localizedSpecialists = useMemo(
     () => localizeSpecialists(specialists),
@@ -237,8 +292,7 @@ export function KanbanPageClient() {
 
   const handleRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
-    void fetchCodebases();
-  }, [fetchCodebases]);
+  }, []);
 
   const syncCodebaseToLatest = useCallback(async (codebase: CodebaseData): Promise<void> => {
     // Check if this is a bare repository - skip sync for bare repos
@@ -301,6 +355,8 @@ export function KanbanPageClient() {
 
   const syncWorkspaceRepos = useCallback(async (nextCodebases: CodebaseData[]) => {
     if (nextCodebases.length === 0) return;
+    if (syncInProgressRef.current) return;
+    syncInProgressRef.current = true;
 
     setRepoSync({
       status: "syncing",
@@ -313,59 +369,67 @@ export function KanbanPageClient() {
 
     const failures: string[] = [];
 
-    for (const [index, codebase] of nextCodebases.entries()) {
-      const repoLabel = codebase.label ?? codebase.sourceUrl ?? codebase.repoPath;
-      setRepoSync({
-        status: "syncing",
-        total: nextCodebases.length,
-        completed: index,
-        currentRepoLabel: repoLabel,
-        message: `Syncing ${repoLabel}...`,
-        error: null,
-      });
+    try {
+      for (const [index, codebase] of nextCodebases.entries()) {
+        const repoLabel = codebase.label ?? codebase.sourceUrl ?? codebase.repoPath;
+        setRepoSync({
+          status: "syncing",
+          total: nextCodebases.length,
+          completed: index,
+          currentRepoLabel: repoLabel,
+          message: `Syncing ${repoLabel}...`,
+          error: null,
+        });
 
-      try {
-        await syncCodebaseToLatest(codebase);
-      } catch (error) {
-        failures.push(`${repoLabel}: ${error instanceof Error ? error.message : String(error)}`);
+        try {
+          await syncCodebaseToLatest(codebase);
+        } catch (error) {
+          failures.push(`${repoLabel}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        setRepoSync({
+          status: "syncing",
+          total: nextCodebases.length,
+          completed: index + 1,
+          currentRepoLabel: repoLabel,
+          message: `Synced ${index + 1}/${nextCodebases.length} repositories`,
+          error: null,
+        });
+      }
+
+      void fetchCodebases();
+
+      if (failures.length > 0) {
+        setRepoSync({
+          status: "error",
+          total: nextCodebases.length,
+          completed: nextCodebases.length,
+          currentRepoLabel: null,
+          message: `Repository sync finished with ${failures.length} error${failures.length > 1 ? "s" : ""}.`,
+          error: failures.join(" | "),
+        });
+        return;
       }
 
       setRepoSync({
-        status: "syncing",
-        total: nextCodebases.length,
-        completed: index + 1,
-        currentRepoLabel: repoLabel,
-        message: `Synced ${index + 1}/${nextCodebases.length} repositories`,
-        error: null,
-      });
-    }
-
-    void fetchCodebases();
-
-    if (failures.length > 0) {
-      setRepoSync({
-        status: "error",
+        status: "done",
         total: nextCodebases.length,
         completed: nextCodebases.length,
         currentRepoLabel: null,
-        message: `Repository sync finished with ${failures.length} error${failures.length > 1 ? "s" : ""}.`,
-        error: failures.join(" | "),
+        message: `Repository sync complete. ${nextCodebases.length} repo${nextCodebases.length > 1 ? "s" : ""} updated.`,
+        error: null,
       });
-      return;
+    } finally {
+      syncInProgressRef.current = false;
     }
-
-    setRepoSync({
-      status: "done",
-      total: nextCodebases.length,
-      completed: nextCodebases.length,
-      currentRepoLabel: null,
-      message: `Repository sync complete. ${nextCodebases.length} repo${nextCodebases.length > 1 ? "s" : ""} updated.`,
-      error: null,
-    });
   }, [fetchCodebases, syncCodebaseToLatest]);
 
   const handleKanbanInvalidate = useCallback(() => {
-    handleRefresh();
+    if (sseRefreshRafRef.current != null) return;
+    sseRefreshRafRef.current = requestAnimationFrame(() => {
+      sseRefreshRafRef.current = null;
+      handleRefresh();
+    });
   }, [handleRefresh]);
 
   useKanbanEvents({
@@ -375,12 +439,12 @@ export function KanbanPageClient() {
 
   useEffect(() => {
     if (!workspaceId || workspaceId === "__placeholder__") return;
-    if (codebases.length === 0) return;
+    if (codebasesRef.current.length === 0) return;
     if (autoSyncedWorkspaceRef.current === workspaceId) return;
 
     autoSyncedWorkspaceRef.current = workspaceId;
-    void syncWorkspaceRepos(codebases);
-  }, [workspaceId, codebases, syncWorkspaceRepos]);
+    void syncWorkspaceRepos(codebasesRef.current);
+  }, [workspaceId, syncWorkspaceRepos]);
 
   useEffect(() => {
     if (repoSync.status !== "done") return;
@@ -398,6 +462,10 @@ export function KanbanPageClient() {
     return () => {
       refreshBurstCleanupRef.current?.();
       refreshBurstCleanupRef.current = null;
+      if (sseRefreshRafRef.current != null) {
+        cancelAnimationFrame(sseRefreshRafRef.current);
+        sseRefreshRafRef.current = null;
+      }
     };
   }, []);
 
@@ -474,6 +542,16 @@ export function KanbanPageClient() {
     <DesktopAppShell
       workspaceId={workspaceId}
       workspaceTitle={activeWorkspaceTitle}
+      titleBarRight={
+        <button
+          onClick={() => setShowWorkspaceSettings((v) => !v)}
+          className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${showWorkspaceSettings ? "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-[#1f232f] dark:hover:text-slate-200"}`}
+          title={t.workspace.workspaceSettings ?? "Workspace Settings"}
+          data-testid="workspace-settings-toggle"
+        >
+          {showWorkspaceSettings ? <X className="h-3.5 w-3.5" /> : <Settings className="h-3.5 w-3.5" />}
+        </button>
+      }
       workspaceSwitcher={(
         <WorkspaceSwitcher
           workspaces={workspacesHook.workspaces}
@@ -489,23 +567,46 @@ export function KanbanPageClient() {
     >
       <div className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary" data-testid="kanban-page-shell">
         <div className="flex-1 min-h-0 overflow-hidden">
-          <KanbanTab
-            workspaceId={workspaceId}
-            refreshSignal={refreshKey}
-            boards={boards}
-            tasks={tasks}
-            sessions={sessions}
-            providers={acp.providers}
-            specialists={localizedSpecialists}
-            specialistLanguage={specialistLanguage}
-            codebases={codebases}
-            onRefresh={handleRefresh}
-            acp={acp}
-            onAgentPrompt={handleAgentPrompt}
-            repoSync={repoSync}
-            repoChanges={repoChanges}
-            repoChangesLoading={repoChangesLoading}
-          />
+          {showWorkspaceSettings ? (
+            <div className="h-full overflow-y-auto px-6 py-4" data-testid="workspace-settings-panel">
+              <WorkspaceSettingsTab
+                workspaceId={workspaceId}
+                workspaceTitle={activeWorkspaceTitle}
+                codebases={codebases}
+                fetchCodebases={fetchCodebases}
+                worktreeRootDraft={worktreeRootDraft}
+                setWorktreeRootDraft={setWorktreeRootDraft}
+                worktreeRootState={worktreeRootState}
+                displayedWorktreeRoot={displayedWorktreeRoot}
+                defaultWorktreeRootHint={defaultWorktreeRootHint}
+                onSaveWorktreeRoot={handleSaveWorktreeRoot}
+                useWorkspacesHook={workspacesHook}
+              />
+            </div>
+          ) : (
+            <KanbanTab
+              workspaceId={workspaceId}
+              refreshSignal={refreshKey}
+              boards={boards}
+              tasks={tasks}
+              sessions={sessions}
+              providers={acp.providers}
+              specialists={localizedSpecialists}
+              specialistLanguage={specialistLanguage}
+              codebases={codebases}
+              onRefresh={handleRefresh}
+              acp={acp}
+              onAgentPrompt={handleAgentPrompt}
+              repoSync={repoSync}
+              repoChanges={repoChanges}
+              repoChangesLoading={repoChangesLoading}
+              workspacePanelProps={{
+                workspaceTitle: activeWorkspaceTitle,
+                useWorkspacesHook: workspacesHook,
+                fetchCodebases,
+              }}
+            />
+          )}
         </div>
       </div>
     </DesktopAppShell>

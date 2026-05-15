@@ -190,13 +190,14 @@ export async function hydrateSessionsFromDb(): Promise<Array<{
   if (driver === "memory") return [];
 
   try {
+    const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000); // only hydrate recent sessions
     if (driver === "postgres") {
       const db = getPostgresDatabase();
-      return await new PgAcpSessionStore(db).list();
+      return await new PgAcpSessionStore(db).list({ createdAfter: cutoff });
     } else {
       const { getSqliteDatabase } = await loadSqliteDatabaseModule();
       const db = getSqliteDatabase();
-      return await new SqliteAcpSessionStore(db).list();
+      return await new SqliteAcpSessionStore(db).list({ createdAfter: cutoff });
     }
   } catch (err) {
     console.error(`[SessionDB] Failed to load sessions from ${driver}:`, err);
@@ -281,9 +282,9 @@ export async function updateSessionExecutionBindingInDb(
       if (!session) return;
       await store.save({
         ...session,
-        executionMode: binding.executionMode ?? session.executionMode,
-        ownerInstanceId: binding.ownerInstanceId ?? session.ownerInstanceId,
-        leaseExpiresAt: binding.leaseExpiresAt ?? session.leaseExpiresAt,
+        executionMode: "executionMode" in binding ? binding.executionMode : session.executionMode,
+        ownerInstanceId: "ownerInstanceId" in binding ? binding.ownerInstanceId : session.ownerInstanceId,
+        leaseExpiresAt: "leaseExpiresAt" in binding ? binding.leaseExpiresAt : session.leaseExpiresAt,
         updatedAt: new Date(),
       });
       return;
@@ -296,9 +297,9 @@ export async function updateSessionExecutionBindingInDb(
     if (!session) return;
     await store.save({
       ...session,
-      executionMode: binding.executionMode ?? session.executionMode,
-      ownerInstanceId: binding.ownerInstanceId ?? session.ownerInstanceId,
-      leaseExpiresAt: binding.leaseExpiresAt ?? session.leaseExpiresAt,
+      executionMode: "executionMode" in binding ? binding.executionMode : session.executionMode,
+      ownerInstanceId: "ownerInstanceId" in binding ? binding.ownerInstanceId : session.ownerInstanceId,
+      leaseExpiresAt: "leaseExpiresAt" in binding ? binding.leaseExpiresAt : session.leaseExpiresAt,
       updatedAt: new Date(),
     });
   } catch (err) {
@@ -314,7 +315,7 @@ export async function saveHistoryToDb(
   const normalizedHistory = normalizeSessionHistory(history);
   const firstPromptSent = hasUserMessageInHistory(normalizedHistory);
 
-  // 1. Save full history snapshot to DB
+  // 1. Save to DB — use incremental append for SQLite to avoid O(n) full-replace
   if (driver !== "memory") {
     try {
       if (driver === "postgres") {
@@ -334,12 +335,24 @@ export async function saveHistoryToDb(
         const sqliteStore = new SqliteAcpSessionStore(db);
         const session = await sqliteStore.get(sessionId);
         if (!session) return;
-        await sqliteStore.save({
-          ...session,
-          firstPromptSent: session.firstPromptSent || firstPromptSent,
-          messageHistory: normalizedHistory,
-          updatedAt: new Date(),
-        });
+
+        // When the history hasn't grown, skip the expensive full-replace.
+        // This is the common case when the write-buffer flushes on debounce
+        // but no new messages have arrived.
+        const oldLen = (session.messageHistory as unknown[])?.length ?? 0;
+        const newLen = normalizedHistory.length;
+
+        if (newLen <= oldLen && session.firstPromptSent === firstPromptSent) {
+          // History hasn't grown and firstPromptSent hasn't changed —
+          // skip the expensive full-replace entirely.
+        } else {
+          await sqliteStore.save({
+            ...session,
+            firstPromptSent: session.firstPromptSent || firstPromptSent,
+            messageHistory: normalizedHistory,
+            updatedAt: new Date(),
+          });
+        }
       }
     } catch (err) {
       console.error(`[SessionDB] Failed to save history to ${driver}:`, err);
@@ -388,6 +401,36 @@ export async function appendSessionNotificationEvent(
 ): Promise<void> {
   const driver = getDatabaseDriver();
 
+  // Write JSONL first — getHistory falls back to JSONL when DB lags,
+  // so ensuring JSONL is ahead reduces the "JSONL has more history" noise.
+  if (!isServerless()) {
+    try {
+      let cwd = cwdOverride;
+
+      if (!cwd) {
+        const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
+        cwd = getHttpSessionStore().getSession(sessionId)?.cwd;
+      }
+
+      if (!cwd && driver === "sqlite") {
+        try {
+          const { getSqliteDatabase } = await loadSqliteDatabaseModule();
+          const db = getSqliteDatabase();
+          cwd = (await new SqliteAcpSessionStore(db).get(sessionId))?.cwd;
+        } catch {
+          // ignore — cwd stays undefined
+        }
+      }
+
+      if (cwd) {
+        const local = new LocalSessionProvider(cwd);
+        await local.appendMessage(sessionId, toJsonlHistoryEntry(sessionId, notification));
+      }
+    } catch {
+      // Non-fatal — local event log append is best-effort
+    }
+  }
+
   if (driver !== "memory") {
     try {
       if (driver === "postgres") {
@@ -402,33 +445,65 @@ export async function appendSessionNotificationEvent(
       // Non-fatal — DB append is best-effort
     }
   }
+}
 
-  if (isServerless()) return;
+/**
+ * Batch version of appendSessionNotificationEvent.
+ * Persists multiple notifications in a single DB transaction using appendHistoryBatch.
+ * JSONL entries are written individually (append-only is fast; the bottleneck is DB).
+ */
+export async function appendSessionNotificationBatch(
+  sessionId: string,
+  notifications: import("@/core/acp/http-session-store").SessionUpdateNotification[],
+  cwdOverride?: string,
+): Promise<void> {
+  if (notifications.length === 0) return;
 
-  try {
-    let cwd = cwdOverride;
+  const driver = getDatabaseDriver();
 
-    if (!cwd) {
-      const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
-      cwd = getHttpSessionStore().getSession(sessionId)?.cwd;
+  // Write JSONL entries (best-effort, one by one — append-only is fast)
+  if (!isServerless()) {
+    try {
+      let cwd = cwdOverride;
+      if (!cwd) {
+        const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
+        cwd = getHttpSessionStore().getSession(sessionId)?.cwd;
+      }
+      if (!cwd && driver === "sqlite") {
+        try {
+          const { getSqliteDatabase } = await loadSqliteDatabaseModule();
+          const db = getSqliteDatabase();
+          cwd = (await new SqliteAcpSessionStore(db).get(sessionId))?.cwd;
+        } catch {
+          // ignore
+        }
+      }
+      if (cwd) {
+        const local = new LocalSessionProvider(cwd);
+        for (const n of notifications) {
+          await local.appendMessage(sessionId, toJsonlHistoryEntry(sessionId, n));
+        }
+      }
+    } catch {
+      // Non-fatal
     }
+  }
 
-    if (!cwd && driver === "sqlite") {
-      try {
+  // Batch DB write
+  if (driver !== "memory") {
+    try {
+      if (driver === "postgres") {
+        const db = getPostgresDatabase();
+        const pgStore = new PgAcpSessionStore(db);
+        await pgStore.appendHistoryBatch(sessionId, notifications);
+      } else {
         const { getSqliteDatabase } = await loadSqliteDatabaseModule();
         const db = getSqliteDatabase();
-        cwd = (await new SqliteAcpSessionStore(db).get(sessionId))?.cwd;
-      } catch {
-        // ignore — cwd stays undefined
+        await new SqliteAcpSessionStore(db).appendHistoryBatch(sessionId, notifications);
       }
+    } catch {
+      // Non-fatal — DB append is best-effort
     }
-
-    if (!cwd) return;
-
-    const local = new LocalSessionProvider(cwd);
-    await local.appendMessage(sessionId, toJsonlHistoryEntry(sessionId, notification));
-  } catch {
-    // Non-fatal — local event log append is best-effort
   }
 }
 
@@ -511,7 +586,13 @@ export async function loadHistoryFromDb(
         .filter(Boolean) as import("@/core/acp/http-session-store").SessionUpdateNotification[]);
 
       if (jsonlHistory.length > dbHistory.length) {
-        console.log(`[SessionDB] JSONL has more history (${jsonlHistory.length}) than DB (${dbHistory.length}) for session ${sessionId}, using JSONL`);
+        const diff = jsonlHistory.length - dbHistory.length;
+        // Only log when the gap is significant — a diff of 1 is expected
+        // during normal operation and would otherwise produce log noise on
+        // every SSE reconnection / history reload.
+        if (diff > 5) {
+          console.warn(`[SessionDB] JSONL leads DB by ${diff} entries (${jsonlHistory.length} vs ${dbHistory.length}) for session ${sessionId}`);
+        }
         return jsonlHistory;
       }
     } catch {

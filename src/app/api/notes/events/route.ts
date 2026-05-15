@@ -10,6 +10,7 @@
 
 import { NextRequest } from "next/server";
 import { getNoteEventBroadcaster } from "@/core/notes/note-event-broadcaster";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,9 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       connectionId = broadcaster.attach(workspaceId, controller);
+      request.signal.addEventListener("abort", () => {
+        if (connectionId) broadcaster.detach(connectionId);
+      });
     },
     cancel() {
       if (connectionId) {
@@ -31,7 +35,8 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  return new Response(stream, {
+  const monitoredStream = monitorSSEConnection(request, "/api/notes/events", stream);
+  return new Response(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",

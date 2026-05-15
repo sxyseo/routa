@@ -277,7 +277,7 @@ export interface TailTranslationDictionarySections {
     newWebhookTrigger: string;
     nameLabel: string;
     namePlaceholder: string;
-    githubRepository: string;
+    vcsRepository: string;
     repoFormatHint: string;
     githubToken: string;
     tokenKeepHint: string;
@@ -347,6 +347,47 @@ export interface TailTranslationDictionarySections {
     loading: string;
     disable: string;
     enable: string;
+    // Webhook triggers panel
+    webhookTriggersTitle: string;
+    webhookTriggerAutoDesc: string;
+    webhookUrlLabel: string;
+    webhookPointHint: string;
+    manageWebhookTriggers: string;
+    // Platform switcher
+    platformSwitcherLabel: string;
+    platformGithub: string;
+    platformGitlab: string;
+    // GitHub-specific fields
+    githubRepository: string;
+    // GitLab-specific fields
+    gitlabRepository: string;
+    gitlabToken: string;
+    gitlabWebhookUrl: string;
+    gitlabServerUrl: string;
+    gitlabServerUrlHint: string;
+    gitlabProjectId: string;
+    gitlabProjectIdHint: string;
+    registerOnGitlab: string;
+    registerPromptGitlab: string;
+    gitlabEmptyTitle: string;
+    gitlabEmptyDescription: string;
+    gitlabWebhookSecret: string;
+    gitlabTriggerTypes: {
+      pushEvents: string;
+      pushEventsDesc: string;
+      mergeRequestEvents: string;
+      mergeRequestEventsDesc: string;
+      issueEvents: string;
+      issueEventsDesc: string;
+      noteEvents: string;
+      noteEventsDesc: string;
+      pipelineEvents: string;
+      pipelineEventsDesc: string;
+      tagPushEvents: string;
+      tagPushEventsDesc: string;
+      wikiPageEvents: string;
+      wikiPageEventsDesc: string;
+    };
   };
 
   // A2A Page
@@ -379,5 +420,23 @@ export interface TailTranslationDictionarySections {
     hideRefs: string;
     parents: string;
     files: string;
+  };
+
+  // System Jobs
+  systemJobs: {
+    title: string;
+    subtitle: string;
+    description: string;
+    navLabel: string;
+    refresh: string;
+    groupScheduler: string;
+    groupKanban: string;
+    lastRun: string;
+    duration: string;
+    status: string;
+    statusIdle: string;
+    statusRunning: string;
+    statusSuccess: string;
+    statusError: string;
   };
 }

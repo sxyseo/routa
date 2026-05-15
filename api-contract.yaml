@@ -407,17 +407,17 @@ components:
           type: string
         triggerSessionId:
           type: string
-        githubId:
+        vcsId:
           type: string
-        githubNumber:
+        vcsNumber:
           type: integer
-        githubUrl:
+        vcsUrl:
           type: string
-        githubRepo:
+        vcsRepo:
           type: string
-        githubState:
+        vcsState:
           type: string
-        githubSyncedAt:
+        vcsSyncedAt:
           type: string
           format: date-time
         lastSyncError:

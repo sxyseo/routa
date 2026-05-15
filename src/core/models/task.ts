@@ -16,6 +16,7 @@ export enum TaskStatus {
   NEEDS_FIX = "NEEDS_FIX",
   BLOCKED = "BLOCKED",
   CANCELLED = "CANCELLED",
+  ARCHIVED = "ARCHIVED",
 }
 
 export enum TaskPriority {
@@ -49,6 +50,10 @@ export interface TaskInvestValidation {
     small: TaskInvestCheckSummary;
     testable: TaskInvestCheckSummary;
   };
+  /** Effort band derived from structural signals (XS/S/M/L/XL) */
+  effortBand?: "XS" | "S" | "M" | "L" | "XL";
+  /** Raw effort score before band mapping */
+  effortScore?: number;
   issues: string[];
 }
 
@@ -63,6 +68,7 @@ export interface TaskStoryReadiness {
     testCases: boolean;
     verificationPlan: boolean;
     dependenciesDeclared: boolean;
+    dependenciesDeclaredHint?: string;
   };
 }
 
@@ -103,6 +109,7 @@ export type TaskLaneSessionCompletionRequirement =
   | "verification_report";
 export type TaskLaneSessionRecoveryReason =
   | "watchdog_inactivity"
+  | "lease_expired"
   | "agent_failed"
   | "completion_criteria_not_met";
 
@@ -171,9 +178,22 @@ export interface TaskCommentEntry {
   id: string;
   body: string;
   createdAt: string;
-  source?: "legacy_import" | "update_card";
+  source?: "legacy_import" | "update_card" | "graph-refiner";
   agentId?: string;
   sessionId?: string;
+}
+
+export interface TaskSplitPlan {
+  /** 合并策略 */
+  mergeStrategy: "cascade" | "fan_in" | "cascade_fan_in";
+  /** 子任务拓扑顺序（真实 ID 列表，按拓扑序排列） */
+  childTaskIds: string[];
+  /** 依赖边（真实 ID 对） */
+  dependencyEdges: [string, string][];
+  /** 分拆时的文件冲突警告 */
+  warnings: string[];
+  /** 分拆时间 */
+  splitAt: Date;
 }
 
 export interface TaskDeliverySnapshotCommit {
@@ -867,15 +887,21 @@ export interface Task {
   laneSessions: TaskLaneSession[];
   /** Adjacent-lane handoff requests and responses */
   laneHandoffs: TaskLaneHandoff[];
-  githubId?: string;
-  githubNumber?: number;
-  githubUrl?: string;
-  githubRepo?: string;
-  githubState?: string;
-  githubSyncedAt?: Date;
+  vcsId?: string;
+  vcsNumber?: number;
+  vcsUrl?: string;
+  vcsRepo?: string;
+  vcsState?: string;
+  vcsSyncedAt?: Date;
   lastSyncError?: string;
   isPullRequest?: boolean;
   dependencies: string[];
+  /** Tasks this task is blocking (reverse of dependencies) */
+  blocking: string[];
+  /** Dependency gate status: "clear" | "blocked" */
+  dependencyStatus?: "clear" | "blocked";
+  /** Parent task for sub-task hierarchy */
+  parentTaskId?: string;
   parallelGroup?: string;
   workspaceId: string;
   /** Session ID that created this task (for session-scoped filtering) */
@@ -891,11 +917,31 @@ export interface Task {
   worktreeId?: string;
   /** Frozen delivery evidence captured before PR / merge / base sync can erase base..HEAD */
   deliverySnapshot?: TaskDeliverySnapshot;
+  /** URL of the pull/merge request created for this task (set by PR Publisher) */
+  pullRequestUrl?: string;
+  /** Timestamp when the PR was merged; absent means the PR is still open or was never created */
+  pullRequestMergedAt?: Date;
+  /**
+   * Ephemeral override: when set, the next worktree creation uses this branch name
+   * instead of the auto-generated one. Cleared after use — never persisted to DB.
+   */
+  nextBranchOverride?: string;
+  /**
+   * Ephemeral override: when set, the next worktree creation uses this as the base
+   * branch instead of the codebase default. Cleared after use — never persisted to DB.
+   */
+  nextBaseBranchOverride?: string;
+  /** 分拆计划 — 仅存在于父任务上，分拆时写入 */
+  splitPlan?: TaskSplitPlan;
+  /** Optimistic-locking version; sourced from DB row, undefined for in-memory tasks */
+  version?: number;
   createdAt: Date;
   updatedAt: Date;
   completionSummary?: string;
   verificationVerdict?: VerificationVerdict;
   verificationReport?: string;
+  /** Deterministic pre-gate violations — set by pre-gate-checker, NOT cleared by lastSyncError cleanup */
+  preGateBlockers?: string;
 }
 
 export function createTask(params: {
@@ -913,6 +959,9 @@ export function createTask(params: {
   verificationCommands?: string[];
   testCases?: string[];
   dependencies?: string[];
+  blocking?: string[];
+  dependencyStatus?: "clear" | "blocked";
+  parentTaskId?: string;
   parallelGroup?: string;
   boardId?: string;
   columnId?: string;
@@ -927,12 +976,12 @@ export function createTask(params: {
   fallbackAgentChain?: FallbackAgent[];
   enableAutomaticFallback?: boolean;
   maxFallbackAttempts?: number;
-  githubId?: string;
-  githubNumber?: number;
-  githubUrl?: string;
-  githubRepo?: string;
-  githubState?: string;
-  githubSyncedAt?: Date;
+  vcsId?: string;
+  vcsNumber?: number;
+  vcsUrl?: string;
+  vcsRepo?: string;
+  vcsState?: string;
+  vcsSyncedAt?: Date;
   lastSyncError?: string;
   isPullRequest?: boolean;
   status?: TaskStatus;
@@ -940,6 +989,7 @@ export function createTask(params: {
   contextSearchSpec?: TaskContextSearchSpec;
   jitContextSnapshot?: TaskJitContextSnapshot;
   worktreeId?: string;
+  pullRequestUrl?: string;
 }): Task {
   const now = new Date();
   const comments = params.comments ?? buildInitialTaskComments(params.comment, now);
@@ -970,15 +1020,18 @@ export function createTask(params: {
     sessionIds: [],
     laneSessions: [],
     laneHandoffs: [],
-    githubId: params.githubId,
-    githubNumber: params.githubNumber,
-    githubUrl: params.githubUrl,
-    githubRepo: params.githubRepo,
-    githubState: params.githubState,
-    githubSyncedAt: params.githubSyncedAt,
+    vcsId: params.vcsId,
+    vcsNumber: params.vcsNumber,
+    vcsUrl: params.vcsUrl,
+    vcsRepo: params.vcsRepo,
+    vcsState: params.vcsState,
+    vcsSyncedAt: params.vcsSyncedAt,
     lastSyncError: params.lastSyncError,
     isPullRequest: params.isPullRequest,
     dependencies: params.dependencies ?? [],
+    blocking: params.blocking ?? [],
+    dependencyStatus: params.dependencyStatus,
+    parentTaskId: params.parentTaskId,
     parallelGroup: params.parallelGroup,
     workspaceId: params.workspaceId,
     sessionId: params.sessionId,
@@ -987,7 +1040,9 @@ export function createTask(params: {
     contextSearchSpec: normalizeTaskContextSearchSpec(params.contextSearchSpec),
     jitContextSnapshot: normalizeTaskJitContextSnapshot(params.jitContextSnapshot),
     worktreeId: params.worktreeId,
+    pullRequestUrl: params.pullRequestUrl,
     triggerSessionId: params.triggerSessionId,
+    version: undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -1038,4 +1093,27 @@ export function splitLegacyTaskComment(comment: string | undefined): TaskComment
     createdAt: "",
     source: "legacy_import",
   }];
+}
+
+/**
+ * Clear session/delivery state fields on a task for a clean re-trigger.
+ * Used when reopening a task on a new branch or resetting its execution.
+ *
+ * @param full - If true, also clear worktree, PR, and delivery snapshot.
+ */
+export function resetTaskExecutionState(task: Task, full: boolean): void {
+  task.triggerSessionId = undefined;
+  task.lastSyncError = undefined;
+  task.verificationVerdict = undefined;
+  task.verificationReport = undefined;
+  task.completionSummary = undefined;
+
+  task.preGateBlockers = undefined;
+
+  if (full) {
+    task.worktreeId = undefined;
+    task.pullRequestUrl = undefined;
+    task.pullRequestMergedAt = undefined;
+    task.deliverySnapshot = undefined;
+  }
 }

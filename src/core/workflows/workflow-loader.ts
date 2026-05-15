@@ -9,6 +9,7 @@ import type { WorkflowDefinition } from "./workflow-types";
 
 export class WorkflowLoader {
   private cache = new Map<string, WorkflowDefinition>();
+  private pendingLoads = new Map<string, Promise<WorkflowDefinition>>();
   private flowsDir: string;
 
   constructor(flowsDir = "resources/flows") {
@@ -25,15 +26,26 @@ export class WorkflowLoader {
       return this.cache.get(idOrPath)!;
     }
 
-    const filePath = this.resolveFilePath(idOrPath);
-    const content = await fs.promises.readFile(filePath, "utf-8");
-    const definition = this.parse(content, filePath);
+    // Dedup in-flight loads to prevent cache stampede
+    const existing = this.pendingLoads.get(idOrPath);
+    if (existing) {
+      return existing;
+    }
 
-    // Store in cache with both the original key and the resolved name
-    this.cache.set(idOrPath, definition);
-    this.cache.set(definition.name, definition);
-
-    return definition;
+    const loadPromise = (async () => {
+      try {
+        const filePath = this.resolveFilePath(idOrPath);
+        const content = await fs.promises.readFile(filePath, "utf-8");
+        const definition = this.parse(content, filePath);
+        this.cache.set(idOrPath, definition);
+        this.cache.set(definition.name, definition);
+        return definition;
+      } finally {
+        this.pendingLoads.delete(idOrPath);
+      }
+    })();
+    this.pendingLoads.set(idOrPath, loadPromise);
+    return loadPromise;
   }
 
   /**
@@ -85,6 +97,7 @@ export class WorkflowLoader {
    */
   clearCache(): void {
     this.cache.clear();
+    this.pendingLoads.clear();
   }
 
   private resolveFilePath(idOrPath: string): string {

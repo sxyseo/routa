@@ -168,6 +168,7 @@ export class ClaudeCodeProcess {
     private promptResolve: ((value: { stopReason: string }) => void) | null = null;
     private promptReject: ((reason: Error) => void) | null = null;
     private promptTimeout: ReturnType<typeof setTimeout> | null = null;
+    private sigkillTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor(config: ClaudeCodeProcessConfig, onNotification: NotificationHandler) {
         this._config = config;
@@ -280,7 +281,9 @@ export class ClaudeCodeProcess {
 
         this.process.on("exit", (code, signal) => {
             console.log(`[ClaudeCode:${displayName}] Process exited: code=${code}, signal=${signal}`);
+            if (this.sigkillTimer) { clearTimeout(this.sigkillTimer); this.sigkillTimer = null; }
             this._alive = false;
+            this.process?.removeAllListeners();
             if (this.promptTimeout) { clearTimeout(this.promptTimeout); this.promptTimeout = null; }
             if (this.promptReject) {
                 this.promptReject(new Error(`Claude Code process exited (code=${code})`));
@@ -335,6 +338,9 @@ export class ClaudeCodeProcess {
         this.inText = false;
         this.inToolUse = false;
         this.hasRenderedStreamContent = false;
+        this.toolUseNames.clear();
+        this.toolUseInputs.clear();
+        this.renderedToolIds.clear();
         this.toolPartialJson.clear();
         this.currentToolId = null;
         this.streamingBlockIndex = null;
@@ -412,13 +418,17 @@ export class ClaudeCodeProcess {
             console.log(`[ClaudeCode:${this._config.displayName}] Killing process pid=${this.process.pid}`);
             this.process.kill("SIGTERM");
 
-            setTimeout(() => {
+            this.sigkillTimer = setTimeout(() => {
                 if (this.process && this.process.exitCode === null) {
                     this.process.kill("SIGKILL");
                 }
             }, 5000);
         }
         this._alive = false;
+        this.toolUseNames.clear();
+        this.toolUseInputs.clear();
+        this.renderedToolIds.clear();
+        this.toolPartialJson.clear();
     }
 
     // ─── Private: Buffer and Parse ──────────────────────────────────────

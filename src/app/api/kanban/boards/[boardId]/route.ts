@@ -6,9 +6,10 @@ import {
   setKanbanAutoProvider,
 } from "@/core/kanban/board-auto-provider";
 import {
-  getKanbanHistoryMemoryPolicy,
-  setKanbanHistoryMemoryPolicy,
-} from "@/core/kanban/board-history-memory-policy";
+  getKanbanBranchRules,
+  setKanbanBranchRules,
+  type KanbanBranchRules,
+} from "@/core/kanban/board-branch-rules";
 import {
   getKanbanSessionConcurrencyLimit,
   setKanbanSessionConcurrencyLimit,
@@ -20,7 +21,7 @@ import {
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
 import type { KanbanDevSessionSupervision } from "@/core/models/kanban";
-import type { KanbanBoard, KanbanHistoryMemoryPolicy } from "@/core/models/kanban";
+import type { KanbanBoard } from "@/core/models/kanban";
 
 export const dynamic = "force-dynamic";
 
@@ -31,18 +32,18 @@ interface PatchBoardBody {
   githubToken?: string | null;
   clearGitHubToken?: boolean;
   autoProviderId?: string | null;
-  historyMemoryPolicy?: Partial<KanbanHistoryMemoryPolicy>;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: Partial<KanbanDevSessionSupervision>;
+  branchRules?: Partial<KanbanBranchRules>;
 }
 
 function sanitizeBoard(
   board: KanbanBoard,
   extras?: {
     autoProviderId?: string | null;
-    historyMemoryPolicy?: KanbanHistoryMemoryPolicy;
     sessionConcurrencyLimit?: number;
     devSessionSupervision?: KanbanDevSessionSupervision;
+    branchRules?: KanbanBranchRules;
     queue?: unknown;
   },
 ) {
@@ -51,9 +52,9 @@ function sanitizeBoard(
     githubToken: undefined,
     githubTokenConfigured: Boolean(board.githubToken?.trim()),
     autoProviderId: extras?.autoProviderId,
-    historyMemoryPolicy: extras?.historyMemoryPolicy,
     sessionConcurrencyLimit: extras?.sessionConcurrencyLimit,
     devSessionSupervision: extras?.devSessionSupervision,
+    branchRules: extras?.branchRules,
     queue: extras?.queue,
   };
 }
@@ -71,14 +72,15 @@ export async function GET(
   }
 
   const workspace = await system.workspaceStore.get(board.workspaceId);
+  const tasks = await system.taskStore.listByWorkspace(board.workspaceId);
   const queue = getKanbanSessionQueue(system);
   return NextResponse.json({
     board: sanitizeBoard(board, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),
-      historyMemoryPolicy: getKanbanHistoryMemoryPolicy(workspace?.metadata, board.id),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, board.id),
-      queue: await queue.getBoardSnapshot(board.id),
+      branchRules: getKanbanBranchRules(workspace?.metadata, board.id),
+      queue: await queue.getBoardSnapshot(board.id, tasks),
     }),
   });
 }
@@ -121,9 +123,9 @@ export async function PATCH(
 
   if (
     body.autoProviderId !== undefined
-    || body.historyMemoryPolicy !== undefined
     || body.sessionConcurrencyLimit !== undefined
     || body.devSessionSupervision !== undefined
+    || body.branchRules !== undefined
   ) {
     const workspace = await system.workspaceStore.get(existing.workspaceId);
     let nextMetadata = workspace?.metadata;
@@ -141,18 +143,18 @@ export async function PATCH(
         body.sessionConcurrencyLimit,
       );
     }
-    if (body.historyMemoryPolicy !== undefined) {
-      nextMetadata = setKanbanHistoryMemoryPolicy(
-        nextMetadata,
-        boardId,
-        body.historyMemoryPolicy,
-      );
-    }
     if (body.devSessionSupervision !== undefined) {
       nextMetadata = setKanbanDevSessionSupervision(
         nextMetadata,
         boardId,
         body.devSessionSupervision,
+      );
+    }
+    if (body.branchRules !== undefined) {
+      nextMetadata = setKanbanBranchRules(
+        nextMetadata,
+        boardId,
+        body.branchRules,
       );
     }
     await system.workspaceStore.updateMetadata(existing.workspaceId, nextMetadata ?? {});
@@ -171,14 +173,15 @@ export async function PATCH(
   });
 
   const workspace = await system.workspaceStore.get(existing.workspaceId);
+  const tasks = await system.taskStore.listByWorkspace(existing.workspaceId);
   const queue = getKanbanSessionQueue(system);
   return NextResponse.json({
     board: sanitizeBoard(updated, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, boardId),
-      historyMemoryPolicy: getKanbanHistoryMemoryPolicy(workspace?.metadata, boardId),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, boardId),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, boardId),
-      queue: await queue.getBoardSnapshot(boardId),
+      branchRules: getKanbanBranchRules(workspace?.metadata, boardId),
+      queue: await queue.getBoardSnapshot(boardId, tasks),
     }),
   });
 }

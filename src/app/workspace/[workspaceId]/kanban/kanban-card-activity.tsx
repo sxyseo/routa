@@ -1,17 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
-import {
-  Braces,
-  Check,
-  CircleCheckBig,
-  ClipboardList,
-  Copy,
-  GitPullRequest,
-  Inbox,
-  Layers3,
-  ShieldCheck,
-} from "lucide-react";
+import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { Check, CircleHelp, Copy, LoaderCircle, OctagonX, X } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
@@ -31,7 +21,17 @@ import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
 import { getKanbanSessionCopy } from "./i18n/kanban-session-copy";
 import { useTaskRuns } from "./use-task-runs";
 
-type ActivityTabId = "runs" | "handoffs" | "github";
+type ActivityTabId = "runs" | "handoffs" | "vcs";
+
+function resolveVcsLabel(vcsUrl?: string): string {
+  if (!vcsUrl) return "VCS";
+  try {
+    const host = new URL(vcsUrl).hostname;
+    if (host === "github.com" || host.endsWith(".github.com")) return "GitHub";
+    if (host === "gitlab.com" || host.includes("gitlab")) return "GitLab";
+  } catch { /* ignore */ }
+  return "VCS";
+}
 
 function formatTaskRunKind(kind: TaskRunInfo["kind"] | undefined): string {
   switch (kind) {
@@ -73,70 +73,39 @@ function getTaskRunStatusClasses(status: TaskRunInfo["status"] | undefined): str
     case "running":
       return "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200";
     case "transitioned":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200";
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200";
     default:
       return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
   }
 }
 
-function getLaneBadgeClasses(laneLabel: string | undefined): string {
-  const normalized = laneLabel?.trim().toLowerCase() ?? "";
-
-  if (normalized.includes("backlog") || normalized.includes("梳理")) {
-    return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200";
+function renderTaskRunStatusIcon(status: TaskRunInfo["status"] | undefined) {
+  switch (status) {
+    case "completed":
+      return <Check className="h-3.5 w-3.5" />;
+    case "failed":
+      return <X className="h-3.5 w-3.5" />;
+    case "timed_out":
+      return <OctagonX className="h-3.5 w-3.5" />;
+    case "running":
+      return <LoaderCircle className="h-3.5 w-3.5 animate-spin" />;
+    case "transitioned":
+      return <Check className="h-3.5 w-3.5" />;
+    default:
+      return <CircleHelp className="h-3.5 w-3.5" />;
   }
-  if (normalized.includes("todo") || normalized.includes("编排")) {
-    return "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200";
-  }
-  if (
-    normalized.includes("dev")
-    || normalized.includes("develop")
-    || normalized.includes("开发")
-    || normalized.includes("execute")
-  ) {
-    return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200";
-  }
-  if (normalized.includes("review") || normalized.includes("评审") || normalized.includes("gate")) {
-    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200";
-  }
-  if (normalized.includes("pr") || normalized.includes("publish")) {
-    return "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-200";
-  }
-  if (normalized.includes("done") || normalized.includes("complete") || normalized.includes("completed")) {
-    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200";
-  }
-
-  return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
 }
 
-function getRunTabClasses(status: TaskRunInfo["status"] | undefined, active: boolean): string {
-  const stateClasses = (() => {
-    switch (status) {
-      case "completed":
-        return active
-          ? "border-emerald-300 bg-emerald-50 text-slate-900 dark:border-emerald-700/70 dark:bg-emerald-900/20 dark:text-slate-100"
-          : "border-emerald-200/80 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-800/70 dark:bg-transparent dark:text-slate-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/10";
-      case "failed":
-      case "timed_out":
-        return active
-          ? "border-rose-300 bg-rose-50 text-slate-900 dark:border-rose-700/70 dark:bg-rose-900/20 dark:text-slate-100"
-          : "border-rose-200/80 bg-white text-slate-600 hover:border-rose-300 hover:bg-rose-50 dark:border-rose-800/70 dark:bg-transparent dark:text-slate-300 dark:hover:border-rose-700 dark:hover:bg-rose-900/10";
-      case "running":
-        return active
-          ? "border-sky-300 bg-sky-50 text-slate-900 dark:border-sky-700/70 dark:bg-sky-900/20 dark:text-slate-100"
-          : "border-sky-200/80 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50 dark:border-sky-800/70 dark:bg-transparent dark:text-slate-300 dark:hover:border-sky-700 dark:hover:bg-sky-900/10";
-      case "transitioned":
-        return active
-          ? "border-amber-300 bg-amber-50 text-slate-900 dark:border-amber-700/70 dark:bg-amber-900/20 dark:text-slate-100"
-          : "border-amber-200/80 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50 dark:border-amber-800/70 dark:bg-transparent dark:text-slate-300 dark:hover:border-amber-700 dark:hover:bg-amber-900/10";
-      default:
-        return active
-          ? "border-slate-300 bg-slate-100 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-          : "border-slate-200/80 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-900/40";
-    }
-  })();
-
-  return `inline-flex min-w-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-medium transition-colors ${stateClasses}`;
+function TaskRunStatusIcon({ status }: { status: TaskRunInfo["status"] | undefined }) {
+  return (
+    <span
+      className={`inline-flex h-5 w-5 items-center justify-center rounded-md ${getTaskRunStatusClasses(status)}`}
+      aria-label={formatTaskRunStatus(status)}
+      title={formatTaskRunStatus(status)}
+    >
+      {renderTaskRunStatusIcon(status)}
+    </span>
+  );
 }
 
 function formatAgentCardTarget(agentCardUrl?: string): string | undefined {
@@ -200,37 +169,6 @@ function formatLaneSessionHeading(
   return session?.name ?? session?.provider ?? "Automation Run";
 }
 
-function renderLaneIcon(laneLabel: string | undefined) {
-  const normalized = laneLabel?.trim().toLowerCase() ?? "";
-  const iconClassName = "h-3.5 w-3.5";
-
-  if (normalized.includes("backlog") || normalized.includes("梳理")) {
-    return <Inbox className={iconClassName} aria-hidden="true" />;
-  }
-  if (normalized.includes("todo") || normalized.includes("编排")) {
-    return <ClipboardList className={iconClassName} aria-hidden="true" />;
-  }
-  if (
-    normalized.includes("dev")
-    || normalized.includes("develop")
-    || normalized.includes("开发")
-    || normalized.includes("execute")
-  ) {
-    return <Braces className={iconClassName} aria-hidden="true" />;
-  }
-  if (normalized.includes("review") || normalized.includes("评审") || normalized.includes("gate")) {
-    return <ShieldCheck className={iconClassName} aria-hidden="true" />;
-  }
-  if (normalized.includes("pr") || normalized.includes("publish")) {
-    return <GitPullRequest className={iconClassName} aria-hidden="true" />;
-  }
-  if (normalized.includes("done") || normalized.includes("complete") || normalized.includes("completed")) {
-    return <CircleCheckBig className={iconClassName} aria-hidden="true" />;
-  }
-
-  return <Layers3 className={iconClassName} aria-hidden="true" />;
-}
-
 function ActivitySection({
   title,
   description,
@@ -275,7 +213,6 @@ function SessionIdChip({
   sessionId: string;
   compact?: boolean;
 }) {
-  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = (event: MouseEvent<HTMLButtonElement>) => {
@@ -290,23 +227,21 @@ function SessionIdChip({
   };
 
   return (
-    <div className={`flex min-w-0 items-center gap-1.5 ${compact ? "max-w-[13rem]" : "max-w-[18rem]"}`}>
-      <span
-        className={`min-w-0 break-all rounded-lg bg-slate-100 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300 ${compact ? "px-1.5 py-0.5" : "px-2 py-1"}`}
-        title={sessionId}
-      >
-        {sessionId}
-      </span>
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300 ${compact ? "max-w-[14rem] px-2 py-0.5 text-[10px]" : "max-w-[18rem] px-2.5 py-1 text-[11px]"}`}
+    >
+      <span className="uppercase tracking-wide text-slate-400 dark:text-slate-500">SessionId</span>
+      <span className="min-w-0 truncate font-mono" title={sessionId}>{sessionId}</span>
       <button
         type="button"
         onClick={handleCopy}
-        className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-        title={t.common.copyToClipboard}
-        aria-label={t.common.copyToClipboard}
+        className="ml-0.5 shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+        title={copied ? "Copied!" : "Copy to clipboard"}
+        aria-label="Copy SessionId"
       >
         {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       </button>
-    </div>
+    </span>
   );
 }
 
@@ -339,7 +274,7 @@ export function KanbanCardActivityPanel({
   const tabs: Array<{ id: ActivityTabId; label: string; count?: number }> = [
     { id: "runs", label: copy.runs, count: runs?.length ?? getOrderedSessionIds(task).length },
     ...((task.laneHandoffs?.length ?? 0) > 0 ? [{ id: "handoffs" as const, label: copy.handoffs, count: task.laneHandoffs?.length }] : []),
-    ...(task.githubNumber ? [{ id: "github" as const, label: "GitHub" }] : []),
+    ...(task.vcsNumber ? [{ id: "vcs" as const, label: resolveVcsLabel(task.vcsUrl) }] : []),
   ];
   const [activeTab, setActiveTab] = useState<ActivityTabId>(tabs[0]?.id ?? "runs");
   const visibleTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : (tabs[0]?.id ?? "runs");
@@ -399,8 +334,8 @@ export function KanbanCardActivityPanel({
               compact={compact}
             />
           )}
-          {visibleTab === "github" && (
-            <GitHubPanel task={task} compact={compact} />
+          {visibleTab === "vcs" && (
+            <VCSPanel task={task} compact={compact} />
           )}
         </div>
       </div>
@@ -425,7 +360,6 @@ export function KanbanCardActivityBar({
 }) {
   const { t } = useTranslation();
   const copy = getKanbanSessionCopy(specialistLanguage);
-  const sessionTabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const { runs, error } = useTaskRuns(
     task.id,
     `${task.updatedAt ?? ""}:${task.triggerSessionId ?? ""}:${task.laneSessions?.length ?? 0}`,
@@ -441,15 +375,7 @@ export function KanbanCardActivityBar({
   const selectedLaneSession = selectedRunId ? laneSessionMap.get(selectedRunId) : undefined;
   const selectedRun = selectedRunId ? runMap.get(selectedRunId) : undefined;
   const selectedStepLabel = getLaneSessionStepLabel(selectedLaneSession);
-
-  useEffect(() => {
-    if (!selectedRunId) return;
-    sessionTabRefs.current[selectedRunId]?.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "nearest",
-    });
-  }, [selectedRunId]);
+  const reversedBarIds = [...orderedSessionIds].reverse();
 
   if (orderedSessionIds.length === 0) {
     return (
@@ -478,40 +404,39 @@ export function KanbanCardActivityBar({
         </div>
       )}
       <div className="flex items-start gap-2 border-b border-slate-200/70 pb-2 dark:border-[#232736]">
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5 border-slate-200/70 pr-1 pb-1">
-          {orderedSessionIds.map((sessionId, index) => {
+        <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto border-slate-200/70 scrollbar-thin">
+          {reversedBarIds.map((sessionId, reverseIndex) => {
+            const index = orderedSessionIds.length - 1 - reverseIndex;
             const active = sessionId === selectedRunId;
             const laneSession = laneSessionMap.get(sessionId);
             const run = runMap.get(sessionId);
             const laneLabel = laneSession?.columnName ?? laneSession?.columnId ?? t.kanban.runLabel;
             const runLabel = buildSessionDisplayLabel(sessionId, index, sessionMap);
-            const fullTabLabel = laneSession?.stepName?.trim() || runLabel;
+            const tabLabel = laneSession?.stepName?.trim() || runLabel;
 
             return (
               <button
                 key={sessionId}
                 type="button"
-                ref={(node) => {
-                  sessionTabRefs.current[sessionId] = node;
-                }}
                 onClick={() => onSelectSession?.(sessionId)}
-                className={getRunTabClasses(run?.status ?? laneSession?.status, active)}
-                aria-pressed={active}
-                title={`${fullTabLabel} · ${laneLabel} · Run ${index + 1}`}
-              >
-                <span
-                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${getLaneBadgeClasses(laneLabel)}`}
-                  aria-label={laneLabel}
-                  title={laneLabel}
-                >
-                  {renderLaneIcon(laneLabel)}
-                </span>
-                <span className={`px-0.5 text-[10px] font-semibold tabular-nums ${
+                className={`shrink-0 inline-flex max-w-full items-center gap-1.5 border-b-2 px-3 py-1.5 text-[11px] font-medium transition-colors ${
                   active
-                    ? "text-slate-700 dark:text-slate-200"
-                    : "text-slate-500 dark:text-slate-400"
+                    ? "border-b-[#b45309] text-slate-900 dark:border-b-[#f59e0b] dark:text-slate-100"
+                    : "border-b-transparent text-slate-600 hover:border-b-slate-300 dark:border-b-transparent dark:text-slate-400 dark:hover:border-b-slate-600"
+                }`}
+                aria-pressed={active}
+                title={`${tabLabel} · ${laneLabel} · Run ${index + 1}`}
+              >
+                <span className="truncate font-semibold">{tabLabel}</span>
+                {run && (
+                  <TaskRunStatusIcon status={run.status} />
+                )}
+                <span className={`rounded-none border border-slate-200 px-1.5 py-0.5 text-[10px] ${
+                  active
+                    ? "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    : "bg-transparent text-slate-500 dark:text-slate-400"
                 }`}>
-                  {index + 1}
+                  #{index + 1}
                 </span>
               </button>
             );
@@ -529,8 +454,14 @@ export function KanbanCardActivityBar({
           </button>
         )}
       </div>
-      {(selectedLaneSession?.columnName || selectedStepLabel || selectedLaneSession?.status) && (
+      {(selectedLaneSession?.columnName || selectedStepLabel || selectedLaneSession?.status || selectedRunId) && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200/80 pb-1 text-[10px] dark:border-[#232736]">
+          {selectedRunId && (
+            <SessionIdChip
+              sessionId={selectedRun?.externalTaskId ?? selectedLaneSession?.externalTaskId ?? selectedRunId}
+              compact
+            />
+          )}
           {selectedLaneSession?.columnName && (
             <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
               {selectedLaneSession.columnName}
@@ -598,6 +529,7 @@ function SessionHistoryPanel({
   const sessionMap = new Map(sessions.map((session) => [session.sessionId, session]));
   const laneSessionMap = new Map(laneSessions.map((entry) => [entry.sessionId, entry]));
   const runMap = new Map((runs ?? []).map((run) => [run.sessionId ?? run.id, run]));
+  const reversedIds = [...orderedSessionIds].reverse();
 
   return (
     <>
@@ -613,7 +545,8 @@ function SessionHistoryPanel({
         </div>
       </div>
       <div className={`overflow-y-auto pr-1 ${compact ? "mt-3 max-h-80 space-y-1.5" : "mt-4 max-h-[34rem] space-y-2"}`}>
-        {orderedSessionIds.map((sessionId, index) => {
+        {reversedIds.map((sessionId, reverseIndex) => {
+          const index = orderedSessionIds.length - 1 - reverseIndex;
           const session = sessionMap.get(sessionId);
           const isCurrent = sessionId === currentSessionId;
           const laneSession = laneSessionMap.get(sessionId);
@@ -826,34 +759,34 @@ function HandoffPanel({ task, compact = false }: { task: TaskInfo; compact?: boo
   );
 }
 
-function GitHubPanel({ task, compact = false }: { task: TaskInfo; compact?: boolean }) {
+function VCSPanel({ task, compact = false }: { task: TaskInfo; compact?: boolean }) {
   const { t } = useTranslation();
-  if (!task.githubNumber) {
+  if (!task.vcsNumber) {
     return null;
   }
 
   return (
     <div className={`border-b border-slate-200/70 dark:border-slate-700/70 ${compact ? "px-3 py-3" : "px-4 py-4"}`}>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">GitHub</div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{resolveVcsLabel(task.vcsUrl)}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-          {task.githubState ?? t.kanban.linkedLabel}
+          {task.vcsState ?? t.kanban.linkedLabel}
         </span>
-        {task.githubRepo && (
-          <span className="text-xs text-slate-500 dark:text-slate-400">{task.githubRepo}</span>
+        {task.vcsRepo && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">{task.vcsRepo}</span>
         )}
       </div>
       <a
-        href={task.githubUrl}
+        href={task.vcsUrl}
         target="_blank"
         rel="noreferrer"
         className={`mt-3 inline-flex text-amber-600 hover:underline dark:text-amber-400 ${compact ? "text-[13px]" : "text-sm"}`}
       >
-        #{task.githubNumber}
+        #{task.vcsNumber}
       </a>
-      {task.githubSyncedAt && (
+      {task.vcsSyncedAt && (
         <div className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-          {t.kanban.syncedAt} {formatSessionTimestamp(task.githubSyncedAt)}
+          {t.kanban.syncedAt} {formatSessionTimestamp(task.vcsSyncedAt)}
         </div>
       )}
     </div>

@@ -6,7 +6,7 @@ import { resolveApiPath } from "@/client/config/backend";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { RuntimeFitnessStatusResponse } from "@/core/fitness/runtime-status-types";
 
-const RUNTIME_FITNESS_POLL_MS = 5_000;
+const RUNTIME_FITNESS_POLL_MS = 30_000;
 
 type UseRuntimeFitnessStatusOptions = {
   workspaceId: string;
@@ -29,7 +29,7 @@ function toMessage(error: unknown): string {
 }
 
 export function useRuntimeFitnessStatus({
-  workspaceId,
+  workspaceId: _workspaceId,
   codebaseId,
   repoPath,
   enabled = true,
@@ -46,16 +46,16 @@ export function useRuntimeFitnessStatus({
 
   const queryString = useMemo(() => {
     const query = new URLSearchParams();
+    // Prefer codebaseId; if not yet available, skip rather than fall back to workspaceId
+    // to avoid the workspaceId→codebaseId parameter switch that causes abort+refetch.
     if (codebaseId) {
       query.set("codebaseId", codebaseId);
     } else if (repoPath) {
       query.set("repoPath", repoPath);
-    } else if (workspaceId) {
-      query.set("workspaceId", workspaceId);
     }
     const serialized = query.toString();
     return serialized.length > 0 ? serialized : null;
-  }, [codebaseId, repoPath, workspaceId]);
+  }, [codebaseId, repoPath]);
 
   const fetchStatus = useCallback(async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
     if (!enabled || !queryString || inFlightRef.current) {

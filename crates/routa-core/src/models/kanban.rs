@@ -75,6 +75,41 @@ pub struct KanbanColumnAutomation {
     /// Automatically advance card on session success
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_advance_on_success: Option<bool>,
+    /// Specialist locale for i18n prompts
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub specialist_locale: Option<String>,
+    /// Contract rules enforced before transition
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract_rules: Option<KanbanContractRules>,
+    /// Delivery readiness rules enforced before transition
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_rules: Option<KanbanDeliveryRules>,
+}
+
+/// Contract rules for story validation before transition
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanContractRules {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_canonical_story: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loop_breaker_threshold: Option<u32>,
+}
+
+/// Delivery readiness rules enforced before transition
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanDeliveryRules {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_committed_changes: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_clean_worktree: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_pull_request_ready: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_merge_after_pr: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merge_strategy: Option<String>,
 }
 
 impl KanbanColumnAutomation {
@@ -332,6 +367,7 @@ fn legacy_specialist_ids_for_stage(stage: &str) -> &'static [&'static str] {
             "pr-reviewer",
             "kanban-workflow",
             "kanban-review-guard",
+            "kanban-qa-frontend",
         ],
         "blocked" => &["claude-code", "developer", "routa", "kanban-workflow"],
         "done" => &["gate", "verifier", "claude-code", "kanban-workflow"],
@@ -362,12 +398,7 @@ fn build_recommended_automation(
         steps: Some(steps),
         transition_type: Some("entry".to_string()),
         auto_advance_on_success: Some(auto_advance_on_success),
-        required_artifacts: None,
-        required_task_fields: None,
-        provider_id: None,
-        role: None,
-        specialist_id: None,
-        specialist_name: None,
+        ..Default::default()
     })
 }
 
@@ -395,7 +426,6 @@ fn recommended_automation_for_stage(stage: &str) -> Option<KanbanColumnAutomatio
         )),
         "review" => Some(build_recommended_automation(
             vec![
-                recommended_step("qa-frontend", "GATE", "QA Frontend"),
                 recommended_step("review-guard", "GATE", "Review Guard"),
             ],
             false,
@@ -406,7 +436,9 @@ fn recommended_automation_for_stage(stage: &str) -> Option<KanbanColumnAutomatio
             automation
         }),
         "done" => Some(build_recommended_automation(
-            vec![recommended_step("done-reporter", "GATE", "Done Reporter")],
+            vec![
+                recommended_step("done-finalizer", "DEVELOPER", "Done Finalizer"),
+            ],
             false,
         )),
         _ => None,
@@ -431,6 +463,7 @@ fn default_column_position_for_stage(stage: &str) -> usize {
         "review" => 3,
         "done" => 4,
         "blocked" => 5,
+        "archived" => 6,
         _ => 99,
     }
 }
@@ -569,6 +602,7 @@ pub fn apply_recommended_automation_to_columns(columns: Vec<KanbanColumn>) -> Ve
                             role: current.role.or(recommended_primary_role),
                             specialist_id: recommended_primary_specialist_id,
                             specialist_name: recommended_primary_specialist_name,
+                            specialist_locale: current.specialist_locale.or(normalized_recommended.specialist_locale),
                             transition_type: current
                                 .transition_type
                                 .or(normalized_recommended.transition_type),
@@ -580,6 +614,8 @@ pub fn apply_recommended_automation_to_columns(columns: Vec<KanbanColumn>) -> Ve
                                     .or(normalized_recommended.required_artifacts.clone())
                             },
                             required_task_fields: current.required_task_fields,
+                            contract_rules: current.contract_rules.or(normalized_recommended.contract_rules),
+                            delivery_rules: current.delivery_rules.or(normalized_recommended.delivery_rules),
                             auto_advance_on_success: normalized_recommended.auto_advance_on_success,
                         };
 
@@ -644,6 +680,7 @@ pub fn column_id_to_task_status(column_id: Option<&str>) -> TaskStatus {
         "review" => TaskStatus::ReviewRequired,
         "blocked" => TaskStatus::Blocked,
         "done" => TaskStatus::Completed,
+        "archived" => TaskStatus::Cancelled,
         _ => TaskStatus::Pending,
     }
 }
@@ -654,6 +691,7 @@ pub fn task_status_to_column_id(status: &TaskStatus) -> &'static str {
         TaskStatus::ReviewRequired => "review",
         TaskStatus::Blocked => "blocked",
         TaskStatus::Completed => "done",
+        TaskStatus::Cancelled => "archived",
         _ => "backlog",
     }
 }

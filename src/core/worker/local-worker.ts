@@ -121,10 +121,25 @@ export class LocalWorker implements Worker {
           noopNotification,
         );
       } else if (task.agentId === "claude-code-sdk") {
+        // Build MCP config for SDK adapter
+        let workerMcpServers: Record<string, import("@anthropic-ai/claude-agent-sdk").McpServerConfig> | undefined;
+        try {
+          const { ensureMcpForProvider } = await import("@/core/acp/mcp-setup");
+          const { getDefaultRoutaMcpConfig } = await import("@/core/acp/mcp-config-generator");
+          const { parseMcpServersFromConfigs } = await import("@/core/acp/mcp-setup");
+          const mcpResult = await ensureMcpForProvider("claude", getDefaultRoutaMcpConfig(task.workspaceId, sessionId));
+          if (mcpResult.mcpConfigs.length > 0) {
+            workerMcpServers = parseMcpServersFromConfigs(mcpResult.mcpConfigs);
+          }
+        } catch (err) {
+          console.warn("[LocalWorker] Failed to build MCP config for SDK session:", err);
+        }
+
         acpSessionId = await manager.createClaudeCodeSdkSession(
           sessionId,
           cwd,
           noopNotification,
+          { provider: "claude-code-sdk", mcpServers: workerMcpServers },
         );
       } else if (isWorkspaceProvider(task.agentId)) {
         const sandboxId = task.sandboxId ?? (await createWorkspaceSessionSandbox({

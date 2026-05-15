@@ -22,7 +22,7 @@ import { gitExec } from "@/core/utils/safe-exec";
 // ─── GitHub URL Parsing ──────────────────────────────────────────────────
 
 const GITHUB_URL_PATTERNS = [
-  /^https?:\/\/github\.com\/([^/]+)\/([^/\s#?.]+)/i,
+  /^https?:\/\/(?:[^/@]+@)?github\.com\/([^/]+)\/([^/\s#?.]+)/i,
   /^git@github\.com:([^/]+)\/([^/\s#?.]+)/i,
   /^github\.com\/([^/]+)\/([^/\s#?.]+)/i,
 ];
@@ -33,9 +33,11 @@ const SIMPLE_OWNER_REPO = /^([a-zA-Z0-9\-_]+)\/([a-zA-Z0-9\-_.]+)$/;
 const MAX_UNTRACKED_FILES_WITH_SYNTHETIC_STATS = 25;
 const MAX_CHANGED_FILES_WITH_DETAILED_STATS = 500; // Global limit for all file types
 
-export interface ParsedGitHubUrl {
+export interface ParsedVCSUrl {
   owner: string;
   repo: string;
+  host?: string;
+  platform?: "github" | "gitlab" | "other";
 }
 
 /**
@@ -51,7 +53,7 @@ export function isGitHubUrl(url: string): boolean {
 /**
  * Parse a GitHub URL into owner and repo.
  */
-export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
+export function parseGitHubUrl(url: string): ParsedVCSUrl | null {
   const trimmed = url.trim();
 
   for (const pattern of GITHUB_URL_PATTERNS) {
@@ -64,6 +66,154 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
   const simpleMatch = trimmed.match(SIMPLE_OWNER_REPO);
   if (simpleMatch && !trimmed.includes("\\") && !trimmed.includes(":")) {
     return { owner: simpleMatch[1], repo: simpleMatch[2] };
+  }
+
+  return null;
+}
+
+// ─── GitLab URL Parsing ──────────────────────────────────────────────────
+
+const GITLAB_URL_PATTERNS = [
+  /^https?:\/\/(?:[^/@]+@)?gitlab\.com\/([^/]+)\/([^/\s#?.]+)/i,
+  /^git@gitlab\.com:([^/]+)\/([^/\s#?.]+)/i,
+  /^gitlab\.com\/([^/]+)\/([^/\s#?.]+)/i,
+];
+
+/**
+ * Get custom GitLab host from GITLAB_URL env var.
+ * Returns the hostname (e.g., "localhost:8080") or null.
+ */
+function getCustomGitLabHost(): string | null {
+  const gitlabUrl = process.env.GITLAB_URL?.trim().replace(/\/+$/, "");
+  if (!gitlabUrl) return null;
+  try {
+    const parsed = new URL(gitlabUrl);
+    const host = parsed.host; // includes port if present
+    return host || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build URL patterns for a custom GitLab host (self-hosted instance).
+ */
+function buildCustomGitLabPatterns(host: string): RegExp[] {
+  const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [
+    new RegExp(`^https?:\\/\\/([^/@]+@)?${escaped}\\/([^/]+)\\/([^/\\s#?.]+)`, "i"),
+    new RegExp(`^git@${escaped}:([^/]+)\\/([^/\\s#?.]+)`, "i"),
+  ];
+}
+
+/**
+ * Check if a string looks like a GitLab URL.
+ * Supports gitlab.com and custom GITLAB_URL instances.
+ */
+export function isGitLabUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (GITLAB_URL_PATTERNS.some((p) => p.test(trimmed))) return true;
+
+  // Check against custom GITLAB_URL host
+  const customHost = getCustomGitLabHost();
+  if (customHost) {
+    const customPatterns = buildCustomGitLabPatterns(customHost);
+    if (customPatterns.some((p) => p.test(trimmed))) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Check if a string looks like a VCS URL (GitHub or GitLab) or owner/repo format.
+ */
+export function isVCSUrl(url: string): boolean {
+  return isGitHubUrl(url) || isGitLabUrl(url);
+}
+
+/**
+ * Build a clone URL from a parsed VCS URL.
+ * For GitLab with custom GITLAB_URL, embed token for private repos.
+ * For GitHub, embed GITHUB_TOKEN for private repos.
+ */
+export function buildCloneUrl(parsed: ParsedVCSUrl): string {
+  // GitLab: embed token for authentication
+  if (parsed.platform === "gitlab") {
+    const gitlabUrl = process.env.GITLAB_URL?.trim().replace(/\/+$/, "");
+    const token = process.env.GITLAB_TOKEN;
+    if (gitlabUrl) {
+      if (token) {
+        // Embed token for private repo clone: http://oauth2:<token>@host/path.git
+        try {
+          const urlObj = new URL(gitlabUrl);
+          return `${urlObj.protocol}//oauth2:${token}@${urlObj.host}/${parsed.owner}/${parsed.repo}.git`;
+        } catch {
+          return `${gitlabUrl}/${parsed.owner}/${parsed.repo}.git`;
+        }
+      }
+      return `${gitlabUrl}/${parsed.owner}/${parsed.repo}.git`;
+    }
+  }
+
+  // GitHub: embed token for authentication
+  if (parsed.platform === "github") {
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (token) {
+      return `https://${token}@github.com/${parsed.owner}/${parsed.repo}.git`;
+    }
+  }
+
+  const host = parsed.host || "github.com";
+  return `https://${host}/${parsed.owner}/${parsed.repo}.git`;
+}
+
+/**
+ * Parse a VCS URL (GitHub or GitLab) into owner, repo, host, and platform.
+ * Falls back to simple owner/repo format (assumes GitHub).
+ */
+export function parseVCSUrl(url: string): ParsedVCSUrl | null {
+  const trimmed = url.trim();
+
+  // Try GitHub patterns
+  for (const pattern of GITHUB_URL_PATTERNS) {
+    const match = trimmed.match(pattern);
+    if (match) {
+      return { owner: match[1], repo: match[2].replace(/\.git$/, ""), host: "github.com", platform: "github" };
+    }
+  }
+
+  // Try GitLab.com patterns
+  for (const pattern of GITLAB_URL_PATTERNS) {
+    const match = trimmed.match(pattern);
+    if (match) {
+      return { owner: match[1], repo: match[2].replace(/\.git$/, ""), host: "gitlab.com", platform: "gitlab" };
+    }
+  }
+
+  // Try custom GitLab instance patterns (from GITLAB_URL env var)
+  const customGitLabHost = getCustomGitLabHost();
+  if (customGitLabHost) {
+    const customPatterns = buildCustomGitLabPatterns(customGitLabHost);
+    for (const pattern of customPatterns) {
+      const match = trimmed.match(pattern);
+      if (match) {
+        return { owner: match[1], repo: match[2].replace(/\.git$/, ""), host: customGitLabHost, platform: "gitlab" };
+      }
+    }
+  }
+
+  // Try generic HTTPS URL (any domain with /owner/repo pattern)
+  const genericMatch = trimmed.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/\s#?.]+)/);
+  if (genericMatch) {
+    // If PLATFORM=gitlab and no specific match, treat generic URL as gitlab
+    const detectedPlatform = process.env.PLATFORM === "gitlab" ? "gitlab" : "other";
+    return { owner: genericMatch[2], repo: genericMatch[3].replace(/\.git$/, ""), host: genericMatch[1], platform: detectedPlatform };
+  }
+
+  // Simple owner/repo format (assume GitHub for backward compat)
+  const simpleMatch = trimmed.match(SIMPLE_OWNER_REPO);
+  if (simpleMatch && !trimmed.includes("\\") && !trimmed.includes(":")) {
+    return { owner: simpleMatch[1], repo: simpleMatch[2], host: "github.com", platform: "github" };
   }
 
   return null;
@@ -114,11 +264,18 @@ export function getRepoRefSha(repoPath: string, ref: string): string | null {
   }
 }
 
-function resolveBaseRef(repoPath: string, baseBranch?: string | null): string | undefined {
+function resolveBaseRef(
+  repoPath: string,
+  baseBranch?: string | null,
+  codebaseDefaultBranch?: string | null,
+): string | undefined {
   const normalizedBaseBranch = baseBranch?.trim();
+  const normalizedCodebaseBranch = codebaseDefaultBranch?.trim();
   const candidates = Array.from(new Set([
     normalizedBaseBranch ? `origin/${normalizedBaseBranch}` : null,
     normalizedBaseBranch ?? null,
+    normalizedCodebaseBranch ? `origin/${normalizedCodebaseBranch}` : null,
+    normalizedCodebaseBranch ?? null,
     "origin/main",
     "main",
     "origin/master",
@@ -203,9 +360,12 @@ export interface RepoDeliveryStatus {
   status: RepoStatus;
   commitsSinceBase: number;
   hasCommitsSinceBase: boolean;
+  /** True when HEAD is an ancestor of base (changes already merged back). */
+  isMergedIntoBase: boolean;
   hasUncommittedChanges: boolean;
   remoteUrl: string | null;
   isGitHubRepo: boolean;
+  isGitLabRepo: boolean;
   canCreatePullRequest: boolean;
 }
 
@@ -249,6 +409,62 @@ export function getCurrentBranch(repoPath: string): string | null {
 }
 
 /**
+ * Get the full SHA of the current HEAD commit.
+ */
+export function getHeadSha(repoPath: string): string | null {
+  try {
+    const sha = gitExecSync(["rev-parse", "HEAD"], repoPath);
+    return sha || null;
+  } catch {
+    return null;
+  }
+}
+
+export interface HeadCommitInfo {
+  sha: string;
+  shortSha: string;
+  message: string;
+  authorName: string;
+  authoredAt: string;
+}
+
+/**
+ * Get HEAD commit details: SHA, message, author, date.
+ */
+export function getHeadCommitInfo(repoPath: string): HeadCommitInfo | null {
+  try {
+    const output = gitExecSync(
+      ["show", "-s", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI", "HEAD"],
+      repoPath,
+    );
+    if (!output) return null;
+    const [sha, shortSha, message, authorName, authoredAt] = output.split("\x1f");
+    if (!sha || !shortSha) return null;
+    return { sha, shortSha, message: message ?? "", authorName: authorName ?? "", authoredAt: authoredAt ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get commit details for an arbitrary ref (e.g. "origin/main", "origin/private").
+ */
+export function getRefCommitInfo(repoPath: string, ref: string): HeadCommitInfo | null {
+  try {
+    const output = gitExecSync(
+      ["show", "-s", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI", ref],
+      repoPath,
+    );
+    if (!output) return null;
+    const [sha, shortSha, message, authorName, authoredAt] = output.split("\x1f");
+    if (!sha || !shortSha) return null;
+    return { sha, shortSha, message: message ?? "", authorName: authorName ?? "", authoredAt: authoredAt ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * List local branches.
  */
 export function listBranches(repoPath: string): string[] {
@@ -274,7 +490,8 @@ export function getBranchInfo(repoPath: string): RepoBranchInfo {
 }
 
 /**
- * Checkout a branch. Creates it if it doesn't exist locally.
+ * Checkout a branch. Returns false if the branch doesn't exist locally.
+ * Use createAndCheckoutBranch() if you need to create a new branch.
  */
 export function checkoutBranch(repoPath: string, branch: string): boolean {
   if (!supportsGitWorktreeOperations(repoPath)) {
@@ -285,17 +502,57 @@ export function checkoutBranch(repoPath: string, branch: string): boolean {
     gitExecSync(["checkout", branch], repoPath);
     return true;
   } catch {
-    try {
-      gitExecSync(["checkout", "-b", branch], repoPath);
-      return true;
-    } catch {
-      return false;
-    }
+    return false;
   }
 }
 
 /**
- * Delete a local branch. Refuses to delete the currently checked out branch.
+ * Create and checkout a new branch from the specified start point.
+ * Callers must explicitly opt-in to branch creation — no implicit fallback.
+ */
+export function createAndCheckoutBranch(
+  repoPath: string,
+  branch: string,
+  startPoint?: string,
+): boolean {
+  if (!supportsGitWorktreeOperations(repoPath)) {
+    return false;
+  }
+  try {
+    const args = startPoint
+      ? ["checkout", "-b", branch, startPoint]
+      : ["checkout", "-b", branch];
+    gitExecSync(args, repoPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find the worktree directory path for a given branch.
+ * Returns null if the branch is not checked out by any worktree.
+ */
+function findWorktreePathForBranch(repoPath: string, branch: string): string | null {
+  try {
+    const output = gitExecSync(["worktree", "list", "--porcelain"], repoPath);
+    let currentPath = "";
+    for (const line of output.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        currentPath = line.substring("worktree ".length);
+      } else if (line === `branch refs/heads/${branch}`) {
+        return currentPath;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Delete a local branch. Handles bare repos and worktree-occupied branches.
+ * Refuses to delete the currently checked out branch.
  */
 export function deleteBranch(repoPath: string, branch: string): { success: boolean; error?: string } {
   const currentBranch = getCurrentBranch(repoPath);
@@ -312,9 +569,32 @@ export function deleteBranch(repoPath: string, branch: string): { success: boole
     gitExecSync(["branch", "-D", branch], repoPath);
     return { success: true };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+
+    // Branch is checked out by a worktree — detach it first, then retry.
+    // Git 2.x emits "checked out at '<path>'" (not always "worktree").
+    if (msg.includes("worktree") || msg.includes("checked out at")) {
+      const wtPath = findWorktreePathForBranch(repoPath, branch);
+      if (wtPath) {
+        try {
+          gitExecSync(["worktree", "remove", "--force", wtPath], repoPath);
+          gitExecSync(["worktree", "prune"], repoPath);
+          gitExecSync(["branch", "-D", branch], repoPath);
+          return { success: true };
+        } catch (retryErr) {
+          return {
+            success: false,
+            error: retryErr instanceof Error
+              ? retryErr.message
+              : `Failed to delete branch '${branch}' after worktree removal`,
+          };
+        }
+      }
+    }
+
     return {
       success: false,
-      error: err instanceof Error ? err.message : `Failed to delete branch '${branch}'`,
+      error: msg || `Failed to delete branch '${branch}'`,
     };
   }
 }
@@ -542,11 +822,41 @@ function countDiffPatchLines(patch: string): { additions: number; deletions: num
   return { additions, deletions };
 }
 
-function countNumstatTotals(output: string): { additions: number; deletions: number } {
+const NUMSTAT_EXCLUDED_PATTERNS = [
+  /^node_modules\//,
+  /\/node_modules\//,
+  /^\.next\//,
+  /\/\.next\//,
+  /^target\//,
+  /\/target\//,
+  /^storybook-static\//,
+  /\/storybook-static\//,
+  /^\.routa\//,
+  /\/\.routa\//,
+  /^\.worktrees\//,
+  /\/\.worktrees\//,
+  /^\.entrix\//,
+  /\/\.entrix\//,
+  /(?:^|\/)package-lock\.json$/,
+  /(?:^|\/)yarn\.lock$/,
+  /(?:^|\/)pnpm-lock\.yaml$/,
+];
+
+function isNumstatExcludedPath(filePath: string): boolean {
+  return NUMSTAT_EXCLUDED_PATTERNS.some((p) => p.test(filePath));
+}
+
+function countNumstatTotals(output: string, { excludeGenerated = true }: { excludeGenerated?: boolean } = {}): { additions: number; deletions: number } {
   return output
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((line) => {
+      if (!excludeGenerated) return true;
+      const parts = line.split(/\s+/);
+      const filePath = parts[2];
+      return filePath ? !isNumstatExcludedPath(filePath) : true;
+    })
     .reduce((totals, line) => {
       const [rawAdditions, rawDeletions] = line.split(/\s+/);
       const additions = rawAdditions === "-" ? 0 : Number.parseInt(rawAdditions ?? "", 10);
@@ -812,14 +1122,15 @@ export function getRepoDeliveryStatus(
   repoPath: string,
   options?: {
     baseBranch?: string | null;
-    sourceType?: "local" | "github";
+    codebaseDefaultBranch?: string | null;
+    sourceType?: "local" | "github" | "gitlab";
     sourceUrl?: string | null;
   },
 ): RepoDeliveryStatus {
   const branch = getCurrentBranch(repoPath) ?? "unknown";
   const status = getRepoStatus(repoPath);
   const remoteUrl = getRemoteUrl(repoPath);
-  const baseRef = resolveBaseRef(repoPath, options?.baseBranch);
+  const baseRef = resolveBaseRef(repoPath, options?.baseBranch, options?.codebaseDefaultBranch);
   const normalizedBaseBranch = options?.baseBranch?.trim() || baseRef?.replace(/^origin\//, "");
   let commitsSinceBase = status.ahead;
 
@@ -838,13 +1149,30 @@ export function getRepoDeliveryStatus(
   const isGitHubRepo = options?.sourceType === "github"
     || Boolean(options?.sourceUrl && isGitHubUrl(options.sourceUrl))
     || Boolean(remoteUrl && isGitHubUrl(remoteUrl));
+  const isGitLabRepo = options?.sourceType === "gitlab"
+    || Boolean(options?.sourceUrl && isGitLabUrl(options.sourceUrl))
+    || Boolean(remoteUrl && isGitLabUrl(remoteUrl));
+  const isVCSRepo = isGitHubRepo || isGitLabRepo;
   const hasCommitsSinceBase = commitsSinceBase > 0;
-  const canCreatePullRequest = isGitHubRepo
+  const canCreatePullRequest = isVCSRepo
     && hasCommitsSinceBase
     && !hasUncommittedChanges
     && Boolean(branch)
     && Boolean(normalizedBaseBranch)
     && branch !== normalizedBaseBranch;
+
+  // Detect if changes have already been merged back into the base branch.
+  // When HEAD is an ancestor of baseRef, `git merge-base --is-ancestor` succeeds
+  // meaning the feature branch content exists in the base already.
+  let isMergedIntoBase = false;
+  if (baseRef) {
+    try {
+      gitExecSync(["merge-base", "--is-ancestor", "HEAD", baseRef], repoPath);
+      isMergedIntoBase = true;
+    } catch {
+      // Not an ancestor — changes not yet merged
+    }
+  }
 
   return {
     branch,
@@ -853,9 +1181,11 @@ export function getRepoDeliveryStatus(
     status,
     commitsSinceBase,
     hasCommitsSinceBase,
+    isMergedIntoBase,
     hasUncommittedChanges,
     remoteUrl,
     isGitHubRepo,
+    isGitLabRepo,
     canCreatePullRequest,
   };
 }
@@ -870,7 +1200,6 @@ const CLONE_BASE_DIR = ".routa/repos";
  */
 export function getCloneBaseDir(): string {
   const pathMod = require("path");
-  const os = require("os");
 
   // Check if we're in a serverless environment (Vercel sets VERCEL env var)
   const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
@@ -878,7 +1207,8 @@ export function getCloneBaseDir(): string {
   if (isServerless) {
     // On serverless, use /tmp which is the only writable location
     // Note: This is ephemeral and won't persist across invocations
-    return pathMod.join(os.tmpdir(), CLONE_BASE_DIR);
+    const { safeTmpdir } = require("@/core/utils/safe-tmpdir") as { safeTmpdir: () => string };
+    return pathMod.join(safeTmpdir(), CLONE_BASE_DIR);
   }
 
   // On local/traditional servers, use the current directory
@@ -969,6 +1299,130 @@ export function fetchRemote(repoPath: string): boolean {
 }
 
 /**
+ * Fetch remote refs, then fast-forward every local branch to its
+ * corresponding remote tracking branch (origin/<branch>).
+ *
+ * Bare repos: uses `git update-ref` to move branch pointers directly
+ * since merge/checkout/reset require a working tree.
+ *
+ * Regular repos: --ff-only refuses to move if divergent; forceReset
+ * falls back to hard reset.
+ *
+ * Designed for base repos where routa never commits directly — keeping
+ * `main`/`private` in sync ensures new worktrees start from latest code.
+ */
+export function fetchAndFastForward(
+  repoPath: string,
+  options?: { forceReset?: boolean },
+): { fetched: boolean; synced: string[]; forced: string[]; skipped: string[] } {
+  let fetched = false;
+  try {
+    gitExecSync(["fetch", "--all", "--prune"], repoPath);
+    fetched = true;
+  } catch { /* proceed with existing refs */ }
+
+  const synced: string[] = [];
+  const forced: string[] = [];
+  const skipped: string[] = [];
+  const branches = listBranches(repoPath);
+
+  for (const branch of branches) {
+    if (isGhostBranchPattern(branch)) {
+      skipped.push(branch);
+      continue;
+    }
+
+    const remoteRef = `refs/remotes/origin/${branch}`;
+    const localRef = `refs/heads/${branch}`;
+
+    if (!hasGitRef(repoPath, remoteRef)) {
+      skipped.push(branch);
+      continue;
+    }
+
+    try {
+      if (options?.forceReset) {
+        gitExecSync(["update-ref", localRef, remoteRef], repoPath);
+        forced.push(branch);
+      } else {
+        const localSha = gitExecSync(["rev-parse", localRef], repoPath);
+        const remoteSha = gitExecSync(["rev-parse", remoteRef], repoPath);
+        if (isAncestorOf(repoPath, localSha, remoteSha)) {
+          gitExecSync(["update-ref", localRef, remoteRef], repoPath);
+          synced.push(branch);
+        } else {
+          skipped.push(branch);
+        }
+      }
+    } catch {
+      skipped.push(branch);
+    }
+  }
+
+  normalizeHeadToDefault(repoPath);
+
+  return { fetched, synced, forced, skipped };
+}
+
+function isAncestorOf(repoPath: string, ancestor: string, descendant: string): boolean {
+  try {
+    gitExecSync(["merge-base", "--is-ancestor", ancestor, descendant], repoPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isGhostBranchPattern(branch: string): boolean {
+  const ghostPatterns = [
+    /^remote-/,
+    /^origin\//,
+    /-origin$/,
+    /^main-(?!$)/,
+  ];
+  return ghostPatterns.some((p) => p.test(branch));
+}
+
+function normalizeHeadToDefault(repoPath: string): void {
+  try {
+    const current = gitExecSync(["rev-parse", "--abbrev-ref", "HEAD"], repoPath);
+    if (current !== "main") {
+      gitExecSync(["checkout", "main"], repoPath);
+    }
+  } catch {
+    try {
+      gitExecSync(["checkout", "main"], repoPath);
+    } catch { /* best-effort */ }
+  }
+}
+
+export function cleanupGhostBranches(repoPath: string): string[] {
+  const deleted: string[] = [];
+  const localBranches = listBranches(repoPath);
+
+  for (const branch of localBranches) {
+    if (!isGhostBranchPattern(branch)) continue;
+
+    const remoteRef = `refs/remotes/origin/${branch}`;
+    if (hasGitRef(repoPath, remoteRef)) continue;
+
+    try {
+      const current = gitExecSync(["rev-parse", "--abbrev-ref", "HEAD"], repoPath);
+      if (current === branch) {
+        gitExecSync(["checkout", "main"], repoPath);
+      }
+    } catch { /* HEAD detached */ }
+
+    try {
+      gitExecSync(["branch", "-D", branch], repoPath);
+      deleted.push(branch);
+    } catch { /* skip */ }
+  }
+
+  return deleted;
+}
+
+/**
  * Get branch status: commits ahead/behind upstream.
  */
 export interface BranchStatus {
@@ -1017,6 +1471,40 @@ export function getBranchStatus(
 export function pullBranch(repoPath: string): { success: boolean; error?: string } {
   try {
     gitExecSync(["pull", "--ff-only"], repoPath);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Pull failed",
+    };
+  }
+}
+
+/**
+ * Safe pull: stash → pull --ff-only → stash pop.
+ * Handles dirty working trees that would block a regular pull.
+ */
+export function stashPullPop(repoPath: string): { success: boolean; error?: string } {
+  try {
+    // Check if there are local changes that need stashing
+    const statusOutput = gitExecSync(["status", "--porcelain"], repoPath);
+    const hasLocalChanges = statusOutput.trim().length > 0;
+
+    if (hasLocalChanges) {
+      gitExecSync(["stash", "--include-untracked"], repoPath);
+    }
+
+    try {
+      gitExecSync(["pull", "--ff-only"], repoPath);
+    } finally {
+      if (hasLocalChanges) {
+        try {
+          gitExecSync(["stash", "pop"], repoPath);
+        } catch {
+          // Stash pop conflict — leave stash intact, don't fail the pull
+        }
+      }
+    }
     return { success: true };
   } catch (err) {
     return {
@@ -1131,7 +1619,8 @@ export interface ValidationResult {
   suggestion?: string;
   warning?: string;
   isGitHub?: boolean;
-  parsed?: ParsedGitHubUrl;
+  isRemote?: boolean;
+  parsed?: ParsedVCSUrl;
 }
 
 /**
@@ -1161,14 +1650,14 @@ export function normalizeLocalRepoPath(input: string): string {
 }
 
 /**
- * Validate a repository path or GitHub URL.
+ * Validate a repository path or VCS URL (GitHub / GitLab).
  */
 export function validateRepoInput(input: string): ValidationResult {
   if (!input || input.trim().length === 0) {
     return {
       valid: false,
       error: "Repository path or URL is required",
-      suggestion: "Enter a GitHub URL (e.g. https://github.com/owner/repo) or owner/repo",
+      suggestion: "Enter a repository URL (e.g. https://github.com/owner/repo, https://gitlab.com/owner/repo) or owner/repo",
     };
   }
 
@@ -1187,6 +1676,24 @@ export function validateRepoInput(input: string): ValidationResult {
     return {
       valid: true,
       isGitHub: true,
+      isRemote: true,
+      parsed,
+    };
+  }
+
+  // Check if it's a GitLab URL
+  if (isGitLabUrl(trimmed)) {
+    const parsed = parseVCSUrl(trimmed);
+    if (!parsed) {
+      return {
+        valid: false,
+        error: "Invalid GitLab URL format",
+        suggestion: "Use format: https://gitlab.com/owner/repo",
+      };
+    }
+    return {
+      valid: true,
+      isRemote: true,
       parsed,
     };
   }
@@ -1207,7 +1714,7 @@ export function validateRepoInput(input: string): ValidationResult {
 
   return {
     valid: false,
-    error: "Path not found and not a recognized GitHub URL",
-    suggestion: "Enter a GitHub URL or an existing local path",
+    error: "Path not found and not a recognized repository URL",
+    suggestion: "Enter a repository URL (GitHub / GitLab) or an existing local path",
   };
 }

@@ -10,15 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { monitorApiRoute } from "@/core/http/api-route-observability";
 import { getRoutaSystem } from "@/core/routa-system";
-import {
-  createTask,
-  hydrateTaskComments,
-  parseTaskContextSearchSpec,
-  parseTaskJitContextSnapshot,
-  Task,
-  TaskStatus,
-  TaskPriority,
-} from "@/core/models/task";
+import { createTask, hydrateTaskComments, Task, TaskStatus, TaskPriority } from "@/core/models/task";
 import type { ArtifactStore } from "@/core/store/artifact-store";
 import type { CodebaseStore } from "@/core/db/pg-codebase-store";
 import type { KanbanBoardStore } from "@/core/store/kanban-board-store";
@@ -28,6 +20,7 @@ import { ensureDefaultBoard } from "@/core/kanban/boards";
 import {
   buildTaskGitHubIssueBody,
   createGitHubIssue,
+  createVcsIssue,
   resolveGitHubRepo,
 } from "@/core/kanban/github-issues";
 import {
@@ -44,9 +37,30 @@ import {
   buildTaskStoryReadiness,
 } from "./task-evidence-summary";
 import { buildTaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
-import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "@/core/kanban/task-adaptive";
+import { parseTaskDiagnostic } from "@/core/kanban/task-diagnostic";
 
 export const dynamic = "force-dynamic";
+
+const STORE_CACHE_TTL_MS = 3_000;
+type StoreCacheEntry = { ts: number; promise: Promise<unknown[]> };
+const storeCache = new Map<string, StoreCacheEntry>();
+
+function getCached<T>(cacheKey: string, load: () => Promise<T[]>): Promise<T[]> {
+  const entry = storeCache.get(cacheKey);
+  if (entry && Date.now() - entry.ts < STORE_CACHE_TTL_MS) {
+    return entry.promise as Promise<T[]>;
+  }
+  const promise = load();
+  storeCache.set(cacheKey, { ts: Date.now(), promise });
+  // Evict expired entries periodically (after every cache miss)
+  if (storeCache.size > 50) {
+    const now = Date.now();
+    for (const [k, v] of storeCache) {
+      if (now - v.ts >= STORE_CACHE_TTL_MS) storeCache.delete(k);
+    }
+  }
+  return promise;
+}
 
 type RoutaSystem = ReturnType<typeof getRoutaSystem>;
 
@@ -96,10 +110,10 @@ async function createTaskSerializationSystem(
   tasks: Task[],
 ): Promise<TaskSerializationSystem> {
   const [codebases, worktrees, artifacts] = await Promise.all([
-    system.codebaseStore.listByWorkspace(workspaceId),
-    listWorktreesSafely(system, workspaceId),
+    getCached(`codebase:${workspaceId}`, () => system.codebaseStore.listByWorkspace(workspaceId)),
+    getCached(`worktree:${workspaceId}`, () => listWorktreesSafely(system, workspaceId)),
     typeof system.artifactStore.listByWorkspace === "function"
-      ? system.artifactStore.listByWorkspace(workspaceId)
+      ? getCached(`artifact:${workspaceId}`, () => system.artifactStore.listByWorkspace(workspaceId))
       : Promise.resolve([]),
   ]);
   const hasPreloadedArtifacts = typeof system.artifactStore.listByWorkspace === "function";
@@ -265,13 +279,11 @@ export async function POST(request: NextRequest) {
     creationSource,
     repoPath,
     codebaseIds,
-    contextSearchSpec,
-    jitContextSnapshot,
-    githubId,
-    githubNumber,
-    githubUrl,
-    githubRepo,
-    githubState,
+    vcsId,
+    vcsNumber,
+    vcsUrl,
+    vcsRepo,
+    vcsState,
     isPullRequest,
   } = body;
 
@@ -309,26 +321,20 @@ export async function POST(request: NextRequest) {
   const requestedCodebaseIds = Array.isArray(codebaseIds)
     ? codebaseIds.filter((id): id is string => typeof id === "string")
     : [];
-  const normalizedContextSearchSpec = contextSearchSpec === null
-    ? undefined
-    : parseTaskContextSearchSpec(contextSearchSpec);
-  const normalizedJitContextSnapshot = jitContextSnapshot === null
-    ? undefined
-    : parseTaskJitContextSnapshot(jitContextSnapshot);
-  const normalizedGitHubId = typeof githubId === "string" && githubId.trim()
-    ? githubId.trim()
+  const normalizedGitHubId = typeof vcsId === "string" && vcsId.trim()
+    ? vcsId.trim()
     : undefined;
-  const normalizedGitHubNumber = typeof githubNumber === "number" && Number.isFinite(githubNumber)
-    ? githubNumber
+  const normalizedGitHubNumber = typeof vcsNumber === "number" && Number.isFinite(vcsNumber)
+    ? vcsNumber
     : undefined;
-  const normalizedGitHubUrl = typeof githubUrl === "string" && githubUrl.trim()
-    ? githubUrl.trim()
+  const normalizedGitHubUrl = typeof vcsUrl === "string" && vcsUrl.trim()
+    ? vcsUrl.trim()
     : undefined;
-  const normalizedGitHubRepo = typeof githubRepo === "string" && githubRepo.trim()
-    ? githubRepo.trim()
+  const normalizedGitHubRepo = typeof vcsRepo === "string" && vcsRepo.trim()
+    ? vcsRepo.trim()
     : undefined;
-  const normalizedGitHubState = typeof githubState === "string" && githubState.trim()
-    ? githubState.trim()
+  const normalizedGitHubState = typeof vcsState === "string" && vcsState.trim()
+    ? vcsState.trim()
     : undefined;
   const normalizedIsPullRequest = isPullRequest === true ? true : undefined;
   const hasImportedGitHubIssue = Boolean(normalizedGitHubRepo && normalizedGitHubNumber !== undefined);
@@ -359,7 +365,7 @@ export async function POST(request: NextRequest) {
 
   if (hasImportedGitHubIssue) {
     const existingTask = (await system.taskStore.listByWorkspace(normalizedWorkspaceId)).find((task) =>
-      task.githubRepo === normalizedGitHubRepo && task.githubNumber === normalizedGitHubNumber
+      task.vcsRepo === normalizedGitHubRepo && task.vcsNumber === normalizedGitHubNumber
     );
     if (existingTask) {
       return NextResponse.json(
@@ -382,12 +388,29 @@ export async function POST(request: NextRequest) {
   let nextGitHubUrl: string | undefined = normalizedGitHubUrl;
   let nextGitHubRepo: string | undefined = normalizedGitHubRepo;
   let nextGitHubState: string | undefined = normalizedGitHubState;
-  let githubSyncedAt: Date | undefined = hasImportedGitHubIssue ? new Date() : undefined;
+  let vcsSyncedAt: Date | undefined = hasImportedGitHubIssue ? new Date() : undefined;
   let lastSyncError: string | undefined;
 
   if (normalizedCreateGitHubIssue && !hasImportedGitHubIssue) {
     if (!repo) {
-      lastSyncError = "Selected codebase is not linked to a GitHub repository.";
+      lastSyncError = "Selected codebase is not linked to a VCS repository.";
+    } else if (codebase?.sourceType === "gitlab") {
+      try {
+        const issue = await createVcsIssue(repo, codebase.sourceType, {
+          title: normalizedTitle,
+          body: buildTaskGitHubIssueBody(normalizedObjective, normalizedTestCases),
+          labels: normalizedLabels,
+          assignees: normalizedAssignee ? [normalizedAssignee] : undefined,
+        });
+        nextGitHubId = issue.id;
+        nextGitHubNumber = issue.number;
+        nextGitHubUrl = issue.url;
+        nextGitHubRepo = repo;
+        nextGitHubState = issue.state;
+        vcsSyncedAt = new Date();
+      } catch (error) {
+        lastSyncError = error instanceof Error ? error.message : "GitLab issue create failed";
+      }
     } else {
       try {
         const issue = await createGitHubIssue(repo, {
@@ -401,14 +424,14 @@ export async function POST(request: NextRequest) {
         nextGitHubUrl = issue.url;
         nextGitHubRepo = issue.repo;
         nextGitHubState = issue.state;
-        githubSyncedAt = new Date();
+        vcsSyncedAt = new Date();
       } catch (error) {
         lastSyncError = error instanceof Error ? error.message : "GitHub issue create failed";
       }
     }
   }
 
-  const task = stripSpeculativeKanbanTaskAdaptiveSnapshot(createTask({
+  const task = createTask({
     id: uuidv4(),
     title: normalizedTitle,
     objective: normalizedObjective,
@@ -431,19 +454,17 @@ export async function POST(request: NextRequest) {
     assignedRole: normalizedAssignedRole,
     assignedSpecialistId: normalizedAssignedSpecialistId,
     assignedSpecialistName: normalizedAssignedSpecialistName,
-    githubId: nextGitHubId,
-    githubNumber: nextGitHubNumber,
-    githubUrl: nextGitHubUrl,
-    githubRepo: nextGitHubRepo,
-    githubState: nextGitHubState,
-    githubSyncedAt,
+    vcsId: nextGitHubId,
+    vcsNumber: nextGitHubNumber,
+    vcsUrl: nextGitHubUrl,
+    vcsRepo: nextGitHubRepo,
+    vcsState: nextGitHubState,
+    vcsSyncedAt,
     lastSyncError,
     isPullRequest: normalizedIsPullRequest,
     creationSource: normalizedCreationSource,
     codebaseIds: normalizedCodebaseIds,
-    contextSearchSpec: normalizedContextSearchSpec,
-    jitContextSnapshot: normalizedJitContextSnapshot,
-  }));
+  });
 
   await system.taskStore.save(task);
   getKanbanEventBroadcaster().notify({
@@ -515,7 +536,6 @@ async function serializeTask(
   system: TaskSerializationSystem,
   options: SerializeTaskOptions = { includeDeliveryReadiness: true },
 ) {
-  task = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
   const evidenceSummary = await buildTaskEvidenceSummary(task, system);
   const storyReadiness = await buildTaskStoryReadiness(task, system);
   const investValidation = buildTaskInvestValidation(task);
@@ -550,22 +570,33 @@ async function serializeTask(
     sessionIds: task.sessionIds ?? [],
     laneSessions: task.laneSessions ?? [],
     laneHandoffs: task.laneHandoffs ?? [],
-    githubId: task.githubId,
-    githubNumber: task.githubNumber,
-    githubUrl: task.githubUrl,
-    githubRepo: task.githubRepo,
-    githubState: task.githubState,
-    githubSyncedAt: task.githubSyncedAt?.toISOString(),
+    vcsId: task.vcsId,
+    vcsNumber: task.vcsNumber,
+    vcsUrl: task.vcsUrl,
+    vcsRepo: task.vcsRepo,
+    vcsState: task.vcsState,
+    vcsSyncedAt: task.vcsSyncedAt?.toISOString(),
     lastSyncError: task.lastSyncError,
+    diagnostic: task.lastSyncError
+      ? parseTaskDiagnostic({
+          lastSyncError: task.lastSyncError,
+          triggerSessionId: task.triggerSessionId,
+          dependencyStatus: task.dependencyStatus,
+          updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
+          columnId: task.columnId,
+        })
+      : undefined,
     isPullRequest: task.isPullRequest,
+    pullRequestUrl: task.pullRequestUrl,
+    pullRequestMergedAt: task.pullRequestMergedAt instanceof Date
+      ? task.pullRequestMergedAt.toISOString()
+      : task.pullRequestMergedAt,
     dependencies: task.dependencies,
     parallelGroup: task.parallelGroup,
     workspaceId: task.workspaceId,
     sessionId: task.sessionId,
     creationSource: task.creationSource,
     codebaseIds: task.codebaseIds ?? [],
-    contextSearchSpec: task.contextSearchSpec,
-    jitContextSnapshot: task.jitContextSnapshot,
     worktreeId: task.worktreeId,
     completionSummary: task.completionSummary,
     ...(task.verificationVerdict != null && { verificationVerdict: task.verificationVerdict }),

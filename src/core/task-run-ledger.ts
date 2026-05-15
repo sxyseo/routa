@@ -51,17 +51,20 @@ function resolveStatus(
   laneSession: TaskLaneSession,
   session?: SessionLookup,
 ): TaskRunStatus {
-  if (
-    session?.acpStatus === "error"
-    && (!laneSession.status || laneSession.status === "running")
-  ) {
-    return "failed";
-  }
-
-  if (laneSession.status) {
+  // Lane session has a terminal status — trust it over acpStatus
+  if (laneSession.status && laneSession.status !== "running") {
     return laneSession.status;
   }
 
+  // Session actively running — treat transient acpStatus "error" as still running
+  // to avoid flashing a red X during provider connection/retry.
+  if (laneSession.status === "running") {
+    if (session?.acpStatus === "error") return "running";
+    return "running";
+  }
+
+  // No laneSession status set yet — infer from acpStatus
+  if (session?.acpStatus === "error") return "failed";
   if (session?.acpStatus === "connecting" || session?.acpStatus === "ready") return "running";
   return "unknown";
 }

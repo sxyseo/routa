@@ -75,7 +75,7 @@ describe("KanbanTab GitHub import merge mode", () => {
   it("merges selected GitHub issues into a single backlog card", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/github/access?boardId=board-1") {
+      if (url.startsWith("/api/github/access?") && url.includes("boardId=board-1")) {
         return {
           ok: true,
           json: async () => ({
@@ -224,7 +224,7 @@ describe("KanbanTab GitHub import merge mode", () => {
           workspaceId: "workspace-1",
           boardId: "board-1",
           columnId: "backlog",
-          title: "Merged GitHub issues",
+          title: "Merged issues",
           objective: [
             "Source links",
             "- #161 Imported issue one",
@@ -245,7 +245,7 @@ describe("KanbanTab GitHub import merge mode", () => {
   it("hides the import button when GitHub access is unavailable", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/github/access?boardId=board-1") {
+      if (url.startsWith("/api/github/access?") && url.includes("boardId=board-1")) {
         return {
           ok: true,
           json: async () => ({
@@ -285,5 +285,129 @@ describe("KanbanTab GitHub import merge mode", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /import issues/i })).toBeNull();
     });
+  });
+});
+
+describe("KanbanTab VCS import with GitLab codebase", () => {
+  it("renders GitLab-specific import button and passes platform=gitlab to VCS access check", async () => {
+    const accessCalls: string[] = [];
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/github/access?")) {
+        accessCalls.push(url);
+        return {
+          ok: true,
+          json: async () => ({ available: true, source: "env" }),
+        } as Response;
+      }
+      return fetch(input, init);
+    });
+
+    vi.stubGlobal("fetch", vi.fn());
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[{
+          id: "gitlab-codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/Users/phodal/repos/routa-gitlab",
+          sourceUrl: "https://gitlab.com/phodal/routa-gitlab",
+          sourceType: "gitlab",
+          isDefault: true,
+          label: "routa-gitlab",
+          branch: "main",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    // The import button should show GitLab-specific label
+    const importButton = await screen.findByRole("button", { name: /import gitlab issues/i });
+    expect(importButton).toBeTruthy();
+
+    // VCS access check should include platform=gitlab
+    await waitFor(() => {
+      expect(accessCalls.some((url) => url.includes("platform=gitlab"))).toBe(true);
+    });
+  });
+
+  it("opens GitLab import modal with Merge Requests tab when clicked", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/github/access?") && url.includes("platform=gitlab")) {
+        return {
+          ok: true,
+          json: async () => ({ available: true, source: "env" }),
+        } as Response;
+      }
+      if (url.includes("/api/github/issues?") && url.includes("codebaseId=gitlab-codebase-1")) {
+        return {
+          ok: true,
+          json: async () => ({
+            repo: "phodal/routa-gitlab",
+            codebase: { id: "gitlab-codebase-1", label: "routa-gitlab" },
+            issues: [
+              {
+                id: "gl-issue-1",
+                number: 42,
+                title: "GitLab issue one",
+                body: "GitLab issue summary.",
+                url: "https://gitlab.com/phodal/routa-gitlab/-/issues/42",
+                state: "open",
+                labels: ["bug"],
+                assignees: [],
+                updatedAt: "2025-01-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        } as Response;
+      }
+      return fetch(input, init);
+    });
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[{
+          id: "gitlab-codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/Users/phodal/repos/routa-gitlab",
+          sourceUrl: "https://gitlab.com/phodal/routa-gitlab",
+          sourceType: "gitlab",
+          isDefault: true,
+          label: "routa-gitlab",
+          branch: "main",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    // Click the GitLab import button
+    const importButton = await screen.findByRole("button", { name: /import gitlab issues/i });
+    fireEvent.click(importButton);
+
+    // Modal should open with "Merge Requests" tab (GitLab-specific)
+    expect(await screen.findByRole("button", { name: /merge requests/i })).toBeTruthy();
+
+    // Issues should load from the GitLab codebase via IVCSProvider
+    expect(await screen.findByRole("link", { name: /gitlab issue one/i })).toBeTruthy();
   });
 });

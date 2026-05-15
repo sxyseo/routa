@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import React, { type CSSProperties } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
@@ -8,10 +8,13 @@ import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
 import { parseCanonicalStory } from "@/core/kanban/canonical-story";
 import { formatArtifactLabel, resolveKanbanTransitionArtifacts } from "@/core/kanban/transition-artifacts";
+import type { TaskDiagnosticCategory } from "@/core/kanban/task-diagnostic";
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import { type KanbanSpecialistLanguage } from "./kanban-specialist-language";
 import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
-import { GripVertical, Trash2 } from "lucide-react";
+import { getPullRequestShort } from "@/core/vcs/platform-terminology";
+import type { VCSPlatform } from "@/core/vcs/vcs-provider";
+import { GripVertical, Trash2, Link2, ShieldAlert } from "lucide-react";
 
 
 interface SpecialistOption {
@@ -123,7 +126,7 @@ function getSyncTone(
   sessionStatus: "connecting" | "ready" | "error" | undefined,
   queuePosition: number | undefined,
   hasSyncError: boolean,
-  githubSyncedAt?: string,
+  vcsSyncedAt?: string,
 ) {
   if (sessionStatus === "connecting" || queuePosition) {
     return "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-900/40";
@@ -131,22 +134,55 @@ function getSyncTone(
   if (sessionStatus === "error" || hasSyncError) {
     return "bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:ring-rose-900/40";
   }
-  if (githubSyncedAt) {
+  if (vcsSyncedAt) {
     return "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40";
   }
   return "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
+}
+
+/** Categories that should always be visible, even on completed terminal cards. */
+const ALWAYS_VISIBLE_DIAGNOSTICS = new Set<TaskDiagnosticCategory>([
+  "done_lane_stuck",
+  "conflict_detected",
+]);
+
+function isCompletedTerminal(task: TaskInfo, boardColumns: KanbanColumnInfo[]): boolean {
+  if (task.status !== "COMPLETED") return false;
+  // Always show diagnostics for done-lane stuck / conflict categories
+  if (task.diagnostic && ALWAYS_VISIBLE_DIAGNOSTICS.has(task.diagnostic.category)) return false;
+  const col = boardColumns.find((c) => c.id === task.columnId);
+  return col?.stage === "done" || col?.stage === "archived";
+}
+
+function getDiagnosticTone(category: TaskDiagnosticCategory): string {
+  switch (category) {
+    case "circuit_breaker":
+    case "rate_limited":
+      return "bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40";
+    case "dependency_blocked":
+      return "bg-orange-100 text-orange-700 ring-1 ring-inset ring-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:ring-orange-900/40";
+    case "stale_session":
+    case "watchdog_recovery":
+      return "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-900/40";
+    case "done_lane_stuck":
+      return "bg-yellow-100 text-yellow-800 ring-1 ring-inset ring-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:ring-yellow-800/40";
+    case "conflict_detected":
+      return "bg-red-100 text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-900/20 dark:text-red-300 dark:ring-red-900/40";
+    default:
+      return "bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:ring-rose-900/40";
+  }
 }
 
 function getSyncLabel(
   sessionStatus: "connecting" | "ready" | "error" | undefined,
   queuePosition: number | undefined,
   hasSyncError: boolean,
-  githubSyncedAt?: string,
+  vcsSyncedAt?: string,
 ) {
   if (sessionStatus === "connecting") return "starting";
   if (queuePosition) return `queued`;
   if (sessionStatus === "error" || hasSyncError) return "syncIssue";
-  if (githubSyncedAt) return "synced";
+  if (vcsSyncedAt) return "synced";
   return "notSynced";
 }
 
@@ -240,8 +276,23 @@ function KanbanCardSurface({
     sessionStatus === "error" || (!task.triggerSessionId && task.columnId === "dev")
   ) && !queuePosition;
   const canRun = effectiveAutomation.canRun && !task.triggerSessionId && task.columnId !== "done" && !queuePosition;
+  const canRerunDone = effectiveAutomation.canRun
+    && task.columnId === "done"
+    && !task.triggerSessionId
+    && !queuePosition
+    && (
+      sessionStatus === "error"
+      || Boolean(task.lastSyncError)
+      || (Boolean(task.pullRequestUrl) && !task.pullRequestMergedAt)
+    );
   const priorityTone = getPriorityTone(task.priority);
   const prioritySizeLabel = getPrioritySizeLabel(task.priority);
+  const primaryCodebasePlatform = (task.codebaseIds?.[0]
+    ? codebases.find((c) => c.id === task.codebaseIds![0])?.sourceType
+    : undefined) as VCSPlatform | undefined;
+  const prBadge = task.isPullRequest
+    ? `${getPullRequestShort(primaryCodebasePlatform)} #${task.vcsNumber}`
+    : `Issue #${task.vcsNumber}`;
   const sessionTone = isTerminalCard
     ? "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40"
     : getSessionTone(sessionStatus, queuePosition);
@@ -258,11 +309,11 @@ function KanbanCardSurface({
     (task.codebaseIds && task.codebaseIds.length > 0 ? task.codebaseIds.length : allCodebaseIds.length) - visibleCodebaseIds.length,
     0,
   );
-  const syncLabelKey = getSyncLabel(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
+  const syncLabelKey = getSyncLabel(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.vcsSyncedAt);
   const resolvedSyncLabel = syncLabelKey === "queued"
     ? `${t.kanban.queued} #${queuePosition}`
     : (t.kanban as Record<string, string>)[syncLabelKey] ?? syncLabelKey;
-  const syncTone = getSyncTone(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
+  const syncTone = getSyncTone(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.vcsSyncedAt);
   const objectiveText = buildCardSummary(task, task.objective?.trim() || t.kanban.noObjective);
   const transitionArtifacts = resolveKanbanTransitionArtifacts(boardColumns, task.columnId);
   const missingNextArtifacts = transitionArtifacts.nextRequiredArtifacts.filter(
@@ -353,9 +404,9 @@ function KanbanCardSurface({
       <div className="flex items-start justify-between gap-3 pl-7 pr-6">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1">
-            {task.githubNumber ? (
+            {task.vcsNumber ? (
               <a
-                href={task.githubUrl}
+                href={task.vcsUrl}
                 target="_blank"
                 rel="noreferrer"
                 onClick={stopCardInteraction}
@@ -364,33 +415,66 @@ function KanbanCardSurface({
                   : "bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40"
                 }`}
               >
-                {task.isPullRequest ? `PR #${task.githubNumber}` : `Issue #${task.githubNumber}`}
+                {prBadge}
               </a>
             ) : null}
             <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${sessionTone}`}>
               {resolvedStatusLabel}
             </span>
-            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${syncTone}`}>
-              {resolvedSyncLabel}
-            </span>
+            {task.diagnostic && !isCompletedTerminal(task, boardColumns) ? (
+              <span
+                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${getDiagnosticTone(task.diagnostic.category)}`}
+                title={task.diagnostic.message}
+                data-testid="kanban-card-diagnostic-badge"
+              >
+                {!task.diagnostic.autoRecoverable ? (
+                  <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707L2.137 13.131a.25.25 0 0 0 .22.369h13.286a.25.25 0 0 0 .22-.369L8.78 1.754a.25.25 0 0 0-.44 0ZM8 5a.75.75 0 0 1 .75.75v2.5a.75.75 0 0 1-1.5 0v-2.5A.75.75 0 0 1 8 5m0 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/></svg>
+                ) : null}
+                {(t.kanban as Record<string, string>)[`diag_${task.diagnostic.category}`] ?? task.diagnostic.shortLabel}
+              </span>
+            ) : !isCompletedTerminal(task, boardColumns) ? (
+              <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${syncTone}`}>
+                {resolvedSyncLabel}
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {(canRun || canRetry) && (
+          {(canRun || canRetry || canRerunDone) && (
             <button
               onClick={() => void onRetryTrigger(task.id)}
               onClickCapture={stopCardInteraction}
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${canRetry
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${(canRetry || canRerunDone)
                 ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-300"
                 : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/50 dark:bg-emerald-900/10 dark:text-emerald-300"
                 }`}
             >
-              {canRetry ? t.kanban.rerun : t.kanban.run}
+              {(canRetry || canRerunDone) ? t.kanban.rerun : t.kanban.run}
             </button>
           )}
           <span className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${priorityTone}`}>
             {prioritySizeLabel}
           </span>
+          {task.dependencyStatus === "blocked" && (
+            <span
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-semibold text-orange-700 ring-1 ring-inset ring-orange-300 dark:bg-orange-900/20 dark:text-orange-300 dark:ring-orange-800/50"
+              title={t.kanban.blockedBadgeTooltip.replace("{count}", String(task.dependencies?.length ?? 0))}
+              data-testid="kanban-card-blocked-badge"
+            >
+              <ShieldAlert className="h-3 w-3" />
+              {t.kanban.blockedBadge}
+            </span>
+          )}
+          {task.dependencyStatus !== "blocked" && task.dependencies && task.dependencies.length > 0 && (
+            <span
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-400 dark:ring-white/5"
+              title={t.kanban.dependencyCountBadge.replace("{count}", String(task.dependencies.length))}
+              data-testid="kanban-card-dep-count-badge"
+            >
+              <Link2 className="h-3 w-3" />
+              {task.dependencies.length}
+            </span>
+          )}
         </div>
       </div>
 
@@ -505,7 +589,7 @@ function KanbanCardSurface({
   );
 }
 
-export function KanbanCard({
+export const KanbanCard = React.memo(function KanbanCard({
   ...props
 }: KanbanCardProps) {
   const {
@@ -530,7 +614,7 @@ export function KanbanCard({
       style={isDragging ? { opacity: 0.16 } : undefined}
     />
   );
-}
+});
 
 export function KanbanCardOverlay(props: KanbanCardProps) {
   return <KanbanCardSurface {...props} dragOverlay />;
@@ -572,7 +656,7 @@ function WorktreeBadge({ task, worktreeCache, onOpenDetail, stopCardInteraction 
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${wtDotColor}`} />
       <span className="truncate">
-        worktree {wt.status} · {wt.branch}
+        worktree {wt.status} · {wt.branch}{wt.baseCommitSha ? ` (${wt.baseCommitSha.slice(0, 7)})` : ""}
       </span>
     </button>
   );

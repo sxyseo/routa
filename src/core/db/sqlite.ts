@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import BetterSqlite3 from "better-sqlite3";
 import * as schema from "./sqlite-schema";
 import { createWorkspace } from "../models/workspace";
+import { withSqliteTiming } from "../http/db-timing-middleware";
 
 export type SqliteDatabase = BetterSQLite3Database<typeof schema>;
 
@@ -85,8 +86,21 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
     sqlite.pragma("journal_mode = WAL");
     // Enable foreign keys
     sqlite.pragma("foreign_keys = ON");
+    // Busy timeout: wait up to 5s for locks instead of immediate SQLITE_BUSY.
+    // Critical when MCP SSE handlers do concurrent writes while REST endpoints read.
+    sqlite.pragma("busy_timeout = 5000");
+    // Performance PRAGMAs: reduce fsync overhead and use memory for temp tables.
+    // NOTE: synchronous=NORMAL trades durability for speed — in WAL mode, a power
+    // loss or OS crash on Windows may lose the last ~1s of transactions. Acceptable
+    // for a local dev tool; set ROUTA_SQLITE_SYNCHRONOUS=FULL to override.
+    sqlite.pragma("synchronous = NORMAL");
+    sqlite.pragma("temp_store = MEMORY");
+    sqlite.pragma("mmap_size = 268435456");    // 256 MB memory-mapped I/O
+    sqlite.pragma("cache_size = -20000");       // 20 MB page cache
 
-    const db = drizzle(sqlite, { schema });
+    // Wrap raw sqlite with timing before passing to Drizzle
+    const timedSqlite = withSqliteTiming(sqlite);
+    const db = drizzle(timedSqlite, { schema });
 
     // Run migrations / create tables on first use
     initializeSqliteTables(db);
@@ -214,12 +228,12 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       session_ids TEXT DEFAULT '[]',
       lane_sessions TEXT DEFAULT '[]',
       lane_handoffs TEXT DEFAULT '[]',
-      github_id TEXT,
-      github_number INTEGER,
-      github_url TEXT,
-      github_repo TEXT,
-      github_state TEXT,
-      github_synced_at INTEGER,
+      vcs_id TEXT,
+      vcs_number INTEGER,
+      vcs_url TEXT,
+      vcs_repo TEXT,
+      vcs_state TEXT,
+      vcs_synced_at INTEGER,
       last_sync_error TEXT,
       is_pull_request INTEGER,
       dependencies TEXT DEFAULT '[]',
@@ -228,6 +242,8 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       session_id TEXT,
       context_search_spec TEXT,
       delivery_snapshot TEXT,
+      pull_request_url TEXT,
+      pull_request_merged_at INTEGER,
       completion_summary TEXT,
       verification_verdict TEXT,
       verification_report TEXT,
@@ -252,12 +268,12 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN enable_automatic_fallback INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN max_fallback_attempts INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN trigger_session_id TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_id TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_number INTEGER`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_url TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_repo TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_state TEXT`);
-  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_synced_at INTEGER`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_number INTEGER`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_url TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_repo TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_state TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN vcs_synced_at INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN last_sync_error TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN is_pull_request INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN test_cases TEXT`);
@@ -271,6 +287,17 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN session_ids TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN lane_sessions TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN lane_handoffs TEXT DEFAULT '[]'`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN pull_request_url TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN pull_request_merged_at INTEGER`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN blocking TEXT DEFAULT '[]'`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN dependency_status TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN parent_task_id TEXT`);
+
+  // Critical index: tasks.listByWorkspace is the hottest query path.
+  // Without this, 360 MB database does a full table scan per request.
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_workspace_id ON tasks (workspace_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_board_id ON tasks (board_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)`);
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS notes (
@@ -418,6 +445,8 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     db.run(sql.raw(statement));
   });
 
+  try { db.run(sql`ALTER TABLE worktrees ADD COLUMN base_commit_sha TEXT`); } catch { /* column already exists */ }
+
   db.run(sql`
     CREATE TABLE IF NOT EXISTS kanban_boards (
       id TEXT PRIMARY KEY,
@@ -526,6 +555,21 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   `);
 
   db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_background_tasks_result_session_id
+    ON background_tasks (result_session_id)
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_background_tasks_status
+    ON background_tasks (status)
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_background_tasks_workspace_id
+    ON background_tasks (workspace_id)
+  `);
+
+  db.run(sql`
     CREATE TABLE IF NOT EXISTS github_webhook_configs (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -574,6 +618,92 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       outcome TEXT NOT NULL DEFAULT 'triggered',
       error_message TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  // ─── VCS column rename migration (github_* → vcs_*) ──────────────────
+  // SQLite 3.25.0+ supports ALTER TABLE RENAME COLUMN.
+  // Each rename is idempotent: if the old column no longer exists (already
+  // renamed) the statement errors and is silently swallowed by the try/catch.
+  const vcsColumnRenames: [string, string][] = [
+    ["github_id", "vcs_id"],
+    ["github_number", "vcs_number"],
+    ["github_url", "vcs_url"],
+    ["github_repo", "vcs_repo"],
+    ["github_state", "vcs_state"],
+    ["github_synced_at", "vcs_synced_at"],
+  ];
+  for (const [oldCol, newCol] of vcsColumnRenames) {
+    try {
+      db.run(sql.raw(`ALTER TABLE tasks RENAME COLUMN "${oldCol}" TO "${newCol}"`));
+    } catch {
+      // Column already renamed or doesn't exist — safe to ignore
+    }
+  }
+
+  // ─── Notification Preferences ──────────────────────────────────────────
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      sender_email TEXT NOT NULL DEFAULT '',
+      recipients TEXT NOT NULL DEFAULT '[]',
+      enabled_events TEXT NOT NULL DEFAULT '[]',
+      throttle_seconds INTEGER NOT NULL DEFAULT 300,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  // ─── Notification Logs ──────────────────────────────────────────────────
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS notification_logs (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      recipients TEXT NOT NULL DEFAULT '[]',
+      subject TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'sent',
+      error_message TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_notification_logs_workspace_id
+    ON notification_logs (workspace_id)
+  `);
+
+  // ─── Overseer (smart monitoring agent) ───────────────────────────────
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS overseer_decisions (
+      id TEXT PRIMARY KEY,
+      pattern TEXT NOT NULL,
+      task_id TEXT,
+      category TEXT NOT NULL,
+      action TEXT NOT NULL,
+      details TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      token TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      resolved_at INTEGER
+    )
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_overseer_decisions_pattern_task
+    ON overseer_decisions (pattern, task_id, created_at DESC)
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS overseer_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
     )
   `);
 

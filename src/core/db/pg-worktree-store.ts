@@ -16,6 +16,7 @@ export interface WorktreeStore {
   assignSession(worktreeId: string, sessionId: string | null): Promise<void>;
   remove(worktreeId: string): Promise<void>;
   findByBranch(codebaseId: string, branch: string): Promise<Worktree | undefined>;
+  findByPath(worktreePath: string): Promise<Worktree | undefined>;
 }
 
 /**
@@ -73,6 +74,12 @@ export class InMemoryWorktreeStore implements WorktreeStore {
       (wt) => wt.codebaseId === codebaseId && wt.branch === branch
     );
   }
+
+  async findByPath(worktreePath: string): Promise<Worktree | undefined> {
+    return Array.from(this.store.values()).find(
+      (wt) => wt.worktreePath === worktreePath
+    );
+  }
 }
 
 export class PgWorktreeStore implements WorktreeStore {
@@ -86,6 +93,7 @@ export class PgWorktreeStore implements WorktreeStore {
       worktreePath: worktree.worktreePath,
       branch: worktree.branch,
       baseBranch: worktree.baseBranch,
+      baseCommitSha: worktree.baseCommitSha ?? null,
       status: worktree.status,
       sessionId: worktree.sessionId ?? null,
       label: worktree.label ?? null,
@@ -147,6 +155,15 @@ export class PgWorktreeStore implements WorktreeStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
+  async findByPath(worktreePath: string): Promise<Worktree | undefined> {
+    const rows = await this.db
+      .select()
+      .from(worktrees)
+      .where(eq(worktrees.worktreePath, worktreePath))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
   private toModel(row: typeof worktrees.$inferSelect): Worktree {
     return {
       id: row.id,
@@ -155,6 +172,7 @@ export class PgWorktreeStore implements WorktreeStore {
       worktreePath: row.worktreePath,
       branch: row.branch,
       baseBranch: row.baseBranch,
+      baseCommitSha: row.baseCommitSha ?? undefined,
       status: row.status as WorktreeStatus,
       sessionId: row.sessionId ?? undefined,
       label: row.label ?? undefined,

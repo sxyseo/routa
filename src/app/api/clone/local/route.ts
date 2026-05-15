@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     const repoPath = normalizeLocalRepoPath(rawPath);
     const validation = validateRepoInput(repoPath);
-    if (!validation.valid || validation.isGitHub) {
+    if (!validation.valid || validation.isRemote) {
       return NextResponse.json(
         { error: validation.error ?? "Invalid local repository path" },
         { status: 400 },

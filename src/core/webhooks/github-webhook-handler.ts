@@ -147,6 +147,10 @@ export interface HandleWebhookOptions {
   workflowRunStore?: WorkflowRunStore;
   /** Fixed workspace ID for background tasks */
   workspaceId?: string;
+  /** Optional event bus for emitting internal events (e.g. PR_MERGED) */
+  eventBus?: {
+    emit(event: { type: string; agentId: string; workspaceId: string; data: unknown; timestamp: Date }): void;
+  };
 }
 
 export interface HandleWebhookResult {
@@ -645,6 +649,31 @@ export async function handleGitHubWebhook(
       logs.push(log);
       skipped++;
     }
+  }
+
+  // Emit PR_MERGED internal event when a pull request is merged
+  if (
+    opts.eventBus
+    && eventType === "pull_request"
+    && payload.action === "closed"
+    && payload.pull_request?.merged
+    && payload.pull_request.html_url
+  ) {
+    opts.eventBus.emit({
+      type: "pr_merged",
+      agentId: "github-webhook-handler",
+      workspaceId: workspaceId ?? "",
+      data: {
+        pullRequestUrl: payload.pull_request.html_url,
+        prNumber: payload.pull_request.number,
+        prTitle: payload.pull_request.title,
+        branch: payload.pull_request.head?.ref,
+        baseBranch: payload.pull_request.base?.ref,
+        mergedAt: new Date().toISOString(),
+        repo: payload.repository?.full_name,
+      },
+      timestamp: new Date(),
+    });
   }
 
   return { processed, skipped, logs };

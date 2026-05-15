@@ -73,6 +73,7 @@ pub fn router() -> Router<AppState> {
         .route("/import", post(import_config))
         .route("/events", get(kanban_events))
         .route("/decompose", post(decompose_tasks))
+        .route("/recover-running", post(recover_running_tasks))
 }
 
 #[derive(Debug, Deserialize)]
@@ -148,14 +149,20 @@ fn translate_agent_event_to_kanban_payload(event: &AgentEvent) -> Option<serde_j
 
 async fn is_session_actively_running(state: &AppState, session_id: &str) -> bool {
     if state.acp_manager.get_session(session_id).await.is_some() {
+        // Session still in memory, but check persisted history for terminal state
+        if let Ok(Some(session)) = state.acp_session_store.get(session_id).await {
+            if persisted_session_is_explicitly_terminal(&session.message_history) {
+                return false;
+            }
+        }
         return true;
     }
 
-    let Ok(Some(session)) = state.acp_session_store.get(session_id).await else {
-        return false;
-    };
-
-    !persisted_session_is_explicitly_terminal(&session.message_history)
+    // Session not in memory — either the backend restarted (killing all agent
+    // subprocesses) or the session was explicitly deleted.  In both cases the
+    // session can no longer be running, regardless of what the persisted
+    // history says.  Returning false allows sanitize to mark it terminal.
+    false
 }
 
 fn persisted_session_is_explicitly_terminal(history: &[serde_json::Value]) -> bool {
@@ -393,6 +400,63 @@ fn task_has_running_lane_session(task: &Task) -> bool {
             task.status,
             TaskStatus::InProgress | TaskStatus::ReviewRequired
         )
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoverRunningQuery {
+    workspace_id: Option<String>,
+    board_id: Option<String>,
+}
+
+async fn recover_running_tasks(
+    State(state): State<AppState>,
+    Query(query): Query<RecoverRunningQuery>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let workspace_id = query.workspace_id.unwrap_or_else(|| "default".to_string());
+    let tasks = state.task_store.list_by_workspace(&workspace_id).await?;
+
+    let mut recovered = 0usize;
+    for mut task in tasks {
+        if let Some(ref board_id) = query.board_id {
+            if task.board_id.as_deref() != Some(board_id.as_str()) {
+                continue;
+            }
+        }
+
+        let had_running = task
+            .lane_sessions
+            .iter()
+            .any(|s| s.status == TaskLaneSessionStatus::Running);
+
+        if !had_running && task.trigger_session_id.is_none() {
+            continue;
+        }
+
+        let terminal_status = resolve_stale_lane_session_terminal_status(&task);
+
+        for entry in &mut task.lane_sessions {
+            if entry.status == TaskLaneSessionStatus::Running {
+                mark_lane_session_terminal(entry, terminal_status.clone());
+            }
+        }
+
+        task.trigger_session_id = None;
+        task.updated_at = chrono::Utc::now();
+        state.task_store.save(&task).await?;
+        recovered += 1;
+    }
+
+    tracing::info!(
+        "Recovered {} running tasks in workspace {}",
+        recovered,
+        workspace_id
+    );
+
+    Ok(Json(serde_json::json!({
+        "recovered": recovered,
+        "workspaceId": workspace_id,
+    })))
 }
 
 async fn list_boards(
@@ -1424,16 +1488,26 @@ mod tests {
             completed_at: None,
         });
 
+        // ACP sessions not in memory are considered stale after a backend restart.
+        // Even though the persisted history shows a normal agent_message (no error),
+        // the session process is gone and cannot resume, so sanitize marks it terminal.
         let updated = sanitize_stale_current_lane_automation(&state, task)
             .await
             .expect("sanitize should succeed");
 
-        assert_eq!(updated.trigger_session_id.as_deref(), Some("session-4"));
+        assert!(
+            updated.trigger_session_id.is_none(),
+            "trigger_session_id should be cleared for stale ACP session"
+        );
         assert_eq!(
             updated.lane_sessions[0].status,
-            TaskLaneSessionStatus::Running
+            TaskLaneSessionStatus::TimedOut,
+            "lane session should be marked timed_out (no verification evidence)"
         );
-        assert_eq!(updated.lane_sessions[0].completed_at, None);
+        assert!(
+            updated.lane_sessions[0].completed_at.is_some(),
+            "completed_at should be set"
+        );
     }
 
     #[tokio::test]

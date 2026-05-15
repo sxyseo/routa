@@ -72,6 +72,7 @@ export class AcpProcess {
         params: Record<string, unknown>;
     }>();
     private requestId = 0;
+    private sigkillTimer: ReturnType<typeof setTimeout> | null = null;
     private onNotification: NotificationHandler;
     private _sessionId: string | null = null;
     private _alive = false;
@@ -193,7 +194,9 @@ export class AcpProcess {
             console.log(
                 `[AcpProcess:${displayName}] Process exited: code=${code}, signal=${signal}`
             );
+            if (this.sigkillTimer) { clearTimeout(this.sigkillTimer); this.sigkillTimer = null; }
             this._alive = false;
+            this.process?.removeAllListeners();
             // Reject all pending requests
             for (const [id, pending] of this.pendingRequests) {
                 clearTimeout(pending.timeout);
@@ -434,7 +437,7 @@ export class AcpProcess {
             this.process.kill("SIGTERM");
 
             // Force kill after 5 seconds if still alive
-            setTimeout(() => {
+            this.sigkillTimer = setTimeout(() => {
                 if (this.process && this.process.exitCode === null) {
                     this.process.kill("SIGKILL");
                 }
@@ -442,6 +445,12 @@ export class AcpProcess {
         }
         this._alive = false;
         this.pendingInteractiveRequests.clear();
+        // Reject and clear all pending requests
+        for (const [, pending] of this.pendingRequests) {
+            clearTimeout(pending.timeout);
+            pending.reject(new Error(`${this._config.displayName} process killed`));
+        }
+        this.pendingRequests.clear();
     }
 
     respondToUserInput(toolCallId: string, response: Record<string, unknown>): boolean {
@@ -827,6 +836,16 @@ export class AcpProcess {
             case "terminal/create": {
                 const terminalManager = getTerminalManager();
                 const termParams = (params ?? {}) as Record<string, unknown>;
+                // Inject agent's isolated PORT into terminal environment so that
+                // commands like `npm run dev` / `next dev` bind to the allocated
+                // ephemeral port instead of colliding with the main Routa server.
+                const agentEnv = this._config.env ?? {};
+                if (Object.keys(agentEnv).length > 0) {
+                    const existingEnv = termParams.env;
+                    termParams.env = typeof existingEnv === "object" && existingEnv !== null
+                        ? { ...existingEnv as Record<string, string>, ...agentEnv }
+                        : { ...agentEnv };
+                }
                 const result = terminalManager.create(
                     termParams,
                     this._sessionId ?? "unknown",

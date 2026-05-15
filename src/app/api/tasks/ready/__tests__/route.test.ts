@@ -43,7 +43,9 @@ describe("/api/tasks/ready GET", () => {
       hasCommitsSinceBase: false,
       hasUncommittedChanges: false,
       isGitHubRepo: false,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
       reason: "Task has no linked repository or worktree.",
     });
     await artifactStore.deleteByTask("task-ready-1");

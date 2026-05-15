@@ -10,6 +10,9 @@ import {
   type RuntimeFitnessStatusResponse,
 } from "./runtime-status-types";
 
+const FITNESS_CACHE_TTL_MS = 5_000;
+const fitnessCache = new Map<string, { ts: number; value: RuntimeFitnessStatusResponse }>();
+
 type RuntimeFitnessEventRecord = {
   type?: string;
   observed_at_ms?: number;
@@ -260,6 +263,12 @@ async function buildModeSummary(
 }
 
 export async function readRuntimeFitnessStatus(repoRoot: string): Promise<RuntimeFitnessStatusResponse> {
+  // Short-lived in-memory cache to avoid repeated disk reads during rapid polling.
+  const cached = fitnessCache.get(repoRoot);
+  if (cached && Date.now() - cached.ts < FITNESS_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
   const { latestByMode, latestTerminalByMode } = await readLatestRuntimeEvents(repoRoot);
   const modes = await Promise.all(
     RUNTIME_FITNESS_MODES.map((mode) =>
@@ -269,11 +278,21 @@ export async function readRuntimeFitnessStatus(repoRoot: string): Promise<Runtim
   const latest = [...modes]
     .sort((left, right) => currentObservedAtMs(right) - currentObservedAtMs(left))[0] ?? null;
 
-  return {
+  const result: RuntimeFitnessStatusResponse = {
     generatedAt: new Date().toISOString(),
     repoRoot,
     hasRunning: modes.some((mode) => mode.currentStatus === "running"),
     modes,
     latest: latest && latest.currentStatus !== "missing" ? latest : null,
   };
+
+  fitnessCache.set(repoRoot, { ts: Date.now(), value: result });
+  // Evict expired entries to prevent unbounded growth
+  if (fitnessCache.size > 20) {
+    const now = Date.now();
+    for (const [key, entry] of fitnessCache) {
+      if (now - entry.ts >= FITNESS_CACHE_TTL_MS) fitnessCache.delete(key);
+    }
+  }
+  return result;
 }

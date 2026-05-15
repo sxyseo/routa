@@ -84,7 +84,45 @@ describe("workflow orchestrator loop guard", () => {
       },
     ];
 
-    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(1);
+    // timed_out is excluded from count (infrastructure issue), so only the dev
+    // column break resets the consecutive run counter — no counted sessions remain.
+    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(0);
+    expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(false);
+  });
+
+  it("excludes timed_out from loop count but counts failed sessions", () => {
+    const task = createTask({
+      id: "task-timeout-exclude",
+      title: "Timeout exclude",
+      objective: "Infrastructure timeouts should not count toward loop limit",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+
+    task.laneSessions = [
+      {
+        sessionId: "review-1",
+        columnId: "review",
+        status: "timed_out",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "review-2",
+        columnId: "review",
+        status: "timed_out",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "review-3",
+        columnId: "review",
+        status: "timed_out",
+        startedAt: new Date().toISOString(),
+      },
+    ];
+
+    // All timed_out — count is 0, not over limit
+    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(0);
     expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(false);
   });
 
@@ -119,6 +157,160 @@ describe("workflow orchestrator loop guard", () => {
       },
     ];
 
+    expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(true);
+  });
+
+  it("does not apply the repeat limit to blocked lane", () => {
+    const task = createTask({
+      id: "task-blocked-retry",
+      title: "Blocked retry",
+      objective: "Blocked resolver should always be allowed to run",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "blocked",
+    });
+
+    task.laneSessions = [
+      {
+        sessionId: "blocked-1",
+        columnId: "blocked",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "blocked-2",
+        columnId: "blocked",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "blocked-3",
+        columnId: "blocked",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "blocked-4",
+        columnId: "blocked",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+    ];
+
+    expect(getNonDevAutomationRunCount(task, "blocked", "blocked")).toBe(4);
+    expect(hasExceededNonDevAutomationRepeatLimit(task, "blocked", "blocked")).toBe(false);
+  });
+
+  it("time-window decay: excludes old failed sessions from the repeat count", () => {
+    const task = createTask({
+      id: "task-time-decay",
+      title: "Time decay",
+      objective: "Old failed sessions should expire from the repeat limit",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+
+    const now = Date.now();
+    const oldTimestamp = new Date(now - 60 * 60 * 1000).toISOString(); // 1 hour ago
+    const recentTimestamp = new Date(now - 5 * 60 * 1000).toISOString(); // 5 min ago
+
+    task.laneSessions = [
+      {
+        sessionId: "review-old-1",
+        columnId: "review",
+        status: "failed",
+        startedAt: oldTimestamp,
+      },
+      {
+        sessionId: "review-old-2",
+        columnId: "review",
+        status: "failed",
+        startedAt: oldTimestamp,
+      },
+      {
+        sessionId: "review-recent-1",
+        columnId: "review",
+        status: "failed",
+        startedAt: recentTimestamp,
+      },
+    ];
+
+    // Old sessions are outside the 30-min window → only 1 recent session counts
+    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(1);
+    expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(false);
+  });
+
+  it("time-window decay: all sessions within window count normally", () => {
+    const task = createTask({
+      id: "task-all-recent",
+      title: "All recent",
+      objective: "Recent sessions should all count",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+
+    const recentTimestamp = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+    task.laneSessions = [
+      {
+        sessionId: "review-1",
+        columnId: "review",
+        status: "failed",
+        startedAt: recentTimestamp,
+      },
+      {
+        sessionId: "review-2",
+        columnId: "review",
+        status: "completed",
+        startedAt: recentTimestamp,
+      },
+      {
+        sessionId: "review-3",
+        columnId: "review",
+        status: "transitioned",
+        startedAt: recentTimestamp,
+      },
+    ];
+
+    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(3);
+    expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(true);
+  });
+
+  it("time-window decay: sessions without startedAt still count", () => {
+    const task = createTask({
+      id: "task-no-started",
+      title: "No startedAt",
+      objective: "Sessions missing startedAt should still count",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+
+    task.laneSessions = [
+      {
+        sessionId: "review-1",
+        columnId: "review",
+        status: "failed",
+        startedAt: undefined as unknown as string,
+      },
+      {
+        sessionId: "review-2",
+        columnId: "review",
+        status: "completed",
+        startedAt: undefined as unknown as string,
+      },
+      {
+        sessionId: "review-3",
+        columnId: "review",
+        status: "transitioned",
+        startedAt: undefined as unknown as string,
+      },
+    ];
+
+    // No startedAt → startedAtMs is 0 → 0 < cutoffMs is false → not filtered
+    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(3);
     expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(true);
   });
 

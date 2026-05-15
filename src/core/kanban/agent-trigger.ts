@@ -16,16 +16,21 @@ import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
+import { getTaskDevServerRegistry } from "./task-dev-server-registry";
 import type { FlowDiagnosisReport } from "./flow-ledger-types";
 import { formatFlowGuidanceForPrompt } from "./flow-ledger";
-import { buildKanbanTaskAdaptiveHarnessOptions } from "./task-adaptive";
-import { buildSavedHistoryMemoryPromptSection } from "./context-preload";
-import { buildLaneExperiencePromptSection } from "./task-lane-experience";
-import {
-  buildRelevantStrategyMemoryPromptSection,
-  searchReasoningMemories,
-  type ReasoningMemorySearchHints,
-} from "@/core/harness/reasoning-memory";
+import { isGitLab } from "../vcs/vcs-provider";
+import { resolveBehavioralDiscipline } from "./behavioral-discipline-loader";
+
+/** Sanitize a user-supplied string before embedding it in a prompt. */
+function sanitizeForPrompt(input: string, maxLen = 2000): string {
+  if (!input) return input;
+  let s = input.length > maxLen ? input.slice(0, maxLen) + "…[truncated]" : input;
+  // Escape markdown header/blockquote markers that could hijack prompt structure
+  s = s.replace(/^(#{1,6}\s)/gm, "\\$1");
+  s = s.replace(/^(\s*>)/gm, "\\$1");
+  return s;
+}
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -71,6 +76,7 @@ function formatDeliveryRules(rules: KanbanDeliveryRules | undefined): string {
   if (rules.requireCommittedChanges) labels.push("committed changes");
   if (rules.requireCleanWorktree) labels.push("clean worktree");
   if (rules.requirePullRequestReady) labels.push("PR-ready branch");
+  if (rules.autoMergeAfterPR) labels.push(`auto-merge (${rules.mergeStrategy ?? "merge_commit"})`);
   return labels.length > 0 ? labels.join(", ") : "none";
 }
 
@@ -80,119 +86,6 @@ function formatContractRules(rules: KanbanContractRules | undefined): string {
   }
 
   return "one valid canonical ```yaml``` story contract";
-}
-
-function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  values.forEach((value) => {
-    const trimmed = value?.trim();
-    if (!trimmed) {
-      return;
-    }
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    unique.push(trimmed);
-  });
-  return unique;
-}
-
-function collectTaskSearchSpecText(spec: Task["contextSearchSpec"]): string[] {
-  if (!spec) {
-    return [];
-  }
-
-  return [
-    spec.query,
-    ...(spec.featureCandidates ?? []),
-    ...(spec.routeCandidates ?? []),
-    ...(spec.apiCandidates ?? []),
-    ...(spec.moduleHints ?? []),
-    ...(spec.symptomHints ?? []),
-  ].filter((value): value is string => Boolean(value?.trim()));
-}
-
-function collectTaskReasoningMemoryHints(task: Task): ReasoningMemorySearchHints | undefined {
-  const snapshot = task.jitContextSnapshot;
-  const currentLaneAnalysis = task.columnId ? snapshot?.perLaneAnalysis?.[task.columnId] : undefined;
-  const contextSpecs = [
-    task.contextSearchSpec,
-    snapshot?.recommendedContextSearchSpec,
-    snapshot?.analysis?.recommendedContextSearchSpec,
-    currentLaneAnalysis?.contextHints,
-  ];
-  const query = uniqueNonEmptyStrings([
-    task.title,
-    task.objective,
-    task.scope,
-    task.comment,
-    ...(task.acceptanceCriteria ?? []),
-    ...(task.testCases ?? []),
-    ...task.labels,
-    snapshot?.summary,
-    snapshot?.analysis?.summary,
-    currentLaneAnalysis?.summary,
-    ...(currentLaneAnalysis?.learnedPatterns ?? []),
-    ...contextSpecs.flatMap((spec) => collectTaskSearchSpecText(spec)),
-  ]).join("\n");
-  const featureIds = uniqueNonEmptyStrings([
-    snapshot?.featureId,
-    ...contextSpecs.flatMap((spec) => spec?.featureCandidates ?? []),
-  ]);
-  const filePaths = uniqueNonEmptyStrings([
-    ...contextSpecs.flatMap((spec) => spec?.relatedFiles ?? []),
-    ...(snapshot?.matchedFileDetails.map((detail) => detail.filePath) ?? []),
-    ...(snapshot?.repeatedReadFiles ?? []),
-    ...(snapshot?.analysis?.topFiles ?? []),
-  ]);
-  const sourceSessionIds = uniqueNonEmptyStrings([
-    task.sessionId,
-    task.triggerSessionId,
-    ...(task.sessionIds ?? []),
-    ...(snapshot?.matchedSessionIds ?? []),
-    ...(currentLaneAnalysis?.latestSessionId ? [currentLaneAnalysis.latestSessionId] : []),
-  ]);
-  const tags = uniqueNonEmptyStrings([...task.labels, ...(contextSpecs.flatMap((spec) => spec?.symptomHints ?? []))]);
-  const hasHints = Boolean(query)
-    || featureIds.length > 0
-    || filePaths.length > 0
-    || sourceSessionIds.length > 0
-    || tags.length > 0
-    || Boolean(task.columnId)
-    || Boolean(task.assignedProvider);
-
-  if (!hasHints) {
-    return undefined;
-  }
-
-  return {
-    query,
-    sourceTaskIds: [task.id],
-    sourceSessionIds,
-    tags,
-    featureIds,
-    filePaths,
-    lane: task.columnId,
-    provider: task.assignedProvider,
-    maxResults: 3,
-  };
-}
-
-function buildTaskStrategyMemoryPromptSection(task: Task): string | undefined {
-  const repoRoot = task.jitContextSnapshot?.repoPath ?? task.deliverySnapshot?.repoPath;
-  if (!repoRoot) {
-    return undefined;
-  }
-
-  const hints = collectTaskReasoningMemoryHints(task);
-  if (!hints) {
-    return undefined;
-  }
-
-  return buildRelevantStrategyMemoryPromptSection(searchReasoningMemories(repoRoot, hints));
 }
 
 export function getInternalApiOrigin(): string {
@@ -212,7 +105,7 @@ export function getInternalApiOrigin(): string {
 export function buildTaskPrompt(
   task: Task,
   boardColumns: KanbanColumn[] = [],
-  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext; flowReport?: FlowDiagnosisReport },
+  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext; branch?: string; baseBranch?: string; flowReport?: FlowDiagnosisReport; workspaceMetadata?: Record<string, string>; cwd?: string },
 ): string {
   const labels = task.labels.length > 0 ? `Labels: ${task.labels.join(", ")}` : "Labels: none";
   const currentColumnId = task.columnId ?? "backlog";
@@ -244,6 +137,7 @@ export function buildTaskPrompt(
   });
   const laneAutomationState = resolveCurrentLaneAutomationState(task, boardColumns, options);
   const canAdvanceToNextColumn = !isBacklogPlanning && !laneAutomationState.hasRemainingSteps;
+  const isCodeAwareReplan = laneAutomationState.currentStep?.specialistId === "kanban-code-aware-replan";
   const summaryContext = options?.summaryContext;
 
   // Determine the next column for move_card guidance
@@ -251,16 +145,18 @@ export function buildTaskPrompt(
   const nextColumnId = transitionArtifacts.nextColumn?.id ?? fallbackNextColumnId;
   const boardId = task.boardId;
 
+  // Terminal columns (done/archived) have nowhere to advance to.
+  const currentColumnStage = boardColumns.find((c) => c.id === currentColumnId)?.stage;
+  const isTerminalStage = currentColumnStage === "done" || currentColumnStage === "archived";
+
   const availableTools = isBacklogPlanning
     ? [
         `- **update_task**: Update structured task fields such as scope, acceptanceCriteria, verificationCommands, and testCases. Use taskId: "${task.id}" when the next move is blocked on story readiness.`,
         `- **update_card**: Update this card's title, description, priority, or labels. Use cardId: "${task.id}"`,
         "- **search_cards**: Search the board for duplicates or related work before creating more tasks",
         "- **create_card**: Create exactly one follow-up backlog card if the current card must be refined into a single user story",
-        "- **decompose_tasks**: Create multiple backlog cards when the current card clearly contains multiple independent stories",
+        "- **decompose_tasks**: Create multiple backlog cards when the current card clearly contains multiple independent stories. Each task item MUST include scope, acceptanceCriteria, and verificationCommands or testCases to avoid move gate rejections later",
         "- **create_note**: Create notes for planning or refinement context",
-        "- **load_feature_tree_context**: Load feature tree summaries, APIs, and source files when you need to confirm feature ownership or narrow related files",
-        `- **confirm_feature_tree_story_context**: Confirm the strongest feature-tree match and get a normalized contextSearchSpec plus a prompt-ready \`feature_tree\` YAML block. When refining this card, pass taskId: "${task.id}" so confirmed hints persist to the task.`,
         "- **list_artifacts**: Check whether the required artifacts already exist for this card",
         "- **provide_artifact**: Save test results, code diffs, or other evidence as structured Kanban artifacts",
         "- **capture_screenshot**: Capture and store a screenshot artifact when visual proof is required",
@@ -272,7 +168,6 @@ export function buildTaskPrompt(
         `- **update_task**: Update structured task fields such as scope, acceptanceCriteria, verificationCommands, and testCases. Use taskId: "${task.id}" when the next move is blocked on story readiness.`,
         `- **update_card**: Update this card's title, description, priority, or labels. Use cardId: "${task.id}"`,
         "- **create_note**: Create notes for documentation or progress tracking",
-        "- **load_feature_tree_context**: Load feature tree summaries, APIs, and source files when you need to confirm feature ownership or narrow related files",
         "- **list_artifacts**: Check whether the required artifacts already exist for this card",
         "- **provide_artifact**: Save test results, code diffs, or other evidence as structured Kanban artifacts",
         "- **capture_screenshot**: Capture and store a screenshot artifact when visual proof is required",
@@ -280,30 +175,37 @@ export function buildTaskPrompt(
         "- **update_card is not a story-readiness tool**: Description or comment text does not satisfy move gates for scope, acceptance criteria, verification commands, or test cases. Use `update_task` for those fields.",
         "- **request_previous_lane_handoff**: Ask the immediately previous lane to prepare environment, rerun a command, or clarify setup for this card",
         "- **submit_lane_handoff**: Finish a lane handoff request after you complete the requested support work",
-        ...(canAdvanceToNextColumn
+        ...(canAdvanceToNextColumn && !isTerminalStage
           ? [`- **move_card**: Move this card to the next column when your work is complete. Use cardId: "${task.id}", targetColumnId: "${nextColumnId ?? "done"}"`]
           : []),
       ];
   const moveInstruction = !canAdvanceToNextColumn
     ? `Do not call \`move_card\` to leave ${currentColumnId} yet. Finish this step, then end your turn; the workflow will start ${laneAutomationState.nextStep?.specialistName ?? laneAutomationState.nextStep?.specialistId ?? laneAutomationState.nextStep?.role ?? "the next lane step"} automatically in the same column.`
+    : isTerminalStage
+    ? `This card is in a terminal column (${currentColumnId}). Do not call \`move_card\`. Update the card with your completion summary instead.`
     : nextColumnId
     ? `When your work for this column is complete, call \`move_card\` with cardId: "${task.id}" and targetColumnId: "${nextColumnId}" to advance the card. The next column's specialist will pick it up automatically.`
     : "This card is in the final column. Update the card with your completion summary.";
 
+  // Split-aware warning for terminal columns
+  const splitWarning = task.splitPlan?.childTaskIds?.length
+    ? `\n\nIMPORTANT: This task has been split into ${task.splitPlan.childTaskIds.length} child tasks. ` +
+      `Do NOT mark this task as complete or archive it. ` +
+      `The parent task will auto-advance when all children complete. ` +
+      `Current progress: check child task statuses.`
+    : "";
+
   const instructions = isBacklogPlanning
     ? [
         "1. Treat backlog as planning and refinement, not implementation",
-        "2. Clarify or decompose the work into backlog-ready stories when needed",
-        "3. If Relevant History Memory or Relevant Feature Tree Context is provided, use it first to narrow the story scope.",
-        `4. Prefer feature-tree confirmation first: call \`load_feature_tree_context\`, or \`confirm_feature_tree_story_context\` with taskId: "${task.id}", before broader Grep/Glob when feature-tree evidence exists.`,
-        "5. You may use read-only native tools such as Read, Grep, and Glob for limited repo inspection only after feature-tree evidence is still weak or ambiguous; do not use Bash, Write, or Edit in backlog planning.",
-        "6. Do not use GitHub CLI commands such as gh issue create",
-        "7. Do not start implementation work in this column",
-        "8. Only write contextSearchSpec after feature-tree confirmation or repo inspection confirms the feature/files; otherwise leave it empty and keep searching.",
-        "9. When feature-tree context is confirmed, include an optional `feature_tree` block in the canonical YAML using the confirmed feature ID/name and strongest source files/routes/APIs.",
-        "10. Report what backlog story or stories were created or refined",
-        `11. ${moveInstruction}`,
-        "12. If the next transition is artifact-gated, create the required artifacts before calling `move_card`.",
+        "2. Clarify or decompose the work into backlog-ready stories when needed. When using `decompose_tasks`, provide scope, acceptanceCriteria, and verificationCommands or testCases for each sub-task so they can pass story-readiness gates without an extra update cycle",
+        "3. Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep in backlog planning",
+        "4. Do not use VCS CLI commands such as gh issue create or glab issue create",
+        "5. Do not start implementation work in this column",
+        "6. Report what backlog story or stories were created or refined",
+        `7. ${moveInstruction}`,
+        "8. If the next transition is artifact-gated, create the required artifacts before calling `move_card`.",
+        "9. After refinement, apply a quality label via update_card: use `refinement-complete` if the task has scope + acceptanceCriteria + verificationCommands, `needs-detail` if scope or acceptanceCriteria are missing, or `needs-splitting` if the scope seems too broad for a single task.",
       ]
     : [
         "1. Complete the work assigned to this column stage",
@@ -322,9 +224,33 @@ export function buildTaskPrompt(
           ? `7. Only call \`get_board\` if you truly need whole-board state, and if you do, pass boardId: "${boardId}". Do not call \`get_board\` with empty arguments.`
           : "7. Only call `get_board` if the task context already provides a concrete boardId. Do not call `get_board` with empty arguments or placeholder values.",
         "8. Do not call `report_to_parent`; this Kanban automation session is managed directly by the workflow",
+        // --- Column-specific guardrails ---
+        ...(currentColumnId === "dev" ? [
+          "9. Do not modify files outside this task's declared scope. If a change in an unrelated file seems necessary, report it via update_card instead of making the change yourself.",
+          "10. Remove all debug artifacts (console.log, print statements, TODO hacks, commented-out code) before calling move_card.",
+          "11. If the project has a lint, type-check, or test command documented in its configuration files, run it in the task worktree before calling move_card. Fix any failures before advancing the card.",
+          "12. Follow project-level instruction files (e.g., CLAUDE.md, AGENTS.md, .cursorrules) for project-specific coding standards and conventions.",
+          "13. When a tool call invokes an external service (e.g., shell commands that call remote APIs such as gh, git push, npm publish), do not batch it with other tool calls in the same response — execute such calls one at a time. Read-only file operations (Read, Grep, Glob) may be batched freely.",
+          ...(isCodeAwareReplan ? [
+            "14. This is the Code-Aware Re-plan step. Your job is to review the codebase and refine the task's plan — not to implement.",
+            "15. Read the worktree code to verify whether Layer 1 inferred dependencies match the actual code structure.",
+            "16. Based on code analysis, adjust scope, acceptanceCriteria, and verificationCommands via update_task if they need refinement.",
+            "17. If the codebase is empty (0-to-1 early stage), downgrade to text-only analysis — do not fail on missing files.",
+            "18. Do not call move_card. End your turn when done; the dev-executor step will start automatically.",
+          ] : []),
+        ] : []),
+        ...(currentColumnId === "review" ? [
+          "9. Do not modify implementation code during review. If a bug is found, report it in update_card but do not fix it — describe the issue so the dev specialist can address it.",
+          "10. Do not commit changes during review. This column is read-only verification only.",
+        ] : []),
+        ...(currentColumnId === "todo" ? [
+          "9. When decomposing tasks, ensure each sub-task has clear acceptance criteria that can be independently verified. Vague or unscoped sub-tasks will cause downstream failures.",
+        ] : []),
       ];
 
-  const artifactGateSection = [
+  // Artifact Gates: skip for blocked, done, archived — not actionable there
+  const showArtifactGates = !isBacklogPlanning && currentColumnStage !== "blocked" && !isTerminalStage;
+  const artifactGateSection = showArtifactGates ? [
     "## Artifact Gates",
     "",
     `**Current lane gate:** ${transitionArtifacts.currentColumn?.name ?? currentColumnId} requires ${formatArtifactSummary(transitionArtifacts.currentRequiredArtifacts)} to enter.`,
@@ -339,13 +265,22 @@ export function buildTaskPrompt(
     "Use `list_artifacts` to confirm what already exists, then use `provide_artifact` or `capture_screenshot` to fill gaps.",
     "Do not treat `update_card` text as artifact evidence. Artifact gates are satisfied only by stored artifacts.",
     "",
-  ];
+  ] : [];
 
-  const deliveryGateSection = transitionArtifacts.nextColumn?.automation?.deliveryRules
+  // For terminal stages (done/archived), fall back to current column's delivery rules
+  // so auto-merger and conflict-resolver specialists can see autoMergeAfterPR config.
+  const effectiveDeliveryRules = transitionArtifacts.nextColumn?.automation?.deliveryRules
+    ?? (isTerminalStage
+      ? boardColumns.find((c) => c.id === currentColumnId)?.automation?.deliveryRules
+      : undefined);
+  const deliveryGateLabel = transitionArtifacts.nextColumn
+    ? `Moving this card to ${transitionArtifacts.nextColumn.name ?? nextColumnId ?? "the next column"} also requires`
+    : `This card's delivery rules specify`;
+  const deliveryGateSection = effectiveDeliveryRules
     ? [
         "## Delivery Gates",
         "",
-        `Moving this card to ${transitionArtifacts.nextColumn.name ?? nextColumnId ?? "the next column"} also requires: ${formatDeliveryRules(transitionArtifacts.nextColumn.automation.deliveryRules)}.`,
+        `${deliveryGateLabel}: ${formatDeliveryRules(effectiveDeliveryRules)}.`,
         "Do not call `move_card` until those delivery conditions are satisfied. If the move is rejected, record the blocker clearly in `update_card` and resolve it before retrying.",
         "",
       ]
@@ -362,7 +297,7 @@ export function buildTaskPrompt(
       ]
     : [];
 
-  const laneRunHistorySection = !isBacklogPlanning && previousLaneRun
+  const laneRunHistorySection = !isBacklogPlanning && !isTerminalStage && previousLaneRun
     ? [
         "## Current Lane History",
         "",
@@ -374,7 +309,7 @@ export function buildTaskPrompt(
       ]
     : [];
 
-  const laneHandoffSection = !isBacklogPlanning && (previousLaneSession || pendingLaneHandoffs.length > 0)
+  const laneHandoffSection = !isBacklogPlanning && !isTerminalStage && currentColumnStage !== "blocked" && (previousLaneSession || pendingLaneHandoffs.length > 0)
     ? [
         "## Lane Handoff Context",
         "",
@@ -398,14 +333,28 @@ export function buildTaskPrompt(
       ]
     : [];
 
-  const devVerificationSection = currentColumnId === "dev"
+  const taskDevServer = getTaskDevServerRegistry().getForTask(task.id);
+  const devVerificationSection = currentColumnId === "dev" || currentColumnId === "review"
     ? [
         "## Dev Verification Safety",
         "",
         "Verify frontend changes against the current task worktree and the preview process started for this session.",
-        "Do not assume `http://localhost:3000` is the right preview target unless this session started that exact server for the current worktree.",
-        "Do not use broad process-kill commands such as `pkill -f \"next dev\"` or otherwise stop shared developer servers.",
-        "If you start a temporary preview server, stop only the exact process started for this session, preferably via its recorded PID. Do not use `ps | grep | xargs kill`, `killall`, or broad `pkill` patterns for cleanup.",
+        ...(taskDevServer
+          ? [
+              `This task has a dedicated dev server port: ${taskDevServer.port}`,
+              `Dev server URL: ${taskDevServer.url}`,
+              currentColumnId === "dev"
+                ? `You MUST start your dev server on this port: \`PORT=${taskDevServer.port} npm run dev\`. Do NOT stop this dev server when you finish — the Review agent will reuse it.`
+                : `The dev server for this task should be running at ${taskDevServer.url}. Use this URL for all Playwright verification. Do NOT use localhost:3000.`,
+              "Start the server as a background process so it survives session end.",
+              "Do not use broad process-kill commands such as `pkill -f \"next dev\"` or otherwise stop shared developer servers.",
+              "If you start a temporary preview server, stop only the exact process started for this session, preferably via its recorded PID.",
+            ]
+          : [
+              "Do not assume `http://localhost:3000` is the right preview target unless this session started that exact server for the current worktree.",
+              "Do not use broad process-kill commands such as `pkill -f \"next dev\"` or otherwise stop shared developer servers.",
+              "If you start a temporary preview server, stop only the exact process started for this session, preferably via its recorded PID.",
+            ]),
         "If the UI depends on env vars or setup, start verification with those exact env vars, mention them in `update_card`, and attach evidence from that configured run.",
         "If safe runtime verification is blocked, use `request_previous_lane_handoff` for environment preparation or runtime context instead of looping on restarts.",
         "",
@@ -473,27 +422,30 @@ export function buildTaskPrompt(
       ]
     : [];
 
-  const savedHistoryMemoryPrompt = buildSavedHistoryMemoryPromptSection(task);
-  const savedHistoryMemorySection = savedHistoryMemoryPrompt
-    ? [savedHistoryMemoryPrompt]
-    : [];
-  const strategyMemoryPrompt = buildTaskStrategyMemoryPromptSection(task);
-  const strategyMemorySection = strategyMemoryPrompt
-    ? [strategyMemoryPrompt]
-    : [];
-  const laneExperiencePrompt = buildLaneExperiencePromptSection(task);
-  const laneExperienceSection = laneExperiencePrompt
-    ? [laneExperiencePrompt]
+  const blockedLaneVerdictSection = currentColumnStage === "blocked"
+    ? [
+        "## Blocked Lane — Verdict Status",
+        "",
+        task.verificationVerdict
+          ? `**Verification verdict on this card: ${task.verificationVerdict}**`
+          : "No verification verdict recorded.",
+        ...(task.verificationVerdict === "APPROVED"
+          ? ["This card was APPROVED during review. It should be routed back to `done` — the blocker is likely an automation artifact, not a business issue."]
+          : task.verificationVerdict === "NOT_APPROVED"
+          ? ["This card was NOT APPROVED during review. Investigate whether the blocked state is related to the review rejection."]
+          : []),
+        "",
+      ]
     : [];
 
   return [
-    `You are assigned to Kanban task: ${task.title}`,
+    `You are assigned to Kanban task: ${sanitizeForPrompt(task.title)}`,
     "",
     "## Context",
     "",
     "**IMPORTANT**: You are working in Kanban context. Use MCP tools (update_card, move_card, etc.) to manage this card.",
-    "Do NOT create or sync GitHub issues during backlog planning.",
-    "Do NOT use `gh issue create` or other GitHub CLI commands — those are for GitHub issue context only.",
+    "Do NOT create or sync VCS issues (GitHub/GitLab) during backlog planning.",
+    "Do NOT use platform CLI commands such as `gh issue create` or `glab issue create` — those are for VCS issue context only.",
     "",
     "## Task Details",
     "",
@@ -503,21 +455,34 @@ export function buildTaskPrompt(
     nextColumnId ? `**Next Column ID:** ${nextColumnId}` : "**Next Column ID:** none",
     `**Priority:** ${task.priority ?? "medium"}`,
     labels,
-    task.githubUrl ? `**GitHub Issue:** ${task.githubUrl}` : "**GitHub Issue:** local-only",
+    task.vcsUrl ? `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** ${task.vcsUrl}` : `**${isGitLab() ? "GitLab Issue" : "GitHub Issue"}:** local-only`,
+    ...(task.pullRequestUrl && task.pullRequestUrl !== "manual" && task.pullRequestUrl !== "already-merged"
+      ? [`**Pull Request:** ${task.pullRequestUrl}${task.pullRequestMergedAt ? " (merged)" : ""}`]
+      : []),
+    ...(options?.baseBranch ? [`**Base Branch:** ${options.baseBranch}`] : []),
+    ...(options?.branch ? [`**Feature Branch:** ${options.branch}`] : []),
     "",
     "## Objective",
     "",
-    task.objective,
+    sanitizeForPrompt(task.objective),
     "",
+    ...(task.dependencies.length > 0
+      ? [
+          "## Task Dependencies",
+          "",
+          "This task depends on the following tasks:",
+          ...task.dependencies.map((depId) => `- ${depId}`).filter(Boolean),
+          "Ensure you do not conflict with work from these dependent tasks.",
+          "",
+        ]
+      : []),
     ...storyReadinessSection,
     ...investSection,
     ...artifactGateSection,
     ...contractGateSection,
     ...deliveryGateSection,
     ...evidenceBundleSection,
-    ...savedHistoryMemorySection,
-    ...strategyMemorySection,
-    ...laneExperienceSection,
+    ...blockedLaneVerdictSection,
     ...laneRunHistorySection,
     ...laneHandoffSection,
     ...devVerificationSection,
@@ -528,9 +493,15 @@ export function buildTaskPrompt(
     "",
     ...availableTools,
     "",
+    ...(splitWarning ? [splitWarning, ""] : []),
     "## Instructions",
     "",
     ...instructions,
+    "",
+    ...((): string[] => {
+      const discipline = resolveBehavioralDiscipline(options?.workspaceMetadata, options?.cwd);
+      return discipline.content ? [discipline.content] : [];
+    })(),
   ].join("\n");
 }
 
@@ -600,17 +571,58 @@ function isAcpPromptTimeoutError(error: unknown): boolean {
   return message.includes("Timeout waiting for session/prompt");
 }
 
+function isRateLimitError(error: unknown): boolean {
+  const message = getA2AFailureMessage(error).toLowerCase();
+  return message.includes("429") || message.includes("rate limit") || message.includes("速率限制");
+}
+
+function getRateLimitRetryDelays(): number[] {
+  const env = process.env.ROUTA_RATE_LIMIT_RETRY_DELAYS;
+  if (env) {
+    const parsed = env.split(",").map((s) => Number(s.trim())).filter((n) => n > 0);
+    if (parsed.length > 0) return parsed;
+  }
+  return [30_000, 60_000, 120_000];
+}
+
+async function dispatchWithRateLimitRetry(
+  params: Parameters<typeof dispatchSessionPrompt>[0],
+): Promise<void> {
+  const delays = getRateLimitRetryDelays();
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      await dispatchSessionPrompt(params);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isRateLimitError(error) || attempt >= delays.length) {
+        throw error;
+      }
+      const delayMs = delays[attempt];
+      console.warn(
+        `[kanban] Rate-limited on attempt ${attempt + 1}, retrying in ${delayMs / 1000}s...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
 async function triggerAcpTaskAgent(params: {
   origin: string;
   workspaceId: string;
   cwd: string;
   branch?: string;
+  baseBranch?: string;
   task: Task;
   specialistLocale?: string;
   boardColumns: KanbanColumn[];
   summaryContext?: TaskPromptSummaryContext;
   flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
+  taskDevPort?: number;
+  workspaceMetadata?: Record<string, string>;
 }): Promise<AutomationRunHandle | { error: string }> {
   const provider = resolveKanbanAutomationProvider(params.task.assignedProvider);
   const role = params.task.assignedRole ?? "CRAFTER";
@@ -618,31 +630,46 @@ async function triggerAcpTaskAgent(params: {
     ?? params.task.assignedSpecialistId
     ?? role;
 
-  const newSessionResponse = await fetch(`${params.origin}/api/acp`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: uuidv4(),
-      method: "session/new",
-      params: {
-        cwd: params.cwd,
-        branch: params.branch,
-        provider,
-        role,
-        toolMode: "full",
-        workspaceId: params.workspaceId,
-        specialistId: params.task.assignedSpecialistId,
-        specialistLocale: params.specialistLocale,
-        name: `${params.task.title} · ${sessionLabel}`,
-        taskAdaptiveHarness: buildKanbanTaskAdaptiveHarnessOptions(params.task.title, {
-          locale: params.specialistLocale,
-          role,
-          task: params.task,
-        }),
-      },
-    }),
-  });
+  const sessionParams: Record<string, unknown> = {
+    cwd: params.cwd,
+    branch: params.branch,
+    provider,
+    role,
+    toolMode: "full",
+    workspaceId: params.workspaceId,
+    specialistId: params.task.assignedSpecialistId,
+    specialistLocale: params.specialistLocale,
+    name: `${params.task.title} · ${sessionLabel}`,
+  };
+  if (params.taskDevPort) {
+    sessionParams.env = { TASK_DEV_PORT: String(params.taskDevPort) };
+  }
+
+  const SESSION_CREATE_TIMEOUT_MS = 30_000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SESSION_CREATE_TIMEOUT_MS);
+
+  let newSessionResponse: Response;
+  try {
+    newSessionResponse = await fetch(`${params.origin}/api/acp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: uuidv4(),
+        method: "session/new",
+        params: sessionParams,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return { error: `Session creation timed out after ${SESSION_CREATE_TIMEOUT_MS / 1000}s.` };
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
 
   const newSessionBody = await newSessionResponse.json() as { result?: { sessionId?: string }; error?: { message?: string } };
   const sessionId = newSessionBody.result?.sessionId;
@@ -651,7 +678,7 @@ async function triggerAcpTaskAgent(params: {
   }
 
   void (async () => {
-    await dispatchSessionPrompt({
+    await dispatchWithRateLimitRetry({
       sessionId,
       workspaceId: params.workspaceId,
       provider,
@@ -661,9 +688,21 @@ async function triggerAcpTaskAgent(params: {
         text: buildTaskPrompt(params.task, params.boardColumns, {
           currentSessionId: sessionId,
           summaryContext: params.summaryContext,
+          branch: params.branch,
+          baseBranch: params.baseBranch,
           flowReport: params.flowReport,
+          workspaceMetadata: params.workspaceMetadata,
+          cwd: params.cwd,
         }),
       }],
+    });
+    emitAutomationEvent({
+      eventBus: params.eventBus,
+      type: AgentEventType.AGENT_COMPLETED,
+      workspaceId: params.workspaceId,
+      sessionId,
+      transport: "acp",
+      success: true,
     });
   })().catch((error) => {
     if (isAcpPromptTimeoutError(error)) {
@@ -700,6 +739,8 @@ async function triggerA2ATaskAgent(params: {
   summaryContext?: TaskPromptSummaryContext;
   flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
+  workspaceMetadata?: Record<string, string>;
+  cwd?: string;
 }): Promise<AutomationRunHandle | { error: string }> {
   const agentCardUrl = params.step?.agentCardUrl?.trim();
   if (!agentCardUrl) {
@@ -741,6 +782,8 @@ async function triggerA2ATaskAgent(params: {
       currentSessionId: localSessionId,
       summaryContext: params.summaryContext,
       flowReport: params.flowReport,
+      workspaceMetadata: params.workspaceMetadata,
+      cwd: params.cwd,
     }),
     metadata,
   );
@@ -791,6 +834,7 @@ export async function triggerAssignedTaskAgent(params: {
   workspaceId: string;
   cwd: string;
   branch?: string;
+  baseBranch?: string;
   task: Task;
   step?: KanbanAutomationStep;
   specialistLocale?: string;
@@ -798,12 +842,15 @@ export async function triggerAssignedTaskAgent(params: {
   summaryContext?: TaskPromptSummaryContext;
   flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
+  taskDevPort?: number;
+  workspaceMetadata?: Record<string, string>;
 }): Promise<{ sessionId?: string; error?: string; transport?: KanbanTransport; externalTaskId?: string; contextId?: string; displayTarget?: string }> {
   const {
     origin,
     workspaceId,
     cwd,
     branch,
+    baseBranch,
     task,
     step,
     specialistLocale,
@@ -811,6 +858,8 @@ export async function triggerAssignedTaskAgent(params: {
     summaryContext,
     flowReport,
     eventBus,
+    taskDevPort,
+    workspaceMetadata,
   } = params;
   const transport = getStepTransport(step);
   const runHandle = transport === "a2a"
@@ -822,18 +871,23 @@ export async function triggerAssignedTaskAgent(params: {
         summaryContext,
         flowReport,
         eventBus,
+        workspaceMetadata,
+        cwd,
       })
     : await triggerAcpTaskAgent({
         origin,
         workspaceId,
         cwd,
         branch,
+        baseBranch,
         task,
         specialistLocale,
         boardColumns,
         summaryContext,
         flowReport,
         eventBus,
+        taskDevPort,
+        workspaceMetadata,
       });
 
   if ("error" in runHandle) {

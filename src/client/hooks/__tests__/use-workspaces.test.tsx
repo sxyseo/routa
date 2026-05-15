@@ -100,6 +100,92 @@ describe("useWorkspaces", () => {
       expect(created).toBeNull();
     });
   });
+
+  it("updates workspace title via PATCH and optimistically updates state", async () => {
+    desktopAwareFetchMock
+      .mockResolvedValueOnce(okJson({ workspaces: [
+        { id: "ws-1", title: "Old Title", status: "active", metadata: {}, createdAt: "", updatedAt: "" },
+      ] }))
+      .mockResolvedValueOnce(okJson({
+        workspace: { id: "ws-1", title: "New Title", status: "active", metadata: {}, createdAt: "", updatedAt: "" },
+      }));
+
+    const { result } = renderHook(() => useWorkspaces());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      const updated = await result.current.updateWorkspace("ws-1", { title: "New Title" });
+      expect(updated?.title).toBe("New Title");
+    });
+
+    expect(result.current.workspaces[0].title).toBe("New Title");
+    expect(desktopAwareFetchMock).toHaveBeenCalledWith("/api/workspaces/ws-1", expect.objectContaining({
+      method: "PATCH",
+    }));
+  });
+
+  it("returns null when update fails", async () => {
+    desktopAwareFetchMock
+      .mockResolvedValueOnce(okJson({ workspaces: [] }))
+      .mockResolvedValueOnce({ ok: false });
+
+    const { result } = renderHook(() => useWorkspaces());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      const updated = await result.current.updateWorkspace("ws-1", { title: "Nope" });
+      expect(updated).toBeNull();
+    });
+  });
+
+  it("deletes workspace and removes from local state", async () => {
+    desktopAwareFetchMock
+      .mockResolvedValueOnce(okJson({ workspaces: [
+        { id: "ws-1", title: "ToDelete", status: "active", metadata: {}, createdAt: "", updatedAt: "" },
+        { id: "ws-2", title: "Keep", status: "active", metadata: {}, createdAt: "", updatedAt: "" },
+      ] }))
+      .mockResolvedValueOnce(okJson({ deleted: true }));
+
+    const { result } = renderHook(() => useWorkspaces());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      const ok = await result.current.deleteWorkspace("ws-1");
+      expect(ok).toBe(true);
+    });
+
+    expect(result.current.workspaces).toHaveLength(1);
+    expect(result.current.workspaces[0].id).toBe("ws-2");
+    expect(desktopAwareFetchMock).toHaveBeenCalledWith("/api/workspaces/ws-1", expect.objectContaining({
+      method: "DELETE",
+    }));
+  });
+
+  it("returns false when delete fails", async () => {
+    desktopAwareFetchMock
+      .mockResolvedValueOnce(okJson({ workspaces: [] }))
+      .mockResolvedValueOnce({ ok: false });
+
+    const { result } = renderHook(() => useWorkspaces());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      const ok = await result.current.deleteWorkspace("ws-1");
+      expect(ok).toBe(false);
+    });
+  });
 });
 
 describe("useCodebases", () => {

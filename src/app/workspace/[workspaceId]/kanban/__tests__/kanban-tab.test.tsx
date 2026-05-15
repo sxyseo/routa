@@ -611,7 +611,7 @@ describe("KanbanTab GitHub import", () => {
   it("shows import issues when the default codebase is labeled as owner/repo", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/github/access?boardId=board-1") {
+      if (url.startsWith("/api/github/access?") && url.includes("boardId=board-1")) {
         return {
           ok: true,
           json: async () => ({
@@ -653,7 +653,7 @@ describe("KanbanTab GitHub import", () => {
   it("imports backlog issues without creating a task-level provider override", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/github/access?boardId=board-1") {
+      if (url.startsWith("/api/github/access?") && url.includes("boardId=board-1")) {
         return {
           ok: true,
           json: async () => ({
@@ -790,11 +790,11 @@ describe("KanbanTab GitHub import", () => {
           objective: "Imported from GitHub",
           labels: ["bug"],
           codebaseIds: ["codebase-1"],
-          githubId: "issue-1",
-          githubNumber: 161,
-          githubUrl: "https://github.com/phodal/routa-js/issues/161",
-          githubRepo: "phodal/routa-js",
-          githubState: "open",
+          vcsId: "issue-1",
+          vcsNumber: 161,
+          vcsUrl: "https://github.com/phodal/routa-js/issues/161",
+          vcsRepo: "phodal/routa-js",
+          vcsState: "open",
         }),
       });
     });
@@ -1268,7 +1268,7 @@ describe("KanbanCardDetail changes tab", () => {
     render(
       <KanbanCardDetail
         task={createTask("task-1", "Story One", {
-          githubNumber: 378,
+          vcsNumber: 378,
           deliveryReadiness: {
             checked: true,
             repoPath: "/tmp/repos/main",
@@ -1283,7 +1283,9 @@ describe("KanbanCardDetail changes tab", () => {
             hasCommitsSinceBase: true,
             hasUncommittedChanges: false,
             isGitHubRepo: true,
+            isGitLabRepo: false,
             canCreatePullRequest: true,
+      isMergedIntoBase: false,
           },
         })}
         availableProviders={[]}
@@ -1618,7 +1620,9 @@ describe("KanbanCardDetail changes tab", () => {
             hasCommitsSinceBase: true,
             hasUncommittedChanges: false,
             isGitHubRepo: true,
+            isGitLabRepo: false,
             canCreatePullRequest: true,
+      isMergedIntoBase: false,
           },
         })}
         availableProviders={[]}
@@ -1734,7 +1738,9 @@ describe("KanbanCardDetail changes tab", () => {
             hasCommitsSinceBase: true,
             hasUncommittedChanges: true,
             isGitHubRepo: true,
+            isGitLabRepo: false,
             canCreatePullRequest: false,
+      isMergedIntoBase: false,
           },
         })}
         availableProviders={[]}

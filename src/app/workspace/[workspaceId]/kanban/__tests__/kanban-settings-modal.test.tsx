@@ -394,8 +394,7 @@ describe("KanbanSettingsModal", () => {
         columnAutomation={{}}
         availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
         specialists={[
-          { id: "kanban-done-reporter", name: "Done Reporter", role: "GATE" },
-          { id: "kanban-pr-publisher", name: "PR Publisher", role: "DEVELOPER" },
+          { id: "kanban-done-finalizer", name: "Done Finalizer", role: "DEVELOPER" },
         ]}
         specialistLanguage="en"
         onClose={vi.fn()}
@@ -415,7 +414,7 @@ describe("KanbanSettingsModal", () => {
             enabled: true,
             steps: [
               expect.objectContaining({
-                specialistId: "kanban-done-reporter",
+                specialistId: "kanban-done-finalizer",
               }),
             ],
           }),
@@ -430,16 +429,10 @@ describe("KanbanSettingsModal", () => {
         defaultHistoryMemoryPolicy,
         undefined,
       );
-      const firstCall = onSave.mock.calls[0];
-      expect(firstCall).toBeDefined();
-      const savedAutomation = (firstCall as unknown[] | undefined)?.[1] as { done?: { steps?: unknown[] } } | undefined;
-      expect(savedAutomation?.done?.steps).not.toEqual(
-        expect.arrayContaining([expect.objectContaining({ specialistId: "kanban-pr-publisher" })]),
-      );
     });
   });
 
-  it("can explicitly enable the Done PR publisher step", async () => {
+  it("can toggle the Done Finalizer specialist on and off", async () => {
     const onSave = vi.fn(async () => {});
     const doneBoard: KanbanBoardInfo = {
       ...board,
@@ -453,13 +446,12 @@ describe("KanbanSettingsModal", () => {
           done: {
             enabled: true,
             transitionType: "entry",
-            steps: [{ id: "step-1", role: "GATE", specialistId: "kanban-done-reporter" }],
+            steps: [{ id: "step-1", role: "DEVELOPER" }],
           },
         }}
         availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
         specialists={[
-          { id: "kanban-done-reporter", name: "Done Reporter", role: "GATE" },
-          { id: "kanban-pr-publisher", name: "PR Publisher", role: "DEVELOPER" },
+          { id: "kanban-done-finalizer", name: "Done Finalizer", role: "DEVELOPER" },
         ]}
         specialistLanguage="en"
         onClose={vi.fn()}
@@ -479,8 +471,7 @@ describe("KanbanSettingsModal", () => {
           done: expect.objectContaining({
             enabled: true,
             steps: [
-              expect.objectContaining({ specialistId: "kanban-pr-publisher" }),
-              expect.objectContaining({ specialistId: "kanban-done-reporter" }),
+              expect.objectContaining({ specialistId: "kanban-done-finalizer" }),
             ],
           }),
         },

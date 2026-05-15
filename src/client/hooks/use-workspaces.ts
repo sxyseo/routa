@@ -19,7 +19,7 @@ export interface CodebaseData {
   branch?: string;
   label?: string;
   isDefault: boolean;
-  sourceType?: "local" | "github";
+  sourceType?: "local" | "github" | "gitlab";
   sourceUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -31,6 +31,8 @@ export interface UseWorkspacesReturn {
   fetchWorkspaces: () => Promise<void>;
   createWorkspace: (title: string) => Promise<WorkspaceData | null>;
   archiveWorkspace: (id: string) => Promise<void>;
+  updateWorkspace: (id: string, patch: { title: string }) => Promise<WorkspaceData | null>;
+  deleteWorkspace: (id: string) => Promise<boolean>;
 }
 
 export function useWorkspaces(): UseWorkspacesReturn {
@@ -71,11 +73,36 @@ export function useWorkspaces(): UseWorkspacesReturn {
     await fetchWorkspaces();
   }, [fetchWorkspaces]);
 
+  const updateWorkspace = useCallback(async (id: string, patch: { title: string }): Promise<WorkspaceData | null> => {
+    const res = await desktopAwareFetch(`/api/workspaces/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Optimistically update local state
+    const updated = data.workspace as WorkspaceData | undefined;
+    if (updated) {
+      setWorkspaces((prev) => prev.map((w) => (w.id === id ? updated : w)));
+    }
+    return updated ?? null;
+  }, []);
+
+  const deleteWorkspace = useCallback(async (id: string): Promise<boolean> => {
+    const res = await desktopAwareFetch(`/api/workspaces/${id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) return false;
+    setWorkspaces((prev) => prev.filter((w) => w.id !== id));
+    return true;
+  }, []);
+
   useEffect(() => {
     fetchWorkspaces();
   }, [fetchWorkspaces]);
 
-  return { workspaces, loading, fetchWorkspaces, createWorkspace, archiveWorkspace };
+  return { workspaces, loading, fetchWorkspaces, createWorkspace, archiveWorkspace, updateWorkspace, deleteWorkspace };
 }
 
 export function useCodebases(workspaceId: string): {
@@ -87,10 +114,14 @@ export function useCodebases(workspaceId: string): {
   const fetchCodebases = useCallback(async () => {
     // Skip if workspaceId is missing or is a placeholder (static export mode)
     if (!workspaceId || workspaceId === "__placeholder__") return;
-    const res = await desktopAwareFetch(`/api/workspaces/${workspaceId}/codebases`);
-    if (!res.ok) return;
-    const data = await res.json();
-    setCodebases(data.codebases ?? []);
+    try {
+      const res = await desktopAwareFetch(`/api/workspaces/${workspaceId}/codebases`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setCodebases(data.codebases ?? []);
+    } catch {
+      // Network failure (e.g. SSE reconnect during navigation) — ignore silently
+    }
   }, [workspaceId]);
 
   useEffect(() => {

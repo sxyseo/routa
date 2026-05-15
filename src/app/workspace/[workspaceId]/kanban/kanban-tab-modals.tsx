@@ -7,7 +7,7 @@ import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker"
 import { useTranslation } from "@/i18n";
 import type { KanbanRequiredTaskField } from "@/core/models/kanban";
 import type { TaskInfo, WorktreeInfo } from "../types";
-import { ExternalLink, Info, Pencil, Plus, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
+import { ClipboardCopy, Download, ExternalLink, Info, Pencil, Plus, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
 
 
 export interface KanbanCodebaseModalProps {
@@ -33,7 +33,7 @@ export interface KanbanCodebaseModalProps {
   localTasks: TaskInfo[];
   handleDeleteCodebaseWorktrees: (worktrees: WorktreeInfo[]) => void | Promise<void>;
   deletingWorktreeIds: string[];
-  liveBranchInfo: { current: string; branches: string[] } | null;
+  liveBranchInfo: { current: string; branches: string[]; headCommit?: { sha: string; shortSha: string; message: string; authorName: string; authoredAt: string } } | null;
   branchActionError: string | null;
   repoHealth?: { missingRepoTasks: number; cwdMismatchTasks: number };
   onSelectCodebase: (codebase: CodebaseData) => void | Promise<void>;
@@ -43,6 +43,10 @@ export interface KanbanCodebaseModalProps {
   handleReclone: () => void | Promise<void>;
   recloning: boolean;
   recloneSuccess: string | null;
+  handleFetchLatest: () => void | Promise<void>;
+  fetchingLatest: boolean;
+  fetchLatestError: string | null;
+  fetchLatestResult: string | null;
   onStartEditCodebase: () => void;
   onRequestRemoveCodebase: () => void;
   onClose: () => void;
@@ -81,6 +85,10 @@ export function KanbanCodebaseModal({
   handleReclone,
   recloning,
   recloneSuccess,
+  handleFetchLatest,
+  fetchingLatest,
+  fetchLatestError,
+  fetchLatestResult,
   onStartEditCodebase,
   onRequestRemoveCodebase,
   onClose,
@@ -96,11 +104,11 @@ export function KanbanCodebaseModal({
     }),
     [codebases],
   );
-  const githubCodebaseCount = useMemo(
-    () => codebases.filter((codebase) => getCodebaseSourceType(codebase) === "github").length,
+  const vcsCodebaseCount = useMemo(
+    () => codebases.filter((codebase) => { const st = getCodebaseSourceType(codebase); return st === "github" || st === "gitlab"; }).length,
     [codebases],
   );
-  const localCodebaseCount = codebases.length - githubCodebaseCount;
+  const localCodebaseCount = codebases.length - vcsCodebaseCount;
   const healthIssuesCount = (repoHealth?.missingRepoTasks ?? 0) + (repoHealth?.cwdMismatchTasks ?? 0);
   const selectedCodebaseLabel = selectedCodebase ? getCodebaseDisplayName(selectedCodebase) : null;
   const showRepositoryRail = sortedCodebases.length > 1;
@@ -169,7 +177,7 @@ export function KanbanCodebaseModal({
                   value={defaultCodebase ? getCodebaseDisplayName(defaultCodebase) : "—"}
                 />
                 <CompactStat label={t.kanbanModals.localSourcesLabel} value={String(localCodebaseCount)} />
-                <CompactStat label={t.kanbanModals.githubSourcesLabel} value={String(githubCodebaseCount)} />
+                <CompactStat label={t.kanbanModals.vcsSourcesLabel} value={String(vcsCodebaseCount)} />
                 <CompactStat
                   label={t.kanbanModals.healthIssuesLabel}
                   value={String(healthIssuesCount)}
@@ -433,6 +441,63 @@ export function KanbanCodebaseModal({
                     <InfoField label={t.kanbanModals.sourceType} value={selectedCodebaseSourceType} />
                   </div>
 
+                  {liveBranchInfo?.headCommit ? (
+                    <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
+                          {t.kanbanModals.latestCommit}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void handleFetchLatest()}
+                            disabled={fetchingLatest}
+                            title={t.kanbanModals.fetchLatest}
+                            className="inline-flex items-center gap-1.5 rounded-sm border border-desktop-accent bg-desktop-accent px-2 py-1 text-[10px] font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {fetchingLatest
+                              ? <RefreshCw className="h-3 w-3 animate-spin" />
+                              : <Download className="h-3 w-3" />}
+                            <span>{fetchingLatest ? t.kanbanModals.fetchingLatest : t.kanbanModals.fetchLatest}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void navigator.clipboard.writeText(liveBranchInfo.headCommit!.sha)}
+                            title={t.kanbanModals.copySha}
+                            className="shrink-0 rounded-sm p-1 text-desktop-text-secondary transition hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+                          >
+                            <ClipboardCopy className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                      {fetchLatestError ? (
+                        <div className="mt-1.5 text-[10px] text-rose-400">{fetchLatestError}</div>
+                      ) : fetchLatestResult === "updated" ? (
+                        <div className="mt-1.5 text-[10px] text-emerald-400">{t.kanbanModals.fetchSynced}</div>
+                      ) : fetchLatestResult === "synced" ? (
+                        <div className="mt-1.5 text-[10px] text-desktop-text-secondary">{t.kanbanModals.fetchAlreadySynced}</div>
+                      ) : null}
+                      <div className="mt-1.5 space-y-1">
+                        <div className="truncate font-mono text-[11px] text-desktop-text-primary" title={liveBranchInfo.headCommit.sha}>
+                          {liveBranchInfo.headCommit.sha}
+                        </div>
+                        <div className="truncate text-[11px] text-desktop-text-primary">
+                          {liveBranchInfo.headCommit.message || "—"}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-[10px] text-desktop-text-secondary">
+                          {liveBranchInfo.headCommit.authorName ? (
+                            <span>{liveBranchInfo.headCommit.authorName}</span>
+                          ) : null}
+                          {liveBranchInfo.headCommit.authoredAt ? (
+                            <time dateTime={liveBranchInfo.headCommit.authoredAt}>
+                              {formatTimestamp(liveBranchInfo.headCommit.authoredAt)}
+                            </time>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {selectedCodebase.sourceUrl ? (
                     <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-3 py-3">
                       <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
@@ -600,7 +665,7 @@ export function KanbanCodebaseModal({
                                       {worktree.status}
                                     </span>
                                     <span className="font-mono text-[11px] text-desktop-text-primary">{worktree.branch}</span>
-                                    <span className="text-[10px] text-desktop-text-secondary">{t.kanban.baseLabel} {worktree.baseBranch}</span>
+                                    <span className="text-[10px] text-desktop-text-secondary" title={worktree.baseCommitSha ?? undefined}>{t.kanban.baseLabel} {worktree.baseCommitSha ? `${worktree.baseCommitSha.slice(0, 7)} (${worktree.baseBranch})` : worktree.baseBranch}</span>
                                     {linkedTasks.length > 0 ? (
                                       <span className="rounded-sm border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">
                                         {linkedTasks.length} {t.kanbanModals.linkedTasks}{linkedTasks.length > 1 ? "s" : ""}
@@ -647,7 +712,7 @@ export function KanbanCodebaseModal({
                   )}
                 </InspectorSection>
 
-                {selectedCodebaseSourceType === "github" && selectedCodebase.sourceUrl ? (
+                {(selectedCodebaseSourceType === "github" || selectedCodebaseSourceType === "gitlab") && selectedCodebase.sourceUrl ? (
                   <InspectorSection
                     title={t.kanbanModals.recloneRepo}
                     hint={t.kanbanModals.recloneHint}
@@ -766,9 +831,11 @@ function getCodebaseDisplayName(codebase: CodebaseData): string {
   return codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath;
 }
 
-function getCodebaseSourceType(codebase: CodebaseData): "local" | "github" {
+function getCodebaseSourceType(codebase: CodebaseData): "local" | "github" | "gitlab" {
   if (codebase.sourceType === "github") return "github";
+  if (codebase.sourceType === "gitlab") return "gitlab";
   if (codebase.sourceUrl?.includes("github.com")) return "github";
+  if (codebase.sourceUrl?.includes("gitlab.com")) return "gitlab";
   if (looksLikeGitHubRepoLabel(codebase.label)) return "github";
   return "local";
 }
@@ -1052,9 +1119,9 @@ export function KanbanDeleteTaskModal({
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
                 {t.kanbanModals.deleteTaskConfirm} <span className="font-medium text-slate-900 dark:text-slate-100">&quot;{deleteConfirmTask.title}&quot;</span>?
               </p>
-              {deleteConfirmTask.githubNumber && (
+              {deleteConfirmTask.vcsNumber && (
                 <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  {t.kanbanModals.deleteTaskGithubNote} #{deleteConfirmTask.githubNumber} will remain unchanged.
+                  {t.kanbanModals.deleteTaskGithubNote} #{deleteConfirmTask.vcsNumber} will remain unchanged.
                 </p>
               )}
             </div>

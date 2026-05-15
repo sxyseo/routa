@@ -15,6 +15,7 @@ import {
   boolean,
   primaryKey,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import type { TaskCreationSource } from "../kanban/task-creation-policy";
 import type { KanbanColumn } from "../models/kanban";
@@ -101,15 +102,18 @@ export const tasks = pgTable("tasks", {
   sessionIds: jsonb("session_ids").$type<string[]>().default([]),
   laneSessions: jsonb("lane_sessions").$type<TaskLaneSession[]>().default([]),
   laneHandoffs: jsonb("lane_handoffs").$type<TaskLaneHandoff[]>().default([]),
-  githubId: text("github_id"),
-  githubNumber: integer("github_number"),
-  githubUrl: text("github_url"),
-  githubRepo: text("github_repo"),
-  githubState: text("github_state"),
-  githubSyncedAt: timestamp("github_synced_at", { withTimezone: true }),
+  vcsId: text("vcs_id"),
+  vcsNumber: integer("vcs_number"),
+  vcsUrl: text("vcs_url"),
+  vcsRepo: text("vcs_repo"),
+  vcsState: text("vcs_state"),
+  vcsSyncedAt: timestamp("vcs_synced_at", { withTimezone: true }),
   lastSyncError: text("last_sync_error"),
   isPullRequest: boolean("is_pull_request"),
   dependencies: jsonb("dependencies").$type<string[]>().default([]),
+  blocking: jsonb("blocking").$type<string[]>().default([]),
+  dependencyStatus: text("dependency_status"),
+  parentTaskId: text("parent_task_id"),
   parallelGroup: text("parallel_group"),
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   /** Session ID that created this task (for session-scoped filtering) */
@@ -122,6 +126,10 @@ export const tasks = pgTable("tasks", {
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId: text("worktree_id"),
   deliverySnapshot: jsonb("delivery_snapshot").$type<TaskDeliverySnapshot>(),
+  /** URL of the pull/merge request created for this task (set by PR Publisher) */
+  pullRequestUrl: text("pull_request_url"),
+  /** Timestamp when the PR was merged */
+  pullRequestMergedAt: timestamp("pull_request_merged_at", { withTimezone: true }),
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),
@@ -417,7 +425,11 @@ export const backgroundTasks = pgTable("background_tasks", {
   dependsOnTaskIds: jsonb("depends_on_task_ids").$type<string[]>(),
   /** JSON output from this task (for chaining to dependent tasks) */
   taskOutput: text("task_output"),
-});
+}, (table) => [
+  index("idx_background_tasks_result_session_id").on(table.resultSessionId),
+  index("idx_background_tasks_status").on(table.status),
+  index("idx_background_tasks_workspace_id").on(table.workspaceId),
+]);
 
 // ─── GitHub Webhook Configs ───────────────────────────────────────────────
 
@@ -436,6 +448,40 @@ export const githubWebhookConfigs = pgTable("github_webhook_configs", {
   /** HMAC secret used to verify webhook payloads */
   webhookSecret: text("webhook_secret").notNull().default(""),
   /** GitHub event types to subscribe to, e.g. ["issues", "pull_request"] */
+  eventTypes: jsonb("event_types").$type<string[]>().notNull().default([]),
+  /** Optional label filter for issues.opened events */
+  labelFilter: jsonb("label_filter").$type<string[]>().default([]),
+  /** ACP agent/provider ID to trigger when event fires (mutually exclusive with workflowId) */
+  triggerAgentId: text("trigger_agent_id").notNull(),
+  /** Workflow ID to trigger instead of single agent (e.g., "pr-verify") */
+  workflowId: text("workflow_id"),
+  /** Workspace scope */
+  workspaceId: text("workspace_id"),
+  /** Whether this config is active */
+  enabled: boolean("enabled").notNull().default(true),
+  /** Optional prompt template; {event} and {payload} are substituted */
+  promptTemplate: text("prompt_template"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── GitLab Webhook Configs ────────────────────────────────────────────────
+
+/**
+ * Stores user-configured GitLab webhook trigger rules.
+ * Each row describes: which project, which events, which agent to trigger.
+ */
+export const gitlabWebhookConfigs = pgTable("gitlab_webhook_configs", {
+  id: text("id").primaryKey(),
+  /** Human-readable name for this trigger config */
+  name: text("name").notNull(),
+  /** GitLab project in "group/project" or "owner/repo" format */
+  repo: text("repo").notNull(),
+  /** GitLab personal access token (stored encrypted/plaintext) */
+  gitlabToken: text("gitlab_token").notNull(),
+  /** Token secret used to verify webhook payloads */
+  webhookSecret: text("webhook_secret").notNull().default(""),
+  /** GitLab event types to subscribe to, e.g. ["issues", "merge_request"] */
   eventTypes: jsonb("event_types").$type<string[]>().notNull().default([]),
   /** Optional label filter for issues.opened events */
   labelFilter: jsonb("label_filter").$type<string[]>().default([]),
@@ -520,6 +566,7 @@ export const worktrees = pgTable("worktrees", {
   worktreePath: text("worktree_path").notNull(),
   branch: text("branch").notNull(),
   baseBranch: text("base_branch").notNull(),
+  baseCommitSha: text("base_commit_sha"),
   status: text("status").notNull().default("creating"), // creating | active | error | removing
   sessionId: text("session_id"),
   label: text("label"),
@@ -594,6 +641,35 @@ export const artifacts = pgTable("artifacts", {
   metadata: jsonb("metadata").$type<Record<string, string>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Notification Preferences ─────────────────────────────────────────────
+
+import type { NotificationEventType } from "../store/notification-store";
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  workspaceId: text("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  senderEmail: text("sender_email").notNull().default(""),
+  recipients: jsonb("recipients").$type<string[]>().notNull().default([]),
+  enabledEvents: jsonb("enabled_events").$type<NotificationEventType[]>().notNull().default([]),
+  throttleSeconds: integer("throttle_seconds").notNull().default(300),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Notification Logs ────────────────────────────────────────────────────
+
+export const notificationLogs = pgTable("notification_logs", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  recipients: jsonb("recipients").$type<string[]>().notNull().default([]),
+  subject: text("subject").notNull().default(""),
+  status: text("status").notNull().default("sent"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─── Artifact Requests (pending artifact requests) ───────────────────────

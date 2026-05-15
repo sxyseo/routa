@@ -14,7 +14,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
-import { ChevronLeft, ClipboardList, Columns2, FileCode2, House, MonitorUp, ScrollText, Settings, Share2 } from "lucide-react";
+import { Activity, ChevronLeft, Columns2, FileCode2, House, MonitorUp, ScrollText, Settings, Share2, Archive } from "lucide-react";
 import { HarnessMark } from "./harness-mark";
 
 
@@ -51,8 +51,7 @@ export function DesktopSidebar({
   const pathname = usePathname();
   const { t } = useTranslation();
   const normalizedWorkspaceId = workspaceId?.trim() || null;
-  const fallbackWorkspaceId = normalizedWorkspaceId || "default";
-  const workspaceBaseHref = `/workspace/${fallbackWorkspaceId}`;
+  const workspaceBaseHref = normalizedWorkspaceId ? `/workspace/${normalizedWorkspaceId}` : null;
   const settingsHarnessHref = normalizedWorkspaceId
     ? `/settings/harness?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
     : "/settings/harness";
@@ -65,6 +64,7 @@ export function DesktopSidebar({
       id: "home",
       label: t.nav.home,
       href: "/",
+      exactMatch: true,
       icon: (
         <House className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
@@ -93,16 +93,16 @@ export function DesktopSidebar({
         <Share2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}/>
       ),
     },
-  ];
-  const secondaryItems: NavItem[] = [
     {
-      id: "spec",
-      label: t.nav.spec,
-      href: workspaceBaseHref ? `${workspaceBaseHref}/spec` : "/",
+      id: "archive",
+      label: t.nav.archive,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/archive` : "/",
       icon: (
-        <ClipboardList className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+        <Archive className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
+  ];
+  const secondaryItems: NavItem[] = [
     {
       id: "feature-explorer",
       label: t.nav.featureExplorer,
@@ -122,6 +122,16 @@ export function DesktopSidebar({
       label: t.nav.fluency,
       href: settingsFluencyHref,
       icon: <MonitorUp className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>,
+    },
+    {
+      id: "performance",
+      label: "性能监控",
+      href: normalizedWorkspaceId
+        ? `/settings/performance?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
+        : "/settings/performance",
+      icon: (
+        <Activity className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+      ),
     },
     {
       id: "settings",

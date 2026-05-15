@@ -18,7 +18,8 @@ import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import {
-  parseGitHubUrl,
+  parseVCSUrl,
+  buildCloneUrl,
   getCloneBaseDir,
   repoToDirName,
   listClonedRepos,
@@ -71,11 +72,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse GitHub URL
-    const parsed = parseGitHubUrl(url);
+    // Parse VCS URL (GitHub or GitLab)
+    const parsed = parseVCSUrl(url);
     if (!parsed) {
       return NextResponse.json(
-        { error: "Invalid GitHub URL. Expected: https://github.com/owner/repo or owner/repo" },
+        { error: "Invalid repository URL. Expected: https://github.com/owner/repo, https://gitlab.com/owner/repo, or owner/repo" },
         { status: 400 }
       );
     }
@@ -114,10 +115,11 @@ export async function POST(request: NextRequest) {
 
     let branchInfo: { current: string; branches: string[] };
     let importedVia = "git";
+    const isGitHub = parsed.platform === "github";
 
     // Clone the repository. If git is unavailable (serverless) or clone fails,
-    // gracefully fall back to GitHub zipball import.
-    const cloneUrl = `https://github.com/${owner}/${repo}.git`;
+    // gracefully fall back to GitHub zipball import (GitHub only).
+    const cloneUrl = buildCloneUrl(parsed);
     try {
       execSync(`git clone --depth 1 "${cloneUrl}" "${targetDir}"`, {
         stdio: "pipe",
@@ -137,17 +139,22 @@ export async function POST(request: NextRequest) {
 
       branchInfo = getBranchInfo(targetDir);
     } catch (gitErr) {
-      importedVia = "zipball";
       if (fs.existsSync(targetDir)) {
         fs.rmSync(targetDir, { recursive: true, force: true });
       }
 
-      // Ensure per-request temp isolation for extraction-copy workflow
-      fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+      // GitHub repos can fall back to zipball import
+      if (isGitHub) {
+        importedVia = "zipball";
+        // Ensure per-request temp isolation for extraction-copy workflow
+        fs.mkdirSync(path.dirname(targetDir), { recursive: true });
 
-      try {
-        branchInfo = await importGitHubZipFallback({ owner, repo, targetDir });
-      } catch {
+        try {
+          branchInfo = await importGitHubZipFallback({ owner, repo, targetDir });
+        } catch {
+          throw gitErr;
+        }
+      } else {
         throw gitErr;
       }
     }

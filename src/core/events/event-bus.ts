@@ -42,6 +42,16 @@ export enum AgentEventType {
   SHUTDOWN_REQUESTED = "SHUTDOWN_REQUESTED",
   /** Emitted when an agent acknowledges a shutdown request */
   SHUTDOWN_ACKNOWLEDGED = "SHUTDOWN_ACKNOWLEDGED",
+  /** Emitted when a completed task's worktree should be cleaned up */
+  WORKTREE_CLEANUP = "worktree_cleanup",
+  /** Emitted when a GitHub PR associated with a task is merged */
+  PR_MERGED = "pr_merged",
+  /** Emitted when a task should automatically create a Pull Request */
+  PR_CREATE_REQUESTED = "pr_create_requested",
+  /** Emitted by the overseer when an automated or escalation decision is made */
+  OVERSEER_ALERT = "OVERSEER_ALERT",
+  /** Emitted when the graph refiner completes analysis of a board's backlog */
+  GRAPH_REFINER_COMPLETED = "graph_refiner_completed",
 }
 
 export interface AgentEvent {
@@ -79,11 +89,18 @@ export interface WaitGroup {
 
 type EventHandler = (event: AgentEvent) => void;
 
+const MAX_PENDING_PER_AGENT = 500;
+const WAIT_GROUP_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+interface WaitGroupEntry extends WaitGroup {
+  createdAt: number;
+}
+
 export class EventBus {
   private handlers = new Map<string, EventHandler>();
   private subscriptions = new Map<string, EventSubscription>();
   private pendingEvents = new Map<string, AgentEvent[]>();
-  private waitGroups = new Map<string, WaitGroup>();
+  private waitGroups = new Map<string, WaitGroupEntry>();
 
   // ─── Direct handlers ────────────────────────────────────────────────
 
@@ -129,6 +146,9 @@ export class EventBus {
 
       const pending = this.pendingEvents.get(sub.agentId) ?? [];
       pending.push(event);
+      if (pending.length > MAX_PENDING_PER_AGENT) {
+        pending.splice(0, pending.length - MAX_PENDING_PER_AGENT);
+      }
       this.pendingEvents.set(sub.agentId, pending);
 
       // Track one-shot for removal
@@ -151,6 +171,9 @@ export class EventBus {
     ) {
       this.checkWaitGroups(event.agentId);
     }
+
+    // 4. Evict expired wait groups
+    this.evictExpiredWaitGroups();
   }
 
   // ─── Agent subscriptions ────────────────────────────────────────────
@@ -179,6 +202,28 @@ export class EventBus {
     return events;
   }
 
+  /**
+   * Remove all state associated with an agent: subscriptions, pending events,
+   * and wait-group entries. Call when a session/agent ends its lifecycle.
+   */
+  removeAgent(agentId: string): void {
+    this.pendingEvents.delete(agentId);
+    // Remove subscriptions owned by this agent
+    for (const [subId, sub] of this.subscriptions.entries()) {
+      if (sub.agentId === agentId) {
+        this.subscriptions.delete(subId);
+      }
+    }
+    // Remove from wait groups
+    for (const [groupId, group] of this.waitGroups.entries()) {
+      group.expectedAgentIds = group.expectedAgentIds.filter(id => id !== agentId);
+      group.completedAgentIds.delete(agentId);
+      if (group.expectedAgentIds.length === 0) {
+        this.waitGroups.delete(groupId);
+      }
+    }
+  }
+
   // ─── Wait groups ────────────────────────────────────────────────────
 
   /**
@@ -197,6 +242,7 @@ export class EventBus {
       expectedAgentIds: params.expectedAgentIds,
       completedAgentIds: new Set(),
       onComplete: params.onComplete,
+      createdAt: Date.now(),
     });
   }
 
@@ -253,6 +299,31 @@ export class EventBus {
     }
   }
 
+  // ─── Lifecycle ──────────────────────────────────────────────────────
+
+  /**
+   * Evict wait groups that have exceeded their TTL.
+   */
+  private evictExpiredWaitGroups(): void {
+    const now = Date.now();
+    for (const [groupId, group] of this.waitGroups.entries()) {
+      if (now - group.createdAt > WAIT_GROUP_TTL_MS) {
+        console.warn(`[EventBus] Evicting expired wait group: ${groupId}`);
+        this.waitGroups.delete(groupId);
+      }
+    }
+  }
+
+  /**
+   * Dispose all internal state. Call during graceful shutdown.
+   */
+  dispose(): void {
+    this.handlers.clear();
+    this.subscriptions.clear();
+    this.pendingEvents.clear();
+    this.waitGroups.clear();
+  }
+
   // ─── Pre-subscribe utility ──────────────────────────────────────────
 
   /**
@@ -268,9 +339,11 @@ export class EventBus {
     excludeSelf?: boolean;
     priority?: number;
   }): { dispose: () => void; promise: Promise<AgentEvent> } {
-    let resolvePromise: (event: AgentEvent) => void;
-    const promise = new Promise<AgentEvent>((resolve) => {
+    let resolvePromise: ((event: AgentEvent) => void) | null = null;
+    let rejectPromise: ((err: Error) => void) | null = null;
+    const promise = new Promise<AgentEvent>((resolve, reject) => {
       resolvePromise = resolve;
+      rejectPromise = reject;
     });
 
     const handlerKey = `pre-subscribe-${params.id}`;
@@ -280,7 +353,8 @@ export class EventBus {
       if (params.excludeSelf !== false && event.agentId === params.agentId) return;
       if (!params.eventTypes.includes(event.type)) return;
 
-      resolvePromise(event);
+      resolvePromise?.(event);
+      resolvePromise = null;
       this.off(handlerKey);
     };
 
@@ -300,6 +374,11 @@ export class EventBus {
     const dispose = () => {
       this.off(handlerKey);
       this.unsubscribe(params.id);
+      if (rejectPromise) {
+        rejectPromise(new Error("preSubscribe disposed"));
+        rejectPromise = null;
+        resolvePromise = null;
+      }
     };
 
     return { dispose, promise };

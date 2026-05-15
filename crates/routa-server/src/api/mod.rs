@@ -18,6 +18,7 @@ pub mod files;
 pub mod fitness;
 pub mod git;
 pub mod github;
+pub mod gitlab;
 pub mod graph;
 pub mod harness;
 pub(crate) mod harness_github_actions;
@@ -51,6 +52,7 @@ pub mod specialists;
 pub mod tasks;
 pub mod tasks_automation;
 pub mod tasks_github;
+pub mod tasks_gitlab;
 pub mod test_mcp;
 pub mod traces;
 pub mod webhooks;
@@ -89,6 +91,7 @@ pub fn api_router(state: AppState) -> Router<AppState> {
         .nest("/api/mcp-server", mcp_server_mgmt::router())
         .nest("/api/mcp-servers", mcp_servers::router())
         .nest("/api/github", github::router())
+        .nest("/api/gitlab", gitlab::router())
         .nest("/api/graph", graph::router())
         .nest("/api/harness", harness::router())
         .nest("/api/harness/templates", harness_templates::router())

@@ -8,7 +8,7 @@ import {
 export { DEFAULT_DEV_REQUIRED_TASK_FIELDS, KANBAN_REQUIRED_TASK_FIELDS };
 export type { KanbanRequiredTaskField } from "./task-requirements";
 
-export type KanbanColumnStage = "backlog" | "todo" | "dev" | "review" | "blocked" | "done";
+export type KanbanColumnStage = "backlog" | "todo" | "dev" | "review" | "blocked" | "done" | "archived";
 export type KanbanDevSessionSupervisionMode = "disabled" | "watchdog_retry" | "ralph_loop";
 export type KanbanDevSessionCompletionRequirement =
   | "turn_complete"
@@ -19,6 +19,8 @@ export type KanbanHistoryMemoryPolicyConfidence = "low" | "medium" | "high";
 
 export type KanbanTransport = "acp" | "a2a";
 
+export type KanbanMergeStrategy = "merge_commit" | "squash" | "rebase";
+
 export interface KanbanDeliveryRules {
   /** Require at least one commit ahead of the base branch before transition. */
   requireCommittedChanges?: boolean;
@@ -26,6 +28,10 @@ export interface KanbanDeliveryRules {
   requireCleanWorktree?: boolean;
   /** Require the branch/repo state to be pull-request ready before transition. */
   requirePullRequestReady?: boolean;
+  /** When true, the auto-merger specialist will attempt to merge the PR after CI passes. Defaults to false (human merge). */
+  autoMergeAfterPR?: boolean;
+  /** Merge strategy to use when autoMergeAfterPR is true. Defaults to "merge_commit". */
+  mergeStrategy?: KanbanMergeStrategy;
 }
 
 export interface KanbanContractRules {
@@ -115,6 +121,8 @@ export interface KanbanColumnAutomation {
   deliveryRules?: KanbanDeliveryRules;
   /** Automatically advance card to next column on agent success */
   autoAdvanceOnSuccess?: boolean;
+  /** Maximum concurrent tasks allowed in this column (WIP limit). 0 or undefined = no limit. */
+  wipLimit?: number;
 }
 
 export interface KanbanColumn {
@@ -149,9 +157,10 @@ export const DEFAULT_KANBAN_COLUMN_ORDER: KanbanColumnStage[] = [
   "review",
   "done",
   "blocked",
+  "archived",
 ];
 
-export const KANBAN_HAPPY_PATH_COLUMN_ORDER: Exclude<KanbanColumnStage, "blocked">[] = [
+export const KANBAN_HAPPY_PATH_COLUMN_ORDER: Exclude<KanbanColumnStage, "blocked" | "archived">[] = [
   "backlog",
   "todo",
   "dev",
@@ -166,6 +175,7 @@ export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
   { id: "review", name: "Review", color: "slate", position: 3, stage: "review" },
   { id: "done", name: "Done", color: "emerald", position: 4, stage: "done" },
   { id: "blocked", name: "Blocked", color: "rose", position: 5, stage: "blocked" },
+  { id: "archived", name: "Archived", color: "zinc", position: 6, stage: "archived", visible: false },
 ];
 
 export function getDefaultKanbanColumnPosition(columnId?: string): number {
@@ -217,6 +227,26 @@ export function cloneKanbanColumns(columns: KanbanColumn[]): KanbanColumn[] {
       }
       : undefined,
   }));
+}
+
+const STANDARD_STAGES: readonly KanbanColumnStage[] = [
+  "backlog", "todo", "dev", "review", "done", "blocked", "archived",
+];
+
+export function inferStageFromColumnId(columnId: string): KanbanColumnStage | undefined {
+  const lowered = columnId.toLowerCase();
+  if (STANDARD_STAGES.includes(lowered as KanbanColumnStage)) {
+    return lowered as KanbanColumnStage;
+  }
+  return undefined;
+}
+
+export function ensureColumnStages(columns: KanbanColumn[]): KanbanColumn[] {
+  return columns.map((col) => {
+    if (col.stage) return col;
+    const inferred = inferStageFromColumnId(col.id);
+    return inferred ? { ...col, stage: inferred } : col;
+  });
 }
 
 function createFallbackAutomationStep(automation: KanbanColumnAutomation): KanbanAutomationStep {
@@ -314,6 +344,8 @@ export function columnIdToTaskStatus(columnId?: string): TaskStatus {
       return TaskStatus.BLOCKED;
     case "done":
       return TaskStatus.COMPLETED;
+    case "archived":
+      return TaskStatus.ARCHIVED;
     default:
       return TaskStatus.PENDING;
   }
@@ -329,6 +361,8 @@ export function columnStageToTaskStatus(stage?: KanbanColumnStage): TaskStatus {
       return TaskStatus.BLOCKED;
     case "done":
       return TaskStatus.COMPLETED;
+    case "archived":
+      return TaskStatus.ARCHIVED;
     default:
       return TaskStatus.PENDING;
   }
@@ -355,6 +389,8 @@ export function taskStatusToColumnId(status: TaskStatus | string | undefined): s
       return "blocked";
     case TaskStatus.COMPLETED:
       return "done";
+    case TaskStatus.ARCHIVED:
+      return "archived";
     default:
       return "backlog";
   }

@@ -12,15 +12,17 @@
  */
 
 import { NextRequest } from "next/server";
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import {
-  parseGitHubUrl,
+  parseVCSUrl,
+  buildCloneUrl,
   getCloneBaseDir,
   repoToDirName,
   getBranchInfo,
 } from "@/core/git";
 import { getGitErrorMessage, isGitAuthError, getGitAuthErrorMessage } from "@/core/git";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -33,10 +35,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const parsed = parseGitHubUrl(url);
+  const parsed = parseVCSUrl(url);
   if (!parsed) {
     return new Response(
-      JSON.stringify({ error: "Invalid GitHub URL" }),
+      JSON.stringify({ error: "Invalid repository URL" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -73,7 +75,10 @@ export async function POST(request: NextRequest) {
 
   // Stream clone progress via SSE
   const encoder = new TextEncoder();
-  const cloneUrl = `https://github.com/${owner}/${repo}.git`;
+  const cloneUrl = buildCloneUrl(parsed);
+
+  // Declare child in outer scope so the cancel/abort handlers can terminate it
+  let child: ChildProcess | null = null;
 
   const stream = new ReadableStream({
     start(controller) {
@@ -89,7 +94,7 @@ export async function POST(request: NextRequest) {
 
       sendEvent({ phase: "starting", percent: 0, message: "Starting clone..." });
 
-      const child = spawn("git", ["clone", "--progress", cloneUrl, targetDir], {
+      child = spawn("git", ["clone", "--progress", cloneUrl, targetDir], {
         stdio: ["pipe", "pipe", "pipe"],
         timeout: 180000, // 3 minutes
       });
@@ -161,9 +166,19 @@ export async function POST(request: NextRequest) {
         controller.close();
       });
     },
+    cancel() {
+      // Kill the spawned git process when the stream is cancelled
+      child?.kill("SIGTERM");
+    },
   });
 
-  return new Response(stream, {
+  // Kill the git process on client disconnect (abort)
+  request.signal.addEventListener("abort", () => {
+    child?.kill("SIGTERM");
+  });
+
+  const monitoredStream = monitorSSEConnection(request, "/api/clone/progress", stream);
+  return new Response(monitoredStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

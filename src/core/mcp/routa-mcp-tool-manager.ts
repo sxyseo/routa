@@ -12,36 +12,8 @@ import { KanbanTools } from "../tools/kanban-tools";
 import { NoteTools } from "../tools/note-tools";
 import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
-import {
-  CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
-  LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
-} from "../harness/task-adaptive-tool";
 import { readCanvasSdkResource } from "../canvas/sdk-resource-contract";
 import { readFeatureTreeSpecResource } from "../spec/feature-tree-spec-resource-contract";
-import {
-  registerConfirmFeatureTreeStoryContextTool,
-  registerLoadFeatureTreeContextTool,
-} from "./feature-tree-context-tools";
-import {
-  LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
-  registerSaveReasoningMemoryTool,
-  registerSaveRetrospectiveMemoryTool,
-  registerSearchReasoningMemoryTool,
-  registerLoadRetrospectiveMemoryTool,
-  SAVE_REASONING_MEMORY_TOOL_NAME,
-  SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
-  SEARCH_REASONING_MEMORY_TOOL_NAME,
-} from "./reasoning-memory-tools";
-import {
-  FILE_SESSION_CONTEXT_TOOL_NAME,
-  TASK_ADAPTIVE_HARNESS_TOOL_NAME,
-  TASK_HISTORY_SUMMARY_TOOL_NAME,
-  TRANSCRIPT_TURN_INSPECTION_TOOL_NAME,
-  registerAssembleTaskAdaptiveHarnessTool,
-  registerInspectTranscriptTurnsTool,
-  registerSummarizeFileSessionContextTool,
-  registerSummarizeTaskHistoryContextTool,
-} from "./task-adaptive-mcp-tools";
 
 /**
  * Tool registration mode for MCP server.
@@ -49,29 +21,6 @@ import {
  * - "full": All 34 tools (Task, Agent, Note, Workspace, Git)
  */
 export type ToolMode = "essential" | "full";
-
-const taskContextSearchSpecSchema = z.object({
-  query: z.string().optional().describe("Free-text retrieval query for relevant history or feature context."),
-  featureCandidates: z.array(z.string()).optional().describe("Candidate Feature Tree IDs that may own this task."),
-  relatedFiles: z.array(z.string()).optional().describe("Repository-relative files already believed to be relevant."),
-  routeCandidates: z.array(z.string()).optional().describe("Candidate routes or pages related to the task."),
-  apiCandidates: z.array(z.string()).optional().describe("Candidate API paths or RPC surfaces related to the task."),
-  moduleHints: z.array(z.string()).optional().describe("Module or subsystem hints to narrow history search."),
-  symptomHints: z.array(z.string()).optional().describe("User-visible errors, failure symptoms, or friction hints."),
-});
-
-const taskJitContextAnalysisSchema = z.object({
-  updatedAt: z.string().optional().describe("ISO timestamp for when this structured history analysis was produced."),
-  summary: z.string().describe("Compressed explanation of what the matched history means for this task."),
-  topFiles: z.array(z.string()).optional().describe("Highest-priority files to inspect first."),
-  topSessions: z.array(z.object({
-    sessionId: z.string().describe("Matched Codex/Claude session ID."),
-    provider: z.string().optional().describe("Provider label for the matched session."),
-    reason: z.string().describe("Why this session is worth following up."),
-  })).optional().describe("Highest-priority sessions to inspect first."),
-  reusablePrompts: z.array(z.string()).optional().describe("2-4 reusable follow-up prompts."),
-  recommendedContextSearchSpec: taskContextSearchSpecSchema.optional().describe("Structured retrieval hints to reuse in future JIT Context loads."),
-});
 
 type DelegationOrchestrator = {
   getSessionForAgent(agentId: string): string | undefined;
@@ -202,17 +151,6 @@ export class RoutaMcpToolManager {
       register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
       register("capture_screenshot", () => this.registerCaptureScreenshot(server));
       register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
-      register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => registerAssembleTaskAdaptiveHarnessTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-      register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => registerSummarizeTaskHistoryContextTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-      register(FILE_SESSION_CONTEXT_TOOL_NAME, () => registerSummarizeFileSessionContextTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-      register(TRANSCRIPT_TURN_INSPECTION_TOOL_NAME, () => registerInspectTranscriptTurnsTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-      register("save_history_memory_context", () => this.registerSaveJitContext(server));
-      register(LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME, () => this.registerLoadFeatureTreeContext(server));
-      register(CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME, () => this.registerConfirmFeatureTreeStoryContext(server));
-      register(LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME, () => registerLoadRetrospectiveMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-      register(SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME, () => registerSaveRetrospectiveMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-      register(SEARCH_REASONING_MEMORY_TOOL_NAME, () => registerSearchReasoningMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-      register(SAVE_REASONING_MEMORY_TOOL_NAME, () => registerSaveReasoningMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
       return;
     }
 
@@ -222,9 +160,6 @@ export class RoutaMcpToolManager {
     register("list_tasks", () => this.registerListTasks(server));
     register("update_task_status", () => this.registerUpdateTaskStatus(server));
     register("update_task", () => this.registerUpdateTask(server));
-    register("save_history_memory_context", () => this.registerSaveJitContext(server));
-    register(LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME, () => this.registerLoadFeatureTreeContext(server));
-    register(CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME, () => this.registerConfirmFeatureTreeStoryContext(server));
     // Agent tools
     register("list_agents", () => this.registerListAgents(server));
     register("read_agent_conversation", () => this.registerReadAgentConversation(server));
@@ -271,6 +206,7 @@ export class RoutaMcpToolManager {
     register("search_cards", () => this.registerSearchCards(server));
     register("list_cards_by_column", () => this.registerListCardsByColumn(server));
     register("decompose_tasks", () => this.registerDecomposeTasks(server));
+    register("split_task", () => this.registerSplitTask(server));
     register("request_previous_lane_handoff", () => this.registerRequestPreviousLaneHandoff(server));
     register("submit_lane_handoff", () => this.registerSubmitLaneHandoff(server));
     // Artifact tools
@@ -282,14 +218,6 @@ export class RoutaMcpToolManager {
     register("capture_screenshot", () => this.registerCaptureScreenshot(server));
     register("read_canvas_sdk_resource", () => this.registerReadCanvasSdkResource(server));
     register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
-    register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => registerAssembleTaskAdaptiveHarnessTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-    register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => registerSummarizeTaskHistoryContextTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-    register(FILE_SESSION_CONTEXT_TOOL_NAME, () => registerSummarizeFileSessionContextTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-    register(TRANSCRIPT_TURN_INSPECTION_TOOL_NAME, () => registerInspectTranscriptTurnsTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-    register(LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME, () => registerLoadRetrospectiveMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-    register(SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME, () => registerSaveRetrospectiveMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-    register(SEARCH_REASONING_MEMORY_TOOL_NAME, () => registerSearchReasoningMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
-    register(SAVE_REASONING_MEMORY_TOOL_NAME, () => registerSaveReasoningMemoryTool(server, this.workspaceId, (result) => this.toMcpResult(result)));
   }
 
   private shouldRegisterTool(toolName: string): boolean {
@@ -375,76 +303,18 @@ export class RoutaMcpToolManager {
         acceptanceCriteria: z.array(z.string()).optional().describe("Update acceptance criteria"),
         verificationCommands: z.array(z.string()).optional().describe("Update verification commands"),
         testCases: z.array(z.string()).optional().describe("Update test cases"),
-        contextSearchSpec: taskContextSearchSpecSchema.optional().describe("Confirmed retrieval hints for JIT Context and history search. In backlog planning, only persist this after repo inspection or load_feature_tree_context confirms the feature/files."),
-        jitContextAnalysis: taskJitContextAnalysisSchema.nullable().optional().describe("Structured JIT/history analysis to persist on the task for later reuse."),
       },
       async (params) => {
         const { taskId, expectedVersion, agentId, ...updates } = params;
         const result = await this.tools.updateTask({
           taskId,
           expectedVersion,
-          updates: {
-            ...updates,
-            jitContextAnalysis: params.jitContextAnalysis as import("../models/task").TaskJitContextAnalysis | null | undefined,
-          },
+          updates,
           agentId: agentId ?? "system",
-          sessionId: this.sessionId,
         });
         return this.toMcpResult(result);
       }
     );
-  }
-
-  private registerSaveJitContext(server: McpServer) {
-    server.tool(
-      "save_history_memory_context",
-      "Persist the minimal task-adaptive history memory result for a task so later sessions can load it directly.",
-      {
-        taskId: z.string().describe("ID of the task to update"),
-        agentId: z.string().optional().describe("ID of the agent performing the save (optional in Kanban sessions)"),
-        updatedAt: z.string().optional().describe("ISO timestamp for when the result was produced."),
-        summary: z.string().describe("Compressed reusable task-adaptive history memory conclusion for the task."),
-        topFiles: z.array(z.string()).optional().describe("Highest-priority files to inspect first next time."),
-        topSessions: z.array(z.object({
-          sessionId: z.string().describe("Matched Codex/Claude session ID."),
-          provider: z.string().optional().describe("Provider label for the matched session."),
-          reason: z.string().describe("Why this session is worth following up."),
-        })).optional().describe("Highest-priority sessions to inspect first."),
-        reusablePrompts: z.array(z.string()).optional().describe("2-4 reusable follow-up prompts."),
-        recommendedContextSearchSpec: taskContextSearchSpecSchema.optional().describe("Structured retrieval hints to reuse next time."),
-      },
-      async (params) => {
-        const result = await this.tools.saveJitContext({
-          taskId: params.taskId,
-          result: {
-            updatedAt: params.updatedAt,
-            summary: params.summary,
-            topFiles: params.topFiles ?? [],
-            topSessions: params.topSessions ?? [],
-            reusablePrompts: params.reusablePrompts ?? [],
-            recommendedContextSearchSpec: params.recommendedContextSearchSpec,
-          },
-          agentId: params.agentId ?? "system",
-        });
-        return this.toMcpResult(result);
-      }
-    );
-  }
-
-  private registerLoadFeatureTreeContext(server: McpServer) {
-    registerLoadFeatureTreeContextTool({
-      server,
-      workspaceId: this.workspaceId,
-      toMcpResult: (result) => this.toMcpResult(result as ToolResult),
-    });
-  }
-
-  private registerConfirmFeatureTreeStoryContext(server: McpServer) {
-    registerConfirmFeatureTreeStoryContextTool({
-      server,
-      workspaceId: this.workspaceId,
-      toMcpResult: (result) => this.toMcpResult(result as ToolResult),
-    });
   }
 
   /**
@@ -1134,7 +1004,6 @@ Note: taskId must be a UUID from create_task, not a task name.`,
         column: z.string().optional().describe("Column ID alias"),
         title: z.string().describe("Card title"),
         description: z.string().optional().describe("Card description"),
-        contextSearchSpec: taskContextSearchSpecSchema.optional().describe("Confirmed retrieval hints for JIT Context and history search. In backlog planning, omit this until repo inspection or load_feature_tree_context confirms the feature/files."),
         priority: z.enum(["low", "medium", "high", "urgent"]).optional().describe("Card priority"),
         labels: z.array(z.string()).optional().describe("Card labels"),
         workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
@@ -1148,8 +1017,6 @@ Note: taskId must be a UUID from create_task, not a task name.`,
           columnId: params.columnId ?? params.column,
           title: params.title,
           description: params.description,
-          contextSearchSpec: params.contextSearchSpec,
-          sessionId: this.sessionId,
           priority: params.priority,
           labels: params.labels,
           workspaceId: params.workspaceId ?? this.workspaceId,
@@ -1165,7 +1032,7 @@ Note: taskId must be a UUID from create_task, not a task name.`,
       "Move a card to a different column. Use 'dev' when starting work, 'review' for code review, 'done' when complete.",
       {
         cardId: z.string().describe("Card ID"),
-        targetColumnId: z.string().describe("Target column ID. Valid columns: 'backlog', 'todo', 'dev' (in progress), 'review', 'blocked', 'done'"),
+        targetColumnId: z.string().describe("Target column ID. Valid columns: 'backlog', 'todo', 'dev' (in progress), 'review', 'blocked', 'done', 'archived'"),
         position: z.number().optional().describe("Position in the column"),
       },
       async (params) => {
@@ -1195,6 +1062,7 @@ Note: taskId must be a UUID from create_task, not a task name.`,
         sessionId: z.string().optional().describe("Session ID adding the progress note"),
         priority: z.enum(["low", "medium", "high", "urgent"]).optional().describe("New priority"),
         labels: z.array(z.string()).optional().describe("New labels"),
+        pullRequestUrl: z.string().optional().describe("PR/MR URL to persist on the task"),
       },
       async (params) => {
         if (!this.kanbanTools) {
@@ -1209,6 +1077,7 @@ Note: taskId must be a UUID from create_task, not a task name.`,
           sessionId: params.sessionId,
           priority: params.priority,
           labels: params.labels,
+          pullRequestUrl: params.pullRequestUrl,
         });
         return this.toMcpResult(result);
       }
@@ -1386,12 +1255,19 @@ Note: taskId must be a UUID from create_task, not a task name.`,
         tasks: z.array(z.object({
           title: z.string().describe("Task title"),
           description: z.string().optional().describe("Task description"),
-          contextSearchSpec: taskContextSearchSpecSchema.optional().describe("Confirmed retrieval hints for JIT Context and history search. In backlog planning, omit this until repo inspection or load_feature_tree_context confirms the feature/files."),
           priority: z.enum(["low", "medium", "high", "urgent"]).optional().describe("Task priority"),
           labels: z.array(z.string()).optional().describe("Task labels"),
+          scope: z.string().optional().describe("Scope of work — what is in and out of scope for this card"),
+          acceptanceCriteria: z.array(z.string()).optional().describe("Acceptance criteria that must be met for this card to be considered complete"),
+          verificationCommands: z.array(z.string()).optional().describe("Commands to verify the implementation"),
+          testCases: z.array(z.string()).optional().describe("Specific test cases to validate the implementation"),
+          ref: z.string().optional().describe("Unique reference ID for sibling dependency linkage"),
+          dependsOn: z.array(z.string()).optional().describe("Refs of sibling tasks this one depends on"),
+          estimatedFilePaths: z.array(z.string()).optional().describe("File paths this task will likely modify"),
         })).describe("Array of tasks to create"),
         columnId: z.string().optional().default("backlog").describe("Target column ID (default: backlog)"),
         column: z.string().optional().describe("Column ID alias"),
+        parentTaskId: z.string().optional().describe("Link all created cards to this parent task"),
       },
       async (params) => {
         if (!this.kanbanTools) {
@@ -1400,10 +1276,61 @@ Note: taskId must be a UUID from create_task, not a task name.`,
         const result = await this.kanbanTools.decomposeTasks({
           boardId: params.boardId,
           workspaceId: params.workspaceId ?? this.workspaceId,
-          tasks: params.tasks,
+          tasks: params.tasks.map((t) => ({
+            title: t.title,
+            description: t.description,
+            priority: t.priority,
+            labels: t.labels,
+            scope: t.scope,
+            acceptanceCriteria: t.acceptanceCriteria,
+            verificationCommands: t.verificationCommands,
+            testCases: t.testCases,
+            ref: t.ref,
+            dependsOn: t.dependsOn,
+            estimatedFilePaths: t.estimatedFilePaths,
+          })),
           columnId: params.columnId ?? params.column,
-          sessionId: this.sessionId,
+          parentTaskId: params.parentTaskId,
         });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerSplitTask(server: McpServer) {
+    server.tool(
+      "split_task",
+      "Split an existing kanban task into multiple sub-tasks with dependency ordering. " +
+      "Creates child tasks linked to the parent with proper dependency chains.",
+      {
+        parentTaskId: z.string().describe("ID of the task to split"),
+        subTasks: z.array(z.object({
+          ref: z.string().describe("Unique reference ID for dependency linkage (e.g. 'a', 'b', 'c')"),
+          title: z.string().describe("Sub-task title"),
+          description: z.string().optional().describe("Sub-task description/objective"),
+          scope: z.string().optional().describe("Scope of work for this sub-task"),
+          acceptanceCriteria: z.array(z.string()).optional().describe("Acceptance criteria"),
+          verificationCommands: z.array(z.string()).optional().describe("Verification commands"),
+          testCases: z.array(z.string()).optional().describe("Test cases"),
+          dependsOn: z.array(z.string()).optional().describe("Refs of sibling sub-tasks this one depends on"),
+          estimatedFilePaths: z.array(z.string()).optional().describe("File paths this task will likely modify"),
+        })).describe("Array of sub-task definitions"),
+        mergeStrategy: z.enum(["cascade", "fan_in", "cascade_fan_in"]).optional().default("cascade")
+          .describe("How to merge branches: cascade (serial chain), fan_in (parallel to main), cascade_fan_in (mixed)"),
+        boardId: z.string().optional().describe("Board ID (defaults to parent task's board)"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+
+        const result = await this.kanbanTools.splitTask({
+          parentTaskId: params.parentTaskId,
+          subTasks: params.subTasks,
+          mergeStrategy: params.mergeStrategy,
+          boardId: params.boardId,
+        });
+
         return this.toMcpResult(result);
       }
     );

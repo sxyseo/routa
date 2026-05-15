@@ -22,6 +22,7 @@ import { MarkdownViewer } from "./markdown/markdown-viewer";
 import { ToolInputTable, ToolOutputView } from "./tool-call-content";
 import { useTranslation } from "@/i18n";
 import { Check, ChevronRight, Copy, FileText } from "lucide-react";
+import type { ChatMessage } from "@/core/chat-message";
 
 
 interface TracePanelProps {
@@ -587,6 +588,30 @@ export function TracePanel({ sessionId }: TracePanelProps) {
     eventTypes: Record<string, number>;
   } | null>(null);
   const [copiedSessionId, setCopiedSessionId] = useState(false);
+  const [transcriptMessages, setTranscriptMessages] = useState<ChatMessage[]>([]);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+
+  const fetchTranscript = useCallback(async () => {
+    if (!sessionId) return;
+
+    setTranscriptLoading(true);
+    try {
+      const res = await desktopAwareFetch(`/api/sessions/${sessionId}/transcript`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.messages && Array.isArray(data.messages)) {
+        const hydrated = (data.messages as Array<Record<string, unknown>>).map((msg) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp as string),
+        })) as ChatMessage[];
+        setTranscriptMessages(hydrated);
+      }
+    } catch (err) {
+      console.error("[TracePanel] Failed to fetch transcript:", err);
+    } finally {
+      setTranscriptLoading(false);
+    }
+  }, [sessionId]);
 
   const fetchTraces = useCallback(async () => {
     if (!sessionId) {
@@ -607,6 +632,10 @@ export function TracePanel({ sessionId }: TracePanelProps) {
 
       const data = await res.json();
       setTraces(data.traces || []);
+      // Clear transcript when traces are available
+      if (data.traces?.length > 0) {
+        setTranscriptMessages([]);
+      }
     } catch (err) {
       console.error("[TracePanel] Failed to fetch traces:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -655,37 +684,63 @@ export function TracePanel({ sessionId }: TracePanelProps) {
     fetchSessionContext();
   }, [fetchSessionContext, fetchTraces, fetchStats]);
 
+  // Fallback to transcript when traces are empty
+  useEffect(() => {
+    if (!loading && !error && traces.length === 0 && sessionId && transcriptMessages.length === 0 && !transcriptLoading) {
+      fetchTranscript();
+    }
+  }, [loading, error, traces.length, sessionId, transcriptMessages.length, transcriptLoading, fetchTranscript]);
+
   const exportTraces = useCallback(async () => {
     if (!sessionId) return;
 
     try {
-      const res = await desktopAwareFetch(resolveApiPath("/traces/export"), {
-        cache: "no-store",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
+      // If traces are available, export them via the existing API
+      if (traces.length > 0) {
+        const res = await desktopAwareFetch(resolveApiPath("/traces/export"), {
+          cache: "no-store",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
 
-      if (!res.ok) {
-        throw new Error(`Failed to export traces: ${res.statusText}`);
+        if (!res.ok) {
+          throw new Error(`Failed to export traces: ${res.statusText}`);
+        }
+
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data.export, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `traces-${sessionId}-${new Date().toISOString().split("T")[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
       }
 
-      const data = await res.json();
-      const blob = new Blob([JSON.stringify(data.export, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `traces-${sessionId}-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Fallback: export transcript messages
+      if (transcriptMessages.length > 0) {
+        const blob = new Blob([JSON.stringify(transcriptMessages, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `transcript-${sessionId}-${new Date().toISOString().split("T")[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
     } catch (err) {
-      console.error("[TracePanel] Failed to export traces:", err);
+      console.error("[TracePanel] Failed to export:", err);
     }
-  }, [sessionId]);
+  }, [sessionId, traces.length, transcriptMessages]);
 
   // Merge tool_call and tool_result by toolCallId
   const mergedRecords = useMemo(() => mergeToolTraces(traces), [traces]);
@@ -784,7 +839,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
           </button>
           <button
             onClick={exportTraces}
-            disabled={traces.length === 0}
+            disabled={traces.length === 0 && transcriptMessages.length === 0}
             className="px-2 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {t.trace.export}
@@ -988,8 +1043,8 @@ export function TracePanel({ sessionId }: TracePanelProps) {
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && !error && filteredRecords.length === 0 && (
+      {/* Empty state — show transcript fallback if available */}
+      {!loading && !error && filteredRecords.length === 0 && transcriptMessages.length === 0 && !transcriptLoading && (
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="text-center">
             <FileText className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
@@ -1001,6 +1056,57 @@ export function TracePanel({ sessionId }: TracePanelProps) {
                 {sessionId}
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Transcript fallback — show when traces are empty but transcript messages exist */}
+      {!loading && !error && filteredRecords.length === 0 && transcriptMessages.length > 0 && (
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-4 py-2 border-b border-blue-200 bg-blue-50/70 text-[11px] text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/10 dark:text-blue-200 sticky top-0 z-10">
+            {t.trace.transcriptFallback.replace("{count}", String(transcriptMessages.length))}
+          </div>
+          <div className="p-4 space-y-4">
+            {transcriptMessages.map((msg, idx) => {
+              const roleConfig: Record<string, { icon: string; bg: string; border: string; label: string }> = {
+                user: { icon: "👤", bg: "bg-blue-50 dark:bg-blue-900/20", border: "border-blue-100 dark:border-blue-800/30", label: t.trace.user },
+                assistant: { icon: "🤖", bg: "bg-white dark:bg-slate-900/40", border: "border-slate-200 dark:border-slate-700/60", label: "Agent" },
+                thought: { icon: "💭", bg: "bg-amber-50/40 dark:bg-amber-900/5", border: "border-amber-100/50 dark:border-amber-800/20", label: t.trace.thoughts },
+                tool: { icon: "🔧", bg: "bg-amber-50/50 dark:bg-amber-900/10", border: "border-amber-100 dark:border-amber-800/30", label: msg.toolName ?? "Tool" },
+              };
+              const config = roleConfig[msg.role] ?? roleConfig.assistant;
+              const content = msg.content || "";
+              const truncated = content.length > 500 ? content.slice(0, 500) + "..." : content;
+
+              return (
+                <div key={msg.id || idx} className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 text-xs">
+                    {config.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{config.label}</span>
+                      {msg.toolName && msg.role === "tool" && (
+                        <code className="text-[10px] font-mono text-amber-600 dark:text-amber-400">{msg.toolName}</code>
+                      )}
+                      {msg.toolStatus && (
+                        <span className={`text-[9px] ${msg.toolStatus === "completed" ? "text-emerald-600" : msg.toolStatus === "failed" ? "text-red-500" : "text-amber-500"}`}>
+                          {msg.toolStatus === "completed" ? "✓" : msg.toolStatus === "failed" ? "✗" : "⏳"}
+                        </span>
+                      )}
+                      <span className="text-[9px] text-slate-400">
+                        {msg.timestamp instanceof Date ? msg.timestamp.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}
+                      </span>
+                    </div>
+                    <div className={`px-3 py-2 rounded-xl ${config.bg} border ${config.border}`}>
+                      <p className="text-[12px] text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
+                        {truncated || <span className="italic text-slate-400">—</span>}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

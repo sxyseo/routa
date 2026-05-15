@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getA2ATaskBridge } from "@/core/a2a";
+import { monitorSSEConnection } from "@/core/http/api-route-observability";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +97,8 @@ export async function GET(
       },
     });
 
-    return new NextResponse(stream, {
+    const monitoredStream = monitorSSEConnection(request, "/api/a2a/tasks/[id]", stream);
+    return new NextResponse(monitoredStream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",

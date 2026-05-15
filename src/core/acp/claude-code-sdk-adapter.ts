@@ -1,3 +1,4 @@
+
 /**
  * Claude Code Agent SDK Adapter for Serverless Environments (Vercel)
  *
@@ -27,6 +28,9 @@ import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerConfig, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { join } from "path";
+import * as fs from "fs";
+import { safeTmpdir } from "@/core/utils/safe-tmpdir";
+import { resolveModelFromEnvVarTier } from "@/core/acp/provider-registry";
 import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 
 interface PendingUserInputRequest {
@@ -83,7 +87,7 @@ export function getClaudeCodeSdkConfig(): {
   return {
     apiKey: process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY,
     baseUrl: process.env.ANTHROPIC_BASE_URL,
-    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+    model: process.env.ANTHROPIC_MODEL || resolveModelFromEnvVarTier("balanced", "claudeCodeSdk") || "claude-sonnet-4-20250514",
     // Keep 5s below Vercel Pro 60s limit to allow clean shutdown
     timeoutMs: parseInt(process.env.API_TIMEOUT_MS || "55000", 10),
   };
@@ -307,6 +311,29 @@ export class ClaudeCodeSdkAdapter {
       process.env.ANTHROPIC_BASE_URL = effectiveBaseUrl;
     }
 
+    // Ensure the SDK's temp directory is writable (Windows: %TEMP%\claude).
+    // safeTmpdir() strips trailing \r from os.tmpdir() and syncs the clean
+    // value back to process.env so ALL child processes inherit a valid path.
+    const tmpDir = safeTmpdir();
+    const claudeTmpDir = join(tmpDir, "claude");
+    try {
+      fs.mkdirSync(claudeTmpDir, { recursive: true });
+    } catch (e) {
+      console.warn(
+        `[ClaudeCodeSdkAdapter] Failed to create temp dir ${claudeTmpDir}: ${e instanceof Error ? e.message : e}. ` +
+        `Falling back to project-local .claude-tmp/`
+      );
+      // Fallback: use a writable directory relative to cwd
+      const fallbackDir = join(process.cwd(), ".claude-tmp");
+      try {
+        fs.mkdirSync(fallbackDir, { recursive: true });
+        process.env.TEMP = fallbackDir;
+        process.env.TMP = fallbackDir;
+      } catch {
+        // Last resort — continue anyway; the SDK may have its own fallback
+      }
+    }
+
     // Ensure CLAUDE_CONFIG_DIR points to /tmp/.claude in the current process
     // so the SDK's trace writer resolves to a writable path — this is the
     // primary fix for the ENOENT crash on Vercel (the serverless-fs-patch
@@ -386,7 +413,7 @@ export class ClaudeCodeSdkAdapter {
       const queryOptions: Parameters<typeof query>[0]["options"] = {
         cwd: promptCwd,
         model: this._modelOverride ?? config.model,
-        maxTurns: this._maxTurnsOverride ?? 30,
+        maxTurns: this._maxTurnsOverride ?? 1200,
         // Required for token-level incremental streaming events.
         includePartialMessages: true,
         abortController: this.abortController,
@@ -541,9 +568,11 @@ export class ClaudeCodeSdkAdapter {
       this.onNotification(completeNotification);
       yield formatSseEvent(completeNotification);
 
-      // Auto-notify lifecycle: agent is idle after completing its turn
+      // Auto-notify lifecycle: agent completed its single-prompt turn.
+      // Kanban specialists are one-shot — stream end means work is done,
+      // so emit COMPLETED (not IDLE) so WorkflowOrchestrator processes the result.
       if (this.lifecycleNotifier) {
-        await this.lifecycleNotifier.notifyIdle();
+        await this.lifecycleNotifier.notifyCompleted();
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -615,7 +644,7 @@ export class ClaudeCodeSdkAdapter {
       const queryOptions: Parameters<typeof query>[0]["options"] = {
         cwd: promptCwd,
         model: this._modelOverride ?? config.model,
-        maxTurns: this._maxTurnsOverride ?? 30,
+        maxTurns: this._maxTurnsOverride ?? 1200,
         // Keep message semantics aligned with promptStream().
         includePartialMessages: true,
         abortController: this.abortController,
@@ -917,12 +946,20 @@ export class ClaudeCodeSdkAdapter {
 
       case "result": {
         if (msg.is_error || msg.subtype !== "success") {
-          const errorText =
-            msg.subtype === "error_max_turns"
-              ? "Max turns reached"
-              : msg.subtype === "error_max_budget_usd"
-              ? "Budget limit exceeded"
-              : "Agent execution error";
+          let errorText: string;
+          switch (msg.subtype) {
+            case "error_max_turns": errorText = "Max turns reached"; break;
+            case "error_max_budget_usd": errorText = "Budget limit exceeded"; break;
+            case "error_max_structured_output_retries": errorText = "Max structured output retries"; break;
+            case "error_during_execution": errorText = "Error during execution"; break;
+            default: errorText = "Agent execution error";
+          }
+          const sdkErrors = msg.is_error && "errors" in msg
+            ? (msg as { errors: string[] }).errors
+            : undefined;
+          if (sdkErrors && sdkErrors.length > 0) {
+            errorText += `: ${sdkErrors.join("; ")}`;
+          }
           return createNotification("session/update", {
             sessionId,
             type: "error",
@@ -1131,8 +1168,11 @@ export class ClaudeCodeSdkAdapter {
    */
   async close(): Promise<void> {
     this.cancel();
+    this.completedUserInputResponses.clear();
     this.sessionId = null;
+    this.sdkSessionId = null;
     this._alive = false;
+    this.onNotification = () => {}; // Break callback reference to prevent closure retention
   }
 
   /**

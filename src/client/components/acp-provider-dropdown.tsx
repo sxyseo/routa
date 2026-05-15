@@ -75,9 +75,29 @@ export function AcpProviderDropdown({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Track the last synced provider ID set to avoid unnecessary state resets
+  const lastSyncedProviderIdsRef = useRef<string>("");
+
   useEffect(() => {
+    // Derive a stable key from the current provider IDs to detect actual changes
+    const currentIdSet = providers.map((p) => p.id).sort().join(",");
+    if (currentIdSet === lastSyncedProviderIdsRef.current) return;
+    lastSyncedProviderIdsRef.current = currentIdSet;
+
     const syncPreferences = () => {
-      setVisibleProviderIds(getOrderedVisibleProviderIds(providers.map((provider) => provider.id)));
+      const allProviderIds = providers.map((provider) => provider.id);
+      setVisibleProviderIds((prev) => {
+        const base = getOrderedVisibleProviderIds(allProviderIds);
+        // Preserve selectedProvider in the visible list even if not in preferences
+        if (selectedProvider && !base.includes(selectedProvider) && allProviderIds.includes(selectedProvider)) {
+          return dedupeProviderIds([selectedProvider, ...base]);
+        }
+        // Only update if the set actually changed
+        if (prev.length === base.length && prev.every((id, i) => id === base[i])) {
+          return prev;
+        }
+        return base;
+      });
     };
 
     syncPreferences();
@@ -87,7 +107,7 @@ export function AcpProviderDropdown({
       window.removeEventListener(PROVIDER_DISPLAY_PREFERENCES_CHANGED_EVENT, syncPreferences);
       window.removeEventListener("storage", syncPreferences);
     };
-  }, [providers]);
+  }, [providers, selectedProvider]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -169,7 +189,6 @@ export function AcpProviderDropdown({
         maxHeight: Math.min(spaceAbove, preferredHeight),
       });
     }
-    setVisibleProviderIds(getOrderedVisibleProviderIds(providers.map((provider) => provider.id)));
     setIsOpen(true);
   };
 

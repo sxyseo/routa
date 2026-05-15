@@ -118,7 +118,7 @@ You will receive your agent ID and task details in the first message. Use your a
 2. Read task note (objective, scope, definition of done)
 3. **Preflight conflict check**: Use \`list_agents\` to see what others are working on
 4. Implement minimally, following existing patterns
-5. Run verification commands from the task if specified. **If you cannot run them, explicitly say so and why.**
+5. Run verification commands from the task if specified. **If you cannot run them, explicitly say so and why.** If no commands listed, detect tech stack and run sensible defaults: TS/JS → \`npx tsc --noEmit\`/\`npx eslint .\`/\`npm test\`; Python → \`ruff check .\`/\`pytest\`; Rust → \`cargo check\`/\`cargo test\`; Go → \`go vet\`/\`go test\`. Skip gracefully if tooling not installed. Fix failures before committing.
 6. Commit with a clear message
 7. Update task note with: what changed, files touched, verification commands run + results
 
@@ -176,6 +176,20 @@ You will receive your agent ID and verification task details in the first messag
 - Read spec: Goal, Non-goals, Acceptance Criteria, Verification Plan
 - Confirm Acceptance Criteria are **specific and testable**.
   - If they are ambiguous, mark it as a **Spec Issue** and ask Coordinator to clarify.
+
+### 0.5) Spec Contract Verification (when applicable)
+If the workspace contains project spec files, verify implementation against them:
+
+**Detection**: Look for spec file patterns:
+- \`**/openapi.yaml\` or \`openapi.yaml\` — API contract
+- \`**/*constitution*\` — immutable project rules
+- \`.routa/spec-files.json\` — project-declared spec files (read \`gateContextFiles\` array)
+- \`.routa/review-rules.md\` — project-specific review rules
+
+**If OpenAPI spec exists**: Extract all \`paths\`, compare against actual route definitions, flag mismatches.
+**If constitution/rules exist**: Extract forbidden terms, search for violations, flag as ❌ NOT APPROVED.
+**If \`.routa/spec-files.json\` exists**: Read \`gateContextFiles\`, use as additional acceptance criteria.
+**Output**: Add a "Contract Compliance" section to your verification report.
 
 ### 1) Map work → criteria (traceability)
 For each acceptance criterion, identify:

@@ -19,8 +19,8 @@ impl WorktreeStore {
         self.db
             .with_conn_async(move |conn| {
                 conn.execute(
-                    "INSERT INTO worktrees (id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    "INSERT INTO worktrees (id, codebase_id, workspace_id, worktree_path, branch, base_branch, base_commit_sha, status, session_id, label, error_message, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     rusqlite::params![
                         wt.id,
                         wt.codebase_id,
@@ -28,6 +28,7 @@ impl WorktreeStore {
                         wt.worktree_path,
                         wt.branch,
                         wt.base_branch,
+                        wt.base_commit_sha,
                         wt.status,
                         wt.session_id,
                         wt.label,
@@ -46,7 +47,7 @@ impl WorktreeStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at
+                    "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, base_commit_sha, status, session_id, label, error_message, created_at, updated_at
                      FROM worktrees WHERE id = ?1",
                 )?;
                 stmt.query_row(rusqlite::params![id], row_to_worktree)
@@ -60,7 +61,7 @@ impl WorktreeStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at
+                    "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, base_commit_sha, status, session_id, label, error_message, created_at, updated_at
                      FROM worktrees WHERE codebase_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
@@ -79,7 +80,7 @@ impl WorktreeStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at
+                    "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, base_commit_sha, status, session_id, label, error_message, created_at, updated_at
                      FROM worktrees WHERE workspace_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
@@ -150,7 +151,7 @@ impl WorktreeStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at
+                    "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, base_commit_sha, status, session_id, label, error_message, created_at, updated_at
                      FROM worktrees WHERE codebase_id = ?1 AND branch = ?2",
                 )?;
                 stmt.query_row(rusqlite::params![codebase_id, branch], row_to_worktree)
@@ -163,8 +164,8 @@ impl WorktreeStore {
 use rusqlite::Row;
 
 fn row_to_worktree(row: &Row<'_>) -> rusqlite::Result<Worktree> {
-    let created_ms: i64 = row.get(10)?;
-    let updated_ms: i64 = row.get(11)?;
+    let created_ms: i64 = row.get(11)?;
+    let updated_ms: i64 = row.get(12)?;
 
     Ok(Worktree {
         id: row.get(0)?,
@@ -173,10 +174,11 @@ fn row_to_worktree(row: &Row<'_>) -> rusqlite::Result<Worktree> {
         worktree_path: row.get(3)?,
         branch: row.get(4)?,
         base_branch: row.get(5)?,
-        status: row.get(6)?,
-        session_id: row.get(7)?,
-        label: row.get(8)?,
-        error_message: row.get(9)?,
+        base_commit_sha: row.get(6)?,
+        status: row.get(7)?,
+        session_id: row.get(8)?,
+        label: row.get(9)?,
+        error_message: row.get(10)?,
         created_at: chrono::DateTime::from_timestamp_millis(created_ms).unwrap_or_else(Utc::now),
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms).unwrap_or_else(Utc::now),
     })

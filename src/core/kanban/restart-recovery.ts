@@ -3,7 +3,7 @@ import { getHttpSessionStore } from "../acp/http-session-store";
 import { getAcpProcessManager } from "../acp/processer";
 import type { RoutaSystem } from "../routa-system";
 import { getKanbanAutomationSteps, resolveTaskStatusForBoardColumn } from "../models/kanban";
-import type { Task, TaskLaneSessionStatus } from "../models/task";
+import type { Task, TaskLaneSessionStatus, TaskStatus } from "../models/task";
 import { getTaskLaneSession, markTaskLaneSessionStatus } from "./task-lane-history";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 import { resolveReviewLaneConvergenceTarget } from "./review-lane-convergence";
@@ -12,6 +12,8 @@ import {
   enqueueKanbanTaskSession,
   processKanbanColumnTransition,
 } from "./workflow-orchestrator-singleton";
+import { clearStuckMarker, getErrorType, parseCbResetCount } from "./sync-error-writer";
+import { getKanbanConfig } from "./kanban-config";
 
 export interface RestartRecoveryOptions {
   sessionStore: ReturnType<typeof getHttpSessionStore>;
@@ -55,8 +57,9 @@ function isSessionActivelyRunning(
 }
 
 function resolveStaleLaneSessionTerminalStatus(
-  task: Pick<Task, "verificationVerdict" | "verificationReport" | "completionSummary">,
+  task: Pick<Task, "verificationVerdict" | "verificationReport" | "completionSummary" | "pullRequestUrl">,
 ): TaskLaneSessionStatus {
+  if (task.pullRequestUrl) return "completed";
   return task.verificationVerdict || task.verificationReport || task.completionSummary
     ? "transitioned"
     : "timed_out";
@@ -173,6 +176,7 @@ async function convergeRecoveredReviewTask(
     toColumnId: convergenceColumn.id,
     fromColumnName: currentColumnName,
     toColumnName: convergenceColumn.name,
+    source: { type: "restart_recovery" },
   });
   return true;
 }
@@ -186,12 +190,11 @@ export async function reviveMissingEntryAutomations(
   const board = await system.kanbanBoardStore.get(boardId);
   if (!board) return;
 
-  const tasks = await system.taskStore.listByWorkspace(workspaceId);
-  for (const originalTask of tasks) {
-    if (originalTask.boardId !== boardId || !originalTask.columnId) {
-      continue;
-    }
-
+  // Pre-filter tasks belonging to this board and having a column assignment.
+  // This avoids passing unrelated tasks through the expensive sanitize step.
+  const allTasks = await system.taskStore.listByWorkspace(workspaceId);
+  const boardTasks = allTasks.filter((t) => t.boardId === boardId && t.columnId);
+  for (const originalTask of boardTasks) {
     const task = await sanitizeStaleCurrentLaneAutomation(system, originalTask, options);
     if (task.triggerSessionId) continue;
 
@@ -236,17 +239,34 @@ export async function reviveMissingEntryAutomations(
       laneState.currentSession
       && laneState.currentSession.columnId === currentColumnId
       && (laneState.currentSession.status === "transitioned" || laneState.currentSession.status === "completed")
-      && laneState.nextStep
-      && typeof laneState.currentStepIndex === "number"
     ) {
-      await enqueueKanbanTaskSession(system, {
-        task,
-        expectedColumnId: currentColumnId,
-        ignoreExistingTrigger: true,
-        step: laneState.nextStep,
-        stepIndex: laneState.currentStepIndex + 1,
-      });
+      if (laneState.nextStep && typeof laneState.currentStepIndex === "number") {
+        await enqueueKanbanTaskSession(system, {
+          task,
+          expectedColumnId: currentColumnId,
+          ignoreExistingTrigger: true,
+          step: laneState.nextStep,
+          stepIndex: laneState.currentStepIndex + 1,
+        });
+      }
+      // Lane automation already completed (with or without remaining steps
+      // that were skipped). Skip re-triggering to avoid duplicate sessions.
       continue;
+    }
+
+    // Dependency gate: skip re-triggering if dependencies are still unsatisfied
+    if (task.dependencies && task.dependencies.length > 0 && boardId) {
+      const board = await system.kanbanBoardStore.get(boardId);
+      if (board) {
+        const { checkDependencyGate } = await import("./dependency-gate");
+        const gateResult = await checkDependencyGate(task, board.columns, system.taskStore);
+        if (gateResult.blocked) {
+          console.log(
+            `[RestartRecovery] Skipping ${task.id} (${task.title}): blocked by [${gateResult.pendingDependencies.join(", ")}]`,
+          );
+          continue;
+        }
+      }
     }
 
     await processKanbanColumnTransition(system, {
@@ -258,6 +278,121 @@ export async function reviveMissingEntryAutomations(
       toColumnId: currentColumnId,
       fromColumnName: "Revive",
       toColumnName: column.name,
+      source: { type: "restart_recovery" },
     });
   }
+}
+
+// ─── Startup Stuck-Task Sweeper ──────────────────────────────────────────────
+
+/** Error patterns that indicate a permanently stuck task requiring sweep recovery. */
+const REPEAT_LIMIT_PATTERN = "Stopped Kanban automation";
+const STEP_RESUME_LIMIT_PATTERN = "Max retries";
+const ADVANCE_RECOVERY_PATTERN = "[advance-recovery]";
+
+function isPermanentlyStuckError(lastSyncError: string | undefined): boolean {
+  if (!lastSyncError) return false;
+  const errorType = getErrorType(lastSyncError);
+  if (errorType === "repeat_limit") return true;
+  if (errorType === "advance_recovery") return true;
+  // Step-resume limit: message contains "Max retries" (works for both JSON and legacy)
+  if (lastSyncError.includes(STEP_RESUME_LIMIT_PATTERN)) return true;
+  // Circuit-breaker max resets exceeded
+  if (errorType === "circuit_breaker") {
+    const maxResets = getKanbanConfig().cbMaxCooldownResets;
+    const resetCount = parseCbResetCount(lastSyncError);
+    if (resetCount >= maxResets) return true;
+  }
+  return false;
+}
+
+export interface StuckTaskSweepSummary {
+  scanned: number;
+  swept: number;
+  errors: number;
+}
+
+/**
+ * Startup stuck-task sweeper — clears permanently-blocked error markers so
+ * the LaneScanner and done-lane recovery tick can re-evaluate on the fresh
+ * service instance.
+ *
+ * Runs once at startup, before any periodic ticks fire. Safe to call
+ * idempotently — tasks that are not stuck are left untouched.
+ */
+export async function sweepStuckTasksOnStartup(
+  system: Pick<RoutaSystem, "taskStore" | "kanbanBoardStore" | "workspaceStore">,
+): Promise<StuckTaskSweepSummary> {
+  const summary: StuckTaskSweepSummary = { scanned: 0, swept: 0, errors: 0 };
+
+  try {
+    const workspaces = await system.workspaceStore.list();
+    for (const ws of workspaces) {
+      const tasks = await system.taskStore.listByWorkspace(ws.id);
+      for (const task of tasks) {
+        if (!isPermanentlyStuckError(task.lastSyncError)) continue;
+        summary.scanned++;
+
+        try {
+          const cleaned = clearStuckMarker(task, "full");
+
+          // Fix orphan IN_PROGRESS in done/archived columns
+          let nextStatus: TaskStatus | undefined;
+          if (
+            task.status === "IN_PROGRESS"
+            && task.boardId
+            && task.columnId
+          ) {
+            const board = await system.kanbanBoardStore.get(task.boardId);
+            const col = board?.columns.find((c) => c.id === task.columnId);
+            if (col?.stage === "done" || col?.stage === "archived" || col?.id === "done") {
+              nextStatus = "COMPLETED" as TaskStatus;
+            }
+          }
+
+          if (task.version !== undefined && system.taskStore.atomicUpdate) {
+            await system.taskStore.atomicUpdate(task.id, task.version, {
+              lastSyncError: cleaned.lastSyncError,
+              laneSessions: cleaned.laneSessions,
+              ...(nextStatus ? { status: nextStatus } : {}),
+              updatedAt: new Date(),
+            });
+          } else {
+            task.lastSyncError = cleaned.lastSyncError;
+            task.laneSessions = cleaned.laneSessions;
+            if (nextStatus) task.status = nextStatus;
+            task.updatedAt = new Date();
+            await system.taskStore.save(task);
+          }
+
+          summary.swept++;
+          console.log(
+            `[StuckTaskSweeper] Cleared stuck marker for card ${task.id} ` +
+            `in column ${task.columnId} (was: ${task.lastSyncError?.slice(0, 60)}...)`,
+          );
+        } catch (err) {
+          summary.errors++;
+          console.error(
+            `[StuckTaskSweeper] Failed to sweep card ${task.id}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    summary.errors++;
+    console.error(
+      "[StuckTaskSweeper] Sweep failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  if (summary.swept > 0 || summary.errors > 0) {
+    console.log(
+      `[StuckTaskSweeper] Startup sweep complete: scanned=${summary.scanned}, ` +
+      `swept=${summary.swept}, errors=${summary.errors}`,
+    );
+  }
+
+  return summary;
 }

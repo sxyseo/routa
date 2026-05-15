@@ -670,6 +670,7 @@ export class RoutaOrchestrator {
         delegationPrompt,
         callerSessionId,
         workspaceId,
+        specialistConfig,
       );
       childSandboxId = spawnResult.sandboxId;
     } catch (err) {
@@ -820,6 +821,7 @@ export class RoutaOrchestrator {
     initialPrompt: string,
     parentSessionId: string,
     workspaceId?: string,
+    specialistConfig?: SpecialistConfig,
   ): Promise<{ sandboxId?: string }> {
     const isClaudeCode = provider === "claude";
     const isClaudeCodeSdk = provider === "claude-code-sdk";
@@ -976,11 +978,25 @@ export class RoutaOrchestrator {
           });
       }
     } else if (isClaudeCodeSdk) {
+      // Build MCP config for SDK adapter (parity with isClaudeCode path)
+      const sdkMcpConfigJson = JSON.stringify({
+        mcpServers: {
+          routa: { url: mcpUrl, type: "http" },
+        },
+      });
+      const { parseMcpServersFromConfigs } = await import("@/core/acp/mcp-setup");
+      const sdkMcpServers = parseMcpServersFromConfigs([sdkMcpConfigJson]);
+
       acpSessionId = await this.processManager.createClaudeCodeSdkSession(
         sessionId,
         cwd,
         notificationHandler,
-        { provider: "claude-code-sdk" },
+        {
+          provider: "claude-code-sdk",
+          mcpServers: sdkMcpServers,
+          role: specialistConfig?.role,
+          specialistId: specialistConfig?.id,
+        },
         lifecycleNotifier,
       );
 

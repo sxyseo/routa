@@ -17,6 +17,17 @@ export interface TaskStore {
   updateStatus(taskId: string, status: TaskStatus): Promise<void>;
   delete(taskId: string): Promise<void>;
   deleteByWorkspace(workspaceId: string): Promise<number>;
+  findByPullRequestUrl?(url: string): Promise<Task | undefined>;
+  /**
+   * Atomically update a task using optimistic locking.
+   * Returns true if the row was updated (version matched), false if version conflict.
+   * Implementations that don't support locking should fall back to unconditional save.
+   */
+  atomicUpdate?(
+    taskId: string,
+    expectedVersion: number,
+    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "laneSessions" | "updatedAt" | "pullRequestMergedAt" | "pullRequestUrl" | "isPullRequest" | "worktreeId" | "comment" | "dependencyStatus">>,
+  ): Promise<boolean>;
 }
 
 export class InMemoryTaskStore implements TaskStore {
@@ -84,6 +95,29 @@ export class InMemoryTaskStore implements TaskStore {
       deleted += 1;
     }
     return deleted;
+  }
+
+  async findByPullRequestUrl(url: string): Promise<Task | undefined> {
+    for (const task of this.tasks.values()) {
+      if (task.pullRequestUrl === url || task.vcsUrl === url) {
+        return this.hydrateTask(task);
+      }
+    }
+    return undefined;
+  }
+
+  async atomicUpdate(
+    taskId: string,
+    expectedVersion: number,
+    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "laneSessions" | "updatedAt" | "pullRequestMergedAt" | "pullRequestUrl" | "isPullRequest" | "worktreeId" | "comment" | "dependencyStatus">>,
+  ): Promise<boolean> {
+    const task = this.tasks.get(taskId);
+    if (!task || (task.version ?? 1) !== expectedVersion) return false;
+    Object.assign(task, updates);
+    task.version = (task.version ?? 1) + 1;
+    // Only bump updatedAt if the caller did not explicitly omit it.
+    if (!("updatedAt" in updates)) task.updatedAt = new Date();
+    return true;
   }
 
   private hydrateTask(task: Task): Task {

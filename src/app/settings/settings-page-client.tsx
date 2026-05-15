@@ -30,7 +30,7 @@ export function SettingsPageClient() {
   useEffect(() => {
     const fetchProviders = async () => {
       try {
-        const res = await desktopAwareFetch("/api/providers");
+        const res = await desktopAwareFetch("/api/providers?check=true");
         if (res.ok) {
           const data = await res.json();
           setProviders(data.providers ?? []);
@@ -68,6 +68,7 @@ export function SettingsPageClient() {
         providers={providers}
         initialTab={initialTab}
         variant="page"
+        workspaceId={workspaceId}
       />
     </DesktopAppShell>
   );

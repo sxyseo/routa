@@ -945,14 +945,14 @@ function SpecDetailPane({
             {issue.filename}
           </CompactBadge>
           {issue.githubIssue != null ? (
-            issue.githubUrl ? (
+            issue.vcsUrl ? (
               <a
-                href={issue.githubUrl}
+                href={issue.vcsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700 hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-200 dark:hover:bg-sky-500/20"
               >
-                <span>#{issue.githubIssue} ({issue.githubState ?? t.specBoard.githubStateUnknown})</span>
+                <span>#{issue.githubIssue} ({issue.vcsState ?? t.specBoard.vcsStateUnknown})</span>
                 <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.8} />
               </a>
             ) : (

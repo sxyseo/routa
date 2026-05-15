@@ -413,6 +413,27 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
         external: string;
       };
     };
+    gitlabCi: {
+      loading: string;
+      retry: string;
+      noCiFile: string;
+      noStages: string;
+      unsupported: string;
+      fetchError: string;
+      noRepo: string;
+      loadingWorkflows: string;
+      dependencyGraph: string;
+      noExplicitDeps: string;
+      upstream: string;
+      downstream: string;
+      depChainEmpty: string;
+      depChainEmptyHint: string;
+      hoverHighlight: string;
+      selectedJob: string;
+      pipelineDetail: string;
+      jobDetail: string;
+      depCount: string;
+    };
     supportState: {
       invalidRepoPath: string;
     };
@@ -465,6 +486,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     planBacklog: string;
     planBacklogDescription: string;
     importGithubIssues: string;
+    importVcsIssues: string;
+    importVcsIssuesGitlab: string;
     boardSettings: string;
     // Card status
     queued: string;
@@ -475,6 +498,17 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     syncIssue: string;
     synced: string;
     notSynced: string;
+    diag_circuit_breaker: string;
+    diag_rate_limited: string;
+    diag_dependency_blocked: string;
+    diag_retry_limit: string;
+    diag_pr_failure: string;
+    diag_fan_in_conflict: string;
+    diag_stale_session: string;
+    diag_watchdog_recovery: string;
+    diag_unknown_error: string;
+    diag_done_lane_stuck: string;
+    diag_conflict_detected: string;
     // Card labels
     deleteTask: string;
     openCard: string;
@@ -646,6 +680,9 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     authConfigIdPlaceholder: string;
     autoAdvanceOnSuccess: string;
     autoAdvanceOnSuccessDesc: string;
+    autoMergeAfterPR: string;
+    autoMergeAfterPRDesc: string;
+    mergeStrategy: string;
     boardOverview: string;
     boardOverviewHint: string;
     boardSettingsHint: string;
@@ -670,6 +707,27 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     del: string;
     dangerZone: string;
     dangerZoneHint: string;
+    branchLifecycle: string;
+    branchLifecycleSettings: string;
+    branchLifecycleHint: string;
+    deleteBranchOnMerge: string;
+    deleteBranchOnMergeHint: string;
+    removeWorktreeOnMerge: string;
+    removeWorktreeOnMergeHint: string;
+    rebaseDownstream: string;
+    rebaseDownstreamHint: string;
+    autoCreatePullRequest: string;
+    autoCreatePullRequestHint: string;
+    prTargetBranchEyebrow: string;
+    prTargetBranchTitle: string;
+    prTargetBranchHint: string;
+    prTargetStrategy: string;
+    prTargetStrategyHint: string;
+    prStrategyDependencyInherit: string;
+    prStrategyCodebaseDefault: string;
+    prStrategyFixed: string;
+    prFixedBranch: string;
+    prFixedBranchHint: string;
     dirty: string;
     discardChanges: string;
     down: string;
@@ -743,6 +801,10 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     workspaceIdLabel: string;
     yesLabel: string;
     cancel: string;
+    // Dependency badges (used on kanban cards)
+    blockedBadge: string;
+    blockedBadgeTooltip: string;
+    dependencyCountBadge: string;
   };
 
   // Kanban card detail
@@ -854,6 +916,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     baseComparison: string;
     worktreeSource: string;
     repoSource: string;
+    platformGitHub: string;
+    platformGitLab: string;
     dirty: string;
     clean: string;
     evidenceBundle: string;
@@ -928,6 +992,14 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     summaryPresent: string;
     summaryMissing: string;
     noEvidenceSummary: string;
+    evidenceArtifactsMet: string;
+    evidenceVerificationMet: string;
+    evidenceCompletionMet: string;
+    screenshotGallery: string;
+    lightboxClose: string;
+    artifactGroupTitle: string;
+    missingArtifactPlaceholder: string;
+    missingArtifactHint: string;
     none: string;
     editOverride: string;
     overrideCard: string;
@@ -941,12 +1013,63 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     failedToSwitchRepo: string;
     failedToUpdateRepos: string;
     resetOverride: string;
+    reopenOnNewBranch: string;
+    reopenOnNewBranchConfirm: string;
+    resetOnNewBranch: string;
+    resetOnNewBranchConfirm: string;
+    branchAction: string;
+    branchStrategyTitle: string;
+    branchStrategyNew: string;
+    branchStrategyNewDesc: string;
+    branchStrategyCustom: string;
+    branchStrategyCustomDesc: string;
+    branchStrategyReset: string;
+    branchStrategyResetDesc: string;
+    branchStrategyCustomNamePlaceholder: string;
+    branchStrategyConfirm: string;
+    branchStrategyCancel: string;
+    branchStrategyNameRequired: string;
+    branchStrategyActiveSessionWarning: string;
+    parentTask: string;
+    childTasks: string;
+    childTasksProgress: string;
+    childTaskCompleted: string;
+    childTaskStatusColumn: string;
+    noChildTasks: string;
+    viewParentTask: string;
+    dependencies: string;
+    dependenciesHint: string;
+    dependsOnLabel: string;
+    blockedByLabel: string;
+    noDependencies: string;
+    noBlockedBy: string;
+    addDependency: string;
+    removeDependency: string;
+    dependencySearchPlaceholder: string;
+    dependencyAlreadyAdded: string;
+    dependencySelfReference: string;
+    dependencyUpdateFailed: string;
     fallbackAgentChain: string;
     fallbackAgentChainHint: string;
     fallbackAgentsConfigured: string;
     addFallbackAgent: string;
     enableAutomaticFallback: string;
     fallbackProviderDefault: string;
+    archiveCard: string;
+    diagAutoRecoverable: string;
+    diagRecoveryHint: string;
+    diagSuggestionRetry: string;
+    diagSuggestionCheckDeps: string;
+    diagSuggestionManualPR: string;
+    diagSuggestionResolveConflicts: string;
+    diagSuggestionCheckProvider: string;
+    diagSuggestionMoveBack: string;
+    diagSuggestionCheckAutomation: string;
+    diagCooldownRemaining: string;
+    diagCbResetsUsed: string;
+    diagPermanentSkip: string;
+    mergeStrategy: string;
+    fanInRetry: string;
   };
 
   // Kanban modal dialogs
@@ -961,6 +1084,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     defaultRepositoryLabel: string;
     localSourcesLabel: string;
     githubSourcesLabel: string;
+    vcsSourcesLabel: string;
     workspaceHealthTitle: string;
     addRepository: string;
     addingRepository: string;
@@ -1000,6 +1124,12 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     recloneHint: string;
     cloning: string;
     reclone: string;
+    fetchLatest: string;
+    fetchingLatest: string;
+    fetchSynced: string;
+    fetchAlreadySynced: string;
+    latestCommit: string;
+    copySha: string;
     removeRepoTitle: string;
     removeRepoConfirm: string;
     removeRepoHint: string;
@@ -1244,15 +1374,22 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     testCasesPlaceholder: string;
     testCasesHint: string;
     createLinkedGithubIssue: string;
+    createLinkedVcsIssue: string;
     noGithubLinked: string;
+    noVcsLinked: string;
     linkRepositories: string;
     noSelectionHint: string;
     create: string;
+    dependencies: string;
+    dependenciesPlaceholder: string;
+    dependenciesHint: string;
   };
 
   kanbanImport: {
     title: string;
+    titleGitlab: string;
     description: string;
+    descriptionGitlab: string;
     repository: string;
     loading: string;
     loadFailed: string;
@@ -1274,6 +1411,11 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     noPulls: string;
     pullsLoaded: string;
     importPullsFailed: string;
+    tabMergeRequests: string;
+    importMrsFailed: string;
+    noMergeRequests: string;
+    mergeRequestsLoaded: string;
+    loadingMergeRequests: string;
     draftBadge: string;
     mergedBadge: string;
     branchInfo: string;
@@ -1323,6 +1465,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     cards: string;
     manualLane: string;
     manualLaneOnly: string;
+    loadMore: string;
   };
 
   // Sessions
@@ -1483,6 +1626,7 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     refresh: string;
     export: string;
     noTracesForSession: string;
+    transcriptFallback: string;
     selectSessionToView: string;
     sessionStarted: string;
     sessionEnded: string;
@@ -1565,4 +1709,25 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
   };
 
   // Message Bubble
+
+  // Archive History
+  archiveHistory: {
+    title: string;
+    subtitle: string;
+    searchPlaceholder: string;
+    filterByLabel: string;
+    allLabels: string;
+    noResults: string;
+    emptyTitle: string;
+    emptySubtitle: string;
+    archivedAt: string;
+    viewDetail: string;
+    closeDetail: string;
+    description: string;
+    comments: string;
+    noDescription: string;
+    noComments: string;
+    cardCount: string;
+    labelFilterClear: string;
+  };
 }

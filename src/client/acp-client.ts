@@ -179,11 +179,15 @@ export class BrowserAcpClient {
   private _sessionId: string | null = null;
   private lastEventId: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private consecutiveReconnects = 0;
   private sseAttempt = 0;
   private readonly ownershipConflictRetryLimit = 4;
   private readonly ownershipConflictBaseDelayMs = 1200;
   private readonly ownershipConflictBackoffMultiplier = 2;
   private readonly ownershipConflictRetryState = new Map<string, number>();
+  private probeAbortController: AbortController | null = null;
+  /** Session IDs whose ownership lease has expired — skip probing on re-attach. */
+  private readonly expiredLeaseSessions = new Set<string>();
 
   constructor(baseUrl: string = "") {
     this.baseUrl = baseUrl;
@@ -296,6 +300,7 @@ export class BrowserAcpClient {
     this._sessionId = result.sessionId;
 
     // Connect SSE after we know the sessionId
+    this.expiredLeaseSessions.delete(result.sessionId);
     this.attachSession(result.sessionId);
 
     return result;
@@ -382,6 +387,7 @@ export class BrowserAcpClient {
 
   /**
    * Attach to an existing session ID (switch sessions).
+   * Skips SSE reconnection if the connection is already alive for this session.
    */
   attachSession(sessionId: string): void {
     if (this._sessionId !== sessionId) {
@@ -391,6 +397,23 @@ export class BrowserAcpClient {
       this.lastEventId = null;
     }
     this._sessionId = sessionId;
+    if (this.expiredLeaseSessions.has(sessionId)) {
+      this.emitConnectionIssue({
+        sessionId,
+        message: "Session ownership lease expired — not re-probing.",
+        retryable: false,
+        status: 409,
+      });
+      return;
+    }
+    // Skip reconnect if SSE is already connected to this session
+    if (
+      this.eventSource
+      && this.eventSource.readyState !== EventSource.CLOSED
+      && this._sessionId === sessionId
+    ) {
+      return;
+    }
     this.connectSSE(sessionId);
   }
 
@@ -654,6 +677,8 @@ export class BrowserAcpClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.probeAbortController?.abort();
+    this.probeAbortController = null;
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
@@ -661,6 +686,7 @@ export class BrowserAcpClient {
     this._sessionId = null;
     this.lastEventId = null;
     this.ownershipConflictRetryState.clear();
+    this.expiredLeaseSessions.clear();
     this.updateHandlers = [];
     this.connectionIssueHandlers = [];
   }
@@ -706,6 +732,10 @@ export class BrowserAcpClient {
           if (event.lastEventId) {
             this.lastEventId = event.lastEventId;
           }
+          // First successful message means the connection is healthy — reset backoff.
+          if (this.consecutiveReconnects > 0) {
+            this.consecutiveReconnects = 0;
+          }
           const data = JSON.parse(event.data);
           if (data.method === "session/update" && data.params) {
             const notification = data.params as AcpSessionNotification;
@@ -728,8 +758,11 @@ export class BrowserAcpClient {
         // connection is CLOSED (readyState === 2) — e.g. after a server
         // restart / page refresh — we must reconnect manually.
         if (this.eventSource?.readyState === EventSource.CLOSED) {
-          console.warn("[AcpClient] SSE connection closed, reconnecting in 2s...");
-          this.scheduleReconnect();
+          this.consecutiveReconnects++;
+          const baseDelay = 2000;
+          const delay = Math.min(baseDelay * 2 ** (this.consecutiveReconnects - 1), 30000);
+          console.warn(`[AcpClient] SSE connection closed, reconnecting in ${delay}ms (attempt ${this.consecutiveReconnects})...`);
+          this.scheduleReconnect(delay);
         }
       };
     });
@@ -773,9 +806,12 @@ export class BrowserAcpClient {
   }
 
   private async probeSse(url: URL, sessionId: string): Promise<AcpConnectionIssue | null> {
+    this.probeAbortController?.abort();
+    this.probeAbortController = new AbortController();
     try {
       const response = await fetch(url.toString(), {
         headers: { Accept: "text/event-stream" },
+        signal: this.probeAbortController.signal,
       });
 
       if (response.ok) {
@@ -798,10 +834,17 @@ export class BrowserAcpClient {
         ? this.getOwnershipConflictRetryDelayMs(sessionId)
         : null;
 
+      const isExpiredLease = response.status === 409
+        && (message.includes("lease expired") || message.includes("cannot be resumed"));
+
+      if (isExpiredLease) {
+        this.expiredLeaseSessions.add(sessionId);
+      }
+
       return {
         sessionId,
         message,
-        retryable: response.status !== 409 || ownershipConflictRetryDelayMs !== null,
+        retryable: !isExpiredLease && (response.status !== 409 || ownershipConflictRetryDelayMs !== null),
         status: response.status,
         ownerInstanceId: typeof payload?.ownerInstanceId === "string" ? payload.ownerInstanceId : undefined,
         leaseExpiresAt: typeof payload?.leaseExpiresAt === "string" ? payload.leaseExpiresAt : undefined,

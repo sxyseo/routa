@@ -1,11 +1,12 @@
 /**
- * GET /api/github/file?owner=X&repo=Y&path=Z&ref=R — Read a file from an imported GitHub repo.
+ * GET /api/github/file?owner=X&repo=Y&path=Z&ref=R — Read a file from an imported VCS repo.
+ * Routes through VCS abstraction layer.
  *
  * Returns: { content: string, path: string }
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCachedWorkspace, GitHubWorkspaceError } from "@/core/github";
+import { getCachedWorkspace, VCSWorkspaceError } from "@/core/vcs/vcs-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +35,8 @@ export async function GET(request: NextRequest) {
     const content = workspace.readFile(filePath);
     return NextResponse.json({ content, path: filePath });
   } catch (err) {
-    // Use name + code check to survive cross-bundle instanceof failures in dev mode
-    if (err instanceof GitHubWorkspaceError || (err instanceof Error && err.name === "GitHubWorkspaceError")) {
-      const code = (err as GitHubWorkspaceError).code;
+    if (err instanceof VCSWorkspaceError || (err instanceof Error && err.name === "VCSWorkspaceError")) {
+      const code = (err as VCSWorkspaceError).code;
       const status = code === "NOT_FOUND" ? 404 : code === "FORBIDDEN" ? 403 : 500;
       return NextResponse.json({ error: err.message, code }, { status });
     }

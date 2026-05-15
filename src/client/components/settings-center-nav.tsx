@@ -7,6 +7,7 @@ import type { SettingsTab } from "./settings-panel-shared";
 
 interface SettingsCenterNavProps {
   activeItem?: SettingsNavItem;
+  workspaceId?: string | null;
 }
 
 export type SettingsNavItem =
@@ -14,22 +15,30 @@ export type SettingsNavItem =
   | "specialists"
   | "mcp"
   | "workflows"
-  | "schedules";
+  | "schedules"
+  | "system-jobs";
 
-export function SettingsCenterNav({ activeItem }: SettingsCenterNavProps) {
+function appendWorkspaceId(href: string, workspaceId: string | null | undefined): string {
+  if (!workspaceId) return href;
+  const sep = href.includes("?") ? "&" : "?";
+  return `${href}${sep}workspaceId=${encodeURIComponent(workspaceId)}`;
+}
+
+export function SettingsCenterNav({ activeItem, workspaceId }: SettingsCenterNavProps) {
   const { t } = useTranslation();
   const configItems: Array<{ key: SettingsNavItem; label: string; href: string }> = [
-    { key: "providers", label: t.settings.providers, href: "/settings?tab=providers" },
-    { key: "registry", label: t.settings.registry, href: "/settings?tab=registry" },
-    { key: "roles", label: t.settings.roleDefaults, href: "/settings?tab=roles" },
-    { key: "models", label: t.settings.models, href: "/settings?tab=models" },
-    { key: "webhooks", label: t.settings.webhooks, href: "/settings?tab=webhooks" },
+    { key: "providers", label: t.settings.providers, href: appendWorkspaceId("/settings?tab=providers", workspaceId) },
+    { key: "registry", label: t.settings.registry, href: appendWorkspaceId("/settings?tab=registry", workspaceId) },
+    { key: "roles", label: t.settings.roleDefaults, href: appendWorkspaceId("/settings?tab=roles", workspaceId) },
+    { key: "models", label: t.settings.models, href: appendWorkspaceId("/settings?tab=models", workspaceId) },
+    { key: "webhooks", label: t.settings.webhooks, href: appendWorkspaceId("/settings?tab=webhooks", workspaceId) },
   ];
   const workspaceToolItems: Array<{ key: SettingsNavItem; label: string; href: string }> = [
-    { key: "specialists", label: t.nav.specialists, href: "/settings/specialists" },
-    { key: "mcp", label: t.nav.mcpServers, href: "/settings/mcp" },
-    { key: "workflows", label: t.nav.workflows, href: "/settings/workflows" },
-    { key: "schedules", label: t.nav.schedules, href: "/settings/schedules" },
+    { key: "specialists", label: t.nav.specialists, href: appendWorkspaceId("/settings/specialists", workspaceId) },
+    { key: "mcp", label: t.nav.mcpServers, href: appendWorkspaceId("/settings/mcp", workspaceId) },
+    { key: "workflows", label: t.nav.workflows, href: appendWorkspaceId("/settings/workflows", workspaceId) },
+    { key: "schedules", label: t.nav.schedules, href: appendWorkspaceId("/settings/schedules", workspaceId) },
+    { key: "system-jobs", label: t.systemJobs.navLabel, href: appendWorkspaceId("/settings/system-jobs", workspaceId) },
   ];
 
   return (

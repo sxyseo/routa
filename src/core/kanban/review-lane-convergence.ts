@@ -2,6 +2,8 @@ import type { KanbanColumn, KanbanColumnStage } from "../models/kanban";
 import type { Task } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 
+const PRE_GATE_BLOCKED_PREFIX = "[pre-gate-blocked]";
+
 type ReviewConvergenceTask = Pick<
   Task,
   | "columnId"
@@ -13,6 +15,8 @@ type ReviewConvergenceTask = Pick<
   | "assignedRole"
   | "assignedSpecialistId"
   | "assignedSpecialistName"
+  | "lastSyncError"
+  | "preGateBlockers"
 >;
 
 function resolveColumnIdForStage(
@@ -39,6 +43,14 @@ export function resolveReviewLaneConvergenceTarget(
   const laneAutomationState = resolveCurrentLaneAutomationState(task, boardColumns);
   if (laneAutomationState.hasRemainingSteps) {
     return undefined;
+  }
+
+  // Pre-gate blockers override LLM verdict — deterministic checks found violations
+  // that the LLM missed. Check persistent field first, then fall back to lastSyncError.
+  const hasPreGateBlockers = task.preGateBlockers
+    || (task.lastSyncError && task.lastSyncError.startsWith(PRE_GATE_BLOCKED_PREFIX));
+  if (hasPreGateBlockers) {
+    return resolveColumnIdForStage(boardColumns, "dev") ?? "dev";
   }
 
   switch (task.verificationVerdict) {

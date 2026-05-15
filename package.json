@@ -29,7 +29,8 @@
   ],
   "scripts": {
     "postinstall": "node scripts/install/run-patch-package.mjs",
-    "dev": "cross-env NODE_OPTIONS='--max-old-space-size=4096' next dev",
+    "dev": "node scripts/dev-with-logging.cjs",
+    "dev:raw": "cross-env NODE_OPTIONS='--max-old-space-size=8192' next dev",
     "acp:runner": "node --import tsx scripts/fitness/start-acp-runner.ts",
     "build": "cross-env NODE_OPTIONS='--max-old-space-size=8192' next build",
     "tauri:dev": "npm --prefix apps/desktop run dev",
@@ -143,6 +144,11 @@
     "test:otel:trace": "node --import tsx scripts/fitness/check-otel-trace-smoke.ts",
     "test:performance": "node scripts/fitness/check-performance-smoke.mjs",
     "test:performance:startup": "node scripts/fitness/check-startup-performance.mjs",
+    "docker:dev": "docker compose --env-file .env.docker -f docker-compose.dev.yml up --build",
+    "docker:dev:build": "docker compose --env-file .env.docker -f docker-compose.dev.yml build",
+    "docker:dev:down": "docker compose --env-file .env.docker -f docker-compose.dev.yml down",
+    "docker:dev:logs": "docker compose --env-file .env.docker -f docker-compose.dev.yml logs -f",
+    "docker:dev:ps": "docker compose --env-file .env.docker -f docker-compose.dev.yml ps",
     "docs:dev": "node --import tsx scripts/docs/generate-specialist-docs.ts --save && docusaurus start",
     "docs:build": "node scripts/build/build-docs-site.mjs",
     "docs:serve": "docusaurus serve docs-site",
@@ -226,6 +232,7 @@
     "minimatch": "^10.2.5",
     "next": "^16.2.3",
     "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.6",
     "react": "^19.0.0",
     "react-complex-tree": "^2.6.1",
     "react-dom": "^19.0.0",
@@ -276,6 +283,7 @@
     "@types/eventsource": "^1.1.15",
     "@types/node": "^25.3.3",
     "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^8.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/uuid": "^10.0.0",
@@ -301,6 +309,6 @@
     "tailwindcss": "^4.2.1",
     "tsx": "^4.21.0",
     "typescript": "5.9.3",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.5"
   }
 }

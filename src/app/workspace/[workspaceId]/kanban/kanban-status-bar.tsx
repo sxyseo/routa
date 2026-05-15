@@ -1,7 +1,9 @@
 "use client";
 
-import { GitBranch, FileCode, Activity, Zap } from "lucide-react";
+import React, { useState, useCallback } from "react";
+import { GitBranch, FileCode, Activity, Zap, RotateCcw } from "lucide-react";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { RuntimeFitnessModeSummary, RuntimeFitnessStatusResponse } from "@/core/fitness/runtime-status-types";
@@ -49,6 +51,12 @@ interface KanbanStatusBarProps {
   runtimeFitnessLoading?: boolean;
   /** Runtime Fitness 加载错误 */
   runtimeFitnessError?: string | null;
+  /** Workspace ID */
+  workspaceId?: string;
+  /** Board ID */
+  boardId?: string;
+  /** 恢复完成后的回调 */
+  onRecovered?: () => void;
 }
 
 function formatModeLabel(summary: RuntimeFitnessModeSummary | null, fastLabel: string, fullLabel: string) {
@@ -114,7 +122,7 @@ function fitnessDotClass(
   return "bg-slate-400";
 }
 
-export function KanbanStatusBar({
+export const KanbanStatusBar = React.memo(function KanbanStatusBar({
   defaultCodebase,
   codebases,
   fileChangesSummary,
@@ -133,8 +141,28 @@ export function KanbanStatusBar({
   runtimeFitness,
   runtimeFitnessLoading = false,
   runtimeFitnessError,
+  workspaceId,
+  boardId,
+  onRecovered,
 }: KanbanStatusBarProps) {
   const { t } = useTranslation();
+  const [recovering, setRecovering] = useState(false);
+  const handleRecover = useCallback(async () => {
+    if (recovering) return;
+    setRecovering(true);
+    try {
+      const params = new URLSearchParams();
+      if (workspaceId) params.set("workspaceId", workspaceId);
+      if (boardId) params.set("boardId", boardId);
+      await Promise.allSettled([
+        desktopAwareFetch(`/api/kanban/recover-running?${params}`, { method: "POST" }),
+        desktopAwareFetch(`/api/kanban/repair?workspaceId=${encodeURIComponent(workspaceId ?? "")}`, { method: "POST" }),
+      ]);
+      onRecovered?.();
+    } finally {
+      setRecovering(false);
+    }
+  }, [recovering, workspaceId, boardId, onRecovered]);
   const repoCount = codebases.length;
   const repoDisplayName = defaultCodebase
     ? defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? defaultCodebase.repoPath
@@ -351,6 +379,17 @@ export function KanbanStatusBar({
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
               {t.kanban.queuedLabel} {boardQueue?.queuedCount ?? 0}
             </span>
+            {workspaceId && (
+              <button
+                onClick={handleRecover}
+                disabled={recovering}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-desktop-bg-active transition-colors disabled:opacity-50"
+                title="清除僵尸状态并修复任务同步问题"
+              >
+                <RotateCcw className={`w-3 h-3 ${recovering ? "animate-spin" : ""}`} />
+                {recovering ? "恢复中..." : "恢复"}
+              </button>
+            )}
           </div>
         )}
 
@@ -368,4 +407,4 @@ export function KanbanStatusBar({
       </div>
     </div>
   );
-}
+});

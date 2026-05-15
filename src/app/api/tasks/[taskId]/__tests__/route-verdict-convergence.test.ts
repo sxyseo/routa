@@ -144,7 +144,9 @@ describe("/api/tasks/[taskId] verdict convergence gates", () => {
       hasCommitsSinceBase: true,
       hasUncommittedChanges: false,
       isGitHubRepo: true,
+      isGitLabRepo: false,
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Done": GitHub repo is not PR-ready yet. Use a feature branch instead of "main" so this task can open a pull request cleanly.',
@@ -170,6 +172,7 @@ describe("/api/tasks/[taskId] verdict convergence gates", () => {
       checked: true,
       branch: "main",
       canCreatePullRequest: false,
+      isMergedIntoBase: false,
     });
     expect(taskStore.save).not.toHaveBeenCalled();
   });

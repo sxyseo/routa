@@ -12,6 +12,7 @@ import type { Agent, AgentRole, AgentStatus } from "../models/agent";
 import type { Message, MessageRole } from "../models/message";
 import type { Note, NoteType, NoteMetadata } from "../models/note";
 import type { KanbanBoard } from "../models/kanban";
+import { ensureColumnStages } from "../models/kanban";
 import type { Artifact, ArtifactRequest, ArtifactType } from "../models/artifact";
 import { createSpecNote, SPEC_NOTE_ID } from "../models/note";
 import type { AgentStore } from "../store/agent-store";
@@ -42,6 +43,7 @@ export class SqliteWorktreeStore implements WorktreeStore {
       worktreePath: worktree.worktreePath,
       branch: worktree.branch,
       baseBranch: worktree.baseBranch,
+      baseCommitSha: worktree.baseCommitSha ?? null,
       status: worktree.status,
       sessionId: worktree.sessionId ?? null,
       label: worktree.label ?? null,
@@ -103,6 +105,15 @@ export class SqliteWorktreeStore implements WorktreeStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
+  async findByPath(worktreePath: string): Promise<Worktree | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.worktrees)
+      .where(eq(sqliteSchema.worktrees.worktreePath, worktreePath))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
   private toModel(row: typeof sqliteSchema.worktrees.$inferSelect): Worktree {
     return {
       id: row.id,
@@ -111,6 +122,7 @@ export class SqliteWorktreeStore implements WorktreeStore {
       worktreePath: row.worktreePath,
       branch: row.branch,
       baseBranch: row.baseBranch,
+      baseCommitSha: row.baseCommitSha ?? undefined,
       status: row.status as WorktreeStatus,
       sessionId: row.sessionId ?? undefined,
       label: row.label ?? undefined,
@@ -239,6 +251,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
   constructor(private db: SqliteDb) {}
 
   async save(board: KanbanBoard): Promise<void> {
+    const columns = ensureColumnStages(board.columns);
     await this.db
       .insert(sqliteSchema.kanbanBoards)
       .values({
@@ -247,7 +260,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
         name: board.name,
         isDefault: board.isDefault,
         githubToken: board.githubToken ?? null,
-        columns: board.columns,
+        columns,
         createdAt: board.createdAt,
         updatedAt: board.updatedAt,
       })
@@ -257,7 +270,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
           name: board.name,
           isDefault: board.isDefault,
           githubToken: board.githubToken ?? null,
-          columns: board.columns,
+          columns,
           updatedAt: new Date(),
         },
       });
@@ -305,7 +318,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
       name: row.name,
       isDefault: row.isDefault,
       githubToken: row.githubToken ?? undefined,
-      columns: row.columns,
+      columns: ensureColumnStages(row.columns),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -788,11 +801,14 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
-  async list(): Promise<AcpSession[]> {
-    const rows = await this.db
+  async list(options?: { createdAfter?: Date }): Promise<AcpSession[]> {
+    const base = this.db
       .select()
-      .from(sqliteSchema.acpSessions)
-      .orderBy(desc(sqliteSchema.acpSessions.createdAt));
+      .from(sqliteSchema.acpSessions);
+    const rows = options?.createdAfter
+      ? await base.where(gte(sqliteSchema.acpSessions.createdAt, options.createdAfter))
+          .orderBy(desc(sqliteSchema.acpSessions.createdAt))
+      : await base.orderBy(desc(sqliteSchema.acpSessions.createdAt));
     return rows.map(this.toModel);
   }
 
@@ -812,7 +828,6 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
   async appendHistory(sessionId: string, notification: AcpSessionNotification): Promise<void> {
     const session = await this.get(sessionId);
     if (!session) return;
-    const history = [...session.messageHistory, notification];
 
     const nextIndexRows = await this.db
       .select({ messageIndex: sqliteSchema.sessionMessages.messageIndex })
@@ -838,10 +853,16 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
         payload: notification as typeof sqliteSchema.sessionMessages.$inferInsert.payload,
       });
 
-    await this.db
-      .update(sqliteSchema.acpSessions)
-      .set({ messageHistory: history, updatedAt: new Date() })
-      .where(eq(sqliteSchema.acpSessions.id, sessionId));
+    // One-time full save when session_messages was empty (cold-start compat).
+    // After that, only touch updated_at — avoids O(history_size) JSON rewrite.
+    if (nextIndexRows.length === 0) {
+      await this.save({ ...session, messageHistory: [notification], updatedAt: new Date() });
+    } else {
+      await this.db
+        .update(sqliteSchema.acpSessions)
+        .set({ updatedAt: new Date() })
+        .where(eq(sqliteSchema.acpSessions.id, sessionId));
+    }
   }
 
   async getHistory(
@@ -882,6 +903,70 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
 
     const session = await this.get(sessionId);
     return session?.messageHistory ?? [];
+  }
+
+  /**
+   * Append a batch of consolidated notifications to `session_messages` and
+   * touch `updated_at` on the parent session row — without rewriting the
+   * full `message_history` JSON column.  This avoids the O(history_size)
+   * SQLite write that is the main bottleneck at high concurrency.
+   *
+   * Falls back to the full-replace `save()` path when `session_messages`
+   * has no existing rows for the session (first write after a migration
+   * or a cold start from an older DB).
+   */
+  async appendHistoryBatch(
+    sessionId: string,
+    notifications: AcpSessionNotification[],
+  ): Promise<void> {
+    if (notifications.length === 0) return;
+
+    // Wrap select + insert + update in a transaction to reduce lock overhead
+    await this.db.transaction(async (tx) => {
+      // Find the current max messageIndex in one query
+      const topRows = await tx
+        .select({ messageIndex: sqliteSchema.sessionMessages.messageIndex })
+        .from(sqliteSchema.sessionMessages)
+        .where(eq(sqliteSchema.sessionMessages.sessionId, sessionId))
+        .orderBy(desc(sqliteSchema.sessionMessages.messageIndex))
+        .limit(1);
+
+      let nextIndex = topRows.length > 0 ? topRows[0].messageIndex + 1 : 0;
+
+      // If session_messages is empty for this session, do a one-time full
+      // save so the `message_history` JSON column stays populated for cold
+      // starts that don't yet check session_messages.
+      if (topRows.length === 0) {
+        const session = await this.get(sessionId);
+        if (!session) return;
+        await this.save({ ...session, messageHistory: notifications, updatedAt: new Date() });
+        return;
+      }
+
+      const values = notifications.map((n) => {
+        const eventType = String(
+          (n.update as Record<string, unknown> | undefined)?.sessionUpdate ?? "notification",
+        );
+        const eventId = typeof n.eventId === "string" && n.eventId.length > 0
+          ? n.eventId
+          : `${sessionId}-${nextIndex}`;
+        return {
+          id: eventId,
+          sessionId,
+          messageIndex: nextIndex++,
+          eventType,
+          payload: n as typeof sqliteSchema.sessionMessages.$inferInsert.payload,
+        };
+      });
+
+      await tx.insert(sqliteSchema.sessionMessages).values(values);
+
+      // Touch updated_at without touching message_history
+      await tx
+        .update(sqliteSchema.acpSessions)
+        .set({ updatedAt: new Date() })
+        .where(eq(sqliteSchema.acpSessions.id, sessionId));
+    });
   }
 
   async markFirstPromptSent(sessionId: string): Promise<void> {
@@ -1302,24 +1387,47 @@ export class SqliteBackgroundTaskStore implements BackgroundTaskStore {
         asc(sqliteSchema.backgroundTasks.createdAt)
       );
 
-    // Filter to tasks whose dependencies are all COMPLETED
+    // Collect all unique dependency IDs across all pending tasks
+    const allDepIds = new Set<string>();
+    const tasksWithDeps: Array<{ row: typeof pending[number]; task: BackgroundTask; depIds: string[] }> = [];
     const ready: BackgroundTask[] = [];
+
     for (const row of pending) {
       const task = this.toModel(row);
       if (!task.dependsOnTaskIds || task.dependsOnTaskIds.length === 0) {
         ready.push(task);
         continue;
       }
-      // Check all dependencies - SQLite doesn't have ANY(), use IN()
-      const deps = await this.db
-        .select()
-        .from(sqliteSchema.backgroundTasks)
-        .where(sql`${sqliteSchema.backgroundTasks.id} IN (${sql.join(task.dependsOnTaskIds.map(id => sql`${id}`), sql`, `)})`);
-      const allCompleted = deps.length === task.dependsOnTaskIds.length && deps.every((d) => d.status === "COMPLETED");
+      for (const id of task.dependsOnTaskIds) {
+        allDepIds.add(id);
+      }
+      tasksWithDeps.push({ row, task, depIds: task.dependsOnTaskIds });
+    }
+
+    if (tasksWithDeps.length === 0) {
+      return ready;
+    }
+
+    // Single batch query for ALL dependency statuses
+    const depRows = await this.db
+      .select({
+        id: sqliteSchema.backgroundTasks.id,
+        status: sqliteSchema.backgroundTasks.status,
+      })
+      .from(sqliteSchema.backgroundTasks)
+      .where(sql`${sqliteSchema.backgroundTasks.id} IN (${sql.join([...allDepIds].map(id => sql`${id}`), sql`, `)})`);
+
+    const depStatusMap = new Map(depRows.map((d) => [d.id, d.status as string]));
+
+    // Check each task's dependencies against the batch result
+    for (const { task, depIds } of tasksWithDeps) {
+      const allCompleted = depIds.length > 0
+        && depIds.every((id) => depStatusMap.get(id) === "COMPLETED");
       if (allCompleted) {
         ready.push(task);
       }
     }
+
     return ready;
   }
 

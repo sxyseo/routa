@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/i18n";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
@@ -23,14 +23,16 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const { t } = useTranslation();
   const [status, setStatus] = useState<DockerStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const fetchedRef = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await desktopAwareFetch("/api/acp/docker/status", { cache: "no-store" });
+      const res = await desktopAwareFetch("/api/acp/docker/status", { cache: "no-store", signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setStatus((await res.json()) as DockerStatusResponse);
     } catch {
+      if (signal?.aborted) return;
       setStatus({
         available: false,
         daemonRunning: false,
@@ -40,10 +42,17 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    void refresh();
+    // Only fetch once, even when locale causes re-renders
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    void refresh(controller.signal).finally(() => clearTimeout(timer));
+    return () => { controller.abort(); clearTimeout(timer); };
   }, [refresh]);
 
   const available = !!status?.available;

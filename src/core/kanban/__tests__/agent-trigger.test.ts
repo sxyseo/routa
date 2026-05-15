@@ -679,6 +679,124 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Verifier");
     expect(prompt).not.toContain('targetColumnId: "dev"');
   });
+
+  it("includes generic dev guardrails in dev column prompt", () => {
+    const task = createTask({
+      id: "task-dev-rules",
+      title: "Build settings page",
+      objective: "Add a settings page with API integration",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "dev",
+    });
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).toContain("Do not modify files outside this task's declared scope");
+    expect(prompt).toContain("Remove all debug artifacts");
+    expect(prompt).toContain("lint, type-check, or test command");
+    expect(prompt).toContain("project-level instruction files");
+    expect(prompt).toContain("do not batch it with other tool calls in the same response");
+  });
+
+  it("includes read-only verification rules in review column prompt", () => {
+    const task = createTask({
+      id: "task-review-rules",
+      title: "Verify settings page",
+      objective: "Review the settings page implementation",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).toContain("Do not modify implementation code during review");
+    expect(prompt).toContain("Do not commit changes during review");
+    expect(prompt).toContain("read-only verification");
+  });
+
+  it("does not include dev-specific guardrails in backlog column", () => {
+    const task = createTask({
+      id: "task-backlog-no-dev-rules",
+      title: "Plan settings page",
+      objective: "Define requirements",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "backlog",
+    });
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).not.toContain("Do not modify files outside this task's declared scope");
+    expect(prompt).not.toContain("Remove all debug artifacts");
+    expect(prompt).not.toContain("Do not modify implementation code during review");
+    expect(prompt).not.toContain("acceptance criteria that can be independently verified");
+  });
+
+  it("does not include dev-specific guardrails in todo column", () => {
+    const task = createTask({
+      id: "task-todo-no-dev-rules",
+      title: "Prepare settings page",
+      objective: "Set up the task",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "todo",
+    });
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).not.toContain("Do not modify files outside this task's declared scope");
+    expect(prompt).not.toContain("Remove all debug artifacts");
+    expect(prompt).not.toContain("Do not modify implementation code during review");
+  });
+
+  it("does not include review-specific guardrails in dev column", () => {
+    const task = createTask({
+      id: "task-dev-no-review-rules",
+      title: "Build feature",
+      objective: "Implement the feature",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "dev",
+    });
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).not.toContain("Do not modify implementation code during review");
+    expect(prompt).not.toContain("Do not commit changes during review");
+  });
+
+  it("does not include dev-specific guardrails in done column", () => {
+    const task = createTask({
+      id: "task-done-no-dev-rules",
+      title: "Ship feature",
+      objective: "Merge and deploy",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "done",
+    });
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).not.toContain("Do not modify files outside this task's declared scope");
+    expect(prompt).not.toContain("Remove all debug artifacts");
+  });
+
+  it("includes task decomposition guardrail in todo column prompt", () => {
+    const task = createTask({
+      id: "task-todo-decompose",
+      title: "Prepare feature",
+      objective: "Break down the feature into sub-tasks",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "todo",
+    });
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).toContain("acceptance criteria that can be independently verified");
+  });
 });
 
 // TODO: This test suite is flaky - skipping temporarily
@@ -841,7 +959,7 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
     dispatchSessionPromptMock.mockReset();
   });
 
-  it("does not emit AGENT_COMPLETED when ACP prompt submission succeeds", async () => {
+  it("emits AGENT_COMPLETED when ACP prompt submission succeeds", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         jsonrpc: "2.0",
@@ -909,9 +1027,13 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
       workspaceId: "default",
       cwd: "/tmp/project",
     }));
-    expect(eventBus.emit).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(eventBus.emit).toHaveBeenCalledWith(expect.objectContaining({
       type: AgentEventType.AGENT_COMPLETED,
       agentId: "sess-1",
+      data: expect.objectContaining({
+        sessionId: "sess-1",
+        success: true,
+      }),
     }));
   });
 

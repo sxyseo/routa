@@ -1,4 +1,4 @@
-import { cloneKanbanColumns, type KanbanBoard } from "../models/kanban";
+import { cloneKanbanColumns, ensureColumnStages, type KanbanBoard } from "../models/kanban";
 
 export interface KanbanBoardStore {
   save(board: KanbanBoard): Promise<void>;
@@ -16,7 +16,7 @@ export class InMemoryKanbanBoardStore implements KanbanBoardStore {
     this.boards.set(board.id, {
       ...board,
       githubToken: board.githubToken,
-      columns: cloneKanbanColumns(board.columns),
+      columns: cloneKanbanColumns(ensureColumnStages(board.columns)),
     });
   }
 
@@ -26,7 +26,7 @@ export class InMemoryKanbanBoardStore implements KanbanBoardStore {
       ? {
           ...board,
           githubToken: board.githubToken,
-          columns: cloneKanbanColumns(board.columns),
+          columns: cloneKanbanColumns(ensureColumnStages(board.columns)),
         }
       : undefined;
   }

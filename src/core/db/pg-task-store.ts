@@ -4,7 +4,7 @@
  * Supports optimistic-locking via a `version` column for atomic updates.
  */
 
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import type { Database } from "./index";
 import { tasks } from "./schema";
 import { normalizeTaskCreationSource } from "../kanban/task-creation-policy";
@@ -49,15 +49,20 @@ export class PgTaskStore implements TaskStore {
         sessionIds: task.sessionIds ?? [],
         laneSessions: task.laneSessions ?? [],
         laneHandoffs: task.laneHandoffs ?? [],
-        githubId: task.githubId,
-        githubNumber: task.githubNumber,
-        githubUrl: task.githubUrl,
-        githubRepo: task.githubRepo,
-        githubState: task.githubState,
-        githubSyncedAt: task.githubSyncedAt,
+        vcsId: task.vcsId,
+        vcsNumber: task.vcsNumber,
+        vcsUrl: task.vcsUrl,
+        vcsRepo: task.vcsRepo,
+        vcsState: task.vcsState,
+        vcsSyncedAt: task.vcsSyncedAt,
         lastSyncError: task.lastSyncError,
         isPullRequest: task.isPullRequest,
+        pullRequestUrl: task.pullRequestUrl ?? null,
+        pullRequestMergedAt: task.pullRequestMergedAt ?? null,
         dependencies: task.dependencies,
+        blocking: task.blocking ?? [],
+        dependencyStatus: task.dependencyStatus,
+        parentTaskId: task.parentTaskId,
         parallelGroup: task.parallelGroup,
         workspaceId: task.workspaceId,
         sessionId: task.sessionId,
@@ -104,15 +109,20 @@ export class PgTaskStore implements TaskStore {
           sessionIds: task.sessionIds ?? [],
           laneSessions: task.laneSessions ?? [],
           laneHandoffs: task.laneHandoffs ?? [],
-          githubId: task.githubId,
-          githubNumber: task.githubNumber,
-          githubUrl: task.githubUrl,
-          githubRepo: task.githubRepo,
-          githubState: task.githubState,
-          githubSyncedAt: task.githubSyncedAt,
+          vcsId: task.vcsId,
+          vcsNumber: task.vcsNumber,
+          vcsUrl: task.vcsUrl,
+          vcsRepo: task.vcsRepo,
+          vcsState: task.vcsState,
+          vcsSyncedAt: task.vcsSyncedAt,
           lastSyncError: task.lastSyncError,
           isPullRequest: task.isPullRequest,
+          pullRequestUrl: task.pullRequestUrl ?? null,
+          pullRequestMergedAt: task.pullRequestMergedAt ?? null,
           dependencies: task.dependencies,
+          blocking: task.blocking ?? [],
+          dependencyStatus: task.dependencyStatus,
+          parentTaskId: task.parentTaskId,
           parallelGroup: task.parallelGroup,
           sessionId: task.sessionId,
           creationSource: task.creationSource,
@@ -192,6 +202,18 @@ export class PgTaskStore implements TaskStore {
     return result.rowCount;
   }
 
+  async findByPullRequestUrl(url: string): Promise<Task | undefined> {
+    const rows = await this.db
+      .select()
+      .from(tasks)
+      .where(or(
+        eq(tasks.pullRequestUrl, url),
+        eq(tasks.vcsUrl, url),
+      ))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
   /**
    * Atomic update with optimistic locking.
    * Returns true if the update was applied, false if version mismatch.
@@ -199,14 +221,20 @@ export class PgTaskStore implements TaskStore {
   async atomicUpdate(
     taskId: string,
     expectedVersion: number,
-    updates: Partial<Pick<Task, "status" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo">>
+    updates: Partial<Pick<Task, "status" | "columnId" | "triggerSessionId" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo" | "lastSyncError" | "pullRequestUrl" | "pullRequestMergedAt" | "laneSessions" | "updatedAt" | "worktreeId" | "comment" | "dependencyStatus" | "isPullRequest">>
   ): Promise<boolean> {
+    // Drizzle ORM treats `undefined` as "skip this field" rather than "set to NULL".
+    // Convert undefined values to null so clearing fields (e.g. lastSyncError) works.
+    const sanitized = Object.fromEntries(
+      Object.entries(updates).map(([k, v]) => [k, v === undefined ? null : v]),
+    ) as typeof updates;
     const result = await this.db
       .update(tasks)
       .set({
-        ...updates,
+        ...sanitized,
         version: sql`${tasks.version} + 1`,
-        updatedAt: new Date(),
+        // Only bump updatedAt if the caller did not explicitly provide one.
+        ...("updatedAt" in sanitized ? {} : { updatedAt: new Date() }),
       })
       .where(and(eq(tasks.id, taskId), eq(tasks.version, expectedVersion)));
 
@@ -250,15 +278,20 @@ export class PgTaskStore implements TaskStore {
       sessionIds: (row.sessionIds as string[]) ?? [],
       laneSessions: (row.laneSessions as import("../models/task").TaskLaneSession[]) ?? [],
       laneHandoffs: (row.laneHandoffs as import("../models/task").TaskLaneHandoff[]) ?? [],
-      githubId: row.githubId ?? undefined,
-      githubNumber: row.githubNumber ?? undefined,
-      githubUrl: row.githubUrl ?? undefined,
-      githubRepo: row.githubRepo ?? undefined,
-      githubState: row.githubState ?? undefined,
-      githubSyncedAt: row.githubSyncedAt ?? undefined,
+      vcsId: row.vcsId ?? undefined,
+      vcsNumber: row.vcsNumber ?? undefined,
+      vcsUrl: row.vcsUrl ?? undefined,
+      vcsRepo: row.vcsRepo ?? undefined,
+      vcsState: row.vcsState ?? undefined,
+      vcsSyncedAt: row.vcsSyncedAt ?? undefined,
       lastSyncError: row.lastSyncError ?? undefined,
       isPullRequest: row.isPullRequest ?? undefined,
+      pullRequestUrl: row.pullRequestUrl ?? undefined,
+      pullRequestMergedAt: row.pullRequestMergedAt ?? undefined,
       dependencies: (row.dependencies as string[]) ?? [],
+      blocking: (row.blocking as string[]) ?? [],
+      dependencyStatus: (row.dependencyStatus as "clear" | "blocked") ?? undefined,
+      parentTaskId: row.parentTaskId ?? undefined,
       parallelGroup: row.parallelGroup ?? undefined,
       workspaceId: row.workspaceId,
       sessionId: row.sessionId ?? undefined,
@@ -273,6 +306,7 @@ export class PgTaskStore implements TaskStore {
       completionSummary: row.completionSummary ?? undefined,
       verificationVerdict: row.verificationVerdict as import("../models/task").VerificationVerdict | undefined,
       verificationReport: row.verificationReport ?? undefined,
+      version: row.version ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

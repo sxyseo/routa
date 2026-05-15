@@ -25,6 +25,10 @@ const {
   parseGitStatusPorcelain,
   isGitHubUrl,
   parseGitHubUrl,
+  isGitLabUrl,
+  isVCSUrl,
+  parseVCSUrl,
+  buildCloneUrl,
   getRepoDeliveryStatus,
   getBranchStatus,
   listBranches,
@@ -114,6 +118,89 @@ describe("GitHub URL parsing", () => {
       repo: "routa-js",
     });
     expect(parseGitHubUrl("/tmp/repo")).toBeNull();
+  });
+});
+
+describe("GitLab URL parsing", () => {
+  it("detects GitLab URLs", () => {
+    expect(isGitLabUrl("https://gitlab.com/owner/repo")).toBe(true);
+    expect(isGitLabUrl("git@gitlab.com:owner/repo.git")).toBe(true);
+    expect(isGitLabUrl("gitlab.com/owner/repo")).toBe(true);
+    expect(isGitLabUrl("https://github.com/owner/repo")).toBe(false);
+  });
+
+  it("isVCSUrl detects both GitHub and GitLab", () => {
+    expect(isVCSUrl("https://github.com/owner/repo")).toBe(true);
+    expect(isVCSUrl("https://gitlab.com/owner/repo")).toBe(true);
+    expect(isVCSUrl("phodal/routa-js")).toBe(true);
+    expect(isVCSUrl("C:\\repos\\routa-js")).toBe(false);
+  });
+
+  it("parseVCSUrl parses GitLab HTTPS URLs with host and platform", () => {
+    const result = parseVCSUrl("https://gitlab.com/myorg/myrepo");
+    expect(result).toEqual({
+      owner: "myorg",
+      repo: "myrepo",
+      host: "gitlab.com",
+      platform: "gitlab",
+    });
+  });
+
+  it("parseVCSUrl parses GitLab SSH URLs", () => {
+    const result = parseVCSUrl("git@gitlab.com:myorg/myrepo.git");
+    expect(result).toEqual({
+      owner: "myorg",
+      repo: "myrepo",
+      host: "gitlab.com",
+      platform: "gitlab",
+    });
+  });
+
+  it("parseVCSUrl parses GitHub URLs with host and platform", () => {
+    const result = parseVCSUrl("https://github.com/phodal/routa-js");
+    expect(result).toEqual({
+      owner: "phodal",
+      repo: "routa-js",
+      host: "github.com",
+      platform: "github",
+    });
+  });
+
+  it("parseVCSUrl returns github platform for simple owner/repo", () => {
+    const result = parseVCSUrl("phodal/routa-js");
+    expect(result).toEqual({
+      owner: "phodal",
+      repo: "routa-js",
+      host: "github.com",
+      platform: "github",
+    });
+  });
+
+  it("parseVCSUrl handles generic HTTPS URLs", () => {
+    const result = parseVCSUrl("https://custom.host/owner/repo");
+    expect(result).toEqual({
+      owner: "owner",
+      repo: "repo",
+      host: "custom.host",
+      platform: "other",
+    });
+  });
+
+  it("parseVCSUrl returns null for invalid input", () => {
+    expect(parseVCSUrl("/tmp/repo")).toBeNull();
+    expect(parseVCSUrl("")).toBeNull();
+  });
+
+  it("buildCloneUrl constructs correct URL from parsed result", () => {
+    expect(buildCloneUrl({ owner: "myorg", repo: "myrepo", host: "gitlab.com", platform: "gitlab" }))
+      .toBe("https://gitlab.com/myorg/myrepo.git");
+    expect(buildCloneUrl({ owner: "phodal", repo: "routa-js", host: "github.com", platform: "github" }))
+      .toBe("https://github.com/phodal/routa-js.git");
+  });
+
+  it("buildCloneUrl defaults to github.com when host is missing", () => {
+    expect(buildCloneUrl({ owner: "phodal", repo: "routa-js" }))
+      .toBe("https://github.com/phodal/routa-js.git");
   });
 });
 

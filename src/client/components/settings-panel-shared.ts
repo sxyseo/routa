@@ -157,6 +157,7 @@ export interface SettingsPanelProps {
   initialTab?: SettingsTab;
   onResetOnboarding?: () => void;
   variant?: "modal" | "page";
+  workspaceId?: string | null;
 }
 
 export type SettingsTab =

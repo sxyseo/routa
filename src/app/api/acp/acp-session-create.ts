@@ -25,28 +25,9 @@ import {
   buildExecutionBinding,
   refreshExecutionBinding,
 } from "@/core/acp/execution-backend";
-import { buildProviderModelArgs } from "@/core/acp/provider-model-args";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { pendingAcpCreations } from "@/core/acp/pending-acp-creations";
 import { buildFeatureTreeSpecPromptSection } from "@/core/spec/feature-tree-spec-resource-contract";
-import {
-  assembleTaskAdaptiveHarness,
-  parseTaskAdaptiveHarnessOptions,
-} from "@/app/api/harness/task-adaptive/shared";
-import { resolveRepoRoot } from "@/core/harness/context-resolution";
-import {
-  buildFeatureTreeRetrievalHints,
-  buildRelevantFeatureTreePromptSection,
-  buildRelevantHistoryMemoryPromptSection,
-  buildHistoryMemoryRetrievalHints,
-  loadRelevantFeatureTreeContext,
-  loadRelevantTaskHistoryMemories,
-} from "@/core/kanban/context-preload";
-import {
-  getDefaultKanbanHistoryMemoryPolicy,
-  getKanbanHistoryMemoryPolicy,
-  shouldInjectKanbanHistoryMemory,
-} from "@/core/kanban/board-history-memory-policy";
 
 export interface IdempotencyEntry {
   sessionId: string;
@@ -134,53 +115,6 @@ function deriveAllowedNativeTools(
   return undefined;
 }
 
-export function parseRequestedAcpMcpServers(
-  value: unknown,
-): { servers?: Array<Record<string, unknown>>; error?: string } {
-  if (value === undefined) {
-    return {};
-  }
-
-  if (!Array.isArray(value)) {
-    return {
-      error: "mcpServers must be an array of objects with a non-empty name",
-    };
-  }
-
-  const servers = value.flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return [];
-    }
-
-    const name = typeof (entry as { name?: unknown }).name === "string"
-      ? (entry as { name: string }).name.trim()
-      : "";
-    if (!name) {
-      return [];
-    }
-
-    const nextEntry: Record<string, unknown> = {
-      ...(entry as Record<string, unknown>),
-      name,
-    };
-    if (nextEntry.type === "http" && !("headers" in nextEntry)) {
-      nextEntry.headers = [];
-    }
-
-    return [nextEntry];
-  });
-
-  if (servers.length !== value.length) {
-    return {
-      error: "mcpServers must be an array of objects with a non-empty name",
-    };
-  }
-
-  return {
-    servers,
-  };
-}
-
 type JsonRpcResponseFactory = (
   id: string | number | null,
   result: unknown,
@@ -215,30 +149,6 @@ interface HandleSessionNewArgs {
   buildMcpConfigForClaude: ClaudeMcpConfigBuilder;
   requireWorkspaceId: WorkspaceIdResolver;
   pushAndPersistForwardedNotification: ForwardedNotificationWriter;
-  serverUrlOverride?: string;
-}
-
-async function resolveKanbanHistoryMemoryPolicy(params: {
-  workspaceId: string;
-  boardId?: string;
-  taskId?: string;
-}) {
-  const system = getRoutaSystem();
-  let effectiveBoardId = typeof params.boardId === "string" && params.boardId.trim().length > 0
-    ? params.boardId.trim()
-    : undefined;
-
-  if (!effectiveBoardId && params.taskId) {
-    const task = await system.taskStore.get(params.taskId);
-    effectiveBoardId = task?.boardId?.trim() || undefined;
-  }
-
-  if (!effectiveBoardId) {
-    return getDefaultKanbanHistoryMemoryPolicy();
-  }
-
-  const workspace = await system.workspaceStore.get(params.workspaceId);
-  return getKanbanHistoryMemoryPolicy(workspace?.metadata, effectiveBoardId);
 }
 
 export async function handleSessionNew({
@@ -249,7 +159,6 @@ export async function handleSessionNew({
   buildMcpConfigForClaude,
   requireWorkspaceId,
   pushAndPersistForwardedNotification,
-  serverUrlOverride,
 }: HandleSessionNewArgs): Promise<Response> {
   const p = params;
   let cwd = (p.cwd as string | undefined) ?? process.cwd();
@@ -260,9 +169,6 @@ export async function handleSessionNew({
   const specialistLocale = (p.specialistLocale as string | undefined) ?? "en";
   const specialist = await loadSpecialistConfig(specialistId, specialistLocale);
   const customSystemPrompt = (p.systemPrompt as string | undefined)?.trim() || undefined;
-  const requestedBoardId = typeof p.boardId === "string" && p.boardId.trim().length > 0
-    ? p.boardId.trim()
-    : undefined;
 
   const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
   const requestedProvider = (p.provider as string | undefined);
@@ -282,9 +188,8 @@ export async function handleSessionNew({
     : p.toolMode === "essential"
       ? "essential"
       : undefined;
-  let resolvedToolMode: "essential" | "full" | undefined = toolMode;
-  let resolvedMcpProfile = typeof p.mcpProfile === "string" ? p.mcpProfile as McpServerProfile : undefined;
-  let resolvedAllowedNativeTools = deriveAllowedNativeTools(
+  const mcpProfile = typeof p.mcpProfile === "string" ? p.mcpProfile as McpServerProfile : undefined;
+  const allowedNativeTools = deriveAllowedNativeTools(
     p.allowedNativeTools,
     specialistId,
   );
@@ -296,8 +201,9 @@ export async function handleSessionNew({
   const customArgs = Array.isArray(p.customArgs) ? (p.customArgs as string[]) : undefined;
   const authJson = (p.authJson as string | undefined);
   const autoApprovePermissions = p.autoApprovePermissions === true;
-  const taskAdaptiveHarnessOptions = parseTaskAdaptiveHarnessOptions(p.taskAdaptiveHarness);
-  const requestedAcpMcpServers = parseRequestedAcpMcpServers(p.mcpServers);
+  const extraEnv = (typeof p.env === "object" && p.env !== null)
+    ? p.env as Record<string, string>
+    : undefined;
 
   if (customCommand !== undefined && (typeof customCommand !== "string" || !customCommand.trim())) {
     return jsonrpcResponse(id ?? null, null, {
@@ -309,12 +215,6 @@ export async function handleSessionNew({
     return jsonrpcResponse(id ?? null, null, {
       code: -32602,
       message: "customArgs must be an array of strings",
-    });
-  }
-  if (requestedAcpMcpServers.error) {
-    return jsonrpcResponse(id ?? null, null, {
-      code: -32602,
-      message: requestedAcpMcpServers.error,
     });
   }
   if (!workspaceId) {
@@ -384,6 +284,8 @@ export async function handleSessionNew({
     }
   }
 
+  const specialistSystemPrompt = customSystemPrompt ?? buildSpecialistSystemPrompt(specialist);
+
   let validatedWorktreeId: string | undefined;
   if (worktreeId) {
     const system = getRoutaSystem();
@@ -413,107 +315,6 @@ export async function handleSessionNew({
     }))?.id;
   }
 
-  let taskAdaptiveHarnessSummary: string | undefined;
-  let relevantHistoryMemorySection: string | undefined;
-  let relevantFeatureTreeContextSection: string | undefined;
-  if (taskAdaptiveHarnessOptions) {
-    try {
-      const historyMemoryPolicy = await resolveKanbanHistoryMemoryPolicy({
-        workspaceId,
-        boardId: requestedBoardId,
-        taskId: taskAdaptiveHarnessOptions.taskId,
-      });
-      const taskAdaptiveHarness = await assembleTaskAdaptiveHarness(cwd, {
-        ...taskAdaptiveHarnessOptions,
-        role: taskAdaptiveHarnessOptions.role ?? role ?? specialist?.role,
-        locale: taskAdaptiveHarnessOptions.locale ?? specialistLocale,
-      });
-      taskAdaptiveHarnessSummary = taskAdaptiveHarness.summary;
-      resolvedToolMode = resolvedToolMode ?? taskAdaptiveHarness.recommendedToolMode;
-      resolvedMcpProfile = resolvedMcpProfile ?? taskAdaptiveHarness.recommendedMcpProfile;
-      resolvedAllowedNativeTools = resolvedAllowedNativeTools ?? taskAdaptiveHarness.recommendedAllowedNativeTools;
-
-      const repoRootForPreload = await resolveRepoRoot({ workspaceId }).catch(() => cwd);
-      const mergedFeatureIds = [
-        ...(taskAdaptiveHarnessOptions.featureIds ?? []),
-        ...(taskAdaptiveHarness.featureId ? [taskAdaptiveHarness.featureId] : []),
-      ];
-      const mergedFilePaths = [
-        ...(taskAdaptiveHarnessOptions.filePaths ?? []),
-        ...taskAdaptiveHarness.selectedFiles,
-      ];
-      const shouldConsiderCrossTaskPreload = historyMemoryPolicy.mode !== "off";
-      let relevantFeatureTreeContext:
-        | Awaited<ReturnType<typeof loadRelevantFeatureTreeContext>>
-        | undefined;
-      if (shouldConsiderCrossTaskPreload) {
-        relevantFeatureTreeContext = await loadRelevantFeatureTreeContext({
-          repoPath: repoRootForPreload,
-          hints: buildFeatureTreeRetrievalHints({
-            featureIds: mergedFeatureIds,
-            query: taskAdaptiveHarnessOptions.query ?? taskAdaptiveHarnessOptions.taskLabel,
-            filePaths: mergedFilePaths,
-            routeCandidates: taskAdaptiveHarnessOptions.routeCandidates,
-            apiCandidates: taskAdaptiveHarnessOptions.apiCandidates,
-            moduleHints: taskAdaptiveHarnessOptions.moduleHints,
-            symptomHints: taskAdaptiveHarnessOptions.symptomHints,
-          }),
-        });
-      }
-
-      const featureCount = new Set([
-        ...mergedFeatureIds,
-        ...(relevantFeatureTreeContext?.features.map((feature) => feature.id) ?? []),
-      ].filter(Boolean)).size;
-      const shouldInjectCrossTaskPreload = shouldInjectKanbanHistoryMemory(historyMemoryPolicy, {
-        featureCount,
-        matchedSessions: taskAdaptiveHarness.matchedSessionIds.length,
-        matchedFiles: taskAdaptiveHarness.selectedFiles.length,
-        confidence: taskAdaptiveHarness.matchConfidence,
-      });
-
-      if (shouldInjectCrossTaskPreload) {
-        const relevantHistoryMemories = await loadRelevantTaskHistoryMemories({
-          workspaceId,
-          repoPath: repoRootForPreload,
-          hints: buildHistoryMemoryRetrievalHints({
-            taskId: taskAdaptiveHarnessOptions.taskId,
-            taskLabel: taskAdaptiveHarnessOptions.taskLabel,
-            query: taskAdaptiveHarnessOptions.query ?? taskAdaptiveHarnessOptions.taskLabel,
-            featureIds: mergedFeatureIds,
-            filePaths: mergedFilePaths,
-            routeCandidates: taskAdaptiveHarnessOptions.routeCandidates,
-            apiCandidates: taskAdaptiveHarnessOptions.apiCandidates,
-            moduleHints: taskAdaptiveHarnessOptions.moduleHints,
-            symptomHints: taskAdaptiveHarnessOptions.symptomHints,
-          }),
-        });
-        relevantHistoryMemorySection = buildRelevantHistoryMemoryPromptSection(
-          relevantHistoryMemories,
-          taskAdaptiveHarnessOptions.locale ?? specialistLocale,
-        );
-        relevantFeatureTreeContextSection = buildRelevantFeatureTreePromptSection(
-          relevantFeatureTreeContext?.features ?? [],
-          taskAdaptiveHarnessOptions.locale ?? specialistLocale,
-          relevantFeatureTreeContext?.warnings,
-        );
-      }
-    } catch (error) {
-      console.warn("[ACP Route] Task-Adaptive Harness assembly failed:", error);
-    }
-  }
-
-  const specialistPromptSections = [
-    customSystemPrompt,
-    buildSpecialistSystemPrompt(specialist),
-    relevantHistoryMemorySection,
-    relevantFeatureTreeContextSection,
-    taskAdaptiveHarnessSummary,
-  ].filter((section): section is string => typeof section === "string" && section.trim().length > 0);
-  const specialistSystemPrompt = specialistPromptSections.length > 0
-    ? specialistPromptSections.join("\n\n---\n\n")
-    : undefined;
-
   const now = new Date();
   const executionBinding = buildExecutionBinding("embedded");
   store.upsertSession({
@@ -524,9 +325,9 @@ export async function handleSessionNew({
     workspaceId,
     provider,
     role: role ?? "CRAFTER",
-    toolMode: resolvedToolMode,
-    mcpProfile: resolvedMcpProfile,
-    allowedNativeTools: resolvedAllowedNativeTools,
+    toolMode,
+    mcpProfile,
+    allowedNativeTools,
     parentSessionId,
     modeId,
     model,
@@ -626,7 +427,7 @@ export async function handleSessionNew({
           forwardSessionUpdate,
         );
       } else if (isDockerOpenCode) {
-        const dockerExtraEnv: Record<string, string> = {};
+        const dockerExtraEnv: Record<string, string> = { ...extraEnv };
         if (apiKey) {
           dockerExtraEnv.ANTHROPIC_API_KEY = apiKey;
           dockerExtraEnv.ANTHROPIC_AUTH_TOKEN = apiKey;
@@ -643,7 +444,7 @@ export async function handleSessionNew({
           authJson,
         );
       } else if (isClaudeCodeSdk) {
-        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, resolvedToolMode, resolvedMcpProfile);
+        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile);
         const instanceConfig: AgentInstanceConfig = {
           model,
           provider: "claude-code-sdk",
@@ -651,7 +452,7 @@ export async function handleSessionNew({
           role,
           baseUrl,
           apiKey,
-          allowedNativeTools: resolvedAllowedNativeTools,
+          allowedNativeTools,
           mcpServers: {},
           systemPromptAppend: specialistSystemPrompt,
         };
@@ -666,7 +467,7 @@ export async function handleSessionNew({
           instanceConfig,
         );
       } else if (isClaudeCode) {
-        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, resolvedToolMode, resolvedMcpProfile);
+        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile);
         acpSessionId = await manager.createClaudeSession(
           sessionId,
           cwd,
@@ -674,8 +475,8 @@ export async function handleSessionNew({
           mcpConfigs,
           modeId,
           role,
-          undefined,
-          resolvedAllowedNativeTools,
+          extraEnv,
+          allowedNativeTools,
         );
       } else if (customCommand) {
         console.log(`[ACP Route] Using custom provider: ${provider}`);
@@ -693,25 +494,26 @@ export async function handleSessionNew({
           },
         );
       } else {
-        const extraArgs = buildProviderModelArgs(provider, model);
+        const extraArgs: string[] = [];
+        if (model && model.trim()) {
+          extraArgs.push("-m", model.trim());
+        }
         acpSessionId = await manager.createSession(
           sessionId,
           cwd,
           forwardSessionUpdate,
           provider,
           modeId,
-          extraArgs,
-          undefined,
+          extraArgs.length > 0 ? extraArgs : undefined,
+          extraEnv,
           workspaceId,
-          resolvedToolMode,
-          resolvedMcpProfile,
-          serverUrlOverride,
+          toolMode,
+          mcpProfile,
           {
             provider,
             role,
             autoApprovePermissions,
           },
-          requestedAcpMcpServers.servers,
         );
       }
 
@@ -802,9 +604,9 @@ export async function handleSessionNew({
         workspaceId,
         provider,
         role: role ?? "CRAFTER",
-        toolMode: resolvedToolMode,
-        mcpProfile: resolvedMcpProfile,
-        allowedNativeTools: resolvedAllowedNativeTools,
+        toolMode,
+        mcpProfile,
+        allowedNativeTools,
         parentSessionId,
         modeId,
         model,

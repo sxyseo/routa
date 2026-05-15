@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "@/i18n";
 import { RepoPicker } from "@/client/components/repo-picker";
 import type { RepoSelection } from "@/client/components/repo-picker";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import type { UseWorkspacesReturn } from "@/client/hooks/use-workspaces";
 
 interface CodebaseInfo {
   id: string;
@@ -15,6 +17,7 @@ interface CodebaseInfo {
 
 interface WorkspaceSettingsTabProps {
   workspaceId: string;
+  workspaceTitle: string;
   codebases: CodebaseInfo[];
   fetchCodebases: () => Promise<void>;
   worktreeRootDraft: string;
@@ -23,10 +26,12 @@ interface WorkspaceSettingsTabProps {
   displayedWorktreeRoot: string;
   defaultWorktreeRootHint: string;
   onSaveWorktreeRoot: () => Promise<void>;
+  useWorkspacesHook: UseWorkspacesReturn;
 }
 
 export function WorkspaceSettingsTab({
   workspaceId,
+  workspaceTitle,
   codebases,
   fetchCodebases,
   worktreeRootDraft,
@@ -35,8 +40,11 @@ export function WorkspaceSettingsTab({
   displayedWorktreeRoot,
   defaultWorktreeRootHint,
   onSaveWorktreeRoot,
+  useWorkspacesHook,
 }: WorkspaceSettingsTabProps) {
   const { t } = useTranslation();
+  const router = useRouter();
+  const { workspaces, updateWorkspace, deleteWorkspace, archiveWorkspace } = useWorkspacesHook;
   const [repoPickerValue, setRepoPickerValue] = useState<RepoSelection | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   // Edit state - use RepoPicker for re-selecting/cloning
@@ -44,6 +52,80 @@ export function WorkspaceSettingsTab({
   const [editRepoSelection, setEditRepoSelection] = useState<RepoSelection | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  // ── Title editing state ──
+  const [titleDraft, setTitleDraft] = useState(workspaceTitle);
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const [titleSuccess, setTitleSuccess] = useState(false);
+
+  useEffect(() => {
+    setTitleDraft(workspaceTitle);
+  }, [workspaceTitle]);
+
+  const handleSaveTitle = async () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed || trimmed === workspaceTitle) return;
+    setTitleSaving(true);
+    setTitleError(null);
+    setTitleSuccess(false);
+    try {
+      const result = await updateWorkspace(workspaceId, { title: trimmed });
+      if (!result) {
+        setTitleError(t.errors.saveFailed);
+      } else {
+        setTitleSuccess(true);
+        setTimeout(() => setTitleSuccess(false), 2000);
+      }
+    } catch {
+      setTitleError(t.errors.saveFailed);
+    } finally {
+      setTitleSaving(false);
+    }
+  };
+
+  // ── Delete confirmation state ──
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const isLastWorkspace = workspaces.length <= 1;
+
+  const handleDelete = async () => {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      const ok = await deleteWorkspace(workspaceId);
+      if (!ok) {
+        setDeleteError(t.errors.saveFailed);
+        return;
+      }
+      // AC7: switch to next available workspace or go home
+      const remaining = workspaces.filter((w) => w.id !== workspaceId);
+      if (remaining.length > 0) {
+        router.push(`/workspace/${remaining[0].id}/kanban`);
+      } else {
+        router.push("/");
+      }
+    } catch {
+      setDeleteError(t.errors.saveFailed);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    try {
+      await archiveWorkspace(workspaceId);
+      const remaining = workspaces.filter((w) => w.id !== workspaceId);
+      if (remaining.length > 0) {
+        router.push(`/workspace/${remaining[0].id}/kanban`);
+      } else {
+        router.push("/");
+      }
+    } catch {
+      // silent
+    }
+  };
 
   const handlePickerChange = async (selection: RepoSelection | null) => {
     if (!selection) return;
@@ -118,6 +200,43 @@ export function WorkspaceSettingsTab({
 
   return (
     <div className="space-y-6 max-w-2xl">
+      {/* ── Workspace Title ────────────────────────────────────── */}
+      <section>
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
+          {t.workspace.workspaceTitle ?? "Workspace Title"}
+        </h3>
+        <div className="flex gap-2 items-center">
+          <input
+            value={titleDraft}
+            onChange={(e) => {
+              setTitleDraft(e.target.value);
+              setTitleError(null);
+              setTitleSuccess(false);
+            }}
+            className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-200"
+            data-testid="workspace-title-input"
+          />
+          <button
+            onClick={() => void handleSaveTitle()}
+            disabled={titleSaving || !titleDraft.trim() || titleDraft.trim() === workspaceTitle}
+            className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+            data-testid="save-workspace-title"
+          >
+            {titleSaving ? t.workspace.saving : t.common.save}
+          </button>
+        </div>
+        {titleError && (
+          <div className="mt-1.5 text-xs text-rose-600 dark:text-rose-400">{titleError}</div>
+        )}
+        {titleSuccess && (
+          <div className="mt-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+            {t.workspace.titleSaved ?? "Title saved"}
+          </div>
+        )}
+      </section>
+
+      <hr className="border-slate-100 dark:border-[#1c1f2e]" />
+
       {/* ── Linked Repositories ─────────────────────────────────── */}
       <section>
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
@@ -220,6 +339,82 @@ export function WorkspaceSettingsTab({
           </button>
         </div>
       </section>
+
+      <hr className="border-slate-100 dark:border-[#1c1f2e]" />
+
+      {/* ── Danger Zone ──────────────────────────────────────────── */}
+      <section className="rounded-lg border border-rose-200 dark:border-rose-900/40 p-4">
+        <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-400 mb-2">
+          {t.workspace.dangerZone ?? "Danger Zone"}
+        </h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+          {t.workspace.dangerZoneDescription ?? "These actions are irreversible. Proceed with caution."}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => void handleArchive()}
+            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/30"
+            data-testid="archive-workspace-btn"
+          >
+            {t.workspace.archiveWorkspace ?? "Archive Workspace"}
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={isLastWorkspace}
+            title={isLastWorkspace ? (t.workspace.cannotDeleteLast ?? "Cannot delete the last workspace") : undefined}
+            className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800 dark:bg-rose-900/20 dark:text-rose-400 dark:hover:bg-rose-900/30"
+            data-testid="delete-workspace-btn"
+          >
+            {t.workspace.deleteWorkspace ?? "Delete Workspace"}
+          </button>
+        </div>
+        {isLastWorkspace && (
+          <p className="mt-2 text-[11px] text-rose-500 dark:text-rose-400">
+            {t.workspace.cannotDeleteLast ?? "You cannot delete the last workspace."}
+          </p>
+        )}
+      </section>
+
+      {/* ── Delete Confirmation Modal ────────────────────────────── */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-5 shadow-2xl dark:border-rose-900/40 dark:bg-[#12141c]">
+            <h3 className="text-lg font-semibold text-rose-700 dark:text-rose-400 mb-2">
+              {t.workspace.confirmDeleteTitle ?? "Delete Workspace?"}
+            </h3>
+            <p className="text-sm text-slate-700 dark:text-slate-300 mb-3">
+              {t.workspace.confirmDeleteMessage ?? "This will permanently delete this workspace and all associated data."}
+            </p>
+            <div className="mb-4 rounded-lg bg-slate-50 dark:bg-[#0d1018] px-3 py-2 text-xs text-slate-600 dark:text-slate-400">
+              <div>{t.workspace.cascadeInfo?.replace("{count}", String(codebases.length)) ?? `${codebases.length} linked codebase(s) will be removed.`}</div>
+              <div className="mt-1">{t.workspace.cascadeNote ?? "All sessions, agents, and tasks will be permanently deleted."}</div>
+            </div>
+            {deleteError && (
+              <div className="mb-3 text-xs text-rose-600 dark:text-rose-400">{deleteError}</div>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteError(null);
+                }}
+                disabled={deleteBusy}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#191c28]"
+              >
+                {t.common.cancel}
+              </button>
+              <button
+                onClick={() => void handleDelete()}
+                disabled={deleteBusy}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                data-testid="confirm-delete-workspace"
+              >
+                {deleteBusy ? (t.workspace.deleting ?? "Deleting…") : (t.workspace.confirmDelete ?? "Delete")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Edit Codebase Modal ───────────────────────────────────── */}
       {editingCodebase && (

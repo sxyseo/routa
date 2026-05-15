@@ -13,6 +13,7 @@ import type {
   KanbanTaskChanges,
 } from "../kanban-file-changes-types";
 import type { TaskInfo } from "../../types";
+import { getPlatformTerminology } from "@/core/vcs/platform-terminology";
 
 interface KanbanTaskChangesTabProps {
   task: TaskInfo;
@@ -135,7 +136,8 @@ export function KanbanTaskChangesTab({
     ? codebases.find((codebase) => codebase.id === taskCodebaseIds[0])
     : codebases[0];
   const prPlatform = detectPrPlatform(taskChanges, primaryCodebase);
-  const platformLabel = prPlatform === "gitlab" ? "GitLab" : "GitHub";
+  const platformLabel = prPlatform === "gitlab" ? t.kanbanDetail.platformGitLab : t.kanbanDetail.platformGitHub;
+  const terminology = getPlatformTerminology(prPlatform ?? undefined);
   const canRunPullRequest = Boolean(prPlatform && onRunPullRequest);
   const selectedCommit = useMemo(
     () => commits.find((commit) => commit.sha === activeCommitSha) ?? null,
@@ -302,7 +304,7 @@ export function KanbanTaskChangesTab({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="space-y-1">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-200">
-                {t.kanbanDetail.pullRequestSpecialist}
+                {terminology.pullRequestSpecialist}
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 {t.kanbanDetail.pullRequestSpecialistHint.replace("{platform}", platformLabel)}
@@ -328,7 +330,9 @@ export function KanbanTaskChangesTab({
               }}
               className="rounded border border-amber-500 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:text-amber-200"
             >
-              {startingPrSession ? t.kanbanDetail.startingPullRequestSession : t.kanbanDetail.runPullRequestSpecialist}
+              {startingPrSession
+                ? `${terminology.pullRequestShort === "MR" ? "Starting MR" : t.kanbanDetail.startingPullRequestSession}`
+                : `${terminology.pullRequestShort === "MR" ? "Open MR session" : t.kanbanDetail.runPullRequestSpecialist}`}
             </button>
           </div>
           {prSessionError ? (

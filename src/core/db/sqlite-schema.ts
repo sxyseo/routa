@@ -103,15 +103,18 @@ export const tasks = sqliteTable("tasks", {
   sessionIds: text("session_ids", { mode: "json" }).$type<string[]>().default([]),
   laneSessions: text("lane_sessions", { mode: "json" }).$type<TaskLaneSession[]>().default([]),
   laneHandoffs: text("lane_handoffs", { mode: "json" }).$type<TaskLaneHandoff[]>().default([]),
-  githubId: text("github_id"),
-  githubNumber: integer("github_number"),
-  githubUrl: text("github_url"),
-  githubRepo: text("github_repo"),
-  githubState: text("github_state"),
-  githubSyncedAt: integer("github_synced_at", { mode: "timestamp_ms" }),
+  vcsId: text("vcs_id"),
+  vcsNumber: integer("vcs_number"),
+  vcsUrl: text("vcs_url"),
+  vcsRepo: text("vcs_repo"),
+  vcsState: text("vcs_state"),
+  vcsSyncedAt: integer("vcs_synced_at", { mode: "timestamp_ms" }),
   lastSyncError: text("last_sync_error"),
   isPullRequest: integer("is_pull_request", { mode: "boolean" }),
   dependencies: text("dependencies", { mode: "json" }).$type<string[]>().default([]),
+  blocking: text("blocking", { mode: "json" }).$type<string[]>().default([]),
+  dependencyStatus: text("dependency_status"),
+  parentTaskId: text("parent_task_id"),
   parallelGroup: text("parallel_group"),
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   /** Session ID that created this task (for session-scoped filtering) */
@@ -124,9 +127,14 @@ export const tasks = sqliteTable("tasks", {
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId: text("worktree_id"),
   deliverySnapshot: text("delivery_snapshot", { mode: "json" }).$type<TaskDeliverySnapshot>(),
+  /** URL of the pull/merge request created for this task (set by PR Publisher) */
+  pullRequestUrl: text("pull_request_url"),
+  /** Timestamp when the PR was merged */
+  pullRequestMergedAt: integer("pull_request_merged_at", { mode: "timestamp_ms" }),
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),
+  preGateBlockers: text("pre_gate_blockers"),
   version: integer("version").notNull().default(1),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
@@ -412,6 +420,27 @@ export const githubWebhookConfigs = sqliteTable("github_webhook_configs", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// ─── GitLab Webhook Configs ────────────────────────────────────────────────
+
+export const gitlabWebhookConfigs = sqliteTable("gitlab_webhook_configs", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  repo: text("repo").notNull(),
+  gitlabToken: text("gitlab_token").notNull(),
+  webhookSecret: text("webhook_secret").notNull().default(""),
+  eventTypes: text("event_types", { mode: "json" }).$type<string[]>().notNull().default([]),
+  labelFilter: text("label_filter", { mode: "json" }).$type<string[]>().default([]),
+  /** ACP agent/provider ID to trigger when event fires (mutually exclusive with workflowId) */
+  triggerAgentId: text("trigger_agent_id").notNull(),
+  /** Workflow ID to trigger instead of single agent (e.g., "pr-verify") */
+  workflowId: text("workflow_id"),
+  workspaceId: text("workspace_id"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  promptTemplate: text("prompt_template"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 // ─── Schedules (cron-based agent triggers) ───────────────────────────────────
 
 export const schedules = sqliteTable("schedules", {
@@ -454,6 +483,7 @@ export const worktrees = sqliteTable("worktrees", {
   worktreePath: text("worktree_path").notNull(),
   branch: text("branch").notNull(),
   baseBranch: text("base_branch").notNull(),
+  baseCommitSha: text("base_commit_sha"),
   status: text("status").notNull().default("creating"), // creating | active | error | removing
   sessionId: text("session_id"),
   label: text("label"),
@@ -498,6 +528,35 @@ export const specialists = sqliteTable("specialists", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   /** Last update timestamp */
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// ─── Notification Preferences ─────────────────────────────────────────────
+
+import type { NotificationEventType } from "../store/notification-store";
+
+export const notificationPreferences = sqliteTable("notification_preferences", {
+  workspaceId: text("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  senderEmail: text("sender_email").notNull().default(""),
+  recipients: text("recipients", { mode: "json" }).$type<string[]>().notNull().default([]),
+  enabledEvents: text("enabled_events", { mode: "json" }).$type<NotificationEventType[]>().notNull().default([]),
+  throttleSeconds: integer("throttle_seconds").notNull().default(300),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// ─── Notification Logs ────────────────────────────────────────────────────
+
+export const notificationLogs = sqliteTable("notification_logs", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  recipients: text("recipients", { mode: "json" }).$type<string[]>().notNull().default([]),
+  subject: text("subject").notNull().default(""),
+  status: text("status").notNull().default("sent"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
 // ─── Artifacts (agent-to-agent communication) ───────────────────────────
@@ -551,5 +610,39 @@ export const artifactRequests = sqliteTable("artifact_requests", {
   /** ID of artifact that fulfilled this request */
   artifactId: text("artifact_id"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// ─── Overseer (smart monitoring agent) ────────────────────────────
+
+export type OverseerDecisionCategory = "AUTO" | "NOTIFY" | "ESCALATE";
+export type OverseerDecisionStatus = "pending" | "approved" | "rejected" | "expired" | "executed";
+
+export const overseerDecisions = sqliteTable("overseer_decisions", {
+  id: text("id").primaryKey(),
+  /** Pattern name (e.g., "stale-trigger-session") */
+  pattern: text("pattern").notNull(),
+  /** Associated task ID */
+  taskId: text("task_id"),
+  /** AUTO | NOTIFY | ESCALATE */
+  category: text("category").$type<OverseerDecisionCategory>().notNull(),
+  /** Action description */
+  action: text("action").notNull(),
+  /** JSON details about the decision */
+  details: text("details"),
+  /** pending | approved | rejected | expired | executed */
+  status: text("status").$type<OverseerDecisionStatus>().notNull().default("pending"),
+  /** HMAC approval token */
+  token: text("token"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  /** When the decision was resolved */
+  resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+});
+
+export const overseerState = sqliteTable("overseer_state", {
+  /** State key (e.g., "circuit_breaker", "dedup:<pattern>:<taskId>") */
+  key: text("key").primaryKey(),
+  /** JSON value */
+  value: text("value").notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });

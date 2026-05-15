@@ -10,8 +10,8 @@ describe("board-session-limits", () => {
     expect(getKanbanSessionConcurrencyLimit(undefined, "board-1")).toBe(
       getDefaultKanbanSessionConcurrencyLimit(),
     );
-    expect(getKanbanSessionConcurrencyLimit({ "kanbanSessionConcurrencyLimit:board-1": "0" }, "board-1")).toBe(1);
-    expect(getKanbanSessionConcurrencyLimit({ "kanbanSessionConcurrencyLimit:board-1": "nope" }, "board-1")).toBe(1);
+    expect(getKanbanSessionConcurrencyLimit({ "kanbanSessionConcurrencyLimit:board-1": "0" }, "board-1")).toBe(getDefaultKanbanSessionConcurrencyLimit());
+    expect(getKanbanSessionConcurrencyLimit({ "kanbanSessionConcurrencyLimit:board-1": "nope" }, "board-1")).toBe(getDefaultKanbanSessionConcurrencyLimit());
   });
 
   it("stores and reads a normalized per-board limit", () => {
@@ -26,6 +26,6 @@ describe("board-session-limits", () => {
       "kanbanSessionConcurrencyLimit:board-1": "2",
     });
     expect(getKanbanSessionConcurrencyLimit(metadata, "board-1")).toBe(2);
-    expect(getKanbanSessionConcurrencyLimit(metadata, "board-2")).toBe(1);
+    expect(getKanbanSessionConcurrencyLimit(metadata, "board-2")).toBe(getDefaultKanbanSessionConcurrencyLimit());
   });
 });

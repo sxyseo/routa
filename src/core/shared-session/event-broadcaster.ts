@@ -7,6 +7,7 @@ export class SharedSessionEventBroadcaster {
   private controllers = new Map<string, { controller: Controller; sharedSessionId: string }>();
   private subscribers = new Map<string, Set<EventHandler>>();
   private connectionCounter = 0;
+  private encoder = new TextEncoder();
 
   attach(sharedSessionId: string, controller: Controller): string {
     const connectionId = `shared-session-sse-${++this.connectionCounter}`;
@@ -66,9 +67,41 @@ export class SharedSessionEventBroadcaster {
     }
   }
 
+  /**
+   * Probe all controllers; remove any that are no longer writable.
+   * Returns the number of stale connections removed.
+   */
+  closeStaleConnections(): number {
+    let removed = 0;
+    for (const [connectionId, { controller }] of this.controllers.entries()) {
+      try {
+        controller.enqueue(this.encoder.encode("\n"));
+      } catch {
+        this.controllers.delete(connectionId);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * Close every active SSE controller, clear all controllers and subscribers.
+   * Call during server shutdown to release resources.
+   */
+  dispose(): void {
+    for (const { controller } of this.controllers.values()) {
+      try {
+        controller.close();
+      } catch {
+        // controller may already be closed
+      }
+    }
+    this.controllers.clear();
+    this.subscribers.clear();
+  }
+
   private writeSse(controller: Controller, payload: unknown): void {
-    const encoder = new TextEncoder();
-    controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+    controller.enqueue(this.encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
   }
 }
 
@@ -81,4 +114,3 @@ export function getSharedSessionEventBroadcaster(): SharedSessionEventBroadcaste
   }
   return g[GLOBAL_KEY] as SharedSessionEventBroadcaster;
 }
-

@@ -56,6 +56,7 @@ yarn-error.log*
 
 # Local env files
 .env
+.env.docker
 .env*.local
 .env.local
 .env.development.local
@@ -82,6 +83,7 @@ Thumbs.db
 
 # Logs
 logs
+log/
 *.log
 
 # Optional npm cache directory
@@ -138,3 +140,9 @@ tools/ppt-template/output/
 tools/ppt-template/node_modules/
 .agents
 /people/
+.trae/
+/.claude/scheduled_tasks.lock
+.tmp-jest/
+.jest-cache/
+vcs-sm.jpg
+vcs-tiny.jpg

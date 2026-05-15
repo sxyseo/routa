@@ -1,8 +1,9 @@
 import { useTranslation } from "@/i18n";
 import { Select } from "@/client/components/select";
 import type { KanbanBoardInfo } from "../types";
+import type { VCSPlatform } from "@/core/vcs/vcs-provider";
 import type { ReactNode } from "react";
-import { Columns2, Download, RefreshCw, Settings } from "lucide-react";
+import { Archive, Columns2, Download, RefreshCw, Settings } from "lucide-react";
 
 
 interface KanbanTabHeaderProps {
@@ -12,11 +13,17 @@ interface KanbanTabHeaderProps {
   boards: KanbanBoardInfo[];
   selectedBoardId: string | null;
   onSelectBoard: (boardId: string) => void;
+  /** @deprecated Use vcsImportVisible instead */
   githubImportVisible?: boolean;
-  onOpenGitHubImport: () => void;
+  vcsImportVisible?: boolean;
+  /** @deprecated Use onOpenVcsImport instead */
+  onOpenGitHubImport?: () => void;
+  onOpenVcsImport?: () => void;
   onRefresh: () => void;
   onOpenSettings?: () => void;
+  onOpenArchive?: () => void;
   actionSlot?: ReactNode;
+  vcsPlatform?: VCSPlatform;
 }
 
 export function KanbanTabHeader({
@@ -26,13 +33,21 @@ export function KanbanTabHeader({
   boards,
   selectedBoardId,
   onSelectBoard,
-  githubImportVisible = false,
-  onOpenGitHubImport,
+  githubImportVisible: _legacyGithubImportVisible,
+  vcsImportVisible = false,
+  onOpenGitHubImport: _legacyOnOpenGitHubImport,
+  onOpenVcsImport,
   onRefresh,
   onOpenSettings,
+  onOpenArchive,
   actionSlot,
+  vcsPlatform = "github",
 }: KanbanTabHeaderProps) {
   const { t } = useTranslation();
+  const isGitLab = vcsPlatform === "gitlab";
+  const importButtonLabel = isGitLab ? t.kanban.importVcsIssuesGitlab : t.kanban.importVcsIssues;
+  const importVisible = vcsImportVisible || _legacyGithubImportVisible;
+  const onOpenImport = onOpenVcsImport ?? _legacyOnOpenGitHubImport;
   return (
     <div
       className="shrink-0 border-b border-slate-200/70 px-4 py-1.5 dark:border-[#1c1f2e]"
@@ -67,16 +82,26 @@ export function KanbanTabHeader({
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
           {actionSlot}
-          {githubImportVisible ? (
+          {importVisible && onOpenImport ? (
             <button
-              onClick={onOpenGitHubImport}
+              onClick={onOpenImport}
               className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-300 dark:hover:bg-[#191c28]"
-              title={t.kanban.importGithubIssues}
+              title={importButtonLabel}
             >
               <Download className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-              {t.kanban.importGithubIssues}
+              {importButtonLabel}
             </button>
           ) : null}
+          {onOpenArchive && (
+            <button
+              onClick={onOpenArchive}
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-300 dark:hover:bg-[#191c28]"
+              title={t.common.archive}
+            >
+              <Archive className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
+              {t.common.archive}
+            </button>
+          )}
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}

@@ -31,9 +31,16 @@ import { NoteEventBroadcaster, getNoteEventBroadcaster } from "./notes/note-even
 import { WorkflowRunStore, InMemoryWorkflowRunStore } from "./workflows/workflow-store";
 import { InMemoryKanbanBoardStore, KanbanBoardStore } from "./store/kanban-board-store";
 import { InMemoryArtifactStore, ArtifactStore } from "./store/artifact-store";
+import { InMemoryNotificationStore, NotificationStore } from "./store/notification-store";
 import { PermissionStore } from "./tools/permission-store";
+import { startWorkflowOrchestrator } from "./kanban/workflow-orchestrator-singleton";
+import { startLaneScanner } from "./kanban/kanban-lane-scanner";
+import { startSchedulerService } from "./scheduling/scheduler-service";
 import { getKanbanEventBroadcaster } from "./kanban/kanban-event-broadcaster";
 import { AgentEventType } from "./events/event-bus";
+import { decorateSystemWithTiming } from "./http/store-timing-proxy";
+import { decorateSystemWithDedup } from "./http/store-dedup-proxy";
+import { NotificationListener } from "./notifications/notification-listener";
 
 export interface RoutaSystem {
   agentStore: AgentStore;
@@ -52,6 +59,10 @@ export interface RoutaSystem {
   artifactStore: ArtifactStore;
   /** Permission store for runtime permission delegation protocol */
   permissionStore: PermissionStore;
+  /** Notification store for email notification preferences and logs */
+  notificationStore: NotificationStore;
+  /** Notification listener for EventBus → email bridge */
+  notificationListener: NotificationListener;
   eventBus: EventBus;
   tools: AgentTools;
   noteTools: NoteTools;
@@ -80,6 +91,7 @@ export function createInMemorySystem(): RoutaSystem {
   const kanbanBoardStore = new InMemoryKanbanBoardStore();
   const artifactStore = new InMemoryArtifactStore();
   const permissionStore = new PermissionStore();
+  const notificationStore = new InMemoryNotificationStore();
 
   // CRDT-backed note store with event broadcasting
   const noteBroadcaster = getNoteEventBroadcaster();
@@ -87,6 +99,7 @@ export function createInMemorySystem(): RoutaSystem {
   const noteStore = new CRDTNoteStore(noteBroadcaster, crdtManager);
 
   const eventBus = new EventBus();
+  const notificationListener = new NotificationListener(notificationStore);
   const tools = new AgentTools(agentStore, conversationStore, taskStore, eventBus);
   const noteTools = new NoteTools(noteStore, taskStore);
   const workspaceTools = new WorkspaceTools(agentStore, taskStore, noteStore);
@@ -114,6 +127,8 @@ export function createInMemorySystem(): RoutaSystem {
     kanbanBoardStore,
     artifactStore,
     permissionStore,
+    notificationStore,
+    notificationListener,
     eventBus,
     tools,
     noteTools,
@@ -140,6 +155,7 @@ export function createPgSystem(): RoutaSystem {
   const { PgScheduleStore } = require("./db/pg-schedule-store") as typeof import("./db/pg-schedule-store");
   const { PgWorktreeStore } = require("./db/pg-worktree-store") as typeof import("./db/pg-worktree-store");
   const { PgKanbanBoardStore } = require("./db/pg-kanban-board-store") as typeof import("./db/pg-kanban-board-store");
+  const { PgNotificationStore } = require("./db/pg-notification-store") as typeof import("./db/pg-notification-store");
 
   const db = getPostgresDatabase();
   const agentStore = new PgAgentStore(db);
@@ -156,6 +172,7 @@ export function createPgSystem(): RoutaSystem {
   const kanbanBoardStore = new PgKanbanBoardStore(db);
   const artifactStore = new PgArtifactStore(db);
   const permissionStore = new PermissionStore();
+  const notificationStore = new PgNotificationStore(db);
 
   // CRDT manager and broadcaster still used for real-time collab
   const noteBroadcaster = getNoteEventBroadcaster();
@@ -167,6 +184,7 @@ export function createPgSystem(): RoutaSystem {
   // real-time sidebar whenever set_note_content / create_note / append_to_note are called.
   const noteTools = new NoteTools(noteStore, taskStore, noteBroadcaster);
   const workspaceTools = new WorkspaceTools(agentStore, taskStore, noteStore);
+  const notificationListener = new NotificationListener(notificationStore);
 
   // Wire workspace store and event bus
   workspaceTools.setWorkspaceStore(workspaceStore);
@@ -191,6 +209,8 @@ export function createPgSystem(): RoutaSystem {
     kanbanBoardStore,
     artifactStore,
     permissionStore,
+    notificationStore,
+    notificationListener,
     eventBus,
     tools,
     noteTools,
@@ -227,6 +247,7 @@ export function createSqliteSystem(): RoutaSystem {
   const workflowRunStore = new InMemoryWorkflowRunStore();
   let artifactStore: ArtifactStore;
   const permissionStore = new PermissionStore();
+  let notificationStore: NotificationStore;
   // True when noteStore doesn't broadcast on save (SqliteNoteStore); NoteTools will broadcast.
   // False when CRDTNoteStore is used as fallback (it already broadcasts internally).
   let noteToolsBroadcast = false;
@@ -251,6 +272,7 @@ export function createSqliteSystem(): RoutaSystem {
       SqliteKanbanBoardStore,
       SqliteArtifactStore,
     } = require("./db/sqlite-stores") as typeof import("./db/sqlite-stores");
+    const { SqliteNotificationStore } = require("./db/sqlite-notification-store") as typeof import("./db/sqlite-notification-store");
 
     const db = getSqliteDatabase();
     ensureSqliteDefaultWorkspace();
@@ -265,6 +287,7 @@ export function createSqliteSystem(): RoutaSystem {
     scheduleStore = new SqliteScheduleStore(db);
     kanbanBoardStore = new SqliteKanbanBoardStore(db);
     artifactStore = new SqliteArtifactStore(db);
+    notificationStore = new SqliteNotificationStore(db);
     noteToolsBroadcast = true; // SqliteNoteStore doesn't broadcast — NoteTools must
   } catch (err) {
     // Some builds may not include sqlite native modules.
@@ -284,6 +307,7 @@ export function createSqliteSystem(): RoutaSystem {
     scheduleStore = new InMemoryScheduleStore();
     kanbanBoardStore = new InMemoryKanbanBoardStore();
     artifactStore = new InMemoryArtifactStore();
+    notificationStore = new InMemoryNotificationStore();
   }
 
   const eventBus = new EventBus();
@@ -291,6 +315,7 @@ export function createSqliteSystem(): RoutaSystem {
   // Pass broadcaster only when noteStore doesn't broadcast on its own (SqliteNoteStore case).
   const noteTools = new NoteTools(noteStore, taskStore, noteToolsBroadcast ? noteBroadcaster : undefined);
   const workspaceTools = new WorkspaceTools(agentStore, taskStore, noteStore);
+  const notificationListener = new NotificationListener(notificationStore);
 
   workspaceTools.setWorkspaceStore(workspaceStore);
   workspaceTools.setEventBus(eventBus);
@@ -314,6 +339,8 @@ export function createSqliteSystem(): RoutaSystem {
     kanbanBoardStore,
     artifactStore,
     permissionStore,
+    notificationStore,
+    notificationListener,
     eventBus,
     tools,
     noteTools,
@@ -328,38 +355,6 @@ export function createSqliteSystem(): RoutaSystem {
 // Use globalThis to survive HMR in Next.js dev mode.
 
 const GLOBAL_KEY = "__routa_system__";
-
-type WorkflowOrchestratorSingletonModule =
-  typeof import("./kanban/workflow-orchestrator-singleton");
-
-function resolveWorkflowOrchestratorSingletonModule(
-  value: unknown,
-): WorkflowOrchestratorSingletonModule {
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if (typeof record.startWorkflowOrchestrator === "function") {
-      return record as WorkflowOrchestratorSingletonModule;
-    }
-
-    const defaultExport = record.default;
-    if (defaultExport && typeof defaultExport === "object") {
-      const defaultRecord = defaultExport as Record<string, unknown>;
-      if (typeof defaultRecord.startWorkflowOrchestrator === "function") {
-        return defaultRecord as WorkflowOrchestratorSingletonModule;
-      }
-    }
-
-    const moduleExports = record["module.exports"];
-    if (moduleExports && typeof moduleExports === "object") {
-      const moduleExportsRecord = moduleExports as Record<string, unknown>;
-      if (typeof moduleExportsRecord.startWorkflowOrchestrator === "function") {
-        return moduleExportsRecord as WorkflowOrchestratorSingletonModule;
-      }
-    }
-  }
-
-  throw new TypeError("startWorkflowOrchestrator is not a function");
-}
 
 export function getRoutaSystem(): RoutaSystem {
   const g = globalThis as Record<string, unknown>;
@@ -382,16 +377,44 @@ export function getRoutaSystem(): RoutaSystem {
         break;
     }
 
+    // Apply store decorations ONCE during initialization.
+    // Order: timing → dedup (timing measures real DB latency; dedup coalesces redundant calls).
+    // Previously these ran outside the init block, causing proxy re-wrapping on every
+    // getRoutaSystem() call and eventual stack overflow (Issue #11).
+    g[GLOBAL_KEY] = decorateSystemWithTiming(g[GLOBAL_KEY] as RoutaSystem);
+    g[GLOBAL_KEY] = decorateSystemWithDedup(g[GLOBAL_KEY] as RoutaSystem);
+
     // Start the workflow orchestrator to listen for column transitions
     const system = g[GLOBAL_KEY] as RoutaSystem;
-    const { startWorkflowOrchestrator } = resolveWorkflowOrchestratorSingletonModule(
-      require("./kanban/workflow-orchestrator-singleton"),
-    );
     startWorkflowOrchestrator(system);
+
+    // Start the lane scanner to auto-trigger automation for idle cards
+    startLaneScanner(system);
+
+    // Start the scheduler service (cron ticks: schedule dispatcher, auto-archive, done-lane recovery)
+    // Placed here instead of instrumentation.node.ts to guarantee startup on all platforms.
+    startSchedulerService();
+
+    // Start the overseer subsystem (smart monitoring: auto-fixes, notifications, escalations)
+    // Must run after scheduler so the health tick cron is registered.
+    try {
+      const { startOverseer } = require("./overseer") as typeof import("./overseer");
+      startOverseer(system);
+    } catch (err) {
+      console.error("[RoutaSystem] Failed to start overseer subsystem:", err);
+    }
 
     // Set up EventBus → KanbanEventBroadcaster bridge for file changes
     setupFileChangeBridge(system);
+
+    // Initialize and register notification listener (graceful when SMTP not configured)
+    system.notificationListener.initialize().then((ready) => {
+      if (ready) {
+        system.notificationListener.register(system.eventBus);
+      }
+    });
   }
+
   return g[GLOBAL_KEY] as RoutaSystem;
 }
 

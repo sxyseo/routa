@@ -1,13 +1,12 @@
 /**
- * GET /api/github/tree?owner=X&repo=Y&ref=Z — Get file tree for an imported GitHub repo.
+ * GET /api/github/tree?owner=X&repo=Y&ref=Z — Get file tree for an imported VCS repo.
+ * Routes through VCS abstraction layer.
  *
  * Returns: { tree: VirtualFileEntry[], fileCount: number }
- *
- * The repo must have been imported first via POST /api/github/import.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCachedWorkspace } from "@/core/github/github-workspace";
+import { getCachedWorkspace } from "@/core/vcs/vcs-workspace";
 
 export const dynamic = "force-dynamic";
 

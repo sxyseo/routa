@@ -22,12 +22,14 @@ import type { SpecialistStore } from "../store/specialist-store";
 // ─── Cached Specialists ─────────────────────────────────────────────────────
 
 let _cachedSpecialists: SpecialistConfig[] | null = null;
+let _loadPromise: Promise<SpecialistConfig[]> | null = null;
 
 /**
  * Invalidate the specialist cache (call after DB updates).
  */
 export function invalidateSpecialistCache(): void {
   _cachedSpecialists = null;
+  _loadPromise = null;
 }
 
 // ─── Load Specialists with Priority ─────────────────────────────────────────
@@ -49,7 +51,13 @@ export async function loadSpecialistsFromAllSources(
     return _cachedSpecialists;
   }
 
-  try {
+  // Dedup in-flight loads to prevent cache stampede during concurrent agent startups
+  if (_loadPromise) {
+    return _loadPromise;
+  }
+
+  _loadPromise = (async () => {
+    try {
     // Collect all sources
     const sources: Map<string, { config: SpecialistConfig; priority: number }> = new Map();
 
@@ -122,7 +130,11 @@ export async function loadSpecialistsFromAllSources(
   } catch (error) {
     console.error("[SpecialistLoader] Failed to load specialists:", error);
     return getHardcodedFallbacks();
+  } finally {
+    _loadPromise = null;
   }
+  })();
+  return _loadPromise;
 }
 
 /**
