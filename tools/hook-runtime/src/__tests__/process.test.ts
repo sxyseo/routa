@@ -56,10 +56,18 @@ describe("runCommand", () => {
 
     await vi.advanceTimersByTimeAsync(50);
 
-    expect(spawnMock).toHaveBeenCalledWith("/bin/bash", ["-lc", "sleep 10 | cat"], expect.objectContaining({
-      detached: true,
+    const expectedShell = process.platform === "win32" ? "bash.exe" : "/bin/bash";
+    const expectedCommand = process.platform === "win32"
+      ? "TEMP=$(printf '%s' \"$TEMP\" | tr -d '\\r') TMP=$(printf '%s' \"$TMP\" | tr -d '\\r') sleep 10 | cat"
+      : "sleep 10 | cat";
+    expect(spawnMock).toHaveBeenCalledWith(expectedShell, ["-lc", expectedCommand], expect.objectContaining({
+      detached: process.platform !== "win32",
     }));
-    expect(processKillSpy).toHaveBeenCalledWith(-4321, "SIGTERM");
+    if (process.platform === "win32") {
+      expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    } else {
+      expect(processKillSpy).toHaveBeenCalledWith(-4321, "SIGTERM");
+    }
 
     child.signalCode = "SIGTERM";
     child.emit("close", null);

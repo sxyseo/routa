@@ -596,7 +596,11 @@ function resolveRepoIdentity(repoRoot: string): RepoIdentity | null {
 
 function isSameOrDescendant(basePath: string, candidatePath: string): boolean {
   const relative = path.relative(basePath, candidatePath);
-  return relative === "" || (!relative.startsWith("../") && !path.isAbsolute(relative));
+  return relative === "" || (
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
 }
 
 function repoPathMatches(
