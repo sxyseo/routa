@@ -183,12 +183,25 @@ async function executeAutoDecision(
       const task = await system.taskStore.get(decision.taskId);
       if (task) {
         const fields = dependencyUnblockFields();
-        // If task is stuck in non-standard "blocked" column, move it back to backlog
-        // so LaneScanner can pick it up.
-        const columnOverride = task.columnId === "blocked" ? { columnId: "backlog" } : {};
+        const previousColumnId = task.columnId ?? "";
+        const columnOverride = previousColumnId === "blocked" ? { columnId: "backlog" } : {};
+        const newColumnId = columnOverride.columnId ?? previousColumnId;
+
+        // Clear laneSessions for the source column (blocked) to prevent
+        // LaneScanner from seeing stale completed sessions and immediately
+        // re-advancing the card.
+        let sessionClear: Record<string, unknown> = {};
+        if (previousColumnId === "blocked" && task.laneSessions?.length) {
+          const clearedSessions = task.laneSessions.filter(
+            (s: { columnId?: string }) => s.columnId !== "blocked",
+          );
+          sessionClear = { laneSessions: clearedSessions, triggerSessionId: null };
+        }
+
         await safeAtomicSave(task, system.taskStore, {
           ...fields,
           ...columnOverride,
+          ...sessionClear,
         }, "Overseer unblock-dependency");
         console.log(`[Overseer] AUTO: Unblocked dependencies for task ${decision.taskId}`);
         system.eventBus.emit({
@@ -200,8 +213,8 @@ async function executeAutoDecision(
             cardTitle: task.title,
             boardId: task.boardId ?? "",
             workspaceId: task.workspaceId,
-            fromColumnId: task.columnId ?? "",
-            toColumnId: task.columnId ?? "",
+            fromColumnId: previousColumnId,
+            toColumnId: newColumnId,
             fromColumnName: "",
             toColumnName: "",
             source: { type: "dependency_unblock" },
@@ -236,6 +249,30 @@ async function executeAutoDecision(
           updatedAt: new Date(),
         }, "Overseer retry-version-conflict");
         console.log(`[Overseer] AUTO: Retried version conflict for task ${decision.taskId}`);
+      }
+      break;
+    }
+
+    case "relocate-orphan-column": {
+      const task = await system.taskStore.get(decision.taskId);
+      if (task) {
+        const previousColumnId = task.columnId ?? "";
+        const clearedSessions = (task.laneSessions ?? []).filter(
+          (s: { columnId?: string }) => s.columnId !== previousColumnId,
+        );
+        await safeAtomicSave(task, system.taskStore, {
+          columnId: "backlog",
+          status: TaskStatus.PENDING,
+          dependencyStatus: "clear",
+          lastSyncError: null,
+          laneSessions: clearedSessions,
+          triggerSessionId: null,
+          updatedAt: new Date(),
+        }, "Overseer relocate-orphan-column");
+        console.log(
+          `[Overseer] AUTO: Relocated orphan card ${decision.taskId} from ` +
+          `"${previousColumnId}" to backlog (sessions cleared: ${(task.laneSessions?.length ?? 0) - clearedSessions.length}).`,
+        );
       }
       break;
     }

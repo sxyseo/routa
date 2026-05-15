@@ -17,6 +17,7 @@ export type DiagnosticPattern =
   | "expired-pending-marker"
   | "orphan-worktree"
   | "dependency-block-resolved"
+  | "orphan-in-blocked-column"
   | "version-conflict-retry"
   | "webhook-lost-pr-merge"
   | "orphan-in-progress"
@@ -273,15 +274,21 @@ function checkOrphanInProgress(
 
   // Detect PENDING tasks stuck in non-kanban columns (e.g. "blocked").
   // These columns aren't scanned by LaneScanner so tasks can never progress.
+  // Only flag tasks with no real dependency block — tasks with actual dependencies
+  // are handled by checkDependencyBlockResolved.
   const nonKanbanColumns = new Set(["blocked"]);
   if (task.status === "PENDING" && nonKanbanColumns.has(task.columnId ?? "")) {
-    diagnostics.push({
-      pattern: "dependency-block-resolved",
-      category: "AUTO",
-      taskId: task.id,
-      description: `Task "${task.title}" is PENDING in non-kanban column "${task.columnId}" — needs move to backlog`,
-      details: { columnId: task.columnId, taskStatus: task.status },
-    });
+    const hasRealDependencyBlock = task.dependencyStatus === "blocked"
+      || (task.dependencies?.length ?? 0) > 0;
+    if (!hasRealDependencyBlock) {
+      diagnostics.push({
+        pattern: "orphan-in-blocked-column",
+        category: "AUTO",
+        taskId: task.id,
+        description: `Task "${task.title}" is PENDING in non-kanban column "${task.columnId}" with no dependency block — needs relocation`,
+        details: { columnId: task.columnId, taskStatus: task.status },
+      });
+    }
   }
 }
 

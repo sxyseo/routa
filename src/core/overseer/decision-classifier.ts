@@ -13,6 +13,7 @@ export type DecisionAction =
   | "clear-pending-marker"
   | "clear-worktree-ref"
   | "unblock-dependency"
+  | "relocate-orphan-column"
   | "retry-version-conflict"
   | "reset-orphan-session"
   | "mark-completed"
@@ -37,6 +38,7 @@ const PATTERN_ACTION_MAP: Record<DiagnosticPattern, DecisionAction> = {
   "expired-pending-marker": "clear-pending-marker",
   "orphan-worktree": "clear-worktree-ref",
   "dependency-block-resolved": "unblock-dependency",
+  "orphan-in-blocked-column": "relocate-orphan-column",
   "version-conflict-retry": "retry-version-conflict",
   "webhook-lost-pr-merge": "mark-completed",
   "orphan-in-progress": "reset-orphan-session",
