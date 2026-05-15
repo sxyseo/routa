@@ -56,7 +56,6 @@ import {
   runnerUnavailableResponse,
 } from "@/core/acp/runner-routing";
 import { handleSessionNew } from "./acp-session-create";
-import { getSessionWriteBuffer } from "./acp-session-history";
 import { handleSessionPrompt } from "./acp-session-prompt";
 
 export const dynamic = "force-dynamic";
@@ -113,10 +112,10 @@ function pushAndPersistForwardedNotification(
 
   store.pushNotification(notification);
 
-  const buffer = getSessionWriteBuffer();
-  buffer.add(sessionId, notification);
+  // writeBuffer is now managed inside HttpSessionStore.pushNotification.
+  // Only flush on turn boundaries so the buffer has a chance to batch.
   if (shouldFlushForwardedSessionUpdate(notification)) {
-    void buffer.flush(sessionId);
+    void store.flushWriteBuffer(sessionId);
   }
 }
 

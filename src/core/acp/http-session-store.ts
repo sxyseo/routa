@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { getProviderAdapter } from "./provider-adapter";
 import { TraceRecorder } from "./provider-adapter/trace-recorder";
-import { appendSessionNotificationEvent, hydrateSessionsFromDb, updateSessionExecutionBindingInDb } from "./session-db-persister";
+import { appendSessionNotificationEvent, appendSessionNotificationBatch, hydrateSessionsFromDb, updateSessionExecutionBindingInDb } from "./session-db-persister";
 import { getAcpInstanceId, isExecutionLeaseActive, refreshExecutionBinding } from "./execution-backend";
 import { AgentEventBridge, makeStartedEvent } from "./agent-event-bridge";
 import type { WorkspaceAgentEvent } from "./agent-event-bridge";
@@ -23,6 +23,7 @@ import type { NormalizedSessionUpdate } from "./provider-adapter/types";
 import { getRoutaSystem } from "../routa-system";
 import type { BackgroundTaskStore } from "../store/background-task-store";
 import { BackgroundTaskProgressBuffer } from "./background-task-progress-buffer";
+import { SessionWriteBuffer } from "./session-write-buffer";
 import { EventBus, AgentEventType } from "../events/event-bus";
 import type { McpServerProfile } from "../mcp/mcp-server-profiles";
 
@@ -195,6 +196,13 @@ class HttpSessionStore {
   /** Capture assistant output per session for workflow step chaining */
   private sessionAssistantOutput = new Map<string, string>();
   /**
+   * Accumulates streaming text chunks per session so they don't fill up
+   * messageHistory with hundreds of tiny entries.  Flushed as a single
+   * consolidated `agent_message` when a non-chunk event arrives, streaming
+   * ends, or the session is cleaned up.
+   */
+  private chunkAccumulator = new Map<string, { chunks: string[]; firstEventId: string }>();
+  /**
    * Sessions currently streaming a prompt response via their own SSE body.
    * While in streaming mode, pushNotification() stores to history/trace but
    * does NOT forward to the persistent EventSource SSE controller — that would
@@ -204,8 +212,10 @@ class HttpSessionStore {
   private streamingSessionIds = new Set<string>();
 
   // ─── Memory-aware limits ─────────────────────────────────────────────────
-  private static readonly MAX_HISTORY_PER_SESSION = 500; // Max messages per session
-  private static readonly MAX_TOTAL_HISTORY_MESSAGES = 5000; // Global budget across all sessions
+  // After chunk consolidation (P0-1), each session stores ~50 effective messages.
+  // 200 per session gives 4x headroom; 10000 global supports 50 concurrent sessions.
+  private static readonly MAX_HISTORY_PER_SESSION = 200;
+  private static readonly MAX_TOTAL_HISTORY_MESSAGES = 10000;
   private static readonly MAX_PENDING_NOTIFICATIONS = 100; // Max buffered notifications
   private static readonly STALE_SESSION_MS = 60 * 60 * 1000; // 1 hour
   private static readonly CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -219,8 +229,21 @@ class HttpSessionStore {
   private backgroundTaskPending = new Map<string, Promise<NonNullable<Awaited<ReturnType<BackgroundTaskStore["findBySessionId"]>>> | undefined>>();
   private progressBuffer = new BackgroundTaskProgressBuffer();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Batched write buffer for DB persistence.  Notifications accumulate here
+   * and are flushed in consolidated batches via `appendHistoryBatch` instead
+   * of writing every chunk individually.
+   */
+  private writeBuffer: SessionWriteBuffer;
 
   constructor() {
+    this.writeBuffer = new SessionWriteBuffer({
+      maxBufferSize: 50,
+      debounceMs: 5000,
+      persistFn: async (sessionId, notifications) => {
+        await appendSessionNotificationBatch(sessionId, notifications, this.sessions.get(sessionId)?.cwd);
+      },
+    });
     // Start periodic cleanup (every 5 minutes)
     this.cleanupTimer = setInterval(() => {
       this.maybeCleanup();
@@ -234,6 +257,8 @@ class HttpSessionStore {
 
   exitStreamingMode(sessionId: string): void {
     this.streamingSessionIds.delete(sessionId);
+    this.flushChunkAccumulator(sessionId);
+    void this.writeBuffer.flush(sessionId);
     this.updateAccessTime(sessionId);
   }
 
@@ -302,10 +327,13 @@ class HttpSessionStore {
     this.progressBuffer.dispose(sessionId);
     // Clean up TraceRecorder buffers for this session
     this.traceRecorder.cleanupSession(sessionId);
+    this.flushChunkAccumulator(sessionId);
+    this.writeBuffer.disposeSession(sessionId);
     this.messageHistory.delete(sessionId);
     this.sessionActivities.delete(sessionId);
     this.pendingNotifications.delete(sessionId);
     this.sessionAssistantOutput.delete(sessionId);
+    this.chunkAccumulator.delete(sessionId);
     this.nonBackgroundSessions.delete(sessionId);
     this.backgroundTaskCache.delete(sessionId);
     this.backgroundTaskPending.delete(sessionId);
@@ -390,10 +418,20 @@ class HttpSessionStore {
    * Call this when a prompt completes or session ends.
    */
   flushAgentBuffer(sessionId: string): void {
+    this.flushChunkAccumulator(sessionId);
+    void this.writeBuffer.flush(sessionId);
     const sessionRecord = this.sessions.get(sessionId);
     const cwd = sessionRecord?.cwd ?? process.cwd();
     const provider = sessionRecord?.provider ?? "unknown";
     this.traceRecorder.flushSession(sessionId, cwd, provider);
+  }
+
+  /**
+   * Flush the write buffer for a session (DB persistence).
+   * Returns a promise so callers can await completion if needed.
+   */
+  flushWriteBuffer(sessionId: string): Promise<void> {
+    return this.writeBuffer.flush(sessionId);
   }
 
   renameSession(sessionId: string, name: string): boolean {
@@ -520,12 +558,30 @@ class HttpSessionStore {
     const isChildAgentNotification = !!(notification as Record<string, unknown>).childAgentId;
 
     if (!isChildAgentNotification) {
-      // Only store non-child-agent notifications in history
-      const history = this.messageHistory.get(sessionId) ?? [];
-      history.push(enriched);
-      this.messageHistory.set(sessionId, history);
-      this.limitHistorySize(sessionId); // Apply memory limit
-      void appendSessionNotificationEvent(sessionId, enriched, this.sessions.get(sessionId)?.cwd);
+      // Accumulate streaming chunks separately; flush as a single
+      // consolidated agent_message when a non-chunk event arrives.
+      const sessionUpdate = (enriched.update as Record<string, unknown> | undefined)?.sessionUpdate;
+      if (sessionUpdate === "agent_message_chunk") {
+        const content = (enriched.update as Record<string, unknown> | undefined)?.content as
+          | { type?: string; text?: string }
+          | undefined;
+        if (content?.text) {
+          let acc = this.chunkAccumulator.get(sessionId);
+          if (!acc) {
+            acc = { chunks: [], firstEventId: enriched.eventId as string };
+            this.chunkAccumulator.set(sessionId, acc);
+          }
+          acc.chunks.push(content.text);
+        }
+      } else {
+        // Non-chunk event — flush any pending chunks first
+        this.flushChunkAccumulator(sessionId);
+        const history = this.messageHistory.get(sessionId) ?? [];
+        history.push(enriched);
+        this.messageHistory.set(sessionId, history);
+        this.limitHistorySize(sessionId);
+      }
+      this.writeBuffer.add(sessionId, enriched);
     }
 
     // ── Notify AG-UI interceptors (protocol bridging) ──
@@ -862,6 +918,29 @@ class HttpSessionStore {
   // ─── Memory-aware cleanup methods ─────────────────────────────────────────
 
   /**
+   * Flush any accumulated streaming chunks for a session into messageHistory
+   * as a single consolidated `agent_message`.  Safe to call when no chunks
+   * are pending (no-op).
+   */
+  private flushChunkAccumulator(sessionId: string): void {
+    const acc = this.chunkAccumulator.get(sessionId);
+    if (!acc || acc.chunks.length === 0) return;
+    const merged: SessionUpdateNotification = {
+      sessionId,
+      eventId: acc.firstEventId,
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: acc.chunks.join("") },
+      },
+    };
+    const history = this.messageHistory.get(sessionId) ?? [];
+    history.push(merged);
+    this.messageHistory.set(sessionId, history);
+    this.limitHistorySize(sessionId);
+    this.chunkAccumulator.delete(sessionId);
+  }
+
+  /**
    * Limit message history size for a session.
    * Removes oldest entries if limit is exceeded.
    */
@@ -870,6 +949,11 @@ class HttpSessionStore {
     if (history && history.length > HttpSessionStore.MAX_HISTORY_PER_SESSION) {
       const removed = history.length - HttpSessionStore.MAX_HISTORY_PER_SESSION;
       this.messageHistory.set(sessionId, history.slice(removed));
+      // Flush writeBuffer before trimming so buffered notifications are
+      // persisted before the in-memory history they reference is discarded.
+      if (removed > 50) {
+        void this.writeBuffer.flush(sessionId);
+      }
       if (removed > 10) {
         console.log(`[HttpSessionStore] Trimmed ${removed} messages from session ${sessionId}`);
       }
@@ -1059,6 +1143,8 @@ class HttpSessionStore {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+    // Flush all buffered DB writes before shutdown
+    void this.writeBuffer.flushAll();
     // Flush all pending progress
     this.progressBuffer.flushAll();
     // Close all SSE controllers

@@ -194,6 +194,55 @@ export class PgAcpSessionStore implements AcpSessionStore {
     };
   }
 
+  async appendHistoryBatch(
+    sessionId: string,
+    notifications: AcpSessionNotification[],
+  ): Promise<void> {
+    if (notifications.length === 0) return;
+
+    await this.db.transaction(async (tx) => {
+      const topRows = await tx
+        .select({ messageIndex: sessionMessages.messageIndex })
+        .from(sessionMessages)
+        .where(eq(sessionMessages.sessionId, sessionId))
+        .orderBy(desc(sessionMessages.messageIndex))
+        .limit(1);
+
+      let nextIndex = topRows.length > 0 ? topRows[0].messageIndex + 1 : 0;
+
+      // One-time full save when session_messages was empty (cold-start compat).
+      if (topRows.length === 0) {
+        const session = await this.get(sessionId);
+        if (!session) return;
+        await this.save({ ...session, messageHistory: notifications, updatedAt: new Date() });
+        return;
+      }
+
+      const values = notifications.map((n) => {
+        const eventType = String(
+          (n.update as Record<string, unknown> | undefined)?.sessionUpdate ?? "notification",
+        );
+        const eventId = typeof n.eventId === "string" && n.eventId.length > 0
+          ? n.eventId
+          : `${sessionId}-${nextIndex}`;
+        return {
+          id: eventId,
+          sessionId,
+          messageIndex: nextIndex++,
+          eventType,
+          payload: n as typeof sessionMessages.$inferInsert.payload,
+        };
+      });
+
+      await tx.insert(sessionMessages).values(values);
+
+      await tx
+        .update(acpSessions)
+        .set({ updatedAt: new Date() })
+        .where(eq(acpSessions.id, sessionId));
+    });
+  }
+
   private async getNextMessageIndex(sessionId: string): Promise<number> {
     const rows = await this.db
       .select({ messageIndex: sessionMessages.messageIndex })

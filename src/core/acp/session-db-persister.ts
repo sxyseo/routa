@@ -447,6 +447,66 @@ export async function appendSessionNotificationEvent(
   }
 }
 
+/**
+ * Batch version of appendSessionNotificationEvent.
+ * Persists multiple notifications in a single DB transaction using appendHistoryBatch.
+ * JSONL entries are written individually (append-only is fast; the bottleneck is DB).
+ */
+export async function appendSessionNotificationBatch(
+  sessionId: string,
+  notifications: import("@/core/acp/http-session-store").SessionUpdateNotification[],
+  cwdOverride?: string,
+): Promise<void> {
+  if (notifications.length === 0) return;
+
+  const driver = getDatabaseDriver();
+
+  // Write JSONL entries (best-effort, one by one — append-only is fast)
+  if (!isServerless()) {
+    try {
+      let cwd = cwdOverride;
+      if (!cwd) {
+        const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
+        cwd = getHttpSessionStore().getSession(sessionId)?.cwd;
+      }
+      if (!cwd && driver === "sqlite") {
+        try {
+          const { getSqliteDatabase } = await loadSqliteDatabaseModule();
+          const db = getSqliteDatabase();
+          cwd = (await new SqliteAcpSessionStore(db).get(sessionId))?.cwd;
+        } catch {
+          // ignore
+        }
+      }
+      if (cwd) {
+        const local = new LocalSessionProvider(cwd);
+        for (const n of notifications) {
+          await local.appendMessage(sessionId, toJsonlHistoryEntry(sessionId, n));
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  // Batch DB write
+  if (driver !== "memory") {
+    try {
+      if (driver === "postgres") {
+        const db = getPostgresDatabase();
+        const pgStore = new PgAcpSessionStore(db);
+        await pgStore.appendHistoryBatch(sessionId, notifications);
+      } else {
+        const { getSqliteDatabase } = await loadSqliteDatabaseModule();
+        const db = getSqliteDatabase();
+        await new SqliteAcpSessionStore(db).appendHistoryBatch(sessionId, notifications);
+      }
+    } catch {
+      // Non-fatal — DB append is best-effort
+    }
+  }
+}
+
 export async function loadHistorySinceEventIdFromDb(
   sessionId: string,
   lastEventId: string,
