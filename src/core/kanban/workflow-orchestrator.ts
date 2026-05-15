@@ -947,12 +947,51 @@ export class KanbanWorkflowOrchestrator {
       }
     }
 
+    // ── Orphan cleanup from Overseer ──────────────────────────────────────────
+    // Overseer detects orphan tasks (triggerSessionId cleared but still IN_PROGRESS)
+    // and emits a COLUMN_TRANSITION with source.type="orphan_cleanup" to notify us
+    // to clear any zombie activeAutomations entry before LaneScanner re-triggers.
+    if (data.source?.type === "orphan_cleanup") {
+      const zombie = this.activeAutomations.get(data.cardId);
+      if (zombie && (zombie.status === "running" || zombie.status === "queued")) {
+        console.warn(
+          `[WorkflowOrchestrator] Orphan cleanup: clearing zombie activeAutomation for card ${data.cardId} ` +
+          `(status=${zombie.status}, column=${zombie.columnId}).`,
+        );
+        zombie.status = "failed";
+        this.cleanupCardSession?.(data.cardId);
+        this.activeAutomations.delete(data.cardId);
+      }
+      // Continue to normal flow so the card gets re-triggered below.
+    }
+
     const existingAutomation = this.activeAutomations.get(data.cardId);
     if (existingAutomation
       && existingAutomation.boardId === data.boardId
       && (existingAutomation.status === "queued" || existingAutomation.status === "running")) {
-      // If the existing automation is in the same column, skip entirely.
-      if (existingAutomation.columnId === targetColumn.id) {
+
+      // ── Zombie defense at entry: running automation with dead session ──
+      // If the session backing this "running" automation no longer exists in
+      // HttpSessionStore, it's a zombie. Clear it and fall through to re-trigger.
+      if (existingAutomation.status === "running" && existingAutomation.sessionId) {
+        const sessionStore = getHttpSessionStore();
+        const sessionExists = sessionStore.getSession(existingAutomation.sessionId);
+        if (!sessionExists) {
+          const ageMs = Date.now() - existingAutomation.startedAt.getTime();
+          console.warn(
+            `[WorkflowOrchestrator] Zombie automation at entry: card ${data.cardId} ` +
+            `session ${existingAutomation.sessionId} gone (${Math.round(ageMs / 60_000)}m old). Clearing.`,
+          );
+          existingAutomation.status = "failed";
+          this.cleanupCardSession?.(data.cardId);
+          this.activeAutomations.delete(data.cardId);
+          // Fall through to re-trigger below — do NOT return.
+        } else if (existingAutomation.columnId === targetColumn.id) {
+          // Normal running automation in same column — skip.
+          return;
+        }
+      } else if (existingAutomation.columnId === targetColumn.id) {
+        // If the existing automation is in the same column, skip entirely.
         return;
       }
 
@@ -1585,6 +1624,24 @@ export class KanbanWorkflowOrchestrator {
       const sessionId = automation.sessionId;
       if (automation.signaledSessionIds.has(sessionId)) continue;
 
+      // ── Zombie detection: session no longer exists in HttpSessionStore ──
+      // This catches the case where a session crashed or was evicted but
+      // handleAgentCompletion never fired, leaving a stale "running" entry.
+      const sessionRecord = sessionStore.getSession(sessionId);
+      if (!sessionRecord) {
+        const ageMs = now - automation.startedAt.getTime();
+        if (ageMs >= cfg.orphanAgeMs) {
+          console.warn(
+            `[WorkflowOrchestrator] Zombie automation: card ${automation.cardId} ` +
+            `session ${sessionId} gone from HttpSessionStore (${Math.round(ageMs / 60_000)}m old). Cleaning up.`,
+          );
+          automation.status = "failed";
+          this.cleanupCardSession?.(automation.cardId);
+          this.activeAutomations.delete(automation.cardId);
+        }
+        continue;
+      }
+
       // ── Universal guards (apply to ALL running automations) ──────────────
 
       // Max automation duration guard — terminates any automation running
@@ -1625,8 +1682,8 @@ export class KanbanWorkflowOrchestrator {
 
       if (!isRecoveryMode(automation.supervision.mode)) continue;
 
-      const sessionRecord = sessionStore.getSession(sessionId);
-      if (sessionRecord?.acpStatus === "error") {
+      const recoverySessionRecord = sessionStore.getSession(sessionId);
+      if (recoverySessionRecord?.acpStatus === "error") {
         automation.signaledSessionIds.add(sessionId);
         void this.notifyKanbanAgent({
           workspaceId: automation.workspaceId,
@@ -1635,7 +1692,7 @@ export class KanbanWorkflowOrchestrator {
           cardTitle: automation.cardTitle,
           boardId: automation.boardId,
           columnId: automation.columnId,
-          reason: sessionRecord.acpError ?? "ACP session entered error state.",
+          reason: recoverySessionRecord.acpError ?? "ACP session entered error state.",
           mode: automation.supervision.mode,
         });
         this.eventBus.emit({
@@ -1645,7 +1702,7 @@ export class KanbanWorkflowOrchestrator {
           data: {
             sessionId,
             success: false,
-            error: sessionRecord.acpError ?? "ACP session entered error state.",
+            error: recoverySessionRecord.acpError ?? "ACP session entered error state.",
             watchdog: true,
           },
           timestamp: new Date(),

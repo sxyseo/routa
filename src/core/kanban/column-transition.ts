@@ -39,7 +39,8 @@ export type ColumnTransitionSource =
   | { type: "dependency_unblock" }
   | { type: "graph_refiner" }
   | { type: "pr_recreate" }
-  | { type: "review_degraded" };
+  | { type: "review_degraded" }
+  | { type: "orphan_cleanup" };
 
 /**
  * Emit a COLUMN_TRANSITION event on the event bus.

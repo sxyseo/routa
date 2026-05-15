@@ -260,6 +260,29 @@ async function executeAutoDecision(
           updatedAt: new Date(),
         }, "Overseer reset-orphan-session");
         console.log(`[Overseer] AUTO: Reset orphan session for task ${decision.taskId} — LaneScanner will re-pickup`);
+
+        // Notify Orchestrator to clear any zombie activeAutomations entry.
+        // The Overseer can only clean persisted state (triggerSessionId);
+        // the in-memory Map on Orchestrator is invisible to us, so we emit
+        // a transition event with orphan_cleanup source so Orchestrator
+        // can clear the zombie before re-triggering.
+        if (task.columnId && task.boardId) {
+          system.eventBus.emit({
+            type: AgentEventType.COLUMN_TRANSITION,
+            agentId: "overseer-orphan-cleanup",
+            workspaceId: task.workspaceId,
+            data: {
+              cardId: task.id,
+              cardTitle: task.title,
+              boardId: task.boardId,
+              workspaceId: task.workspaceId,
+              fromColumnId: task.columnId,
+              toColumnId: task.columnId,
+              source: { type: "orphan_cleanup" },
+            } as unknown as Record<string, unknown>,
+            timestamp: new Date(),
+          });
+        }
       }
       break;
     }
