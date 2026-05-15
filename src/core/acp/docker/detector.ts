@@ -119,6 +119,11 @@ export class DockerDetector {
     return DockerDetector.instance;
   }
 
+  /** Return cached status without spawning any child process. */
+  getCachedStatus(): DockerStatus | null {
+    return this.cachedStatus;
+  }
+
   async checkAvailability(forceRefresh = false): Promise<DockerStatus> {
     const now = Date.now();
     if (!forceRefresh && this.cachedStatus && now - this.cachedAt < CACHE_TTL_MS) {
