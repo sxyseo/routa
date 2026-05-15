@@ -86,6 +86,9 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
     sqlite.pragma("journal_mode = WAL");
     // Enable foreign keys
     sqlite.pragma("foreign_keys = ON");
+    // Busy timeout: wait up to 5s for locks instead of immediate SQLITE_BUSY.
+    // Critical when MCP SSE handlers do concurrent writes while REST endpoints read.
+    sqlite.pragma("busy_timeout = 5000");
     // Performance PRAGMAs: reduce fsync overhead and use memory for temp tables.
     // NOTE: synchronous=NORMAL trades durability for speed — in WAL mode, a power
     // loss or OS crash on Windows may lose the last ~1s of transactions. Acceptable
@@ -286,6 +289,12 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN blocking TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN dependency_status TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN parent_task_id TEXT`);
+
+  // Critical index: tasks.listByWorkspace is the hottest query path.
+  // Without this, 360 MB database does a full table scan per request.
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_workspace_id ON tasks (workspace_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_board_id ON tasks (board_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)`);
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS notes (
