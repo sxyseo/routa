@@ -18,8 +18,12 @@ function deriveRepoSegment(repoPath: string, repoLabel?: string): string {
   return sanitizeSegment(candidate);
 }
 
+function resolveRepoPath(repoPath: string): string {
+  return repoPath.startsWith("/") ? path.posix.resolve(repoPath) : path.resolve(repoPath);
+}
+
 function resolveCanvasStorageRoot(repoPath: string): string {
-  const resolvedRepoPath = path.resolve(repoPath);
+  const resolvedRepoPath = resolveRepoPath(repoPath);
   const cloneBaseDir = path.resolve(getCloneBaseDir());
   if (
     resolvedRepoPath === cloneBaseDir

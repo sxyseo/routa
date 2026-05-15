@@ -46,7 +46,7 @@ describe("/api/canvas/specialist/materialize", () => {
     expect(response.status).toBe(201);
 
     const json = await response.json();
-    expect(json.filePath).toContain(
+    expect(json.filePath.replaceAll("\\", "/")).toContain(
       "/.routa/projects/Users-phodal-ai-routa-js/canvases/routa-js-fitness-overview.canvas.tsx",
     );
     await expect(fs.readFile(json.filePath, "utf-8")).resolves.toContain("Saved");

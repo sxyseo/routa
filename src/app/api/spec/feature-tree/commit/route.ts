@@ -23,6 +23,14 @@ interface CommitRequestBody {
   metadata?: FeatureTreeMetadata | null;
 }
 
+function resolveAbsolutePath(value: string): string {
+  return value.startsWith("/") ? path.posix.resolve(value) : path.resolve(value);
+}
+
+function pathSeparatorFor(value: string): string {
+  return value.startsWith("/") ? path.posix.sep : path.sep;
+}
+
 export async function POST(request: NextRequest) {
   let body: CommitRequestBody;
   try {
@@ -53,7 +61,7 @@ export async function POST(request: NextRequest) {
   try {
     let scanRoot: string;
     if (body.scanRoot) {
-      const resolved = path.resolve(body.scanRoot);
+      const resolved = resolveAbsolutePath(body.scanRoot);
       if (!fs.existsSync(resolved)) {
         return NextResponse.json(
           { error: "scanRoot does not exist" },
@@ -61,8 +69,11 @@ export async function POST(request: NextRequest) {
         );
       }
       const realScanRoot = fs.realpathSync(resolved);
-      const realRepoRoot = fs.realpathSync(path.resolve(repoRoot));
-      if (realScanRoot !== realRepoRoot && !realScanRoot.startsWith(realRepoRoot + path.sep)) {
+      const realRepoRoot = fs.realpathSync(resolveAbsolutePath(repoRoot));
+      if (
+        realScanRoot !== realRepoRoot &&
+        !realScanRoot.startsWith(realRepoRoot + pathSeparatorFor(realRepoRoot))
+      ) {
         return NextResponse.json(
           { error: "scanRoot must be inside the repository" },
           { status: 400 },
