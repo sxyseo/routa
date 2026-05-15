@@ -12,6 +12,7 @@ import type { Agent, AgentRole, AgentStatus } from "../models/agent";
 import type { Message, MessageRole } from "../models/message";
 import type { Note, NoteType, NoteMetadata } from "../models/note";
 import type { KanbanBoard } from "../models/kanban";
+import { ensureColumnStages } from "../models/kanban";
 import type { Artifact, ArtifactRequest, ArtifactType } from "../models/artifact";
 import { createSpecNote, SPEC_NOTE_ID } from "../models/note";
 import type { AgentStore } from "../store/agent-store";
@@ -250,6 +251,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
   constructor(private db: SqliteDb) {}
 
   async save(board: KanbanBoard): Promise<void> {
+    const columns = ensureColumnStages(board.columns);
     await this.db
       .insert(sqliteSchema.kanbanBoards)
       .values({
@@ -258,7 +260,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
         name: board.name,
         isDefault: board.isDefault,
         githubToken: board.githubToken ?? null,
-        columns: board.columns,
+        columns,
         createdAt: board.createdAt,
         updatedAt: board.updatedAt,
       })
@@ -268,7 +270,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
           name: board.name,
           isDefault: board.isDefault,
           githubToken: board.githubToken ?? null,
-          columns: board.columns,
+          columns,
           updatedAt: new Date(),
         },
       });
@@ -316,7 +318,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
       name: row.name,
       isDefault: row.isDefault,
       githubToken: row.githubToken ?? undefined,
-      columns: row.columns,
+      columns: ensureColumnStages(row.columns),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

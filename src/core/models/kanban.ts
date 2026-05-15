@@ -206,6 +206,26 @@ export function cloneKanbanColumns(columns: KanbanColumn[]): KanbanColumn[] {
   }));
 }
 
+const STANDARD_STAGES: readonly KanbanColumnStage[] = [
+  "backlog", "todo", "dev", "review", "done", "blocked", "archived",
+];
+
+export function inferStageFromColumnId(columnId: string): KanbanColumnStage | undefined {
+  const lowered = columnId.toLowerCase();
+  if (STANDARD_STAGES.includes(lowered as KanbanColumnStage)) {
+    return lowered as KanbanColumnStage;
+  }
+  return undefined;
+}
+
+export function ensureColumnStages(columns: KanbanColumn[]): KanbanColumn[] {
+  return columns.map((col) => {
+    if (col.stage) return col;
+    const inferred = inferStageFromColumnId(col.id);
+    return inferred ? { ...col, stage: inferred } : col;
+  });
+}
+
 function createFallbackAutomationStep(automation: KanbanColumnAutomation): KanbanAutomationStep {
   return {
     id: "step-1",

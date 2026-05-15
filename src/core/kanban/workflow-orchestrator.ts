@@ -17,7 +17,7 @@ import type {
   KanbanDevSessionSupervision,
   KanbanDevSessionSupervisionMode,
 } from "../models/kanban";
-import { getKanbanAutomationSteps, resolveTaskStatusForBoardColumn } from "../models/kanban";
+import { getKanbanAutomationSteps, resolveTaskStatusForBoardColumn, inferStageFromColumnId } from "../models/kanban";
 import { type Task, type TaskLaneSession, type TaskLaneSessionRecoveryReason, type TaskStatus, createTask } from "../models/task";
 import type { KanbanBoardStore } from "../store/kanban-board-store";
 import type { TaskStore } from "../store/task-store";
@@ -558,7 +558,7 @@ export class KanbanWorkflowOrchestrator {
       if (!board) return;
       const column = board.columns.find((c) => c.id === task.columnId);
       if (!column?.automation?.autoAdvanceOnSuccess) return;
-      const stage = column.stage ?? "backlog";
+      const stage = column.stage ?? inferStageFromColumnId(column.id) ?? "backlog";
       await this.autoAdvanceCard(data.cardId, {
         cardId: data.cardId,
         cardTitle: data.cardTitle,
@@ -634,7 +634,8 @@ export class KanbanWorkflowOrchestrator {
     }
 
     // Done-lane pre-automation: synchronous PR creation and optional Auto Merger injection.
-    if (targetColumn.stage === "done" && this.resolveBranchRules) {
+    const targetStage = targetColumn.stage ?? inferStageFromColumnId(targetColumn.id);
+    if (targetStage === "done" && this.resolveBranchRules) {
       const branchRules = await this.resolveBranchRules({ workspaceId: data.workspaceId, boardId: data.boardId });
 
       // Synchronous pre-automation PR creation — runs before any done-lane steps.
@@ -2372,10 +2373,11 @@ export class KanbanWorkflowOrchestrator {
 
       // Terminal stage guard: done/archived are end-of-flow columns.
       // Cards should never auto-advance from done into blocked/archived.
-      if (currentColumn.stage === "done" || currentColumn.stage === "archived") {
+      const effectiveStage = currentColumn.stage ?? inferStageFromColumnId(currentColumn.id);
+      if (effectiveStage === "done" || effectiveStage === "archived") {
         console.log(
           `[WorkflowOrchestrator] Skipping auto-advance for card ${cardId}: ` +
-          `${currentColumn.stage} is a terminal stage.`,
+          `${effectiveStage} is a terminal stage.`,
         );
         return;
       }

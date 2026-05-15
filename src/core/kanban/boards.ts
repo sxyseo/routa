@@ -10,6 +10,7 @@ import {
   normalizeDefaultKanbanColumnPositions,
   normalizeKanbanAutomation,
   type KanbanColumnStage,
+  ensureColumnStages,
 } from "../models/kanban";
 import type { RoutaSystem } from "../routa-system";
 
@@ -272,8 +273,9 @@ function createRecommendedDefaultColumns(): KanbanColumn[] {
 export async function ensureDefaultBoard(system: RoutaSystem, workspaceId: string): Promise<ReturnType<typeof createKanbanBoard>> {
   const existing = await system.kanbanBoardStore.getDefault(workspaceId);
   if (existing) {
+    const stageFixed = ensureColumnStages(existing.columns);
     const normalizedColumns = normalizeDefaultKanbanColumnPositions(
-      applyRecommendedAutomationToColumns(existing.columns),
+      applyRecommendedAutomationToColumns(stageFixed),
     );
     if (JSON.stringify(normalizedColumns) !== JSON.stringify(existing.columns)) {
       const updated = {
