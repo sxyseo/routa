@@ -7,23 +7,40 @@ import { getKanbanAutoProvider } from "@/core/kanban/board-auto-provider";
 import { getKanbanSessionConcurrencyLimit } from "@/core/kanban/board-session-limits";
 import { getKanbanDevSessionSupervision } from "@/core/kanban/board-session-supervision";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
-import { reviveMissingEntryAutomations } from "@/core/kanban/restart-recovery";
 import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
-import { getHttpSessionStore } from "@/core/acp/http-session-store";
-import { getAcpProcessManager } from "@/core/acp/processer";
 import type { KanbanBoard, KanbanDevSessionSupervision } from "@/core/models/kanban";
 
 export const dynamic = "force-dynamic";
 
-const REVIVE_COOLDOWN_MS = 30_000;
-const lastReviveByWorkspace = new Map<string, number>();
+// ─── Request-level cache for GET /api/kanban/boards ───
+// Deduplicates concurrent requests and caches for 3 seconds to reduce
+// pressure on the 360 MB SQLite database from UI polling loops.
+const BOARDS_CACHE_TTL_MS = 3_000;
+const boardsCache = new Map<string, { ts: number; promise: Promise<NextResponse> }>();
 
-function cleanupReviveTimestamps(): void {
-  if (lastReviveByWorkspace.size <= 50) return;
-  const cutoff = Date.now() - REVIVE_COOLDOWN_MS * 2;
-  for (const [key, ts] of lastReviveByWorkspace) {
-    if (ts < cutoff) lastReviveByWorkspace.delete(key);
+function getCachedBoards(
+  workspaceId: string,
+  load: () => Promise<NextResponse>,
+): Promise<NextResponse> {
+  const cached = boardsCache.get(workspaceId);
+  if (cached && Date.now() - cached.ts < BOARDS_CACHE_TTL_MS) {
+    return cached.promise;
   }
+  const promise = load();
+  boardsCache.set(workspaceId, { ts: Date.now(), promise });
+  if (boardsCache.size > 50) {
+    const now = Date.now();
+    for (const [k, v] of boardsCache) {
+      if (now - v.ts >= BOARDS_CACHE_TTL_MS) boardsCache.delete(k);
+    }
+  }
+  return promise;
+}
+
+function requireWorkspaceId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function sanitizeBoard(
@@ -46,58 +63,22 @@ function sanitizeBoard(
   };
 }
 
-function requireWorkspaceId(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
 export async function GET(request: NextRequest) {
   const workspaceId = requireWorkspaceId(request.nextUrl.searchParams.get("workspaceId"));
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
   }
+  return getCachedBoards(workspaceId, () => loadBoards(workspaceId));
+}
+
+async function loadBoards(workspaceId: string): Promise<NextResponse> {
   const system = getRoutaSystem();
   await ensureDefaultBoard(system, workspaceId);
   const boards = await system.kanbanBoardStore.listByWorkspace(workspaceId);
   const workspace = await system.workspaceStore.get(workspaceId);
   const tasks = await system.taskStore.listByWorkspace(workspaceId);
   const queue = getKanbanSessionQueue(system);
-  const sessionStore = getHttpSessionStore();
-  const processManager = getAcpProcessManager();
 
-  // Fire-and-forget: start hydration but don't block the boards response.
-  // The revive logic on the next request (or SSE tick) will pick up any
-  // recovered automations once hydration completes.
-  const hydrationDone = sessionStore.hydrateFromDb();
-
-  // Only run revive if hydration is already done (subsequent requests).
-  // Skip on first request to avoid blocking 30+ seconds.
-  // Cooldown prevents revive-induced SSE events from causing feedback loops.
-  const lastRevive = lastReviveByWorkspace.get(workspaceId) ?? 0;
-  const reviveAllowed = sessionStore.isHydrated() && Date.now() - lastRevive >= REVIVE_COOLDOWN_MS;
-  cleanupReviveTimestamps();
-  if (reviveAllowed) {
-    lastReviveByWorkspace.set(workspaceId, Date.now());
-    // Fire-and-forget: never block the boards response on revive logic.
-    // Revive is a background recovery operation and can take seconds with many tasks.
-    for (const board of boards) {
-      void reviveMissingEntryAutomations(system, workspaceId, board.id, {
-        sessionStore,
-        processManager,
-      });
-    }
-  } else if (!sessionStore.isHydrated()) {
-    void hydrationDone.then(() => {
-      lastReviveByWorkspace.set(workspaceId, Date.now());
-      for (const board of boards) {
-        void reviveMissingEntryAutomations(system, workspaceId, board.id, {
-          sessionStore,
-          processManager,
-        });
-      }
-    });
-  }
   return NextResponse.json({
     boards: await Promise.all(boards.map(async (board) => sanitizeBoard(board, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),
@@ -136,6 +117,7 @@ export async function POST(request: NextRequest) {
   if (board.isDefault) {
     await system.kanbanBoardStore.setDefault(workspaceId, board.id);
   }
+  boardsCache.delete(workspaceId);
   getKanbanEventBroadcaster().notify({
     workspaceId,
     entity: "board",
