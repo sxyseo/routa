@@ -1,5 +1,0 @@
-schema: hook-runtime-v1
-profiles:
-  pre-commit:
-    phases:
-      - fitness
