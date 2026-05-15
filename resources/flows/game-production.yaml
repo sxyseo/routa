@@ -1,0 +1,190 @@
+# Game Production Pipeline — End-to-end mini-game generation and monetization optimization
+#
+# This workflow implements the complete Ralph Loop for game-cli:
+# 1. Refine user request into GameDSL (GDD)
+# 2. Validate the DSL quality
+# 3. Generate game code from DSL
+# 4. Build and scan for platform violations
+# 5. Evaluate monetization potential
+# 6. Auto-iterate if score below threshold (Ralph Loop)
+#
+# Usage:
+#   routa workflow run resources/flows/game-production.yaml --trigger-payload "做一个合成大西瓜"
+#   routa workflow run resources/flows/game-production.yaml -v --trigger-payload '{"genre":"clicker","theme":"neon","description":"一个赛博朋克风格的点击成长游戏"}'
+
+name: "Game Production Pipeline"
+description: "End-to-end mini-game generation: GDD → Code → Review → Build → Publish with Ralph Loop auto-iteration"
+version: "1.0"
+
+trigger:
+  type: manual
+
+variables:
+  model_gdd: "${GAME_GDD_MODEL:-claude-sonnet-4-20250514}"
+  model_code: "${GAME_CODE_MODEL:-deepseek-chat}"
+  model_review: "${GAME_REVIEW_MODEL:-gpt-4o}"
+  base_url_openai: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+  base_url_claude: "${ANTHROPIC_BASE_URL:-https://api.anthropic.com/v1}"
+  base_url_deepseek: "${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}"
+  max_iterations: "${RALPH_MAX_ITERATIONS:-3}"
+  target_score: "${RALPH_TARGET_SCORE:-70}"
+
+steps:
+  # Phase 1: Generate GDD from natural language
+  - name: "Generate GDD"
+    specialist: "game-designer"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model_gdd}"
+      base_url: "${base_url_claude}"
+    input: |
+      You are a game design expert. Generate a complete GameDSL JSON for the following request:
+
+      "${trigger.payload}"
+
+      Use the game_cli_generate_gdd MCP tool first to get the structured prompt, then fill in the complete GameDSL JSON.
+
+      Requirements:
+      1. Core loop must have clear tap/swipe action + reward + progression
+      2. At least 3 hit feedback configs (animation + particles + shake)
+      3. At least 1 milestone feedback (confetti/celebration)
+      4. At least 3 SFX definitions
+      5. Rewarded video ad placement
+      6. Score target: micro-feedback every 3 seconds, big-feedback every 30 seconds
+
+      Output ONLY the GameDSL JSON.
+    actions:
+      - game_cli_generate_gdd
+      - game_cli_validate_dsl
+    output_key: "gdd_output"
+
+  # Phase 2: Validate DSL quality
+  - name: "Validate DSL"
+    specialist: "quality-gate"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model_review}"
+      base_url: "${base_url_openai}"
+    input: |
+      Validate the following GameDSL JSON using the game_cli_validate_dsl MCP tool:
+
+      ${steps.Generate GDD.output}
+
+      If validation score is below 60, fix the issues and re-validate.
+      The DSL MUST pass all critical checks before proceeding.
+
+      Report:
+      1. Validation score
+      2. All errors (must be zero)
+      3. Warnings count
+    actions:
+      - game_cli_validate_dsl
+    output_key: "dsl_validation"
+
+  # Phase 3: Generate game code
+  - name: "Generate Code"
+    specialist: "game-developer"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model_code}"
+      base_url: "${base_url_deepseek}"
+    input: |
+      Generate a complete game project from the validated GameDSL:
+
+      ${steps.Generate GDD.output}
+
+      Use the game_cli_generate_code MCP tool with:
+      - dsl: the validated GameDSL JSON above
+      - outputDir: "apps/generated-game"
+      - writeFiles: true
+
+      After generation, review the generated files and ensure:
+      1. All scene files follow the Scene lifecycle (onEnter/onUpdate/onLeave)
+      2. GSAP animations are properly cleaned up in onLeave
+      3. No forbidden APIs (eval, new Function, document.*)
+      4. GameContext initialization is correct
+    actions:
+      - game_cli_generate_code
+    output_key: "code_generation"
+
+  # Phase 4: Build and scan
+  - name: "Build & Scan"
+    specialist: "build-engineer"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model_code}"
+      base_url: "${base_url_deepseek}"
+    input: |
+      Build the generated game project and run platform safety checks.
+
+      Steps:
+      1. Run game_cli_build with projectDir: "apps/generated-game"
+      2. Run game_cli_scan_api with projectDir: "apps/generated-game"
+      3. If build fails, fix the errors and rebuild
+      4. If API violations found, fix them and re-scan
+
+      Report build status and any violations found.
+    actions:
+      - game_cli_build
+      - game_cli_scan_api
+    output_key: "build_result"
+
+  # Phase 5: Quality evaluation (Ralph Loop gate)
+  - name: "Quality Gate"
+    specialist: "game-analyst"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model_review}"
+      base_url: "${base_url_openai}"
+    input: |
+      Run comprehensive quality checks on the generated game:
+
+      DSL: ${steps.Generate GDD.output}
+      Build Result: ${steps.Build & Scan.output}
+
+      Use game_cli_check_quality MCP tool with:
+      - projectDir: "apps/generated-game"
+      - dsl: the GameDSL JSON
+
+      Evaluate:
+      1. Feedback density (micro/small/big per minute)
+      2. Engagement score (actions × rewards × upgrades)
+      3. Retention estimate (D1/D3/D7)
+      4. Monetization potential (ad placements × IAP)
+      5. Overall valuation score (0-100)
+
+      Target: Overall score >= ${target_score}
+      If below target, list specific improvements needed.
+    actions:
+      - game_cli_check_quality
+    output_key: "quality_report"
+
+  # Phase 6: Iteration decision (Ralph Loop check)
+  - name: "Ralph Loop Decision"
+    specialist: "game-producer"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model_review}"
+      base_url: "${base_url_openai}"
+    input: |
+      Review the entire production pipeline results:
+
+      GDD: ${steps.Generate GDD.output}
+      Validation: ${steps.Validate DSL.output}
+      Code Gen: ${steps.Generate Code.output}
+      Build: ${steps.Build & Scan.output}
+      Quality: ${steps.Quality Gate.output}
+
+      Make a decision:
+      - If quality score >= ${target_score}: APPROVE for deployment
+      - If quality score < ${target_score} AND iteration < ${max_iterations}:
+        List specific fixes needed and trigger a new iteration
+      - If max iterations reached: Report current state with improvement suggestions
+
+      Final report must include:
+      1. Overall quality score
+      2. Monetization potential (0-100)
+      3. Estimated D1/D3/D7 retention
+      4. Specific recommendations for improvement
+      5. Deployment readiness: YES/NO
+    output_key: "ralph_decision"
